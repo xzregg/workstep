@@ -106,6 +106,28 @@ def test_disabled_builtin_workstep_cli_skill_stays_disabled(tmp_path):
     assert not (project / ".workstep" / "skills" / "workstep-cli").exists()
 
 
+def test_memory_cli_skill_documents_environment_and_parseable_commands():
+    import shlex
+    from cli import build_parser
+    root = BUILTIN_SKILLS / 'workstep-cli'
+    skill = (root / 'SKILL.md').read_text()
+    assert 'references/memory.md' in skill
+    assert 'daemon startup' in skill and 'sys.executable' in skill
+    assert 'not your project virtualenv' in skill
+    transport = (root / 'references/transport.md').read_text()
+    assert 'missing environment variables' in transport
+    assert 'not provided as an environment variable' in ' '.join((root / 'references/memory.md').read_text().split())
+    commands = re.findall(r'^uv run .*python -m cli (memory .+)$', (root / 'references/memory.md').read_text(), re.M)
+    assert len(commands) >= 3
+    for command in commands:
+        parsed = build_parser().parse_args(shlex.split(command))
+        assert not parsed.verbose and not parsed.json
+        assert parsed.memory_token == '<memory_token>'
+    reference = (root / 'references/memory.md').read_text()
+    assert '--verbose' in reference and 'source_ids' in reference
+    assert 'same compact fields' in reference
+
+
 def test_project_local_workstep_cli_skill_wins_over_new_builtin(tmp_path):
     project = tmp_path / "project"
     local = project / ".workstep" / "skills" / "workstep-cli"

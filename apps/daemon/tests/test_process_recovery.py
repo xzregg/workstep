@@ -12,6 +12,54 @@ import pytest
 from services.process_recovery import ProcessOwnership, runtime_identity
 
 
+@pytest.mark.anyio
+async def test_restart_executor_survives_old_owner_shutdown_after_checkpoint(tmp_path):
+    service = ProcessOwnership(tmp_path)
+    await service.start()
+    ordinary_worker = peer()
+    ready, proceed = tmp_path / 'ready', tmp_path / 'proceed'
+    helper = Path(__file__).resolve().parents[3] / 'scripts/workstep_restart.py'
+    script = '''import importlib.util,sys,time
+from pathlib import Path
+spec=importlib.util.spec_from_file_location('restart_helper',sys.argv[1])
+helper=importlib.util.module_from_spec(spec);sys.modules[spec.name]=helper;spec.loader.exec_module(helper)
+Path(sys.argv[2]).write_text('spawned')
+while not Path(sys.argv[3]).exists():time.sleep(.01)
+with helper.restart_ownership():
+    Path(sys.argv[2]).write_text('protected')
+    while Path(sys.argv[3]).exists():time.sleep(.01)
+Path(sys.argv[2]).write_text('survived')
+'''
+    child = subprocess.Popen([sys.executable, '-c', script, str(helper), str(ready), str(proceed)],
+                             start_new_session=True)
+    try:
+        for _ in range(500):
+            if ready.exists(): break
+            await asyncio.sleep(.01)
+        assert ready.read_text() == 'spawned'
+        await asyncio.to_thread(service.checkpoint)
+        assert child.pid in [item['pid'] for item in service.children.values()]
+        proceed.touch()
+        for _ in range(500):
+            if ready.read_text() == 'protected' or child.poll() is not None: break
+            await asyncio.sleep(.01)
+        assert child.poll() is None
+        assert ready.read_text() == 'protected'
+        await service.close()
+        assert child.poll() is None
+        assert await asyncio.to_thread(ordinary_worker.wait, 5) != 0
+        proceed.unlink()
+        assert await asyncio.to_thread(child.wait, 5) == 0
+        assert ready.read_text() == 'survived'
+        assert not list(service.directory.glob('*.json'))
+    finally:
+        await service.close()
+        if child.poll() is None: child.kill()
+        child.wait()
+        if ordinary_worker.poll() is None: ordinary_worker.kill()
+        ordinary_worker.wait()
+
+
 def peer(env=None):
     return subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], env=env)
 

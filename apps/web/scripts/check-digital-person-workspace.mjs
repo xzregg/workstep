@@ -95,7 +95,7 @@ try{
   assert.equal(await page.evaluate(()=>window.workspaceFixture.calls.activity),1,'one namecard data request')
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'namecard does not overflow')
   await page.screenshot({animations:'disabled',path:path.join(artifacts,`namecard-${width}.png`),fullPage:true})
-  await page.locator('#digital-person-tab-identity').click()
+  await page.locator('.digital-person-secondary-nav [data-settings-tab=identity]').click()
   await page.getByRole('group',{name:'身份预设'}).getByRole('button',{name:'研发伙伴',exact:true}).click()
   await page.getByRole('group',{name:'身份预设'}).getByRole('button',{name:'项目管家',exact:true}).click()
   await page.locator('[name=role]').fill('研发伙伴、项目管家、质量伙伴')

@@ -13,3 +13,17 @@ def test_speech_project_edit_access_cannot_manage_host_models():
     for method, path in [('POST', '/api/speech/models/download'), ('PUT', '/api/speech/settings'),
                          ('DELETE', '/api/speech/models/current')]:
         assert not allowed(method, path, [('project_id', 'p')], 'p', access_level='edit')
+
+
+def test_speech_output_project_sessions_cannot_manage_host_configuration():
+    for method, path in [('GET', '/api/speech-output'), ('POST', '/api/speech-output/sessions'),
+                         ('POST', '/api/speech-output/sessions/' + 'a' * 32 + '/next'),
+                         ('DELETE', '/api/speech-output/sessions/' + 'a' * 32)]:
+        assert allowed(method, path, [('project_id', 'p')], 'p', access_level='edit')
+        assert not allowed(method, path, [('project_id', 'other')], 'p', access_level='edit')
+        if method != 'GET':
+            assert not allowed(method, path, [('project_id', 'p')], 'p', access_level='read')
+    for method, path in [('PUT', '/api/speech-output/settings'), ('POST', '/api/speech-output/models/download'),
+                         ('POST', '/api/speech-output/models/delete'), ('POST', '/api/speech-output/models/unload'),
+                         ('POST', '/api/speech-output/voices')]:
+        assert not allowed(method, path, [('project_id', 'p')], 'p', access_level='edit')

@@ -3,10 +3,14 @@ package com.workstep.android;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.function.Consumer;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 /** One pending page request, bound to the configured service and its document. */
 final class MicrophonePermissionGate<T> {
     private static final String AUDIO = "android.webkit.resource.AUDIO_CAPTURE";
+    private final Set<String> allowedResources;
     private final Consumer<T> grant;
     private final Consumer<T> deny;
     private T pending;
@@ -15,6 +19,15 @@ final class MicrophonePermissionGate<T> {
     private boolean androidDialogOpen;
 
     MicrophonePermissionGate(Consumer<T> grant, Consumer<T> deny) {
+        this(AUDIO, grant, deny);
+    }
+
+    MicrophonePermissionGate(String resource, Consumer<T> grant, Consumer<T> deny) {
+        this(new String[]{resource}, grant, deny);
+    }
+
+    MicrophonePermissionGate(String[] resources, Consumer<T> grant, Consumer<T> deny) {
+        this.allowedResources = new HashSet<>(Arrays.asList(resources));
         this.grant = grant;
         this.deny = deny;
     }
@@ -23,7 +36,9 @@ final class MicrophonePermissionGate<T> {
     boolean begin(T request, ServerAddress server, String page, String requestingOrigin,
             String[] resources, boolean appPermissionGranted) {
         if (androidDialogOpen || pending != null || !trusted(server, page, requestingOrigin)
-                || resources == null || resources.length != 1 || !AUDIO.equals(resources[0])) {
+                || resources == null || resources.length == 0
+                || new HashSet<>(Arrays.asList(resources)).size() != resources.length
+                || !allowedResources.containsAll(Arrays.asList(resources))) {
             deny.accept(request);
             return false;
         }

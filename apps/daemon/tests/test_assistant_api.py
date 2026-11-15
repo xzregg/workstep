@@ -352,13 +352,20 @@ async def test_assistant_config_validates_unknown_name(assistant_client):
     assert response.status_code == 404
 
 
-async def test_assistant_config_rejects_model_without_engine(assistant_client):
-    client, _ = assistant_client
+@pytest.mark.parametrize("name", ["task_create", "digital_person", "task_coordinator"])
+async def test_assistant_config_follows_default_engine_with_model(assistant_client, name):
+    client, store = assistant_client
+    store.set_execution_default_engine("pydantic_ai")
     response = await client.put(
-        "/api/assistant/task_create/config",
-        json={"model": "gm"},
+        f"/api/assistant/{name}/config",
+        json={"model": "gm", "vision_model": "gv", "fast_model": "gf"},
     )
-    assert response.status_code == 400
+    assert response.status_code == 200, response.text
+    assert response.json()["configured"]["engine"] == ""
+    assert response.json()["configured"]["vision_model"] == "gv"
+    assert response.json()["resolved"]["engine"] == "pydantic_ai"
+    store.set_execution_default_engine("codex_sdk")
+    assert store.get_assistant_defaults(name)["engine"] == "codex_sdk"
 
 
 @pytest.mark.parametrize("engine,effort", [
@@ -670,9 +677,10 @@ async def test_assistant_runtime_injects_assistant_provider(monkeypatch):
     assert captured["config_overrides"] == {"provider_id": "p-b"}
 
 
-async def test_assistant_config_provider_requires_explicit_builtin_engine(assistant_client):
-    """供应商只绑定显式选择的 Pydantic AI 引擎，与默认引擎（跟随）无关。"""
+async def test_assistant_config_provider_validates_inherited_engine(assistant_client):
+    """跟随引擎同样校验供应商协议，并保留引擎继承。"""
     client, store = assistant_client
+    store.set_execution_default_engine("hermes")
     store.save_provider({
         "id": "p-b",
         "name": "Builtin Provider",
@@ -686,6 +694,14 @@ async def test_assistant_config_provider_requires_explicit_builtin_engine(assist
         json={"engine": "", "provider_id": "p-b"},
     )
     assert response.status_code == 400
+    store.set_execution_default_engine("pydantic_ai")
+    response = await client.put(
+        "/api/assistant/task_create/config",
+        json={"engine": "", "provider_id": "p-b", "vision_model": "gv"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["configured"]["engine"] == ""
+    assert response.json()["resolved"]["engine"] == "pydantic_ai"
     response = await client.put(
         "/api/assistant/task_create/config",
         json={"engine": "pydantic_ai", "provider_id": "p-b"},
@@ -728,3 +744,41 @@ async def test_assistant_runtime_resolves_builtin_engine_when_provider_set(monke
     )
     engine_id, model, _ = runtime._resolve_engine_models()
     assert engine_id == "codex_sdk"
+
+
+async def test_assistant_inherited_engine_validation_does_not_block_health(assistant_client, monkeypatch):
+    import asyncio
+    import threading
+    import time
+    client, store = assistant_client
+    store.set_execution_default_engine("pydantic_ai")
+    entered = threading.Event()
+    original = store.get_execution_default_engine
+    def slow_default():
+        entered.set()
+        time.sleep(.2)
+        return original()
+    monkeypatch.setattr(store, "get_execution_default_engine", slow_default)
+    pending = asyncio.create_task(client.put("/api/assistant/task_create/config", json={"vision_model": "gv"}))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert (await asyncio.wait_for(client.get("/api/health"), .1)).status_code == 200
+        result = await pending
+        assert result.status_code == 200, result.text
+    finally:
+        await pending
+
+
+async def test_assistant_inherited_engine_uses_new_global_instead_of_previous_override(assistant_client, monkeypatch):
+    client, store = assistant_client
+    store.set_execution_default_engine("pydantic_ai")
+    store.set_assistant_defaults("task_create", engine="old-engine")
+    response = await client.put("/api/assistant/task_create/config", json={"vision_model": "gv"})
+    assert response.status_code == 200, response.text
+    assert response.json()["configured"]["engine"] == ""
+    assert response.json()["resolved"]["engine"] == "pydantic_ai"
+    store.set_execution_default_engine("invalid-engine")
+    before = store.get_assistant_config("task_create")
+    response = await client.put("/api/assistant/task_create/config", json={"vision_model": "other"})
+    assert response.status_code == 400
+    assert store.get_assistant_config("task_create") == before

@@ -20,6 +20,8 @@ test('Xcode app target includes every Swift source and required resources', () =
   for (const file of files) assert.ok(existsSync(path.join(root, file)), file)
   const info = plist('WorkStep/Info.plist')
   assert.ok(info.NSMicrophoneUsageDescription)
+  assert.ok(info.NSCameraUsageDescription)
+  assert.ok(info.NSPhotoLibraryUsageDescription)
   assert.ok(info.NSLocalNetworkUsageDescription)
   assert.equal(info.UIBackgroundModes, undefined, 'must not claim unsupported background execution')
 })

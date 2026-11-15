@@ -1,7 +1,8 @@
 import './AssistantEngineSettings.css'
 import { useEffect, useRef, useState } from 'react'
-import { assistantApi, providerApi, fetchEngineModels, getCachedEngineModels, type AssistantConfigInfo, type AssistantConfiguredDefaults, type EngineInfo, type EngineModel, type ProviderInfo } from '../api/client'
+import { assistantApi, providerApi, systemSettingsApi, type ModelSetting, fetchEngineModels, getCachedEngineModels, type AssistantConfigInfo, type AssistantConfiguredDefaults, type EngineInfo, type EngineModel, type ProviderInfo } from '../api/client'
 import EngineSelect from './EngineSelect'
+import { engineLabel } from '../engineMeta'
 import { engineEffortOptions, thinkingEffortLabel } from '../utils/thinkingEffort'
 import Button from './Button'
 import Select from './Select'
@@ -23,7 +24,7 @@ export function getAssistantLabel(name: string, t: TFunction): string {
   return key ? t(key) : name
 }
 
-export default function AssistantEngineSettings({ assistantName, onDirtyChange }: { assistantName?: string; onDirtyChange?: (dirty: boolean) => void }) {
+export default function AssistantEngineSettings({ assistantName, onDirtyChange, onBusyChange, section = 'all' }: { assistantName?: string; onDirtyChange?: (dirty: boolean) => void; onBusyChange?: (busy: boolean) => void; section?: 'all' | 'vision' }) {
   const { t } = useI18n()
   const [assistants, setAssistants] = useState<AssistantConfigInfo[]>([])
   const [selectedName, setSelectedName] = useState('')
@@ -38,10 +39,14 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
   const [providerId, setProviderId] = useState('')
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [providersLoading, setProvidersLoading] = useState(false)
+  const [visionCapability, setVisionCapability] = useState<boolean | null>(null)
+  const [modelSettings, setModelSettings] = useState<ModelSetting[]>([])
   const [models, setModels] = useState<EngineModel[]>([])
   const [loading, setLoading] = useState(true)
   const [modelsLoading, setModelsLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  useEffect(() => { onBusyChange?.(saving) }, [saving, onBusyChange])
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange])
   const initialized = useRef(false)
   const engineRef = useRef('')
   const modelRequest = useRef(0)
@@ -50,11 +55,12 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
   const [notice, setNotice] = useState('')
   const [savedSnapshot, setSavedSnapshot] = useState('')
   const snapshot = JSON.stringify([engine, model, fastModel, visionModel, thinkingEffort, providerId])
-  useEffect(() => { onDirtyChange?.(saving || (!!savedSnapshot && snapshot !== savedSnapshot)) }, [saving, savedSnapshot, snapshot, onDirtyChange])
+  useEffect(() => { onDirtyChange?.(saving || (!!savedSnapshot && (snapshot !== savedSnapshot || visionCapability !== null))) }, [saving, savedSnapshot, snapshot, visionCapability, onDirtyChange])
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
 
   const applyAssistant = (info: AssistantConfigInfo) => {
     setSavedSnapshot(JSON.stringify([info.configured.engine || '', info.configured.model || '', info.configured.fast_model || '', info.configured.vision_model || '', info.configured.thinking_effort || '', info.configured.provider_id || '']))
+    setVisionCapability(null)
     setSelectedName(info.name)
     setFields(info.fields)
     setResolvedDefaults(info.resolved || null)
@@ -75,7 +81,9 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
     initialized.current = true
     assistantApi.list()
       .then(({ assistants: items }) => {
-        const visible = assistantName ? items.filter(item => item.name === assistantName) : items
+        const visible = assistantName
+          ? items.filter(item => item.name === assistantName)
+          : items.filter(item => item.name !== 'digital_person')
         setAssistants(visible)
         if (visible.length > 0) applyAssistant(visible[0])
         else throw new Error(t('settings.readAssistantFailed'))
@@ -85,6 +93,9 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
         reason instanceof Error ? reason.message : t('settings.readAssistantFailed')
       ))
       .finally(() => setLoading(false))
+    if (section === 'vision') {
+      systemSettingsApi.modelSettings().then(value => setModelSettings(value.prices)).catch(reason => setError(String(reason)))
+    }
     setProvidersLoading(true)
     providerApi.list()
       .then((result) => setProviders(
@@ -95,8 +106,10 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  engineRef.current = engine
-  const selectedEngineInfo = engines.find((item) => item.id === engine)
+  const effectiveEngine = engine || resolvedDefaults?.engine || ''
+  const effectiveProvider = providerId || (!engine ? resolvedDefaults?.provider_id : '') || engines.find(item => item.id === effectiveEngine)?.config?.values.provider_id || ''
+  engineRef.current = effectiveEngine
+  const selectedEngineInfo = engines.find((item) => item.id === effectiveEngine)
   const thinkingOptions = engineEffortOptions(engines.find(item => item.id === (engine || resolvedDefaults?.engine)))
   const engineSupportsProvider = Boolean(selectedEngineInfo?.supports_provider)
   const compatibleProviders = providers.filter((item) => (
@@ -105,12 +118,21 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
     )
   ))
 
+  const supportsImages = (modelId: string) => {
+    const settings = modelSettings.filter(setting => setting.model === modelId)
+    const setting = (effectiveProvider ? settings.find(setting => setting.provider_id === effectiveProvider) : undefined)
+      || settings.find(setting => setting.engine_id === effectiveEngine)
+      || settings.find(setting => !setting.provider_id && !setting.engine_id)
+    return setting?.supports_multimodal === true
+  }
+  const visionSupportsImages = visionCapability ?? supportsImages(visionModel)
+
   const loadAssistantModels = async (engineId: string, force: boolean) => {
     const requestId = ++modelRequest.current
     if (!force) {
       const cached = getCachedEngineModels(
         engineId,
-        engineSupportsProvider ? providerId : '',
+        engineSupportsProvider ? effectiveProvider : '',
       )
       if (cached) {
         if (engineRef.current !== engineId || modelRequest.current !== requestId) return
@@ -126,7 +148,7 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
       const result = await fetchEngineModels(
         engineId,
         force,
-        engineSupportsProvider ? providerId : '',
+        engineSupportsProvider ? effectiveProvider : '',
       )
       if (engineRef.current !== engineId || modelRequest.current !== requestId) return
       setModels(result.models || [])
@@ -141,16 +163,17 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
   }
 
   useEffect(() => {
-    if (!engine) { modelRequest.current++; setModels([]); setModelError(''); setModelsLoading(false); return }
-    void loadAssistantModels(engine, false)
+    if (!effectiveEngine) { modelRequest.current++; setModels([]); setModelError(''); setModelsLoading(false); return }
+    void loadAssistantModels(effectiveEngine, false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engine, providerId, engineSupportsProvider])
+  }, [effectiveEngine, effectiveProvider, engineSupportsProvider])
 
   const changeEngine = (engineId: string) => {
     setEngine(engineId)
     setModel('')
     setFastModel('')
     setVisionModel('')
+    setVisionCapability(null)
     setProviderId('')
     setNotice('')
   }
@@ -160,6 +183,18 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
     setError('')
     setNotice('')
     try {
+      if (section === 'vision' && visionModel && visionCapability !== null) {
+        const settings = await systemSettingsApi.modelSettings()
+        const source = effectiveProvider ? { provider_id: effectiveProvider, engine_id: null } : { provider_id: null, engine_id: effectiveEngine }
+        const index = settings.prices.findIndex(item => item.model === visionModel && (item.provider_id || null) === source.provider_id && (item.engine_id || null) === source.engine_id)
+        const prices = [...settings.prices]
+        const value = { ...(index >= 0 ? prices[index] : { model: visionModel, model_type: 'chat' as const, input_price: 0, output_price: 0, cache_price: 0, ...source }), supports_multimodal: visionCapability }
+        if (index >= 0) prices[index] = value
+        else prices.push(value)
+        const saved = await systemSettingsApi.saveModelSettings({ currency: settings.currency, usd_to_cny_rate: settings.usd_to_cny_rate, prices })
+        setModelSettings(saved.prices)
+        setVisionCapability(null)
+      }
       const result = await assistantApi.setConfig(selectedName, {
         engine,
         model: fields.includes('model') ? model : '',
@@ -215,7 +250,7 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
           {t('settings.assistantIntro')}
         </p>
       </div>}
-      {assistantName && <p className="assistant-engine-intro">{t('digitalPerson.engineHint')}</p>}
+      {assistantName && <p className="assistant-engine-intro">{t(section === 'vision' ? 'digitalPerson.visionModelHint' : 'digitalPerson.engineHint')}</p>}
       <div className="assistant-engine-panel">
         {!assistantName && <div
           role="group"
@@ -248,7 +283,7 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
             disabled={loading || saving}
             requireCoordinator
             allowUnconfiguredBuiltin
-            defaultOption={{ value: '', label: t('settings.followDefaultEngine') }}
+            defaultOption={{ value: '', label: section === 'vision' && resolvedDefaults?.engine ? `${t('settings.followDefaultEngine')}（${engineLabel(resolvedDefaults.engine, t)}）` : t('settings.followDefaultEngine') }}
             ariaLabel={t('settings.defaultAssistantAria')}
             className="assistant-engine-control"
           />
@@ -266,6 +301,7 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
                 setModel('')
                 setFastModel('')
                 setVisionModel('')
+                setVisionCapability(null)
               }}
               aria-label={t('settings.assistantProviderAria')}
               className="assistant-engine-control"
@@ -273,7 +309,7 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
               <option value="">
                 {providersLoading
                   ? t('flow.modelsLoading')
-                  : t('settings.followEngineProvider')}
+                  : section === 'vision' && effectiveProvider ? `${t('settings.followEngineProvider')}（${providers.find(item => item.id === effectiveProvider)?.name || effectiveProvider}）` : t('settings.followEngineProvider')}
               </option>
               {compatibleProviders.length === 0 && !providersLoading && (
                 <option value="" disabled>
@@ -288,20 +324,20 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
             </Select>
           </div>
         )}
-        {fields.includes('model') && (
+        {section !== 'vision' && fields.includes('model') && (
           <div className="assistant-engine-row">
             <label className="assistant-engine-label">
               {t('settings.reasoningModel')}
             </label>
             <Select
               value={model}
-              disabled={!engine || modelsLoading || saving}
+              disabled={!effectiveEngine || modelsLoading || saving}
               onChange={(event) => setModel(event.target.value)}
               aria-label={t('settings.defaultReasoningAria')}
               className="assistant-engine-control"
             >
               <option value="">
-                {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('flow.engineDefaultModel')}
+                {!effectiveEngine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('flow.engineDefaultModel')}
               </option>
               {model && !models.some((item) => item.id === model) && (
                 <option value={model}>{model}{t('flow.currentConfigSuffix')}</option>
@@ -322,20 +358,20 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
             )}
           </div>
         )}
-        {fields.includes('fast_model') && (
+        {section !== 'vision' && fields.includes('fast_model') && (
           <div className="assistant-engine-row">
             <label className="assistant-engine-label">
               {t('settings.fastModel')}
             </label>
             <Select
               value={fastModel}
-              disabled={!engine || modelsLoading || saving}
+              disabled={!effectiveEngine || modelsLoading || saving}
               onChange={(event) => setFastModel(event.target.value)}
               aria-label={t('settings.defaultFastAria')}
               className="assistant-engine-control"
             >
               <option value="">
-                {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('settings.followReasoning')}
+                {!effectiveEngine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('settings.followReasoning')}
               </option>
               {fastModel && !models.some((item) => item.id === fastModel) && (
                 <option value={fastModel}>{fastModel}{t('flow.currentConfigSuffix')}</option>
@@ -346,7 +382,7 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
             </Select>
           </div>
         )}
-        {fields.includes('thinking_effort') && (
+        {section !== 'vision' && fields.includes('thinking_effort') && (
           <div className="assistant-engine-row">
             <label className="assistant-engine-label">
               {t('coord.thinkingEffort')}
@@ -380,13 +416,13 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
             </label>
             <Select
               value={visionModel}
-              disabled={!engine || modelsLoading || saving}
-              onChange={(event) => setVisionModel(event.target.value)}
+              disabled={!effectiveEngine || modelsLoading || saving}
+              onChange={(event) => { setVisionModel(event.target.value); setVisionCapability(null) }}
               aria-label={t('settings.defaultVisionAria')}
               className="assistant-engine-control"
             >
               <option value="">
-                {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('settings.followReasoning')}
+                {!effectiveEngine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('settings.followReasoning')}
               </option>
               {visionModel && !models.some((item) => item.id === visionModel) && (
                 <option value={visionModel}>{visionModel}{t('flow.currentConfigSuffix')}</option>
@@ -397,9 +433,8 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
             </Select>
           </div>
         )}
-        <div className="assistant-engine-hint">
-          {t('settings.modelRolesHint')}
-        </div>
+        {section === 'vision' && visionModel && <label className="assistant-engine-vision-capability"><input type="checkbox" checked={visionSupportsImages} disabled={loading || saving} onChange={event => setVisionCapability(event.target.checked)} />{t('digitalPerson.supportsImageInput')}</label>}
+        {section !== 'vision' && <div className="assistant-engine-hint">{t('settings.modelRolesHint')}</div>}
         {modelError && (
           <div className="assistant-engine-error">
             {t('settings.modelErrorHint', { error: modelError })}
@@ -409,7 +444,7 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange }
           <div className="assistant-engine-notice" data-status={error ? "error" : notice ? "success" : undefined}>
             {error || notice || t('settings.inProgressHint')}
           </div>
-          <Button variant="primary" disabled={loading || saving || !selectedName} loading={saving} onClick={() => void save()}>
+          <Button variant="primary" disabled={loading || saving || !selectedName || (section === 'vision' && (!effectiveEngine || (!!visionModel && !visionSupportsImages) || modelsLoading))} loading={saving} onClick={() => void save()}>
             {t('settings.saveAssistant')}
           </Button>
         </div>

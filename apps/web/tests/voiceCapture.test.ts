@@ -30,6 +30,7 @@ for (const scenario of ['fallback', 'permission', 'aborted', 'unavailable'] as c
       await assert.rejects(captureVoice(() => {}, controller.signal), scenario === 'fallback' ? /graph reached/
         : scenario === 'permission' ? /Denied/ : scenario === 'aborted' ? /Cancelled/ : /speech.audioSourceUnavailable/)
       assert.equal(requests.length, scenario === 'aborted' ? 0 : scenario === 'permission' ? 1 : 2)
+      if(requests.length)assert.equal((requests[0].audio as MediaTrackConstraints).autoGainControl,false)
       if (scenario === 'fallback') {
         assert.deepEqual(requests[1], { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
         assert.equal(stopped, 1)

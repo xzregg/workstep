@@ -7,6 +7,9 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     private let diagnostics = Diagnostics()
     lazy var notifications = CompletionNotifications(diagnostics: diagnostics)
     private let downloads = DownloadCoordinator()
+    private let systemSpeech = SystemSpeech()
+    private var mediaGeneration = 0
+    private var requestingMedia = false
     private var server: ServerAddress?
     private var policy: NavigationPolicy?
     private var webView: WKWebView?
@@ -120,6 +123,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         present(UINavigationController(rootViewController: setup), animated: true)
     }
     private func disconnect() {
+        invalidateMedia()
         navigationDeadline?.cancel(); renderCheck?.cancel(); downloads.cancel()
         checkingPage = false
         webView?.navigationDelegate = nil; webView?.uiDelegate = nil
@@ -131,6 +135,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         setStatus("连接你的 WorkStep 服务", loading: false)
     }
     private func connect(_ server: ServerAddress) {
+        invalidateMedia()
         navigationDeadline?.cancel(); renderCheck?.cancel(); downloads.cancel()
         checkingPage = false
         webView?.navigationDelegate = nil; webView?.uiDelegate = nil
@@ -161,8 +166,10 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
             web.trailingAnchor.constraint(equalTo: view.trailingAnchor), web.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
         webView = web
-        urlObservation = web.observe(\.url, options: [.new]) { [weak self] _, change in
-            guard let self, let url = change.newValue ?? nil, server.shouldRemember(url) else { return }
+        urlObservation = web.observe(\.url, options: [.old, .new]) { [weak self] _, change in
+            guard let self else { return }
+            if change.oldValue != change.newValue { self.invalidateMedia() }
+            guard let url = change.newValue ?? nil, server.shouldRemember(url) else { return }
             self.defaults.set(url.absoluteString, forKey: "page:" + server.origin)
         }
         let remembered = defaults.string(forKey: "page:" + server.origin).flatMap(URL.init(string:))
@@ -196,7 +203,13 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         let alert = UIAlertController(title: "WorkStep", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "知道了", style: .default)); present(alert, animated: true)
     }
-    func enteredBackground() { backgroundAt = Date() }
+    private func invalidateMedia() {
+        mediaGeneration &+= 1
+        systemSpeech.stop()
+        webView?.setCameraCaptureState(.none, completionHandler: nil)
+        webView?.setMicrophoneCaptureState(.none, completionHandler: nil)
+    }
+    func enteredBackground() { backgroundAt = Date(); invalidateMedia() }
     func becameActive() {
         guard let backgroundAt else { return }
         self.backgroundAt = nil
@@ -223,6 +236,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     }
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         guard webView === self.webView else { return }
+        invalidateMedia()
         checkingPage = true
         if let url = webView.url { policy?.didStart(url) }
         navigationDeadline?.cancel(); renderCheck?.cancel()
@@ -263,6 +277,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(error) }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        invalidateMedia()
         diagnostics.record("网页进程退出")
         if !recoveredCrash { recoveredCrash = true; webView.reload() }
         else { setStatus("网页进程已退出，请重新加载。", loading: false) }
@@ -294,22 +309,62 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     }
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo,
                  type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
-        guard type == .microphone, frame.isMainFrame, let url = frame.request.url, server?.contains(url) == true,
-              let current = webView.url, server?.contains(current) == true, origin.protocol == "https",
-              origin.host.lowercased() == current.host?.lowercased(), (origin.port == (current.port ?? 443) || (origin.port == 0 && current.port == nil)) else { decisionHandler(.deny); return }
-        let authorizedServer = server
-        AVAudioSession.sharedInstance().requestRecordPermission { [weak self, weak webView] granted in
-            DispatchQueue.main.async {
-                let stillValid = self?.server == authorizedServer && webView?.url == current && UIApplication.shared.applicationState != .background
-                decisionHandler(granted && stillValid ? .grant : .deny)
-            }
+        let kind: String
+        switch type {
+        case .camera: kind = "camera"
+        case .microphone: kind = "microphone"
+        case .cameraAndMicrophone: kind = "cameraAndMicrophone"
+        @unknown default: decisionHandler(.deny); return
         }
+        var parts = URLComponents()
+        parts.scheme = origin.protocol; parts.host = origin.host
+        if origin.port != 0 { parts.port = origin.port }
+        guard webView === self.webView, !requestingMedia, UIApplication.shared.applicationState != .background,
+              let server, let current = webView.url, let source = frame.request.url, let requestedOrigin = parts.url,
+              MediaCapturePolicy.allows(server: server, page: current, frame: source, origin: requestedOrigin,
+                                        mainFrame: frame.isMainFrame, kind: kind) else { decisionHandler(.deny); return }
+        let generation = mediaGeneration
+        requestingMedia = true
+        let isCurrent: () -> Bool = { [weak self, weak webView] in
+            guard let self else { return false }
+            return self.mediaGeneration == generation && self.server == server
+                && webView === self.webView && webView?.url == current
+                && UIApplication.shared.applicationState != .background
+        }
+        let completed: (Bool) -> Void = { [weak self] granted in
+            guard let self else { decisionHandler(.deny); return }
+            self.requestingMedia = false
+            decisionHandler(granted && isCurrent() ? .grant : .deny)
+        }
+        MediaCaptureAuthorization.request(kind: kind, isCurrent: isCurrent, camera: { next in
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async { next(granted) }
+            }
+        }, microphone: { next in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                DispatchQueue.main.async { next(granted) }
+            }
+        }, completion: completed)
     }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame, let source = message.frameInfo.request.url, server?.contains(source) == true,
               let current = webView?.url, server?.contains(current) == true,
               let object = message.body as? [String: Any] else { return }
-        if object["type"] as? String == "notify" { notifications.receive(object) }
+        if object["type"] as? String == "systemSpeech", let request = object["request"] as? [String: Any],
+           UIApplication.shared.applicationState != .background, message.webView === webView {
+            let generation = mediaGeneration
+            let target = webView
+            systemSpeech.handle(request) { [weak self, weak target] result in
+                guard let self, self.mediaGeneration == generation, let target, target === self.webView,
+                      target.url == current, let data = try? JSONSerialization.data(withJSONObject: result),
+                      let json = String(data: data, encoding: .utf8),
+                      let encoded = try? JSONSerialization.data(withJSONObject: [json]),
+                      let array = String(data: encoded, encoding: .utf8) else { return }
+                target.evaluateJavaScript("window.WorkStepSpeech?.onmessage?.({data: \(array)[0]})")
+            }
+        }
+        else if object["type"] as? String == "notify" { notifications.receive(object) }
         else if object["type"] as? String == "diagnostic", let code = object["code"] as? String,
                 ["TypeError", "SyntaxError", "ReferenceError", "RangeError", "resource-error", "unhandled-rejection", "csp"].contains(code) {
             diagnostics.record("网页诊断：" + code)

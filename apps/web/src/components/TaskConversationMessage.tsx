@@ -617,6 +617,7 @@ export default function TaskConversationMessage({
                   !msg.engine)
                   ? (
                     <MessageResponseFooter
+                      projectId={projectId}
                       content={msg.content
                         ? stripA2uiBlocks(
                           String(

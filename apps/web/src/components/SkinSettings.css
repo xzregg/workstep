@@ -3,6 +3,7 @@
 .skin-settings p { color: var(--muted); }
 .skin-settings-page-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .skin-settings-page-head h2 { font-size: calc(14px * var(--font-scale)); font-weight: 650; margin-bottom: 5px; }
+.skin-settings-page-head .settings-heading-row > h2 { margin: 0; }
 .skin-settings-page-head p { font-size: calc(11px * var(--font-scale)); line-height: 1.6; }
 .skin-settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .skin-settings-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }

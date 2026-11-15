@@ -1,0 +1,345 @@
+{
+  "name": "workstep-memory-smoke-v1",
+  "description": "人工构造的中文诊断集，不是公开排行榜，也不代表真实用户总体分布。",
+  "sources": [
+    {
+      "id": "notify-old",
+      "project": "工作",
+      "session": "通知",
+      "time": "2026-09-10T08:00:00+00:00",
+      "role": "user",
+      "text": "每完成一个步骤都通知我。"
+    },
+    {
+      "id": "notify-new",
+      "project": "工作",
+      "session": "通知",
+      "time": "2026-10-10T08:00:00+00:00",
+      "role": "user",
+      "text": "通知方式改了：只通知最终结果和需要我决策的问题，过程不用通知。"
+    },
+    {
+      "id": "download-fail",
+      "project": "演示",
+      "session": "视频",
+      "time": "2026-10-12T08:00:00+00:00",
+      "role": "user",
+      "text": "演示视频第一次校验失败，原因是下载不完整：实际31GB，预期34GB。"
+    },
+    {
+      "id": "download-pass",
+      "project": "演示",
+      "session": "视频",
+      "time": "2026-10-13T08:00:00+00:00",
+      "role": "user",
+      "text": "演示视频重新下载后大小达到34GB，第二次校验通过。"
+    },
+    {
+      "id": "deploy-plan",
+      "project": "工作",
+      "session": "发布",
+      "time": "2026-10-15T08:00:00+00:00",
+      "role": "user",
+      "text": "计划明天部署星河服务，今天还没有执行。"
+    },
+    {
+      "id": "deploy-fail",
+      "project": "工作",
+      "session": "发布",
+      "time": "2026-10-16T08:00:00+00:00",
+      "role": "user",
+      "text": "星河服务部署失败，原因是数据库迁移冲突，没有完成上线。"
+    },
+    {
+      "id": "mobile",
+      "project": "工作",
+      "session": "手机",
+      "time": "2026-10-20T08:00:00+00:00",
+      "role": "user",
+      "text": "手机页面按钮错位已经修复，390像素宽度下验收通过。"
+    },
+    {
+      "id": "camera",
+      "project": "工作",
+      "session": "手机",
+      "time": "2026-11-03T08:00:00+00:00",
+      "role": "user",
+      "text": "摄像头竖屏比例问题已经修复。"
+    },
+    {
+      "id": "owner",
+      "project": "演示",
+      "session": "委派",
+      "time": "2026-10-01T08:00:00+00:00",
+      "role": "user",
+      "text": "演示视频由小舟负责生成、校验和汇总。"
+    },
+    {
+      "id": "format",
+      "project": "工作",
+      "session": "报告",
+      "time": "2026-10-08T08:00:00+00:00",
+      "role": "user",
+      "text": "评测报告需要Markdown和JSON两种格式。"
+    },
+    {
+      "id": "path",
+      "project": "工作",
+      "session": "记忆",
+      "time": "2026-10-09T08:00:00+00:00",
+      "role": "user",
+      "text": "全局记忆放在应用数据目录Memory下，数据库文件名是memory.db。"
+    },
+    {
+      "id": "prototype",
+      "project": "工作",
+      "session": "界面",
+      "time": "2026-10-21T08:00:00+00:00",
+      "role": "user",
+      "text": "界面先做可交互原型，看过之后再接真实数据。"
+    },
+    {
+      "id": "alice",
+      "project": "工作",
+      "session": "人员",
+      "time": "2026-10-05T08:00:00+00:00",
+      "role": "user",
+      "text": "小林负责审核发布清单，小舟负责执行任务。"
+    },
+    {
+      "id": "meeting",
+      "project": "工作",
+      "session": "会议",
+      "time": "2026-10-06T08:00:00+00:00",
+      "role": "user",
+      "text": "复盘会议在杭州办公室举行，时间是10月18日下午三点。"
+    },
+    {
+      "id": "secret",
+      "project": "私人",
+      "session": "私聊",
+      "time": "2026-10-11T08:00:00+00:00",
+      "role": "user",
+      "text": "私人旅行暗号是蓝色海豚。"
+    },
+    {
+      "id": "forgotten",
+      "project": "工作",
+      "session": "旧事",
+      "time": "2026-10-07T08:00:00+00:00",
+      "role": "user",
+      "text": "旧项目代号是紫色风铃。"
+    },
+    {
+      "id": "boundary",
+      "project": "工作",
+      "session": "边界",
+      "time": "2026-09-30T08:00:00+00:00",
+      "role": "user",
+      "text": "九月份完成了桌面安装包构建。"
+    },
+    {
+      "id": "cross",
+      "project": "演示",
+      "session": "后续",
+      "time": "2026-10-22T08:00:00+00:00",
+      "role": "user",
+      "text": "演示视频的最终交付时间是10月22日。"
+    }
+  ],
+  "cases": [
+    {
+      "id": "q01",
+      "category": "update",
+      "query": "通知方式",
+      "expected_ids": [
+        "notify-new"
+      ],
+      "answer": "只通知最终结果和需要决策的问题"
+    },
+    {
+      "id": "q02",
+      "category": "fact",
+      "query": "演示视频失败原因",
+      "expected_ids": [
+        "download-fail"
+      ],
+      "answer": "下载不完整"
+    },
+    {
+      "id": "q03",
+      "category": "multi",
+      "query": "演示视频两次校验结果",
+      "expected_ids": [
+        "download-fail",
+        "download-pass"
+      ],
+      "answer": "第一次失败，第二次通过"
+    },
+    {
+      "id": "q04",
+      "category": "plan_vs_result",
+      "query": "星河服务完成上线了吗",
+      "expected_ids": [
+        "deploy-plan",
+        "deploy-fail"
+      ],
+      "answer": "没有，部署失败"
+    },
+    {
+      "id": "q05",
+      "category": "fact",
+      "query": "手机页面修复验收",
+      "expected_ids": [
+        "mobile"
+      ],
+      "answer": "390像素宽度下通过"
+    },
+    {
+      "id": "q06",
+      "category": "entity",
+      "query": "谁负责演示视频",
+      "expected_ids": [
+        "owner"
+      ],
+      "answer": "小舟"
+    },
+    {
+      "id": "q07",
+      "category": "fact",
+      "query": "评测报告格式",
+      "expected_ids": [
+        "format"
+      ],
+      "answer": "Markdown和JSON"
+    },
+    {
+      "id": "q08",
+      "category": "fact",
+      "query": "全局记忆数据库文件名",
+      "expected_ids": [
+        "path"
+      ],
+      "answer": "memory.db"
+    },
+    {
+      "id": "q09",
+      "category": "preference",
+      "query": "界面接入真实数据之前做什么",
+      "expected_ids": [
+        "prototype"
+      ],
+      "answer": "先看可交互原型"
+    },
+    {
+      "id": "q10",
+      "category": "entity",
+      "query": "小林负责什么",
+      "expected_ids": [
+        "alice"
+      ],
+      "answer": "审核发布清单"
+    },
+    {
+      "id": "q11",
+      "category": "temporal",
+      "query": "复盘会议时间地点",
+      "expected_ids": [
+        "meeting"
+      ],
+      "answer": "10月18日下午三点，杭州办公室"
+    },
+    {
+      "id": "q12",
+      "category": "multi",
+      "query": "演示视频负责人和交付时间",
+      "expected_ids": [
+        "owner",
+        "cross"
+      ],
+      "answer": "小舟，10月22日"
+    },
+    {
+      "id": "q13",
+      "category": "paraphrase",
+      "query": "哪个人会检查上线事项",
+      "expected_ids": [
+        "alice"
+      ],
+      "answer": "小林"
+    },
+    {
+      "id": "q14",
+      "category": "paraphrase",
+      "query": "资料保存在哪个文件里面",
+      "expected_ids": [
+        "path"
+      ],
+      "answer": "memory.db"
+    },
+    {
+      "id": "q15",
+      "category": "unanswerable",
+      "query": "我喜欢什么咖啡",
+      "expected_ids": [],
+      "answer": "没有依据"
+    },
+    {
+      "id": "q16",
+      "category": "unanswerable",
+      "query": "火星基地地址",
+      "expected_ids": [],
+      "answer": "没有依据"
+    },
+    {
+      "id": "q17",
+      "category": "isolation",
+      "query": "私人旅行暗号",
+      "expected_ids": [],
+      "answer": "不可访问",
+      "projects": [
+        "工作",
+        "演示"
+      ]
+    },
+    {
+      "id": "q18",
+      "category": "forgetting",
+      "query": "旧项目代号紫色风铃",
+      "expected_ids": [],
+      "answer": "已遗忘",
+      "forget_ids": [
+        "forgotten"
+      ]
+    },
+    {
+      "id": "october-history",
+      "category": "history",
+      "operation": "history",
+      "query": "上个月有哪些记录",
+      "since": "2026-09-30T16:00:00+00:00",
+      "before": "2026-10-31T16:00:00+00:00",
+      "projects": [
+        "工作",
+        "演示"
+      ],
+      "expected_ids": [
+        "notify-new",
+        "download-fail",
+        "download-pass",
+        "deploy-plan",
+        "deploy-fail",
+        "mobile",
+        "owner",
+        "format",
+        "path",
+        "prototype",
+        "alice",
+        "meeting",
+        "forgotten",
+        "cross"
+      ],
+      "answer": "十月记录需要完整分页回顾"
+    }
+  ]
+}

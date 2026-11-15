@@ -1,0 +1,24 @@
+.digital-person-operations { display: grid; gap: 16px; min-width: 0; }
+.digital-person-operation-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.digital-person-operation-heading.settings-heading-row { justify-content: flex-start; flex-wrap: nowrap; }
+.digital-person-operation-heading h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.digital-person-operation-heading p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.digital-person-browser-card { display: grid; gap: 20px; padding: 20px; border: .5px solid var(--border); border-radius: var(--radius-md); min-width: 0; }
+.digital-person-browser-title { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.digital-person-browser-title > div { display: grid; gap: 4px; }
+.digital-person-browser-title strong { font-size: 14px; }
+.digital-person-browser-title span { color: var(--muted); font-size: 13px; }
+.digital-person-browser-status { display: inline-flex; gap: 8px; align-items: center; }
+.digital-person-browser-components { display: grid; gap: 12px; margin: 0; font-size: 13px; }
+.digital-person-browser-components > div { display: flex; gap: 12px; justify-content: space-between; }
+.digital-person-browser-components dt { color: var(--muted); }
+.digital-person-browser-components dd { margin: 0; }
+.digital-person-browser-enable { display: flex; gap: 12px; justify-content: space-between; align-items: center; padding-top: 16px; border-top: .5px solid var(--border-soft); font-size: 13px; }
+.digital-person-browser-enable .settings-switch { background: var(--border); flex-shrink: 0; }
+.digital-person-browser-enable .settings-switch[aria-checked=true] { background: var(--accent); }
+.digital-person-browser-install { display: grid; gap: 12px; justify-items: start; }
+.digital-person-browser-install p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+@media(max-width:1023px) {
+ .digital-person-browser-card { padding: 16px; }
+ .digital-person-operations .btn { min-height: var(--mobile-control-regular); }
+}

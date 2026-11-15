@@ -5,6 +5,12 @@ import pytest
 from agent_assistants.prompt_input import format_prompt_input
 
 
+def test_internal_event_view_does_not_label_input_as_user_speech():
+    display=format_prompt_input({'prompt':'recent events','internal_event':'digital_person.reflection'})
+    assert '内部事件输入' in display
+    assert '正文（user）' not in display
+
+
 @pytest.mark.parametrize("transport", ["system", "developer"])
 def test_prompt_view_keeps_all_content_without_duplicate_record(transport):
     data = {

@@ -1,7 +1,8 @@
 """Host-scoped digital person configuration; no workspace/access selectors."""
 import asyncio
+from datetime import datetime
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from api.project_scope import require_catalog_project
 from services import digital_person as service
 from services.digital_person import DigitalPersonProfile
@@ -57,6 +58,67 @@ async def main_session():
 @router.get("/activity")
 async def activity():
     return await runtime().overview()
+
+
+@router.get('/activity/records')
+async def activity_records(run_offset: int = Query(default=0, ge=0),
+                           delegation_offset: int = Query(default=0, ge=0),
+                           limit: int = Query(default=5, ge=1, le=50)):
+    return await runtime().activity_records(run_offset, delegation_offset, limit)
+
+
+@router.get('/runs/{run_id}')
+async def run_detail(run_id: str):
+    try:
+        return await runtime().run_detail(run_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get('/memory')
+async def memory(session_id: str = '', query: str = Query(default='', max_length=1000),
+                 since: datetime | None = None, before: datetime | None = None,
+                 limit: int = Query(default=50, ge=1, le=100), project_id: str = ''):
+    from services import digital_person_memory as memory_store
+    from models.chat_session import ChatSession
+    current = runtime()
+    scope = 'local' if query else None
+    if session_id:
+        pid = project_id or (await current.home()).id
+        if not current.projects.get_project_by_id(pid):
+            raise HTTPException(404, '来源项目不存在')
+        def read_scope(_):
+            if not ChatSession.get_or_none(ChatSession.id == session_id, ChatSession.project_id == pid):
+                raise HTTPException(404, '来源会话不存在')
+            return memory_store.scope_for_session(session_id)
+        scope = await current.projects.run_db(pid, read_scope)
+    return {'items': await memory_store.browse_projects(current.projects,scope=scope,query=query,since=since,before=before,limit=limit)}
+
+
+@router.get('/memory/view')
+async def memory_view(query: str = Query(default='', max_length=1000)):
+    from services import memory_visualization
+    return await memory_visualization.browse(runtime().projects, query)
+
+
+@router.get('/memory/source/{source_id}')
+async def memory_source(source_id: str, offset: int = Query(default=0, ge=0),
+                        limit: int = Query(default=2400, ge=1, le=6000)):
+    from services import memory_visualization
+    try:
+        return await memory_visualization.read(runtime().projects, source_id, offset=offset, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.delete('/memory/{memory_id}')
+async def forget_memory(memory_id: str):
+    from services.digital_person_memory import forget
+    if not await asyncio.to_thread(forget, memory_id):
+        raise HTTPException(404, '记忆不存在')
+    return {'forgotten': True}
 
 
 class FeedbackRequest(service.BaseModel):
@@ -161,3 +223,58 @@ async def stop_delegation(delegation_id: str):
         return await runtime().stop_delegation(delegation_id)
     except ValueError as exc:
         raise HTTPException(400,str(exc)) from exc
+
+
+@router.get('/browser')
+async def browser_status():
+    from services import digital_person_browser
+    return await asyncio.to_thread(digital_person_browser.scan)
+
+
+@router.post('/browser/install')
+async def browser_install():
+    from services import digital_person_browser
+    await digital_person_browser.start_install()
+    return await asyncio.to_thread(digital_person_browser.scan)
+
+
+class BrowserEnabledRequest(service.BaseModel):
+    enabled: bool
+
+
+@router.put('/browser')
+async def browser_enabled(value: BrowserEnabledRequest):
+    from services import digital_person_browser
+    try:
+        return await asyncio.to_thread(digital_person_browser.set_enabled, value.enabled)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get('/affect/people')
+async def affect_people():
+    from services import digital_person_affect as affect
+    return {'items': await asyncio.to_thread(affect.people)}
+
+
+@router.get('/affect')
+async def affect_state(project_id: str = '', session_id: str = '', person_id: str = Query(default='', max_length=600)):
+    """Host-only, read-only projection. Actor identity always comes from stored attribution."""
+    from services import digital_person_affect as affect
+    if session_id:
+        from models.chat_session import ChatMessage, ChatSession
+        from services.digital_person_memory import scope_for_session
+        current = runtime()
+        project_id = project_id or (await current.home()).id
+        if not current.projects.get_project_by_id(project_id):
+            raise HTTPException(404, '来源项目不存在')
+        def resolve(_):
+            if not ChatSession.get_or_none(ChatSession.id == session_id, ChatSession.project_id == project_id):
+                raise HTTPException(404, '会话不存在')
+            row = ChatMessage.select().where(ChatMessage.session == session_id, ChatMessage.role == 'user').order_by(ChatMessage.created_at.desc()).first()
+            message = {'author_id': row.author_id, 'author_device_id': row.author_device_id} if row else {}
+            return affect.subject(message, scope_for_session(session_id))
+        person_id = await current.projects.run_db(project_id, resolve)
+        if person_id is None:
+            return {'state': None}
+    return {'state': await asyncio.to_thread(affect.read, person_id or 'local:owner')}

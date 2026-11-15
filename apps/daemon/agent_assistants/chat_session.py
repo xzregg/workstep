@@ -134,6 +134,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
     def recover_interrupted_messages(self) -> int:
         """Finalize journal-backed turns left running by a previous daemon."""
         recovered = 0
+        self._restart_candidates = []
         now = utc_now()
         for project in tuple(self._project_manager.iter_projects()):
             try:
@@ -153,9 +154,20 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                         ).execute()
                     rows = list(ChatMessage.select().where(
                         ChatMessage.role == "assistant",
-                        ChatMessage.status == "running",
+                        (ChatMessage.status == "running") | ChatMessage.restart_pending,
                     ))
                     for row in rows:
+                        session_row = ChatSession.get_by_id(row.session_id)
+                        latest = ChatMessage.select().where(
+                            ChatMessage.session == row.session_id,
+                        ).order_by(ChatMessage.created_at.desc()).first()
+                        if (row.status in {"running", "stopped"} and not session_row.archived
+                                and latest is not None and latest.id == row.id):
+                            self._restart_candidates.append((project.id, row.session_id, row.id))
+                        row.restart_pending = False
+                        if row.status not in {"running", "stopped"}:
+                            row.save()
+                            continue
                         summary: dict[str, Any] = {}
                         events: list[dict] = []
                         content = row.content or ""
@@ -191,6 +203,60 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                     project.id,
                 )
         return recovered
+
+    async def shutdown(self) -> None:
+        # Persist the cause before cancellation changes running messages to stopped.
+        by_project: dict[str, list[str]] = {}
+        for state in self._turn_states.values():
+            if (state.get("status") in {"queued", "running"}
+                    and state.get("project_id") and state.get("assistant_message_id")):
+                by_project.setdefault(state["project_id"], []).append(state["assistant_message_id"])
+        for project_id, message_ids in by_project.items():
+            try:
+                await self._project_manager.run_db(project_id, lambda _p, ids=message_ids: (
+                    ChatMessage.update(restart_pending=True).where(ChatMessage.id.in_(ids)).execute()
+                ))
+            except Exception:
+                logger.exception("Failed to mark interrupted chats in project %s", project_id)
+        await super().shutdown()
+
+    async def resume_interrupted_chats(self) -> int:
+        candidates = getattr(self, "_restart_candidates", [])
+        self._restart_candidates = []
+        if not await asyncio.to_thread(config_store.get, "auto_resume_interrupted_chats", False):
+            return 0
+        resumed = 0
+        for project_id, session_id, message_id in candidates:
+            def submit(_project):
+                session = ChatSession.get_or_none(ChatSession.id == session_id)
+                if session is None or session.archived:
+                    return None
+                latest = ChatMessage.select().where(ChatMessage.session == session_id).order_by(
+                    ChatMessage.created_at.desc()
+                ).first()
+                if latest is None or latest.id != message_id or latest.status != "stopped":
+                    return None
+                trigger=ChatMessage.select().where(ChatMessage.session==session_id,
+                    ChatMessage.role!='assistant').order_by(ChatMessage.created_at.desc()).first()
+                if trigger is not None and trigger.author_type=='internal':
+                    # The event owner retries its pending work; never invent a
+                    # user continuation for an interrupted background event.
+                    return None
+                config = self.get_execution_config(project_id, session_id)
+                return self.submit_message(
+                    project_id, session_id, "继续", f"restart-resume:{message_id}",
+                    **{key: config[key] for key in ("engine", "model", "fast_model", "vision_model",
+                                                   "provider_id", "thinking_effort", "service_tier")},
+                    schedule=False,
+                )
+            try:
+                accepted = await self._project_manager.run_db(project_id, submit)
+                if accepted is not None:
+                    self.start_queued_turn(accepted.turn_id)
+                    resumed += 1
+            except Exception:
+                logger.exception("Failed to resume interrupted chat %s in project %s", session_id, project_id)
+        return resumed
 
     # ── session CRUD ───────────────────────────────────────────────────
 
@@ -269,14 +335,11 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         if not project_id:
             raise ValueError("project_id is required")
         with self._project_ctx(project_id):
-            from services.digital_person_runtime import read_state
-            internal_sessions = read_state(project_id).get('check_sessions', [])
             rows = (
                 ChatSession.select()
                 .where(
                     ChatSession.fork_status == "ready",
                     ChatSession.archived == archived,
-                    ChatSession.id.not_in(internal_sessions),
                 )
                 .order_by(*(
                     (pw.fn.COALESCE(ChatSession.archived_at, ChatSession.updated_at).desc(), ChatSession.id)
@@ -752,6 +815,9 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         goal_mode: bool | None = None,
         provider_id: str | None = None,
         schedule: bool = True,
+        *,
+        reset_context: bool = False,
+        internal_event: str | None = None,
     ) -> ChatAccepted:
         if not session_id:
             raise ValueError("Chat session id is required")
@@ -858,6 +924,8 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             goal_mode=goal_mode,
             provider_id=provider_id,
             schedule=schedule,
+            reset_context=reset_context,
+            internal_event=internal_event,
         )
         # 字段回写独立于 engine 是否在请求中出现；省略的字段不覆盖已有值。
         # 换引擎时同时保存上面解析出的兼容配置，避免遗留旧引擎的模型/供应商。
@@ -885,6 +953,23 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             status=accepted.status,
         )
 
+    def submit_internal_event(self, project_id, session_id, event_type, content, idempotency_key,
+                              *, schedule=True, reset_context=False):
+        """Host-only event submission; never exposed as a client message field."""
+        if not event_type or not all(c.isalnum() or c in '._-' for c in event_type):
+            raise ValueError('Invalid internal event type')
+        return self.submit_message(project_id,session_id,content,idempotency_key,
+            schedule=schedule,reset_context=reset_context,internal_event=event_type)
+
+    @staticmethod
+    def _history_line(item):
+        from .context_commands import context_content
+        if item.get('internal_event'):
+            return f"Internal event ({item['internal_event']}): {item['content']}"
+        if item.get('role')=='user':
+            return f"User: {context_content(item['content'])}"
+        return f"Assistant: {item['content']}"
+
     @staticmethod
     def _session_identity(
         project_id: str,
@@ -901,24 +986,78 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         return self.get_system_prompt(session.project_id)
 
     def _workstep_tools_for_project(self, project_id: str) -> bool:
-        if self._config.name == 'digital_person':  # isolated checker: analysis only
-            return False
+        if self._config.name == 'digital_person':
+            return self._config.workstep_tools
         return self._config.workstep_tools or self._execution_settings_name(project_id) == 'digital_person'
 
     async def _prepare_turn_context(self, session):
         await super()._prepare_turn_context(session)
+        session.extra.pop('digital_person_affect', None)
         session.extra.pop('digital_person_status', None)
-        if self._config.name not in {'chat_session', 'channel_chat'} or self._project_manager is None:
+        session.extra.pop('digital_person_memories', None)
+        session.extra.pop('digital_person_memory_scope', None)
+        session.extra.pop('memory_context_prompt', None)
+        latest_input=next((m for m in reversed(session.messages) if m.get('role')!='assistant'),{})
+        if latest_input.get('internal_event'):
             return
-        if await asyncio.to_thread(self._execution_settings_name, session.project_id) != 'digital_person':
+        if self._config.name not in {'chat_session', 'channel_chat'} or self._project_manager is None:
             return
         from services.digital_person_statistics import load_identity_snapshot
         project = self._project_manager.get_project_by_id(session.project_id)
+        from services.digital_person import get_profile
+        is_digital = await asyncio.to_thread(self._execution_settings_name, session.project_id) == 'digital_person'
+        if (await asyncio.to_thread(get_profile)).enabled:
+            from services.digital_person_memory import prepare_chat_context
+            latest = next((item for item in reversed(session.messages) if item.get('role') == 'user'), {})
+            query = latest.get('content', '')
+            scope, hits, context = await prepare_chat_context(self._project_manager, session.project_id, session.session_id,
+                                             query, latest.get('id'))
+            session.extra['digital_person_memories'] = hits
+            session.extra['digital_person_memory_scope'] = scope
+            session.extra['memory_context_prompt'] = context
+        if not is_digital:
+            return
+        from services import digital_person_affect as affect
+        profile = await asyncio.to_thread(get_profile)
+        if profile.enabled:
+            latest = next((dict(m) for m in reversed(session.messages) if m.get('role') == 'user'), {})
+            scope = session.extra.get('digital_person_memory_scope', 'local')
+            person = affect.subject(latest, scope)
+            if person:
+                try:
+                    state = await asyncio.to_thread(affect.read, person)
+                    session.extra['digital_person_affect'] = {'source': latest, 'scope': scope,
+                                                            'prompt': affect.prompt(profile, state)}
+                except Exception:
+                    logger.warning('Relationship state unavailable', exc_info=True)
+        from services.digital_person_browser import attach
+        await asyncio.to_thread(attach, session.project_id, session.session_id)
         try:
             session.extra['digital_person_status'] = await load_identity_snapshot(self._project_manager, project)
         except Exception:
             logger.warning('Digital person statistics unavailable', exc_info=True)
             session.extra['digital_person_status'] = {'unavailable': True}
+
+    def _extract_streaming_text(self, session, raw):
+        text = super()._extract_streaming_text(session, raw)
+        if session.extra.get('digital_person_affect'):
+            from services.digital_person_affect import visible_text
+            return visible_text(text)
+        return text
+
+    async def _parse_response(self, session, raw):
+        reply, structured, events = await super()._parse_response(session, raw)
+        context = session.extra.get('digital_person_affect')
+        if context:
+            from services import digital_person_affect as affect
+            reply, change = affect.parse_output(reply)
+            if change:
+                try:
+                    await asyncio.to_thread(affect.apply, session.project_id, session.session_id,
+                                            [context['source']], change, scope=context['scope'])
+                except Exception:
+                    logger.warning('Relationship update unavailable; reply continues', exc_info=True)
+        return reply, structured, events
 
     def _digital_person_prompt(self, session) -> str:
         from services.digital_person import prompt_for_project
@@ -928,13 +1067,13 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         project = self._project_manager.get_project_by_id(session.project_id)
         prompt = prompt_for_project(project)
         if not prompt and project is not None and is_default_workspace(project) and config_store.get('digital_person'):
-            prompt = '[WorkStep digital person] 数字人模式已关闭，不再沿用此前数字人身份与职责。'
+            prompt = '[WorkStep digital person] Digital person mode is disabled. The previous digital person identity and duties no longer apply.'
         # Native resumed sessions must receive changes to the identity too.
         session.extra['digital_person_each_turn'] = bool(prompt) or session.extra.get('digital_person_each_turn', False)
         if prompt and config_store.get('digital_person', {}).get('enabled'):
             from services.digital_person_statistics import format_identity_snapshot
             snapshot = format_identity_snapshot(session.extra.get('digital_person_status'))
-            return "\n\n".join(part for part in (prompt, snapshot) if part)
+            return "\n\n".join(part for part in (prompt, snapshot, session.extra.get('digital_person_affect', {}).get('prompt', '')) if part)
         return prompt
 
     def _engine_system_prompt(self, session) -> str:
@@ -946,10 +1085,11 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         """Shared identity and conversation rules regardless of message transport."""
         return "\n\n".join(part for part in (
             self._digital_person_prompt(session), self.get_system_prompt(session.project_id), self._role_system_prompt(session),
+            getattr(session, 'extra', {}).get('memory_context_prompt'),
         ) if part)
 
     def _session_system_prompt_each_turn(self, session) -> bool:
-        return bool(session.extra.get('pending_role_checkpoint') or session.extra.get('digital_person_each_turn')) or super()._session_system_prompt_each_turn(session)
+        return bool(session.extra.get('pending_role_checkpoint') or session.extra.get('digital_person_each_turn') or session.extra.get('memory_context_prompt')) or super()._session_system_prompt_each_turn(session)
 
     def _capture_prompt_input(self) -> bool:
         return self._config.name in {"chat_session", "channel_chat"} or super()._capture_prompt_input()
@@ -974,8 +1114,9 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
     async def _handle_context_command(self, session, turn_id: str) -> bool:
         from .context_commands import reset_command
         user = next(m for m in session.messages if m.get('id') == turn_id)
-        remainder = reset_command(user.get('content', ''))
-        if remainder is None:
+        remainder = None if user.get('internal_event') else reset_command(user.get('content', ''))
+        internal_reset = self._turn_states[turn_id].get('reset_context', False)
+        if remainder is None and not internal_reset:
             return False
         from datetime import datetime
         boundary = datetime.fromisoformat(user['created_at'])
@@ -992,7 +1133,8 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         for key in ('pending_handoff', 'role_checkpoint', 'pending_role_checkpoint'):
             session.extra.pop(key, None)
         session.messages = [m for m in session.messages if m.get('created_at', '') >= user['created_at']]
-        return not remainder
+        # Internal control never becomes a message or a command acknowledgement.
+        return False if internal_reset else not remainder
 
     def _build_chat_prompt(self, session) -> str:
         """Build user/context input; configured chat rules travel independently."""
@@ -1005,9 +1147,9 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 raise ValueError(f"Project not found: {session.project_id}")
             user_message = next(
                 (
-                    context_content(str(item.get("content") or ""))
+                    str(item.get('content') or '') if item.get('internal_event') else context_content(str(item.get("content") or ""))
                     for item in reversed(session.messages)
-                    if item.get("role") == "user"
+                    if item.get("role") == "user" or item.get('internal_event')
                 ),
                 "",
             )
@@ -1025,9 +1167,9 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         if engine is not None and engine.supports_resume:
             user_message = next(
                 (
-                    context_content(str(item.get("content") or ""))
+                    str(item.get('content') or '') if item.get('internal_event') else context_content(str(item.get("content") or ""))
                     for item in reversed(session.messages)
-                    if item.get("role") == "user"
+                    if item.get("role") == "user" or item.get('internal_event')
                 ),
                 "",
             )
@@ -1039,7 +1181,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             if not (item.get("role") == "assistant" and item.get("status") == "running")
         ][-self._config.max_history_turns * 2:]
         history = "\n\n".join(
-            f"{'User' if item['role'] == 'user' else 'Assistant'}: {context_content(item['content']) if item['role'] == 'user' else item['content']}"
+            self._history_line(item)
             for item in turns
         )
         tail = f"Conversation history:\n{history}\n\nContinue."
@@ -1047,7 +1189,6 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
 
     def _build_rebuild_prompt(self, session) -> str:
         """Rebuild a lost engine thread from the persisted conversation."""
-        from .context_commands import context_content
         prompt = self._build_chat_prompt(session)
         if session.resolved_session_id:
             turns = [
@@ -1058,7 +1199,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 )
             ][-self._config.max_history_turns * 2:]
             history = "\n\n".join(
-                f"{'User' if item['role'] == 'user' else 'Assistant'}: {context_content(item['content']) if item['role'] == 'user' else item['content']}"
+                self._history_line(item)
                 for item in turns
             )
             tail = f"Conversation history:\n{history}\n\nContinue."

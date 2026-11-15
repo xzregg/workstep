@@ -11,7 +11,7 @@ from api.project_scope import require_catalog_project
 from services.project_scope import workspace_engine_catalog
 from services import providers as provider_service
 from services.engine_efforts import is_supported_effort
-from services.config import config_store
+from services.config import DEFAULT_EXECUTION_ENGINE, config_store
 
 router = APIRouter(prefix="/api/assistant")
 
@@ -35,6 +35,7 @@ class EnhanceConfigRequest(BaseModel):
 
 
 class ConcurrencyConfigRequest(BaseModel):
+    auto_resume_interrupted_chats: bool | None = Field(default=None, strict=True)
     max_tasks: int = Field(default=0, ge=0)
     max_chats: int = Field(default=0, ge=0)
     schedule_exempt: bool = False
@@ -177,7 +178,8 @@ async def get_concurrency_config():
     """Return the global task/chat concurrency defaults (0 = unlimited)."""
     config = await asyncio.to_thread(config_store.get_concurrency_config)
     minutes = await asyncio.to_thread(config_store.get_task_retry_interval_minutes)
-    return {"saved": True, **config, "task_retry_interval_minutes": minutes}
+    resume = await asyncio.to_thread(config_store.get, "auto_resume_interrupted_chats", False)
+    return {"saved": True, **config, "task_retry_interval_minutes": minutes, "auto_resume_interrupted_chats": resume}
 
 
 @router.put("/concurrency")
@@ -189,6 +191,8 @@ async def set_concurrency_config(req: ConcurrencyConfigRequest):
             max_chats=req.max_chats,
             schedule_exempt=req.schedule_exempt,
         )
+        if req.auto_resume_interrupted_chats is not None:
+            config_store.set("auto_resume_interrupted_chats", req.auto_resume_interrupted_chats)
         if req.task_retry_interval_minutes is not None:
             config_store.set("task_retry_interval_minutes", req.task_retry_interval_minutes)
         return config_store.get_concurrency_config()
@@ -198,7 +202,8 @@ async def set_concurrency_config(req: ConcurrencyConfigRequest):
 
     concurrency_gate.configure(**saved)
     minutes = await asyncio.to_thread(config_store.get_task_retry_interval_minutes)
-    return {"saved": True, **saved, "task_retry_interval_minutes": minutes}
+    resume = await asyncio.to_thread(config_store.get, "auto_resume_interrupted_chats", False)
+    return {"saved": True, **saved, "task_retry_interval_minutes": minutes, "auto_resume_interrupted_chats": resume}
 
 
 @router.put("/{name}/config")
@@ -214,24 +219,29 @@ async def set_assistant_config(name: str, req: AssistantConfigRequest):
     vision_model = req.vision_model.strip()
     thinking_effort = req.thinking_effort.strip()
     provider_id = req.provider_id.strip()
-    if not await asyncio.to_thread(is_supported_effort, thinking_effort, engine, model, name):
+    # An empty override follows the global engine; do not reuse this assistant's
+    # previous explicit override when the user switches back to inheritance.
+    effective_engine = (
+        engine
+        or await asyncio.to_thread(config_store.get_execution_default_engine)
+        or DEFAULT_EXECUTION_ENGINE
+    )
+    if not await asyncio.to_thread(is_supported_effort, thinking_effort, effective_engine, model, name):
         raise HTTPException(status_code=400, detail="不支持的思考强度")
-    if engine:
-        candidate = await asyncio.to_thread(create_engine, engine)
+    if engine or model or fast_model or vision_model or provider_id:
+        candidate = await asyncio.to_thread(create_engine, effective_engine)
         if candidate is None or not (
             candidate.capabilities.supports_coordinator
-            or engine == "pydantic_ai"
+            or effective_engine == "pydantic_ai"
         ):
-            raise HTTPException(status_code=400, detail=f"助手引擎不可用：{engine}")
-    elif model or fast_model or vision_model:
-        raise HTTPException(status_code=400, detail="默认模型需要先选择引擎")
+            raise HTTPException(status_code=400, detail=f"助手引擎不可用：{effective_engine}")
     if provider_id:
         provider = await asyncio.to_thread(config_store.get_provider, provider_id)
         if provider is None:
             raise HTTPException(status_code=404, detail=f"供应商不存在：{provider_id}")
         if not provider.get("enabled", True):
             raise HTTPException(status_code=400, detail="所选供应商已停用")
-        candidate = await asyncio.to_thread(create_engine, engine) if engine else None
+        candidate = await asyncio.to_thread(create_engine, effective_engine)
         if candidate is None or not candidate.supports_provider(provider):
             raise HTTPException(status_code=400, detail="供应商协议与助手引擎不兼容")
     def save() -> dict:
@@ -244,23 +254,21 @@ async def set_assistant_config(name: str, req: AssistantConfigRequest):
             thinking_effort,
             provider_id,
         )
+        configured = config_store.get_assistant_config(name)
         return {
-            "configured": config_store.get_assistant_config(name),
-            "resolved": config_store.get_assistant_defaults(name),
+            "configured": configured,
+            "resolved": _resolved_with_engine_effort(
+                name, configured, config_store.get_assistant_defaults(name),
+            ),
         }
 
     saved = await asyncio.to_thread(save)
-    resolved = _resolved_with_engine_effort(
-        name,
-        saved["configured"],
-        saved["resolved"],
-    )
     return {
         "saved": True,
         "configured": {
             key: saved["configured"].get(key, "") for key in ASSISTANT_FIELDS
         },
         "resolved": {
-            key: resolved.get(key, "") for key in ASSISTANT_FIELDS
+            key: saved["resolved"].get(key, "") for key in ASSISTANT_FIELDS
         },
     }

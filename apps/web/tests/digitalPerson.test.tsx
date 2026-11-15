@@ -39,7 +39,7 @@ test('digital person persists its profile, guards drafts, and shows native memor
       const avatar = rootElement.querySelector('.digital-person-avatar')!
       assert.equal(getComputedStyle(avatar).width, '56px')
       assert.equal(getComputedStyle(avatar).borderRadius, '50%')
-      assert.equal(getComputedStyle(rootElement.querySelector('header')!).position, 'sticky')
+      assert.notEqual(getComputedStyle(rootElement.querySelector('header')!).position, 'sticky', 'profile header scrolls with settings content; the outer dialog owns its fixed header')
     }
     await click('编辑档案')
     const input = rootElement.querySelector<HTMLInputElement>('input[name="name"]')!
@@ -68,8 +68,8 @@ test('digital person persists its profile, guards drafts, and shows native memor
     digitalPersonApi.save = workingSave
     await act(async () => toggle.click())
     assert.equal(profile.enabled, false)
-    assert.equal(rootElement.querySelectorAll('[role="tablist"] [role="tab"]').length, 8)
-    await click('主动思考')
+    assert.equal(rootElement.querySelectorAll('[data-body-part]').length, 7)
+    await click('主动性')
     const intervalInput = rootElement.querySelector<HTMLInputElement>('input[name="proactive_interval_minutes"]')!
     assert.ok(intervalInput)
     assert.equal(rootElement.querySelector('.schedule-page'), null)
@@ -78,9 +78,22 @@ test('digital person persists its profile, guards drafts, and shows native memor
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(intervalInput, '15')
       intervalInput.dispatchEvent(new window.Event('input', { bubbles: true }))
     })
+    const delegationInput = rootElement.querySelector<HTMLInputElement>('input[name="delegation_interval_seconds"]')!
+    assert.ok(delegationInput)
+    assert.equal(delegationInput.value,'60')
+    await act(async()=>{
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(delegationInput,'3')
+      delegationInput.dispatchEvent(new window.Event('input',{bubbles:true}))
+    })
+    const shared = rootElement.querySelector<HTMLInputElement>('input[name="proactive_shared_context"]')!
+    assert.ok(shared)
+    assert.equal(shared.checked, true)
+    await act(async () => shared.click())
     await click('保存')
     assert.equal((profile as any).proactive_interval_minutes, 15)
-    await click('引擎配置')
+    assert.equal((profile as any).delegation_interval_seconds, 3)
+    assert.equal((profile as any).proactive_shared_context, false)
+    await click('大脑')
     assert.ok(rootElement.querySelector('[aria-label="' + '默认助手引擎' + '"]') || rootElement.querySelector('select'))
     assert.equal(rootElement.querySelector('textarea[name="conversation_rules"]'), null)
     let savedAssistant = ''

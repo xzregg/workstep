@@ -30,6 +30,11 @@ services:
       start_period: 40s
       retries: 3
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "10"
 
   # 网关默认关闭；取消以下 gateway 配置块的注释即可启用。
 #   gateway:
@@ -56,3 +61,8 @@ services:
 #       start_period: 40s
 #       retries: 3
 #     restart: unless-stopped
+#     logging:
+#       driver: json-file
+#       options:
+#         max-size: "5m"
+#         max-file: "10"

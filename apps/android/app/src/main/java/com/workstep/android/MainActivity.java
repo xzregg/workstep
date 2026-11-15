@@ -90,6 +90,7 @@ public final class MainActivity extends Activity {
     private FrameLayout root;
     private WebView webView;
     private ServerAddress server;
+    private ImageCapture imageCapture;
     private ValueCallback<Uri[]> fileCallback;
     private PendingDownload pendingDownload;
     private ApkInstaller apkInstaller;
@@ -97,6 +98,7 @@ public final class MainActivity extends Activity {
     private boolean checking;
     private boolean pageLoading;
     private boolean pageHadError;
+    private SystemSpeech systemSpeech;
     private int pageLoadGeneration;
     private long lastRendererFailure;
     private static volatile boolean activityVisible;
@@ -180,6 +182,8 @@ public final class MainActivity extends Activity {
     }
 
     private void clearPage() {
+        if (systemSpeech != null) { systemSpeech.close(); systemSpeech = null; }
+        if (imageCapture != null) imageCapture.clear();
         if (microphonePermissions != null) microphonePermissions.clear();
         if (webView != null) rememberPage(webView.getUrl());
         root.removeAllViews();
@@ -416,6 +420,12 @@ public final class MainActivity extends Activity {
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
         settings.setSafeBrowsingEnabled(true);
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            systemSpeech = new SystemSpeech(this);
+            WebViewCompat.addWebMessageListener(view, "WorkStepSpeech",
+                    Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
+                        if (source != webView || !isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
+                        if (systemSpeech != null) systemSpeech.handle(message.getData(), reply);
+                    });
             WebViewCompat.addWebMessageListener(view, "WorkStepAndroid",
                     Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
                         if (!isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
@@ -429,6 +439,7 @@ public final class MainActivity extends Activity {
             public void onPageStarted(WebView source, String url, android.graphics.Bitmap icon) {
                 if (source != webView) return;
                 microphonePermissions.clear();
+                if (systemSpeech != null) systemSpeech.stop();
                 notificationProjectId = "";
                 notificationProjectName = "";
                 gatewayLoginNavigation.pageStarted(server, url);
@@ -564,9 +575,22 @@ public final class MainActivity extends Activity {
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 fileCallback = callback;
                 try {
+                    if (imageCapture != null) imageCapture.clear();
                     Intent picker = createFileChooserIntent(params);
-                    startActivityForResult(picker, FILE_REQUEST);
-                    foregroundRefresh.externalPickerStarted();
+                    if (FileChooserMode.isImageOnly(params.getAcceptTypes())) {
+                        new android.app.AlertDialog.Builder(MainActivity.this)
+                                .setTitle("增加图片")
+                                .setItems(new String[]{"本地图片", "拍照"}, (dialog, which) -> {
+                                    if (which == 0) openFilePicker(picker);
+                                    else {
+                                        imageCapture = new ImageCapture(MainActivity.this, FILE_REQUEST, () -> finishFileSelection(null));
+                                        foregroundRefresh.externalPickerStarted();
+                                        imageCapture.start();
+                                    }
+                                })
+                                .setOnCancelListener(dialog -> finishFileSelection(null))
+                                .show();
+                    } else openFilePicker(picker);
                     return true;
                 } catch (Exception error) {
                     fileCallback = null;
@@ -642,6 +666,10 @@ public final class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == ImageCapture.PERMISSION_REQUEST) {
+            if (imageCapture != null) imageCapture.permissionResult(permissions, grantResults);
+            return;
+        }
         if (microphonePermissions != null) microphonePermissions.result(requestCode, permissions, grantResults);
     }
 
@@ -707,6 +735,22 @@ public final class MainActivity extends Activity {
         } catch (Exception error) {
             android.util.Log.e("WorkStep", "Notification bridge message failed", error);
             CrashReports.log(this, "网页主进程", "通知桥接失败", error);
+        }
+    }
+
+    private void finishFileSelection(Uri[] files) {
+        ValueCallback<Uri[]> callback = fileCallback;
+        fileCallback = null;
+        if (callback != null) callback.onReceiveValue(files);
+    }
+
+    private void openFilePicker(Intent picker) {
+        try {
+            startActivityForResult(picker, FILE_REQUEST);
+            foregroundRefresh.externalPickerStarted();
+        } catch (Exception error) {
+            finishFileSelection(null);
+            Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -1057,8 +1101,8 @@ public final class MainActivity extends Activity {
             return;
         }
         if (requestCode == FILE_REQUEST && fileCallback != null) {
-            fileCallback.onReceiveValue(selectedFiles(resultCode, data));
-            fileCallback = null;
+            Uri[] captured = imageCapture == null ? null : imageCapture.result(resultCode == RESULT_OK);
+            finishFileSelection(captured != null ? captured : selectedFiles(resultCode, data));
         }
     }
 

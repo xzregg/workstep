@@ -392,6 +392,7 @@ class WorkflowRuntime:
         resolved_entry = entry_step_key or prepared.entry_step_key
         runner = TaskRunner(
             self._event_bus,
+            project_manager=self._project_manager,
             dispatch_service=self._dispatch_service,
             source_project_id=prepared.project_id,
             database_executor=prepared.database_executor,

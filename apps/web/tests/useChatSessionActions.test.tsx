@@ -273,3 +273,31 @@ for (const scenario of ['omitted', 'selected', 'cleared', 'live', 'fallback'] as
     }
   })
 }
+
+for (const mode of ['normal', 'live', 'fallback', 'failed'] as const) {
+  test(`camera preparation stays with its turn and runs once: ${mode}`, async () => {
+    const { window } = installDomEnvironment(), root = createRoot(document.body.appendChild(document.createElement('div')))
+    const original = { ...chatSessionApi }
+    let actions!: ReturnType<typeof useChatSessionActions>, frames = 0
+    const contents: string[] = []
+    function Harness() {
+      actions = useChatSessionActions({ sessionId: 'camera', projectId: 'p', running: mode === 'live' || mode === 'fallback',
+        engineConfig: { engine: 'codex', providerId: '', model: '', fastModel: '', visionModel: '', thinkingEffort: '' },
+        permissionMode: '', planMode: false, goalMode: false, effectiveEngine: 'codex', onSessionIdChange() {}, onTitleChange() {},
+        prepareContent: async content => { frames++; if (mode === 'failed') throw new Error('frame failed'); return content + '\n\n![camera](.workstep/uploads/frame.jpg)' },
+      })
+      return null
+    }
+    chatSessionApi.chat = async (_id, _project, content) => { contents.push(content); return { session_id: 'camera' } as any }
+    chatSessionApi.sendLiveMessage = async (_id, _project, content) => { contents.push(content); if (mode === 'fallback') throw new Error('not running'); return {} as any }
+    chatSessionApi.list = async () => ({ sessions: [] })
+    try {
+      await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+      await act(async () => assert.equal(await actions.sendPendingContent('看到了什么', []), mode !== 'failed'))
+      assert.equal(frames, 1)
+      assert.equal(contents.length, mode === 'fallback' ? 2 : mode === 'failed' ? 0 : 1)
+      assert.ok(contents.every(content => content === '看到了什么\n\n![camera](.workstep/uploads/frame.jpg)'))
+      if (mode === 'failed') assert.equal(actions.sendError, 'frame failed')
+    } finally { await act(async () => root.unmount()); Object.assign(chatSessionApi, original); useChatSessionStore.getState().resetSession('camera'); await window.happyDOM.close() }
+  })
+}

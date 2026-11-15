@@ -51,3 +51,12 @@ uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task list --pr
 uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task list --project <project_id> --workflow <workflow_id> --offset 20 --limit 20 --json
 uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task get --project <project_id> --task <task_id> --fields id,title,status --json
 ```
+
+## Memory output
+
+Memory commands use their own compact output. Search/history show short previews
+and preserve pagination, coverage gaps and evidence IDs. Read returns the requested
+source text with pagination. Ordinary output is concise text; `--json` emits the
+same compact data, and `--verbose` restores the full daemon response. Memory
+`--limit`, `--cursor` and `--offset` are server-side controls, not list slicing.
+See [Memory](memory.md) for the search-then-read workflow and event output.

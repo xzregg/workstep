@@ -1,3 +1,4 @@
+import DigitalPersonProactiveSpeech from './digital-person/DigitalPersonProactiveSpeech'
 import SkinWorkspaceFrame from './SkinExtensions'
 import { useSkinSidebar } from '../hooks/useSkinSidebar'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
@@ -408,9 +409,11 @@ export default function Layout({ onSelectProject, children }: Props) {
   useEffect(() => {
     const open = () => { setSettingsSection('speech'); setSettingsFocus(undefined); setShowSettings(true) }
     const openConnectors = () => { setSettingsSection('connectors'); setShowSettings(true) }
+    const openDigital = () => { setSettingsSection('digital-person'); setSettingsFocus(undefined); setShowSettings(true) }
+    window.addEventListener('workstep:open-digital-person-settings', openDigital)
     window.addEventListener('workstep:open-connector-settings', openConnectors)
     window.addEventListener('workstep:open-speech-settings', open)
-    return () => { window.removeEventListener('workstep:open-speech-settings', open); window.removeEventListener('workstep:open-connector-settings', openConnectors) }
+    return () => { window.removeEventListener('workstep:open-digital-person-settings', openDigital); window.removeEventListener('workstep:open-speech-settings', open); window.removeEventListener('workstep:open-connector-settings', openConnectors) }
   }, [])
 
   const handleDeleteProject = async () => {
@@ -471,9 +474,9 @@ export default function Layout({ onSelectProject, children }: Props) {
   return (
     <MobileHeaderActionsProvider>
     <SkinWorkspaceFrame onOpenSettings={section => { setSettingsSection(section); setSettingsFocus(undefined); setShowSettings(true) }}>
-    <div className="app-shell" data-ui="app-shell">
+    <div className={`app-shell${location.pathname==='/companion'?' app-shell--companion':''}`} data-ui="app-shell">
       {/* Sidebar */}
-      <ResponsiveNavigation className={`layout-sidebar${sidebarCollapsed ? ' layout-sidebar--collapsed' : ''}`} onVisibilityChange={setSidebarVisible} showNew={can('session.create')} newDisabled={!activeProject || creatingSession} newLoading={creatingSession} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} showBrandIcon={!activeSessionId} onNew={() => { if (activeProject) void createSession(activeProject) }} style={{ width: (sidebarCollapsed ? 0 : sidebarWidth) + (compact ? 0 : WORKSPACE_TOOL_RAIL_WIDTH) }}>
+      <ResponsiveNavigation className={`layout-sidebar${sidebarCollapsed || location.pathname==='/companion' ? ' layout-sidebar--collapsed' : ''}`} onVisibilityChange={setSidebarVisible} showNew={can('session.create')} newDisabled={!activeProject || creatingSession} newLoading={creatingSession} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} showBrandIcon={!activeSessionId} onNew={() => { if (activeProject) void createSession(activeProject) }} style={{ width: (sidebarCollapsed || location.pathname==='/companion' ? 0 : sidebarWidth) + (compact ? 0 : WORKSPACE_TOOL_RAIL_WIDTH) }}>
         <div className="layout-sidebar-header">
           <div className="layout-sidebar-brand">
             <BrandIcon size={18} />
@@ -549,14 +552,17 @@ export default function Layout({ onSelectProject, children }: Props) {
             <Icon name="plus" size={14} strokeWidth={2} />
           </Button>}
           </>}
-          projects={
+          projects={<>
+        {compact && <div className="layout-sidebar-pinned-entry">
+          {projects.filter(project => project.is_default_workspace).map(project => <DigitalPersonSidebarEntry key={project.id} project={project} />)}
+        </div>}
         <div className="layout-sidebar-projects">
           {visibleProjects.map((p) => {
             const can = projectCan(p.id)
             const searchResult = sidebarSearchResults.get(p.id)!
             return (
             <div key={p.id}>
-              {p.is_default_workspace && <DigitalPersonSidebarEntry project={p} />}
+              {!compact && p.is_default_workspace && <DigitalPersonSidebarEntry project={p} />}
               <div
                 onClick={() => {
                   if (consumeSidebarLongPressClick()) return
@@ -1063,7 +1069,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
-          }
+          </>}
         />
         <WorkspaceNavigationActions sidebarCollapsed={sidebarCollapsed} onToggleSidebar={toggleSidebarCollapsed} activeSettingsSection={showSettings ? settingsSection : undefined}
           onOpenSettings={section => { setSettingsSection(section); setSettingsFocus(undefined); setShowSettings(true) }} />
@@ -1273,7 +1279,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       )}
 
       <DigitalPersonDesktopBridge />
-      <DigitalPersonWakeController />
+      <DigitalPersonWakeController /><DigitalPersonProactiveSpeech />
       <LayoutOnboardingActions
         onOpenSettings={openOnboardingSettings}
         onOpenProject={openLocalProjectModal}

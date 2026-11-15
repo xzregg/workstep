@@ -712,6 +712,7 @@ export default function TaskDetailView({
                     startedAt={message.started_at ?? message.created_at}
                     footer={task?.engine || task?.model ? (
                       <MessageResponseFooter
+                        projectId={projectId}
                         content=""
                         engine={task?.engine}
                         model={task?.model}
@@ -812,6 +813,7 @@ export default function TaskDetailView({
                 footer={
                   content || running ? (
                     <MessageResponseFooter
+                      projectId={projectId}
                       content={stripA2uiBlocks(
                         content,
                       )}
@@ -942,7 +944,7 @@ export default function TaskDetailView({
                   onPromptChange?.(value)
                 }
               }
-              onSend={onSend ?? (() => {})}
+              onSend={content => content === undefined ? onSend?.() : onSendPrompt?.(content)}
               enhance={enhance}
               inputRef={chatInputRef}
               imageAttach={

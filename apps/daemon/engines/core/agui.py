@@ -247,6 +247,8 @@ def to_agui_events(
         event = event.to_dict()
     if not isinstance(event, Mapping):
         return []
+    from services.memory_secrets import redact
+    event = redact(event)
     ctx = ctx or AGUIContext.from_event(event)
     event_type = str(event.get("type") or "")
     data = event.get("data")

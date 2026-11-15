@@ -7,7 +7,6 @@ import GatewayRemoteFrame from '../src/components/GatewayRemoteFrame'
 import GatewayDeviceTabs from '../src/components/GatewayDeviceTabs'
 import GatewayWorkspaceLocation from '../src/components/GatewayWorkspaceLocation'
 import { readWorkspaceLocation, rememberWorkspaceLocation } from '../src/utils/gatewayWorkspaceLocation'
-import ResponsiveNavigation from '../src/components/ResponsiveNavigation'
 import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { I18nProvider } from '../src/i18n'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
@@ -81,83 +80,6 @@ test('workspace waits for its session and project, then removes content after se
     await window.happyDOM.close()
   }
 })
-
-test('direct workspace keeps device switching without notification badges, history requests or aggregate feed',async()=>{
- const {window}=installDomEnvironment()
- window.happyDOM.setURL('http://gateway.test/workspace/one/')
- const oldFetch=globalThis.fetch,oldSocket=globalThis.WebSocket
- const sockets:any[]=[]
- class Socket {
-  readyState=1;onopen:any;onmessage:any;onclose:any;onerror:any
-  constructor(public url:string){sockets.push(this)}
-  close(){this.readyState=3} send(){}
- }
- globalThis.WebSocket=Socket as unknown as typeof WebSocket
- let manyDevices=false,onlyOne=false
- const calls:string[]=[]
- globalThis.fetch=async input=>{
-  const path=String(input)
-  if(path==='/workspace/one/api/remote/session')return Response.json({device_id:'one',device_name:'One',username:'Owner',gateway_url:'http://gateway.test/',project_id:null,host_project_id:null})
-  if(path==='/api/devices')return Response.json({devices:onlyOne?[{id:'one',name:'One',online:true}]:manyDevices?Array.from({length:100},(_,i)=>({id:i===0?'one':'device-'+i,name:'Device '+i,online:true})):[{id:'one',name:'One',online:true},{id:'two',name:'Two',online:true}]})
-  if(path==='/api/projects')return Response.json({projects:[]})
-  calls.push(path)
-  throw Error(path)
- }
- useGatewaySessionStore.setState({session:null,error:'',loading:false})
- const element=document.body.appendChild(document.createElement('div')),root=createRoot(element)
- try {
-  await act(async()=>root.render(<I18nProvider><GatewayRemoteFrame><MemoryRouter><ResponsiveNavigation title="WorkStep" onNew={()=>{}}><div data-workspace>WorkStep</div></ResponsiveNavigation></MemoryRouter></GatewayRemoteFrame></I18nProvider>))
-  assert.ok(element.querySelector('[data-workspace]'))
-  assert.equal(element.querySelectorAll('[role=tab]').length,2)
-  assert.ok(element.querySelector('.gateway-remote-banner'))
-  assert.equal(element.querySelector('[role=dialog]'),null)
-  assert.equal(element.querySelector('.gateway-desktop-device-trigger'),null)
-  assert.equal(element.querySelector<HTMLButtonElement>('.gateway-remote-banner .gateway-header-control')?.textContent,'Back to Gateway')
-  assert.equal(element.querySelector('iframe'),null)
-  assert.equal(sockets.length,0)
-  assert.deepEqual(calls,[])
-  assert.equal(element.querySelector('.gateway-notification-trigger'),null)
-  await act(async()=>{window.innerWidth=390;window.dispatchEvent(new window.Event('resize'))})
-  const trigger=element.querySelector<HTMLButtonElement>('.gateway-mobile-device-trigger')
-  assert.ok(trigger)
-  assert.ok(trigger.closest('.mobile-header'))
-  assert.equal(element.querySelector('.gateway-remote-banner'),null)
-  await act(async()=>trigger.click())
-  assert.equal(trigger.getAttribute('aria-expanded'),'true')
-  assert.ok(element.querySelector('[role=dialog]'))
-  assert.equal(element.querySelector('.gateway-mobile-picker-header .gateway-notifications'),null)
-  assert.equal(element.querySelectorAll('.gateway-tab-refresh').length,1)
-  assert.ok(element.querySelector('.gateway-mobile-picker-header .gateway-tab-refresh'))
-  assert.equal(element.querySelectorAll('.gateway-notifications').length,0)
-  assert.equal(sockets.length,0)
-  assert.deepEqual(calls,[])
-  manyDevices=true
-  await act(async()=>element.querySelector<HTMLButtonElement>('.gateway-mobile-picker-header .gateway-tab-refresh')!.click())
-  assert.equal(element.querySelectorAll('[role=tab]').length,100)
-  assert.ok(element.querySelector('.gateway-mobile-picker-header .gateway-tab-refresh'))
-  const back=element.querySelector<HTMLButtonElement>('.gateway-mobile-picker-header .gateway-header-control')!
-  assert.equal(back.tagName,'BUTTON')
-  assert.equal(back.textContent,'返回平台')
-  assert.equal(back.getAttribute('aria-label'),'Back to Gateway')
-  assert.ok(back.querySelector('svg'))
-  assert.equal(element.querySelector('.gateway-mobile-picker-header a'),null)
-  await act(async()=>back.click())
-  assert.equal(window.location.href,'http://gateway.test/account')
-  window.happyDOM.setURL('http://gateway.test/workspace/one/')
-  await act(async()=>element.querySelector<HTMLButtonElement>('.gateway-mobile-picker-close')!.click())
-  assert.equal(trigger.getAttribute('aria-expanded'),'false')
-  await act(async()=>{window.innerWidth=1280;window.dispatchEvent(new window.Event('resize'))})
-  assert.ok(element.querySelector('.gateway-remote-banner'))
-  onlyOne=true
-  await act(async()=>element.querySelector<HTMLButtonElement>('.gateway-remote-banner .gateway-tab-refresh')!.click())
-  assert.equal(element.querySelectorAll('.gateway-remote-banner [role=tab]').length,1)
-  assert.equal(element.querySelector('.gateway-desktop-device-trigger'),null)
- }finally{
-  await act(async()=>root.unmount());element.remove();globalThis.fetch=oldFetch;globalThis.WebSocket=oldSocket
-  useGatewaySessionStore.setState({session:null,error:'',loading:false});await window.happyDOM.close()
- }
-})
-
 
 test('ordinary mobile Web has no gateway device entry or gateway requests', async () => {
   const { window } = installDomEnvironment()

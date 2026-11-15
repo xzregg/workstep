@@ -5,7 +5,7 @@ import { useI18n } from '../../i18n'
 import DigitalPersonAvatar from './DigitalPersonAvatar'
 import type { DigitalPersonProfile } from '../../api/digitalPerson'
 
-export default function DigitalPersonVoice({ profile, onChange }: { profile: DigitalPersonProfile; onChange?: (patch: Partial<DigitalPersonProfile>)=>void }) {
+export default function DigitalPersonVoice({ profile, onChange, preview = true }: { profile: DigitalPersonProfile; onChange?: (patch: Partial<DigitalPersonProfile>)=>void; preview?: boolean }) {
   const { t } = useI18n()
   const [speaking, setSpeaking] = useState(false)
   const [voices,setVoices] = useState<SpeechSynthesisVoice[]>([])
@@ -38,8 +38,8 @@ export default function DigitalPersonVoice({ profile, onChange }: { profile: Dig
   return <div className="digital-person-voice">
     {onChange && <><label>{t('digitalPerson.voiceName')}<Select value={profile.voice_name || ''} onChange={e=>onChange({voice_name:e.target.value})}><option value="">{t('digitalPerson.systemVoice')}</option>{voices.map(v=><option key={v.voiceURI} value={v.name}>{v.name} ({v.localService?t('digitalPerson.localVoice'):t('digitalPerson.remoteVoice')})</option>)}</Select></label>
     <label>{t('digitalPerson.expression')}<Select value={profile.expression || 'neutral'} onChange={e=>onChange({expression:e.target.value as DigitalPersonProfile['expression']})}>{(['neutral','happy','concern'] as const).map(v=><option key={v} value={v}>{t(`digitalPerson.${v}`)}</option>)}</Select></label></>}
-    <div className="digital-person-voice-preview"><DigitalPersonAvatar avatar={profile.avatar} speaking={speaking} expression={profile.expression} />
-    <Button disabled={!supported} onClick={speaking ? stop : play}>{t(!supported ? 'digitalPerson.voiceUnavailable' : speaking ? 'digitalPerson.stopVoice' : 'digitalPerson.tryVoice')}</Button></div>
+    {preview && <div className="digital-person-voice-preview"><DigitalPersonAvatar avatar={profile.avatar} speaking={speaking} expression={profile.expression} />
+    <Button disabled={!supported} onClick={speaking ? stop : play}>{t(!supported ? 'digitalPerson.voiceUnavailable' : speaking ? 'digitalPerson.stopVoice' : 'digitalPerson.tryVoice')}</Button></div>}
     {error && <p role="alert">{error}</p>}
   </div>
 }

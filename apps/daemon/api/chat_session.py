@@ -333,6 +333,19 @@ async def get_session(
     return session
 
 
+class ChatMessageReadRequest(BaseSchema):
+    message_id: str = Field(min_length=1, max_length=128)
+
+
+@router.post('/{session_id}/read')
+async def mark_session_read(session_id: str, request: ChatMessageReadRequest, project_id: str = Query(...)):
+    from services.chat_read_state import mark_read
+    try:
+        return await _run_db(project_id, lambda: mark_read(project_id, session_id, request.message_id))
+    except ValueError as exc:
+        raise HTTPException(_error_status(exc), str(exc)) from exc
+
+
 @router.get("/{session_id}/messages/{message_id}/events")
 async def get_message_events(
     session_id: str,

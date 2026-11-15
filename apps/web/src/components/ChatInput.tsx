@@ -1,5 +1,6 @@
 import { useChatConnectors } from './connectors/useChatConnectors'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
+import ChatInputCamera from './ChatInputCamera'
 import ResponsivePopover from './ResponsivePopover'
 import Icon from './Icon'
 import SkinnedComposerSendIcon from './ComposerSendIcon'
@@ -21,6 +22,7 @@ import ChatInputTextSegment from './ChatInputTextSegment'
 import ComposerContextChip from './ComposerContextChip'
 import ChatInputUsage from './ChatInputUsage'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
+import { useDigitalPersonCameraControl } from './digital-person/digitalPersonCameraControl'
 import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
 import ImagePreview from './ImagePreview'
 import { engineApi, type CoordinatorEngineSummary, type EngineConfigField, type EngineInputItem, type EngineQuota, type ProviderInfo } from '../api/client'
@@ -219,7 +221,7 @@ export interface ChatInputProps {
   roleBinding?: ChatInputRoleBinding
   value: string
   onChange: (value: string) => void
-  onSend: () => void
+  onSend: (content?: string) => void
   /** Session owner for the composer draft. */
   sessionId?: string | null
   /** Task owner for the composer draft. Takes precedence over sessionId. */
@@ -279,7 +281,7 @@ export interface ChatInputProps {
   maxHeight?: number
 }
 
-export default function ChatInput({
+function ChatInput({
   connectorsEnabled = false,
   value,
   onChange,
@@ -319,7 +321,9 @@ export default function ChatInput({
   maxHeight = 120,
 }: ChatInputProps) {
   const { t } = useI18n()
+  const cameraControl = useDigitalPersonCameraControl()
   const { can } = useGatewayProjectPermissions(projectId || imageAttach?.projectId)
+  const camera = can('file.upload') ? cameraControl : null
   if (!can('file.upload')) imageAttach = undefined
   const markdownUrlResolver = useMarkdownUrlResolver()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -354,6 +358,7 @@ export default function ChatInput({
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [previewImage, setPreviewImage] = useState<MarkdownImageSegment | null>(null)
   const [focused, setFocused] = useState(false)
+  const editorTapRef = useRef<{ x: number; y: number; startedAt: number } | null>(null)
   const [allSelected, setAllSelected] = useState(false)
   const allSelectedRef = useRef(false)
   const undoSnapshotRef = useRef<{ before: string; after: string } | null>(null)
@@ -371,11 +376,6 @@ export default function ChatInput({
   const voicePermitted = can('task.edit') && (typeof window === 'undefined' || !window.location.pathname.startsWith('/share/'))
   const voiceAllowed = useSpeechEnabled(projectId || imageAttach?.projectId || '', voicePermitted)
   const voiceDisabled = disabled || stopping || (running && !allowSendWhileRunning) || !voiceAllowed
-  const inputPlaceholder = isCompact && voiceAllowed
-    ? placeholder
-      ? t('speech.holdPlaceholder', { placeholder: placeholder.replace(/[.…]+$/u, '') })
-      : t('speech.holdHint')
-    : placeholder
   const voice = useVoiceInput({
     ownerKey: `${projectId || imageAttach?.projectId || ''}:${taskId || sessionId || ''}`,
     projectId: projectId || imageAttach?.projectId, disabled: voiceDisabled, compact: isCompact,
@@ -653,7 +653,8 @@ export default function ChatInput({
     else if (canSend) onSend()
   }
 
-  const buttonDisabled = stopped ? stopping : !canSend
+  const showVoiceButton = isCompact && voiceAllowed && !stopped && !running && !value.trim()
+  const buttonDisabled = showVoiceButton ? voiceDisabled || voice.active : stopped ? stopping : !canSend
   const engineId = config?.engine || config?.defaultEngine || 'claude'
 
   const applySelection = (item: Pick<EngineInputItem, 'insert_text'>) => {
@@ -900,10 +901,33 @@ export default function ChatInput({
         <div
           className="chat-input-editor"
           data-context-chips={Boolean(roleBinding?.name || connectors.hasSelection) || undefined}
-          {...(voiceAllowed ? voice.pointer : {})}
           data-voice-mode={voice.mode || undefined}
           data-all-selected={allSelected || undefined}
           style={{ minHeight, maxHeight }}
+          onTouchStart={(event) => {
+            const touch = event.touches[0]
+            editorTapRef.current = event.target === event.currentTarget && event.touches.length === 1
+              ? { x: touch.clientX, y: touch.clientY, startedAt: Date.now() } : null
+          }}
+          onTouchMove={(event) => {
+            const tap = editorTapRef.current
+            const touch = event.touches[0]
+            if (tap && (event.touches.length !== 1 || Math.hypot(touch.clientX - tap.x, touch.clientY - tap.y) > 10)) {
+              editorTapRef.current = null
+            }
+          }}
+          onTouchCancel={() => { editorTapRef.current = null }}
+          onTouchEnd={(event) => {
+            const tap = editorTapRef.current
+            editorTapRef.current = null
+            const touch = event.changedTouches[0]
+            // Focus during the physical tap: mobile browsers can omit the
+            // synthetic click after scrolling an overflow container.
+            if (!tap || event.touches.length || !touch || disabled || voice.active
+              || Date.now() - tap.startedAt >= 500
+              || Math.hypot(touch.clientX - tap.x, touch.clientY - tap.y) > 10) return
+            segmentRefs.current.get(textSegmentCount - 1)?.focus({ preventScroll: true })
+          }}
           onCopy={handleCopy}
           onMouseDownCapture={() => {
             if (!allSelectedRef.current) return
@@ -993,7 +1017,7 @@ export default function ChatInput({
                 <ChatInputTextSegment
                   key={`text:${segmentIndex}`}
                   markdown={segment.markdown}
-                  placeholder={inputSegments.length === 1 ? inputPlaceholder : undefined}
+                  placeholder={inputSegments.length === 1 ? placeholder : undefined}
                   disabled={disabled}
                   readOnly={voice.active}
                   rows={rows}
@@ -1035,7 +1059,7 @@ export default function ChatInput({
           <div className="chat-input-toolbar-scroll">
             {left}
             {connectors.control}
-            {(imageAttach || roleBinding || workflowSkill || connectors.active) && (
+            {(imageAttach || roleBinding || workflowSkill || connectors.active || camera) && (
             <>
               {imageAttach && <>
               <input
@@ -1125,6 +1149,13 @@ export default function ChatInput({
                         <span className="chat-input-menu-name">{t('chatInput.attachFile')}</span>
                       </button>
                       </>}
+                      {camera && <button type="button" className="chat-input-menu-item" data-camera-menu-toggle
+                        disabled={disabled || camera.disabled} data-selected={camera.enabled}
+                        onClick={() => { setAttachMenuOpen(false); camera.toggle() }}>
+                        <span className="chat-input-menu-icon">{camera.opening ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="camera" size={14} />}</span>
+                        <span className="chat-input-menu-name">{t(camera.enabled ? 'digitalPerson.closeCamera' : 'digitalPerson.openCamera')}</span>
+                        {camera.enabled && <Icon name="check" size={13} className="chat-input-menu-check-icon" />}
+                      </button>}
                       {connectors.active && <button type="button" className="chat-input-menu-item" disabled={disabled || running}
                         onClick={() => { setAttachMenuOpen(false); connectors.open() }}>
                         <span className="chat-input-menu-icon"><Icon name="plug" size={14} /></span>
@@ -1370,17 +1401,17 @@ export default function ChatInput({
           <button
             type="button"
             className="chat-input-send"
-            data-state={stopped ? 'stopped' : canSend ? 'active' : 'idle'}
-            onClick={handleClick}
+            data-state={stopped ? 'stopped' : showVoiceButton ? 'voice' : canSend ? 'active' : 'idle'}
+            onClick={showVoiceButton ? () => void voice.start() : handleClick}
             disabled={buttonDisabled}
-            aria-label={stopped
+            aria-label={showVoiceButton ? t('speech.title') : stopped
               ? stopping ? t('chatInput.stopping') : t('common.stop')
               : canSend
                 ? title || t('chatInput.send')
                 : running
                   ? t('chatInput.generating')
                   : t('chatInput.send')}
-            title={stopped
+            title={showVoiceButton ? t('speech.title') : stopped
               ? stopping ? t('chatInput.stopping') : (stopTitle ?? t('chatInput.stopGenerating'))
               : canSend
                 ? title || t('chatInput.send')
@@ -1388,7 +1419,9 @@ export default function ChatInput({
                   ? t('chatInput.generating')
                   : title || t('chatInput.send')}
           >
-            {stopped && stopping ? (
+            {showVoiceButton ? (
+              <Icon name="mic" size={18} />
+            ) : stopped && stopping ? (
               <span className="task-status-spinner" aria-hidden="true" />
             ) : stopped ? (
               <div className="chat-input-stop-glyph" />
@@ -1410,4 +1443,12 @@ export default function ChatInput({
       )}
     </div>
   )
+}
+
+export default function SharedChatInput(props: ChatInputProps) {
+  return <ChatInputCamera projectId={props.projectId || props.imageAttach?.projectId}
+    ownerKey={`${props.projectId || props.imageAttach?.projectId || ''}:${props.taskId || props.sessionId || ''}`}
+    content={props.value} onSend={props.onSend}>
+    {send => <ChatInput {...props} onSend={send} />}
+  </ChatInputCamera>
 }

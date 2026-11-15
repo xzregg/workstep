@@ -5,7 +5,6 @@ import { useProjectStore } from '../../stores/projectStore'
 import { useI18n } from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
-import { resolveDigitalPersonChat } from './digitalPersonChat'
 
 export default function DigitalPersonChatButton({ workspace, onClose, label, sidebar = false }: { workspace?: Project; onClose: () => void; label?: string; sidebar?: boolean }) {
   const { t } = useI18n(), navigate = useNavigate()
@@ -16,10 +15,9 @@ export default function DigitalPersonChatButton({ workspace, onClose, label, sid
     if (!workspace || busy.current) return
     busy.current = true; setOpening(true); setError('')
     try {
-      const sessionId = await resolveDigitalPersonChat(workspace.id)
       if (!active.current) return
       useProjectStore.getState().setActiveProject(workspace)
-      navigate(`/chat?project=${encodeURIComponent(workspace.name)}&session=${encodeURIComponent(sessionId)}`)
+      navigate('/companion')
       onClose()
     } catch (reason) {
       if (active.current) setError(reason instanceof Error ? reason.message : String(reason))

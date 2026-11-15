@@ -247,6 +247,8 @@ class TurnEventJournal:
             "type": str(event.get("type") or ""),
             "data": event.get("data") if isinstance(event.get("data"), dict) else {},
         }
+        from services.memory_secrets import redact
+        record = redact(record)
         state.next_seq += 1
         encoded = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
         state.buffered.append(record)
@@ -360,6 +362,7 @@ class TurnEventJournal:
     def snapshot(self, ref: JournalRef) -> dict[str, Any]:
         self.sync(ref)
         events = self._read(ref)
+        from services.memory_secrets import redact
         content_parts: list[str] = []
         thought_characters = 0
         commentary_characters = 0
@@ -429,7 +432,7 @@ class TurnEventJournal:
         if first_event_ms is not None and last_event_ms is not None:
             summary["elapsed_ms"] = last_event_ms - first_event_ms
         return {
-            "content": "".join(content_parts),
+            "content": redact("".join(content_parts)),
             "summary": summary,
             "events": summary_events,
         }

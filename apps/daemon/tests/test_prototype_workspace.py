@@ -142,6 +142,8 @@ def test_source_edit_preserves_crlf(tmp_path):
 def test_partial_multi_file_publish_resumes_from_journal(tmp_path, monkeypatch):
     import services.prototype_workspace as module
     root, work = setup_workspace(tmp_path)
+    (root / 'index.html').write_text('<button>A</button><link href="common.css">')
+    work.refresh_sources()
     work.begin('multiple files')
     (work.directory / 'workspace/index.html').write_text('<p>Changed</p>')
     (work.directory / 'workspace/common.css').write_text('p {color:blue}')
@@ -187,3 +189,98 @@ def test_open_new_sibling_during_turn_reports_conflict(tmp_path):
     with pytest.raises(SourceConflict):
         PrototypeWorkspace.open(root, root / '.workstep', root / 'new.html')
     assert work.state()['status'] == 'running'
+
+
+def test_copy_only_sibling_html_and_transitive_local_resources(tmp_path, monkeypatch):
+    import services.prototype_workspace as module
+    root = tmp_path / 'project'
+    root.mkdir()
+    (root / 'index.html').write_text('<link href="assets/main.css"><script src="assets/app.js"></script><a href="pages/detail.html">Detail</a>')
+    (root / 'sibling.html').write_text('<img src="assets/second.svg">')
+    for name in ['assets', 'pages', 'unrelated']:
+        (root / name).mkdir()
+    (root / 'assets/main.css').write_text('@import "colors.css"; p{background:url("bg.svg?v=1")}')
+    (root / 'assets/colors.css').write_text('p{color:blue}')
+    (root / 'assets/bg.svg').write_text('<svg/>')
+    (root / 'assets/second.svg').write_text('<svg/>')
+    (root / 'assets/app.js').write_text('import "./helper.js"; fetch("./data.json")')
+    (root / 'assets/helper.js').write_text('export const x=1')
+    (root / 'data.json').write_text('{}')
+    (root / 'pages/detail.html').write_text('<img src="../assets/bg.svg">')
+    (root / 'unrelated/huge.json').write_text('x' * 2000)
+    (root / 'unused.png').write_bytes(b'x' * 2000)
+    monkeypatch.setattr(module, 'MAX_FILE', 1000)
+    monkeypatch.setattr(module, 'MAX_TOTAL', 1500)
+    work = PrototypeWorkspace.open(root, root / '.workstep', root / 'index.html')
+    assert set(work.state()['files']) == {'index.html','sibling.html','pages/detail.html',
+        'assets/main.css','assets/colors.css','assets/bg.svg','assets/second.svg',
+        'assets/app.js','assets/helper.js','data.json'}
+    assert not (work.directory / 'workspace/unrelated').exists()
+    first_id = work.load()['documents']['index.html']
+    work.edit('index.html', 'n3', 'style', {'color':'red'}, work.document('index.html').version)
+    assert work.state()['status'] == 'idle'
+    assert work.load()['documents']['index.html'] == first_id
+
+
+def test_open_unlinked_nested_page_keeps_it_on_future_refreshes(tmp_path):
+    root, work = setup_workspace(tmp_path)
+    page = root / 'pages/unlinked.html'
+    page.parent.mkdir()
+    page.write_text('<p>Nested</p>')
+    reopened = PrototypeWorkspace.open(root, root / '.workstep', page)
+    assert reopened.id == work.id
+    document_id = reopened.load()['documents']['pages/unlinked.html']
+    work.begin('refresh')
+    work.publish()
+    assert work.document('pages/unlinked.html').source == '<p>Nested</p>'
+    assert work.load()['documents']['pages/unlinked.html'] == document_id
+
+
+def test_referenced_resource_limit_identifies_the_file(tmp_path, monkeypatch):
+    import services.prototype_workspace as module
+    root = tmp_path / 'project'
+    root.mkdir()
+    (root / 'index.html').write_text('<img src="large.png">')
+    (root / 'large.png').write_bytes(b'x' * 101)
+    monkeypatch.setattr(module, 'MAX_FILE', 100)
+    with pytest.raises(ValueError, match='large.png'):
+        PrototypeWorkspace.open(root, root / '.workstep', root / 'index.html')
+
+
+def test_referenced_symlink_does_not_escape_copy(tmp_path):
+    root, _ = setup_workspace(tmp_path)
+    outside = tmp_path / 'secret.json'
+    outside.write_text('{}')
+    (root / 'linked.json').symlink_to(outside)
+    (root / 'index.html').write_text('<script src="linked.json"></script>')
+    with pytest.raises(ValueError, match='符号链接'):
+        PrototypeWorkspace.open(root, root / '.workstep', root / 'index.html')
+
+
+def test_resource_selection_keeps_legacy_document_identity(tmp_path):
+    root, work = setup_workspace(tmp_path)
+    page = root / 'pages/detail.html'
+    page.parent.mkdir()
+    page.write_text('<p>Legacy</p>')
+    work = PrototypeWorkspace.open(root, root / '.workstep', page)
+    data = work.load()
+    legacy_id = data['documents']['pages/detail.html']
+    data.pop('entries')
+    work.save(data)
+    work.begin('legacy refresh')
+    work.publish()
+    assert work.document('pages/detail.html').source == '<p>Legacy</p>'
+    assert work.load()['documents']['pages/detail.html'] == legacy_id
+
+
+def test_selected_resources_still_enforce_total_budget(tmp_path, monkeypatch):
+    import services.prototype_workspace as module
+    root = tmp_path / 'project'
+    root.mkdir()
+    (root / 'index.html').write_text('<img src="one.png"><img src="two.png">')
+    (root / 'one.png').write_bytes(b'a' * 100)
+    (root / 'two.png').write_bytes(b'b' * 100)
+    monkeypatch.setattr(module, 'MAX_TOTAL', 150)
+    with pytest.raises(ValueError, match='引用资源总量'):
+        PrototypeWorkspace.open(root, root / '.workstep', root / 'index.html')
+    assert not list((root / '.workstep/prototype-editor').glob('*'))

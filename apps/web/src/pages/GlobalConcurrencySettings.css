@@ -18,3 +18,24 @@
   font-weight: 400;
   line-height: 1.5;
 }
+
+.global-concurrency-settings .global-concurrency-resume-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.global-concurrency-resume-title {
+  display: block;
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.global-concurrency-resume-field small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  line-height: 1.6;
+}

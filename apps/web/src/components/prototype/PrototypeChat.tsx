@@ -45,7 +45,7 @@ export default function PrototypeChat({projectId,workspaceId,path,selection,comm
     messages={session?.messages||[]} running={Boolean(session?.running)} stopping={stopping}
     composerDisabled={!sid||disabled||sending}
     input={input} onInputChange={value=>{drafts.set(draftKey,value);setInput(value)}} sendError={error} locale={locale} attachmentPrefix={path}
-    onSend={()=>void send(input).then(ok=>{if(ok){drafts.delete(draftKey);setInput('')}})} onSendContent={content=>send(content)}
+    onSend={content=>void send(content ?? input).then(ok=>{if(ok){drafts.delete(draftKey);setInput('')}})} onSendContent={content=>send(content)}
     onStop={()=>{setStopping(true);void api.stop(path).catch(e=>setError(String(e))).finally(()=>setStopping(false))}}
     composerStatus={selection?<span className="prototype-context">{t('prototype.selected')} {selection.tag} {selection.text.slice(0,32)}</span>:undefined}
     copy={{emptyIntro:t('prototype.intro'),thinking:t('aiFlow.thinking'),me:t('aiFlow.me'),meInitials:t('aiFlow.meInitials'),agent:t('prototype.assistant'),agentInitials:'AI',placeholder:t('prototype.placeholder'),fullPrompt:t('aiFlow.fullPrompt'),closePrompt:t('aiFlow.closePrompt')}}

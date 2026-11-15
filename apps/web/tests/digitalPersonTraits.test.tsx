@@ -22,7 +22,7 @@ test('identity, personality and tone allow multiple presets and free text, then 
  })
  try{
   await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonSettings onClose={()=>{}}/></I18nProvider></MemoryRouter>))
-  await click('身份与职责')
+  await click('身份与性格')
   await click('研发伙伴');await click('项目管家')
   assert.equal(el.querySelector('[aria-label="身份"]')!.getAttribute('name'),'role')
   assert.match((el.querySelector('[name="role"]') as HTMLInputElement).value,/自定义身份、研发伙伴、项目管家/)

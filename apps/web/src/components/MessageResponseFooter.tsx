@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import './MessageResponseFooter.css'
 import Icon from './Icon'
+import MessageSpeechButton from './MessageSpeechButton'
 import { firstOutputTimestamp } from '../utils/firstOutput'
 import { useEffect, useMemo, useState } from 'react'
 import { engineLabel } from '../engineMeta'
@@ -205,6 +206,7 @@ export function formatSeconds(seconds: number): string {
 
 export interface MessageResponseFooterProps {
   content: string
+  projectId?: string
   actions?: ReactNode
   compact?: boolean
   usage?: MessageUsage
@@ -228,6 +230,7 @@ export interface MessageResponseFooterProps {
 
 export default function MessageResponseFooter({
   content,
+  projectId,
   usage,
   events,
   eventSummary,
@@ -288,39 +291,32 @@ export default function MessageResponseFooter({
     : ''
   const summaryText = summaryParts.join(' · ') + executionModelSuffix
 
-  // 移动端：点击 token 栏切换成单行跑马灯滚动展示全文（静止保留 mobile.css 的 2 行 clamp）；
-  // 消息状态变化（如 running 结束）时回到静止态，避免新/恢复的消息一进来就在滚动。
+  // 移动端运行中默认滚动完整统计，结束后恢复引擎 / 模型；点击可切换。
+  const identityText = [engine ? engineLabel(engine, t) : '', model || ''].filter(Boolean).join(' / ')
+    || t('digitalPerson.responseDetails')
   const isMobile = useCompactLayout()
-  const [marqueeActive, setMarqueeActive] = useState(false)
-  useEffect(() => { setMarqueeActive(false) }, [running])
+  const [marqueeActive, setMarqueeActive] = useState(running)
+  useEffect(() => { setMarqueeActive(running) }, [running])
 
   return (
-    <div className={`message-response-footer${running ? ' message-footer--running' : ''}${compact ? ' message-response-footer--compact' : ''}`} style={{
-      minHeight: 24, display: 'flex', alignItems: 'center', gap: 8,
-      color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))',
-    }}>
-      {compact ? <details className="message-response-details">
-        <summary>{[engine ? engineLabel(engine,t) : '', model || ''].filter(Boolean).join(' / ') || t('digitalPerson.responseDetails')}</summary>
+    <div className={`message-response-footer${running ? ' message-footer--running' : ''}${compact ? ' message-response-footer--compact' : ''}`}>
+      {isMobile ? (
+        <button
+          type="button"
+          className="footer-usage-toggle"
+          aria-pressed={marqueeActive}
+          onClick={() => setMarqueeActive(active => !active)}
+        >
+          {marqueeActive ? (
+            <MarqueeText className="footer-usage-summary footer-usage-summary--marquee" text={summaryText} forceActive />
+          ) : (
+            <span className="footer-usage-summary">{identityText}</span>
+          )}
+        </button>
+      ) : compact ? <details className="message-response-details">
+        <summary>{identityText}</summary>
         <div className="message-response-details-content">{summaryText}</div>
-      </details> : isMobile ? (
-        marqueeActive ? (
-          <MarqueeText
-            className="footer-usage-summary footer-usage-summary--marquee"
-            text={summaryText}
-            forceActive
-            onClick={() => setMarqueeActive(false)}
-          />
-        ) : (
-          <span
-            className="footer-usage-summary"
-            role="button"
-            style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}
-            onClick={() => setMarqueeActive(true)}
-          >
-            {summaryText}
-          </span>
-        )
-      ) : (
+      </details> : (
         <span className="footer-usage-summary" style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
           {summaryText}
         </span>
@@ -343,6 +339,7 @@ export default function MessageResponseFooter({
         </button>
       )}
       {!running && actions}
+      {!running && content.trim() && <MessageSpeechButton content={content} projectId={projectId} />}
       {!running && onFork && (
         <Button
           variant="ghost"

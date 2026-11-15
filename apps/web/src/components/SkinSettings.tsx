@@ -71,9 +71,8 @@ export default function SkinSettings({ preferences, onRefresh }: { preferences?:
     finally { window.setTimeout(() => URL.revokeObjectURL(url), 0) }
   })
   return <div className="skin-settings">
-    <header className="skin-settings-page-head"><div><h2>{t('skins.centerTitle')}</h2><p>{t('skins.centerIntro')}</p></div><div className="skin-settings-actions">
+    <header className="skin-settings-page-head"><div><div className="settings-heading-row"><h2>{t('skins.centerTitle')}</h2><Button variant="icon" onClick={() => void run(async () => { await Promise.all([refresh(), onRefresh?.()]) })} disabled={busy} aria-label={t('languages.refresh')} title={t('languages.refresh')}><Icon name="refresh" size={16} /></Button></div><p>{t('skins.centerIntro')}</p></div><div className="skin-settings-actions">
       {!remote && <><Button variant="primary" onClick={() => void start()} disabled={busy} loading={busy}><Icon name="sparkles" size={15} />{t('skins.create')}</Button></>}
-      <Button variant="icon" onClick={() => void run(async () => { await Promise.all([refresh(), onRefresh?.()]) })} disabled={busy} aria-label={t('languages.refresh')} title={t('languages.refresh')}><Icon name="refresh" size={16} /></Button>
     </div></header>
     {preferences}
     <input ref={fileInput} type="file" accept=".zip,application/zip" className="skin-settings-file" onChange={event => {
@@ -84,7 +83,7 @@ export default function SkinSettings({ preferences, onRefresh }: { preferences?:
       })
     }} />
     {error && <p role="alert" className="skin-settings-error">{error}</p>}
-    {previewing && <div role="status" className="skin-settings-preview-notice"><span>{t('skins.previewing')}</span><Button onClick={() => saveSkin(active)}>{t('skins.apply')}</Button><Button onClick={cancelSkinPreview}>{t('skins.cancelPreview')}</Button></div>}
+    {previewing && <div role="status" className="skin-settings-preview-notice"><span>{t('skins.previewing')}</span><div className="settings-action-group"><Button onClick={() => saveSkin(active)}>{t('skins.apply')}</Button><Button onClick={cancelSkinPreview}>{t('skins.cancelPreview')}</Button></div></div>}
     <SkinLibrary toolbarActions={!remote && <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}><Icon name="download" size={15} />{t('skins.import')}</Button>} documents={documents} activeId={active.manifest.id} activeRevision={active.revision} preferredSkin={checked} busy={busy} canManage={!remote}
       onCreate={base => void start(base)} onPreview={previewSkin} onApply={saveSkin}
       onExport={id => void exportSkin(id)} onDelete={setDeleting} onRestore={restoreDefaultSkin} />

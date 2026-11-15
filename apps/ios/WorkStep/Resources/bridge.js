@@ -8,6 +8,16 @@
       try { const value = JSON.parse(raw); if (value && typeof value === 'object') send(value); } catch {}
     }
   }) });
+  Object.defineProperty(window, 'WorkStepSpeech', { value: Object.seal({
+    onmessage: null,
+    postMessage(raw) {
+      if (typeof raw !== 'string' || raw.length > 65536) return;
+      try {
+        const request = JSON.parse(raw);
+        if (request && typeof request === 'object') send({ type: 'systemSpeech', request });
+      } catch {}
+    }
+  }) });
   window.addEventListener('error', event => {
     const allowed = ['TypeError', 'SyntaxError', 'ReferenceError', 'RangeError'];
     const code = allowed.includes(event.error?.name) ? event.error.name : 'resource-error';

@@ -77,6 +77,7 @@
     },
     "mac": {
       "extendInfo": {
+        "NSCameraUsageDescription": "WorkStep 使用摄像头在发送消息时提供当前画面。",
         "NSMicrophoneUsageDescription": "WorkStep 使用麦克风将语音转换为消息草稿。"
       },
       "entitlements": "build/entitlements.mac.plist",

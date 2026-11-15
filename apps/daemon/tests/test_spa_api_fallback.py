@@ -34,8 +34,16 @@ async def check():
         assert page.status_code == 200
         assert page.text.startswith('<!doctype html>')
         assert page.headers['cache-control'] == 'no-store'
-        for path in ['/', '/index.html']:
-            assert (await client.get(path)).headers['cache-control'] == 'no-store'
+        for path in ['/', '/index.html', '/companion', '/companion/', '/chat/']:
+            document = await client.get(path)
+            assert document.text.startswith('<!doctype html>')
+            assert document.headers['cache-control'] == 'no-store'
+            assert 'microphone=(self)' in document.headers['permissions-policy'], path
+            assert 'camera=(self)' in document.headers['permissions-policy'], path
+        for path in ['/share/token', '/companion/unknown', '/assets/current.js']:
+            restricted = await client.get(path)
+            assert 'microphone=()' in restricted.headers['permissions-policy'], path
+            assert 'camera=()' in restricted.headers['permissions-policy'], path
         for path in ['/assets/old-build.js', '/assets/old-build.css']:
             missing = await client.get(path)
             assert missing.status_code == 404

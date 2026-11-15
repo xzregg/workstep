@@ -28,6 +28,7 @@ import {
 
 /** A session-scoped WS event — AG-UI 标准事件（无 task_id，按 session_id 分流）。 */
 export interface AssistantChatEvent {
+  proactive?: boolean
   type: string
   /** Persisted JSONL sequence number (distinct from AG-UI live sequence). */
   seq?: number
@@ -65,6 +66,7 @@ export interface AssistantChatEvent {
 }
 
 export interface AssistantChatMessage {
+  proactive?: boolean
   id: string
   role: 'user' | 'assistant'
   content: string
@@ -649,6 +651,7 @@ export function createAssistantStore(
                 role: isUserEvent ? 'user' : 'assistant',
                 content: isUserEvent ? String(event.content ?? '') : '',
                 status: isUserEvent ? userStatus : 'running',
+                proactive: event.proactive === true,
                 engine: event.engine,
                 model: event.model,
                 prompt,
@@ -668,6 +671,7 @@ export function createAssistantStore(
                 ? String(event.content)
                 : messages[index].content,
               status: isUserEvent ? userStatus : 'running',
+                proactive: event.proactive === true,
               prompt: prompt || messages[index].prompt,
               created_at: isUserEvent || messages[index].awaiting_start
                 ? event.created_at || messages[index].created_at : messages[index].created_at,

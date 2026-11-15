@@ -65,3 +65,42 @@ def test_handoff_and_tool_prompt_templates_have_no_cjk():
     assert not CJK_RE.search(render_handoff(package))
     assert not CJK_RE.search(render_handoff_reference(metadata, "/tmp/project"))
     assert not CJK_RE.search(workstep_tools_instruction())
+
+
+def test_digital_person_prompt_scaffolding_is_english(monkeypatch):
+    from types import SimpleNamespace
+    from services import customization_workspace, digital_person
+    from services.digital_person_memory import prompt as memory_prompt
+    from services.digital_person_statistics import format_identity_snapshot
+
+    profile = digital_person.DigitalPersonProfile(
+        enabled=True, name="Ari", role="Developer", personality="Curious",
+        tone="Direct", duties="Follow up on delegated work.",
+        conversation_rules="Keep replies brief.",
+    )
+    monkeypatch.setattr(customization_workspace, "is_default_workspace", lambda _: True)
+    monkeypatch.setattr(digital_person, "get_profile", lambda: profile)
+    identity = digital_person.prompt_for_project(SimpleNamespace(id="home"))
+    assert not CJK_RE.search(identity)
+    assert "workstep-cli skill" in identity
+    assert "Keep replies brief." in identity
+    assert not CJK_RE.search(memory_prompt([{"content": "Original text"}]))
+    assert not CJK_RE.search(format_identity_snapshot({"unavailable": True}))
+    stats = format_identity_snapshot(dict(level=1, experience=0, next_level_experience=10,
+        session_count=1, reply_count=0, task_count=0, completed_task_count=0, skills=[]))
+    assert not CJK_RE.search(stats)
+
+
+def test_channel_source_prompt_scaffolding_is_english():
+    from services.channels.base import IncomingMessage
+    from services.channels.bots import _context_content
+
+    for conversation_type in ("single", "group"):
+        message = IncomingMessage(bot_id="bot", message_id="message",
+            conversation_type=conversation_type, conversation_id="room",
+            sender_id="sender", text="Request")
+        for include_session in (False, True):
+            text = _context_content(message, "test", include_session=include_session)
+            assert not CJK_RE.search(text)
+            assert '"sender_id": "sender"' in text
+            assert text.endswith("\n\nRequest")

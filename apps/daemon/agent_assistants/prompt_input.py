@@ -15,6 +15,8 @@ def _content_block(value, language: str = "text") -> str:
 
 
 def format_prompt_input(data: dict) -> str:
+    from services.memory_secrets import redact
+    data = redact(data)
     parts = []
     if data.get("attempt", 1) > 1:
         parts.append(f"## 重试 {data['attempt']}")
@@ -24,6 +26,8 @@ def format_prompt_input(data: dict) -> str:
         title = "### 系统注入提示词" if data.get("instruction_transport") == "injection" else f"### 独立指令（{role}）"
         parts.extend([title, _content_block(instruction)])
     title = "### 正文（user，包含指令正文降级）" if data.get("system_prompt_in_body") else "### 正文（user）"
+    if data.get('internal_event'):
+        title='### 内部事件输入（'+str(data['internal_event'])+'，底层正文通道）'
     parts.extend([title, _content_block(data.get("prompt") or "")])
     history = data.get("message_history")
     if history:

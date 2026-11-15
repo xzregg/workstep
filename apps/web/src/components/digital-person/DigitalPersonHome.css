@@ -1,0 +1,129 @@
+.digital-home { --home-ink:#192334; --home-muted:#6c7788; --home-accent:#0071e3; display:flex; flex:1; flex-direction:column; min-height:0; width:100%; height:100%; overflow:hidden; color:var(--home-ink); background:#f8fafc url('../../assets/digital-person-stage-light.webp') center/cover no-repeat; font-family:var(--font-body); }
+.digital-home-header { display:flex; align-items:center; gap:16px; flex-shrink:0; padding:24px 32px; border-bottom:.5px solid #dce4ed; }
+.digital-home-brand { display:flex; align-items:center; gap:12px; }
+.digital-home-brand strong { font-size:20px; letter-spacing:-.02em; }
+.digital-home-brand > span { margin-left:12px; padding-left:24px; border-left:1px solid #ced7e4; color:var(--home-muted); font-size:16px; }
+.digital-home .digital-home-back { margin-left:auto; gap:var(--space-1); padding:0 var(--space-2); height:32px; justify-content:center; color:var(--home-ink); }
+.digital-home-back > svg { transform:rotate(180deg); }
+.digital-home .digital-home-settings { padding:0; width:32px; height:32px; color:var(--home-ink); }
+.digital-home .digital-home-settings,
+.digital-home-voice-dock > .btn { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; box-sizing:border-box; }
+.digital-home-header .btn > svg,
+.digital-home-voice-dock > .btn > svg { display:block; flex-shrink:0; }
+.digital-home-microphone.btn-loading > svg { display:none; }
+.digital-home-main { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,45%) minmax(0,55%); grid-template-rows:minmax(0,1fr) minmax(0,1fr); padding:32px 40px 0; gap:20px 24px; position:relative; }
+.digital-home-stage { grid-row:1/3; display:flex; flex-direction:column; min-width:0; min-height:0; }
+.digital-home-identity { display:flex; align-items:center; gap:var(--space-2); padding:0; margin-left:auto; min-width:0; }
+.digital-home-identity > strong { font-size:var(--text-title-3); font-weight:600; max-width:8em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.digital-home-identity > span { display:inline-flex; align-items:center; gap:8px; color:var(--home-accent); font-size:var(--text-caption); white-space:nowrap; }
+.digital-home-avatar { position:relative; flex:1; width:100%; min-height:0; }
+.digital-home-avatar canvas,.digital-home-avatar img { display:block; width:100%; height:100%; object-fit:contain; }
+.digital-home-work { align-self:center; min-width:0; padding:24px; border:.5px solid #ced8e7; border-radius:var(--radius-xl); background:#ffffff70; }
+.digital-home-work > header { display:flex; align-items:center; gap:12px; }
+.digital-home-work h2 { font-size:20px; font-weight:600; margin:0; }
+.digital-home-work > header > .btn { margin-left:auto; gap:4px; color:var(--home-accent); }
+.digital-home-work-instruction { margin:24px 0; font-size:16px; line-height:1.6; color:var(--home-muted); overflow-wrap:anywhere; }
+.digital-home-task-state { display:flex; align-items:center; gap:16px; padding:24px 0; border-top:.5px solid #dce4ed; }
+.digital-home-task-state strong { font-size:16px; }
+.digital-home-task-state p { margin:8px 0 0; color:var(--home-muted); font-size:13px; }
+.digital-home-empty-work { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; min-height:220px; color:var(--home-muted); gap:16px; }
+.digital-home-empty-work h3 { margin:0; color:var(--home-ink); font-size:16px; font-weight:500; }
+.digital-home-empty-work p { margin:0; font-size:14px; line-height:1.6; }
+.digital-home-caption-frame { position:relative; min-height:0; }
+.digital-home-subtitles { min-height:0; height:100%; box-sizing:border-box; overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; padding:var(--space-5) var(--space-2); }
+
+.digital-home-user-caption { margin:0 0 20px; font-size:14px; line-height:1.6; color:var(--home-muted); overflow-wrap:anywhere; }
+.digital-home-reply { margin:0 0 var(--space-5); border:0; padding:0; font-size:var(--text-title-2); font-weight:400; line-height:1.6; overflow-wrap:anywhere; }
+.digital-home-footer { display:flex; flex-direction:column; align-items:center; padding:24px 32px; gap:12px; flex-shrink:0; }
+.digital-home-voice-dock { display:flex; gap:24px; padding:12px 24px; align-items:center; border-radius:999px; background:#ffffffbf; box-shadow:0 12px 32px #5b87bb1a; border:.5px solid #ffffffc0; }
+.digital-home-voice-dock > .btn { padding:0; width:44px; min-width:44px; height:44px; min-height:44px; border-radius:50%; color:var(--home-ink); }
+.digital-home-voice-dock > .digital-home-microphone { color:#fff; background:var(--home-accent); }
+.digital-home-voice-dock > .digital-home-microphone[aria-pressed=false] { background:#5689c7; }
+.digital-home-wave { display:flex; align-items:center; justify-content:center; gap:12px; width:180px; color:#75aaf0; font-size:13px; }
+.digital-home-wave > span { color:var(--home-muted); }
+.digital-home-voice-dock > .digital-home-end { border-radius:50%; background:#edf1f7; }
+.digital-home-footer > .digital-person-speech { position:absolute; right:16px; bottom:12px; max-width:35%; }
+.digital-home-error { margin:8px 24px 0; color:var(--danger); font-size:13px; text-align:center; overflow-wrap:anywhere; }
+.app-shell--companion .app-main { padding:0; overflow:hidden; }
+@media(max-width:1023px) {
+ .app-shell--companion > .mobile-header,.app-shell--companion > .mobile-navigation-float { display:none; }
+ .digital-home { --home-ink:#f5f8ff; --home-muted:#a2b5ca; --home-accent:#2bdbec; background:#03162b url('../../assets/digital-person-stage-dark.webp') center/cover no-repeat; min-height:100%; }
+ .digital-home-header { padding:16px 20px; padding-top:max(16px,env(safe-area-inset-top)); border:0; gap:var(--space-2); }
+ .digital-home-brand { display:none; }
+ .digital-home .digital-home-back { margin:0; order:-1; padding:0; height:var(--mobile-control-regular); min-height:var(--mobile-control-regular); }
+ .digital-home .digital-home-settings { margin-left:0; width:var(--mobile-control-regular); height:var(--mobile-control-regular); min-height:var(--mobile-control-regular); }
+ .digital-home-main { display:flex; flex-direction:column; padding:0 20px; gap:8px; }
+ .digital-home-stage { flex:0 1 36dvh; min-height:100px; max-height:320px; }
+ .digital-home-identity { flex-direction:row; align-items:center; gap:var(--space-2); margin-left:auto; }
+ .digital-home-identity > strong { font-size:var(--text-title-3); max-width:4em; }
+ .digital-home-identity > span { gap:var(--space-1); font-size:var(--text-caption); color:var(--home-muted); }
+ .digital-home-avatar { min-height:0; }
+ .digital-home-work { display:none; }
+ .digital-home-caption-frame { flex:1 1 0; width:100%; }
+ .digital-home-subtitles { width:100%; box-sizing:border-box; padding:var(--space-5) 0; text-align:left; }
+ .digital-home-user-caption { font-size:var(--text-body); margin:0 0 var(--space-3); white-space:normal; overflow-wrap:anywhere; }
+ .digital-home-reply { border:0; padding:0; font-size:var(--text-title-2); line-height:1.6; }
+ .digital-home-footer { padding:12px 20px max(20px,env(safe-area-inset-bottom)); gap:12px; }
+ .digital-home-voice-dock { width:min(100%,360px); box-sizing:border-box; justify-content:space-around; padding:12px 16px; gap:8px; background:#173a50c7; border-color:#9fdde425; box-shadow:none; }
+ .digital-home-voice-dock > .btn { width:var(--mobile-control-touch); min-width:var(--mobile-control-touch); height:var(--mobile-control-touch); }
+ .digital-home-voice-dock > .digital-home-microphone { color:#062737; background:#2bdbec; }
+ .digital-home-voice-dock > .digital-home-microphone[aria-pressed=false] { background:#557a94; color:#f5f8ff; }
+ .digital-home-voice-dock > .digital-home-speaker { color:#e1edf8; border-radius:50%; background:#3b5c72; }
+ .digital-home-voice-dock > .digital-home-end { color:#fff; background:#c54d62; }
+ .digital-home-wave { display:none!important; }
+ .digital-home-footer > .digital-person-speech { position:static; max-width:100%; }
+}
+@media(max-height:680px) and (max-width:1023px) {
+ .digital-home-header { padding-top:max(var(--space-2),env(safe-area-inset-top)); padding-bottom:var(--space-2); }
+ .digital-home-stage { flex-basis:30dvh; min-height:80px; }
+ .digital-home-footer { padding-top:var(--space-2); padding-bottom:max(var(--space-2),env(safe-area-inset-bottom)); }
+}
+
+.digital-home-work-instruction { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+
+.digital-home .digital-home-voice-dock > .digital-home-microphone[aria-pressed=true] { background:var(--home-accent); color:#fff; border:0; }
+@media(max-width:1023px) { .digital-home .digital-home-voice-dock > .digital-home-microphone[aria-pressed=true] { background:#2bdbec; color:#062737; } }
+
+.digital-home-header .btn { border:0; background:transparent; box-shadow:none; }
+.digital-home-voice-dock > .btn { border:0; }
+
+.digital-home-voice-dock > .digital-person-camera--compact { position:relative; flex-shrink:0; }
+.digital-home .digital-home-voice-dock .digital-person-camera--compact [data-camera-toggle] { display:inline-flex; align-items:center; justify-content:center; padding:0; width:44px; height:44px; min-width:44px; min-height:44px; flex-shrink:0; box-sizing:border-box; color:var(--home-ink); border:0; border-radius:50%; background:#edf1f7; }
+.digital-home .digital-home-voice-dock .digital-person-camera--compact [data-camera-toggle][aria-pressed=true] { color:var(--home-accent); box-shadow:none; }
+@media(max-width:1023px) {
+ .digital-home .digital-home-voice-dock .digital-person-camera--compact [data-camera-toggle] { width:var(--mobile-control-touch); min-width:var(--mobile-control-touch); height:var(--mobile-control-touch); min-height:var(--mobile-control-touch); }
+}
+
+.digital-home-voice-dock > .digital-home-speaker { background:#edf1f7; }
+.digital-home-composer { width:min(100%,720px); min-width:0; color:var(--fg); }
+.digital-home-input-actions > .digital-home-keyboard { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; min-height:44px; padding:0; color:var(--home-ink); border:0; border-radius:50%; background:transparent; }
+.digital-home-input-actions > .digital-home-keyboard[aria-expanded=true] { color:var(--home-accent); }
+@media(max-width:1023px) {
+ .digital-home-input-actions > .digital-home-keyboard { width:var(--mobile-control-touch); height:var(--mobile-control-touch); min-height:var(--mobile-control-touch); }
+ .digital-home-voice-dock > .digital-home-speaker,
+ .digital-home .digital-home-voice-dock .digital-person-camera--compact [data-camera-toggle] { background:#3b5c72; color:#e1edf8; }
+ .digital-home .digital-home-voice-dock .digital-person-camera--compact [data-camera-toggle][aria-pressed=true] { background:#24566b; color:var(--home-accent); }
+}
+
+.digital-home-input-actions { display:flex; align-items:center; gap:var(--space-3); }
+.digital-home-header,.digital-home-input-actions { position:relative; z-index:1; }
+.digital-home-input-actions > .digital-home-transcript-button { display:inline-flex; align-items:center; gap:var(--space-1); padding:0 var(--space-2); color:var(--home-ink); border:0; background:transparent; }
+.digital-home-chat { color:var(--fg); grid-column:2; grid-row:1/3; min-height:0; display:flex; flex-direction:column; overflow:hidden; background:var(--bg); border:.5px solid var(--border-soft); border-radius:var(--radius-md); }
+.digital-home-chat > header { display:flex; align-items:center; justify-content:space-between; padding:8px 16px; border-bottom:.5px solid var(--border-soft); }
+.digital-home-chat > header h2 { font-size:14px; margin:0; }
+.digital-home-chat > header .btn { display:flex; align-items:center; justify-content:center; padding:0; width:32px; height:32px; }
+.digital-home-chat > .chat-session-page,.digital-home-chat > .assistant-chat-panel { flex:1; min-height:0; }
+@media(max-width:1023px) {
+ .digital-home--chat .digital-home-stage { display:none; }
+ .digital-home-chat { flex:1; width:100%; min-height:0; }
+}
+
+.digital-home-avatar-eyes { position:absolute; left:var(--avatar-eyes-x,50%); top:var(--avatar-eyes-y,35%); width:0; height:0; pointer-events:none; }
+
+.digital-home-caption-label { display:block; margin-bottom:var(--space-1); }
+
+/* Speech lighting belongs behind either the default character or a custom skin. */
+.digital-home-stage {position:relative;isolation:isolate}
+.digital-home-voice-background {position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;border-radius:var(--radius-lg,16px);opacity:var(--voice-activity,0);background:radial-gradient(ellipse closest-side,#001326ed 10%,#00132699 60%,#00132600 100%)}
+.digital-home-voice-background canvas {display:block;width:100%;height:100%;mask-image:linear-gradient(to right,transparent,#000 12%,#000 88%,transparent)}
+@media(prefers-reduced-motion:reduce){.digital-home-voice-background {display:none}}

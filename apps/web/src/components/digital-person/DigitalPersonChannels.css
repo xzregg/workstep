@@ -1,6 +1,9 @@
 .digital-person-channels { display: grid; gap: 20px; max-width: 720px; }
+.digital-person-channels-header h2 { margin: 0; font-size: var(--text-title-1); font-weight: 600; }
+.digital-person-channel-form-actions { justify-content: flex-end; }
 .digital-person-channels > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
-.digital-person-channels > label { display: grid; gap: 8px; font-size: 13px; color: var(--fg-2); }
+.digital-person-channel-form { display: grid; gap: 16px; }
+.digital-person-channel-form > label { display: grid; gap: 8px; font-size: 13px; color: var(--fg-2); }
 .digital-person-channels > button { justify-self: end; }
 .digital-person-channel { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: .5px solid var(--border); }
 .digital-person-channel > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 6px; }

@@ -16,7 +16,7 @@ export function useSpeechEnabled(projectId: string, allowed: boolean) {
         again = false
         try {
           const status = await speechApi.status(projectId)
-          if (!disposed && !again) setState({ projectId, enabled: status.enabled === true })
+          if (!disposed && !again) setState({ projectId, enabled: status.enabled === true && status.ready !== false })
         } catch {
           if (!disposed && !again) setState({ projectId, enabled: false })
         }

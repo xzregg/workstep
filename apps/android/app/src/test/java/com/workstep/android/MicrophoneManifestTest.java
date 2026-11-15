@@ -23,7 +23,7 @@ public class MicrophoneManifestTest {
             Element entry = (Element) entries.item(i);
             permissions.put(entry.getAttributeNS(android, "name"), entry);
         }
-        for (String name : new String[]{"android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"}) {
+        for (String name : new String[]{"android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS", "android.permission.CAMERA"}) {
             assertTrue("WebView capture requires " + name, permissions.containsKey(name));
             assertFalse("Capture must work on current Android versions", permissions.get(name).hasAttributeNS(android, "maxSdkVersion"));
         }

@@ -3,6 +3,7 @@
 
 import fcntl
 import json
+import logging
 import os
 import shlex
 import shutil
@@ -10,12 +11,69 @@ import signal
 import subprocess
 import sys
 import time
+import tempfile
 import urllib.request
 from dataclasses import dataclass
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(os.environ.get("WORKSTEP_PROJECT_ROOT", Path(__file__).resolve().parents[1])).resolve()
 COMMAND = ["bash", "start.sh", "8765", "dev"]
+logger = logging.getLogger('workstep.restart')
+
+
+@contextmanager
+def restart_deadline(seconds=240):
+    def expired(signum, frame):
+        raise TimeoutError(f"重启超过总时限（{seconds} 秒），停止本次尝试，不自动重试")
+
+    previous_handler = signal.signal(signal.SIGALRM, expired)
+    started = time.monotonic()
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0]:
+            signal.setitimer(signal.ITIMER_REAL,
+                             max(.001, previous_timer[0] - (time.monotonic() - started)), previous_timer[1])
+
+
+@contextmanager
+def restart_ownership():
+    # A new session alone still inherits the old daemon's ownership token and
+    # may already be in its PID checkpoint. Register a live, independent owner
+    # before shutdown, using the same identity checks as nested daemons.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/daemon"))
+    from services.config import CONFIG_DIR
+    from services.process_recovery import OWNER_ENV, SCOPE_ENV, ProcessOwnership
+
+    owner = ProcessOwnership(os.environ.get(SCOPE_ENV) or CONFIG_DIR)
+    owner.prepare()
+    owner.write()  # Fail before stopping services if protection cannot persist.
+    previous = {key: os.environ.get(key) for key in (OWNER_ENV, SCOPE_ENV)}
+    os.environ.update({OWNER_ENV: owner.token, SCOPE_ENV: owner.scope})
+    try:
+        yield
+    except BaseException:
+        # Also reap preflight/build children which outlived their subprocess.run
+        # parent. Failed cleanup retains the record for the next daemon.
+        try:
+            with restart_deadline(10):
+                owner.reap({'version': 2, 'realm': owner.realm, 'token': owner.token,
+                            'children': list(owner.children.values())})
+        except Exception as exc:
+            logger.warning('重启执行器清理失败，保留归属记录', exc_info=True)
+        raise
+    else:
+        owner.file.unlink(missing_ok=True)
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 @dataclass(frozen=True)
@@ -28,7 +86,7 @@ class Process:
 
 
 def process_table() -> dict[int, Process]:
-    output = subprocess.check_output(["ps", "-axo", "pid=,ppid=,pgid=,lstart=,command="], text=True)
+    output = subprocess.check_output(["ps", "-axo", "pid=,ppid=,pgid=,lstart=,command="], text=True, timeout=5)
     result = {}
     for line in output.splitlines():
         parts = line.split(maxsplit=8)
@@ -111,7 +169,7 @@ def discover_targets() -> dict[int, Process]:
         process = services.get(pid)
         if not process:
             continue
-        log_tail = process.command.startswith("tail -f ") and str(ROOT / "logs/") in process.command
+        log_tail = process.command.startswith(("tail -f ", "tail -F ")) and str(ROOT / "logs/") in process.command
         if pid in seeds or is_service(process) or log_tail:
             targets[pid] = process
     return targets
@@ -149,22 +207,37 @@ def stop_services(targets: dict[int, Process]) -> None:
     raise RuntimeError("旧服务尚未退出；未强制杀进程，请检查重启日志")
 
 
+def run_preflight_command(command, **kwargs):
+    # Build output is not a second diagnostic stream. Keep just the failure
+    # tail, and let subprocess timeouts/ownership cleanup bound the attempt.
+    directory = ROOT / 'tmp/restart-checks'
+    directory.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryFile(dir=directory) as output:
+        try:
+            subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, check=True, **kwargs)
+        except BaseException:
+            size = output.seek(0, os.SEEK_END)
+            output.seek(max(0, size - 64 * 1024))
+            logger.error('重启预检失败：%s\n%s', command[0], output.read().decode('utf-8', errors='replace'))
+            raise
+
+
 def preflight() -> None:
     for tool in ("bash", "uv", "node", "lsof", "ps"):
         if not shutil.which(tool):
             raise RuntimeError(f"缺少 {tool}，保留旧服务")
     if not (shutil.which("corepack") or shutil.which("yarn")):
         raise RuntimeError("缺少 Yarn/Corepack，保留旧服务")
-    subprocess.run(["bash", "-n", str(ROOT / "start.sh")], check=True)
-    subprocess.run(["uv", "run", "--no-sync", "--directory", str(ROOT / "apps/daemon"),
-                    "python", "-c", "import main; assert main.app"], check=True, timeout=30)
+    run_preflight_command(["bash", "-n", str(ROOT / "start.sh")], timeout=5)
+    run_preflight_command(["uv", "run", "--no-sync", "--directory", str(ROOT / "apps/daemon"),
+                           "python", "-c", "import main; assert main.app"], timeout=30)
     if not (ROOT / "apps/web/node_modules/.bin/vite").exists():
         raise RuntimeError("前端依赖缺失，保留旧服务；请先安装依赖")
     # Build before shutdown so broken frontend/toolchain code preserves the old
     # service. start.sh can reuse this build without another failure window.
     yarn = ["corepack", "yarn"] if shutil.which("corepack") else ["yarn"]
-    subprocess.run([*yarn, "build"], cwd=ROOT / "apps/landing",
-                   env={**os.environ, "LANDING_BASE": "/landing/"}, check=True, timeout=120)
+    run_preflight_command([*yarn, "build"], cwd=ROOT / "apps/landing",
+                          env={**os.environ, "LANDING_BASE": "/landing/"}, timeout=120)
 
 
 def health_ready() -> bool:
@@ -175,36 +248,75 @@ def health_ready() -> bool:
         return False
 
 
+def cleanup_failed_start(child) -> None:
+    import psutil
+    from engines.core.process_cleanup import _reap
+
+    # This launcher got a fresh session. Inspect individual identities rather
+    # than signalling a group that might have been reused after launcher exit.
+    started = getattr(child, "_workstep_started", None)
+    if started is None:
+        try:
+            started = psutil.Process(child.pid).create_time()
+        except psutil.NoSuchProcess:
+            return
+    with restart_deadline(10):
+        owned = []
+        for process in psutil.process_iter():
+            try:
+                if (process.pid != os.getpid() and process.create_time() >= started
+                        and os.getpgid(process.pid) == child.pid and os.getsid(process.pid) == child.pid):
+                    owned.append(process)
+            except (psutil.NoSuchProcess, ProcessLookupError, psutil.AccessDenied):
+                continue
+        _reap(owned)
+        child.wait(timeout=3)
+
+
 def start_services() -> int:
+    started = time.time()
     child = subprocess.Popen(COMMAND, cwd=ROOT, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
                              start_new_session=True,
-                             env={**os.environ, "WORKSTEP_SKIP_LANDING_BUILD": "1"})
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline:
-        if child.poll() is not None:
-            raise RuntimeError(f"新启动器 {child.pid} 退出（{child.returncode}）；查看 daemon.log/web.log")
-        tree = descendants({child.pid}, process_table())
-        daemon, web = listeners(8765), listeners(5173)
-        if daemon and web and daemon <= tree and web <= tree and health_ready():
-            print(f"重启成功：新启动器 {child.pid}，后台 {sorted(daemon)}，前端 {sorted(web)}", flush=True)
-            return child.pid
-        time.sleep(.5)
-    raise RuntimeError(f"新启动器 {child.pid} 未通过就绪检查；查看 daemon.log/web.log")
+                             env={**os.environ, "WORKSTEP_SKIP_LANDING_BUILD": "1",
+                                  "WORKSTEP_FOLLOW_LOGS": "0"})
+    # psutil creation times may have coarser precision than time.time().
+    child._workstep_started = int(started)
+    try:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if child.poll() is not None:
+                raise RuntimeError(f"新启动器 {child.pid} 退出（{child.returncode}）；查看 daemon.log/web.log")
+            tree = descendants({child.pid}, process_table())
+            daemon, web = listeners(8765), listeners(5173)
+            if daemon and web and daemon <= tree and web <= tree and health_ready():
+                logger.info('重启成功：新启动器 %s，后台 %s，前端 %s', child.pid, sorted(daemon), sorted(web))
+                return child.pid
+            time.sleep(.5)
+        raise RuntimeError(f"新启动器 {child.pid} 未通过就绪检查；查看 daemon.log/web.log")
+    except BaseException:
+        try:
+            cleanup_failed_start(child)
+        except Exception as exc:
+            logger.warning('本次启动清理失败，保留归属记录供下次回收', exc_info=True)
+        raise
 
 
-def worker() -> None:
+def worker(lock_fd=None) -> None:
     time.sleep(2)  # Allow the Action acknowledgement to finish.
     (ROOT / ".pids").mkdir(exist_ok=True)
-    with (ROOT / ".pids/restart.lock").open("a") as lock:
+    lock_file = os.fdopen(lock_fd, "a") if lock_fd is not None else (ROOT / ".pids/restart.lock").open("a")
+    with lock_file as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError("已有重启正在执行，请勿重复点击")
-        preflight()
-        targets = discover_targets()
-        print(f"停止本项目旧服务：{sorted(targets)}；独立执行器：{os.getpid()}", flush=True)
-        stop_services(targets)
-        start_services()
+        with restart_deadline(), restart_ownership():
+            preflight()
+            targets = discover_targets()
+            logger.info('停止本项目旧服务：%s；独立执行器：%s', sorted(targets), os.getpid())
+            stop_services(targets)
+            start_services()
 
 
 def main() -> None:
@@ -214,14 +326,29 @@ def main() -> None:
         return
     (ROOT / ".pids").mkdir(exist_ok=True)
     if "--worker" in sys.argv:
-        worker()
+        lock_fd = int(sys.argv[sys.argv.index("--lock-fd") + 1]) if "--lock-fd" in sys.argv else None
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/daemon"))
+        from services.runtime_logging import install_runtime_logging
+        install_runtime_logging(ROOT / "logs", 'restart-action.log', backups=0)
+        worker(lock_fd)
         return
     log_path = ROOT / "logs/restart-action.log"
     log_path.parent.mkdir(exist_ok=True)
-    with log_path.open("ab", buffering=0) as log:
-        child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--worker"],
-                                 cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log,
-                                 stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
+    with (ROOT / ".pids/restart.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError("已有重启正在执行，请勿重复点击")
+        # Replace the inode: old launchers can still hold writable descriptors
+        # until shutdown, but cannot append to or seek inside this attempt's log.
+        temporary = log_path.with_suffix(".log.tmp")
+        with temporary.open("wb", buffering=0) as log:
+            temporary.replace(log_path)
+            child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--worker",
+                                      "--lock-fd", str(lock.fileno())],
+                                     cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log,
+                                     stderr=subprocess.STDOUT, start_new_session=True,
+                                     close_fds=True, pass_fds=(lock.fileno(),))
     print(f"已提交重启（执行器 {child.pid}）；此处不代表成功，最终结果见 {log_path}")
 
 

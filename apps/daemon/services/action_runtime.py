@@ -467,6 +467,7 @@ class ActionRuntime:
         run_id = run["run_id"]
         proc = None
         parent_watcher = None
+        log_writer = None
         try:
             if config["task_root"] is not None:
                 await asyncio.to_thread(config["task_root"].mkdir, parents=True, exist_ok=True)
@@ -523,18 +524,19 @@ class ActionRuntime:
             else:
                 await self._update(project_id, run_id, status="running")
             log_file = run_dir / "output.log"
+            log_writer = await asyncio.to_thread(_create_log_writer, log_file)
             decoder = codecs.getincrementaldecoder("utf-8")("replace")
 
             async def read_output():
                 while chunk := await proc.stdout.read(4096):
                     value = decoder.decode(chunk)
                     if value:
-                        await asyncio.to_thread(_append_log, log_file, value)
+                        await asyncio.to_thread(_append_log, log_writer, value)
                         await self._update(project_id, run_id, output=value)
                         await self._bus().publish({"type": "action_run_output", "project_id": project_id, "task_id": run["task_id"], "session_id": run["session_id"], "run_id": run_id, "output": value})
                 tail = decoder.decode(b"", final=True)
                 if tail:
-                    await asyncio.to_thread(_append_log, log_file, tail)
+                    await asyncio.to_thread(_append_log, log_writer, tail)
                     await self._update(project_id, run_id, output=tail)
                 return await proc.wait()
 
@@ -553,11 +555,22 @@ class ActionRuntime:
             await self._update(project_id, run_id, output=f"\n[action] {exc}\n")
             await self._finish(project_id, run_id, "failed", None)
         finally:
-            if parent_watcher is not None:
-                parent_watcher.cancel()
-                await asyncio.gather(parent_watcher, return_exceptions=True)
-            self.processes.pop(run_id, None)
-            self.stopping.discard(run_id)
+            try:
+                if log_writer is not None:
+                    from engines.core.process_cleanup import finish_cleanup
+                    try:
+                        await finish_cleanup(asyncio.to_thread(log_writer.close))
+                    except Exception:
+                        import logging
+                        logging.getLogger(__name__).warning('Action 日志关闭失败，保留业务执行结果', exc_info=True)
+            finally:
+                try:
+                    if parent_watcher is not None:
+                        parent_watcher.cancel()
+                        await asyncio.gather(parent_watcher, return_exceptions=True)
+                finally:
+                    self.processes.pop(run_id, None)
+                    self.stopping.discard(run_id)
 
     async def _terminate(self, proc: asyncio.subprocess.Process, grace: float):
         group_accessible = True
@@ -608,9 +621,21 @@ class ActionRuntime:
         return result
 
 
-def _append_log(path: Path, value: str):
-    with path.open("a", encoding="utf-8") as stream:
-        stream.write(value)
+def _create_log_writer(path: Path):
+    from services.runtime_logging import BoundedLog, diagnostic_policy
+    return BoundedLog(path, diagnostic_policy(), persistent=True)
+
+
+def _append_log(path, value: str):
+    from services.runtime_logging import BoundedLog, diagnostic_policy
+    writer = path if isinstance(path, BoundedLog) else BoundedLog(path, diagnostic_policy())
+    if writer.disabled: return
+    try:
+        writer.append(value)
+    except Exception:
+        writer.disabled = True
+        import logging
+        logging.getLogger(__name__).warning('Action 诊断日志不可用，继续执行并保留界面输出', exc_info=True)
 
 
 action_runtime = ActionRuntime()

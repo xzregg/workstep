@@ -179,6 +179,7 @@
 .layout-sidebar-section-label .layout-sidebar-search { flex: 1; min-width: 0; margin: 0; }
 .layout-sidebar-section-label .layout-sidebar-search-input { min-width: 0; }
 .layout-sidebar-projects { min-height: 0; }
+.layout-sidebar-pinned-entry { flex-shrink: 0; padding-inline: 8px; }
 .layout-sidebar-section-content { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; }
 .layout-sidebar-section-content[hidden], .layout-sidebar-recent-list[hidden] { display: none; }
 .layout-sidebar-section-toggle {

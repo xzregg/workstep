@@ -444,6 +444,10 @@ export interface ChatMessageOptions {
 }
 
 export const chatSessionApi = {
+  markRead: (sessionId: string, projectId: string, messageId: string) => request<{read:boolean}>(
+    `/chat-sessions/${encodeURIComponent(sessionId)}/read?project_id=${encodeURIComponent(projectId)}`,
+    {method:'POST',body:JSON.stringify({message_id:messageId})},
+  ),
   list: (projectId: string, archived = false) =>
     request<{ sessions: ChatSessionSummary[] }>(
       `/chat-sessions?project_id=${encodeURIComponent(projectId)}&archived=${archived}`,

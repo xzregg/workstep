@@ -12,6 +12,80 @@ public class MicrophonePermissionGateTest {
     private final List<Object> denied = new ArrayList<>();
     private final MicrophonePermissionGate<Object> gate = new MicrophonePermissionGate<>(granted::add, denied::add);
 
+    @Test public void videoWithSoundRequestsBothPermissionsAndGrantsOnlyAfterConsent() {
+        String video = "android.webkit.resource.VIDEO_CAPTURE";
+        MicrophonePermissionGate<Object> media = new MicrophonePermissionGate<>(
+                new String[]{AUDIO, video}, granted::add, denied::add);
+        Object request = new Object();
+        assertTrue(media.begin(request, server, server.origin() + "/companion", server.origin(),
+                new String[]{video, AUDIO}, false));
+        assertTrue(granted.isEmpty());
+        media.result(true, server, server.origin() + "/companion");
+        assertEquals(List.of(request), granted);
+        for (String[] invalid : new String[][]{{}, {AUDIO, AUDIO}, {video, "unknown"}}) {
+            Object rejected = new Object();
+            assertFalse(media.begin(rejected, server, server.origin(), server.origin(), invalid, true));
+            assertTrue(denied.contains(rejected));
+        }
+    }
+
+    @Test public void mixedCaptureCannotSurviveDenialNavigationOrForeignOrigins() {
+        String video = "android.webkit.resource.VIDEO_CAPTURE";
+        for (String outcome : new String[]{"denied", "navigation", "background", "cancelled"}) {
+            List<Object> accepted = new ArrayList<>(), rejected = new ArrayList<>();
+            MicrophonePermissionGate<Object> media = new MicrophonePermissionGate<>(
+                    new String[]{AUDIO, video}, accepted::add, rejected::add);
+            Object request = new Object();
+            assertTrue(media.begin(request, server, server.origin(), server.origin(), new String[]{AUDIO, video}, false));
+            if (outcome.equals("background")) media.clear();
+            if (outcome.equals("cancelled")) media.cancelled(request);
+            media.result(!outcome.equals("denied"), server,
+                    outcome.equals("navigation") ? server.origin() + "/chat" : server.origin());
+            assertTrue(outcome, accepted.isEmpty());
+        }
+        MicrophonePermissionGate<Object> media = new MicrophonePermissionGate<>(
+                new String[]{AUDIO, video}, granted::add, denied::add);
+        assertFalse(media.begin(new Object(), server, server.origin(), "https://other.test", new String[]{AUDIO, video}, true));
+        assertTrue(granted.isEmpty());
+    }
+
+    @Test public void cameraConsentIsIndependentAndRejectsAudioOrMixedRequests() {
+        String video = "android.webkit.resource.VIDEO_CAPTURE";
+        MicrophonePermissionGate<Object> camera = new MicrophonePermissionGate<>(video, granted::add, denied::add);
+        Object request = new Object();
+        assertTrue(camera.begin(request, server, server.origin(), server.origin(), new String[]{video}, false));
+        assertTrue(granted.isEmpty());
+        camera.result(true, server, server.origin());
+        assertEquals(List.of(request), granted);
+        assertFalse(camera.begin(new Object(), server, server.origin(), server.origin(), new String[]{AUDIO}, true));
+        assertFalse(camera.begin(new Object(), server, server.origin(), server.origin(), new String[]{video, AUDIO}, true));
+        assertFalse(camera.begin(new Object(), server, "https://other.test", server.origin(), new String[]{video}, true));
+        assertEquals(3, denied.size());
+    }
+
+    @Test public void cameraPermissionCannotSurviveDenialCancellationNavigationOrInsecurePages() {
+        String video = "android.webkit.resource.VIDEO_CAPTURE";
+        for (String outcome : new String[]{"denied", "cancelled", "navigation", "background"}) {
+            List<Object> accepted = new ArrayList<>(), rejected = new ArrayList<>();
+            MicrophonePermissionGate<Object> camera = new MicrophonePermissionGate<>(video, accepted::add, rejected::add);
+            Object request = new Object();
+            assertTrue(camera.begin(request, server, server.origin(), server.origin(), new String[]{video}, false));
+            if (outcome.equals("cancelled")) camera.cancelled(request);
+            if (outcome.equals("background")) camera.clear();
+            camera.result(!outcome.equals("denied"), server,
+                    outcome.equals("navigation") ? server.origin() + "/chat" : server.origin());
+            assertTrue(outcome, accepted.isEmpty());
+            assertEquals(outcome, outcome.equals("cancelled") ? 0 : 1, rejected.size());
+        }
+        MicrophonePermissionGate<Object> camera = new MicrophonePermissionGate<>(video, granted::add, denied::add);
+        ServerAddress lan = ServerAddress.parse("http://192.168.1.2:8765");
+        assertFalse(camera.begin(new Object(), lan, lan.origin(), lan.origin(), new String[]{video}, true));
+        assertTrue(granted.isEmpty());
+        Object request = new Object();
+        assertFalse(camera.begin(request, server, server.origin(), server.origin(), new String[]{video}, true));
+        assertEquals(List.of(request), granted);
+    }
+
     @Test public void requestsAndroidPermissionBeforeGrantingThePage() {
         Object request = new Object();
         assertTrue(gate.begin(request, server, "https://workstep.test/chat", "https://workstep.test/", new String[]{AUDIO}, false));

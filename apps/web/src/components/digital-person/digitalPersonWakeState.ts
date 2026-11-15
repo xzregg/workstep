@@ -16,4 +16,4 @@ export function wakeMatches(text:string,keyword:string,sensitivity:WakeSensitivi
  return false
 }
 /** Ephemeral consent: page reloads never start microphone capture. */
-export const useWakeState=create<{phase:VoicePhase;listening:boolean;keyword:string;sensitivity:WakeSensitivity;error:string}>(()=>({phase:'idle',listening:false,keyword:'',sensitivity:'balanced',error:''}))
+export const useWakeState=create<{phase:VoicePhase;listening:boolean;activationPending:boolean;keyword:string;sensitivity:WakeSensitivity;error:string}>(()=>({phase:'idle',listening:false,activationPending:false,keyword:'',sensitivity:'balanced',error:''}))

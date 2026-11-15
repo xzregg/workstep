@@ -1,0 +1,27 @@
+.video-preview-window { position:fixed; z-index:30; display:flex; flex-direction:column; box-sizing:border-box; padding:0; border:0.5px solid rgba(24,24,27,.72); border-radius:0; background:var(--bg); color:var(--fg); box-shadow:var(--elev-raised); }
+.video-preview-window[hidden] { display:none; }
+.video-preview-header { position:absolute; right:0; bottom:100%; display:flex; align-items:center; justify-content:flex-end; height:var(--mobile-control-message,24px); padding:0; gap:0; background:transparent; }
+.video-preview-header .btn { display:flex; align-items:center; justify-content:center; padding:0; border:0; border-radius:0; background:rgba(24,24,27,.72); color:#fff; opacity:1; flex-shrink:0; width:var(--mobile-control-message,24px); min-width:var(--mobile-control-message,24px); height:var(--mobile-control-message,24px); min-height:var(--mobile-control-message,24px); }
+.video-preview-header .btn:hover,.video-preview-header .btn:focus-visible { color:#fff; opacity:1; background:rgba(24,24,27,.9); }
+.video-preview-header .btn svg { filter:none; }
+.video-preview-content { position:relative; display:flex; flex:1; min-height:0; overflow:hidden; border-radius:0; background:#000; touch-action:none; cursor:move; }
+.video-preview-media { display:block; width:100%; height:100%; min-height:0; object-fit:contain; }
+.video-preview-error { position:absolute; inset:0; overflow:auto; margin:0; padding:var(--space-2); background:var(--bg); color:var(--danger); font-size:var(--text-caption); }
+.video-preview-resize { position:absolute; z-index:2; touch-action:none; }
+.video-preview-resize--n,.video-preview-resize--s { left:8px; right:8px; height:8px; cursor:ns-resize; }
+.video-preview-resize--n { top:-8px; }.video-preview-resize--s { bottom:-8px; }
+.video-preview-resize--e,.video-preview-resize--w { top:8px; bottom:8px; width:8px; cursor:ew-resize; }
+.video-preview-resize--e { right:-8px; }.video-preview-resize--w { left:-8px; }
+.video-preview-resize--ne,.video-preview-resize--nw,.video-preview-resize--se,.video-preview-resize--sw { width:16px; height:16px; }
+.video-preview-resize--ne { top:-16px; right:-16px; cursor:nesw-resize; }.video-preview-resize--nw { top:-16px; left:-16px; cursor:nwse-resize; }
+.video-preview-resize--se { right:-12px; bottom:-12px; width:var(--mobile-control-regular,32px); height:var(--mobile-control-regular,32px); cursor:nwse-resize; }.video-preview-resize--sw { bottom:-16px; left:-16px; cursor:nesw-resize; }
+/* The visible grip stays compact; its surrounding hit area is larger. */
+.video-preview-resize--se::before { content:''; position:absolute; inset:-6px; }
+.video-preview-resize-grip { position:absolute; box-sizing:border-box; right:10px; top:10px; width:12px; height:12px; border:0; border-right:2px solid rgba(0,0,0,.45); border-bottom:2px solid rgba(0,0,0,.45); border-radius:0; background:transparent; pointer-events:none; }
+.video-preview-window[data-video-ready="false"] .video-preview-resize { display:none; }
+.video-preview-window[data-video-ready="false"] .video-preview-media { visibility:hidden; }
+.video-preview-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted); background:var(--bg); }
+@media(max-width:1023px) {
+ .video-preview-resize { display:none; }
+ .video-preview-resize--se { display:block; }
+}

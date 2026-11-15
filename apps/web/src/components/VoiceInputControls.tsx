@@ -29,11 +29,11 @@ export default function VoiceInputControls({ voice, variant = 'composer' }: { vo
     {error && <p className="voice-input-error" role="alert">{error}</p>}
     <div className="voice-input-actions">
       {voice.phase === 'idle' && <button type="button" onClick={() => void voice.start()}>{t('speech.start')}</button>}
-      {voice.phase === 'recording' && <button type="button" onClick={voice.finish}>{t('speech.finish')}</button>}
       {variant === 'composer' && voice.phase === 'error' && voice.text && <button type="button" onClick={voice.recover}>{t('speech.recover')}</button>}
       <div className="voice-input-secondary-actions">
         {variant === 'composer' && !voice.active && <button type="button" onClick={openSpeechSettings}>{t('speech.settings')}</button>}
         <button type="button" onClick={() => { voice.cancel(); voice.setMode(false) }}>{t(voice.active || voice.error ? 'speech.cancel' : 'speech.keyboard')}</button>
+        {voice.phase === 'recording' && <button type="button" onClick={voice.finish}>{t('speech.finish')}</button>}
       </div>
     </div>
   </section>

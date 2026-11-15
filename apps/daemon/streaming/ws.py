@@ -119,6 +119,8 @@ def matches_subscription(event: dict[str, Any], sub: WsSubscription) -> bool:
              or event.get("project_id") == (sub.project_id or sub.selected_project_id))
     ):
         return True
+    if event.get("type") == "CUSTOM" and event.get("name") == "digital_person.proactive_message":
+        return not sub.project_id and "digital_person" in sub.channels
     task_id = event.get("task_id")
     if task_id:
         if task_id in sub.task_ids:

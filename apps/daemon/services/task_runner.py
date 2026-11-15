@@ -118,11 +118,13 @@ class TaskRunner:
         entry_step_key: str | None = None,
         initial_user_input_step_key: str | None = None,
         retry_message_ids: dict[str, str] | None = None,
+        project_manager=None,
     ):
         self._event_bus = event_bus
         self._dispatch_service = dispatch_service
         self._source_project_id = source_project_id
         self._database_executor = database_executor
+        self._project_manager = project_manager
         self._step_followups = step_followups or {}
         self._step_trigger_names = step_trigger_names or {}
         self._initial_user_input_step_key = initial_user_input_step_key
@@ -136,6 +138,7 @@ class TaskRunner:
             self._journal_snapshot, self._ajournal_snapshot,
             self._step_followups, self._step_trigger_names,
             self._initial_user_input_step_key, self._retry_message_ids,
+            project_id=getattr(database_executor,"project_id",None),
         )
         self._interaction_messages = StepInteractionMessages(
             self._event_journal, self._run_db, self._publish,
@@ -1037,8 +1040,13 @@ class TaskRunner:
                 spawn_kwargs["live_message_queue"] = live_queue
             spawn = getattr(engine, "spawn_with_retry", engine.spawn)
             if callable(getattr(engine, "spawn_with_retry", None)):
+                from services.digital_person_memory import task_context_prompt
+                memory_context = await task_context_prompt(
+                    self._project_manager, getattr(self._database_executor, "project_id", None) or self._source_project_id, task.id, prompt)
+                system_prompt = await asyncio.to_thread(assemble_step_system_prompt, task, artifacts_dir)
                 spawn_kwargs.update(
-                    system_prompt=await asyncio.to_thread(assemble_step_system_prompt, task, artifacts_dir),
+                    system_prompt="\n\n".join(part for part in (system_prompt,memory_context) if part),
+                    system_prompt_each_turn=bool(memory_context),
                     capture_prompt_input=True,
                 )
             prompt_snapshots = []

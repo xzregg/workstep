@@ -199,3 +199,16 @@ async def test_sync_all_project_configs_pushes_overrides(tmp_path, monkeypatch):
     concurrency_gate.reset()
     await sync_all_project_configs(manager)
     assert concurrency_gate.effective_config(project.id)["max_tasks"] == 4
+
+
+async def test_auto_resume_setting_defaults_off_and_persists(api_client):
+    client, store, _, _ = api_client
+    assert (await client.get('/api/assistant/concurrency')).json()['auto_resume_interrupted_chats'] is False
+    for enabled in [True, False]:
+        response = await client.put('/api/assistant/concurrency', json={'auto_resume_interrupted_chats': enabled})
+        assert response.status_code == 200
+        assert response.json()['auto_resume_interrupted_chats'] is enabled
+        assert store.get('auto_resume_interrupted_chats') is enabled
+        response = await client.put('/api/assistant/concurrency', json={'max_chats': 2})
+        assert response.json()['auto_resume_interrupted_chats'] is enabled
+    assert (await client.put('/api/assistant/concurrency', json={'auto_resume_interrupted_chats': 'true'})).status_code == 422

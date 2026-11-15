@@ -1,3 +1,4 @@
+import DigitalPersonHomePage from './pages/DigitalPersonHomePage'
 import SkinRecovery from './components/SkinRecovery'
 import { gatewayWorkspacePath } from './utils/gatewayWorkspacePath'
 import { BrandIcon } from './components/BrandIcon'
@@ -78,8 +79,9 @@ export function AppRoutes() {
         <Route path="/" element={activeProject && useGatewaySessionStore.getState().session?.host_project_id
           ? <Navigate replace to={projectSelectionPath('/tasks', activeProject.name, useProjectStore.getState().activeWorkflowId)} />
           : activeProject?.is_default_workspace
-          ? <Navigate replace to={`/chat?project=${encodeURIComponent(activeProject.name)}`} />
+          ? <Navigate replace to="/companion" />
           : <WelcomeView />} />
+        <Route path="/companion" element={<ProjectPermissionGate permission="session.read"><DigitalPersonHomePage /></ProjectPermissionGate>} />
         <Route path="/git" element={<ProjectPermissionGate permission="git.read"><GitWorkspace /></ProjectPermissionGate>} />
         <Route path="/tasks" element={activeProject ? <ProjectPermissionGate permission="task.read"><TaskList /></ProjectPermissionGate> : <WelcomeView />} />
         <Route path="/canvas" element={<ProjectPermissionGate permission="workflow.read"><CanvasEditor /></ProjectPermissionGate>} />

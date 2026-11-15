@@ -67,9 +67,9 @@ CONTENT_SECURITY_POLICY = "; ".join(
 
 # Only first-party application documents need capture. Uploaded/project HTML,
 # shares, API responses and the landing site retain the deny-all policy.
-_MICROPHONE_DOCUMENTS = frozenset({
+_MEDIA_CAPTURE_DOCUMENTS = frozenset({
     '/', '/index.html', '/chat', '/tasks', '/canvas', '/statistics',
-    '/schedules', '/appearance', '/git', '/file-preview',
+    '/schedules', '/appearance', '/git', '/file-preview', '/companion',
 })
 
 REMOTE_NATIVE_PATHS = frozenset({
@@ -419,11 +419,18 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
+        # React Router also accepts a trailing slash on these exact routes.
+        # Do not grant capture to arbitrary SPA fallbacks or project documents.
+        document_path = request.url.path.removesuffix('/') or '/'
+        capture_document = (request.method in ('GET', 'HEAD')
+                            and response.status_code == 200
+                            and document_path in _MEDIA_CAPTURE_DOCUMENTS)
         response.headers.setdefault(
             "Permissions-Policy",
-            "camera=(), microphone="
-            + ("(self)" if request.method in ('GET', 'HEAD')
-               and response.status_code == 200 and request.url.path in _MICROPHONE_DOCUMENTS else "()")
+            "camera="
+            + ("(self)" if capture_document else "()")
+            + ", microphone="
+            + ("(self)" if capture_document else "()")
             + ", geolocation=(), payment=(), usb=()",
         )
 

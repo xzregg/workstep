@@ -54,6 +54,8 @@ uv run --no-sync pytest
 
 ## 开发规范
 
+后台诊断日志可配置单文件大小、备份份数和保留天数，默认 5 MiB × 10 份、最多 14 天；启动器、查看方式及会话事件历史的区别见[日志保留说明](../../docs/development.md#诊断日志大小与保留期限)。
+
 - API 请求、响应等 Pydantic 类型统一继承 `from schemas.base import BaseSchema`，业务代码不要直接使用 `pydantic.BaseModel`。
 - 数据库模型继承 `from models.base import BaseModel`，避免与 Pydantic 的同名类型混淆。
 - 路由只处理接口逻辑，业务逻辑放在 `services/`；可复用的 API Schema 放在 `schemas/`。

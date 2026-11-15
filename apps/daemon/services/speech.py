@@ -17,6 +17,8 @@ from packaging.utils import parse_wheel_filename
 
 from services.config import CONFIG_DIR
 from services.speech_runtime import SpeechRuntime
+from services.speech_remote import RemoteSpeechRuntime
+from services import speech_connection
 from engines.core.process_cleanup import finish_cleanup
 
 MODEL_ID = 'streaming-paraformer-zh-yue-en-int8'
@@ -112,48 +114,40 @@ class SpeechService:
 
     async def get_settings(self):
         if self.settings is None:
-            def load():
-                try:
-                    return json.loads((self.root / 'settings.json').read_text())
-                except (OSError, ValueError):
-                    return {}
-            saved = await asyncio.to_thread(load)
+            saved = await asyncio.to_thread(speech_connection.read, self.root)
             self._use_model(saved.get('model_id') if saved.get('model_id') in MODELS else MODEL_ID)
             self.settings = {'enabled': bool(saved.get('enabled', False)),
                              'model_id': self.model_id,
-                             'language': saved.get('language', 'auto') if saved.get('language', 'auto') in LANGUAGES else 'auto'}
-        return dict(self.settings)
+                             'language': saved.get('language', 'auto') if saved.get('language', 'auto') in LANGUAGES else 'auto',
+                             'connection': saved.get('connection', dict(speech_connection.DEFAULTS))}
+        return {**self.settings, 'connection': {**speech_connection.DEFAULTS, **self.settings.get('connection', {})}}
 
-    async def configure(self, enabled: bool, language: str, model_id: str | None = None):
+    async def configure(self, enabled: bool, language: str, model_id: str | None = None, connection=None):
         async with self.session_lock:
-            return await self._configure(enabled, language, model_id)
+            return await finish_cleanup(self._configure(enabled, language, model_id, connection))
 
-    async def _configure(self, enabled: bool, language: str, model_id: str | None = None):
+    async def _configure(self, enabled: bool, language: str, model_id: str | None = None, connection=None):
         if self.sessions:
             raise ValueError('录音期间不能修改语音设置')
         if language not in LANGUAGES:
             raise ValueError('不支持的识别语言')
-        await self.get_settings()
+        current = await self.get_settings()
+        connection = speech_connection.validate(connection, current['connection']) if connection is not None else current['connection']
         target = model_id or self.model_id
         model_spec(target)
         if self.download_task and not self.download_task.done():
             raise ValueError('安装期间不能切换语音设置')
-        if target != self.model_id and not await asyncio.to_thread(self.model_installed, target):
+        if connection['mode'] == 'local' and target != self.model_id and not await asyncio.to_thread(self.model_installed, target):
             raise ValueError('请先下载所选语音模型')
-        value = {'enabled': enabled, 'language': language, 'model_id': target}
-        def save():
-            self.root.mkdir(parents=True, exist_ok=True)
-            stage = self.root / 'settings.tmp'
-            stage.write_text(json.dumps(value), encoding='utf-8')
-            stage.replace(self.root / 'settings.json')
-        await asyncio.to_thread(save)
+        value = {'enabled': enabled, 'language': language, 'model_id': target, 'connection': connection}
+        await asyncio.to_thread(speech_connection.save, self.root, value)
         self.settings = value
-        if target != self.model_id:
+        if target != self.model_id or connection != current['connection']:
             await self.stop_worker()
             self._use_model(target)
         if not enabled:
             await self.stop_worker()
-        return value
+        return {**value, 'connection': speech_connection.public(connection)}
 
     def installed(self):
         try:
@@ -183,7 +177,17 @@ class SpeechService:
                     installed=resource.installed(), punctuation=resource.punctuation_installed(),
                     streaming='native', install=dict(self.install_states.get(mid, {'stage': 'idle', 'downloaded_bytes': 0, 'total_bytes': None, 'error': ''}))))
             return rows
-        return {**settings, 'model_id': self.model_id, 'languages': list(LANGUAGES),
+        connection = settings['connection']
+        try:
+            speech_connection.validate(connection)
+            configured = True
+        except ValueError:
+            configured = False
+        local = connection['mode'] == 'local'
+        ready = settings['enabled'] and (await asyncio.to_thread(self.installed) if local else configured)
+        return {**settings, 'connection': speech_connection.public(connection), 'providers': speech_connection.PROVIDERS,
+                'ready': ready, 'streaming': 'native' if local or connection['provider'] != 'openai' else 'final',
+                'model_id': self.model_id, 'languages': list(LANGUAGES),
                 'service': 'busy' if self.sessions else 'ready' if any(w.process and w.process.returncode is None for w in self.workers) else 'stopped',
                 'active_sessions': len(self.sessions), 'max_sessions': MAX_SESSIONS,
                 'models': await asyncio.to_thread(models)}
@@ -363,6 +367,8 @@ class SpeechService:
         session = self.sessions.get(session_id)
         if session is None:
             raise LookupError('录音已结束')
+        if getattr(session['worker'], 'remote', False):
+            return await session['worker'].infer(pcm, final)
         return await session['worker'].infer(self.worker_command(), pcm, session_id, final)
 
     async def _release(self, session, terminate=False):
@@ -372,7 +378,11 @@ class SpeechService:
         self.sessions.pop(sid)
         session['advanced'].set()
         worker = session['worker']
-        if terminate:
+        if getattr(worker, 'remote', False):
+            if worker in self.workers:
+                self.workers.remove(worker)
+            await finish_cleanup(worker.close())
+        elif terminate:
             await worker.close()
         worker.session_id = None
         self.last_used = worker.last_used = time.monotonic()
@@ -401,13 +411,16 @@ class SpeechService:
             if self.download_task and not self.download_task.done():
                 raise ValueError('正在安装语音资源，请稍后重试')
             settings = await self.get_settings()
-            if not settings['enabled'] or not await asyncio.to_thread(self.installed):
+            local = settings['connection']['mode'] == 'local'
+            if not settings['enabled'] or local and not await asyncio.to_thread(self.installed):
                 raise ValueError('请先在设置中下载模型并启用语音输入')
+            if not local:
+                speech_connection.validate(settings['connection'])
             worker = next((w for w in self.workers if w.session_id is None), None)
             if worker is None:
                 if len(self.workers) >= MAX_SESSIONS:
                     raise ValueError(f'语音并发已达上限（{MAX_SESSIONS} 路），请稍后重试')
-                worker = SpeechRuntime()
+                worker = SpeechRuntime() if local else RemoteSpeechRuntime(settings['connection'])
                 self.workers.append(worker)
             sid = uuid.uuid4().hex
             worker.session_id = sid

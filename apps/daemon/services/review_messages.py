@@ -347,6 +347,8 @@ class StepReviewMessages:
             message.started_at = message.started_at or outcome.review_run.started_at
             message.ended_at = outcome.review_run.ended_at
             message.save()
+            from services.digital_person_memory import capture_task_completion
+            capture_task_completion(self._project_id,message)
             return message.started_at
 
         message_started_at = await self._run_db(finalize_review_message)
@@ -440,6 +442,9 @@ class StepReviewMessages:
             ended_at=outcome.review_run.ended_at,
             created_at=now,
         ))
+        from services.digital_person_memory import capture_task_completion
+        if self._project_id:
+            await self._run_db(lambda: capture_task_completion(self._project_id,Message.get_by_id(message_id)))
         await self._record_usage(task, message_id, outcome, usage_json)
         common = {
             "channel": "review",

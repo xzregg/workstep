@@ -84,6 +84,60 @@ export function activate(api) {
 - `components`：当前提供 `Button`、`Input`、`ConfirmDialog`；`React` 为应用自己的实例。
 - `signal`：停用扩展时中止。事件监听使用 `{signal: api.signal}`，计时器等额外资源在返回的清理函数中释放。模块顶层不得执行副作用；操作放在 `activate` 或用户触发的处理器内。
 
+## 数字形象事件与自定义角色
+
+`api.avatar` 是公开的前端呈现接口，版本为 1。默认机器人与皮肤角色消费同一份状态；会话、语音播放和摄像头仍由宿主负责。皮肤可以替换为其他角色，自行映射骨骼、图片、SVG 或 Canvas，不需要复制聊天实现。
+
+- `avatar.register({id, render})`：每个皮肤注册一个 React 形象组件，接收 `{state, name}`，返回注销函数。组件替换首页形象区域；渲染失败自动恢复默认机器人。停用脚本恢复原形象，不重建会话和草稿。
+- `avatar.get(scope?)`：读取当前挂载形象的最新快照，没有形象时返回 `null`。`scope` 为 `{projectId, sessionId}`，省略时读取最近注册的形象。
+- `avatar.subscribe(listener, scope?)`：订阅 `{type, scope, state, previous}`，返回取消订阅函数，停用皮肤自动清理。`type` 为 `state/audio/dispose`；关闭形象时 `state=null`。先订阅、再 `get` 可补齐初始状态。
+- `avatar.motion`：`smoothstep(t)`、`damp(current,target,deltaMs,halfLifeMs)` 和 `createMotionMixer(initialNumbers)`。混合器 `sample(targetNumbers, clipKey, performance.now(), durationMs)` 按时间过渡；动作标识变化时从当前显示姿态继续，可中途打断。向量维度保持一致；减少动态效果时传入时长 0。组件自行清理 RAF／计时器。
+
+快照字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| `version / projectId / sessionId` | 协议版本与所属会话 |
+| `phase` | `idle/listening/thinking/working/replying/speaking` |
+| `action` | `rest/listen/raise-hand/work/lower-hand`，角色可自行解释为相应动作 |
+| `hands` | `lowered/raised/working`，表达目标姿态，不代表已经完成过渡 |
+| `activityId / sequence` | 当前活动标识与语义变化序号；文本分块和音量变化不会重新启动同一动作 |
+| `speech.playing / speech.level` | 真实播音状态、0–1 音量；未播音时音量为 0，文本回复不会点亮嘴部 |
+| `emotion / intensity` | 当前情绪与 0–1 强度 |
+| `affinity` | 0–100 好感度；没有真实记录时为 `null`，只读 |
+| `reducedMotion` | 系统减少动态效果偏好 |
+| `transition` | `{from,to,startedAt,durationMs,easing:'smoothstep',interruptible:true}`；时间基准为 `performance.now()` |
+
+动作字段表达目标语义：思考托下巴、工作专注、回复／播音放下手。当前默认形象使用完整待机图与托下巴图切换，停用会拉扯手指和拆开关节的网格蒙皮；尚未完成真正的骨骼抬手／放手过渡，`transition` 不代表默认角色已经具备该动画。皮肤仍可通过同一状态与混合工具实现自己的骨骼动作。只有真实播音驱动嘴灯和舞台后的双层流光，停止后流光按时间衰减并停止绘制；音频帧不会重新触发动作。关节灯慢速呼吸、眼睛间歇闪动，胸口灯随真实好感度由青向红变化；减少动态效果时停止呼吸、眨眼与流光。隐藏、离屏、停用或卸载时暂停／清理绘制资源。
+
+以下 `theme.js` 可直接注册另一种形象（资源由皮肤包提供）：
+
+```js
+export function activate(api) {
+  const { createElement: h } = api.React
+  function Character({ state, name }) {
+    const duration = state.reducedMotion ? 0 : state.transition.durationMs
+    return h('div', { className: 'my-character', role: 'img', 'aria-label': name },
+      h('img', { src: api.asset('assets/character.webp'), alt: '',
+        style: { width: '100%', height: '100%', objectFit: 'contain' } }),
+      h('span', { className: 'my-character-hand', style: {
+        transform: `rotate(${state.hands === 'raised' ? -35 : 0}deg)`,
+        transition: `transform ${duration}ms ease-in-out`
+      } }),
+      h('span', { className: 'my-character-mouth', style: {
+        opacity: state.speech.playing ? .25 + .75 * state.speech.level : 0
+      } }))
+  }
+  return api.avatar.register({ id: 'my-character', render: Character })
+}
+```
+
+在 `theme.css` 定义角色部件位置、尺寸和变换原点。角色容器应填满可用区域，不能使用屏幕固定尺寸；可在眼睛位置放一个 `data-avatar-eyes` 标记供共享摄像头预览定位。稳定宿主选择器为 `[data-ui="avatar"]`，带 `data-avatar-phase` 和 `data-avatar-action`。
+
+需要在 SDK 外观察时，可监听 `window` 的 `workstep:avatar-state`（语义变化和关闭）与 `workstep:avatar-audio`（播音／音量变化）CustomEvent，`event.detail` 与上述事件结构相同；自行按项目和会话过滤，并用 AbortSignal 清理。快照只读，不包含消息正文、音频或摄像头数据。推荐皮肤使用 SDK，其订阅随皮肤生命周期自动释放；沿用现有「运行皮肤脚本」开关。
+
+行为测试：`avatarRuntime.test.ts`、`avatarSkinHost.test.tsx`、`skinExtensions.test.ts`；真实 WebGL 动作与可中断过渡验收见 `scripts/check-digital-person-motion.mjs`。
+
 ## 存储与生命周期
 
 IndexedDB 数据按当前身份／设备作用域、皮肤 ID 和功能 ID 隔离。`get/set/delete/list` 均异步；数据为 JSON。`export()` 返回 `{format:"workstep-feature-data",version:1,entries:[...]}`，`import(backup)` 在单个事务中替换当前功能数据；失败不部分写入。存储错误必须显示，不能把内存中的值称为“已保存”。

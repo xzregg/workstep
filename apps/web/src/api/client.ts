@@ -183,6 +183,7 @@ export interface ConcurrencyConfig {
 }
 
 export interface GlobalConcurrencyConfig extends ConcurrencyConfig {
+  auto_resume_interrupted_chats?: boolean
   task_retry_interval_minutes?: number
 }
 

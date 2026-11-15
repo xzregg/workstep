@@ -1,6 +1,8 @@
 # WorkStep 架构
 
-本文描述当前可运行实现。具体接口和字段发生冲突时，以代码、测试和根目录 `AGENTS.md` 为准；尚未完成的方案与验收记录位于 [`plans/`](../plans/README.md)。
+本文描述当前可运行实现。具体接口和字段发生冲突时，以代码、测试和适用目录的 `AGENTS.md` 为准；尚未完成的方案与验收记录位于 [`plans/`](../plans/README.md)。
+
+从 Agent 规则迁入的约束入口：[技术架构与 WebSocket 订阅](#技术架构已确定)、[数据模型与事件日志](#数据模型)、[助手开发约束](#助手开发约束)。引擎适配约束见[引擎开发指南](llm-engine-development-guide.md#多引擎支持)。
 
 ## 运行形态
 
@@ -307,3 +309,41 @@ Action 直接异步执行脚本，不调用 LLM。默认要求执行前确认；
 公开任务分享与远程项目是两套边界：任务分享面向一个任务的受控查看和交互，远程项目面向另一台 WorkStep 设备的项目级访问。
 
 Gateway 已接入平台账号、设备授权、远程项目及任务分享，开发和部署见[Gateway 开发文档](gateway-development.md)。平台模式仍有未完成验收，当前范围与剩余事项见[总方案](../plans/platform-mode.md)、[逐阶段计划](../plans/platform-gateway-development.md)和[剩余验收计划](../plans/platform-gateway-remaining-development.md)，不能把已有代码等同于整个平台完成交付。
+
+## 技术架构（已确定）
+
+| 层 | 技术 | 说明 |
+|---|---|---|
+| Daemon | **Python + FastAPI** | 异步 API，WebSocket 实时推送，子进程管理 |
+| ORM | **Peewee** | SQLite 友好，轻量 |
+| 子进程 | **asyncio.subprocess** | 流式读取 LLM CLI stdout |
+| 实时通道 | **WebSocket** | `/ws` 主事件流及分享、远程项目专用通道 |
+| 内部事件 | **ACP 词汇** | 各引擎统一产出 ACP session update 对齐事件，`events.py` 定义（内部=ACP） |
+| 对外事件 | **AG-UI** | WebSocket 实时推送与历史回放共用 `engines/core/agui.py` 翻译层（对外=AG-UI） |
+| 前端 | React + TypeScript + Vite | 画布编辑器是核心约束；store 只消费 AG-UI 事件 |
+| 数据 | **per-project SQLite** | 每个项目独立 `.workstep/workstep.db` |
+
+WebSocket `/ws` 支持按连接订阅过滤（`{"type":"subscribe","task_ids":[...],"status_only_task_ids":[...],"session_ids":[...],"channels":[...]}`，`streaming/bus.py` 入队前按谓词过滤）；前端连接后主动订阅：打开的任务详情订阅全量流、当前项目任务订阅状态事件、活跃助手会话按 `session_id` 订阅，未订阅前保持全量广播向后兼容。
+
+## 数据模型
+
+每个项目一个独立 SQLite 数据库：默认 `<项目>/.workstep/workstep.db`；取消“数据目录跟随项目目录”后使用 `~/.workstep/projects/<项目ID>/workstep.db`（环境覆盖沿用 `WORKSTEP_CONFIG_DIR`）。项目根目录始终保留 `.workstep/project.json` 稳定身份与存储模式；所有项目数据目录通过 `Project.workstep_dir` 或在线程内调用 `services/project_storage.py::data_directory` 解析，禁止重新写死根目录 `.workstep`。核心表：
+- `tasks` — 任务（对应前端"卡片"）
+- `task_steps` — 每步骤当前进度与引擎会话标识
+- `workflows`、`workflow_runs`、`step_runs`、`review_runs` — 流程定义及执行/审核轮次
+- `messages` — 任务消息正文、事件摘要与 JSONL 日志索引
+- `chat_sessions`、`chat_messages` — 项目会话及消息；可恢复引擎会话标识保存在会话或步骤字段中
+- `coordinator_sessions`、`coordinator_turns`、`action_proposals`、`stage_supplements` — 协调助手状态
+- `schedules`、`schedule_runs`、`task_shares` — 定时任务与分享；`channels`、`channel_chat_mappings` 是已移除个人微信渠道的历史兼容表
+
+完整表集合以 `apps/daemon/models/__init__.py::ALL_MODELS` 为准。产物不是 `artifacts` 数据表，而是项目 `.workstep/artifacts/` 下的文件与 manifest。
+
+任务步骤执行的完整过程事件以项目 `.workstep/event_logs/task-<task_id>/<session_id>/<message_id>.jsonl`
+为权威日志；`messages` 表只保留可见 `content`、必要的摘要事件、`event_summary_json`、
+事件数量/末序号及 `event_log_path` 查询投影。历史接口默认返回摘要，详细时间线通过
+`GET /api/task/{task_id}/messages/{message_id}/events` 分页读取；无 `event_log_path` 的旧
+`events_json` 消息继续兼容回放。
+
+## 助手开发约束
+
+- **助手架构**：所有新助手和后续助手能力扩展必须建立在同一套基础设施上，禁止复制会话、流式事件、停止、引擎配置或聊天 UI 实现。后端通过 `agent_assistants/base.py` 的 `AssistantConfig` 注册并复用 `AssistantRuntime`，仅提供助手自己的 system prompt、上下文构建、结构化结果解析/校验和发布逻辑；创建态会话默认仅内存，需要跨重启恢复时才增加持久化适配器。前端通过 `createAssistantStore(config)` 创建配置实例，统一使用 `AssistantChatPanel`、`ChatMessageBubble`、`MessageMetaBar`、`MessageResponseFooter` 和 `ChatInput`；助手特有 UI 只通过组合插槽或薄包装组件扩展。每个助手必须使用独立 WebSocket `channel` 并按 channel 分流，结构化结果通过通用 store 的 `resultEvent` / `proposalEvent` 配置接入，不得让其它助手 store 接收。AI 流程助手统一用 `AiFlowChat`；方案选择必须呈现可点击的提案卡片（标题、步数、摘要、应用态）。新增助手必须覆盖会话隔离、结构化结果、停止、错误、无意外落库及既有助手回归测试。

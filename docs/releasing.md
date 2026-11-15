@@ -130,6 +130,10 @@ backend builder with offline downloader/version/SBOM substitutes. It is not nati
 Windows, Docker-image, installer or third-party dependency validation; those
 remain release acceptance gates, and independent human review is still required.
 
+### Docker 修改验收
+
+- Docker 以最小可运行镜像为目标，依据实际构建与运行依赖取舍，不按文件大小机械排除源码或资源。修改复制与忽略规则前须核对跨应用共享模块、资源及本地 path 依赖；构建阶段保留必要输入，最终镜像仅保留运行必需内容。修改后必须实际构建镜像，用隔离的空数据目录启动并验证健康接口、主要页面及静态资源；涉及共享依赖时还须验证对应服务，不能仅凭构建成功或过滤检查通过认定可运行。
+
 ## Windows 安装包自动验收
 
 The Windows acceptance workflows keep their isolated project fixtures under the

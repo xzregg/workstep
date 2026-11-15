@@ -5,26 +5,31 @@ import { useI18n } from '../i18n'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import VoiceInputControls from '../components/VoiceInputControls'
 import Button from '../components/Button'
+import Select from '../components/Select'
 import ConfirmDialog from '../components/ConfirmDialog'
 import VoiceOutputSettings from '../components/VoiceOutputSettings'
+import VoiceInputConnection from '../components/VoiceInputConnection'
 import '../components/ProjectSharingTabs.css'
+import '../components/SpeechSettings.css'
 
 const busyStages = ['resolving', 'downloading', 'installing']
 const mib = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MiB`
-export default function VoiceInputSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void } = {}) {
+export default function VoiceInputSettings({ onDirtyChange, sections = ['input', 'output', 'wake'] }: { onDirtyChange?: (dirty: boolean) => void; sections?: readonly ('input' | 'output' | 'wake')[] } = {}) {
   const { t } = useI18n()
   const [tab, setTab] = useState<'input' | 'output' | 'wake'>('input')
   const [outputVisited, setOutputVisited] = useState(false)
   const [outputDirty, setOutputDirty] = useState(false)
   const [wakeDirty, setWakeDirty] = useState(false)
-  useEffect(() => { onDirtyChange?.(outputDirty || wakeDirty) }, [outputDirty, wakeDirty, onDirtyChange])
+  const [inputDirty, setInputDirty] = useState(false), [inputMode, setInputMode] = useState<'local' | 'cloud' | 'remote'>('local')
+  useEffect(() => { onDirtyChange?.(outputDirty || wakeDirty || inputDirty) }, [outputDirty, wakeDirty, inputDirty, onDirtyChange])
   const [status, setStatus] = useState<SpeechStatus | null>(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [sample, setSample] = useState<string | null>(null)
   const alive = useRef(true)
-  const voice = useVoiceInput({ ownerKey: 'speech-settings-test', disabled: !status?.enabled || !status.models.find(model => model.id === status.model_id)?.installed,
+  const ready = status?.ready ?? !!status?.models.find(model => model.id === status.model_id)?.installed
+  const voice = useVoiceInput({ ownerKey: 'speech-settings-test', disabled: !status?.enabled || !ready || inputDirty,
     compact: false, value: '', cursor: 0, onInsert: setSample })
   const load = async () => {
     try { const result = await speechApi.status(); if (alive.current) { setStatus(result); setError('') } }
@@ -46,29 +51,30 @@ export default function VoiceInputSettings({ onDirtyChange }: { onDirtyChange?: 
     catch (reason) { if (alive.current) setError(reason instanceof Error ? reason.message : t('speech.failed')) }
     finally { if (alive.current) setSaving(false) }
   }
-  const model = status?.models.find(item => item.id === status.model_id)
   return <div className="speech-settings">
     <h1>{t('speech.settings')}</h1>
     <div className="project-sharing-tabs" role="tablist" aria-label={t('speech.settings')}>
-      {(['input', 'output', 'wake'] as const).map(value => <button type="button" role="tab" key={value}
+      {sections.map(value => <button type="button" role="tab" key={value}
         id={`speech-tab-${value}`} aria-controls={`speech-panel-${value}`} aria-selected={tab === value}
         onClick={() => { setTab(value); if (value === 'output') setOutputVisited(true) }}>{t(`speech.tab_${value}`)}</button>)}
     </div>
     <div className="speech-settings-panel" role="tabpanel" id="speech-panel-input" aria-labelledby="speech-tab-input" hidden={tab !== 'input'}>
-    <p>{t('speech.hostHint')}</p>
     {error && <p role="alert" className="voice-input-error">{error}</p>}
     {saving && <span role="status"><span className="task-status-spinner" />{t('common.loading')}</span>}
     {!status ? error ? <Button onClick={() => void load()}>{t('speech.retry')}</Button>
       : <span role="status"><span className="task-status-spinner" />{t('common.loading')}</span> : <>
-      <label><input type="checkbox" checked={status.enabled} disabled={saving || voice.active || installing}
+      <label className="speech-setting-toggle"><input type="checkbox" checked={status.enabled} disabled={saving || voice.active || installing || inputDirty}
         onChange={e => void mutate(() => speechApi.configure(e.target.checked, status.language))} />{t('speech.enable')}</label>
-      <label>{t('speech.language')}<select value={status.language} disabled={saving || voice.active || installing}
+      <VoiceInputConnection key={JSON.stringify(status.connection)} status={status} disabled={saving || voice.active || installing}
+        onSaved={setStatus} onDirtyChange={setInputDirty} onModeChange={setInputMode} />
+      <p>{t(inputMode === 'local' ? 'speech.hostHint' : 'asr.remoteHint')}</p>
+      <label>{t('speech.language')}<Select value={status.language} disabled={saving || voice.active || installing}
         onChange={e => void mutate(() => speechApi.configure(status.enabled, e.target.value))}>
         {status.languages.map(language => <option key={language} value={language}>{t(`speech.lang_${language}` as Parameters<typeof t>[0])}</option>)}
-      </select></label>
+      </Select></label>
       <p>{t('speech.service')}: {t(`speech.service_${status.service}`)}</p>
-      <h2>{t('speech.models')}</h2>
-      {status.models.map(model => {
+      {inputMode === 'local' && <><h2>{t('speech.models')}</h2>
+      <div className="speech-models">{status.models.map(model => {
         const stage = model.install.stage
         const rowInstalling = busyStages.includes(stage)
         const blocked = saving || voice.active || status.service === 'busy'
@@ -89,8 +95,8 @@ export default function VoiceInputSettings({ onDirtyChange }: { onDirtyChange?: 
           {model.installed && model.id !== status.model_id && <Button disabled={blocked || installing}
             onClick={() => { setSample(null); void mutate(() => speechApi.configure(status.enabled, status.language, model.id)) }}>{t('speech.selectModel')}</Button>}
         </div>
-      </div>})}
-      <Button disabled={saving || installing || !status.enabled || !model?.installed || voice.active}
+      </div>})}</div></>}
+      <Button disabled={saving || installing || !status.enabled || !ready || voice.active || inputDirty}
         onClick={() => { setSample(null); void voice.start() }}>{t('speech.test')}</Button>
       <VoiceInputControls voice={voice} variant="test" />
       {sample !== null && <section className="speech-test-result" role="status">
@@ -104,7 +110,9 @@ export default function VoiceInputSettings({ onDirtyChange }: { onDirtyChange?: 
     </div>
     <div className="speech-settings-panel" role="tabpanel" id="speech-panel-wake" aria-labelledby="speech-tab-wake" hidden={tab !== 'wake'}>
     <VoiceWakeSettings onDirtyChange={setWakeDirty} sample={sample}
-      testDisabled={saving || installing || !status?.enabled || !model?.installed || voice.active}
+      testDisabled={saving || installing || !status?.enabled || !ready || voice.active || inputDirty}
+      listeningDisabled={!status?.enabled || !ready || inputDirty || status?.streaming === 'final'}
+      streamingUnavailable={status?.streaming === 'final'}
       onTest={() => { setSample(null); void voice.start() }} />
     <VoiceInputControls voice={voice} variant="test" />
     </div>

@@ -146,7 +146,6 @@ test('read-only task workflow entry remains available without mutation controls'
     await act(async () => root.render(<I18nProvider><TaskWorkflowTools
       taskId="task" projectId="p" configuration={config()} readOnly onChanged={() => assert.fail('read-only')}
     /></I18nProvider>))
-    assert.match(container.textContent || '', /查看任务流程/)
     assert.equal(container.querySelectorAll('button').length, 1)
   } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })

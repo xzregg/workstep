@@ -89,7 +89,7 @@ export async function captureVoice(onChunk: (pcm: Int16Array, level: number) => 
   try {
     checkCancelled()
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } })
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: false } })
     } catch (error) {
       checkCancelled()
       if (!(error instanceof DOMException) || !['NotReadableError', 'OverconstrainedError'].includes(error.name)) throw error

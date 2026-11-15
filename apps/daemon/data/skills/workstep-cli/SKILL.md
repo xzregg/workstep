@@ -1,16 +1,15 @@
 ---
 name: workstep-cli
-description: Inspect and manage WorkStep projects, workflows, tasks, quick buttons, engines, and schedules through the local daemon CLI or native WorkStep tools. Use when asked to check, remind, or act later in this conversation.
+description: Inspect and manage WorkStep projects, workflows, tasks, quick buttons, engines, schedules, and shared memories. For memory, infer entity dimensions, locate typed names/aliases, narrow relationships and verify originals; review dates first when needed. Use when asked to check, remind, or act later in this conversation.
 ---
 
 # WorkStep CLI
 
 Use this skill when the user asks to inspect or manage WorkStep itself: projects,
-workflows, tasks, quick buttons, LLM engines, or schedules. Also use when asked
+workflows, tasks, quick buttons, LLM engines, schedules, or shared memories. Also use when asked
 to check, remind, or act later in this conversation (for example, “两小时后检查”).
 
-Use this skill to inspect or manage WorkStep. Read only the relevant topic below
-before its operations; do not load all references.
+Read the relevant reference before each operation.
 
 ## Transport
 
@@ -28,12 +27,22 @@ Use this order; do not probe with `echo`, `pwd`, or `which`:
 4. When the `workstep` executable is already known to be available:
    `workstep <resource> <action> [options]`.
 
-Add `--json`. The CLI reads the daemon URL and temporary authentication from its
+Add `--json` for structured output. Memory commands default to concise text;
+`--json` keeps the same compact fields, while `--verbose` requests full metadata.
+The CLI reads the daemon URL and temporary authentication from its
 environment. Use `--url <url>` before the resource only for an explicit override.
 On policy rejection, try the next applicable transport; if none works, report it.
 See [transport](references/transport.md) for PowerShell/cmd syntax and first-run
 repair rules. Never persist runtime URLs, tokens or resource IDs, and never edit
 generated skill mirrors.
+
+Runtime variables come from daemon startup and are inherited by engine processes:
+`WORKSTEP_DAEMON_DIR` is the running daemon's code directory;
+`WORKSTEP_CLI_PYTHON` is its `sys.executable` (not your project virtualenv);
+`WORKSTEP_DAEMON_URL` identifies the running daemon. The CLI resolves local
+authentication automatically. If an engine shell lacks these variables, follow
+the missing-environment rules in [transport](references/transport.md); never
+guess an installation path, Python interpreter, port or credential.
 
 ## Current conversation
 
@@ -63,6 +72,7 @@ Outside a conversation the command returns an error; do not guess a target.
 
 | Need | Reference |
 | --- | --- |
+| Search memories, read original evidence, review a time range, fetch an assigned background assessment batch | [Memory](references/memory.md) |
 | Output fields, limits, filters, summaries | [Output](references/output.md) |
 | Projects, project quick buttons and Actions | [Projects](references/projects.md) |
 | Workflows, step keys, workflow buttons and Actions | [Workflows](references/workflows.md) |
@@ -73,6 +83,13 @@ Outside a conversation the command returns an error; do not guess a target.
 | Custom language creation | [Languages](references/custom-language.md) |
 
 ## Keep output small
+
+Memory CLI returns compact titles/summaries, source IDs and coverage; use `read`
+or `--with-sources` for originals. Interpret intent into person/event/object/place/time
+filters; locate entities/aliases, then narrow relationships (`--person 小林`, then
+`--person 小林 --relation 负责`). For time investigations, review the period's
+records first, derive entity names and symptoms from evidence, then search knowledge.
+See [Memory](references/memory.md) for matching, pagination and examples.
 
 Lists return summaries by default; `--verbose` includes full data. Use optional
 `--limit 20` and `--fields id,name` (tasks: `id,title,status`) to locate resources,

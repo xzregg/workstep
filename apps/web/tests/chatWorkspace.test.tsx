@@ -268,3 +268,26 @@ test('desktop chat opens at most four independent panes, preserves drafts across
     window.happyDOM.abort()
   }
 })
+
+
+test('opening chat without project query does not reselect an already active lightweight project', async () => {
+  installDomEnvironment()
+  const project = {id:'loop',name:'loop',path:'/loop',workflows:[]} as Project
+  const original=useProjectStore.getState().setActiveProject, originalFetch=globalThis.fetch
+  let selections=0
+  useProjectStore.setState({projects:[project],activeProject:project,setActiveProject:p=>{
+    selections++
+    if(selections>3) throw new Error('recursive project selection')
+    original(p)
+  }})
+  globalThis.fetch=async()=>Response.json({sessions:[],providers:[],buttons:[],assistants:[],runs:[]})
+  const root=createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async()=>root.render(<MemoryRouter initialEntries={['/chat']}><I18nProvider><ChatWorkspace/></I18nProvider></MemoryRouter>))
+    assert.equal(selections,0)
+  } finally {
+    await act(async()=>root.unmount())
+    useProjectStore.setState({setActiveProject:original})
+    globalThis.fetch=originalFetch
+  }
+})

@@ -34,7 +34,9 @@ export default function ChatWorkspace() {
   const projectName = params.get('project')
   const project = projectName ? projects.find(p => p.name === projectName) : selectedProject
   useEffect(() => {
-    if (project) useProjectStore.getState().setActiveProject(project)
+    if (project && useProjectStore.getState().activeProject?.id !== project.id) {
+      useProjectStore.getState().setActiveProject(project)
+    }
     const workflow = params.get('workflow')
     if (project && workflow && project.workflows?.some(item => item.id === workflow)) {
       useProjectStore.getState().setActiveWorkflow(workflow)

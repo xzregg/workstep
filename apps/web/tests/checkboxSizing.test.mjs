@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
-const agentRules = await readFile(new URL('../../../AGENTS.md', import.meta.url), 'utf8')
+const agentRules = await readFile(new URL('../AGENTS.md', import.meta.url), 'utf8')
 
 test('native checkboxes use the compact global control size', () => {
   assert.match(css, /input\[type="checkbox"\]\s*\{[\s\S]*?width: 16px;[\s\S]*?height: 16px;/)

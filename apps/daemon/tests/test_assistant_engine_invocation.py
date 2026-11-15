@@ -49,6 +49,27 @@ async def _record(received, event):
     await asyncio.sleep(0)
     received.append(event)
 
+@pytest.mark.anyio
+async def test_internal_event_has_explicit_source_at_engine_boundary():
+    from agent_assistants.engine_invocation import run_engine_turn
+    class Engine:
+        capabilities=SimpleNamespace(supports_thinking_effort=False)
+        supports_resume=False
+        supports_message_history=False
+        async def spawn(self,prompt,cwd,model,session_id,**kwargs):
+            assert 'WorkStep internal event' in prompt
+            assert 'digital_person.reflection' in prompt
+            assert 'not a user message' in prompt
+            assert 'internal_event' not in kwargs
+            yield InternalEvent(type='prompt_input',data={'prompt':prompt})
+            yield InternalEvent(type='agent_message_chunk',data={'content':{'text':'done'}})
+    received=[]
+    text,_,_=await run_engine_turn('fake',None,'/tmp','recent events',None,
+        internal_event='digital_person.reflection',engine_factory=lambda _:Engine(),
+        settings_store=SimpleNamespace(),on_event=lambda e:_record(received,e))
+    assert text=='done'
+    assert received[0].data['internal_event']=='digital_person.reflection'
+
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("engine_id,global_config", [

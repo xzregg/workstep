@@ -9,26 +9,6 @@
 .voice-input-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .voice-input-actions button { min-height: 32px; padding: 4px 12px; }
 .voice-input-secondary-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-inline-start: auto; }
-.speech-settings { max-width: 720px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
-.speech-settings h1 { font-size: 20px; margin: 0; }
-.speech-settings p { margin: 0; color: var(--fg-2); font-size: var(--text-body); }
-.speech-settings label { display: flex; align-items: center; gap: 8px; }
-.speech-model { padding: 16px 0; border-block: 0.5px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
-.speech-model-heading { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.speech-model progress { width: 100%; }
-.speech-model-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.speech-test-result { display: flex; flex-direction: column; gap: 8px; padding-block: 12px; border-top: 0.5px solid var(--border); }
 @media (max-width: 1023px) {
   .voice-input-actions button { min-height: var(--mobile-control-touch); }
-  .speech-settings { padding: 12px; }
 }
-
-.speech-settings-panel:not([hidden]), .speech-output-settings { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.speech-settings-panel[hidden] { display: none; }
-.speech-settings-panel > .voice-wake-settings { border-top: 0; padding-top: 0; margin-top: 0; }
-.speech-output-settings > fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
-.speech-output-settings .digital-person-voice { display: grid; gap: 16px; }
-.speech-output-settings .digital-person-voice-preview { display: flex; gap: 12px; align-items: center; }
-.speech-output-settings label { flex-wrap: wrap; }
-.speech-output-settings label > :is(select,input[type=number]) { max-width: 100%; min-width: 0; }
-.speech-output-settings > .btn { align-self: flex-start; }

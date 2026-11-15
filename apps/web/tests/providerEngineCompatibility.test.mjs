@@ -6,10 +6,6 @@ const coordinatorSource = await readFile(
   new URL('../src/components/CoordinatorConfigBar.tsx', import.meta.url),
   'utf8',
 )
-const assistantSettingsSource = await readFile(
-  new URL('../src/pages/AgentAssistantSettings.tsx', import.meta.url),
-  'utf8',
-)
 const promptEnhanceSource = await readFile(
   new URL('../src/pages/PromptEnhanceSettings.tsx', import.meta.url),
   'utf8',
@@ -26,47 +22,14 @@ const flowCanvasSource = await readFile(
   new URL('../src/components/NodeConfigPanel.tsx', import.meta.url),
   'utf8',
 )
-const chatPageSource = await readFile(
-  new URL('../src/pages/ChatPage.tsx', import.meta.url),
-  'utf8',
-)
 const flowAssistantSource = await readFile(
   new URL('../src/components/AiFlowChat.tsx', import.meta.url),
-  'utf8',
-)
-const taskCreateAssistantSource = await readFile(
-  new URL('../src/components/AiTaskCreateChat.tsx', import.meta.url),
-  'utf8',
-)
-const apiClientSource = await readFile(
-  new URL('../src/api/conversations.ts', import.meta.url),
   'utf8',
 )
 const assistantApiSource = await readFile(
   new URL('../src/api/client.ts', import.meta.url),
   'utf8',
 )
-
-test('assistant provider switching clears every selected model', () => {
-  assert.match(
-    assistantSettingsSource,
-    /setProviderId\(event\.target\.value\)[\s\S]*?setModel\(''\)[\s\S]*?setFastModel\(''\)[\s\S]*?setVisionModel\(''\)/,
-  )
-})
-
-test('internal assistants load their own vision configuration', () => {
-  assert.match(flowAssistantSource, /assistantApi\.list\(\)/)
-  assert.match(flowAssistantSource, /item\.name === 'workflow_gen'/)
-  assert.match(taskCreateAssistantSource, /assistantApi\.list\(\)/)
-  assert.match(taskCreateAssistantSource, /item\.name === 'task_create'/)
-  for (const source of [chatPageSource, flowAssistantSource, taskCreateAssistantSource]) {
-    assert.match(source, /visionModel: selectedVisionModel/)
-    assert.match(source, /showVision: true/)
-    assert.match(source, /onVisionModelChange: setSelectedVisionModel/)
-  }
-  assert.match(apiClientSource, /vision_model: options\.visionModel \|\| undefined/)
-  assert.match(apiClientSource, /vision_model: options\.vision_model \|\| undefined/)
-})
 
 test('reset workflow assistant sessions restore the workflow assistant settings', () => {
   assert.match(

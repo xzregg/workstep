@@ -28,7 +28,7 @@ def test_source_entrypoint_uses_project_package_manager():
 def test_source_entrypoint_preserves_click_installed_engine_sdks():
     start = (ROOT / "start.sh").read_text()
 
-    assert 'uv run --no-sync uvicorn main:app' in start
+    assert 'uv run --no-sync uvicorn main:app --log-config data/logging.json' in start
 
 
 def test_release_workflow_builds_unsigned_without_signing_secrets():

@@ -1,10 +1,12 @@
 :root {
   --mobile-button-height: 32px;
   --mobile-control-compact: var(--mobile-button-height);
+  --mobile-control-message: 24px;
   --mobile-control-composer: var(--mobile-button-height);
   --mobile-control-send: calc(var(--mobile-control-composer) * 1.375);
   --mobile-control-regular: var(--mobile-button-height);
   --mobile-control-touch: 44px;
+  --mobile-composer-editor-min-height: 88px;
   --mobile-control-menu: 44px;
   --mobile-project-row-height: 40px;
   --mobile-toolbar-control-height: var(--mobile-control-regular);
@@ -162,7 +164,8 @@
   .chat-message-row { max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
   .chat-composer-resize-handle { display: none; }
   .chat-input-root { flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom); }
-  .chat-input-editor { min-height: 72px !important; max-height: min(180px, 28dvh) !important; height: auto !important; overflow-y: auto; }
+  .chat-input-editor { min-height: var(--mobile-composer-editor-min-height) !important; max-height: min(180px, 28dvh) !important; height: auto !important; overflow-y: auto; padding: 8px 12px; }
+  .chat-input-editor > .chat-input-text-segment:only-child { min-height: calc(var(--mobile-composer-editor-min-height) - 16px); }
   .chat-input-toolbar { flex-wrap: wrap; gap: 4px; }
   .chat-input-toolbar > *, .chat-input-toolbar-scroll > * { min-width: 0; }
   .chat-input-pill { max-width: min(240px, 65vw); }
@@ -782,6 +785,12 @@
   .chat-message-row .btn-ghost,
   .process-trace-thinking-copy .btn-ghost,
   .llm-tool-call .btn-ghost,
+  .message-response-footer .message-speech-button {
+    border: none !important;
+    min-height: var(--mobile-control-message) !important;
+    min-width: var(--mobile-control-message) !important;
+    width: var(--mobile-control-message); height: var(--mobile-control-message); padding: 0 !important;
+  }
   .file-preview-dialog-body .btn-ghost,
   .artifact-download-button {
     border: none !important;
@@ -795,15 +804,6 @@
     display: none !important;
   }
 
-  /* token 摘要 4-5 行 → 2 行，超出省略。点击后切换单行跑马灯（--marquee）时不 clamp。 */
-  .footer-usage-summary:not(.footer-usage-summary--marquee) {
-    display: -webkit-box !important;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    overflow: hidden;
-    cursor: pointer;
-  }
-
   /* 快捷提示行：保留功能，压薄。 */
   .chat-quick-prompts {
     padding: 0 16px 4px !important;
@@ -814,16 +814,12 @@
     padding-block: 0 !important;
   }
 
-  /* Composer 折叠感：悬浮横条卡片 + 单行输入。 */
+  /* Composer：悬浮卡片，保留足够的文本输入空间。 */
   .chat-input-root {
     padding: 3px;
   }
   .chat-input-root > div {
     border-radius: 16px !important;
-  }
-  .chat-input-editor {
-    min-height: var(--mobile-control-touch) !important;
-    max-height: 140px !important;
   }
   .chat-input-toolbar {
     flex-wrap: nowrap !important;
@@ -1140,12 +1136,12 @@
     min-height: var(--mobile-control-compact) !important;
   }
 
-  /* 消息操作按钮（编辑/发送/复制）：适中大小 */
+  /* 消息操作按钮（编辑/发送/复制）：统一紧凑规格 */
   .chat-message-action {
-    width: var(--mobile-control-compact) !important;
-    height: var(--mobile-control-compact) !important;
-    min-height: var(--mobile-control-compact) !important;
-    min-width: var(--mobile-control-compact) !important;
+    width: var(--mobile-control-message) !important;
+    height: var(--mobile-control-message) !important;
+    min-height: var(--mobile-control-message) !important;
+    min-width: var(--mobile-control-message) !important;
     padding: 0 !important;
   }
   .chat-async-question .chat-message-action {

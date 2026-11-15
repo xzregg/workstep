@@ -160,7 +160,8 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
                 "provider": snapshot_usage_provider(provider),
                 "model": model_name,
             })
-        loaded_model = cls.build_model(
+        loaded_model = await asyncio.to_thread(
+            cls.build_model,
             provider=provider,
             model_name=model_name,
             protocol=runtime.protocol,

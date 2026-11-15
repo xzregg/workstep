@@ -2,6 +2,8 @@
 
 本文说明如何为 WorkStep 新增或维护 LLM 执行引擎。适用于本地 CLI、ACP Agent、OpenAI-compatible API、Anthropic API、Agent SDK 或其他可流式输出的 Agent Runtime。
 
+从 Agent 规则迁入的[多引擎支持约束](#多引擎支持)集中说明能力声明、会话分叉、stdout 分块读取、Pydantic AI Harness 及 ACP / AG-UI 事件边界；修改这些路径前须阅读。
+
 相关代码：
 
 - 自定义函数基类：`apps/daemon/engines/core/base.py`（`BaseLLMEngine`）
@@ -1056,3 +1058,33 @@ Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多�
 公共 `engine validate` 使用 `engines/core/mcp_validation.py` 的 `mcp_connector_roundtrip`：启动隔离测试服务，验证服务端收到了随机 nonce，声明恢复能力时在原生会话恢复后重复验证。只允许专用探测工具的单次审批；失败则不能注册。不依赖适配器自己声称成功，也不调用用户连接器。专属映射测试仍需覆盖空配置、模型／审批／原生 MCP 保留、冲突、实际原生参数消费、拒绝和清理。
 
 回归入口：`test_engine_mcp_contract.py`、`test_mcp_validation.py`、`test_custom_engines.py`、`test_custom_engine_onboarding.py`；本地无账户的端到端测试服务见 [connector-demo.md](connector-demo.md)。
+
+## 多引擎支持
+
+`BaseLLMEngine` 负责安装、版本、二进制解析、配置表单与能力声明等 WorkStep 扩展；`AcpEngineBase` 提供统一的 spawn / session / interaction / approval 协议接口，所有引擎均继承它。引擎由 `engines/core/registry.py` 自动发现：在 `engines/` 一级模块或包中新增 `AcpEngineBase` 子类并声明唯一 `ENGINE_ID`，无需维护静态注册表。
+
+当前实现包含 Claude Code、Codex CLI、Hermes ACP、OpenClaw、Claude Agent SDK、Codex SDK、Qoder SDK、DeepSeek Harness 与内置 Pydantic AI。完整能力矩阵以 `docs/architecture.md`、`docs/llm-engine-development-guide.md`、引擎类的 capability 声明及测试为准，AGENTS.md 不维护易漂移的传输与版本状态表。
+
+ACP 原生引擎（如 Hermes）声明 `COMMAND` 即可复用基类协议实现；非 ACP 引擎用自己的传输实现 `spawn`，并完整实现等价会话与审批方法（`create_session` / `resume_session` / `close_session` / `cancel_session` / `approve_tool` / `approve_tool_option` 等）。没有原生入口的能力必须如实声明并安全降级，上层调用只依赖 `AcpEngineBase`。
+
+各引擎声明 `acp_events` capability 元数据（**声明 = 实际**：有原生等价就映射，无来源不发、不合成默认值；
+`tests/test_engine_base_hierarchy.py` 保证 `acp_events ⊆ ACP_EVENTS` 且映射路径产出的事件都被声明）；
+非 ACP 引擎的 `request_permission` 在 `request_interaction` 中登记到基类 pending 审批注册表，
+`approve_tool` / `approve_tool_option` 统一把决定写回挂起交互；Hermes 由 `AcpEngineBase` 直接产出并补全缺失 update 类型。
+
+会话分叉能力通过 `supports_session_fork` / `fork_session` 独立声明，不能用 resume 模拟。当前 Codex SDK 使用官方 `thread_fork`；其它没有真实原生入口的引擎声明为不支持，并由会话聊天层使用显式的跨引擎上下文交接。
+
+**子进程 stdout 必须分块读取**：CLI 引擎（Codex / Claude Code / Hermes）与通道桥接的单条 JSONL
+事件（大段 tool 输出、长 assistant 消息、二维码 base64）可轻易超过 asyncio `StreamReader`
+默认 64KiB limit，`readline()` / `async for line in stdout` 会抛
+`Separator is not found, and chunk exceed the limit` 并**清空已缓冲数据**，导致整轮执行中断且日志丢失。
+统一使用 `engines/core/stream_lines.py`：`iter_stream_lines(stdout)` 按行迭代，
+需要超时轮询（如 Codex 轮询 live 消息队列）时复用同一个 `ChunkedLineReader` 实例
+（`readline(timeout=...)` 超时保留不完整行，跨进程重建读取器需比较 `reader.stream`）；
+单行超过 `max_line_bytes`（默认 256MiB）时切块并告警而不是中断。
+`tests/test_stream_lines.py` 覆盖超长单行、超时保缓冲、真实子进程与 Claude/Codex 引擎级回归，
+并守护「不得再用原生 readline 读子进程 stdout」。
+
+Pydantic AI 的关键不变量：固定挂载 harness `Coder` 与项目 Skills 白名单镜像；项目记忆仅使用 `.workstep/MEMORY.md`；思考强度通过 `Thinking(effort=...)` 传递；上下文压缩、会话恢复与同会话检索统一使用 `TieredCompaction`、`WarnNearLimits`、`StepPersistence`、`ConversationSearch`，持久化到 `.workstep/harness_runs.db`。单次 run 的 `request_limit` 固定为 100，工具参数重试为 3；Coder shell 只能从项目根执行白名单命令，不允许用 `cd/bash/sh` 绕过。Planning 工具写入固定 `InMemoryPlanStore`，引擎发布去重后的标准 ACP `plan` 快照，并通过 `engines/core/plans.py` 归一状态。更具体的 Harness 行为以 `engines/pydantic_ai/` 及 `tests/test_pydantic_ai_harness.py` 为准。
+
+事件边界的权威来源为 `apps/daemon/engines/core/events.py`、`engines/core/agui.py` 和前端 `src/utils/agui.ts`：引擎内部使用 ACP 对齐内容事件并保留必要的编排事件；未知 ACP update 通过 `acp_raw` 透传，旧 `events_json` 经 `map_legacy_event` 兼容。WebSocket 实时推送与历史回放必须共用 AG-UI 翻译层；前端所有 store 只消费 AG-UI，A2UI 使用 `CUSTOM{name:"a2ui.surface"}`，Markdown fence 仅作为旧消息回退。

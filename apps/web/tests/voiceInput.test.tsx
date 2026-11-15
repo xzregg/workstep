@@ -136,7 +136,7 @@ test('mobile long press starts recording with existing text and scrolling cancel
 })
 
 for (const width of [320, 390, 1023]) {
-  test(`mobile composer has no microphone icon and enters voice mode by holding its text at ${width}px`, async () => {
+  test(`mobile composer opens click dictation from the send position at ${width}px`, async () => {
     const { window } = installDomEnvironment()
     window.happyDOM.setWindowSize({ width })
     const root = createRoot(document.body.appendChild(document.createElement('div')))
@@ -151,22 +151,19 @@ for (const width of [320, 390, 1023]) {
     const originalAudio = speechApi.audio
     speechApi.audio = () => new Promise(() => {})
     try {
-      await act(async () => root.render(<I18nProvider><ChatInput value="保留这段草稿" onChange={() => { changes++ }} onSend={() => {}} /></I18nProvider>))
+      await act(async () => root.render(<I18nProvider><ChatInput value="" onChange={() => { changes++ }} onSend={() => {}} /></I18nProvider>))
       assert.equal(document.querySelector('.voice-microphone'), null)
       const input = document.querySelector('textarea')!
-      await act(async () => {
-        input.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'touch', clientX: 20, clientY: 20 }))
-        await new Promise(done => setTimeout(done, 530))
-      })
+      await act(async () => (document.querySelector('.chat-input-send') as HTMLButtonElement).click())
       assert.ok(document.querySelector('.voice-input'))
       assert.equal(document.querySelector('.chat-input-editor')?.getAttribute('data-voice-mode'), 'true')
       assert.equal(changes, 0)
       assert.equal(document.querySelector('textarea'), input)
       assert.equal(input.disabled, false, 'the touch target must remain enabled')
       assert.equal(input.readOnly, true, 'freeze editing without disabling the touch target')
-      await act(async () => window.dispatchEvent(new window.PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' })))
+      await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent === '完成录音')!.click())
       assert.equal(captures, 1)
-      assert.equal(document.querySelector('.chat-input-editor')?.getAttribute('data-voice-mode'), null)
+      assert.equal(input.readOnly, true, 'keep the editor frozen while recognition finishes')
       assert.doesNotMatch(document.querySelector('.voice-input')!.textContent!, /正在录音/)
       assert.doesNotMatch(document.querySelector('.voice-input-actions')!.textContent!, /开始录音/)
     } finally {
@@ -551,7 +548,7 @@ test('microphone loss settles already captured audio rather than deleting the re
 })
 
 
-test('mobile hold follows the speech setting and restores native text behavior when off', async () => {
+test('mobile native long press stays available with speech enabled or disabled', async () => {
   const { window } = installDomEnvironment()
   window.happyDOM.setWindowSize({ width: 390 })
   const root = createRoot(document.body.appendChild(document.createElement('div')))
@@ -576,7 +573,12 @@ test('mobile hold follows the speech setting and restores native text behavior w
     assert.equal(contextMenu.defaultPrevented, false)
     enabled = true
     await act(async () => window.dispatchEvent(new window.Event('workstep:speech-settings-changed')))
-    assert.match(document.querySelector('textarea')!.placeholder, /长按语音输入|hold to dictate/)
+    assert.equal(document.querySelector('textarea')!.placeholder, '输入消息…')
+    await act(press)
+    assert.equal(captures, 0)
+    const nativeMenu = new window.Event('contextmenu', { bubbles: true, cancelable: true })
+    document.querySelector('textarea')!.dispatchEvent(nativeMenu)
+    assert.equal(nativeMenu.defaultPrevented, false)
     await act(async () => {
       document.querySelector('textarea')!.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }))
     })
@@ -589,4 +591,72 @@ test('mobile hold follows the speech setting and restores native text behavior w
     await act(async () => root.unmount()); await window.happyDOM.close()
     speechApi.status = original.status; voiceCapture.start = original.capture; speechApi.start = original.start
   }
+})
+
+
+test('mobile empty composer uses click dictation and switches to send for text', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setWindowSize({ width: 390 })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { ...speechApi, capture: voiceCapture.start }
+  let enabled = true, captures = 0, sent = 0, stopped = 0
+  speechApi.status = async () => ({ enabled } as Awaited<ReturnType<typeof speechApi.status>>)
+  voiceCapture.start = async () => { captures++; return { stop() {}, flush() {} } }
+  speechApi.start = async () => ({ id: 'mobile-click', sample_rate: 16000, max_seconds: 120 })
+  speechApi.cancel = async () => ({ cancelled: true })
+  const render = async (value: string, running = false, disabled = false) => {
+    await act(async () => root.render(<I18nProvider><ChatInput value={value} running={running} disabled={disabled}
+      onStop={() => { stopped++ }} onChange={() => {}} onSend={() => { sent++ }} /></I18nProvider>))
+  }
+  const action = () => document.querySelector('.chat-input-send') as HTMLButtonElement
+  try {
+    await render('')
+    assert.equal(action().getAttribute('aria-label'), '语音输入')
+    assert.equal(action().disabled, false)
+    await act(async () => action().click())
+    assert.equal(captures, 1)
+    assert.equal(sent, 0)
+    assert.equal(action().disabled, true)
+    const cancel = Array.from(document.querySelectorAll('button')).find(button => button.textContent === '取消录音')!
+    await act(async () => cancel.click())
+    await render('草稿')
+    assert.match(action().getAttribute('aria-label')!, /发送|Send/)
+    await act(async () => action().click())
+    assert.equal(sent, 1)
+    assert.equal(captures, 1)
+    await render('', true)
+    await act(async () => action().click())
+    assert.equal(stopped, 1)
+    assert.equal(captures, 1)
+    await render('', false, true)
+    assert.equal(action().disabled, true)
+    enabled = false
+    await act(async () => window.dispatchEvent(new window.Event('workstep:speech-settings-changed')))
+    await render('')
+    assert.match(action().getAttribute('aria-label')!, /发送|Send/)
+    assert.equal(action().disabled, true)
+  } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close()
+    Object.assign(speechApi, { status: original.status, start: original.start, cancel: original.cancel })
+    voiceCapture.start = original.capture
+  }
+})
+
+test('optional speech gate holds room noise locally and preserves a bounded opening buffer',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const original={...speechApi},start=voiceCapture.start
+ let chunk!:(pcm:Int16Array,level:number)=>void,allow=false
+ const requests:number[]=[]
+ speechApi.start=async()=>({id:'gated',sample_rate:16000,max_seconds:120,max_frame_samples:128000}) as any
+ speechApi.audio=async(id,_p,sequence,audio,final)=>{requests.push(atob(audio).length/2);return {id,sequence,final,text:'开头没有丢'}}
+ speechApi.cancel=async()=>({cancelled:true}) as any
+ voiceCapture.start=async callback=>{chunk=callback;return {stop(){},flush:async()=>{}}}
+ function Harness(){const voice=useVoiceInput({ownerKey:'gate',projectId:'p',disabled:false,compact:false,value:'',cursor:0,onInsert:()=>{},onAudioFrame:()=>allow});return <button onClick={()=>void voice.start()}>start</button>}
+ try{
+  await act(async()=>root.render(<Harness/>));await act(async()=>host.querySelector('button')!.click())
+  await act(async()=>{for(let i=0;i<8;i++)chunk(new Int16Array(8000),.5)})
+  assert.deepEqual(requests,[],'no silence or short noise is uploaded for recognition')
+  allow=true;await act(async()=>chunk(new Int16Array(8000),.5))
+  assert.deepEqual(requests,[24000],'one second pre-roll plus opening frame')
+ }finally{await act(async()=>root.unmount());Object.assign(speechApi,original);voiceCapture.start=start;await window.happyDOM.close()}
 })

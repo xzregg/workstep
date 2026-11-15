@@ -60,6 +60,25 @@ async def test_reset_with_new_question_and_idempotent_replay(chat_module, monkey
     assert len(calls) == 1
 
 
+async def test_internal_event_content_is_not_a_user_command_and_replay_is_idempotent(chat_module,monkeypatch):
+    module,_,manager,project,_=chat_module
+    calls=[]
+    async def invoke(*args,**kwargs):
+        calls.append(args[3])
+        return 'done',[],'native'
+    monkeypatch.setattr(module,'_invoke',invoke)
+    sid=await manager.run_db(project.id,lambda _:module.create_session(project.id)['id'])
+    def submit(_):
+        return module.submit_internal_event(project.id,sid,'digital_person.reflection','/new background evidence','internal-1',schedule=False)
+    accepted=await manager.run_db(project.id,submit)
+    module.start_queued_turn(accepted.turn_id)
+    assert await _wait_turn(module,accepted.turn_id)=='completed'
+    assert '/new background evidence' in calls[0]
+    assert await manager.run_db(project.id,lambda _:ChatSession.get_by_id(sid).context_reset_at) is None
+    replay=await manager.run_db(project.id,submit)
+    assert replay.turn_id==accepted.turn_id and len(calls)==1
+
+
 async def test_reset_database_wait_does_not_block_health(chat_module, monkeypatch):
     import main
     from httpx import AsyncClient, ASGITransport
@@ -107,3 +126,31 @@ async def test_task_reset_command_keeps_task_and_starts_fresh_engine(api_context
     assert 'old question' not in json.dumps(context['recent_coordinator_messages'])
     assert context['coordinator_summary'] is None
     assert context['task']['id'] == tid
+
+
+async def test_internal_reset_parameter_is_per_turn_and_never_enters_transcript(chat_module,monkeypatch):
+    from models.chat_session import ChatMessage
+    module,_,manager,project,_=chat_module
+    calls=[]
+    async def invoke(engine,model,cwd,prompt,session_id,on_event=None,**kwargs):
+        calls.append((prompt,session_id,kwargs.get('message_history')))
+        return 'answer',[],f'engine-{len(calls)}'
+    monkeypatch.setattr(module,'_invoke',invoke)
+    sid=await manager.run_db(project.id,lambda _:module.create_session(project.id)['id'])
+    async def send(text,key,reset=False):
+        accepted=await manager.run_db(project.id,lambda _:module.submit_message(project.id,sid,text,key,schedule=False,reset_context=reset))
+        module.start_queued_turn(accepted.turn_id)
+        assert await _wait_turn(module,accepted.turn_id)=='completed'
+        return accepted
+    await send('OLD-PRIVATE-HISTORY','old')
+    accepted=await send('fresh reflection','new',True)
+    assert calls[-1][1:]==(None,None)
+    assert 'OLD-PRIVATE-HISTORY' not in calls[-1][0]
+    assert await manager.run_db(project.id,lambda _:ChatMessage.get_by_id(accepted.turn_id).content)=='fresh reflection'
+    replay=await manager.run_db(project.id,lambda _:module.submit_message(project.id,sid,'fresh reflection','new',schedule=False,reset_context=True))
+    assert replay.turn_id==accepted.turn_id
+    assert await manager.run_db(project.id,lambda _:ChatSession.get_by_id(sid).engine_session_id)=='engine-2'
+    module._sessions.clear()
+    await send('next reflection','next')
+    assert calls[-1][1]=='engine-2' and len(calls)==3
+    assert 'OLD-PRIVATE-HISTORY' not in calls[-1][0]

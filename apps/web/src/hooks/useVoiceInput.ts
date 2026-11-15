@@ -16,10 +16,10 @@ function withDeadline<T>(work: Promise<T>, milliseconds: number, message: string
 }
 interface Options {
   ownerKey: string; projectId?: string; disabled: boolean; compact: boolean;
-  value: string; cursor: number; onInsert: (text: string, cursor: number) => void
+  value: string; cursor: number; onAudioFrame?: (samples: Int16Array, level: number) => boolean | void; onInsert: (text: string, cursor: number) => void
 }
 interface Run {
-  id?: string; project: string; token: AbortController; capture?: VoiceCapture;
+  gated: boolean; id?: string; project: string; token: AbortController; capture?: VoiceCapture;
   queue: Int16Array[]; pumping: boolean; sequence: number; text: string;
   finishing: boolean; draining: boolean; finalizing: boolean; maxFrameSamples: number; seconds: number; cursor: number; draft: string
 }
@@ -81,7 +81,7 @@ export function useVoiceInput(options: Options) {
     if (result.final) commit(r)
   }
   const pump = async (r: Run) => {
-    if (r.pumping || r.draining || !r.id || !live(r)) return
+    if (r.gated || r.pumping || r.draining || !r.id || !live(r)) return
     r.pumping = true
     try {
       while (live(r) && !r.draining && !r.finalizing && (r.queue.length || r.finishing)) {
@@ -106,6 +106,7 @@ export function useVoiceInput(options: Options) {
   const finish = async () => {
     const r = run.current
     if (!r || !live(r) || r.finishing || !r.capture) return
+    if(r.gated){cancel();return}
     r.finishing = true; r.draining = true; setPhase('finishing'); setLevel(0)
     try { await r.capture.flush() }
     catch (reason) { fail(r, reason); return }
@@ -126,7 +127,7 @@ export function useVoiceInput(options: Options) {
   const start = async () => {
     if (latest.current.disabled || (run.current && live(run.current))) return
     setMode(true); setPhase('requesting'); setError(''); setNotice(''); setText(''); setSeconds(0); setQueuedSeconds(0)
-    const r: Run = { project: latest.current.projectId ?? '', token: new AbortController(), queue: [],
+    const r: Run = { gated:Boolean(latest.current.onAudioFrame), project: latest.current.projectId ?? '', token: new AbortController(), queue: [],
       pumping: false, sequence: 0, text: '', finishing: false, draining: false, finalizing: false, maxFrameSamples: 32000, seconds: 0,
       cursor: latest.current.cursor, draft: latest.current.value }
     run.current = r
@@ -144,10 +145,23 @@ export function useVoiceInput(options: Options) {
         if (!live(r)) return
         samples = samples.subarray(0, Math.max(0, Math.round((120 - r.seconds) * 16000)))
         if (!samples.length) return
+        r.gated=latest.current.onAudioFrame?.(samples, volume)===false
         r.seconds += samples.length / 16000; setSeconds(Math.floor(r.seconds)); setLevel(volume)
         // The recording limit bounds total PCM to 3.84 MB. Keep delayed audio
         // through temporary network stalls instead of discarding it at 4s.
         r.queue.push(samples)
+        if(r.gated){
+          // Keep one second of local pre-roll so speech onset is not clipped.
+          let count=r.queue.reduce((total,frame)=>total+frame.length,0)
+          while(count>16000){
+            const excess=count-16000,first=r.queue[0]
+            if(first.length<=excess){count-=first.length;r.queue.shift()}
+            else{r.queue[0]=first.subarray(excess);count=16000}
+          }
+          setQueuedSeconds(0)
+          if(r.seconds>=120)cancel()
+          return
+        }
         setQueuedSeconds(r.queue.reduce((count, frame) => count + frame.length, 0) / 16000)
         void pump(r)
         if (r.seconds >= 120 && !r.finishing) finish()

@@ -58,6 +58,8 @@ test('global concurrency settings load and save task and chat limits', async () 
     assert.equal(taskInput?.pattern, '[1-9][0-9]*')
     assert.equal(taskInput?.list, null)
     assert.equal(exemptInput?.checked, false)
+    const autoResume = container.querySelector<HTMLInputElement>('#global-chat-auto-resume')!
+    assert.equal(autoResume.checked, false)
 
     await act(async () => {
       setNativeValue(window, taskInput!, '2')
@@ -65,6 +67,7 @@ test('global concurrency settings load and save task and chat limits', async () 
       setNativeValue(window, chatInput!, '4')
       chatInput!.dispatchEvent(new Event('input', { bubbles: true }))
       exemptInput!.click()
+      autoResume.click()
       setNativeValue(window, retryInput!, '0')
       retryInput!.dispatchEvent(new Event('input', { bubbles: true }))
     })
@@ -73,7 +76,7 @@ test('global concurrency settings load and save task and chat limits', async () 
     assert.ok(saveButton)
     await act(async () => saveButton.click())
 
-    assert.deepEqual(saved, [{ max_tasks: 2, max_chats: 4, schedule_exempt: true, task_retry_interval_minutes: 0 }])
+    assert.deepEqual(saved, [{ max_tasks: 2, max_chats: 4, schedule_exempt: true, task_retry_interval_minutes: 0, auto_resume_interrupted_chats: true }])
     assert.match(container.textContent || '', /已保存/)
     for (const value of ['', '-1', '1.5', '10081']) {
       await act(async () => {

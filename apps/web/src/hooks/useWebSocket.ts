@@ -1,3 +1,4 @@
+import { dispatchProactiveMessage } from '../components/digital-person/digitalPersonProactive'
 import { usePrototypeStore } from '../stores/prototypeStore'
 import { postAndroidNotification } from '../utils/completionNotifications'
 import { gatewayFetch, gatewayResourceUrl } from '../utils/gatewayWorkspacePath'
@@ -132,7 +133,7 @@ export function useWebSocket() {
       ...Object.keys(useChatSessionStore.getState().sessions),
       ...Object.values(useChatListStore.getState().sessionsByProject).flat().map((session) => session.id),
     ])],
-    channels: ['channel_bots'],
+    channels: ['channel_bots', 'digital_person'],
   }), [])
 
   const flushSubscription = useCallback(() => {
@@ -269,6 +270,7 @@ export function useWebSocket() {
           if (!active || wsRef.current !== ws) return
           try {
             const parsed = JSON.parse(event.data)
+            dispatchProactiveMessage(parsed)
             useChatExecutionConfigStore.getState().handleWsEvent(parsed)
             if (parsed.type === 'pong') {
               if (parsed.nonce === heartbeatNonce && heartbeatTimeout) {

@@ -816,3 +816,11 @@ async def test_digital_person_delegation_cli_uses_tracked_runtime():
     args=build_parser().parse_args(['digital-person','delegate','--project','p','--instruction','修复问题','--session','s','--idempotency-key','message-1','--json'])
     result=await dispatch(args,client=WorkstepClient(transport=httpx.MockTransport(handler)))
     assert result['session_id']=='worker'
+
+
+def test_digital_person_stop_uses_existing_host_endpoint(capsys):
+    async def handler(request):
+        assert request.method=='POST' and request.url.path=='/api/digital-person/check/stop'
+        return httpx.Response(200,json={'stopped':True})
+    assert main(['digital-person','stop','--json'],client=WorkstepClient(transport=httpx.MockTransport(handler)))==0
+    assert json.loads(capsys.readouterr().out)=={'stopped':True}

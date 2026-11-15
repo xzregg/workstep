@@ -21,6 +21,7 @@ export default function GlobalConcurrencySettings() {
   const [maxTasks, setMaxTasks] = useState('0')
   const [retryMinutes, setRetryMinutes] = useState('5')
   const [maxChats, setMaxChats] = useState('0')
+  const [autoResume, setAutoResume] = useState(false)
   const [scheduleExempt, setScheduleExempt] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -36,6 +37,7 @@ export default function GlobalConcurrencySettings() {
         setRetryMinutes(String(config.task_retry_interval_minutes ?? 5))
         setMaxChats(String(config.max_chats))
         setScheduleExempt(config.schedule_exempt)
+        setAutoResume(config.auto_resume_interrupted_chats ?? false)
       })
       .catch((reason) => {
         if (active) setError(reason instanceof Error ? reason.message : t('projectSettings.loadFailed'))
@@ -66,11 +68,13 @@ export default function GlobalConcurrencySettings() {
         max_chats: chatLimit,
         schedule_exempt: scheduleExempt,
         task_retry_interval_minutes: retryInterval!,
+        auto_resume_interrupted_chats: autoResume,
       })
       setMaxTasks(String(config.max_tasks))
       setRetryMinutes(String(config.task_retry_interval_minutes ?? 5))
       setMaxChats(String(config.max_chats))
       setScheduleExempt(config.schedule_exempt)
+      setAutoResume(config.auto_resume_interrupted_chats ?? false)
       setSaved(true)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('projectSettings.saveFailed'))
@@ -80,7 +84,7 @@ export default function GlobalConcurrencySettings() {
   }
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto' }}>
+    <div className="global-concurrency-settings" style={{ maxWidth: 640, margin: '0 auto' }}>
       <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>
         {t('projectSettings.concurrency.title')}
       </h1>
@@ -142,6 +146,15 @@ export default function GlobalConcurrencySettings() {
               <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
                 {t('projectSettings.concurrency.scheduleExemptHint')}
               </span>
+            </span>
+          </label>
+          <label className="global-concurrency-resume-field" htmlFor="global-chat-auto-resume">
+            <Input id="global-chat-auto-resume" type="checkbox" checked={autoResume}
+              aria-describedby="global-chat-auto-resume-hint"
+              onChange={event => { setAutoResume(event.target.checked); setSaved(false) }} />
+            <span>
+              <span className="global-concurrency-resume-title">{t('projectSettings.concurrency.autoResumeChats')}</span>
+              <small id="global-chat-auto-resume-hint">{t('projectSettings.concurrency.autoResumeChatsHint')}</small>
             </span>
           </label>
           {invalid && (

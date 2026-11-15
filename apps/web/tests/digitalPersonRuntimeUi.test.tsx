@@ -59,15 +59,83 @@ test('first enable guides configuration and only activates after finishing',asyn
   ;[digitalPersonApi.get,digitalPersonApi.save,assistantApi.list,providerApi.list,digitalRuntimeApi.channels,digitalRuntimeApi.activity]=originals as any
  }
 })
-test('activity exposes evidence and retries only through failed run action',async()=>{
- installDomEnvironment();const element=document.body.appendChild(document.createElement('div')),root=createRoot(element)
- const original=digitalRuntimeApi.activity,retry=digitalRuntimeApi.retryDelivery;let retried=''
- digitalRuntimeApi.activity=async()=>({level:1,experience:0,next_level_experience:10,checking:false,delegations:[],answers:[],runs:[{id:'failed-run',status:'delivery_failed',created_at:'today',summary:'done',sources:{delegations:[{id:'source'}]},deliveries:[{session_id:'peer',status:'failed'}]}]}) as any
- digitalRuntimeApi.retryDelivery=async id=>{retried=id;return {} as any}
+test('activity loads small pages, opens details on demand, and retries failed delivery',async()=>{
+ const {window}=installDomEnvironment();const element=document.body.appendChild(document.createElement('div')),root=createRoot(element)
+ const originals={...digitalRuntimeApi};const pages:number[]=[];let retried='',details=0,heavyLoads=0
+ digitalRuntimeApi.activity=async()=>{heavyLoads++;throw new Error('full overview must not load')}
+ digitalRuntimeApi.records=async(runOffset=0)=>{
+  pages.push(runOffset)
+  return {checking:false,run_total:7,delegation_total:0,delegations:[],runs:Array.from({length:runOffset?2:5},(_,i)=>({id:`run-${runOffset+i}`,status:'delivery_failed',created_at:'2026-11-14T01:00:00Z',summary:'简短结果'}))}
+ }
+ digitalRuntimeApi.runDetail=async id=>{details++;return {id,status:'delivery_failed',created_at:'2026-11-14T01:00:00Z',summary:'完整结果仅在展开后读取',error:'通知投递失败'}}
+ digitalRuntimeApi.retryDelivery=async id=>{retried=id;return {}}
  try{
   await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonActivity/></I18nProvider></MemoryRouter>))
-  assert.match(element.querySelector('pre')!.textContent!,/source/)
-  await act(async()=>element.querySelector<HTMLButtonElement>('.digital-person-run button')!.click())
-  assert.equal(retried,'failed-run')
- }finally{await act(async()=>root.unmount());element.remove();digitalRuntimeApi.activity=original;digitalRuntimeApi.retryDelivery=retry}
+  assert.equal(heavyLoads,0);assert.equal(details,0);assert.equal(element.querySelectorAll('[data-run-id]').length,5)
+  assert.equal(element.querySelector('pre'),null)
+  assert.doesNotMatch(element.textContent!,/完整结果/)
+  await act(async()=>element.querySelector<HTMLButtonElement>('[data-run-id="run-0"] button[aria-expanded]')!.click())
+  assert.equal(details,1);assert.match(element.textContent!,/完整结果仅在展开后读取/)
+  assert.match(element.querySelector('[role=alert]')!.textContent!,/通知投递失败/)
+  await act(async()=>element.querySelector<HTMLButtonElement>('[data-retry-delivery]')!.click())
+  assert.equal(retried,'run-0')
+  await act(async()=>element.querySelector<HTMLButtonElement>('[data-kind=runs] [data-next-page]')!.click())
+  assert.equal(pages.at(-1),5);assert.equal(element.querySelectorAll('[data-run-id]').length,2)
+  assert.equal(element.querySelector('[data-run-id="run-0"]'),null)
+ }finally{await act(async()=>root.unmount());element.remove();Object.assign(digitalRuntimeApi,originals);await window.happyDOM.close()}
+})
+
+test('activity keeps delegation notifications separate from thought records',async()=>{
+ const {window}=installDomEnvironment();const element=document.body.appendChild(document.createElement('div')),root=createRoot(element)
+ const original=digitalRuntimeApi.records
+ digitalRuntimeApi.records=async()=>({checking:false,run_total:1,runs:[{id:'thought',status:'silent',summary:'主动思考的摘要',created_at:'2026-11-14T01:00:00Z'}],delegation_total:1,delegations:[{id:'work',instruction:'不应出现在运行记录的委派通知',notification_state:'pending'}]}) as any
+ try{
+  await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonActivity/></I18nProvider></MemoryRouter>))
+  assert.match(element.textContent!,/主动思考的摘要/)
+  assert.ok(element.querySelector('[data-kind=delegations]'))
+  assert.ok(element.querySelector('[data-open-execution]'))
+  assert.match(element.querySelector('[data-kind=delegations]')!.textContent!,/未通知/)
+  assert.doesNotMatch(element.querySelector('[data-kind=runs]')!.textContent!,/委派通知/)
+  assert.match(element.querySelector('[data-kind=runs] h3')!.textContent!,/运行记录/)
+  assert.doesNotMatch(element.querySelector('[data-kind=delegations]')!.textContent!,/执行中|已完成/)
+ }finally{await act(async()=>root.unmount());element.remove();digitalRuntimeApi.records=original;await window.happyDOM.close()}
+})
+
+test('activity deduplicates in-flight refreshes and recovers detail errors',async()=>{
+ const {window}=installDomEnvironment();const element=document.body.appendChild(document.createElement('div')),root=createRoot(element)
+ const originals={...digitalRuntimeApi};let calls=0,attempts=0
+ let complete!:(value:any)=>void
+ digitalRuntimeApi.records=()=>{calls++;return new Promise(resolve=>{complete=resolve})}
+ digitalRuntimeApi.runDetail=async id=>{attempts++;if(attempts===1)throw new Error('详情暂时不可用');return {id,status:'silent',summary:'恢复成功',created_at:'2026-11-14T01:00:00Z'}}
+ try{
+  await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonActivity/></I18nProvider></MemoryRouter>))
+  assert.equal(element.querySelector('[aria-busy]')?.getAttribute('aria-busy'),'true')
+  await act(async()=>{window.dispatchEvent(new window.Event('workstep:digital-person-activity-changed'));window.dispatchEvent(new window.Event('workstep:digital-person-activity-changed'))})
+  assert.equal(calls,1)
+  await act(async()=>complete({checking:false,run_total:1,delegation_total:0,delegations:[],runs:[{id:'one',status:'silent',summary:'预览',created_at:'2026-11-14T01:00:00Z'}]}))
+  await act(async()=>element.querySelector<HTMLButtonElement>('[aria-expanded]')!.click())
+  assert.match(element.textContent!,/详情暂时不可用/)
+  await act(async()=>element.querySelector<HTMLButtonElement>('.digital-person-run-detail button')!.click())
+  assert.equal(attempts,2);assert.match(element.textContent!,/恢复成功/)
+ }finally{await act(async()=>root.unmount());element.remove();Object.assign(digitalRuntimeApi,originals);await window.happyDOM.close()}
+})
+
+test('notification and thought pages change independently and notification failure retries',async()=>{
+ const {window}=installDomEnvironment();const element=document.body.appendChild(document.createElement('div')),root=createRoot(element)
+ const originals={...digitalRuntimeApi};const calls:number[][]=[];let retried=''
+ digitalRuntimeApi.records=async(runOffset=0,delegationOffset=0)=>{
+  calls.push([runOffset,delegationOffset])
+  return {checking:false,run_total:7,delegation_total:7,delegations:[{id:'d'+delegationOffset,project_id:'p',session_id:'s',instruction:'委派内容',status:'completed',notification_state:'delivery_failed',notification_run_id:'delivery'}],runs:[{id:'r'+runOffset,status:'silent',summary:'思考摘要',created_at:'2026-11-14T00:00:00Z'}]}
+ }
+ digitalRuntimeApi.retryDelivery=async id=>{retried=id;return {}}
+ try{
+  await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonActivity/></I18nProvider></MemoryRouter>))
+  assert.equal(element.querySelector('[data-kind=delegations] .status-badge')?.textContent,'未通知')
+  await act(async()=>element.querySelector<HTMLButtonElement>('[data-kind=delegations] [data-next-page]')!.click())
+  assert.deepEqual(calls.at(-1),[0,5])
+  await act(async()=>element.querySelector<HTMLButtonElement>('[data-kind=runs] [data-next-page]')!.click())
+  assert.deepEqual(calls.at(-1),[5,5])
+  await act(async()=>element.querySelector<HTMLButtonElement>('[data-kind=delegations] [data-retry-delivery]')!.click())
+  assert.equal(retried,'delivery')
+ }finally{await act(async()=>root.unmount());element.remove();Object.assign(digitalRuntimeApi,originals);await window.happyDOM.close()}
 })

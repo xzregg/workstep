@@ -109,7 +109,7 @@ export interface AssistantChatPanelProps {
   availableCommands?: EngineInputItem[]
   attachmentPrefix: string
   onInputChange: (value: string) => void
-  onSend: () => void
+  onSend: (content?: string) => void
   onSendContent: (content: string, pendingInsertIds: string[]) => Promise<boolean>
   onStop: () => void
   /** Allow messages to be inserted into the active engine turn. */
@@ -272,6 +272,7 @@ const MessageItem = memo(function MessageItem({
         // 无正文、失败或停止的助手回复也保留元信息与分叉操作。
         message.role === 'assistant' ? (
           <MessageResponseFooter
+            projectId={projectId}
             content={stripA2uiBlocks(message.content)}
             usage={usageFromEvents(message.events ?? [])}
             events={message.events ?? []}
@@ -490,16 +491,16 @@ export default function AssistantChatPanel({
     )
     : messages
 
-  const sendFromComposer = () => {
-    if (!input.trim() || !canEdit || (running && !effectiveAllowSendWhileRunning)) return
+  const sendFromComposer = (content?: string) => {
+    if (!(content ?? input).trim() || !canEdit || (running && !effectiveAllowSendWhileRunning)) return
     followRef.current = true
     setHasUnreadMessages(false)
-    if (running && queueEnabled) void queueCurrentInput()
-    else { setAwaitingReply(true); onSend() }
+    if (running && queueEnabled) void queueCurrentInput(content)
+    else { setAwaitingReply(true); onSend(content) }
   }
   useSkinActions({
     'input.set': { enabled: () => canEdit, run: args => { onInputChange(String(args?.text ?? '')); inputRef.current?.focus() } },
-    'chat.send': { enabled: () => canEdit && !!input.trim() && (!running || effectiveAllowSendWhileRunning), run: sendFromComposer },
+    'chat.send': { enabled: () => canEdit && !!input.trim() && (!running || effectiveAllowSendWhileRunning), run: () => sendFromComposer() },
     'chat.stop': { enabled: () => canEdit && running && !!onStop && !stopping, run: () => onStop?.() },
     'action.run': { enabled: () => can('action.run') && !!onQuickPromptItemSelect, run: args => {
       const item = quickPrompts?.find(item => item.kind === 'action' && item.id === args?.id && !item.disabled)
@@ -654,6 +655,7 @@ export default function AssistantChatPanel({
               startedAt={engineMessages.at(-1)?.created_at}
               footer={config.engine || config.defaultEngine || config.model ? (
                 <MessageResponseFooter
+                  projectId={projectId}
                   content=""
                   engine={config.engine || config.defaultEngine || null}
                   model={config.model || null}

@@ -19,12 +19,13 @@ interface Options {
   effectiveEngine: string
   onSessionIdChange: (id: string) => void
   onTitleChange: (title: string) => void
+  prepareContent?: (content: string) => Promise<string>
 }
 
 /** Owns a chat turn's send, live-insert, stop and error recovery lifecycle. */
 export function useChatSessionActions({
   sessionId, projectId, running, permissionMode, planMode,
-  goalMode, effectiveEngine, onSessionIdChange, onTitleChange,
+  goalMode, effectiveEngine, onSessionIdChange, onTitleChange, prepareContent,
 }: Options) {
   const { t } = useI18n()
   const [sendError, setSendError] = useState('')
@@ -35,13 +36,19 @@ export function useChatSessionActions({
     setStopping(false)
   }, [sessionId, projectId])
 
-  const sendMessageNow = useCallback(async (content: string, goalCommand = false): Promise<boolean> => {
+  const sendMessageNow = useCallback(async (content: string, goalCommand = false, prepared = false): Promise<boolean> => {
     if (!content || !sessionId) {
       if (!sessionId) setSendError(t('chatSession.noSession'))
       return false
     }
     if (!projectId) return false
     setSendError('')
+    try {
+      if (!prepared && !goalCommand && !content.trimStart().startsWith('/')) content = await prepareContent?.(content) ?? content
+    } catch (reason) {
+      setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
+      return false
+    }
     // 先记乐观 id：彻底失败时撤掉气泡，不留后端不存在的幻影消息。
     const optimisticId = useChatSessionStore.getState().addUserMessage(sessionId, content)
     flushWsSubscriptionNow()
@@ -94,7 +101,7 @@ export function useChatSessionActions({
       return false
     }
   }, [sessionId, projectId, permissionMode, planMode, goalMode,
-    effectiveEngine, onSessionIdChange, onTitleChange, t])
+    effectiveEngine, onSessionIdChange, onTitleChange, prepareContent, t])
 
   const sendPendingContent = useCallback(async (
     content: string, pendingInsertIds: string[],
@@ -102,6 +109,12 @@ export function useChatSessionActions({
     if (!sessionId || !projectId) return false
     if (!running) return sendMessageNow(content)
     setSendError('')
+    try {
+      if (!content.trimStart().startsWith('/')) content = await prepareContent?.(content) ?? content
+    } catch (reason) {
+      setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
+      return false
+    }
     const optimisticId = useChatSessionStore.getState().addUserMessage(sessionId, content)
     flushWsSubscriptionNow()
     const dropOptimistic = () => {
@@ -121,13 +134,13 @@ export function useChatSessionActions({
         : (message.includes('not running') || message.includes('未在运行'))
       if (turnGone) {
         dropOptimistic()
-        return sendMessageNow(content)
+        return sendMessageNow(content, false, true)
       }
       dropOptimistic()
       setSendError(message || t('chatSession.sendFailed'))
       return false
     }
-  }, [projectId, running, sendMessageNow, sessionId, t])
+  }, [projectId, running, sendMessageNow, sessionId, prepareContent, t])
 
   const stop = useCallback(async () => {
     if (!sessionId || !projectId || stopping) return false

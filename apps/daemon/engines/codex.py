@@ -491,7 +491,7 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                     # 会话尚未建立（thread.started 未到达）：无法 resume，
                     # 用「原提示词 + 插入消息」重启新会话，避免丢失上下文。
                     run_prompt = (
-                        f"{run_prompt}\n\n[用户插入消息]\n{restart_content}"
+                        f"{run_prompt}\n\n[Inserted user message]\n{restart_content}"
                     )
                 continue
 

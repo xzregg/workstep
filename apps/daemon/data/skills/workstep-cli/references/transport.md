@@ -66,6 +66,30 @@ commands. If no listed transport is callable, report that the engine lacks a
 WorkStep transport instead of claiming the requested mutation succeeded.
 
 
+## Missing environment variables
+
+The daemon sets `WORKSTEP_DAEMON_DIR`, `WORKSTEP_CLI_PYTHON` and
+`WORKSTEP_DAEMON_URL` at startup; engine children normally inherit them.
+`WORKSTEP_CLI_PYTHON` points to the daemon interpreter with the CLI dependencies,
+not an arbitrary system Python or the current project's virtualenv. Engine
+shell policies or a separately launched process can lose that inheritance.
+
+When a documented command reports missing environment variables, an empty
+executable, or a missing `/cli.py`, do not repeat it unchanged. In a confirmed
+WorkStep source checkout, use the relative `apps/daemon` uv command above.
+Otherwise use native `workstep_call` if present, or a CLI executable whose
+availability and target daemon are already established. Do not guess another
+Python, install dependencies in the user's project, default to a guessed port,
+dump the environment, or read credential files. If no applicable transport has
+the required runtime context, report that the engine CLI environment is missing;
+do not claim a memory search returned no results. A successful command in a
+different shell does not prove the engine shell received the same variables.
+
+The memory capability supplied in the current prompt is separate from daemon
+authentication: it goes in `--token`, not `WORKSTEP_DESKTOP_TOKEN`. The CLI
+handles daemon authentication through the inherited environment and local
+runtime discovery. Do not persist either credential.
+
 ## First-run improvement
 
 Try the documented transports first. Only when all applicable commands fail

@@ -139,3 +139,30 @@ async def test_upload_relative_path_opens_own_registered_document_after_parent(e
     reopened = await client.post('/api/prototype/open', json={'project_id':'p','path':relative})
     assert reopened.json()['id'] == work['id']
     assert reopened.json()['documents'] == work['documents']
+
+
+async def test_dependency_scan_is_off_loop_and_ignores_unrelated_large_files(editor, monkeypatch):
+    import services.prototype_workspace as module
+    client, root = editor
+    (root / 'unrelated.json').write_bytes(b'x' * 2000)
+    (root / 'index.html').write_text('<img src="used.svg"><button>Demo</button>')
+    (root / 'used.svg').write_text('<svg/>')
+    monkeypatch.setattr(module, 'MAX_FILE', 1000)
+    collect = module.collect_resources
+    def slow(*args, **kwargs):
+        time.sleep(.15)
+        return collect(*args, **kwargs)
+    monkeypatch.setattr(module, 'collect_resources', slow)
+    request = asyncio.create_task(client.post('/api/prototype/open', json={'project_id':'p','path':'index.html'}))
+    await asyncio.sleep(.02)
+    start = time.monotonic()
+    assert (await client.get('/health')).status_code == 200
+    assert time.monotonic() - start < .08
+    response = await request
+    assert response.status_code == 200, response.text
+    work = response.json()
+    assert set(work['files']) == {'index.html', 'other.html', 'used.svg'}
+    document = await client.get(f"/api/prototype/{work['id']}/document", params={'project_id':'p','path':work['path']})
+    grant = document.json()['html_preview']
+    image = await client.get(f"/api/fs/html-resource/p/{grant['token']}/used.svg")
+    assert image.status_code == 200, image.text

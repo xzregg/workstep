@@ -56,8 +56,8 @@ export function useAssistantPendingInserts({
     })
   }, [activeMessageId, actions, projectId, t])
 
-  const queueCurrentInput = useCallback(async () => {
-    const content = input.trim()
+  const queueCurrentInput = useCallback(async (override?: string) => {
+    const content = (override ?? input).trim()
     if (!content || !activeMessageId) return
     setError('')
     try {

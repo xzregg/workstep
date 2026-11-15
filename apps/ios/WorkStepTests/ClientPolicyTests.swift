@@ -56,6 +56,45 @@ final class ClientPolicyTests {
         XCTAssertFalse(policy.allows(URL(string: "https://identity/login")!))
     }
 
+    func testMediaCaptureAndSpeechRequests() throws {
+        let server = try ServerAddress("https://host")
+        let page = URL(string: "https://host/chat")!
+        for kind in ["camera", "microphone", "cameraAndMicrophone"] {
+            XCTAssertTrue(MediaCapturePolicy.allows(server: server, page: page, frame: page, origin: server.root, mainFrame: true, kind: kind))
+            XCTAssertFalse(MediaCapturePolicy.allows(server: server, page: page, frame: page, origin: URL(string: "https://other")!, mainFrame: true, kind: kind))
+            XCTAssertFalse(MediaCapturePolicy.allows(server: server, page: page, frame: page, origin: URL(string: "https://host:444")!, mainFrame: true, kind: kind))
+            XCTAssertFalse(MediaCapturePolicy.allows(server: server, page: page, frame: page, origin: server.root, mainFrame: false, kind: kind))
+        }
+        XCTAssertFalse(MediaCapturePolicy.allows(server: server, page: page, frame: page, origin: server.root, mainFrame: true, kind: "unknown"))
+        let lan = try ServerAddress("http://192.168.1.2")
+        XCTAssertFalse(MediaCapturePolicy.allows(server: lan, page: lan.root, frame: lan.root, origin: lan.root, mainFrame: true, kind: "camera"))
+        let local = try ServerAddress("http://localhost:8765")
+        XCTAssertTrue(MediaCapturePolicy.allows(server: local, page: local.root, frame: local.root, origin: local.root, mainFrame: true, kind: "microphone"))
+        for kind in ["camera", "microphone", "cameraAndMicrophone"] {
+            var devices: [String] = [], consent: Bool?
+            MediaCaptureAuthorization.request(kind: kind, isCurrent: { true }, camera: { next in
+                devices.append("camera"); next(true)
+            }, microphone: { next in devices.append("microphone"); next(true) }, completion: { consent = $0 })
+            XCTAssertEqual(consent, true)
+            XCTAssertEqual(devices, kind == "cameraAndMicrophone" ? ["camera", "microphone"] : [kind])
+        }
+        for outcome in ["cameraDenied", "microphoneDenied", "navigation"] {
+            var current = true, microphoneRequests = 0, consent: Bool?
+            MediaCaptureAuthorization.request(kind: "cameraAndMicrophone", isCurrent: { current }, camera: { next in
+                if outcome == "navigation" { current = false }
+                next(outcome != "cameraDenied")
+            }, microphone: { next in microphoneRequests += 1; next(false) }, completion: { consent = $0 })
+            XCTAssertEqual(consent, false)
+            XCTAssertEqual(microphoneRequests, outcome == "microphoneDenied" ? 1 : 0)
+        }
+        let request: [String: Any] = ["type": "speak", "id": "one", "text": "你好。", "rate": 1.0, "volume": 0.8]
+        XCTAssertNotNil(SystemSpeechRequest(request))
+        for invalid: [String: Any] in [["text": " "], ["text": String(repeating: "字", count: 1201)], ["id": ""], ["rate": Double.infinity], ["rate": 3.0], ["volume": -1.0], ["type": "unknown"]] {
+            XCTAssertNil(SystemSpeechRequest(request.merging(invalid) { _, rhs in rhs }))
+        }
+        XCTAssertNotNil(SystemSpeechRequest(["type": "stop", "id": "one"]))
+    }
+
     func testResumeAndBoundedLedger() {
         XCTAssertFalse(ClientPolicy.shouldReload(backgroundSeconds: 299, openingNotification: false))
         XCTAssertTrue(ClientPolicy.shouldReload(backgroundSeconds: 300, openingNotification: false))
@@ -95,9 +134,10 @@ enum CheckFailure: Error { case missing }
         try tests.testSavedServiceAddressesMigrateAddSelectAndDelete()
         try tests.testRememberOnlyUsefulDetailsAndNotificationScope()
         try tests.testLoginSessionOnlyStartsWithValidatedCallbackAndResets()
+        try tests.testMediaCaptureAndSpeechRequests()
         tests.testResumeAndBoundedLedger()
         try tests.testNotificationValidationAndSanitizedDiagnostics()
         try checkHealthResponses()
-        print("PASS: 6 core behavior groups")
+        print("PASS: 7 core behavior groups")
     }
 }

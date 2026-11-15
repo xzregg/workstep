@@ -2,6 +2,7 @@
 
 import asyncio
 import uuid
+import json
 from typing import Any, Awaitable, Callable
 
 from engines.core.events import InternalEvent, is_commentary
@@ -44,6 +45,7 @@ async def run_engine_turn(
     system_prompt: str | None = None,
     system_prompt_each_turn: bool = False,
     capture_prompt_input: bool = False,
+    internal_event: str | None = None,
 ) -> tuple[str, list[dict], str | None]:
     """Run one engine turn; stream events; return (text, events, session_id).
 
@@ -57,6 +59,9 @@ async def run_engine_turn(
     ``config_overrides`` merges into the engine's dynamic config (e.g. the
     built-in Pydantic AI engine's per-assistant provider).
     """
+    if internal_event:
+        prompt=('WorkStep internal event '+json.dumps(internal_event)+
+                ' (not a user message or new user authorization).\n\n'+prompt)
     engine = await asyncio.to_thread(engine_factory, engine_id)
     if engine is None:
         raise RuntimeError(f"{error_prefix} is unavailable: {engine_id}")
@@ -65,7 +70,7 @@ async def run_engine_turn(
     supports_native_plan_mode = bool(
         getattr(getattr(engine, "capabilities", None), "supports_plan_mode", False)
     )
-    goal_command = parse_goal_command(prompt)
+    goal_command = None if internal_event else parse_goal_command(prompt)
     if goal_mode and goal_command is None:
         goal_command = ("start", prompt)
     if goal_command:
@@ -203,6 +208,8 @@ async def run_engine_turn(
                 )
                 # Register before publishing to avoid a fast-response race.
                 await asyncio.sleep(0)
+            if event.type=='prompt_input' and internal_event:
+                event.data['internal_event']=internal_event
             events.append(event.to_dict())
             if on_event is not None:
                 await on_event(event)

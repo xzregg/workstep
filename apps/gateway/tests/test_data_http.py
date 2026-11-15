@@ -53,7 +53,9 @@ async def test_workspace_asset_revision_is_not_forwarded_to_device(path, workspa
 
 
 @pytest.mark.parametrize('accept_encoding', ['identity', 'gzip, deflate, br'])
-async def test_workspace_entry_survives_gateway_middlewares(tmp_path, monkeypatch, accept_encoding):
+@pytest.mark.parametrize('media_policy', ['camera=(self), microphone=(self)', 'camera=(), microphone=()'])
+@pytest.mark.parametrize('document_path', ['', 'companion', 'companion/'])
+async def test_workspace_entry_survives_gateway_middlewares(tmp_path, monkeypatch, accept_encoding, media_policy, document_path):
     from gateway.app import create_app
     from gateway.config import GatewaySettings
 
@@ -68,7 +70,8 @@ async def test_workspace_entry_survives_gateway_middlewares(tmp_path, monkeypatc
                 import gzip
                 compressed = 'gzip' in self.accept_encoding
                 data = gzip.compress(content) if compressed else content
-                headers = [['content-type', 'text/html'], ['content-length', str(len(data))]]
+                headers = [['content-type', 'text/html'], ['content-length', str(len(data))],
+                           ['Permissions-Policy', media_policy]]
                 if compressed:
                     headers.append(['content-encoding', 'gzip'])
                 for payload in (
@@ -84,7 +87,9 @@ async def test_workspace_entry_survives_gateway_middlewares(tmp_path, monkeypatc
     monkeypatch.setattr('gateway.app.proxy_remote_request', proxy)
     app = create_app(GatewaySettings(data_dir=tmp_path))
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='https://gateway.test') as client:
-        response = await client.get('/workspace/device-1/', headers={'Accept-Encoding': accept_encoding})
+        response = await client.get('/workspace/device-1/' + document_path, headers={'Accept-Encoding': accept_encoding, 'Accept': 'text/html'})
+    assert response.headers['permissions-policy'] == media_policy
+    assert "frame-ancestors 'self'" in response.headers['content-security-policy']
     assert response.status_code == 200
     assert b'<base href="/workspace/device-1/">' in response.content
     assert b'/workspace/device-1/assets/main.js?_workstep_asset=' in response.content

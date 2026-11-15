@@ -8,7 +8,7 @@ import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissi
 import { type SkinMenu } from '../skins/contract'
 import { useActiveSkin } from '../skins/runtime'
 import { setSkinScriptsEnabled, skinScriptScope, useSkinScriptsEnabled } from '../skins/scriptPreferences'
-import { ExtensionSession, type ExtensionModule, type ExtensionSlotName, type SkinFeature } from '../skins/extensions'
+import { ExtensionSession, type ExtensionModule, type ExtensionSlotName, type SkinFeature, type AvatarRenderProps } from '../skins/extensions'
 import { executeSkinAction, skinActionEnabled, skinActionRevision, subscribeSkinActions, useSkinActions } from '../skins/actions'
 import type { SettingsSection } from './SettingsNavigation'
 import ResizablePanel from './ResizablePanel'
@@ -18,7 +18,7 @@ import Icon from './Icon'
 import './SkinExtensions.css'
 
 const RuntimeContext = createContext<ExtensionSession | null>(null)
-const empty = { features: [], slots: [] }
+const empty:ReturnType<ExtensionSession['snapshot']> = { features: [], slots: [] }
 const noSubscription = () => () => {}
 const emptySnapshot = () => empty
 
@@ -58,6 +58,22 @@ export function SkinExtensionSlot({ name }: { name: ExtensionSlotName }) {
   return <div className="skin-extension-widgets" data-ui={name}>{widgets.map(feature => <FeatureBoundary key={feature.id} label={t('skinExtensions.failed')}>
     <FeatureContent session={session} feature={feature} close={() => {}} />
   </FeatureBoundary>)}</div>
+}
+
+class AvatarBoundary extends Component<{children:ReactNode;fallback:ReactNode},{failed:boolean}> {
+  state={failed:false}
+  static getDerivedStateFromError(){return {failed:true}}
+  render(){return this.state.failed?this.props.fallback:this.props.children}
+}
+
+/** Only the presentation node is replaceable; chat and audio ownership stay in the host. */
+export function SkinAvatarRenderer({state,name,fallback}:AvatarRenderProps&{fallback:ReactNode}) {
+  const session=useContext(RuntimeContext)
+  const snapshot=useSyncExternalStore(session?.subscribe??noSubscription,session?.snapshot??emptySnapshot,emptySnapshot)
+  const avatar=snapshot.avatar
+  if(!session||!avatar)return <>{fallback}</>
+  const Render=avatar.render
+  return <AvatarBoundary key={`${session.scope}:${session.skin.manifest.id}:${session.skin.revision}:${avatar.id}`} fallback={fallback}><Render state={state} name={name}/></AvatarBoundary>
 }
 
 function ExtensionMenu({ menu, session, onOpen, onError }: { menu: SkinMenu; session: ExtensionSession | null; onOpen: (id: string) => void; onError: (error: string) => void }) {

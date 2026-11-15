@@ -57,7 +57,7 @@ _CHAT_SESSION_CHAT = re.compile(
 _CHAT_SESSION_UPDATE = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/(?:archive|permission-mode)\Z")
 _CHAT_SESSION_ACTION = re.compile(
-    r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/(?:live-message|stop)\Z")
+    r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/(?:live-message|stop|read)\Z")
 _CHAT_SESSION_TRANSITION = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/(?:fork|handoff)\Z")
 _SESSION_ACTION_CATALOG = re.compile(r"/api/project-actions/sessions/[A-Za-z0-9_-]{1,128}\Z")
@@ -87,6 +87,10 @@ _PROJECT_SERVICES = [
     (r"/api/speech/sessions", {'POST'}, set()),
     (r"/api/speech/sessions/[a-f0-9]{32}/audio", {'POST'}, set()),
     (r"/api/speech/sessions/[a-f0-9]{32}", {'DELETE'}, set()),
+    (r"/api/speech-output", {'GET'}, set()),
+    (r"/api/speech-output/sessions", {'POST'}, set()),
+    (r"/api/speech-output/sessions/[a-f0-9]{32}/next", {'POST'}, set()),
+    (r"/api/speech-output/sessions/[a-f0-9]{32}", {'DELETE'}, set()),
     (r"/api/completion-notifications/recent", {'GET'}, {'since'}),
     (r"/api/connectors/available", {'GET'}, {'session_id', 'engine_id'}),
     (r"/api/connectors/selection", {'PUT'}, set()),

@@ -7,6 +7,7 @@ import pytest
 from agent_assistants.chat_session import ENHANCE_SYSTEM_PROMPT
 from agent_assistants.chat_session import SYSTEM_PROMPT as CHAT_SYSTEM_PROMPT
 from agent_assistants.coordinator import COORDINATOR_CONFIG
+from agent_assistants.prototype import SYSTEM_PROMPT as PROTOTYPE_SYSTEM_PROMPT
 from agent_assistants.task_draft import (
     SYSTEM_PROMPT as TASK_SYSTEM_PROMPT,
     SYSTEM_PROMPT_SCHEDULE,
@@ -30,6 +31,7 @@ PROMPTS = {
     "task_schedule": SYSTEM_PROMPT_SCHEDULE,
     "workflow": FLOW_SYSTEM_PROMPT,
     "plan_mode": PLAN_MODE_INSTRUCTION,
+    "prototype": PROTOTYPE_SYSTEM_PROMPT,
 }
 
 

@@ -93,3 +93,27 @@ test('context actions enforce availability and restore the underlying conversati
   } finally { dispose() }
   assert.equal(skinActionEnabled('chat.send'), false)
 })
+
+test('avatar SDK exposes scoped events and cleans its renderer and subscriptions on skin disposal',async()=>{
+ const {createAvatarSource}=await import('../src/avatars/runtime')
+ const session=new ExtensionSession({...defaultSkin(),file_base:'/api/skins/files/one'},'avatar-test')
+ const source=createAvatarSource({projectId:'p',sessionId:'s'})
+ let api:import('../src/skins/extensions').ExtensionApi|undefined,count=0
+ try{
+  await session.activate(async()=>({activate(value){
+   api=value
+   value.avatar.register({id:'my-character',render:()=>null})
+   value.avatar.subscribe(()=>{count++},{projectId:'p',sessionId:'s'})
+  }}))
+  assert.equal(session.snapshot().avatar?.id,'my-character')
+  source.update({phase:'thinking'},0)
+  assert.equal(api!.avatar.get({projectId:'p',sessionId:'s'})?.action,'raise-hand')
+  assert.equal(count,1)
+  assert.equal(api!.avatar.motion.smoothstep(.5),.5)
+  session.dispose()
+  assert.equal(session.snapshot().avatar,undefined)
+  source.update({phase:'speaking',speaking:true,level:.5},100)
+  assert.equal(count,1,'disposed skin no longer receives avatar events')
+  assert.throws(()=>api!.avatar.get(),/关闭/)
+ }finally{session.dispose();source.dispose()}
+})

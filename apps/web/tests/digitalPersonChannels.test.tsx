@@ -3,15 +3,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { I18nProvider } from '../src/i18n'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { digitalRuntimeApi } from '../src/api/digitalPerson'
 import DigitalPersonChannels from '../src/components/digital-person/DigitalPersonChannels'
 
 test('binds a selected channel peer, requires explicit test send, and allows unbinding',async()=>{
  const {window}=installDomEnvironment(), original={...digitalRuntimeApi}
+ useLocaleStore.setState({locale:'zh-CN'})
  const el=document.body.appendChild(document.createElement('div')),root=createRoot(el)
  const peer={id:'peer',conversation_type:'group' as const,conversation_id:'group',bot_id:'bot',bot_name:'机器人',title:'研发群',platform:'dingtalk'}
- let bindings:any[]=[], tests=0
+ let bindings:any[]=[{...peer,id:'existing',notify:true}], tests=0
  digitalRuntimeApi.channels=async()=>({available:[peer],bindings})
  digitalRuntimeApi.bind=async(p,notify)=>{bindings=[{...p,notify}]}
  digitalRuntimeApi.unbind=async()=>{bindings=[]}
@@ -19,10 +20,18 @@ test('binds a selected channel peer, requires explicit test send, and allows unb
  const click=async(text:string)=>act(async()=>{Array.from(el.querySelectorAll('button')).find(b=>b.textContent===text)!.click()})
  try {
   await act(async()=>root.render(<I18nProvider><DigitalPersonChannels name="小研"/></I18nProvider>))
+  assert.match(el.querySelector('.digital-person-channel')!.textContent!,/研发群/)
+  assert.equal(el.querySelectorAll('select').length,0,'channel choices stay hidden before adding')
+  await click('添加')
+  assert.ok(el.querySelector('.digital-person-channel')!.compareDocumentPosition(el.querySelector('select')!) & window.Node.DOCUMENT_POSITION_FOLLOWING,'bindings appear above choices')
+  await click('取消')
+  assert.equal(el.querySelectorAll('select').length,0)
+  await click('添加')
   const selects=el.querySelectorAll('select')
   await act(async()=>{selects[0].value='bot';selects[0].dispatchEvent(new window.Event('change',{bubbles:true}))})
   await act(async()=>{selects[1].value='peer';selects[1].dispatchEvent(new window.Event('change',{bubbles:true}))})
   await click('绑定');assert.equal(bindings[0].id,'peer');assert.equal(bindings[0].notify,false)
+  assert.equal(el.querySelectorAll('select').length,0,'successful binding closes channel choices')
   await click('测试发送');assert.equal(tests,0)
   await act(async()=>el.querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click());assert.equal(tests,1)
   await click('解除绑定');assert.equal(bindings.length,0)

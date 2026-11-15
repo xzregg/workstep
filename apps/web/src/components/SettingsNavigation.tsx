@@ -37,7 +37,7 @@ export default function SettingsNavigation({
     <aside className="settings-nav">
       {sections.filter(section => section.id !== 'sandbox' || window.workstepDesktop?.sandbox).map(({ id, label, icon, glyph }) => (
         <div className="settings-nav-item" key={id}>
-        {id === 'providers' && <div className="settings-nav-heading">{t('decisionModels.modelGroup')}</div>}
+        {id === 'providers' && <div className="settings-nav-heading settings-nav-model-heading">{t('decisionModels.modelGroup')}</div>}
         {id === 'templates' && <div className="settings-nav-heading settings-nav-group-heading">{t('decisionModels.workspaceGroup')}</div>}
         {id === 'appearance' && <div className="settings-nav-separator" />}
         <button

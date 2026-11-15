@@ -3,7 +3,6 @@ import {useNavigate} from 'react-router-dom'
 import {useProjectStore} from '../../stores/projectStore'
 import {useGatewayProjectPermissions} from '../../hooks/useGatewayProjectPermissions'
 import {useDigitalPerson} from './useDigitalPerson'
-import {resolveDigitalPersonChat} from './digitalPersonChat'
 
 export const DIGITAL_PERSON_SPEAKING='workstep:digital-person-speaking'
 /** Keeps the native avatar alive independently of the selected project/chat. */
@@ -23,10 +22,8 @@ export default function DigitalPersonDesktopBridge(){
  },[profile])
  useEffect(()=>window.workstepDesktop?.digitalPerson?.onOpenChat(()=>{
   if(!workspace || !profile)return
-  void resolveDigitalPersonChat(workspace.id).then(id=>{
-   useProjectStore.getState().setActiveProject(workspace)
-   navigate(`/chat?project=${encodeURIComponent(workspace.name)}&session=${encodeURIComponent(id)}`)
-  }).catch(reason=>setError(String(reason)))
+  useProjectStore.getState().setActiveProject(workspace)
+  navigate('/companion')
  }),[workspace,profile,navigate])
  return error?<p role="alert" className="digital-person-error">{error}</p>:null
 }

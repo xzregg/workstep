@@ -111,6 +111,8 @@ class ChatRowPersistence(PersistenceAdapter):
                     author_device_id=item.author_device_id,
                     author_device_name=item.author_device_name,
                 )
+            if item.author_type=='internal' and item.role=='system':
+                message['internal_event']=item.author_username
             if item.status:
                 message["status"] = item.status
             if item.engine:
@@ -198,6 +200,7 @@ class ChatRowPersistence(PersistenceAdapter):
                 row.fork_context_json = json.dumps(pending_handoff, ensure_ascii=False)
             row.updated_at = now
             row.save()
+        completed_replies=[]
         for item in session.messages:
             message_id = str(item.get("id") or "")
             if not message_id:
@@ -235,11 +238,23 @@ class ChatRowPersistence(PersistenceAdapter):
                 "created_at": created_at,
                 "ended_at": ended_at,
             }
+            from services.memory_secrets import redact
+            values = redact(values)
             existing = ChatMessage.get_or_none(ChatMessage.id == message_id)
             if existing is None:
                 ChatMessage.create(id=message_id, **values)
             else:
                 ChatMessage.update(**values).where(ChatMessage.id == message_id).execute()
+            if (values['role']=='assistant' and values['status'] in ('completed','succeeded')
+                    and (existing is None or existing.status not in ('completed','succeeded') or existing.content!=values['content'])):
+                completed_replies.append(message_id)
+        if completed_replies and session.extra.get('digital_person_memory_scope'):
+            from services.digital_person import get_profile
+            if get_profile().enabled:
+                from services.digital_person_memory import capture_message, scope_for_session
+                scope=scope_for_session(session.session_id)
+                for message_id in completed_replies:
+                    capture_message(ChatMessage.get_by_id(message_id),scope)
 
     @staticmethod
     def _default_title(messages: list[dict]) -> str:
@@ -303,4 +318,6 @@ class ChatRowPersistence(PersistenceAdapter):
             clear_session_schedules(scope_key)
             ChatMessage.delete().where(ChatMessage.session == row).execute()
             row.delete_instance()
+        from services.digital_person_memory_index import delete_session
+        delete_session(project_id, scope_key)
         return True

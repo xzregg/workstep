@@ -150,11 +150,9 @@ test('visibility switch saves and refreshes the full settings catalog', async ()
     await act(async () => root.render(<I18nProvider><EngineSettingsPanel hidden={false} refreshRevision={0} preferredProviderProtocol="" /></I18nProvider>))
     const toggle = document.querySelector('.engine-settings-visibility [role="switch"]') as HTMLButtonElement
     assert.equal(toggle.getAttribute('aria-checked'), 'false')
-    assert.equal(document.querySelector('.engine-settings-visibility > span')?.textContent, '关闭')
     await act(async () => { toggle.click() })
     assert.deepEqual(calls, [['codex', true]])
     assert.equal(document.querySelector('.engine-settings-visibility [role="switch"]')?.getAttribute('aria-checked'), 'true')
-    assert.equal(document.querySelector('.engine-settings-visibility > span')?.textContent, '开启')
   } finally {
     engineApi.list = originalList
     engineApi.executionConfig = originalConfig

@@ -146,11 +146,13 @@ export default function ModelSettingsPage() {
     )
   }, [filterQuery, rows, t])
 
-  const updatePrice = (row: CatalogModel, field: keyof Pick<ModelSetting, 'input_price' | 'output_price' | 'cache_price'>, value: string) => {
-    const number = Math.max(0, Number(value) || 0)
+  const validRate = Number.isFinite(settings.usd_to_cny_rate) && settings.usd_to_cny_rate >= .000001
+  const validNumbers = validRate && settings.prices.every(item => [item.input_price, item.output_price, item.cache_price].every(value => Number.isFinite(value) && value >= 0))
+
+  const updatePrice = (row: CatalogModel, field: keyof Pick<ModelSetting, 'input_price' | 'output_price' | 'cache_price'>, value: number) => {
     const key = priceKey(row)
     const next = new Map(prices)
-    next.set(key, { ...(next.get(key) || emptyPrice(row)), [field]: number })
+    next.set(key, { ...(next.get(key) || emptyPrice(row)), [field]: value })
     setSettings((current) => ({ ...current, prices: Array.from(next.values()) }))
     setSaved(false)
   }
@@ -199,6 +201,7 @@ export default function ModelSettingsPage() {
   }
 
   const save = async () => {
+    if (!validNumbers) return
     setSaving(true)
     setError('')
     try {
@@ -229,7 +232,7 @@ export default function ModelSettingsPage() {
           <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.pricingTitle')}</h1>
           <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>{t('settings.pricingIntro')}</p>
         </div>
-        <Button variant="primary" onClick={() => void save()} disabled={loading || saving} loading={saving}>
+        <Button variant="primary" onClick={() => void save()} disabled={loading || saving || !validNumbers} loading={saving}>
           {t('common.save')}
         </Button>
       </div>
@@ -237,15 +240,15 @@ export default function ModelSettingsPage() {
       <div style={{ display: 'flex', gap: 14, alignItems: 'end', padding: 14, marginBottom: 14, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg)' }}>
         <label style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)' }}>
           {t('settings.pricingCurrency')}
-          <Select value={settings.currency} onChange={(event) => changeCurrency(event.target.value as 'USD' | 'CNY')} style={{ display: 'block', width: 130, marginTop: 6 }}>
+          <Select disabled={!validRate} value={settings.currency} onChange={(event) => changeCurrency(event.target.value as 'USD' | 'CNY')} style={{ display: 'block', width: 130, marginTop: 6 }}>
             <option value="USD">USD ($)</option>
             <option value="CNY">CNY (¥)</option>
           </Select>
         </label>
         <label style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)' }}>
           {t('settings.pricingRate')}
-          <Input type="number" min="0.000001" step="0.01" value={settings.usd_to_cny_rate} onChange={(event) => {
-            setSettings((current) => ({ ...current, usd_to_cny_rate: Math.max(0.000001, Number(event.target.value) || 0.000001) }))
+          <Input type="number" min="0.000001" step="0.01" value={Number.isNaN(settings.usd_to_cny_rate) ? '' : settings.usd_to_cny_rate} onChange={(event) => {
+            setSettings((current) => ({ ...current, usd_to_cny_rate: event.target.valueAsNumber }))
             setSaved(false)
           }} style={{ display: 'block', width: 150, marginTop: 6 }} />
         </label>
@@ -377,7 +380,7 @@ export default function ModelSettingsPage() {
                     </button>
                   </td>
                   {(['input_price', 'output_price', 'cache_price'] as const).map((field) => (
-                    <td key={field}><Input type="number" min="0" step="0.000001" value={price[field]} onChange={(event) => updatePrice(row, field, event.target.value)} style={{ width: 120, textAlign: 'right' }} /></td>
+                    <td key={field}><Input type="number" min="0" step="0.000001" value={Number.isNaN(price[field]) ? '' : price[field]} onChange={(event) => updatePrice(row, field, event.target.valueAsNumber)} style={{ width: 120, textAlign: 'right' }} /></td>
                   ))}
                 </tr>
               )

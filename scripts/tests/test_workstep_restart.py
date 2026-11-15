@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -21,6 +22,7 @@ def restart(tmp_path, monkeypatch):
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     monkeypatch.setattr(module, "ROOT", tmp_path)
+    monkeypatch.setattr(module, "restart_ownership", nullcontext, raising=False)
     return module
 
 
@@ -74,6 +76,12 @@ def test_standalone_daemon_can_restart_without_a_launcher(restart, monkeypatch):
     assert set(restart.discover_targets()) == {102}
 
 
+def test_uvicorn_log_config_is_recognized_as_a_daemon(restart, monkeypatch):
+    process = restart.Process(102, 1, 'new', '/venv/bin/uvicorn main:app --log-config data/logging.json --port 8765', 100)
+    monkeypatch.setattr(restart, 'process_cwd', lambda pid: restart.ROOT / 'apps/daemon')
+    assert restart.is_service(process, 8765)
+
+
 def test_restart_lock_rejects_duplicate_clicks_before_shutdown(restart, monkeypatch):
     monkeypatch.setattr(restart.time, "sleep", lambda _: None)
     monkeypatch.setattr(restart.fcntl, "flock", Mock(side_effect=BlockingIOError))
@@ -82,6 +90,85 @@ def test_restart_lock_rejects_duplicate_clicks_before_shutdown(restart, monkeypa
     with pytest.raises(RuntimeError, match="已有重启"):
         restart.worker()
     stop.assert_not_called()
+
+
+def test_restart_submission_replaces_previous_log(restart, monkeypatch):
+    log = restart.ROOT / "logs/restart-action.log"
+    log.parent.mkdir()
+    log.write_bytes(b"previous restart output\n")
+    monkeypatch.setattr(restart.sys, "argv", [str(SCRIPT)])
+
+    def launch(*args, **kwargs):
+        kwargs["stdout"].write(b"current restart output\n")
+        return Mock(pid=500)
+
+    monkeypatch.setattr(restart.subprocess, "Popen", launch)
+    restart.main()
+    assert log.read_bytes() == b"current restart output\n"
+
+
+def test_duplicate_submission_preserves_active_log(restart, monkeypatch):
+    log = restart.ROOT / 'logs/restart-action.log'
+    log.parent.mkdir()
+    log.write_bytes(b'active restart output\n')
+    monkeypatch.setattr(restart.sys, 'argv', [str(SCRIPT)])
+    monkeypatch.setattr(restart.fcntl, 'flock', Mock(side_effect=BlockingIOError))
+    launch = Mock()
+    monkeypatch.setattr(restart.subprocess, 'Popen', launch)
+    with pytest.raises(RuntimeError, match='已有重启'): restart.main()
+    assert log.read_bytes() == b'active restart output\n'
+    launch.assert_not_called()
+
+
+def test_previous_log_writer_cannot_pollute_new_log(restart, monkeypatch):
+    log = restart.ROOT / 'logs/restart-action.log'
+    log.parent.mkdir()
+    monkeypatch.setattr(restart.sys, 'argv', [str(SCRIPT)])
+    def launch(*args, **kwargs):
+        kwargs['stdout'].write(b'new attempt\n')
+        return Mock(pid=500)
+    monkeypatch.setattr(restart.subprocess, 'Popen', launch)
+    with log.open('ab', buffering=0) as previous:
+        previous.write(b'old attempt\n')
+        restart.main()
+        previous.write(b'old writer still running\n')
+    assert log.read_bytes() == b'new attempt\n'
+
+
+def test_submission_hands_lock_to_worker_until_it_exits(restart, monkeypatch):
+    marker = restart.ROOT / 'worker-ready'
+    program = '''import fcntl,os,sys,time
+from pathlib import Path
+with os.fdopen(int(sys.argv[1]),'a') as lock:
+    fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    print('active restart',flush=True)
+    Path(sys.argv[2]).touch()
+    time.sleep(30)
+'''
+    popen = subprocess.Popen
+    children = []
+    def launch(args, **kwargs):
+        child = popen([sys.executable, '-c', program, args[-1], str(marker)], **kwargs)
+        children.append(child)
+        return child
+    monkeypatch.setattr(restart.sys, 'argv', [str(SCRIPT)])
+    monkeypatch.setattr(restart.subprocess, 'Popen', launch)
+    try:
+        restart.main()
+        deadline = time.monotonic() + 5
+        while not marker.exists() and time.monotonic() < deadline: time.sleep(.01)
+        assert marker.exists()
+        log = restart.ROOT / 'logs/restart-action.log'
+        snapshot = log.read_bytes()
+        with pytest.raises(RuntimeError, match='已有重启'): restart.main()
+        assert log.read_bytes() == snapshot == b'active restart\n'
+        assert len(children) == 1
+    finally:
+        for child in children:
+            if child.poll() is None: child.terminate()
+            child.wait(timeout=5)
+    with (restart.ROOT / '.pids/restart.lock').open('a') as lock:
+        restart.fcntl.flock(lock, restart.fcntl.LOCK_EX | restart.fcntl.LOCK_NB)
 
 
 def test_old_launcher_cleanup_cannot_read_stale_pid_files(restart, monkeypatch):
@@ -120,6 +207,125 @@ def test_preflight_failure_never_stops_the_old_service(restart, monkeypatch):
     with pytest.raises(RuntimeError, match="启动检查失败"):
         restart.worker()
     stop.assert_not_called()
+
+
+def test_preflight_records_only_failure_tail(restart, caplog):
+    with pytest.raises(subprocess.CalledProcessError):
+        restart.run_preflight_command([sys.executable, '-c',
+            'print("x"*100000);raise RuntimeError("build fixture")'], timeout=5)
+    assert 'build fixture' in caplog.text
+    assert len(caplog.text) < 66000
+
+
+def test_ownership_registration_failure_preserves_old_service(restart, monkeypatch):
+    monkeypatch.setattr(restart.time, "sleep", lambda _: None)
+    monkeypatch.setattr(restart, "restart_ownership", Mock(side_effect=PermissionError("owner record")))
+    stop = Mock()
+    monkeypatch.setattr(restart, "stop_services", stop)
+    with pytest.raises(PermissionError, match="owner record"):
+        restart.worker()
+    stop.assert_not_called()
+
+
+def test_restart_deadline_interrupts_a_stuck_phase_and_restores_handler(restart):
+    previous = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+    with pytest.raises(TimeoutError, match="总时限"):
+        with restart.restart_deadline(.03):
+            time.sleep(5)
+    assert signal.getsignal(signal.SIGALRM) == previous
+    remaining = signal.getitimer(signal.ITIMER_REAL)[0]
+    assert max(0, previous_timer[0] - .5) <= remaining <= previous_timer[0]
+
+
+def test_failed_start_cleans_attempt_and_does_not_retry(restart, monkeypatch):
+    child = Mock(pid=500)
+    child.poll.return_value = 1
+    launch = Mock(return_value=child)
+    cleanup = Mock()
+    monkeypatch.setattr(restart.subprocess, "Popen", launch)
+    monkeypatch.setattr(restart, "cleanup_failed_start", cleanup, raising=False)
+    with pytest.raises(RuntimeError, match="启动器.*退出"):
+        restart.start_services()
+    assert launch.call_count == 1
+    cleanup.assert_called_once_with(child)
+
+
+@pytest.mark.parametrize('launcher_exits', [False, True])
+def test_failed_start_cleanup_reaps_only_its_session(restart, launcher_exits):
+    import psutil
+    started = int(time.time())
+    program = 'import signal,os,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); print(os.getpid(),flush=True); time.sleep(30)'
+    parent = 'import subprocess,sys,time; subprocess.Popen([sys.executable,"-c",sys.argv[1]]); ' + ('time.sleep(.1)' if launcher_exits else 'time.sleep(30)')
+    child = subprocess.Popen([sys.executable, '-c', parent, program],
+                             start_new_session=True, stdout=subprocess.PIPE, text=True)
+    child._workstep_started = started
+    other = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], start_new_session=True)
+    descendant = None
+    try:
+        descendant = psutil.Process(int(child.stdout.readline()))
+        if launcher_exits: child.wait(timeout=5)
+        restart.cleanup_failed_start(child)
+        assert child.poll() is not None
+        assert not descendant.is_running() or descendant.status() == psutil.STATUS_ZOMBIE
+        assert other.poll() is None
+    finally:
+        for process in (child, other):
+            if process.poll() is None: process.kill()
+            process.wait()
+        child.stdout.close()
+        if descendant and descendant.is_running() and descendant.status() != psutil.STATUS_ZOMBIE:
+            descendant.kill()
+
+
+def test_timeout_releases_restart_lock_and_preserves_old_service(restart, monkeypatch):
+    from functools import partial
+    real_sleep = time.sleep
+    monkeypatch.setattr(restart.time, 'sleep', lambda seconds: None if seconds == 2 else real_sleep(seconds))
+    monkeypatch.setattr(restart, 'restart_deadline', partial(restart.restart_deadline, .03))
+    preflight = Mock(side_effect=lambda: real_sleep(5))
+    stop = Mock()
+    monkeypatch.setattr(restart, 'preflight', preflight)
+    monkeypatch.setattr(restart, 'stop_services', stop)
+    with pytest.raises(TimeoutError): restart.worker()
+    with (restart.ROOT / '.pids/restart.lock').open('a') as lock:
+        restart.fcntl.flock(lock, restart.fcntl.LOCK_EX | restart.fcntl.LOCK_NB)
+    assert preflight.call_count == 1
+    stop.assert_not_called()
+
+
+def test_failed_executor_reaps_its_preflight_children(tmp_path):
+    program = '''import importlib.util,subprocess,sys
+spec=importlib.util.spec_from_file_location('restart_helper',sys.argv[1])
+helper=importlib.util.module_from_spec(spec);sys.modules[spec.name]=helper;spec.loader.exec_module(helper)
+try:
+    with helper.restart_ownership():
+        child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'])
+        raise ValueError('preflight failed')
+except ValueError:
+    assert child.wait(timeout=5) != 0
+'''
+    result = subprocess.run([sys.executable, '-c', program, str(SCRIPT)],
+                            env={**os.environ, 'WORKSTEP_PROCESS_SCOPE': str(tmp_path),
+                                 'WORKSTEP_CONFIG_DIR': str(tmp_path)},
+                            capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("follow", ["0", "1"])
+@pytest.mark.parametrize("block_index", [1, 2])
+def test_detached_start_does_not_copy_service_logs(follow, block_index):
+    source = (SCRIPT.parents[1] / "start.sh").read_text()
+    block = source.split('    if [ "${WORKSTEP_FOLLOW_LOGS:-1}"')[block_index].split('    fi', 1)[0]
+    shell = '''tail() { echo FOLLOWED; }
+LOG_DIR=/unused
+sleep .01 &
+DAEMON_PID=$!
+''' + 'if [ "${WORKSTEP_FOLLOW_LOGS:-1}"' + block + 'fi\nwait "$DAEMON_PID"\n'
+    result = subprocess.run(["bash", "-c", shell], capture_output=True, text=True,
+                            env={**os.environ, "WORKSTEP_FOLLOW_LOGS": follow}, timeout=5)
+    assert result.returncode == 0, result.stderr
+    assert ("FOLLOWED" in result.stdout) == (follow == "1")
 
 
 def test_detached_worker_survives_its_launching_process_group(tmp_path):

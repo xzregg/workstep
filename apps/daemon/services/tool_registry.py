@@ -43,7 +43,58 @@ class WorkstepTool:
         return json.dumps(sample, ensure_ascii=False)
 
 
+# Compatibility dispatch only; not advertised to models.
+_LEGACY_MEMORY_HISTORY = WorkstepTool(
+        name="workstep_memory_history",
+        description="Review authoritative terminal chat and workflow messages within since/before or a calendar period, independent of index lag. Pass snapshot and next_cursor until has_more=false; explicitly disclose coverage gaps. Separate plans from completed work and assistant claims from execution evidence. Never display or save memory_token.",
+        method="POST", path="/api/memory/history",
+        parameters={"memory_token": {"type": "string"}, "cursor": {"type": "integer"}, "snapshot": {"type": "string"}, "limit": {"type": "integer"},
+                    "since": {"type": "string"}, "before": {"type": "string"}, "period": {"type": "string"},
+                    "timezone_name": {"type": "string"}},
+        required=("memory_token",),
+        body_params=("memory_token", "cursor", "snapshot", "limit", "since", "before", "period", "timezone_name"),
+    )
+
+
 WORKSTEP_TOOLS: list[WorkstepTool] = [
+    WorkstepTool(
+        name="workstep_memory_pending",
+        description="Step 1 of background assessment: fetch this execution's assigned unprocessed evidence and companion context. Only a scheduler-issued assessment capability works. Repeated calls return the same batch. Follow read_ids/read_ranges before producing the final structured assessment. This does not mark evidence completed.",
+        method="POST", path="/api/memory/pending",
+        parameters={"memory_token": {"type": "string"}},
+        required=("memory_token",), body_params=("memory_token",),
+    ),
+    WorkstepTool(
+        name="workstep_stop_digital_person_check",
+        description="Stop the active digital-person assessment cycle when explicitly requested by the user. Keeps source conversations and saved knowledge.",
+        method="POST", path="/api/digital-person/check/stop",
+        read_only=False, side_effect="Cancel the active digital-person assessment cycle",
+    ),
+    WorkstepTool(
+        name="workstep_memory_search",
+        description="Search memory after interpreting user intent and deriving evidence clues from conversation; do not blindly copy the question. Locate typed person/event/object/place/time entities by canonical name or alias, then narrow by relation anchored to the selected person/object. Combine dimensions with AND. Typed filters imply knowledge search; date bounds then constrain knowledge event_time. Supply query for additional text clues. Omit query for authoritative source browsing or complete date-range reviews, independent of index lag. Follow snapshot/next_cursor and report coverage gaps. Inferred clues are hypotheses, not facts. Set include_sources=true to also fetch original message bodies for returned evidence (no event logs); inspect source_coverage and continue with memory_read when truncated. Keep memory_token private.",
+        method="POST", path="/api/memory/search",
+        parameters={"memory_token": {"type": "string"}, "query": {"type": "string", "description": "Intent-derived text clues; omit for complete source review, optionally bounded by dates."},
+                    **{kind: {"type": "string", "description": "Exact typed entity name or alias; AND across dimensions. time is a stored tag, not a date range."}
+                       for kind in ("person", "event", "object", "place", "time")},
+                    "relation": {"type": "string", "description": "Literal relationship substring anchored to selected person/object."},
+                    "include_sources": {"type": "boolean", "description": "Fetch bounded original bodies for returned evidence; default false."},
+                    "source_chars": {"type": "integer", "description": "Per-source characters: default 2400, maximum 6000; total body budget 12000."},
+                    "cursor": {"type": "integer"}, "snapshot": {"type": "string"}, "limit": {"type": "integer"},
+                    "since": {"type": "string"}, "before": {"type": "string"},
+                    "period": {"type": "string", "description": "last_month, this_month, yesterday, today"},
+                    "timezone_name": {"type": "string", "description": "IANA timezone; default Asia/Shanghai"}},
+        required=("memory_token",),
+        body_params=("memory_token", "query", "cursor", "snapshot", "limit", "since", "before", "period", "timezone_name", "include_sources", "source_chars", "person", "event", "object", "place", "time", "relation"),
+    ),
+    WorkstepTool(
+        name="workstep_memory_read",
+        description="Read a memory's original source text with offset/limit paging; events=true reads workflow execution events with event offset. Use an actual memory ID from search/pending, not an invented ID. Never display or save memory_token.",
+        method="POST", path="/api/memory/read",
+        parameters={"memory_token": {"type": "string"}, "memory_id": {"type": "string"},
+                    "offset": {"type": "integer"}, "limit": {"type": "integer"}, "events": {"type": "boolean"}},
+        required=("memory_token", "memory_id"), body_params=("memory_token", "memory_id", "offset", "limit", "events"),
+    ),
     WorkstepTool(
         name="workstep_delegate_digital_person",
         description="Delegate authorized heavy work to a new conversation in the specified project. Returns immediately; the digital person follows completion. Use the current digital-person session as origin_session_id and a stable unique request_id to avoid duplicate work.",
@@ -762,9 +813,16 @@ WORKSTEP_TOOLS.extend([
     WorkstepTool(name="workstep_language_delete", description="Remove a custom language pack from the catalog; builtin languages are immutable.", method="DELETE", path="/api/language-packs/{pack_id}", parameters={"pack_id": {"type": "string"}}, required=("pack_id",), path_params=("pack_id",), read_only=False, side_effect="remove a language pack registration"),
 ])
 
+# Memory operations are CLI transport definitions, not model-native tools.
+_MEMORY_CLI_TOOLS = [tool for tool in WORKSTEP_TOOLS if tool.name.startswith("workstep_memory_")]
+WORKSTEP_TOOLS = [tool for tool in WORKSTEP_TOOLS if not tool.name.startswith("workstep_memory_")]
+
 TOOL_BY_NAME: dict[str, WorkstepTool] = {
     tool.name: tool for tool in WORKSTEP_TOOLS
 }
+TOOL_BY_NAME.update({tool.name: tool for tool in _MEMORY_CLI_TOOLS})
+TOOL_BY_NAME[_LEGACY_MEMORY_HISTORY.name] = _LEGACY_MEMORY_HISTORY
+
 
 
 def tool_documentation() -> str:

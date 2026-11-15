@@ -196,6 +196,7 @@ async def invoke_engine(
     system_prompt: str | None = None,
     system_prompt_each_turn: bool = False,
     capture_prompt_input: bool = False,
+    internal_event: str | None = None,
 ) -> tuple[str, list[dict], str | None]:
     """Compatibility entry point; the turn transport lives in engine_invocation."""
     return await run_engine_turn(
@@ -220,6 +221,7 @@ async def invoke_engine(
         **({"system_prompt": system_prompt} if system_prompt else {}),
         **({"system_prompt_each_turn": True} if system_prompt_each_turn else {}),
         **({"capture_prompt_input": True} if capture_prompt_input else {}),
+        **({"internal_event": internal_event} if internal_event else {}),
     )
 
 
@@ -313,6 +315,8 @@ class AssistantRuntime:
         schedule: bool = True,
         author_name: str | None = None,
         replay_pending: bool = False,
+        reset_context: bool = False,
+        internal_event: str | None = None,
     ) -> AcceptedTurn:
         """Queue one turn; returns immediately with an accepted turn.
 
@@ -424,7 +428,7 @@ class AssistantRuntime:
                     )
             except Exception:
                 logger.exception("Failed to start assistant event journal")
-        actor = get_effective_actor()
+        actor = None if internal_event else get_effective_actor()
         stored_author_name = (author_name or "").strip() or (
             actor.user_name if actor is not None else ""
         )
@@ -436,7 +440,7 @@ class AssistantRuntime:
         )
         session.messages.append(
             {
-                "role": "user",
+                "role": "system" if internal_event else "user",
                 "content": normalized,
                 "id": turn_id,
                 "created_at": utc_now().isoformat(),
@@ -458,7 +462,9 @@ class AssistantRuntime:
                     if stored_author_name
                     else {}
                 ),
-                "author_type": "user",
+                "author_type": "internal" if internal_event else "user",
+                **({"author_id":"workstep", "author_username":internal_event,
+                    "author_name":"WorkStep", "internal_event":internal_event} if internal_event else {}),
             }
         )
         started_at = utc_now().isoformat()
@@ -514,6 +520,8 @@ class AssistantRuntime:
             "engine_overridden": bool(engine),
             "journal_ref": journal_ref,
             "memory_key": memory_key,
+            "reset_context": bool(reset_context),
+            "internal_event": internal_event,
             "live_message_queue": asyncio.Queue(),
         }
         if schedule:
@@ -1448,7 +1456,7 @@ class AssistantRuntime:
                 user_messages = [
                     message
                     for message in session.messages
-                    if message.get("role") == "user"
+                    if message.get("id") == turn_id
                 ]
                 if user_messages:
                     seq = await self._publish(
@@ -1458,12 +1466,15 @@ class AssistantRuntime:
                         {
                             "content": user_messages[-1].get("content", ""),
                             "status": "completed",
-                            "role": "user",
+                            "role": user_messages[-1].get('role','user'),
+                            **({"author_type":"internal","author_name":"WorkStep",
+                                "internal_event":user_messages[-1]['internal_event']}
+                               if user_messages[-1].get('internal_event') else {}),
                         },
                         seq,
                     )
                 images: list[EngineImage] = []
-                if user_messages and self._project_manager is not None:
+                if user_messages and user_messages[-1].get('role')=='user' and self._project_manager is not None:
                     def load_images() -> list[EngineImage]:
                         with self._project_ctx(session.project_id) as project:
                             return extract_uploaded_images(
@@ -1486,10 +1497,7 @@ class AssistantRuntime:
                     seq,
                 )
                 seq_holder = [seq]
-                extract_text = (
-                    self._config.extract_streaming_text
-                    or (lambda raw: raw)
-                )
+                extract_text = lambda raw: self._extract_streaming_text(session, raw)
 
                 # 思考增量聚合：token 级的思考/子代理增量在进日志与广播前合并为
                 # 少量大事件（长回合中此类事件占比 ~90%，逐条下发会造成 WS 消息
@@ -2202,6 +2210,10 @@ class AssistantRuntime:
             )
         return state
 
+    def _extract_streaming_text(self, session: AssistantSession, raw: str) -> str:
+        extractor = self._config.extract_streaming_text
+        return extractor(raw) if extractor else raw
+
     async def _parse_response(
         self,
         session: AssistantSession,
@@ -2413,6 +2425,7 @@ class AssistantRuntime:
             **({"system_prompt": system_prompt} if system_prompt else {}),
             **({"system_prompt_each_turn": True} if system_prompt_each_turn or self._system_prompt_each_turn() else {}),
             **({"capture_prompt_input": True} if self._capture_prompt_input() else {}),
+            **({"internal_event":turn_state['internal_event']} if turn_state.get('internal_event') else {}),
         )
 
         if auxiliary_capture:
@@ -2463,7 +2476,7 @@ class AssistantRuntime:
             "data": truncate_large_tool_payloads(data),
             "created_at": utc_now().isoformat(),
         }
-        actor = get_effective_actor()
+        actor = None if data.get('internal_event') else get_effective_actor()
         if actor is not None:
             payload["actor"] = {
                 "id": actor.actor_id,

@@ -141,8 +141,37 @@ def build_parser() -> argparse.ArgumentParser:
                 help="include full data instead of list summaries",
             )
 
+    memory = subparsers.add_parser('memory', help='search memory with intent-derived text clues or date bounds')
+    memory_sub = memory.add_subparsers(dest='subcommand', required=True)
+    for operation in ('search', 'history', 'read', 'pending'):
+        reader = memory_sub.add_parser(operation)
+        reader.add_argument('--token', dest='memory_token', required=True, help='private capability provided by the current execution')
+        if operation != 'pending':
+            reader.add_argument('--limit', type=_positive_int, default=2400 if operation == 'read' else 20)
+        if operation == 'read':
+            reader.add_argument('--id', dest='memory_id', required=True)
+            reader.add_argument('--offset', type=_nonnegative_int, default=0)
+            reader.add_argument('--events', action='store_true')
+        elif operation != 'pending':
+            if operation == 'search':
+                reader.add_argument('--query', default='')
+                for dimension in ('person','event','object','place','time'):
+                    reader.add_argument('--'+dimension, default='', help='exact typed entity name or alias; combine dimensions with AND; --time is a stored tag')
+                reader.add_argument('--relation', default='', help='literal relationship substring, anchored to selected person/object; implies knowledge search')
+                reader.add_argument('--with-sources', dest='include_sources', action='store_true', help='also fetch bounded original message bodies for returned evidence; never event logs')
+                reader.add_argument('--source-chars', type=_positive_int, default=2400, help='characters per original body, maximum 6000; total response body budget 12000')
+            reader.add_argument('--cursor', type=_nonnegative_int, default=0)
+            reader.add_argument('--snapshot', default='')
+            reader.add_argument('--since')
+            reader.add_argument('--before')
+            reader.add_argument('--period', default='')
+            reader.add_argument('--timezone', dest='timezone_name', default='Asia/Shanghai')
+        reader.add_argument('--verbose', action='store_true', help='include full memory response and internal metadata')
+        add_json(reader)
+
     person = subparsers.add_parser('digital-person', help='delegate work through the device companion')
     person_sub = person.add_subparsers(dest='subcommand', required=True)
+    add_json(person_sub.add_parser('stop', help='stop the active companion assessment cycle'))
     delegate = person_sub.add_parser('delegate', help='start a tracked project execution session')
     delegate.add_argument('--project', dest='project_id', required=True)
     delegate.add_argument('--instruction', required=True)
@@ -462,6 +491,9 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
     result = await _dispatch(args, client)
     if isinstance(result, dict) and result.get("ok") is False:
         return result
+    if args.command == 'memory' and not args.verbose:
+        from cli_memory_output import compact
+        return compact(result, args.subcommand, events=getattr(args, 'events', False))
     fields = getattr(args, "fields", None)
     if args.subcommand != "list":
         if fields and isinstance(result, dict):
@@ -504,7 +536,17 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
     """Resolve a parsed command to one tool call and return its JSON result."""
     client = client or WorkstepClient(base_url=args.url)
     command = args.command
+    if command == 'memory':
+        if args.subcommand == 'pending':
+            return await client.call('workstep_memory_pending', {'memory_token': args.memory_token})
+        fields = ('memory_token', 'limit', 'memory_id', 'offset', 'events') if args.subcommand == 'read' else (
+            'memory_token', 'limit', 'query', 'cursor', 'snapshot', 'since', 'before', 'period', 'timezone_name', 'include_sources', 'source_chars', 'person', 'event', 'object', 'place', 'time', 'relation')
+        operation = 'search' if args.subcommand == 'history' else args.subcommand
+        return await client.call('workstep_memory_' + operation, {
+            key: getattr(args, key) for key in fields if getattr(args, key, None) is not None})
     if command == 'digital-person':
+        if args.subcommand == 'stop':
+            return await client.call('workstep_stop_digital_person_check', {'confirm':'yes'})
         return await client.call('workstep_delegate_digital_person', {
             **{key: getattr(args, key) for key in ('project_id', 'instruction', 'origin_session_id', 'request_id')}, 'confirm': 'yes'})
     if command == "context":
@@ -947,6 +989,11 @@ def main(argv: list[str] | None = None, client: WorkstepClient | None = None) ->
     except Exception as exc:  # unexpected failures still exit non-zero
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 1
+    if (args.command == 'memory' and not args.json and not args.verbose
+            and not getattr(args, 'events', False) and isinstance(result, dict) and result.get('ok') is not False):
+        from cli_memory_output import render
+        print(render(result, args.subcommand))
+        return 0
     indent = None if getattr(args, "json", False) else 2
     print(json.dumps(result, ensure_ascii=False, indent=indent,
                      separators=(",", ":") if getattr(args, "json", False) else None))

@@ -194,6 +194,34 @@ async def test_slow_action_log_write_does_not_block_health(action_client, monkey
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize('fault', ['append', 'close', 'config'])
+async def test_diagnostic_log_failure_preserves_action_result(action_client, monkeypatch, fault):
+    from services import action_runtime as runtime_module
+    client, manager, project = action_client
+    original = runtime_module._create_log_writer
+    def create(path):
+        writer = original(path)
+        def fail(*args): raise OSError('injected diagnostic failure')
+        setattr(writer, fault, fail)
+        return writer
+    if fault == 'config':
+        monkeypatch.setenv('WORKSTEP_LOG_MAX_MIB', '0')
+    else:
+        monkeypatch.setattr(runtime_module, '_create_log_writer', create)
+    response = await client.post(f'/api/tasks/task-action/actions/run?project_id={project.id}',
+        json={'button_id':'restart','source':'project','confirmed':True})
+    assert response.status_code == 200
+    run_id = response.json()['run_id']
+    for _ in range(100):
+        current = (await client.get(f'/api/action-runs/{run_id}?project_id={project.id}')).json()
+        if current['status'] == 'succeeded': break
+        await asyncio.sleep(.02)
+    assert current['status'] == 'succeeded'
+    assert 'started' in current['output'] and 'finished' in current['output']
+    assert (await client.get('/api/health')).status_code == 200
+
+
+@pytest.mark.anyio
 async def test_action_rejects_outside_script(action_client):
     client, manager, project = action_client
     def change(_project):

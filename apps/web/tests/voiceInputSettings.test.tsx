@@ -6,6 +6,8 @@ import { createRoot } from 'react-dom/client'
 import { I18nProvider } from '../src/i18n'
 import VoiceInputSettings from '../src/pages/VoiceInputSettings'
 import { speechApi, type SpeechStatus } from '../src/api/speech'
+import { speechOutputApi } from '../src/api/speechOutput'
+import { outputStatus } from './fixtures/speechOutput'
 import { voiceCapture } from '../src/utils/voiceCapture'
 
 test('settings loads the model, downloads resources, exposes cancellation and saves the enable switch', async () => {
@@ -139,6 +141,9 @@ test('two streaming models download by id and selection uses the installed curre
 })
 
 test('speech settings separates input output and wake, preserves output drafts and saves only voice fields', async () => {
+  const oldOutput = { ...speechOutputApi }
+  speechOutputApi.status = async () => structuredClone(outputStatus)
+  speechOutputApi.save = async value => value
   const { digitalPersonApi, voiceWakeApi } = await import('../src/api/digitalPerson')
   const { window } = installDomEnvironment()
   const host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
@@ -160,6 +165,8 @@ test('speech settings separates input output and wake, preserves output drafts a
     await switchTab('唤醒')
     assert.equal(host.querySelector<HTMLElement>('#speech-panel-input')!.hidden, true)
     assert.ok(host.querySelector('#speech-panel-wake .voice-wake-settings'))
+    assert.equal(host.querySelector('#speech-panel-wake h2'), null, 'tab label replaces the extra wake title')
+    assert.equal(host.querySelectorAll('#speech-panel-wake .voice-wake-settings').length, 1, 'wake control is not another settings container')
     await switchTab('输出')
     assert.equal(output.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked, true)
     current.name = '已更新姓名'
@@ -168,6 +175,48 @@ test('speech settings separates input output and wake, preserves output drafts a
     assert.equal(current.name, '已更新姓名')
   } finally {
     await act(async () => root.unmount()); await window.happyDOM.close()
+    Object.assign(speechOutputApi, oldOutput)
     speechApi.status = oldSpeech; digitalPersonApi.get = oldGet; digitalPersonApi.save = oldSave; voiceWakeApi.get = oldWake
+  }
+})
+
+
+test('input offers cloud credentials and a self-hosted address without requiring a local model', async () => {
+  const { window } = installDomEnvironment()
+  const host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
+  const original = { ...speechApi }
+  let saved: Parameters<typeof speechApi.configure>[3]
+  let current: SpeechStatus = { enabled:true, language:'auto', model_id:'none', languages:['auto'], service:'stopped', models:[], connection:{mode:'local',provider:'tencent',base_url:'',model:'16k_zh',resource_id:'volc.seedasr.sauc.duration',app_id:''} }
+  speechApi.status = async () => structuredClone(current)
+  speechApi.configure = async (_enabled, _language, _model, connection) => {
+    saved = connection
+    current = { ...current, connection, ready:true, streaming:'final' }
+    return current
+  }
+  let dirty=false
+  const setInput = async (label:string, value:string) => {
+    const input=[...host.querySelectorAll('label')].find(l=>l.firstChild?.textContent===label)!.querySelector('input')!
+    await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new window.Event('input',{bubbles:true}))})
+  }
+  try {
+    await act(async()=>root.render(<I18nProvider><VoiceInputSettings onDirtyChange={value=>{dirty=value}}/></I18nProvider>))
+    const chooseMode=async (value:string)=>act(async()=>host.querySelector<HTMLInputElement>(`.speech-input-connection input[type=radio][value="${value}"]`)!.click())
+    await chooseMode('cloud')
+    assert.match(host.textContent!,/腾讯云/)
+    assert.ok([...host.querySelectorAll('label')].some(l=>l.textContent==='SecretKey'))
+    assert.equal(host.querySelectorAll('.speech-model').length,0)
+    assert.equal(host.querySelector<HTMLButtonElement>('[data-save-input]')!.disabled,true)
+    await chooseMode('remote')
+    await setInput('服务地址','http://localhost:9001/v1')
+    await setInput('模型','my-whisper')
+    assert.equal(dirty,true)
+    assert.match(host.textContent!,/录音结束后返回文字/)
+    await act(async()=>host.querySelector<HTMLButtonElement>('[data-save-input]')!.click())
+    assert.equal(saved!.base_url,'http://localhost:9001/v1')
+    assert.equal(saved!.model,'my-whisper')
+    assert.equal(dirty,false)
+    assert.equal([...host.querySelectorAll('button')].find(b=>b.textContent==='测试麦克风')!.disabled,false)
+  } finally {
+    await act(async()=>root.unmount());Object.assign(speechApi,original);await window.happyDOM.close()
   }
 })

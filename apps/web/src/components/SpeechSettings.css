@@ -1,0 +1,22 @@
+.speech-settings { width: 100%; max-width: 720px; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; text-align: start; }
+.speech-settings > h1 { font-size: var(--text-title-1); margin: 0; }
+.speech-settings p { margin: 0; color: var(--text-secondary); font-size: var(--text-body); }
+.speech-settings [role=alert] { color: var(--danger); }
+.speech-settings label { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2); font-size: var(--text-body); min-width: 0; }
+.speech-settings label.speech-setting-toggle { flex-direction: row; align-items: center; }
+.speech-settings input, .speech-settings select, .speech-settings textarea { min-width: 0; max-width: 100%; }
+.speech-settings input[type=checkbox] { width: 16px; height: 16px; flex: 0 0 16px; }
+.speech-settings-panel:not([hidden]) { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-4); min-width: 0; }
+.speech-settings-panel[hidden] { display: none; }
+.speech-settings-panel h2 { font-size: var(--text-title-3); margin: 0; }
+.speech-settings-panel > .btn { align-self: flex-start; }
+.speech-models { display: grid; gap: var(--space-3); }
+.speech-model { padding: var(--space-4); border: .5px solid var(--border); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.speech-model[data-current] { border-color: var(--accent); }
+.speech-model-heading { display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; font-size: var(--text-title-3); }
+.speech-model-heading span { color: var(--text-muted); font-size: var(--text-body); }
+.speech-model progress { width: 100%; }
+.speech-model-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.speech-test-result { display: flex; flex-direction: column; gap: var(--space-2); padding-block: var(--space-3); border-top: .5px solid var(--border); }
+.speech-input-connection, .speech-input-connection fieldset { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; padding: 0; margin: 0; border: 0; }
+.speech-input-connection .speech-model-actions > span { color: var(--text-muted); font-size: var(--text-body); align-self: center; }

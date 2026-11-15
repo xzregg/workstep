@@ -61,6 +61,7 @@ export default function SettingsPage({
   const roleCenterDirty = useRef(false)
   const channelBotDirty = useRef(false)
   const digitalPersonDirty = useRef(false)
+  const [digitalPersonBusy, setDigitalPersonBusy] = useState(false)
   const onDigitalPersonDirty = useCallback((dirty: boolean) => { digitalPersonDirty.current = dirty }, [])
   const decisionDirty = useRef(false)
   const onDecisionDirty = useCallback((dirty: boolean) => { decisionDirty.current = dirty }, [])
@@ -68,8 +69,8 @@ export default function SettingsPage({
   const onSandboxDirty = useCallback((dirty: boolean) => { sandboxDirty.current = dirty }, [])
   const onRoleCenterDirty = useCallback((dirty: boolean) => { roleCenterDirty.current = dirty }, [])
   const onChannelBotDirty = useCallback((dirty: boolean) => { channelBotDirty.current = dirty }, [])
-  const closeSettings = () => sandboxDirty.current || roleCenterDirty.current || channelBotDirty.current || decisionDirty.current || digitalPersonDirty.current ? setPendingExit({}) : onClose()
-  const selectSection = (section: SettingsSection) => sandboxDirty.current || roleCenterDirty.current || channelBotDirty.current || decisionDirty.current || digitalPersonDirty.current ? setPendingExit({ section }) : setActiveSection(section)
+  const closeSettings = () => { if (digitalPersonBusy) return; sandboxDirty.current || roleCenterDirty.current || channelBotDirty.current || decisionDirty.current || digitalPersonDirty.current ? setPendingExit({}) : onClose() }
+  const selectSection = (section: SettingsSection) => { if (digitalPersonBusy) return; sandboxDirty.current || roleCenterDirty.current || channelBotDirty.current || decisionDirty.current || digitalPersonDirty.current ? setPendingExit({ section }) : setActiveSection(section) }
   useOverlay(true, closeSettings, settingsDialogRef, compactLayout)
   const userName = useUserSettingsStore((state) => state.userName)
   const gatewayIdentity = useUserSettingsStore((state) => state.identitySource === 'gateway')
@@ -134,6 +135,7 @@ export default function SettingsPage({
     >
       <ConfirmDialog open={Boolean(pendingExit)} title={t(digitalPersonDirty.current ? 'digitalPerson.discard' : decisionDirty.current ? 'decisionModels.discardTitle' : channelBotDirty.current ? 'channelBot.discardConfig' : roleCenterDirty.current ? 'roleCenter.discardTitle' : 'sandbox.discard')}
         onCancel={() => setPendingExit(null)} onConfirm={() => {
+          if (digitalPersonBusy) return
           const section = pendingExit?.section
           sandboxDirty.current = false; setPendingExit(null)
           roleCenterDirty.current = false
@@ -152,7 +154,7 @@ export default function SettingsPage({
             <Icon name="sliders-horizontal" size={18} strokeWidth={2} />
             <span className="modal-title">{t('nav.settings')}</span>
           </div>
-          <Button variant="icon" aria-label={t('settings.closeSettings')} onClick={closeSettings}>✕</Button>
+          <Button variant="icon" disabled={digitalPersonBusy} aria-label={t('settings.closeSettings')} onClick={closeSettings}>✕</Button>
         </div>
 
       <div className="settings-layout">
@@ -172,7 +174,7 @@ export default function SettingsPage({
             }}
           />
         ) : activeSection === 'digital-person' ? (
-          <DigitalPersonSettings onClose={onClose} onDirtyChange={onDigitalPersonDirty} />
+          <DigitalPersonSettings onClose={onClose} onDirtyChange={onDigitalPersonDirty} onBusyChange={setDigitalPersonBusy} />
         ) : activeSection === 'connectors' ? (
           <ConnectorSettingsPanel />
         ) : activeSection === 'pricing' ? (

@@ -173,11 +173,13 @@ if [ ! -d ".venv" ]; then
 fi
 
 # 引擎 SDK 由设置页按需安装；启动时同步依赖会卸载这些额外包。
-nohup env WORKSTEP_ENV="$MODE" uv run --no-sync uvicorn main:app \
+nohup env WORKSTEP_ENV="$MODE" WORKSTEP_LOG_DIR="$LOG_DIR" WORKSTEP_LOG_MAINTAIN_WEB=1 \
+    uv run --no-sync uvicorn main:app --log-config data/logging.json \
     --host 0.0.0.0 \
     --port "$PORT" \
-    > "$LOG_DIR/daemon.log" 2>&1 &
-echo $! > "$PID_DIR/daemon.pid"
+    > /dev/null 2>&1 &
+DAEMON_PID=$!
+echo "$DAEMON_PID" > "$PID_DIR/daemon.pid"
 cd "$SCRIPT_DIR"
 
 # 等待后端就绪
@@ -199,7 +201,7 @@ if [ "$MODE" = "dev" ]; then
     fi
 
     nohup "${YARN_COMMAND[@]}" vite --port 5173 \
-        > "$LOG_DIR/web.log" 2>&1 &
+        >> "$LOG_DIR/web.log" 2>&1 &
     echo $! > "$PID_DIR/web.pid"
     cd "$SCRIPT_DIR"
 
@@ -213,7 +215,11 @@ if [ "$MODE" = "dev" ]; then
     echo ""
     echo "  Ctrl+C 停止所有服务"
     echo ""
-    tail -f "$LOG_DIR/daemon.log" "$LOG_DIR/web.log"
+    if [ "${WORKSTEP_FOLLOW_LOGS:-1}" = "1" ]; then
+        tail -F "$LOG_DIR/daemon.log" "$LOG_DIR/web.log"
+    else
+        wait "$DAEMON_PID"
+    fi
 else
     # 生产模式: build 前端(web) → Daemon serve
     # 官网托管在 "/landing"，Web 应用仍占据 home "/"
@@ -233,5 +239,9 @@ else
     echo ""
     echo "  Ctrl+C 停止服务"
     echo ""
-    tail -f "$LOG_DIR/daemon.log"
+    if [ "${WORKSTEP_FOLLOW_LOGS:-1}" = "1" ]; then
+        tail -F "$LOG_DIR/daemon.log"
+    else
+        wait "$DAEMON_PID"
+    fi
 fi

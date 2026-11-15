@@ -4,6 +4,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from services.config import config_store
 
 
+LEGACY_PROACTIVE_INSTRUCTION = "跟进明确交办的事项，完成或需要用户介入时才通知，无变化保持静默。"
+
+
 class DigitalRoleReference(BaseModel):
     kind: Literal['role', 'team']
     id: str = Field(pattern=r'^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$')
@@ -16,13 +19,18 @@ class DigitalPersonProfile(BaseModel):
     role_binding: DigitalRoleReference | None = None
     role: str = Field(default="研发伙伴", max_length=200)
     personality: str = Field(default="严谨、好奇，表达直接。", max_length=2000)
+    relationship_style: Literal["balanced", "warm", "reserved", "tsundere"] = "balanced"
+    relationship_preferences: str = Field(default="", max_length=2000)
     tone: str = Field(default="", max_length=1000)
     duties: str = Field(default="协助研发，跟进未完成事项。", min_length=1, max_length=8000)
     avatar: Literal["robot", "spark"] = "robot"
     greeting: str = Field(default="今天有什么需要一起推进的？", max_length=500)
     conversation_rules: str = Field(default="", max_length=8000)
     proactive_enabled: bool = False
-    proactive_instruction: str = Field(default="跟进明确交办的事项，完成或需要用户介入时才通知，无变化保持静默。", max_length=4000)
+    reflection_enabled: bool = True
+    memory_batch_size: int = Field(default=100, ge=1, le=1000)
+    proactive_shared_context: bool = True
+    proactive_instruction: str = Field(default="", max_length=4000)
     quiet_start: int = Field(default=22, ge=0, le=23)
     quiet_end: int = Field(default=8, ge=0, le=23)
     onboarding_completed: bool = False
@@ -32,7 +40,10 @@ class DigitalPersonProfile(BaseModel):
     voice_name: str = Field(default="", max_length=200)
     voice_rate: float = Field(default=1, ge=.5, le=2)
     expression: Literal["neutral", "happy", "concern"] = "neutral"
-    proactive_interval_minutes: int = Field(default=30, ge=1, le=1440)
+    proactive_interval_minutes: int = Field(default=5, ge=1, le=1440)
+    proactive_contact_interval_minutes: int = Field(default=5, ge=1, le=1440)
+    # Legacy configuration accepted for older clients; no independent poller.
+    delegation_interval_seconds: int = Field(default=60, ge=1, le=300)
 
 
 def get_profile() -> DigitalPersonProfile:
@@ -62,12 +73,12 @@ def prompt_for_project(project) -> str:
         role, duties = resolve_binding(profile.role_binding.model_dump())
         if len(duties) > 8000:
             raise ValueError('角色提示词超过数字人预算，请精简')
-    identity = "\n".join(("[WorkStep digital person]", f"姓名：{profile.name}",
-                       f"角色：{role}", f"性格：{profile.personality}",
-                       *([f"语气：{profile.tone}"] if profile.tone else []),
-                       f"职责：{duties}",
-                       "你负责沟通、澄清与指派。代码修改、构建、测试和长耗时操作必须通过 workstep_delegate_digital_person 新建目标项目执行会话，自己不要执行重活。委派后立即告知已交办，由后台跟进结果。没有该工具时执行 CLI：workstep digital-person delegate --project <目标项目ID> --session <当前来源会话ID> --instruction <要求> --idempotency-key <本次请求唯一ID> --json；重试使用相同ID。项目和来源会话ID通过 workstep project list 与 workstep context get 获取。"))
-    return f"{identity}\n对话规则：{profile.conversation_rules}" if profile.conversation_rules else identity
+    identity = "\n".join(("[WorkStep digital person]", f"Name: {profile.name}",
+                       f"Role: {role}", f"Personality: {profile.personality}",
+                       *([f"Tone: {profile.tone}"] if profile.tone else []),
+                       f"Duties: {duties}",
+                       "You handle communication, clarification, and delegation. For code changes, builds, tests, and long-running work, use the workstep-cli skill to create an execution session in the target project; do not perform that work yourself. Follow the skill for invocation and context discovery. Once delegated, promptly tell the user it has been assigned; the background service follows up on results. Reuse the same request identifier on retries to prevent duplicate delegation. Respond in the user's language unless they request otherwise."))
+    return f"{identity}\nConversation rules: {profile.conversation_rules}" if profile.conversation_rules else identity
 
 
 class VoiceWakeDraft(BaseModel):

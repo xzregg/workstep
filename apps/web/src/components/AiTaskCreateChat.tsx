@@ -249,7 +249,7 @@ export default function AiTaskCreateChat({
       locale={locale}
       attachmentPrefix="task-create"
       onInputChange={(value) => { enhanceInputChanged(value); setInput(value); setSendError('') }}
-      onSend={() => void send()}
+      onSend={content => void send(content)}
       onSendContent={(content) => send(content)}
       onStop={() => void stop()}
       enhance={enhance}

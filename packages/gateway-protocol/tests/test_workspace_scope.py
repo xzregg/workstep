@@ -210,3 +210,12 @@ def test_connectors_expose_only_project_catalog_and_edit_selection():
     for path in ['/api/connectors', '/api/connectors/scan', '/api/connectors/id/test']:
         for method in ['GET', 'POST', 'PUT', 'DELETE']:
             assert not allowed(method, path, [('project_id', 'p')], 'p', access_level='edit')
+
+
+def test_chat_read_receipt_is_scoped_to_the_editable_project():
+    path='/api/chat-sessions/session-1/read'
+    query=[('project_id','visible')]
+    assert project_http_route_allowed('POST',path,query,'visible',access_level='edit')
+    assert not project_http_route_allowed('POST',path,query,'visible',access_level='read')
+    assert not project_http_route_allowed('POST',path,[('project_id','other')],'visible',access_level='edit')
+    assert not project_http_route_allowed('POST',path,query+query,'visible',access_level='edit')

@@ -2,6 +2,8 @@ import * as React from 'react'
 import Button from '../components/Button'
 import Input from '../components/Input'
 import ConfirmDialog from '../components/ConfirmDialog'
+import {getAvatarState,subscribeAvatar,type AvatarSnapshot,type AvatarScope,type AvatarEvent} from '../avatars/runtime'
+import * as avatarMotion from '../avatars/motion'
 import { request } from '../api/transport'
 import { executeSkinAction, skinActionEnabled, skinContext, subscribeSkinActions } from './actions'
 import type { SkinDocument } from './contract'
@@ -12,7 +14,9 @@ export const extensionSlots: ExtensionSlotName[] = ['workspace-top', 'workspace-
 export interface FeatureProps { storage: FeatureStorage; close: () => void; onDirtyChange?: (dirty: boolean) => void }
 export interface SkinFeature { id: string; title: string; render: React.ComponentType<FeatureProps> }
 export interface SkinSlot extends SkinFeature { slot: ExtensionSlotName }
-type Snapshot = { features: SkinFeature[]; slots: SkinSlot[] }
+export interface AvatarRenderProps {state:AvatarSnapshot;name:string}
+export interface SkinAvatar {id:string;render:React.ComponentType<AvatarRenderProps>}
+type Snapshot = { features: SkinFeature[]; slots: SkinSlot[]; avatar?:SkinAvatar }
 export interface ExtensionModule { activate?: (api: ExtensionApi) => void | (() => void) | Promise<void | (() => void)> }
 export interface ExtensionApi {
   React: typeof React
@@ -22,6 +26,7 @@ export interface ExtensionApi {
   slots: { register: (slot: SkinSlot) => () => void }
   actions: { register: (id: string, action: (args?: Record<string, unknown>) => unknown) => () => void; execute: (id: string, args?: Record<string, unknown>) => Promise<unknown>; enabled: (id: string) => boolean }
   context: { get: typeof skinContext; subscribe: typeof subscribeSkinActions }
+  avatar: {get:(scope?:AvatarScope)=>AvatarSnapshot|null;subscribe:(listener:(event:AvatarEvent)=>void,scope?:AvatarScope)=>()=>void;register:(avatar:SkinAvatar)=>()=>void;motion:typeof avatarMotion}
   client: { request: typeof request }
   storage: (featureId: string) => FeatureStorage
   asset: (path: string) => string
@@ -63,6 +68,12 @@ export class ExtensionSession {
     this.update({ ...this.value, [kind]: [...this.value[kind], feature] })
     return () => this.update({ ...this.value, [kind]: this.value[kind].filter(item => item !== feature) })
   }
+  private registerAvatar(avatar:SkinAvatar) {
+    this.check()
+    if(!/^[a-z][a-z0-9_-]{0,63}$/.test(avatar.id)||typeof avatar.render!=='function'||this.value.avatar)throw new Error('皮肤形象定义无效或重复')
+    this.update({...this.value,avatar})
+    return()=>{if(this.value.avatar!==avatar)return;const value={...this.value};delete value.avatar;this.update(value)}
+  }
   async activate(loader: (url: string) => Promise<ExtensionModule> = url => import(/* @vite-ignore */ url)) {
     try {
       const module = await loader(skinFileUrl(this.skin, this.skin.script || 'theme.js'))
@@ -84,6 +95,14 @@ export class ExtensionSession {
           this.check(); const stop = subscribeSkinActions(listener); this.disposers.add(stop)
           return () => { stop(); this.disposers.delete(stop) }
         } },
+        avatar: {
+          get: scope=>{this.check();return getAvatarState(scope)},
+          subscribe:(listener,scope)=>{
+            this.check();const stop=subscribeAvatar(listener,scope);this.disposers.add(stop)
+            return()=>{stop();this.disposers.delete(stop)}
+          },
+          register: avatar=>this.registerAvatar(avatar),motion:avatarMotion,
+        },
         client: { request: (path, options) => { this.check(); return request(path, { ...options, signal: options?.signal ?? this.controller.signal }) } },
         storage: this.storage, asset: path => skinFileUrl(this.skin, path),
       })

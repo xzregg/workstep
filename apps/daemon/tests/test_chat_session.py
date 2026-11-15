@@ -3339,6 +3339,8 @@ async def test_shutdown_replaces_stopping_error_with_restart_notice(
     )
     assert message["status"] == "stopped"
     assert message["content"] == "后台服务已重启，本次生成已中断。"
+    with module._project_ctx(project.id):
+        assert ChatMessage.get_by_id(accepted.assistant_message_id).restart_pending is True
     assert "stderr_tail" not in message["content"]
 
 
@@ -4720,3 +4722,128 @@ async def test_archive_list_orders_by_archive_time(chat_module, monkeypatch):
         await archive(first)
         response = await client.get("/api/chat-sessions", params={"project_id": project.id, "archived": True})
         assert [r["id"] for r in response.json()["sessions"]] == [first, second, legacy]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_restart_continues_only_interrupted_latest_chat(chat_module, monkeypatch, enabled):
+    module, _, manager, project, config = chat_module
+    config.set("auto_resume_interrupted_chats", enabled)
+    session = module.create_session(project.id)
+    with module._project_ctx(project.id):
+        for mid, status in [("old-stopped", "stopped"), ("crashed", "running")]:
+            ChatMessage.create(id=mid, session=session["id"], role="assistant",
+                               content="partial", status=status, created_at=utc_now())
+    assert module.recover_interrupted_messages() == 1
+    calls = []
+    def submit(*args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(turn_id="resumed")
+    monkeypatch.setattr(module, "submit_message", submit)
+    monkeypatch.setattr(module, "start_queued_turn", lambda turn_id: calls.append(turn_id))
+    await module.resume_interrupted_chats()
+    await module.resume_interrupted_chats()
+    assert len(calls) == (2 if enabled else 0)
+    if enabled:
+        assert calls[0][0][0:3] == (project.id, session["id"], "继续")
+        assert calls[0][1]["schedule"] is False
+
+
+@pytest.mark.anyio
+async def test_shutdown_marks_active_chats_but_not_user_stopped(chat_module):
+    module, _, _, project, _ = chat_module
+    session = module.create_session(project.id)
+    accepted = module.submit_message(project.id, session["id"], "hello", "restart-marker", schedule=False)
+    await module.shutdown()
+    with module._project_ctx(project.id):
+        assert ChatMessage.get_by_id(accepted.assistant_message_id).restart_pending is True
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("kind", ["stopped", "archived", "superseded", "succeeded"])
+async def test_restart_does_not_revive_ineligible_chats(chat_module, monkeypatch, kind):
+    module, _, _, project, config = chat_module
+    config.set("auto_resume_interrupted_chats", True)
+    session = module.create_session(project.id)
+    with module._project_ctx(project.id):
+        ChatMessage.create(id="interrupted", session=session["id"], role="assistant",
+                           content="partial", status="running" if kind in {"archived", "superseded"} else kind,
+                           restart_pending=kind == "succeeded", created_at=utc_now())
+        if kind == "archived":
+            ChatSession.update(archived=True).where(ChatSession.id == session["id"]).execute()
+        if kind == "superseded":
+            ChatMessage.create(id="later", session=session["id"], role="user", content="new request", created_at=utc_now())
+    module.recover_interrupted_messages()
+    assert await module.resume_interrupted_chats() == 0
+    assert not module._turn_states
+
+
+@pytest.mark.anyio
+async def test_restart_resume_uses_real_send_persistence_and_keeps_loop_responsive(chat_module, monkeypatch):
+    module, _, manager, project, config = chat_module
+    config.set("auto_resume_interrupted_chats", True)
+    session = module.create_session(project.id)
+    with module._project_ctx(project.id):
+        ChatMessage.create(id="crashed", session=session["id"], role="assistant", content="partial",
+                           status="running", created_at=utc_now())
+    module.recover_interrupted_messages()
+    async def invoke(*args, **kwargs):
+        return "continued", [], "native-thread"
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", invoke)
+    original = module.get_execution_config
+    started = threading.Event()
+    release = threading.Event()
+    def slow_config(*args):
+        started.set()
+        release.wait(3)
+        return original(*args)
+    monkeypatch.setattr(module, "get_execution_config", slow_config)
+    task = asyncio.create_task(module.resume_interrupted_chats())
+    try:
+        assert await asyncio.to_thread(started.wait, 2)
+        await asyncio.wait_for(asyncio.sleep(0), .2)
+    finally:
+        release.set()
+    assert await task == 1
+    turn_id = next(iter(module._turn_states))
+    assert await _wait_turn(module, turn_id) == "completed"
+    assert await module.resume_interrupted_chats() == 0
+    detail = module.get_session(project.id, session["id"])
+    assert [m["content"] for m in detail["messages"] if m["role"] == "user"] == ["继续"]
+
+
+@pytest.mark.anyio
+async def test_restart_resumed_chats_obey_chat_concurrency(chat_module, monkeypatch):
+    from services.concurrency import concurrency_gate
+    module, _, _, project, config = chat_module
+    config.set("auto_resume_interrupted_chats", True)
+    concurrency_gate.configure(max_tasks=0, max_chats=1, schedule_exempt=False)
+    entered = []
+    release = asyncio.Event()
+    async def invoke(*args, **kwargs):
+        entered.append(True)
+        await release.wait()
+        return "continued", [], "native-thread"
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", invoke)
+    try:
+        for i in range(2):
+            session = module.create_session(project.id)
+            with module._project_ctx(project.id):
+                ChatMessage.create(id=f"crashed-{i}", session=session["id"], role="assistant",
+                                   status="running", created_at=utc_now())
+        module.recover_interrupted_messages()
+        assert await module.resume_interrupted_chats() == 2
+        for _ in range(100):
+            if entered:
+                break
+            await asyncio.sleep(.01)
+        assert len(entered) == 1
+        assert sorted(state["status"] for state in module._turn_states.values()) == ["queued", "running"]
+        release.set()
+        for turn_id in module._turn_states:
+            assert await _wait_turn(module, turn_id) == "completed"
+        assert len(entered) == 2
+    finally:
+        release.set()
+        await module.shutdown()
+        concurrency_gate.reset()

@@ -50,7 +50,7 @@ class StepExecutionMessages:
         snapshot, async_snapshot,
         step_followups: dict[str, str], step_trigger_names: dict[str, str],
         initial_user_input_step_key: str | None,
-        retry_message_ids: dict[str, str],
+        retry_message_ids: dict[str, str], *, project_id: str | None = None,
     ):
         self._journal = journal
         self._run_db = run_db
@@ -61,6 +61,7 @@ class StepExecutionMessages:
         self._step_trigger_names = step_trigger_names
         self._initial_user_input_step_key = initial_user_input_step_key
         self._retry_message_ids = retry_message_ids
+        self._project_id = project_id
 
     async def start(
         self, *, task: Task, step: Step, artifacts_dir: Path,
@@ -269,6 +270,8 @@ class StepExecutionMessages:
             )
             message.ended_at = ended_at or utc_now()
             message.save()
+            from services.digital_person_memory import capture_task_completion
+            capture_task_completion(self._project_id,message)
             return message.engine, message.model, message.run_status, message.usage_json
 
         return CompletedExecution(*await self._run_db(finalize_message))
@@ -310,6 +313,8 @@ class StepExecutionMessages:
             message.run_status = "failed"
             message.ended_at = utc_now()
             message.save()
+            from services.digital_person_memory import capture_task_completion
+            capture_task_completion(self._project_id,message)
             if step_run is not None:
                 step_run.status = "failed"
                 step_run.error = error

@@ -62,5 +62,29 @@ test('Windows checks system settings without using the macOS consent API', async
   let granted
   await h.request(contents, 'media', value => { granted = value }, details)
   assert.equal(granted, true)
-  assert.equal(h.check(contents, 'media', root, { mediaType: 'video', isMainFrame: true }), false)
+  assert.equal(h.check(contents, 'media', root, { mediaType: 'video', isMainFrame: true }), true)
+})
+
+
+test('camera requests camera consent separately and validates trusted document', async () => {
+  const asks = []
+  const h = handlers({ getMediaAccessStatus: () => 'not-determined', askForMediaAccess: async type => { asks.push(type); return true } })
+  let granted
+  await h.request(contents, 'media', value => { granted = value }, { ...details, mediaTypes: ['video'] })
+  assert.equal(granted, true)
+  assert.deepEqual(asks, ['camera'])
+  await h.request(contents, 'media', value => { granted = value }, { ...details, mediaTypes: ['video'], isMainFrame: false })
+  assert.equal(granted, false)
+  assert.deepEqual(asks, ['camera'])
+  const denied = handlers({ getMediaAccessStatus: type => type === 'camera' ? 'denied' : 'granted' })
+  await denied.request(contents, 'media', value => { granted = value }, { ...details, mediaTypes: ['audio', 'video'] })
+  assert.equal(granted, false)
+})
+
+test('packaged macOS application declares camera access and signing entitlement', () => {
+  const fs = require('node:fs'), path = require('node:path')
+  const config = require('../package.json')
+  assert.ok(config.build.mac.extendInfo.NSCameraUsageDescription)
+  const entitlement = fs.readFileSync(path.resolve(__dirname, '..', config.build.mac.entitlements), 'utf8')
+  assert.match(entitlement, /<key>com\.apple\.security\.device\.camera<\/key>\s*<true\s*\/>/)
 })

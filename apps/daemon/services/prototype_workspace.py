@@ -10,10 +10,8 @@ import time
 import uuid
 
 from services.prototype_source import HtmlSource, SourceConflict
+from services.prototype_resources import EDITABLE, RESOURCES, EXCLUDED, collect_resources
 
-EDITABLE = frozenset({'.html', '.htm', '.css', '.js', '.mjs'})
-RESOURCES = EDITABLE | {'.json', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.otf'}
-EXCLUDED = {'node_modules', '.git', '.workstep', '__pycache__', 'dist', 'build', '.venv'}
 MAX_FILE = 25 * 1024 * 1024
 MAX_TOTAL = 500 * 1024 * 1024
 _locks: dict[str, threading.RLock] = {}
@@ -114,7 +112,7 @@ class PrototypeWorkspace:
                 registered = (data_root if metadata.get('root_kind') == 'data' else project_root) / metadata['root']
                 if resource_contains(registered, entry):
                     work = cls(project_root, data_root, record.parent.name)
-                    work.refresh_sources()
+                    work.refresh_sources(entry.relative_to(registered).as_posix())
                     if entry.relative_to(registered).as_posix() not in work.load()['documents']:
                         raise SourceConflict('工作区有未完成修改，请处理后再打开新文件')
                     return work
@@ -122,7 +120,8 @@ class PrototypeWorkspace:
                     raise ValueError('原型目录与已有工作区重叠')
             workspace_id = uuid.uuid4().hex
         work = cls(project_root, data_root, workspace_id)
-        paths = resource_paths(root)
+        selected_entry = entry.relative_to(root).as_posix()
+        paths = collect_resources(root, [selected_entry], max_file=MAX_FILE, max_total=MAX_TOTAL)
         with work.lock:
             try:
                 files = {}
@@ -133,7 +132,7 @@ class PrototypeWorkspace:
                     atomic_write(work.directory / 'workspace' / relative, content)
                 if entry.relative_to(root).as_posix() not in files:
                     raise ValueError('HTML 文件不存在')
-                work.save({'root': root.relative_to(domain).as_posix(), 'root_kind': 'project' if domain == project_root else 'data', 'files': files,
+                work.save({'entries': [selected_entry], 'root': root.relative_to(domain).as_posix(), 'root_kind': 'project' if domain == project_root else 'data', 'files': files,
                            'documents': {path: uuid.uuid4().hex for path in files if Path(path).suffix.lower() in {'.html', '.htm'}},
                            'status': 'idle', 'history': [], 'pending': None})
             except BaseException:
@@ -187,13 +186,16 @@ class PrototypeWorkspace:
             raise ValueError('文件过大')
         return HtmlSource(target.read_bytes().decode('utf-8'))
 
-    def refresh_sources(self):
+    def refresh_sources(self, entry=None):
         with self.lock:
             data = self.load()
             if data['status'] != 'idle':
                 return
             original = self.original(data)
-            paths = resource_paths(original)
+            entries = list(data.get('entries', data['documents']))
+            if entry and entry not in entries:
+                entries.append(entry)
+            paths = collect_resources(original, entries or ['index.html'], max_file=MAX_FILE, max_total=MAX_TOTAL)
             files = {}
             for path in paths:
                 relative = path.relative_to(original).as_posix()
@@ -206,6 +208,7 @@ class PrototypeWorkspace:
                 safe_path(self.directory / 'workspace', removed).unlink(missing_ok=True)
                 data['documents'].pop(removed, None)
             data['files'] = files
+            data['entries'] = entries
             self.save(data)
             self.prune()
 

@@ -1,0 +1,20 @@
+.digital-person-camera { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.digital-person-camera-actions { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; }
+.digital-person-camera-actions > .btn { flex-shrink: 0; }
+.digital-person-camera-preview { display: block; width: auto; height: auto; max-width: min(100%, 480px); max-height: 60dvh; object-fit: contain; background: #000; border-radius: var(--radius-sm); }
+.digital-person-camera-preview[hidden] { display: none; }
+.chat-composer-inner .digital-person-camera-preview { max-width: 240px; max-height: 136px; }
+.digital-person-vision { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+
+.digital-person-camera--floating .digital-person-camera-actions { justify-content: flex-end; }
+.digital-person-camera--floating [data-camera-toggle] {
+  display: flex; align-items: center; justify-content: center;
+  width: var(--mobile-control-message); height: var(--mobile-control-message);
+  min-width: var(--mobile-control-message); min-height: var(--mobile-control-message);
+  position: relative; padding: 0; border: 0; background: transparent; color: var(--text-muted);
+}
+.digital-person-camera--floating [data-camera-toggle][aria-pressed=true] { color: var(--accent); }
+
+.digital-person-camera--floating [data-camera-toggle]::before { content: ''; position: absolute; inset: -10px; }
+
+.digital-person-camera--menu { display: contents; }

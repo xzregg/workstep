@@ -83,6 +83,7 @@ _ADDITIVE_COLUMNS = {
         "artifact_round": "INTEGER",
     },
     "chat_messages": {
+        "restart_pending": "INTEGER NOT NULL DEFAULT 0",
         "author_id": "TEXT",
         "author_username": "TEXT",
         "author_name": "TEXT",

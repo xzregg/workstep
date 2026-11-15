@@ -1,8 +1,12 @@
+import DigitalPersonHome from '../components/digital-person/DigitalPersonHome'
+import type { DigitalPersonProfile } from '../api/digitalPerson'
+import DigitalPersonCamera, { type PrepareCameraMessage } from '../components/digital-person/DigitalPersonCamera'
 import { useDigitalActivity } from '../components/digital-person/useDigitalActivity'
 import DigitalPersonFeedback from '../components/digital-person/DigitalPersonFeedback'
 import { useDigitalPerson } from '../components/digital-person/useDigitalPerson'
 import { useRecentVisitsStore } from '../stores/recentVisitsStore'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
+import { useChatSessionRead } from '../hooks/useChatSessionRead'
 import { useChatListTurnRefresh } from '../hooks/useChatListTurnRefresh'
 import ProjectGitButton from '../components/git/ProjectGitButton'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -74,7 +78,7 @@ export interface EmbeddedProjectChat {
   placeholder?: string
 }
 
-export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjectChat; pane?: EmbeddedProjectChat & { active?: boolean; headerDrag?: AssistantChatPanelProps['headerDrag']; headerActions?: (actions: { createSession: (onCreated: (id: string) => void) => Promise<void>; creating: boolean; canCreate: boolean }) => ReactNode; closeAction?: ReactNode } } = {}) {
+export default function ChatPage({ embedded, pane, companionProfile }: { companionProfile?: DigitalPersonProfile; embedded?: EmbeddedProjectChat; pane?: EmbeddedProjectChat & { active?: boolean; headerDrag?: AssistantChatPanelProps['headerDrag']; headerActions?: (actions: { createSession: (onCreated: (id: string) => void) => Promise<void>; creating: boolean; canCreate: boolean }) => ReactNode; closeAction?: ReactNode } } = {}) {
   const controlled = embedded || pane
   const isControlled = Boolean(controlled)
   const isEmbedded = Boolean(embedded)
@@ -123,9 +127,9 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
   const { can, canOpenSettings, bound: projectScopedAccess } = useGatewayProjectPermissions(activeProject?.id)
 
   // Engine/model picker (session-scoped, mirrors the flow assistant wiring).
-  const digitalPerson = useDigitalPerson(Boolean(activeProject?.is_default_workspace && activeProject.type !== 'remote' && !projectScopedAccess && !isEmbedded))
+  const loadedDigitalPerson = useDigitalPerson(Boolean(!companionProfile && activeProject?.is_default_workspace && activeProject.type !== 'remote' && !projectScopedAccess && !isEmbedded))
+  const digitalPerson = companionProfile || loadedDigitalPerson
   const digitalActivity = useDigitalActivity(Boolean(digitalPerson))
-  const renderDigitalFeedback = useCallback((messageId: string) => <DigitalPersonFeedback messageId={messageId} initialValue={digitalActivity?.feedback?.[messageId] || 0} />, [digitalActivity?.feedback])
   const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
   // 引擎可用性（选项是否禁用）跟随共享状态，设置页改动即时生效。
   const sharedEngines = useCoordinatorEngines()
@@ -161,6 +165,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
 
   const session = useChatSessionStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const messages = session?.messages ?? []
+  const renderDigitalFeedback = useCallback((messageId: string) => <DigitalPersonFeedback messageId={messageId} initialValue={digitalActivity?.feedback?.[messageId] || 0} />, [digitalActivity?.feedback])
   // A streaming bubble is authoritative too: history hydration or a missed START
   // event must never let an active turn fall through to the normal /chat endpoint.
   const running = Boolean(session?.running || messages.some((message) => (
@@ -177,12 +182,15 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     || assistantConfig?.configured.engine
     || assistantConfig?.resolved?.engine
     || 'pydantic_ai'
+  const cameraPrepare = useRef<PrepareCameraMessage | null>(null)
+  const setCameraPrepare = useCallback((prepare: PrepareCameraMessage | null) => { cameraPrepare.current = prepare }, [])
+  const prepareCameraContent = useCallback((content: string) => cameraPrepare.current?.(content) ?? Promise.resolve(content), [])
   const {
     sendMessageNow, sendPendingContent, stop, continueGoal, endGoal, sendError, setSendError, stopping,
   } = useChatSessionActions({
     sessionId, projectId: activeProject?.id, running, engineConfig,
     permissionMode, planMode, goalMode, effectiveEngine,
-    onSessionIdChange: setSessionId, onTitleChange: setSessionTitle,
+    onSessionIdChange: setSessionId, onTitleChange: setSessionTitle, prepareContent: prepareCameraContent,
   })
   const workflowSkill = useWorkflowDesignSkill({
     projectId: routeProjectId, engine: effectiveEngine, sessionId, input, onChange: setInput, running,
@@ -351,6 +359,8 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     },
   })
 
+  useChatSessionRead(routeProjectId, sessionId===sessionParam?sessionId:null, messages, pane?.active!==false, historyReady)
+
   // Navigation uses the sidebar cache. Refresh only after a turn finishes.
   useChatListTurnRefresh(activeProject?.id, sessionId, running)
 
@@ -376,7 +386,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     }
   }, [activeProject?.id, permissionMode, sessionId, t])
 
-  const send = useCallback(async (contentOverride?: string) => {
+  const send = useCallback(async (contentOverride?: string, prepared = false) => {
     if (workflowSkill.loading || handingOff || engineConfigSaving || (sessionParam && !historyReady)) return false
     const content = (contentOverride ?? input).trim()
     if (!content || !sessionId) {
@@ -384,10 +394,13 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
       return false
     }
     if (beforeSend && !await beforeSend()) return false
-    setInput('')
-    clearDraft(sessionId, activeProject?.id ?? '')
-    resetEnhance()
-    return sendMessageNow(content)
+    const sent = await sendMessageNow(content, false, prepared)
+    if (sent) {
+      setInput(current => current.trim() === (prepared ? input.trim() : content) ? '' : current)
+      clearDraft(sessionId, activeProject?.id ?? '')
+      resetEnhance()
+    }
+    return sent
   }, [input, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance, beforeSend, workflowSkill.loading, handingOff, engineConfigSaving, sessionParam, historyReady, setSendError])
 
   const handleInputChange = useCallback((value: string) => {
@@ -500,8 +513,9 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
     )
   }
 
-  return (
+  const conversation = (
     <>
+      <DigitalPersonCamera floating key={`${routeProjectId}/${sessionId}`} projectId={routeProjectId} active={pane?.active !== false}>
       <ChatRoleBinding key={`${activeProject.id}/${sessionId}`} projectId={activeProject.id} sessionId={sessionId} running={running}
         enabled={(!sessionParam || historyReady) && !isEmbedded && activeProject.type !== 'remote' && !projectScopedAccess && can('session.config')}>
       {roleBinding => <AssistantChatPanel
@@ -522,10 +536,10 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         onStopAction={(runId) => { void projectActions.stop(runId) }}
         afterMessages={<>{messages.length === 0 && embedded?.emptyContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}{embedded?.afterContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}<ProjectActionMessages state={projectActions} /></>}
         availableCommands={session?.availableCommands}
-        composerStatus={effectiveEngine === 'codex_sdk' ? <ChatSessionGoalBar
+        composerStatus={<>{effectiveEngine === 'codex_sdk' ? <ChatSessionGoalBar
           key={sessionId} projectId={routeProjectId} goal={latestGoalFromMessages(messages)} running={running} stopping={stopping}
           onResume={continueGoal} onEnd={endGoal}
-        /> : undefined}
+        /> : null}</>}
         running={running}
         stopping={stopping}
         input={input}
@@ -534,7 +548,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         attachmentPrefix="chat-session"
         scrollKey={sessionId}
         onInputChange={handleInputChange}
-        onSend={() => void send()}
+        onSend={content => void send(content, content !== undefined)}
         onSendContent={(content, ids) => handingOff || engineConfigSaving || (sessionParam && !historyReady) ? Promise.resolve(false) : sendPendingContent(content, ids)}
         composerDisabled={handingOff || engineConfigSaving || Boolean(sessionParam && !historyReady)}
         onStop={() => void stop()}
@@ -663,6 +677,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
         quotaRefreshing={quotaRefreshing}
       />}
       </ChatRoleBinding>
+      </DigitalPersonCamera>
 
       {transitionDialogs}
 
@@ -736,4 +751,7 @@ export default function ChatPage({ embedded, pane }: { embedded?: EmbeddedProjec
       )}
     </>
   )
+  return companionProfile ? <DigitalPersonHome profile={companionProfile} activity={digitalActivity}
+    projectId={activeProject.id} projectName={activeProject.name} sessionId={sessionId}
+    messages={messages} running={running} active={pane?.active !== false && Boolean(assistantConfig) && !coordinatorConfigError && !handingOff && !engineConfigSaving} onSend={send} onStop={stop} inputValue={input} onDraft={handleInputChange} onPrepareCamera={setCameraPrepare} error={sendError || coordinatorConfigError}>{conversation}</DigitalPersonHome> : conversation
 }

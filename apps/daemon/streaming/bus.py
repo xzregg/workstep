@@ -53,6 +53,8 @@ class EventBus:
         """Broadcast an event to all subscribers."""
         if self._closed:
             return
+        from services.memory_secrets import redact
+        event = redact(event)
         dead = []
         for q, predicate in self._subscribers:
             if predicate is not None and not predicate(event):

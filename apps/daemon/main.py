@@ -4,6 +4,14 @@ import asyncio
 import logging
 import os
 import sys
+
+# Source uvicorn launches opt into framework logging before app imports.
+# Startup/import failures are diagnostic output too. Embedded
+# desktop and CLI/preflight imports retain their host's output transport.
+if os.environ.get("WORKSTEP_LOG_DIR") and "main:app" in sys.argv and os.environ.get("WORKSTEP_DESKTOP_RUNTIME") != "1":
+    from services.runtime_logging import install_runtime_logging
+    install_runtime_logging(os.environ["WORKSTEP_LOG_DIR"])
+
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -39,6 +47,7 @@ from api.history import router as history_router
 from api.fs import router as fs_router
 from api.fs import uploads_router
 from api.speech import router as speech_router
+from api.speech_output import router as speech_output_router
 from api.decision_models import router as decision_models_router
 from api.search import router as search_router
 from api.templates import ensure_global_templates
@@ -60,6 +69,7 @@ from api.chat_roles import router as chat_roles_router
 from api.statistics import router as statistics_router
 from api.share import router as share_router
 from api.digital_person import router as digital_person_router
+from api.memory import router as memory_router
 from api.assistant import router as assistant_router
 from api.system_settings import router as system_settings_router
 from api.workflow_hooks import router as workflow_hooks_router, public_router as hook_ingress_router
@@ -288,6 +298,7 @@ async def _application_lifespan(app: FastAPI):
             "Recovered %d interrupted chat message(s) from event journals",
             recovered_chats,
         )
+    await chat_session_module.resume_interrupted_chats()
     async with startup_stage("定时调度"):
         await schedule_module.start()
     async with startup_stage("网关初始化"):
@@ -295,6 +306,9 @@ async def _application_lifespan(app: FastAPI):
     from services.project_audit_retention import ProjectAuditRetention
     audit_retention = ProjectAuditRetention(project_manager)
     audit_retention.start()
+    from services.runtime_logging import DiagnosticLogRetention
+    from services.action_runtime import action_runtime
+    diagnostic_retention = DiagnosticLogRetention(project_manager, action_runtime)
     from services.local_cli import LocalCliRuntime
     local_cli_runtime = LocalCliRuntime(os.environ['WORKSTEP_DAEMON_URL'])
     async with startup_stage("本机 CLI"):
@@ -307,9 +321,11 @@ async def _application_lifespan(app: FastAPI):
     task_auto_retry = TaskAutoRetry(project_manager, workflow_runtime, config_store)
     task_auto_retry.start()
     try:
+        diagnostic_retention.start()
         yield
     finally:
         from services.speech import service as speech_service
+        from services.speech_output import service as speech_output_service
         from services.decision_models import service as decision_model_service
         from services.engine_runtime import runtime_manager
         from services.custom_engines import custom_engine_manager
@@ -327,6 +343,7 @@ async def _application_lifespan(app: FastAPI):
             ("completion_push", completion_push.shutdown),
             ("notification_hooks", notification_hooks.service.shutdown),
             ("audit_retention", audit_retention.close),
+            ("diagnostic_retention", diagnostic_retention.close),
             ("gateway", gateway_client.close),
             ("git", git_service.close),
             ("engine_runtime", runtime_manager.shutdown),
@@ -351,6 +368,7 @@ async def _application_lifespan(app: FastAPI):
             steps.append(("task_service", shutdown_task_service))
         steps.extend([
             ("speech", speech_service.close),
+            ("speech_output", speech_output_service.close),
             ("decision_models", decision_model_service.close),
             ("codex_clients", close_codex_clients),
             ("engine_session_clients", close_session_pools),
@@ -407,6 +425,7 @@ app.include_router(history_router)
 app.include_router(fs_router)
 app.include_router(uploads_router)
 app.include_router(speech_router)
+app.include_router(speech_output_router)
 app.include_router(decision_models_router)
 app.include_router(search_router)
 app.include_router(templates_router)
@@ -435,6 +454,7 @@ app.include_router(statistics_router)
 app.include_router(share_router)
 app.include_router(assistant_router)
 app.include_router(digital_person_router)
+app.include_router(memory_router)
 app.include_router(project_settings_router)
 app.include_router(system_settings_router)
 app.include_router(workflow_hooks_router)

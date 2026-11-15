@@ -29,13 +29,24 @@ async def test_profile_roundtrip_validation_and_restart(setup):
     async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
         original = (await client.get("/api/digital-person")).json()
         assert original["enabled"] is False
-        payload = {**original, "enabled": True, "name": "小研", "duties": "跟进研发", "personality": "直接"}
+        assert original["proactive_shared_context"] is True
+        assert original['reflection_enabled'] is True
+        assert original['memory_batch_size'] == 100
+        payload = {**original, "enabled": True, "reflection_enabled":False, "name": "小研", "duties": "跟进研发", "personality": "直接", "proactive_shared_context": False}
         response = await client.put("/api/digital-person", json=payload)
         assert response.status_code == 200
         service.config_store._cache = None
-        assert (await client.get("/api/digital-person")).json()["duties"] == "跟进研发"
+        saved = (await client.get("/api/digital-person")).json()
+        assert saved["duties"] == "跟进研发"
+        assert saved["proactive_shared_context"] is False
+        assert saved['reflection_enabled'] is False and saved['enabled'] is True
         assert (await client.put("/api/digital-person", json={**payload, "name": "   "})).status_code == 422
         assert (await client.put("/api/digital-person", json={**payload, "workspace": "/tmp"})).status_code == 422
+        assert (await client.put('/api/digital-person', json={**payload, 'memory_batch_size': 60})).status_code == 200
+        service.config_store._cache = None
+        assert (await client.get('/api/digital-person')).json()['memory_batch_size'] == 60
+        for size in (0, 1001, 1.5):
+            assert (await client.put('/api/digital-person', json={**payload, 'memory_batch_size': size})).status_code == 422
 
 
 async def test_personal_check_interval_and_conversation_rules(setup, monkeypatch):
@@ -44,7 +55,7 @@ async def test_personal_check_interval_and_conversation_rules(setup, monkeypatch
     monkeypatch.setattr(customization_workspace, 'is_default_workspace', lambda p: p.id == 'home')
     async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
         payload = (await client.get('/api/digital-person')).json()
-        payload.update(enabled=True, proactive_interval_minutes=15, conversation_rules='先给结论，再解释依据')
+        payload.update(enabled=True, reflection_enabled=False, proactive_interval_minutes=15, conversation_rules='先给结论，再解释依据')
         assert (await client.put('/api/digital-person', json=payload)).status_code == 200
         service.config_store._cache = None
         assert (await client.get('/api/digital-person')).json()['proactive_interval_minutes'] == 15
@@ -97,7 +108,13 @@ def test_person_prompt_only_in_fixed_workspace_and_when_enabled(setup, monkeypat
     home, other = SimpleNamespace(id="home"), SimpleNamespace(id="other")
     profile = DigitalPersonProfile(enabled=True, name="小研", duties="复查证据", personality="直接")
     service.save_profile(profile)
-    assert "复查证据" in service.prompt_for_project(home)
+    prompt = service.prompt_for_project(home)
+    assert "复查证据" in prompt
+    assert "workstep-cli skill" in prompt
+    assert "workstep digital-person delegate" not in prompt
+    assert "workstep project list" not in prompt
+    assert "workstep context get" not in prompt
+    assert "workstep_delegate_digital_person" not in prompt
     assert service.prompt_for_project(other) == ""
     service.save_profile(profile.model_copy(update={"enabled": False}))
     assert service.prompt_for_project(home) == ""
@@ -122,7 +139,7 @@ async def test_identity_reaches_engine_changes_on_resume_and_does_not_pollute_se
     assert 'RULE UPDATED' in calls[-1]
     save_profile(DigitalPersonProfile(enabled=False))
     assert await send(module, project, sid, 'off') == 'completed'
-    assert '模式已关闭' in calls[-1] and 'IDENTITY UPDATED' not in calls[-1]
+    assert 'Digital person mode is disabled' in calls[-1] and 'IDENTITY UPDATED' not in calls[-1]
 
 
 async def test_host_config_is_independent_of_retired_install_capability(setup, monkeypatch):
@@ -270,7 +287,7 @@ def test_channel_digital_identity_replaces_legacy_assistant_prompt(chat_module, 
         resolved_session_id="native", extra={}, messages=[{"role":"user","content":"你好"}])
     rules=module._engine_system_prompt(session)
     if enabled and home:
-        assert "姓名：小研" in rules
+        assert "Name: 小研" in rules
         assert "WorkStep channel chat assistant" not in rules
         assert "Avoid complex formatting" not in rules
         assert "渠道交互" not in rules
@@ -283,7 +300,7 @@ def test_channel_digital_identity_replaces_legacy_assistant_prompt(chat_module, 
     assert module._system_prompt_for_display(session)==rules
     for prompt in (module._build_prompt(session),module._build_rebuild_prompt(session)):
         assert prompt.count("Current sender: Alice")==1
-        assert "姓名：小研" not in prompt
+        assert "Name: 小研" not in prompt
 
 
 async def test_identity_tone_persists_and_prompt_does_not_prescribe_reminders(setup,monkeypatch):
@@ -298,9 +315,39 @@ async def test_identity_tone_persists_and_prompt_does_not_prescribe_reminders(se
         service.config_store._cache=None
         assert (await client.get('/api/digital-person')).json()['tone']=='专业克制、自定义语气'
         prompt=service.prompt_for_project(SimpleNamespace(id='home'))
-        assert '角色：研发伙伴、项目管家' in prompt
-        assert '性格：严谨、耐心、自定义性格' in prompt
-        assert '语气：专业克制、自定义语气' in prompt
+        assert 'Role: 研发伙伴、项目管家' in prompt
+        assert 'Personality: 严谨、耐心、自定义性格' in prompt
+        assert 'Tone: 专业克制、自定义语气' in prompt
         assert '需要提醒时使用现有定时任务工具' not in prompt
         assert '结果核验完成后再回复来源会话' not in prompt
         assert (await client.put('/api/digital-person',json={**profile,'tone':'超'*1001})).status_code==422
+
+
+async def test_delegation_poll_interval_persists_and_validates_seconds(setup):
+    app,service=setup
+    async with AsyncClient(transport=ASGITransport(app),base_url='http://test') as client:
+        profile=(await client.get('/api/digital-person')).json()
+        assert profile['delegation_interval_seconds']==60
+        response=await client.put('/api/digital-person',json={**profile,'delegation_interval_seconds':3})
+        assert response.status_code==200
+        service.config_store._cache=None
+        saved=(await client.get('/api/digital-person')).json()
+        assert saved['delegation_interval_seconds']==3
+        assert saved['proactive_interval_minutes']==5
+        for value in (0,301,1.5):
+            assert (await client.put('/api/digital-person',json={**profile,'delegation_interval_seconds':value})).status_code==422
+
+
+async def test_contact_interval_api_is_independent_bounded_and_persistent(setup):
+    app,service=setup
+    async with AsyncClient(transport=ASGITransport(app),base_url='http://test') as client:
+        original=(await client.get('/api/digital-person')).json()
+        assert original['proactive_contact_interval_minutes']==5
+        payload={**original,'proactive_contact_interval_minutes':30}
+        assert (await client.put('/api/digital-person',json=payload)).status_code==200
+        service.config_store._cache=None
+        saved=(await client.get('/api/digital-person')).json()
+        assert saved['proactive_contact_interval_minutes']==30
+        assert saved['proactive_interval_minutes']==5
+        for invalid in (0,1441):
+            assert (await client.put('/api/digital-person',json={**payload,'proactive_contact_interval_minutes':invalid})).status_code==422

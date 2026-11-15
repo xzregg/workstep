@@ -8,9 +8,10 @@ import { useAssistantPendingInserts } from '../src/hooks/useAssistantPendingInse
 import { I18nProvider } from '../src/i18n'
 import { usePendingMessageInsertStore } from '../src/stores/pendingMessageInsertStore'
 
-function PendingHarness({ onSendContent, status = 'running' }: {
+function PendingHarness({ onSendContent, status = 'running', prepared }: {
   onSendContent: (content: string, ids: string[]) => Promise<boolean>
   status?: 'running' | 'stopped'
+  prepared?: string
 }) {
   const [input, setInput] = useState('  稍后执行  ')
   const pending = useAssistantPendingInserts({
@@ -22,7 +23,7 @@ function PendingHarness({ onSendContent, status = 'running' }: {
     onSendContent,
   })
   return <>
-    <button type="button" data-queue onClick={() => { void pending.queueCurrentInput() }}>排队</button>
+    <button type="button" data-queue onClick={() => { void pending.queueCurrentInput(prepared) }}>排队</button>
     <span data-enabled>{String(pending.queueEnabled)}</span>
     <span data-input>{input}</span>
     <span data-error>{pending.error}</span>
@@ -30,7 +31,7 @@ function PendingHarness({ onSendContent, status = 'running' }: {
   </>
 }
 
-test('assistant pending insert stays queued after failed send and clears on success', async () => {
+for (const prepared of [undefined, '稍后执行\n\n![camera.jpg](.workstep/uploads/frame.jpg)']) test(`assistant pending insert stays queued after failed send and clears on success (camera=${Boolean(prepared)})`, async () => {
   const { window } = installDomEnvironment()
   const container = window.document.body.appendChild(window.document.createElement('div'))
   const root = createRoot(container as never)
@@ -50,22 +51,22 @@ test('assistant pending insert stays queued after failed send and clears on succ
   }
   usePendingMessageInsertStore.setState({ queues: {}, loaded: {}, loading: {} })
   try {
-    await act(async () => root.render(<I18nProvider><PendingHarness onSendContent={async (content, ids) => {
+    await act(async () => root.render(<I18nProvider><PendingHarness prepared={prepared} onSendContent={async (content, ids) => {
       sent.push([content, ids])
       return sendSucceeds
     }} /></I18nProvider>))
     assert.equal(container.querySelector('[data-enabled]')?.textContent, 'true')
     await act(async () => (container.querySelector('[data-queue]') as HTMLButtonElement).click())
-    assert.deepEqual(created, [['project-1', 'running-1', '稍后执行']])
+    assert.deepEqual(created, [['project-1', 'running-1', prepared ?? '稍后执行']])
     assert.equal(container.querySelector('[data-input]')?.textContent, '')
-    const send = container.querySelector('[role="region"] button') as HTMLButtonElement
+    const send = container.querySelector('[role="region"] .pending-insert-button--send') as HTMLButtonElement
     assert.ok(send)
     assert.equal(container.querySelector('[role="region"]')?.getAttribute('style'), null)
     assert.equal(send.getAttribute('style'), null)
     assert.equal(container.querySelector('[role="region"] [style]'), null)
 
     await act(async () => send.click())
-    assert.deepEqual(sent, [['稍后执行', ['insert-1']]])
+    assert.deepEqual(sent, [[prepared ?? '稍后执行', ['insert-1']]])
     assert.deepEqual(removed, [])
     assert.ok(container.querySelector('[role="region"]'))
 

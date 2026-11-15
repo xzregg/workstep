@@ -359,6 +359,12 @@ body {
   }
 }
 
+.settings-heading-row { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.settings-heading-row > :is(h1, h2, h3) { margin: 0; min-width: 0; }
+.settings-heading-row > .btn { flex-shrink: 0; }
+.settings-action-group { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: nowrap; flex-shrink: 0; }
+.settings-action-group > .btn { flex-shrink: 0; white-space: nowrap; }
+
 /* ── Buttons ── */
 
 button, :where(a).btn {
@@ -5212,6 +5218,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .chat-input-send:disabled { cursor: not-allowed; }
 .chat-input-send[data-state="idle"] { background: transparent; color: var(--fg-2); }
 .chat-input-send[data-state="active"] { background: var(--fg); color: var(--accent-fg); }
+.chat-input-send[data-state="voice"] { background: color-mix(in oklab, var(--bg), var(--fg) 12%); color: var(--fg); }
 .chat-input-send[data-state="stopped"] { background: #d92d20; color: var(--accent-fg); }
 .chat-input-stop-glyph { width: 12px; height: 12px; border-radius: 2px; background: currentColor; }
 .chat-input-send:hover:not(:disabled) {
@@ -5219,6 +5226,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 .chat-input-send[data-state="active"]:hover:not(:disabled) {
   background: color-mix(in oklab, var(--fg), transparent 18%) !important;
+}
+.chat-input-send[data-state="voice"]:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--bg), var(--fg) 20%);
 }
 .chat-input-send[data-state="stopped"]:hover:not(:disabled) {
   background: #f04438 !important;

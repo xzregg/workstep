@@ -34,6 +34,7 @@ class Settings(BaseModel):
     enabled: bool
     language: str = Field(default='auto', max_length=8)
     model_id: str | None = Field(default=None, max_length=80)
+    connection: dict | None = None
 
 
 class Audio(BaseModel):
@@ -52,7 +53,9 @@ async def status(project_id: str = ''):
 async def settings(body: Settings):
     authorize('', manage=True)
     try:
-        return await service.configure(body.enabled, body.language, body.model_id)
+        args = (body.enabled, body.language, body.model_id)
+        await service.configure(*args, *([body.connection] if body.connection is not None else []))
+        return await service.snapshot()
     except ValueError as exc:
         raise translate(exc) from exc
 

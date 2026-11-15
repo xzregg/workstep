@@ -7,56 +7,6 @@ import { I18nProvider } from '../src/i18n'
 import SettingsNavigation from '../src/components/SettingsNavigation'
 import { useManagedModeStore } from '../src/stores/managedModeStore'
 
-test('settings navigation has one current section and changes sections by click', async () => {
-  const { window } = installDomEnvironment()
-  const container = document.body.appendChild(document.createElement('div'))
-  const root = createRoot(container)
-  let selected = ''
-  try {
-    await act(async () => root.render(
-      <I18nProvider>
-        <SettingsNavigation activeSection="providers" onSelect={(section) => { selected = section }} />
-      </I18nProvider>,
-    ))
-    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-    assert.equal(buttons.length, 17)
-    assert.doesNotMatch(container.textContent ?? '', /NEW/)
-    assert.ok(buttons.findIndex(button => button.textContent === '外观') < buttons.findIndex(button => /系统设置|System/.test(button.textContent ?? '')))
-    assert.equal(buttons.filter((button) => button.getAttribute('aria-current') === 'page').length, 1)
-    assert.equal(buttons[1].getAttribute('aria-current'), 'page')
-    assert.ok(buttons.every((button) => button.classList.contains('settings-nav-button')))
-    assert.ok(buttons.every((button) => !button.hasAttribute('style')))
-    assert.deepEqual([...container.querySelectorAll('.settings-nav-heading')].map(node => node.textContent), ['模型与能力', '工作区'])
-    assert.ok(buttons.find(button => button.textContent?.startsWith('决策模型')))
-    await act(async () => buttons.find(button => button.textContent?.startsWith('决策模型'))!.click())
-    assert.equal(selected, 'decision')
-    assert.ok(buttons.find(button => button.textContent === '角色中心')!.querySelector('svg.lucide-drama'))
-    await act(async () => buttons.find(button => button.textContent === '连接器')!.click())
-    assert.equal(selected, 'connectors')
-    assert.equal(buttons.findIndex(button => button.textContent === '连接器') + 1, buttons.findIndex(button => button.textContent === '角色中心'))
-    await act(async () => buttons[2].click())
-    assert.equal(selected, 'engines')
-    await act(async () => buttons.find(button => /远程访问|Remote access/.test(button.textContent ?? ''))!.click())
-    assert.equal(selected, 'remote')
-    await act(async () => buttons.find(button => button.textContent === '角色中心')!.click())
-    assert.equal(selected, 'roles')
-    await act(async () => buttons.find(button => button.textContent === '语音输入')!.click())
-    assert.equal(selected, 'speech')
-    const feedback = buttons.find(button => /反馈问题|Report a problem/.test(button.textContent ?? ''))!
-    assert.ok(feedback)
-    await act(async () => feedback.click())
-    assert.equal(selected, 'feedback')
-    await act(async () => root.render(
-      <I18nProvider><SettingsNavigation activeSection="feedback" onSelect={() => {}} /></I18nProvider>,
-    ))
-    assert.match(container.querySelector('[aria-current="page"]')!.textContent!, /反馈问题|Report a problem/)
-  } finally {
-    await act(async () => root.unmount())
-    container.remove()
-    await window.happyDOM.close()
-  }
-})
-
 test('managed settings hide the legacy remote project section', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))

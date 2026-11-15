@@ -45,13 +45,13 @@ def format_identity_snapshot(snapshot):
     if not snapshot:
         return ''
     if snapshot.get('unavailable'):
-        return '当前运行统计暂不可用，不推测等级、经验、技能或会话数量。'
+        return 'Current runtime statistics are unavailable. Do not infer level, experience, skills, or session counts.'
     skills = snapshot['skills']
-    names = '、'.join(item['name'][:60] for item in skills[:20]) or '无'
-    suffix = '（仅列前20项）' if len(skills) > 20 else ''
+    names = ', '.join(item['name'][:60] for item in skills[:20]) or 'None'
+    suffix = ' (first 20 only)' if len(skills) > 20 else ''
     return '\n'.join((
-        '当前运行统计（默认工作区，不含后台检查会话）：',
-        f"等级：Lv.{snapshot['level']}；经验：{snapshot['experience']}；下级阈值：{snapshot['next_level_experience']}",
-        f"接待会话：{snapshot['session_count']}；完成回复：{snapshot['reply_count']}；执行任务：{snapshot['task_count']}；完成任务：{snapshot['completed_task_count']}",
-        f"已启用技能（{len(skills)}）：{names}{suffix}",
+        'Current runtime statistics (default workspace, excluding background check sessions):',
+        f"Level: Lv.{snapshot['level']}; Experience: {snapshot['experience']}; Next level threshold: {snapshot['next_level_experience']}",
+        f"User sessions: {snapshot['session_count']}; Completed replies: {snapshot['reply_count']}; Execution tasks: {snapshot['task_count']}; Completed tasks: {snapshot['completed_task_count']}",
+        f"Enabled skills ({len(skills)}): {names}{suffix}",
     ))

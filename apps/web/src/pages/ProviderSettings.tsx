@@ -292,13 +292,10 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
     <div className="provider-settings-page">
       <div className="provider-settings-header">
         <div className="provider-settings-heading">
-          <h1 className="provider-settings-title">{t('providerSettings.title')}</h1>
+          <div className="settings-heading-row"><h1 className="provider-settings-title">{t('providerSettings.title')}</h1><Button variant="ghost" onClick={() => void refresh()} disabled={loading}>{t('settings.refresh')}</Button></div>
           <p className="provider-settings-intro">{t('providerSettings.intro')}</p>
         </div>
         <div className="provider-settings-header-actions">
-          <Button variant="ghost" onClick={() => void refresh()} disabled={loading}>
-            {t('settings.refresh')}
-          </Button>
           <Button variant="ghost" onClick={() => setImportOpen(true)}>
             <Icon name="download" size={14} strokeWidth={2} />
             {t('providerSettings.import')}

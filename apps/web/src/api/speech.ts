@@ -1,7 +1,31 @@
 import { ApiError, request } from './transport'
 import { workspaceCatalogPath } from './workspaceScope'
 
+export interface SpeechConnection {
+  mode: 'local' | 'cloud' | 'remote'; provider: 'tencent' | 'volcengine' | 'openai'
+  base_url: string; model: string; resource_id: string; app_id: string
+  api_key?: string | null; secret_id?: string | null; secret_key?: string | null
+  has_api_key?: boolean; has_secret_id?: boolean; has_secret_key?: boolean
+}
+export const defaultSpeechConnection: SpeechConnection = { mode: 'local', provider: 'tencent', base_url: '', model: '16k_zh', resource_id: 'volc.seedasr.sauc.duration', app_id: '' }
+export function speechConnectionReady(value: SpeechConnection) {
+  if (value.mode === 'local') return true
+  const secret = (key: 'api_key' | 'secret_id' | 'secret_key') => value[key] == null ? !!value[`has_${key}`] : !!value[key]?.trim()
+  if (!value.model.trim()) return false
+  if (value.provider === 'openai') {
+    try { const url = new URL(value.base_url); if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password || url.search || url.hash) return false }
+    catch { return false }
+  }
+  if (value.mode === 'cloud') {
+    if (value.provider === 'tencent') return /^\d+$/.test(value.app_id) && secret('secret_id') && secret('secret_key') && /^(16k_[A-Za-z0-9_-]+|Hy-ASR-3\.0-preview)$/.test(value.model)
+    if (!secret('api_key')) return false
+    if (value.provider === 'volcengine' && !value.resource_id.trim()) return false
+  }
+  return true
+}
+
 export interface SpeechStatus {
+  connection?: SpeechConnection; ready?: boolean; streaming?: 'native' | 'final'
   enabled: boolean
   language: string
   model_id: string
@@ -17,7 +41,7 @@ function checkCancelled(signal?: AbortSignal) {
 }
 export const speechApi = {
   status: async (projectId = '') => request<SpeechStatus>(await workspaceCatalogPath('/speech', projectId)),
-  configure: (enabled: boolean, language: string, model_id?: string) => request('/speech/settings', options('PUT', { enabled, language, model_id })).then(result => {
+  configure: (enabled: boolean, language: string, model_id?: string, connection?: SpeechConnection) => request<SpeechStatus>('/speech/settings', options('PUT', { enabled, language, model_id, ...(connection ? { connection } : {}) })).then(result => {
     window.dispatchEvent(new Event('workstep:speech-settings-changed'))
     return result
   }),
