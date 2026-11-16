@@ -109,7 +109,7 @@ export interface AssistantChatPanelProps {
   availableCommands?: EngineInputItem[]
   attachmentPrefix: string
   onInputChange: (value: string) => void
-  onSend: (content?: string) => void
+  onSend: (content?: string, facePersonIds?:string[]) => void
   onSendContent: (content: string, pendingInsertIds: string[]) => Promise<boolean>
   onStop: () => void
   /** Allow messages to be inserted into the active engine turn. */
@@ -492,12 +492,12 @@ export default function AssistantChatPanel({
     )
     : messages
 
-  const sendFromComposer = (content?: string) => {
+  const sendFromComposer = (content?: string, facePersonIds?:string[]) => {
     if (!(content ?? input).trim() || !canEdit || (running && !effectiveAllowSendWhileRunning)) return
     followRef.current = true
     setHasUnreadMessages(false)
-    if (running && queueEnabled) void queueCurrentInput(content)
-    else { setAwaitingReply(true); onSend(content) }
+    if (running && queueEnabled && !facePersonIds?.length) void queueCurrentInput(content)
+    else { setAwaitingReply(true); onSend(content,facePersonIds) }
   }
   useSkinActions({
     'input.set': { enabled: () => canEdit, run: args => { onInputChange(String(args?.text ?? '')); inputRef.current?.focus() } },

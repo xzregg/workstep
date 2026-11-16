@@ -8,6 +8,36 @@ import { I18nProvider } from '../src/i18n'
 import { useChatSessionActions } from '../src/hooks/useChatSessionActions'
 import { useChatSessionStore } from '../src/stores/chatSessionStore'
 
+for(const mode of ['normal','running','prepared'] as const)test(`recognized face IDs travel in the same chat request (${mode})`,async()=>{
+ const {window}=installDomEnvironment(),root=createRoot(document.body.appendChild(document.createElement('div')))
+ const oldFetch=globalThis.fetch,oldList=chatSessionApi.list
+ let actions!:ReturnType<typeof useChatSessionActions>,captures=0
+ const requests:any[]=[]
+ globalThis.fetch=async(input,options)=>{
+  assert.match(String(input),/\/chat(?:\?|$)/)
+  requests.push(JSON.parse(String(options?.body)))
+  return Response.json({session_id:'face-send',turn_id:'face-user',assistant_message_id:'face-reply',status:'queued'})
+ }
+ chatSessionApi.list=async()=>({sessions:[]})
+ function Harness(){
+  actions=useChatSessionActions({sessionId:'face-send',projectId:'p',running:mode==='running',
+   engineConfig:{engine:'codex',providerId:'',model:'',fastModel:'',visionModel:'',thinkingEffort:''},
+   permissionMode:'',planMode:false,goalMode:false,effectiveEngine:'codex',onSessionIdChange(){},onTitleChange(){},
+   prepareContent:async(content,onFaces)=>{captures++;onFaces?.(['face-1']);return content+'\n\n![camera](.workstep/uploads/camera.jpg)'},
+  });return null
+ }
+ try{
+  await act(async()=>root.render(<I18nProvider><Harness/></I18nProvider>))
+  await act(async()=>{
+   const sent=mode==='running'?await actions.sendPendingContent('我是谁',[]):await actions.sendMessageNow('我是谁',false,mode==='prepared',mode==='prepared'?['face-1']:[])
+   assert.equal(sent,true,actions.sendError)
+  })
+  assert.equal(requests.length,1);assert.deepEqual(requests[0].face_person_ids,['face-1'])
+  assert.equal(captures,mode==='prepared'?0:1)
+  assert.doesNotMatch(requests[0].content,/face-1|人脸识别/)
+ }finally{await act(async()=>root.unmount());globalThis.fetch=oldFetch;chatSessionApi.list=oldList;useChatSessionStore.getState().resetSession('face-send');await window.happyDOM.close()}
+})
+
 for (const fallback of [false, true]) {
   test(`sending follows the server config rather than the local default engine (${fallback ? 'live fallback' : 'normal'})`, async () => {
     const { window } = installDomEnvironment()

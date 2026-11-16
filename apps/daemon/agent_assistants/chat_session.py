@@ -416,7 +416,8 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         model = model or default_model
         fast_model = fast_model or default_fast_model
         vision_model = vision_model or default_vision_model
-        session_id = str(uuid.uuid4())
+        from services.chat_identity import new_session_id
+        session_id = new_session_id(project_id)
         now = utc_now()
         with self._project_ctx(project_id):
             min_order = (
@@ -818,6 +819,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         *,
         reset_context: bool = False,
         internal_event: str | None = None,
+        face_person_ids: list[str] | None = None,
     ) -> ChatAccepted:
         if not session_id:
             raise ValueError("Chat session id is required")
@@ -926,6 +928,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             schedule=schedule,
             reset_context=reset_context,
             internal_event=internal_event,
+            message_context={'face_person_ids': list(dict.fromkeys(face_person_ids))} if face_person_ids else None,
         )
         # 字段回写独立于 engine 是否在请求中出现；省略的字段不覆盖已有值。
         # 换引擎时同时保存上面解析出的兼容配置，避免遗留旧引擎的模型/供应商。
@@ -997,11 +1000,22 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         session.extra.pop('digital_person_memories', None)
         session.extra.pop('digital_person_memory_scope', None)
         session.extra.pop('memory_context_prompt', None)
-        latest_input=next((m for m in reversed(session.messages) if m.get('role')!='assistant'),{})
+        session.extra.pop('camera_frame_prompt', None)
+        latest_input=next((m for m in session.messages if m.get('id') == session.extra.get('current_turn_id')),
+                          next((m for m in reversed(session.messages) if m.get('role')!='assistant'),{}))
         if latest_input.get('internal_event'):
             return
         if self._config.name not in {'chat_session', 'channel_chat'} or self._project_manager is None:
             return
+        from services.face_recognition import person_prompt
+        # Recovered native sessions may retain the preceding turn's instructions.
+        # History also restores the need to explicitly clear a camera observation.
+        if any(m.get('role') == 'user' and m.get('context', {}).get('face_person_ids') for m in session.messages):
+            session.extra['camera_context_each_turn'] = True
+        camera_prompt = await asyncio.to_thread(person_prompt, latest_input.get('context', {}).get('face_person_ids', []))
+        if camera_prompt:
+            session.extra['camera_context_each_turn'] = True
+            session.extra['camera_frame_prompt'] = camera_prompt
         from services.digital_person_statistics import load_identity_snapshot
         project = self._project_manager.get_project_by_id(session.project_id)
         from services.digital_person import get_profile
@@ -1079,10 +1093,11 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         return "\n\n".join(part for part in (
             self._digital_person_prompt(session), self.get_system_prompt(session.project_id), self._role_system_prompt(session),
             getattr(session, 'extra', {}).get('memory_context_prompt'),
+            getattr(session, 'extra', {}).get('camera_frame_prompt'),
         ) if part)
 
     def _session_system_prompt_each_turn(self, session) -> bool:
-        return bool(session.extra.get('pending_role_checkpoint') or session.extra.get('digital_person_each_turn') or session.extra.get('memory_context_prompt')) or super()._session_system_prompt_each_turn(session)
+        return bool(session.extra.get('pending_role_checkpoint') or session.extra.get('digital_person_each_turn') or session.extra.get('memory_context_prompt') or session.extra.get('camera_context_each_turn')) or super()._session_system_prompt_each_turn(session)
 
     def _capture_prompt_input(self) -> bool:
         return self._config.name in {"chat_session", "channel_chat"} or super()._capture_prompt_input()

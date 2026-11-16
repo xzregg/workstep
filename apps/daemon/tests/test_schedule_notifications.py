@@ -270,7 +270,12 @@ async def test_cross_project_schedule_options_delivery_and_route_preservation(se
     await s.manager.run_db(s.project.id, lambda _: ChatSession.update(archived=True).where(ChatSession.id == 'session').execute())
     with pytest.raises(RuntimeError, match='归档'):
         await sender.send_schedule_notification(project_id=s.other.id, session_id='session', text='不可发送')
-    await s.manager.run_db(s.project.id, lambda _: ChatSession.get_by_id('session').delete_instance(recursive=True))
+    # Match the current SQLite cascade behavior; do not traverse retired ORM
+    # backrefs whose legacy tables intentionally do not exist in new projects.
+    await s.manager.run_db(s.project.id, lambda _: (
+        ChatMessage.delete().where(ChatMessage.session=='session').execute(),
+        ChatSession.delete().where(ChatSession.id=='session').execute(),
+    ))
     with pytest.raises(LookupError):
         await sender.send_schedule_notification(project_id=s.other.id, session_id='session', text='不可发送')
     with pytest.raises((LookupError, ValueError)):

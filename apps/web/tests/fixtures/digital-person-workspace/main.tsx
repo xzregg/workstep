@@ -37,7 +37,7 @@ const calls={check:0,stop:0,voice:0,feedback:0,microphone:0,activity:0}
 const sampleSkin={...defaultSkin(),manifest:{...defaultSkin().manifest,id:'settings-demo',name:'演示皮肤'},revision:'demo'}
 skinsApi.list=async()=>[{manifest:sampleSkin.manifest,revision:sampleSkin.revision}]
 skinsApi.get=async()=>sampleSkin
-;(window as any).workspaceFixture={calls,getProfile:()=>profile,setPhase:(phase:string)=>useWakeState.setState({phase:phase as any}),setSpeaking:(value:boolean)=>window.dispatchEvent(new CustomEvent('workstep:digital-person-speaking',{detail:value}))}
+;(window as any).workspaceFixture={calls,getProfile:()=>profile,setLocale:(locale:string)=>useLocaleStore.setState({locale:locale as any}),setPhase:(phase:string)=>useWakeState.setState({phase:phase as any}),setSpeaking:(value:boolean)=>window.dispatchEvent(new CustomEvent('workstep:digital-person-speaking',{detail:value}))}
 useLocaleStore.setState({locale:'zh-CN'})
 useProjectStore.setState({projects:[{id:'demo',name:'操作手册演示',path:'/demo',type:'local',is_default_workspace:true,workflows:[]}] as any,loading:false})
 digitalPersonApi.get=async()=>({...profile,onboarding_completed:true})

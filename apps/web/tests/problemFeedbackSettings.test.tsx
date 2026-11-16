@@ -25,7 +25,7 @@ for (const android of [false, true]) {
     try {
       useLocaleStore.setState({ locale: 'zh-CN' })
       await act(async () => root.render(<I18nProvider><ProblemFeedbackSettings /></I18nProvider>))
-      const button = container.querySelector<HTMLButtonElement>('button')!
+      const button = container.querySelector<HTMLButtonElement>('.problem-feedback button')!
       await act(async () => button.click())
       assert.equal(writes.length, 1)
       assert.ok(!writes[0].includes('private-password'))
@@ -73,7 +73,7 @@ test('desktop feedback opens the shared window, prevents duplicate requests and 
   } } }
   try {
     await act(async () => root.render(<I18nProvider><ProblemFeedbackSettings /></I18nProvider>))
-    const button = container.querySelector<HTMLButtonElement>('button')!
+    const button = container.querySelector<HTMLButtonElement>('.problem-feedback button')!
     assert.match(button.textContent || '', /一键反馈/)
     await act(async () => button.click())
     assert.equal(button.disabled, true)

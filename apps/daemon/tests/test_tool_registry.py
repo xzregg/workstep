@@ -16,6 +16,7 @@ from services.tool_registry import (
 def test_registry_defines_expected_tool_set():
     names = {tool.name for tool in WORKSTEP_TOOLS}
     assert names == {
+        "workstep_get_message",
         "workstep_stop_digital_person_check",
         "workstep_delegate_digital_person",
         "workstep_list_projects",

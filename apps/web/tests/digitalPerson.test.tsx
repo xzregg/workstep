@@ -94,7 +94,7 @@ test('digital person persists its profile, guards drafts, and shows native memor
     await act(async () => rootElement.querySelector<HTMLButtonElement>('.assistant-engine-footer button')!.click())
     assert.equal(savedAssistant, 'digital_person')
     assert.doesNotMatch(rootElement.textContent!, /流程助手|任务创建助手/)
-    await click('记忆')
+    await act(async () => rootElement.querySelector<HTMLButtonElement>('[data-body-part="memory"]')!.click())
     assert.equal(rootElement.querySelector('[data-body-part=memory]')?.getAttribute('aria-pressed'),'true')
     assert.ok(rootElement.querySelector('[role="region"][aria-labelledby="digital-person-tab-memory"]'))
     assert.equal(rootElement.querySelector('iframe'), null)

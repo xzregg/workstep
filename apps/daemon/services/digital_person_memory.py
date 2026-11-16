@@ -494,18 +494,9 @@ async def context_prompt(projects, scope, query, *, session_id='', hits=None, pr
 
 
 async def _task_context_prompt(projects, project_id, task_id, query):
-    if projects is None or not project_id or not projects.get_project_by_id(project_id):
-        return ''
-    from services.digital_person import get_profile
-    if not (await asyncio.to_thread(get_profile)).enabled:
-        return ''
-    scope = await projects.run_db(project_id,lambda _:scope_for_task(project_id,task_id))
-    from services.remote_access import get_current_actor
-    actor = get_current_actor()
-    if actor and actor.source == 'channel':
-        scope = 'task:'+task_id
-    return await context_prompt(projects,scope,query,session_id=task_id,issuer_project_id=project_id,issuer_kind='task',
-                                project_ids=[project_id] if scope != 'local' else None)
+    # Memory is retrieved explicitly through workstep-cli. This retired prompt
+    # must not access project storage merely to return an empty instruction.
+    return ''
 
 
 MEMORY_CONTEXT_TIMEOUT = 2.0

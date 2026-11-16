@@ -10,8 +10,9 @@ export default function DigitalPersonDocuments({value,onChange,disabled=false,on
  const {t}=useI18n()
  const h:DocumentHeadings={...defaultHeadings,role:t('digitalPerson.identityLabel'),personality:t('digitalPerson.personality'),tone:t('digitalPerson.tone'),relationship:t('digitalPerson.documentRelationship'),greeting:t('digitalPerson.greeting'),duties:t('digitalPerson.documentDuties'),boundary:t('digitalPerson.documentBoundary'),memory:t('digitalPerson.documentMemory')}
  const persona=personaDocument(value,h,t(`digitalPerson.style${value.relationship_style??'balanced'}` as never))
- const legacyDuties=`## ${h.duties}\n${value.duties.split('\n').filter(line=>line.trim()).map(line=>'- '+line).join('\n')}\n\n## ${h.boundary}\n${t('digitalPerson.documentBoundaryText')}`
- const dutiesDocument=/^##\s/m.test(value.duties)||legacyDuties.length>8000?value.duties:legacyDuties
+ const duties=value.duties.replace('\n\n## 执行红线\n实际工作必须交给项目执行会话，绝不亲自执行。指派后立即返回，由后台跟进。','')
+ const legacyDuties=`## ${h.duties}\n${duties.split('\n').filter(line=>line.trim()).map(line=>'- '+line).join('\n')}`
+ const dutiesDocument=/^##\s/m.test(duties)||legacyDuties.length>8000?duties:legacyDuties
  const commit=(next:DigitalPersonProfile)=>onChange({...next,persona_markdown:next.persona_markdown??persona,duties:next.duties===value.duties?dutiesDocument:next.duties})
  const changePersona=(text:string)=>commit(withPersonaDocument(value,text,h))
  const selected=(key:keyof DocumentHeadings,item:string)=>documentSection(persona,key,h).some(line=>line===item||line.split(/[、，,；;]+/).includes(item))

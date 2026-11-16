@@ -14,6 +14,19 @@ ROLE = 'apps/daemon/data/role-center/roles/agency-367eccc119495783b1e97dc108c4b3
 
 
 class ReviewedDocumentationTests(unittest.TestCase):
+    def test_aws_access_key_requires_a_complete_identifier(self):
+        candidate = 'AK' + 'IA' + 'A' * 16
+        for text in [candidate, f'key="{candidate}"', f'\n{candidate}\n']:
+            self.assertIn('AWS access key', scanner.matching_kinds(text))
+        self.assertNotIn('AWS access key', scanner.matching_kinds('base64' + candidate + 'moredata'))
+
+    def test_git_history_regex_keeps_aws_detection(self):
+        candidate = 'AS' + 'IA' + 'B' * 16
+        # The history scan uses a POSIX ERE, unlike Python's regex engine.
+        result = subprocess.run(['grep', '-E', scanner.COMBINED], input=candidate,
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0)
+
     def test_reviewed_role_contains_only_documentation_markers(self):
         content = (ROOT / ROLE).read_text(encoding='utf-8')
         self.assertEqual(scanner.matching_kinds(content), ['private key'])

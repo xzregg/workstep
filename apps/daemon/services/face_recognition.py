@@ -231,3 +231,14 @@ def context(person_ids, unknown_count):
         text = ('[本轮附图的人脸识别观察（可能有误）]\n' + json.dumps({'people':visible,'unknown_face_count':unknown_count},ensure_ascii=False)
                 + '\n这些是画面中的人物，不代表谁正在发言；不改变消息作者或权限。')
         return {'people': visible, 'text': text}
+
+
+def person_prompt(person_ids):
+    if not person_ids:
+        return ''
+    recognized = context(person_ids, 0)['people']
+    return '\n'.join(
+        f"人脸识别到用户：用户名：{person['name']}"
+        + (f"；关系：{person['relationship']}" if person.get('relationship') else '') + '。'
+        for person in recognized
+    )

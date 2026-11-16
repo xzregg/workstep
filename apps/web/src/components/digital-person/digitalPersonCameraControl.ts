@@ -4,7 +4,7 @@ export interface DigitalPersonCameraControl {
   enabled: boolean
   opening: boolean
   disabled: boolean
-  prepare: (content: string) => Promise<string>
+  prepare: (content: string, onFaces?: (ids:string[])=>void) => Promise<string>
   toggle: () => void
 }
 

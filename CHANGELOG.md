@@ -9,6 +9,11 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 - Add an optional digital-person workspace with profile documents, voice output, animated presence and workspace insights.
 - Improve evidence-based memory extraction, cross-session knowledge search, source verification and conversation scheduling guidance.
 - Synchronize packaged desktop runtime dependencies with the frozen daemon lockfile.
+- Read an original conversation message by its WorkStep session and message identifiers through the local CLI, preserving project authorization and source attribution.
+- Improve digital-person camera controls, captured-image annotations, profile-document rendering and multilingual interface behavior.
+- Keep digital-person session queries and chat admission database work in the service layer and project executor; remove storage work from retired implicit task-memory prompts.
+- Keep saved-model details above the settings overlay and align behavioral tests with the current memory, notification and interface contracts.
+- Detect complete AWS access-key identifiers without treating matching fragments inside longer encoded runtime assets as credentials; retain release payload and full-history checks.
 
 - Add optional decision-model resource management, local or remote service configuration, and an explicitly authenticated local inference proxy; this does not automatically alter workflow decisions.
 - Add per-output artifact templates, read-only archived conversation previews, and an HTML prototype editor with a dedicated assistant, version-checked source updates, undo and history controls.

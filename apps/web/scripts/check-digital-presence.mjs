@@ -29,6 +29,11 @@ try{
   assert.match(await page.locator('.digital-home-presence-info').innerText(),/237/)
   assert.match(await page.locator('.digital-home-presence-info').innerText(),/68/)
   await page.screenshot({path:path.join(artifacts,name+'-idle.png')})
+  await page.evaluate(()=>{window.settingsOpened=0;window.addEventListener('workstep:open-digital-person-settings',()=>window.settingsOpened++)})
+  for(const [selector,kind]of [['.digital-home-identity','profile'],['.digital-home-affinity','affinity'],['.digital-home-metric:not(.digital-home-affinity)','reflection']]){
+   await page.locator(selector).click();await page.locator('.digital-home-detail-panel').waitFor();assert.equal(await page.evaluate(()=>document.body.style.overflow),'hidden');await page.screenshot({path:path.join(artifacts,name+'-detail-'+kind+'.png')});await page.locator('.digital-home-detail-close').click();await page.waitForTimeout(100);assert.equal(await page.evaluate(()=>window.settingsOpened),0)
+  }
+
   const fits=await page.evaluate(()=>({width:document.documentElement.scrollWidth<=innerWidth,height:document.documentElement.scrollHeight<=innerHeight+1}));assert.deepEqual(fits,{width:true,height:true})
   if(name!=='landscape'){const stage=await page.locator('.digital-home-stage').boundingBox();assert.ok(Math.abs(stage.x+stage.width/2-width/2)<2,'orb stays centered')}
   const header=await page.locator('.digital-home-header').boundingBox(),back=await page.locator('.digital-home-back').boundingBox();assert.ok(width>1023?Math.abs(back.x+back.width-(width-32))<2:Math.abs(back.x-20)<2)
@@ -48,7 +53,7 @@ try{
   assert.equal(await page.evaluate(()=>window.homeFixture.log.captures),0,'no automatic microphone')
   results.push({name,fits,orbCentered:name!=='landscape',sameOrb:true,audioFrames:true,reducedMotion:true})
  }
- await page.setViewportSize({width:390,height:844});await page.goto('https://presence.invalid/');await page.locator('[data-camera-toggle]').click();await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.srcObject);await page.evaluate(()=>window.keptStream=document.querySelector('.video-preview-media').srcObject);await page.locator('.digital-home-transcript-button').click();assert.equal(await page.evaluate(()=>window.keptStream===document.querySelector('.video-preview-media').srcObject),true);await page.screenshot({path:path.join(artifacts,'camera-chat.png')})
+ await page.setViewportSize({width:390,height:844});await page.goto('https://presence.invalid/');await page.locator('[data-camera-toggle]').click();await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.srcObject&&document.querySelector('.video-preview-media')?.videoWidth>0);await page.evaluate(()=>window.keptStream=document.querySelector('.video-preview-media').srcObject);await page.locator('.digital-home-transcript-button').click();assert.equal(await page.evaluate(()=>window.keptStream===document.querySelector('.video-preview-media').srcObject),true);await page.screenshot({path:path.join(artifacts,'camera-chat.png')})
  await page.goto('https://presence.invalid/?skinAvatar=1');await page.locator('[data-custom-avatar]').waitFor();await page.evaluate(()=>window.homeFixture.speaking(true,.75));await page.waitForFunction(()=>Number(document.querySelector('[data-custom-avatar]')?.getAttribute('data-level'))>.7);assert.equal(await page.locator('.digital-presence-orb').count(),0);await page.screenshot({path:path.join(artifacts,'custom-skin.png')})
  await page.addInitScript(()=>{const original=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(kind,...args){return kind==='webgl'?null:original.call(this,kind,...args)}});await page.goto('https://presence.invalid/');await page.locator('.digital-presence-static').waitFor();await page.screenshot({path:path.join(artifacts,'fallback.png')})
  assert.deepEqual(errors,[]);await fs.writeFile(path.join(artifacts,'results.json'),JSON.stringify({results,cameraPreserved:true,webglFallback:true,errors},null,2));console.log(JSON.stringify({passed:true,artifacts}))

@@ -338,6 +338,8 @@ WebSocket `/ws` 支持按连接订阅过滤（`{"type":"subscribe","task_ids":[.
 
 完整表集合以 `apps/daemon/models/__init__.py::ALL_MODELS` 为准。产物不是 `artifacts` 数据表，而是项目 `.workstep/artifacts/` 下的文件与 manifest。
 
+新建聊天会话的 ID 将 UUID 第一段替换为完整项目 ID，格式为 `<项目ID>-xxxx-xxxx-xxxx-xxxxxxxxxxxx`；后四段保留随机值，由 `services/chat_identity.py` 统一生成与解析。既有 UUID 会话不迁移，引擎原生会话 ID 不变。`message get --session <会话ID> --message <消息ID>` 通过聊天 API 直接读取 `chat_messages` 原文，不访问记忆索引；新 ID 直接定位项目数据库，旧 ID 可显式加 `--project`，本机未指定时按注册项目逐库精确查找。读取始终验证项目、会话与消息归属，项目身份不得跨项目查询。
+
 任务步骤执行的完整过程事件以项目 `.workstep/event_logs/task-<task_id>/<session_id>/<message_id>.jsonl`
 为权威日志；`messages` 表只保留可见 `content`、必要的摘要事件、`event_summary_json`、
 事件数量/末序号及 `event_log_path` 查询投影。历史接口默认返回摘要，详细时间线通过

@@ -2,7 +2,16 @@ import type {DigitalPersonProfile} from '../../api/digitalPerson'
 
 export type DocumentHeadings = {role:string;personality:string;tone:string;relationship:string;greeting:string;duties:string;boundary:string;memory:string}
 export const defaultHeadings:DocumentHeadings={role:'身份',personality:'性格',tone:'语气',relationship:'相处',greeting:'欢迎语',duties:'主要职责',boundary:'执行红线',memory:'长期约定'}
-const aliases:Record<keyof DocumentHeadings,string[]>={role:['身份','Identity'],personality:['性格','Personality'],tone:['语气','Tone'],relationship:['相处','Relationship'],greeting:['欢迎语','Greeting'],duties:['主要职责','Duties'],boundary:['执行红线','Boundary'],memory:['长期约定','Standing memory']}
+const aliases:Record<keyof DocumentHeadings,string[]>={
+ role:['身份','身分','Identity','身分・役割','Identität','Identité','الهوية'],
+ personality:['性格','Personality','Persönlichkeit','Caractère','الطباع'],
+ tone:['语气','語氣','Tone','口調','Tonfall','Ton','النبرة'],
+ relationship:['相处','相處','Relationship','接し方','Umgang','Relation','أسلوب التعامل'],
+ greeting:['欢迎语','歡迎語','Greeting','挨拶','Begrüßung','Message d’accueil','الترحيب'],
+ duties:['主要职责','主要職責','职责','職責','Duties','Responsibilities','主な役割','Hauptaufgaben','Responsabilités principales','المسؤوليات الرئيسية'],
+ boundary:['执行红线','執行紅線','Boundary','Execution boundary','実行上の制約','Ausführungsgrenze','Limite d’exécution','حدود التنفيذ'],
+ memory:['长期约定','長期約定','Standing memory','Standing agreements','継続的な約束','Dauerhafte Vereinbarungen','Accords permanents','اتفاقات دائمة'],
+}
 function section(text:string,key:keyof DocumentHeadings,h:DocumentHeadings){
  const lines=text.split('\n'),names=[h[key],...aliases[key]].map(x=>x.toLowerCase())
  const start=lines.findIndex(line=>/^##\s+/.test(line)&&names.includes(line.replace(/^##\s+/,'').trim().toLowerCase()))

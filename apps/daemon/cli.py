@@ -141,6 +141,14 @@ def build_parser() -> argparse.ArgumentParser:
                 help="include full data instead of list summaries",
             )
 
+    message = subparsers.add_parser('message', help='read an original chat message by session and message IDs')
+    message_sub = message.add_subparsers(dest='subcommand', required=True)
+    message_get = message_sub.add_parser('get', help='read one persisted message without memory search')
+    message_get.add_argument('--session', dest='session_id', required=True)
+    message_get.add_argument('--message', dest='message_id', required=True)
+    message_get.add_argument('--project', dest='project_id', help='explicit project ID, useful for legacy sessions')
+    add_json(message_get)
+
     memory = subparsers.add_parser('memory', help='search memory with intent-derived text clues or date bounds')
     memory_sub = memory.add_subparsers(dest='subcommand', required=True,metavar='{search,history,read}')
     for operation in ('search', 'history', 'read', 'pending'):
@@ -537,6 +545,11 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
     """Resolve a parsed command to one tool call and return its JSON result."""
     client = client or WorkstepClient(base_url=args.url)
     command = args.command
+    if command == 'message':
+        return await client.call('workstep_get_message', {
+            'session_id': args.session_id, 'message_id': args.message_id,
+            **({'project_id': args.project_id} if args.project_id else {}),
+        })
     if command == 'memory':
         if args.subcommand == 'pending':
             return await client.call('workstep_memory_pending', {})

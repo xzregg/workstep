@@ -15,7 +15,7 @@ import {faceApi} from '../../api/faces'
 import {waitForRecognition} from '../face-recognition/operation'
 import {annotateFaceFrame} from '../face-recognition/annotateFrame'
 
-export type PrepareCameraMessage = (content: string) => Promise<string>
+export type PrepareCameraMessage = (content: string, onFaces?: (ids:string[])=>void) => Promise<string>
 
 /** Keyboard resizing does not change the physical camera orientation. */
 function cameraPortraitScreen() {
@@ -29,8 +29,8 @@ function cameraPortraitScreen() {
 }
 
 /** Camera remains local; a frame is encoded and uploaded only when a message is sent. */
-export default function DigitalPersonCamera({ projectId, autoStart = false, active = true, compact = false, floating = false, enabled = true, children, onPrepare, enrollment = false, onCaptureReady }: {
-  projectId?: string; autoStart?: boolean; active?: boolean; compact?: boolean; floating?: boolean; enabled?: boolean; children?: ReactNode
+export default function DigitalPersonCamera({ projectId, autoStart = false, active = true, compact = false, floating = false, enabled = true, children, onPrepare, presentation='window', panelContent, enrollment = false, onCaptureReady }: {
+  presentation?:'window'|'panel';panelContent?:ReactNode;projectId?: string; autoStart?: boolean; active?: boolean; compact?: boolean; floating?: boolean; enabled?: boolean; children?: ReactNode
   onPrepare?: (prepare: PrepareCameraMessage | null) => void
   enrollment?: boolean
   onCaptureReady?: (capture: (()=>Promise<RecognizedFrame>)|null)=>void
@@ -110,7 +110,7 @@ export default function DigitalPersonCamera({ projectId, autoStart = false, acti
     return () => { document.removeEventListener('visibilitychange', hide); stop() }
   }, [enabled, autoStart, active, start, stop, projectId])
 
-  const prepare = useCallback(async (content: string) => {
+  const prepare = useCallback(async (content: string, onFaces?: (ids:string[])=>void) => {
     if (!stream.current) {
       if (phase === 'opening') throw new Error(t('digitalPerson.cameraNotReady'))
       return content
@@ -127,12 +127,14 @@ export default function DigitalPersonCamera({ projectId, autoStart = false, acti
       const context = canvas.getContext('2d')
       if (!context) throw new Error(t('digitalPerson.cameraNotReady'))
       context.drawImage(source, 0, 0, width, height, 0, 0, canvas.width, canvas.height)
+      let facePersonIds:string[]=[]
       try {
         const frame=await analyzeFrame(canvas)
         if(frame.catalog?.settings.enabled&&frame.catalog.settings.include_people){
           const ids=[...new Set(frame.faces.flatMap(face=>face.person?[face.person.id]:[]))]
           const people=await faceApi.context(ids,frame.faces.filter(face=>!face.person).length)
           annotateFaceFrame(canvas,frame.faces,people.people,t('faceRecognition.unknown'))
+          facePersonIds=people.people.map(person=>person.person_id)
         }
       } catch { /* Optional recognition must not prevent sending the camera photo. */ }
       if(request!==generation.current||current!==stream.current)throw new Error(t('digitalPerson.cameraNotReady'))
@@ -141,12 +143,13 @@ export default function DigitalPersonCamera({ projectId, autoStart = false, acti
       const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })
       const uploaded = await fsApi.uploadImage(file, projectId, 'digital-person-camera')
       if (request !== generation.current || current !== stream.current) throw new Error(t('digitalPerson.cameraNotReady'))
+      onFaces?.(facePersonIds)
       return `${content}\n\n${formatMarkdownAttachment(file, uploaded.url)}`
     } finally { uploading.current = false }
   }, [phase, projectId, t, analyzeFrame])
   useEffect(() => { onPrepare?.(prepare); return () => onPrepare?.(null) }, [onPrepare, prepare])
   const switchButton = phase === 'on' && <Button className="digital-person-camera-switch" variant="ghost" aria-label={t('digitalPerson.switchCamera')} title={t('digitalPerson.switchCamera')} onClick={() => { const next = facing === 'environment' ? 'user' : 'environment'; setFacing(next); void start(next) }}>{compact || floating ? <Icon name="switch-camera" size={14} /> : t('digitalPerson.switchCamera')}</Button>
-  const overlay=<FaceOverlay videoRef={video} faces={recognition.faces} showNames={recognition.catalog?.settings.show_names??true}/>
+  const overlay=<FaceOverlay videoRef={video} faces={recognition.faces} showNames={recognition.catalog?.settings?.show_names??true}/>
   const preview = <>
     <div className="face-camera-surface">
     <video ref={video} className="digital-person-camera-preview" hidden={phase === 'off'} autoPlay playsInline muted aria-label={t('digitalPerson.cameraPreview')} />
@@ -163,13 +166,23 @@ export default function DigitalPersonCamera({ projectId, autoStart = false, acti
     const eyes = avatar.querySelector('[data-avatar-eyes]')?.getBoundingClientRect()
     return eyes ? { x: eyes.x, y: eyes.y } : null
   }, [])
-  const camera = <div ref={root} className={`digital-person-camera${compact || floating ? ' digital-person-camera--compact' : ''}${floating ? ' digital-person-camera--floating' : ''}${children ? ' digital-person-camera--menu' : ''}`} data-camera-phase={phase}>
+  useEffect(()=>{
+    if(presentation!=='panel'||typeof ResizeObserver==='undefined')return
+    const node=root.current,home=node?.closest<HTMLElement>('.digital-home')
+    if(!node||!home)return
+    const update=()=>home.style.setProperty('--home-camera-height',`${node.getBoundingClientRect().height}px`)
+    const observer=new ResizeObserver(update);observer.observe(node);update()
+    return()=>{observer.disconnect();home.style.removeProperty('--home-camera-height')}
+  },[presentation])
+  const camera = <div ref={root} className={`digital-person-camera${compact || floating ? ' digital-person-camera--compact' : ''}${floating ? ' digital-person-camera--floating' : ''}${children ? ' digital-person-camera--menu' : ''}${presentation==='panel'?' digital-person-camera--panel':''}`} data-camera-phase={phase} hidden={presentation==='panel'&&phase==='off'&&!error}>
     {!children && <div className="digital-person-camera-actions">
       <Button data-camera-toggle variant="ghost" aria-label={t(phase === 'off' ? 'digitalPerson.openCamera' : 'digitalPerson.closeCamera')} aria-busy={phase === 'opening'} aria-pressed={phase !== 'off'} disabled={!active}
         onClick={() => phase === 'off' ? void start(facing) : stop()}>{phase === 'opening' ? <Spinner size={16} /> : <Icon name="camera" size={floating ? 14 : compact ? 24 : 16} />}{!compact && !floating && t(phase === 'off' ? 'digitalPerson.openCamera' : 'digitalPerson.closeCamera')}</Button>
       {!compact && !floating && switchButton}
     </div>}
-    {compact || floating ? <VideoPreviewWindow videoRef={video} overlay={overlay} actions={switchButton} error={error} getAnchor={getAnchor} label={t('digitalPerson.cameraPreview')} closeLabel={t('digitalPerson.closeCamera')} open={phase !== 'off' || Boolean(error)} onClose={() => { stop(); setError('') }}/> : <div className="digital-person-camera-media">{preview}</div>}
+    {presentation==='panel'&&<header className="digital-home-camera-title"><Icon name="camera" size={16}/><span>{t('digitalPerson.cameraPreview')}</span></header>}
+    {compact || floating ? <VideoPreviewWindow presentation={presentation} videoRef={video} overlay={overlay} actions={switchButton} error={error} getAnchor={getAnchor} label={t('digitalPerson.cameraPreview')} closeLabel={t('digitalPerson.closeCamera')} open={phase !== 'off' || Boolean(error)} onClose={() => { stop(); setError('') }}/> : <div className="digital-person-camera-media">{preview}</div>}
+    {presentation==='panel'&&panelContent}
   </div>
   if (!children) return camera
   return <DigitalPersonCameraControlContext.Provider value={enabled ? {

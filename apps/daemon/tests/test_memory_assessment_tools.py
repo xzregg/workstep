@@ -15,7 +15,8 @@ async def test_pending_requires_internal_assignment_and_preserves_context(runtim
     query.bind_assessment(token, payload)
     assert not query.assessment_observed(token)
     result = await query.pending(current.projects, token)
-    assert result == payload
+    assert {key: result[key] for key in payload} == payload
+    assert result['session_knowledge']['complete'] is False
     assert query.assessment_observed(token)
     result['conversation'].clear()
     assert (await query.pending(current.projects, token))['conversation']

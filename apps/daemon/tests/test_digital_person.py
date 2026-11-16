@@ -376,8 +376,26 @@ async def test_markdown_identity_roundtrip_and_prompt_uses_documents(setup, monk
         text=service.prompt_for_project(SimpleNamespace(id='home'))
         assert payload['persona_markdown'] in text and payload['duties'] in text
         assert payload['conversation_rules'] in text and 'HARD BOUNDARY' in text
+        assert 'Duties: ##' not in text and 'Conversation rules: ##' not in text
+        assert '\n\n'+payload['duties']+'\n\n' in text
         from services.digital_person_assessment import instruction
         background=instruction(service.get_profile())
         assert payload['persona_markdown'] in background and payload['conversation_rules'] in background
         assert 'Personality: '+payload['personality'] not in text
         assert (await client.put('/api/digital-person',json={**payload,'persona_markdown':'x'*16001})).status_code==422
+
+
+def test_prompt_omits_only_previous_generated_boundary_and_preserves_custom_markdown(setup, monkeypatch):
+    from services import customization_workspace
+    from services.digital_person import DigitalPersonProfile
+    _, service = setup
+    monkeypatch.setattr(customization_workspace, 'is_default_workspace', lambda _: True)
+    old='## 主要职责\n- 跟进事项\n\n## 执行红线\n实际工作必须交给项目执行会话，绝不亲自执行。指派后立即返回，由后台跟进。'
+    service.save_profile(DigitalPersonProfile(enabled=True,persona_markdown='## 身份\n助理',duties=old))
+    text=service.prompt_for_project(SimpleNamespace(id='home'))
+    assert '## 主要职责\n- 跟进事项' in text
+    assert '## 执行红线' not in text
+    assert text.count('HARD BOUNDARY')==1
+    custom=old.replace('实际工作必须交给项目执行会话，绝不亲自执行。指派后立即返回，由后台跟进。','不得发布未经核验的结果。')
+    service.save_profile(DigitalPersonProfile(enabled=True,persona_markdown='## 身份\n助理',duties=custom))
+    assert custom in service.prompt_for_project(SimpleNamespace(id='home'))

@@ -383,5 +383,8 @@ async def test_channel_engine_uses_only_its_own_memory_tools(runtime, monkeypatc
     assert own['items']==[] and own['knowledge']==[]  # Unprocessed sources are not knowledge hits.
     bob_hits=(await memory_query.search(current.projects,bob_token,query='天文摄影'))['items']
     assert all(hit['session_id']==b and '天文摄影' not in hit['content'] for hit in bob_hits)
-    with pytest.raises(LookupError):
-        await memory_query.read(current.projects,bob_token,(await memory_query.search(current.projects,alice_token))['items'][0]['id'])
+    # Explicit host queries are not implicitly restricted to the calling session.
+    # Provenance remains attached; project access is enforced separately.
+    source=(await memory_query.search(current.projects,alice_token))['items'][0]
+    read=await memory_query.read(current.projects,bob_token,source['id'])
+    assert read['session_id']==source['session_id']

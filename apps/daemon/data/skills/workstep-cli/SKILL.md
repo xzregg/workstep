@@ -33,6 +33,7 @@ Use `context get --json` for the current project/conversation IDs
 
 | Need | Read |
 | --- | --- |
+| Original chat message by session ID and message ID (`message get`) | [Messages](references/messages.md) |
 | Historical memories, experience, original evidence and time review | [Memory](references/memory.md) |
 | Summary/detail output, fields, limits and pagination | [Output](references/output.md) |
 | Projects, quick buttons and Actions | [Projects](references/projects.md) |

@@ -529,7 +529,7 @@ async def test_digital_status_is_refreshed_in_system_prompt_on_each_turn(runtime
         await runtime.chats.await_turn(accepted.turn_id,timeout=5)
     assert 'Level: Lv.1; Experience: 0' in calls[0]
     assert 'Level: Lv.1; Experience: 1' in calls[1]
-    assert all('User sessions: 1' in prompt and '代码评审' in prompt for prompt in calls)
+    assert all('User sessions: 1' in prompt and '代码评审' not in prompt for prompt in calls)
 
 
 async def test_slow_skill_discovery_does_not_block_activity_api(runtime,monkeypatch):

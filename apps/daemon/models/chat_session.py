@@ -59,6 +59,7 @@ class ChatMessage(BaseModel):
     session = pw.ForeignKeyField(ChatSession, backref="messages")
     role = pw.TextField()  # 'user' / 'assistant'
     content = pw.TextField(default="")
+    context_json = pw.TextField(null=True)
     author_id = pw.TextField(null=True)
     author_username = pw.TextField(null=True)
     author_name = pw.TextField(null=True)

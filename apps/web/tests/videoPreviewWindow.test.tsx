@@ -34,3 +34,23 @@ test('shared video window fits portrait and landscape frames, anchors to eyes an
   b=bounds();assert.ok(b.left>=8&&b.top>=8&&b.left+b.width<=836&&b.top+b.height<=382)
  }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
 })
+
+
+test('panel preview shares the same video when switching between fixed and floating placement',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host),video=createRef<HTMLVideoElement>()
+ try{
+  await act(async()=>root.render(<I18nProvider><VideoPreviewWindow presentation="panel" open videoRef={video} label="摄像头" onClose={()=>{}}/></I18nProvider>))
+  const source=video.current,panel=host.querySelector<HTMLElement>('.video-preview-window')!
+  assert.equal(panel.getAttribute('data-video-docked'),'true')
+  Object.defineProperties(source!,{videoWidth:{configurable:true,value:720},videoHeight:{configurable:true,value:1280}})
+  await act(async()=>source!.dispatchEvent(new window.Event('loadedmetadata')))
+  assert.equal(panel.style.getPropertyValue('--video-preview-ratio'),'0.5625')
+  await act(async()=>host.querySelector<HTMLButtonElement>('[data-video-pin]')!.click())
+  assert.equal(panel.getAttribute('data-video-docked'),'false');assert.equal(video.current,source)
+  await act(async()=>host.querySelector<HTMLButtonElement>('[data-video-pin]')!.click())
+  assert.equal(panel.getAttribute('data-video-docked'),'true');assert.equal(video.current,source)
+  await act(async()=>root.render(<I18nProvider><VideoPreviewWindow presentation="window" open videoRef={video} label="摄像头" onClose={()=>{}}/></I18nProvider>))
+  assert.equal(panel.classList.contains('video-preview-window--docked'),false)
+  assert.equal(panel.getAttribute('data-video-docked'),null);assert.equal(video.current,source)
+ }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
+})

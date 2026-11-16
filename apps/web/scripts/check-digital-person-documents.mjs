@@ -61,6 +61,17 @@ try{
   assert.match(saved.persona_markdown,/保留我的手写要求/)
   assert.match(saved.conversation_rules,/我自己填写的长期约定/)
   assert.match(saved.duties,/澄清需求/)
+  for(const [locale,title,role] of [['en-US','Persona','Development partner'],['ja-JP','ペルソナ','開発パートナー']]){
+   await page.evaluate(locale=>window.workspaceFixture.setLocale(locale),locale)
+   await page.getByRole('heading',{name:title,exact:true}).waitFor()
+   await page.getByRole('button',{name:role,exact:true}).click()
+   const value=await persona.inputValue()
+   assert.match(value,/保留我的手写要求/)
+   assert.equal((value.match(/^## (?:身份|Identity|身分・役割)$/gm)||[]).length,1)
+   assert.doesNotMatch(await duties.inputValue(),/实际工作必须交给项目执行会话/)
+   await persona.scrollIntoViewIfNeeded()
+   await page.screenshot({path:path.join(artifacts,`documents-${locale}-${width}.png`),animations:'disabled'})
+  }
   assert.deepEqual(errors,[]);results.push({width,passed:true,editors:3,presetAndManualEditsSaved:true});await page.close()
  }
  console.log(JSON.stringify(results));await fs.writeFile(path.join(artifacts,'results.json'),JSON.stringify(results,null,2))

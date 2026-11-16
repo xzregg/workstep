@@ -4,6 +4,7 @@ from tests.test_chat_session import chat_module
 from tests.test_digital_person_runtime import runtime
 from models.chat_session import ChatMessage
 from models.fields import utc_now
+from tests.memory_turn_fixture import create_completed_user
 
 
 def test_memory_directory_is_an_instance_data_directory(tmp_path,monkeypatch):
@@ -51,7 +52,7 @@ async def test_global_index_follows_config_directory_and_has_no_raw_content(runt
     secret_tail = '只有来源数据库才有的完整原话结尾'
     text = '星河项目的发布经验。' * 25 + secret_tail
     def seed(_):
-        ChatMessage.create(id='original', session=sid, role='user', status='completed', content=text, created_at=utc_now())
+        create_completed_user(id='original', session=sid, role='user', status='completed', content=text, created_at=utc_now())
         memory.capture_session(sid, 'local')
     await current.projects.run_db(project.id, seed)
     with index.connect() as db:
@@ -94,7 +95,7 @@ async def test_other_project_history_requires_explicit_tool_search_from_main_cha
     other=await asyncio.to_thread(current.projects.init_project,tmp_path/'historical')
     def seed(_):
         sid=current.chats.create_session(other.id)['id']
-        ChatMessage.create(id='old-project-message',session=sid,role='user',status='completed',content='北辰发布必须回归验证。',created_at=utc_now())
+        create_completed_user(id='old-project-message',session=sid,role='user',status='completed',content='北辰发布必须回归验证。',created_at=utc_now())
     await current.projects.run_db(other.id,seed)
     await memory.sync_projects(current.projects)
     main=(await current.main_session())['id']
@@ -114,9 +115,12 @@ async def test_other_project_history_requires_explicit_tool_search_from_main_cha
     token=await memory_query.execution_access(current.projects,home.id,main)
     from services import digital_person_memory_index as index, memory_knowledge as knowledge
     rows=await asyncio.to_thread(index.candidates,'local',project_ids=[other.id])
-    await asyncio.to_thread(knowledge.store_extraction,{'memories':[{'summary':'北辰发布必须回归验证。',
-        'kind':'fact','outcome':'stated','source_ids':['memory:'+str(rows[0]['id'])]}]},rows)
-    found=await memory_query.search(current.projects,token,query='北辰发布')
+    evidence=next(row for row in rows if row['source_message_id']=='old-project-message')
+    count=await asyncio.to_thread(knowledge.store_extraction,{'memories':[{'summary':'北辰发布必须回归验证。',
+        'kind':'fact','outcome':'stated','source_ids':['memory:'+str(evidence['id'])]}]},rows,strict=True)
+    assert count==1
+    found=await memory_query.search(current.projects,token,query='北辰发布',include_sources=True)
+    assert found['knowledge'], found
     hit=next(source for item in found['knowledge'] for source in item['sources'] if source['project_id']==other.id)
     original=await memory_query.read(current.projects,token,hit['id'])
     assert original['content']=='北辰发布必须回归验证。'
@@ -125,7 +129,8 @@ async def test_other_project_history_requires_explicit_tool_search_from_main_cha
     # attach unrelated project history to its pending source batch.
     assert context['memory']==[]
     assert context['origin_project_id'] in (home.id,other.id)
-    assert all(m['session_id']==context['origin_session_id'] for m in context['conversation'])
+    assert all(m['session_id']==group['origin_session_id']
+               for group in context.get('_groups',[context]) for m in group['conversation'])
 
 
 @pytest.mark.parametrize('actor_source',['remote_project','browser','channel'])
@@ -136,7 +141,7 @@ async def test_global_memory_never_reads_removed_or_unauthorized_project(runtime
     other=await asyncio.to_thread(current.projects.init_project,tmp_path/'private')
     def seed(_):
         sid=current.chats.create_session(other.id)['id']
-        ChatMessage.create(id='private',session=sid,role='user',status='completed',content='秘密项目天文摄影计划。',created_at=utc_now())
+        create_completed_user(id='private',session=sid,role='user',status='completed',content='秘密项目天文摄影计划。',created_at=utc_now())
         memory.capture_session(sid,'local')
     await current.projects.run_db(other.id,seed)
     actor=ActorSnapshot(actor_id='u',user_name='u',device_id='d',device_name='d',source=actor_source,project_id=home.id,access_level='edit')
@@ -159,7 +164,7 @@ async def test_global_memory_lock_does_not_block_health_api(runtime,monkeypatch,
     current,project,_=runtime
     sid=(await current.main_session())['id']
     def seed(_):
-        ChatMessage.create(id='lock-evidence',session=sid,role='user',status='completed',content='索引回查原文的依据。',created_at=utc_now())
+        create_completed_user(id='lock-evidence',session=sid,role='user',status='completed',content='索引回查原文的依据。',created_at=utc_now())
         memory.capture_session(sid,'local')
     await current.projects.run_db(project.id,seed)
     if locked_database == 'source':

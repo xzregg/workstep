@@ -82,18 +82,14 @@ async def memory(session_id: str = '', query: str = Query(default='', max_length
                  since: datetime | None = None, before: datetime | None = None,
                  limit: int = Query(default=50, ge=1, le=100), project_id: str = ''):
     from services import digital_person_memory as memory_store
-    from models.chat_session import ChatSession
     current = runtime()
     scope = 'local' if query else None
     if session_id:
-        pid = project_id or (await current.home()).id
-        if not current.projects.get_project_by_id(pid):
-            raise HTTPException(404, '来源项目不存在')
-        def read_scope(_):
-            if not ChatSession.get_or_none(ChatSession.id == session_id, ChatSession.project_id == pid):
-                raise HTTPException(404, '来源会话不存在')
-            return memory_store.scope_for_session(session_id)
-        scope = await current.projects.run_db(pid, read_scope)
+        from services.digital_person_sessions import memory_scope
+        try:
+            scope = await memory_scope(current, project_id, session_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
     return {'items': await memory_store.browse_projects(current.projects,scope=scope,query=query,since=since,before=before,limit=limit)}
 
 
@@ -264,19 +260,11 @@ async def affect_state(project_id: str = '', session_id: str = '', person_id: st
     """Host-only, read-only projection. Actor identity always comes from stored attribution."""
     from services import digital_person_affect as affect
     if session_id:
-        from models.chat_session import ChatMessage, ChatSession
-        from services.digital_person_memory import scope_for_session
-        current = runtime()
-        project_id = project_id or (await current.home()).id
-        if not current.projects.get_project_by_id(project_id):
-            raise HTTPException(404, '来源项目不存在')
-        def resolve(_):
-            if not ChatSession.get_or_none(ChatSession.id == session_id, ChatSession.project_id == project_id):
-                raise HTTPException(404, '会话不存在')
-            row = ChatMessage.select().where(ChatMessage.session == session_id, ChatMessage.role == 'user').order_by(ChatMessage.created_at.desc()).first()
-            message = {'author_id': row.author_id, 'author_device_id': row.author_device_id} if row else {}
-            return affect.subject(message, scope_for_session(session_id))
-        person_id = await current.projects.run_db(project_id, resolve)
+        from services.digital_person_sessions import affect_person
+        try:
+            person_id = await affect_person(runtime(), project_id, session_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
         if person_id is None:
             return {'state': None}
     return {'state': await asyncio.to_thread(affect.read, person_id or 'local:owner')}

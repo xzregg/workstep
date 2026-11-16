@@ -17,7 +17,7 @@ export function annotateFaceFrame(canvas:HTMLCanvasElement,faces:FaceObservation
    if(width<=0||height<=0)continue
    const person=face.person?names.get(face.person.id):undefined,color=person?'#69bd8a':'#e7bb5b'
    context.strokeStyle=color;context.strokeRect(x,y,width,height)
-   const maxWidth=Math.min(canvas.width,Math.max(width,canvas.width*.45)),lines=[person?.name||unknownLabel,...(person?.relationship?[person.relationship]:[])]
+   const maxWidth=Math.min(canvas.width,Math.max(width,canvas.width*.45)),lines=[person?.name||unknownLabel]
    const labels=lines.map(line=>{
     let text=line
     while(text.length>1&&context.measureText(text).width>maxWidth-padding*2){text=Array.from(text).slice(0,-1).join('')}

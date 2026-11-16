@@ -9,7 +9,6 @@ from typing import Literal
 
 from fastapi import APIRouter, Body, Header, HTTPException, Query
 from pydantic import ConfigDict, Field
-from models.chat_session import ChatMessage
 
 from schemas.base import BaseSchema
 
@@ -75,6 +74,7 @@ class ChatMessageRequest(BaseSchema):
     """
     project_id: str
     content: str
+    face_person_ids: list[str] = Field(default_factory=list, max_length=8)
     engine: str | None = None
     model: str | None = None
     fast_model: str | None = None
@@ -333,6 +333,23 @@ async def get_session(
     return session
 
 
+@router.get("/{session_id}/messages/{message_id}")
+async def get_message(session_id: str, message_id: str, project_id: str | None = Query(None)):
+    """Read one original message; new session IDs directly address its project."""
+    from main import project_manager
+    from services.chat_message_read import read_message
+
+    try:
+        message = await read_message(project_manager, session_id, message_id, project_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if message is None:
+        raise HTTPException(status_code=404, detail="Chat message not found")
+    return message
+
+
 class ChatMessageReadRequest(BaseSchema):
     message_id: str = Field(min_length=1, max_length=128)
 
@@ -508,33 +525,18 @@ async def chat_message(
 ):
     """Queue one chat turn for a session; events stream over WebSocket."""
     _enforce_project_scope(req.project_id)
+    if req.face_person_ids:
+        from api.project_scope import require_catalog_project
+        require_catalog_project('')
     try:
-        def submit():
-            # A send is not a config mutation: even older clients may submit a
-            # stale engine/provider form. Resolve the complete shared endpoint
-            # in the same DB work unit that accepts this turn.
-            config = _module().get_execution_config(req.project_id, session_id)
-            accepted = _module().submit_message(
-                req.project_id,
-                session_id,
-                req.content,
-                idempotency_key,
-                engine=config["engine"],
-                model=config["model"],
-                fast_model=config["fast_model"],
-                vision_model=config["vision_model"],
-                provider_id=config["provider_id"] or "",
-                thinking_effort=config["thinking_effort"],
-                service_tier=config["service_tier"],
-                permission_mode=req.permission_mode,
-                plan_mode=req.plan_mode,
-                goal_mode=req.goal_mode,
-                schedule=False,
-            )
-            message = ChatMessage.get_or_none(ChatMessage.id == accepted.assistant_message_id, ChatMessage.session == session_id)
-            actual = {"engine": message.engine, "model": message.model} if message else {}
-            return accepted, config, actual
-        accepted, config, actual = await _run_db(req.project_id, submit)
+        from services.chat_submission import submit_turn
+        accepted, config, actual = await _run_db(req.project_id, lambda: submit_turn(
+            _module(), req.project_id, session_id, req.content, idempotency_key,
+            permission_mode=req.permission_mode,
+            plan_mode=req.plan_mode,
+            goal_mode=req.goal_mode,
+            face_person_ids=req.face_person_ids,
+        ))
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
     _module().start_queued_turn(accepted.turn_id)

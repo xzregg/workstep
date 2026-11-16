@@ -12,7 +12,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PATTERNS = {
-    "AWS access key": r"(AKIA|ASIA)[0-9A-Z]{16}",
+    # Access-key IDs have exactly 20 characters. Do not match substrings of
+    # longer encoded data; keep this pattern compatible with Git's POSIX ERE.
+    "AWS access key": r"(^|[^A-Za-z0-9])(AKIA|ASIA)[0-9A-Z]{16}([^A-Za-z0-9]|$)",
     "GitHub token": r"(gh[pousr]_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{30,})",
     "OpenAI key": r"(sk-(proj|svcacct)-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{48})",
     "Anthropic key": r"sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{20,}",

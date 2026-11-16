@@ -5,6 +5,7 @@ import type {DigitalActivity,DigitalPersonProfile} from '../../api/digitalPerson
 import type {AssistantChatMessage} from '../../stores/assistantStore'
 import {useProjectStore} from '../../stores/projectStore'
 import {useI18n} from '../../i18n'
+import {useCompactLayout} from '../../hooks/useCompactLayout'
 import {BrandIcon} from '../BrandIcon'
 import Button from '../Button'
 import ChatInput from '../ChatInput'
@@ -26,12 +27,12 @@ import './DigitalPersonHome.css'
 interface Props{
  profile:DigitalPersonProfile;activity:DigitalActivity|null;projectId:string;projectName:string;sessionId:string
  messages:AssistantChatMessage[];running:boolean;active:boolean;error?:string;inputValue:string;children?:ReactNode
- onSend:(text:string,prepared?:boolean)=>Promise<boolean>;onStop:()=>Promise<boolean>;onDraft:(text:string)=>void;onPrepareCamera?:(prepare:PrepareCameraMessage|null)=>void
+ onSend:(text:string,prepared?:boolean,facePersonIds?:string[])=>Promise<boolean>;onStop:()=>Promise<boolean>;onDraft:(text:string)=>void;onPrepareCamera?:(prepare:PrepareCameraMessage|null)=>void
 }
 /** Avatar-first presentation, using the same chat session, actions and composer. */
 export default function DigitalPersonHome(props:Props){
  const {profile,activity,messages,projectId,projectName,sessionId,running,active}=props
- const {t}=useI18n(),navigate=useNavigate()
+ const {t}=useI18n(),navigate=useNavigate(),compact=useCompactLayout()
  const [outputFrame,setOutput]=useState({projectId,sessionId,playing:false,level:0,busy:false}),[keyboardShown,setKeyboardShown]=useState(false),[chatShown,setChatShown]=useState(false)
  const output=active&&outputFrame.projectId===projectId&&outputFrame.sessionId===sessionId?outputFrame:{playing:false,level:0,busy:false}
  const [speakerMuted,setSpeakerMuted]=useState(false)
@@ -94,13 +95,13 @@ export default function DigitalPersonHome(props:Props){
       affinity={affect.state?.affinity} emotion={affect.state?.emotion} intensity={Math.max(Math.abs(affect.state?.valence??0),affect.state?.arousal??0)/100}
       fallback={presentation=><DigitalPersonPresence key={`${projectId}/${sessionId}`} active={active} presentation={presentation} inputLevel={ready?dialogue.level:0} name={profile.name}/>}/>
    </section>
-   <DigitalPersonHomeInsights active={active} name={profile.name} state={state} activity={activity} affect={affect.state} messages={messages} chatShown={chatShown} onSettings={()=>{dialogue.mute();window.dispatchEvent(new window.Event('workstep:open-digital-person-settings'))}} onWork={openWork} onConversation={id=>{setSelectedMessage(id??'');dialogue.mute();setChatShown(true)}}/>
+   <DigitalPersonHomeInsights active={active} name={profile.name} role={profile.role} state={state} activity={activity} affect={affect.state} messages={messages} chatShown={chatShown} onInspect={()=>dialogue.mute()} onWork={openWork} onConversation={id=>{setSelectedMessage(id??'');dialogue.mute();setChatShown(true)}}/>
    {!chatShown&&<DigitalPersonCaptions projectId={projectId} messages={messages} feedback={activity?.feedback} sessionId={sessionId} greeting={profile.greeting} liveText={dialogue.text||dialogue.draft}/>}
    {chatShown&&<section className="digital-home-chat" aria-label={t('digitalPerson.homeTranscript')}><header><h2>{t('digitalPerson.homeTranscript')}</h2><Button variant="ghost" onClick={()=>setChatShown(false)} aria-label={t('common.close')}><Icon name="x" size={18}/></Button></header>{props.children}</section>}
   </div>
   {(props.error||dialogue.error)&&<p className="digital-home-error" role="alert">{props.error||t(dialogue.error as never)}</p>}
   <footer className="digital-home-footer">
-   <DigitalPersonCamera key={`${projectId}/${sessionId}`} compact projectId={projectId} active={active&&!facesShown} onPrepare={props.onPrepareCamera}>{!chatShown&&keyboardShown&&<div className="digital-home-composer"><ChatInput inputRef={inputRef} value={props.inputValue} onChange={props.onDraft} onSend={content=>{primeSpeechOutput();void props.onSend(content ?? props.inputValue, content !== undefined)}} projectId={projectId} sessionId={sessionId} imageAttach={{projectId}} running={running} onStop={()=>{void props.onStop()}} disabled={!active}/></div>}
+   <DigitalPersonCamera key={`${projectId}/${sessionId}`} compact projectId={projectId} active={active&&!facesShown} onPrepare={props.onPrepareCamera} presentation={compact?'window':'panel'} panelContent={<section className="digital-home-camera-perception"><Button variant="ghost" onClick={()=>{dialogue.mute();setFacesShown(true)}}><Icon name="scan-face" size={16}/>{t('faceRecognition.title')}<Icon name="chevron-right" size={14}/></Button></section>}>{!chatShown&&keyboardShown&&<div className="digital-home-composer"><ChatInput inputRef={inputRef} value={props.inputValue} onChange={props.onDraft} onSend={(content,ids)=>{primeSpeechOutput();void props.onSend(content ?? props.inputValue, content !== undefined,ids)}} projectId={projectId} sessionId={sessionId} imageAttach={{projectId}} running={running} onStop={()=>{void props.onStop()}} disabled={!active}/></div>}
    {!chatShown&&<div className="digital-home-voice-dock">
     <Button variant="ghost" className="digital-home-speaker" onClick={()=>setSpeakerMuted(value=>!value)} aria-label={t(speakerMuted?'digitalPerson.homeEnableSound':'digitalPerson.homeMuteSound')} aria-pressed={!speakerMuted}><Icon name={speakerMuted?'volume-off':'volume'} size={24}/></Button>
     <Button variant="ghost" className="digital-home-microphone" aria-label={t(ready?'digitalPerson.homeMute':'digitalPerson.homeStartVoice')} aria-pressed={ready} loading={busy} onClick={dialogue.toggle} disabled={!active||dialogue.sending}><Icon name={ready?'mic':'mic-off'} size={24}/></Button>

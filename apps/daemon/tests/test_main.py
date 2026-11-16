@@ -123,6 +123,7 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
         "task_service", "workflow_runtime", "coordinator_module",
         "workflow_gen_module", "task_draft_module", "schedule_module",
         "chat_session_module", "channel_chat_module", "channel_bot_manager",
+        "digital_person_runtime",
     ):
         monkeypatch.setattr(main, name, getattr(main, name))
     monkeypatch.setattr(
@@ -136,6 +137,13 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
         events.append("default-workspace-prepare")
 
     monkeypatch.setattr(customization_workspace, "ensure_default_workspace", prepare_default_workspace)
+
+    class DigitalPersonStub:
+        async def start(self): pass
+        async def shutdown(self): pass
+
+    monkeypatch.setattr('services.digital_person_runtime.DigitalPersonRuntime',
+                        lambda *args: DigitalPersonStub())
 
     class RuntimeStub:
         async def recover_running_workflows(self):
@@ -171,6 +179,9 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
             events.append("schedules-shutdown")
 
     class ChatStub:
+        async def resume_interrupted_chats(self):
+            return 0
+
         def recover_interrupted_messages(self):
             events.append("chats-recover")
             return 1

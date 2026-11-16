@@ -2,6 +2,7 @@ import pytest
 from tests.test_chat_session import chat_module
 from tests.test_digital_person_runtime import runtime
 from models.chat_session import ChatMessage
+from tests.memory_turn_fixture import create_completed_user, create_completed_reply
 
 async def test_owner_proactive_uses_main_and_selected_channels_once(runtime,monkeypatch):
     current,project,_=runtime
@@ -36,7 +37,7 @@ def test_proactive_event_is_host_only_and_independent_of_open_project():
     assert not _make_subscription_predicate(scoped)(event)
 
 
-async def test_automatic_reflection_recovers_unprocessed_history_without_background_recall(runtime,monkeypatch):
+async def test_automatic_reflection_does_not_backfill_unregistered_history(runtime,monkeypatch):
     from datetime import timedelta
     from models.fields import utc_now
     current,project,_=runtime
@@ -49,11 +50,8 @@ async def test_automatic_reflection_recovers_unprocessed_history_without_backgro
     async def forbidden(*args,**kwargs):pytest.fail('no automatic historical recall')
     monkeypatch.setattr('services.digital_person_memory.recall_projects',forbidden)
     context=await current._collect()
-    assert [m['id'] for m in context['conversation']]==['recent']
-    from services import digital_person_assessment as assessment
-    await __import__('asyncio').to_thread(assessment.commit,context['reflection_batch'],[],'recent-run')
-    assert [m['id'] for m in (await current._collect())['conversation']]==['old']
-    assert context['memory']==[]
+    assert context['no_work'] is True
+    assert (await current._collect())['no_work'] is True
 
 
 async def test_recent_completion_of_long_running_message_is_included(runtime):
@@ -62,7 +60,7 @@ async def test_recent_completion_of_long_running_message_is_included(runtime):
     current,project,_=runtime
     sid=(await current.main_session())['id']
     now=utc_now()
-    await current.projects.run_db(project.id,lambda _:ChatMessage.create(id='long-result',session=sid,role='assistant',status='completed',content='刚完成',created_at=now-timedelta(hours=2),ended_at=now-timedelta(seconds=10)))
+    await current.projects.run_db(project.id,lambda _:create_completed_reply(id='long-result',session=sid,role='assistant',status='completed',content='刚完成',created_at=now-timedelta(hours=2),ended_at=now-timedelta(seconds=10)))
     assert [m['id'] for m in (await current._collect())['conversation']]==['long-result']
 
 
@@ -74,11 +72,12 @@ async def test_one_schedule_drains_multiple_pending_source_sessions(runtime,monk
     def seed(_):
         for i in range(2):
             sid=current.chats.create_session(project.id)['id']
-            ChatMessage.create(id=f'session-{i}',session=sid,role='user',status='completed',content=f'最近发生的事{i}',created_at=utc_now()-timedelta(seconds=30))
+            create_completed_user(id=f'session-{i}',session=sid,role='user',status='completed',content=f'最近发生的事{i}',created_at=utc_now()-timedelta(seconds=30))
     await current.projects.run_db(project.id,seed)
     seen=[]
     async def decide(ctx):
-        seen.extend(m['id'] for m in ctx['conversation'])
+        if ctx.get('_load'): await ctx['_load']()
+        seen.extend(m['id'] for group in ctx.get('_groups',[ctx]) for m in group['conversation'] if m['role']=='user')
         return {'decision':'silent','summary':'已看过','source_ids':[]}
     monkeypatch.setattr(current,'_decide',decide)
     await current._tick()
@@ -95,11 +94,11 @@ async def test_memory_extraction_recovers_old_pending_versions_once(runtime):
     now=utc_now()
     def seed(_):
         for mid,when in [('cold',now-timedelta(days=20)),('new',now-timedelta(minutes=1))]:
-            row=ChatMessage.create(id=mid,session=sid,role='user',status='completed',content='真实来源'+mid,created_at=when)
+            row=create_completed_user(id=mid,session=sid,role='user',status='completed',content='真实来源'+mid,created_at=when)
             memory.capture_message(row,'local')
     await current.projects.run_db(project.id,seed)
     rows=await asyncio.to_thread(knowledge._claim,[project.id],8)
-    assert {row['source_message_id'] for row in rows}=={'cold','new'}
+    assert {row['source_message_id'] for row in rows}=={'cold','new','fixture-reply-cold','fixture-reply-new'}
     await asyncio.to_thread(knowledge._finish_jobs,rows,True)
     assert await asyncio.to_thread(knowledge._claim,[project.id],8)==[]
 
@@ -111,10 +110,11 @@ async def test_check_persists_owner_route_before_delivering(runtime,monkeypatch)
     main=(await current.main_session())['id']
     def seed(_):
         sid=current.chats.create_session(project.id)['id']
-        ChatMessage.create(id='personal-news',session=sid,role='user',status='completed',content='最近在准备面试',created_at=utc_now()-timedelta(minutes=2))
+        create_completed_user(id='personal-news',session=sid,role='user',status='completed',content='最近在准备面试',created_at=utc_now()-timedelta(minutes=2))
         return sid
     origin=await current.projects.run_db(project.id,seed)
     async def decide(context):
+        if context.get('_load'): await context['_load']()
         assert context['origin_session_id']==origin
         return {'decision':'notify','kind':'social','summary':'想聊聊最近的准备吗？','source_ids':['personal-news']}
     monkeypatch.setattr(current,'_decide',decide)
@@ -144,7 +144,11 @@ async def test_live_bus_delivers_owner_notice_without_exposing_it_to_project_cli
 
 async def test_stop_check_cancels_unified_assessment(runtime,monkeypatch):
     import asyncio
-    current,_,_=runtime
+    current,project,_=runtime
+    from models.fields import utc_now
+    sid=(await current.main_session())['id']
+    await current.projects.run_db(project.id,lambda _:create_completed_user(
+        id='stop-source',session=sid,role='user',status='completed',content='待整理',created_at=utc_now()))
     entered=asyncio.Event()
     async def collect():return {'no_work':False,'messages':[],'conversation':[],'delegations':[],'reflection_batch':[]}
     async def consolidate(context):
@@ -166,13 +170,14 @@ async def test_outage_retry_and_restart_use_durable_event_receipts(runtime,monke
     from services.digital_person_runtime import DigitalPersonRuntime
     current,project,_=runtime
     sid=(await current.main_session())['id']
-    await current.projects.run_db(project.id,lambda _:ChatMessage.create(id='outage',session=sid,role='user',status='completed',content='停机期间未处理',created_at=utc_now()-timedelta(days=2)))
+    await current.projects.run_db(project.id,lambda _:create_completed_user(id='outage',session=sid,role='user',status='completed',content='停机期间未处理',created_at=utc_now()-timedelta(days=2)))
     if archived:
         from models.chat_session import ChatSession
         await current.projects.run_db(project.id,lambda _:ChatSession.update(archived=True).where(ChatSession.id==sid).execute())
     calls=[]
     async def decide(ctx):
-        calls.append([m['id'] for m in ctx['conversation']])
+        if ctx.get('_load'): await ctx['_load']()
+        calls.append([m['id'] for m in ctx['conversation'] if m['role']=='user'])
         if len(calls)==1:raise RuntimeError('simulated outage')
         return {'decision':'silent','summary':'已整理','source_ids':[]}
     monkeypatch.setattr(current,'_decide',decide)
@@ -182,6 +187,6 @@ async def test_outage_retry_and_restart_use_durable_event_receipts(runtime,monke
     assert (await fresh.check())['status']=='silent'
     await fresh.check()
     assert calls==[['outage'],['outage']]
-    await fresh.projects.run_db(project.id,lambda _:ChatMessage.create(id='later',session=sid,role='user',status='completed',content='同一会话的新事件',created_at=utc_now()-timedelta(seconds=1)))
+    await fresh.projects.run_db(project.id,lambda _:create_completed_user(id='later',session=sid,role='user',status='completed',content='同一会话的新事件',created_at=utc_now()-timedelta(seconds=1)))
     await fresh.check()
     assert calls[-1]==['later'] and len(calls)==3

@@ -97,6 +97,7 @@ class ChatRowPersistence(PersistenceAdapter):
             message: dict = {
                 "role": item.role,
                 "content": convert_visualize_markers(item.content or ""),
+                "context": _load_json(item.context_json, {}),
                 "id": item.id,
                 "created_at": _iso(item.created_at),
             }
@@ -212,6 +213,7 @@ class ChatRowPersistence(PersistenceAdapter):
                 "session": row,
                 "role": item.get("role", "assistant"),
                 "content": item.get("content", ""),
+                "context_json": json.dumps(item['context'], ensure_ascii=False) if item.get('context') else None,
                 "author_id": item.get("author_id"),
                 "author_username": item.get("author_username"),
                 "author_name": item.get("author_name"),

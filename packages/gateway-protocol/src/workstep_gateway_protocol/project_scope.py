@@ -48,6 +48,8 @@ _WORKFLOW_STEP_PROMPT = re.compile(
 _WORKFLOW_ACTION = re.compile(
     r"/api/workflow/[A-Za-z0-9_-]{1,128}/(?:actions|restore)\Z")
 _CHAT_SESSION_DETAIL = re.compile(r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}\Z")
+_CHAT_MESSAGE_DETAIL = re.compile(
+    r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/messages/[A-Za-z0-9_-]{1,128}\Z")
 _CHAT_SESSION_CONFIG = re.compile(r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/execution-config\Z")
 _CHAT_MESSAGE_EVENTS = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/messages/"
@@ -360,5 +362,7 @@ def project_http_route_allowed(method: str, path: str,
         return (all(key in ("project_id", "limit", "offset") for key, _ in query_pairs)
                 and len(query_pairs) == len(dict(query_pairs)))
     if _CHAT_SESSION_CONFIG.fullmatch(path):
+        return len(query_pairs) == 1
+    if _CHAT_MESSAGE_DETAIL.fullmatch(path):
         return len(query_pairs) == 1
     return False

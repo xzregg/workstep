@@ -192,3 +192,13 @@ test('editable builtin drafts preserve paths, constraints and placeholders in ev
     }
   }
 })
+
+test('digital person Markdown configuration labels and presets are localized',()=>{
+ const keys=['documentPersona','documentRelationship','documentDuties','documentBoundary','documentMemory','documentPresets','dutyFollow','dutyClarify','dutySummarize','dutyStudy','dutyFollowLabel','dutyClarifyLabel','dutySummarizeLabel','memoryPrototype','memoryCosts','memoryUncertain','memoryPrototypeLabel','memoryCostsLabel','memoryUncertainLabel','identityPersonality','identityLabel','personality','tone','greeting','duties','memory','name','chooseRole','rolePresetassistant','rolePresetrd','rolePresetmanager','rolePresetstudy','rolePresetcreative','rolePresetlife','personalityPresetrigorous','personalityPresetcurious','personalityPresetpatient','personalityPresetproactive','personalityPresetrational','personalityPresetoptimistic','tonePresetdirect','tonePresetwarm','tonePresetprofessional','tonePresethumorous','tonePresetsupportive','tonePresetdetailed','stylebalanced','stylewarm','stylereserved','styletsundere']
+ for(const messages of [enUS,deDE,frFR,ar]){
+  const values=messages.digitalPerson as Record<string,string>
+  for(const key of keys){assert.ok(values[key],key);assert.doesNotMatch(values[key],/\p{Script=Han}/u,key)}
+ }
+ assert.equal(zhTW.digitalPerson.documentPersona,'人設')
+ assert.equal(jaJP.digitalPerson.documentPersona,'ペルソナ')
+})

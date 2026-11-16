@@ -37,18 +37,25 @@ async def test_reply_forwarding_isolated_deduplicated_and_async(tmp_path, monkey
     def event(message_id, **extra):
         return {'type': 'TEXT_MESSAGE_END', 'project_id': project.id, 'session_id': 'channel-session', 'messageId': message_id, 'status': 'succeeded', 'content': '完成回复', **extra}
     class Module:
+        def get_execution_config(self, project_id, session_id):
+            return dict(engine='codex', model='', fast_model='', vision_model='',
+                        provider_id='', thinking_effort='', service_tier='')
+
         def submit_message(self, project_id, session_id, content, key, **kwargs):
             assert (project_id, session_id, content) == (project.id, 'channel-session', '请回复')
-            return SimpleNamespace(turn_id='turn', to_dict=lambda: {'turn_id': 'turn'})
+            return SimpleNamespace(turn_id='turn', assistant_message_id='local', to_dict=lambda: {'turn_id': 'turn'})
         def start_queued_turn(self, turn_id):
+            admission_done.set()
             async def finish():
                 await bus.publish(event('local'))
             asyncio.create_task(finish())
     monkeypatch.setattr(main, 'project_manager', projects)
     monkeypatch.setattr(main, 'chat_session_module', Module())
-    entered, release = threading.Event(), threading.Event()
+    entered, release, admission_done = threading.Event(), threading.Event(), threading.Event()
     original = ChatMessage.get_or_none
     def slow(*args, **kwargs):
+        if not admission_done.is_set():
+            return original(*args, **kwargs)
         entered.set()
         assert release.wait(2)
         return original(*args, **kwargs)

@@ -21,7 +21,7 @@ async def test_ordinary_project_chat_gets_tools_without_automatic_history_each_t
     assert 'memory_token=' not in calls[-1].get('system_prompt','')
     assert not calls[-1].get('system_prompt_each_turn')
 
-async def test_task_context_uses_shared_memory_and_task_bound_scope(runtime,monkeypatch):
+async def test_task_context_does_not_inject_memory_for_local_or_channel_tasks(runtime,monkeypatch):
     from services import digital_person_memory as memory
     from tests.test_memory_workflow_sources import seed_task
     from models import Task
@@ -32,12 +32,10 @@ async def test_task_context_uses_shared_memory_and_task_bound_scope(runtime,monk
         calls.append((scope,kwargs))
         return 'memory prompt'
     monkeypatch.setattr(memory,'context_prompt',context)
-    assert await memory.task_context_prompt(current.projects,project.id,'task-memory','发布') == 'memory prompt'
-    assert calls[-1][0] == 'local'
+    assert await memory.task_context_prompt(current.projects,project.id,'task-memory','发布') == ''
     await current.projects.run_db(project.id,lambda _:Task.update(creator_id='channel:telegram:peer').execute())
-    await memory.task_context_prompt(current.projects,project.id,'task-memory','发布')
-    assert calls[-1][0] == 'task:task-memory'
-    assert calls[-1][1]['project_ids'] == [project.id]
+    assert await memory.task_context_prompt(current.projects,project.id,'task-memory','发布') == ''
+    assert calls == []
 
 
 from tests.test_api_contracts import api_context

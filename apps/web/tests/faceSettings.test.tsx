@@ -57,8 +57,9 @@ test('send annotates the exact uploaded frame with canonical names; user text co
  const callback=(fn:typeof prepare)=>{prepare=fn}
  try{
   await act(async()=>ui.root.render(<I18nProvider><DigitalPersonCamera projectId="demo" onPrepare={callback}/></I18nProvider>));await ui.click('打开摄像头');const video=ui.readyVideo() as any;video.marker='current';marker='current'
-  let content='';await act(async()=>{content=await prepare!('看看')})
-  assert.deepEqual(sentIds,['current']);assert.equal(uploaded,'current');assert.equal(boxes,1);assert.ok(annotations.some(text=>text.includes('当前称呼')));assert.ok(annotations.some(text=>text.includes('朋友')))
+  let content='',faceIds:string[]=[];await act(async()=>{content=await (prepare as any)('看看',(ids:string[])=>{faceIds=ids})})
+  assert.deepEqual(faceIds,['current'])
+  assert.deepEqual(sentIds,['current']);assert.equal(uploaded,'current');assert.equal(boxes,1);assert.deepEqual(annotations,['当前称呼'])
   assert.match(content,/^看看\n\n!\[/);assert.match(content,/frame.jpg/);assert.doesNotMatch(content,/embedding|1024|后台名字|当前称呼|朋友|解释|people|person_id/)
  }finally{fsApi.uploadImage=upload;await ui.close()}
 })

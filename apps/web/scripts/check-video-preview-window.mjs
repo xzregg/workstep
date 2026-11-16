@@ -17,6 +17,7 @@ try{
   await page.route('**/*',async route=>{
    const url=new URL(route.request().url())
    if(url.hostname!=='preview.invalid')return route.abort()
+   if(url.pathname.endsWith('/faces/catalog'))return route.fulfill({json:{revision:'fixture',settings:{enabled:false,include_people:false,show_names:false},people:[]}})
    if(url.pathname.startsWith('/api/'))return route.fulfill({json:{}})
    if(url.pathname==='/')return route.fulfill({body:html,contentType:'text/html'})
    const filename=path.resolve(out,decodeURIComponent(url.pathname).replace(/^\//,''))
@@ -42,10 +43,35 @@ try{
    }})
   })
   await page.goto('https://preview.invalid/')
-  await page.locator('.digital-home-avatar canvas[data-bones="11"]').waitFor()
+  await page.locator('.digital-presence-particles[data-frame]').waitFor()
   await page.locator('.digital-home-voice-dock [data-camera-toggle]').click()
   const panel=page.locator('.video-preview-window'),video=panel.locator('video'),header=panel.locator('.video-preview-header')
   await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.videoWidth>0)
+  if(width>1023){
+   assert.equal(await panel.getAttribute('data-video-docked'),'true','desktop uses the fixed camera panel')
+   const perception=page.locator('.digital-home-camera-perception')
+   assert.equal(await perception.getByRole('button').count(),1)
+   assert.match(await perception.innerText(),/人脸识别/)
+   assert.doesNotMatch(await perception.innerText(),/麦克风|声音/)
+  }else{
+   assert.equal(await panel.getAttribute('data-video-docked'),null,'mobile restores the shared floating preview')
+   assert.equal(await page.locator('.digital-person-camera--panel').count(),0)
+  }
+  await page.screenshot({path:path.join(artifacts,`panel-${width}-${height}.png`)})
+  if(width===390){
+   await page.evaluate(()=>window.videoFixture.resize(720,1280))
+   await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.videoWidth===720)
+   await page.waitForTimeout(80)
+   const portrait=await video.boundingBox();assert.ok(Math.abs(portrait.width/portrait.height-9/16)<.02)
+   await page.screenshot({path:path.join(artifacts,'panel-portrait-390-844.png')})
+   await page.evaluate(()=>window.videoFixture.resize(1280,720));await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.videoWidth===1280);await page.waitForTimeout(80)
+  }
+  await page.evaluate(()=>{window.keptCameraElement=document.querySelector('.video-preview-media');window.keptCameraStream=window.keptCameraElement.srcObject})
+  const dockedBox=await panel.boundingBox()
+  const pinned=await panel.evaluate(el=>{const video=el.querySelector('video'),box=video.getBoundingClientRect();return {width:box.width,height:box.height,ratio:video.videoWidth/video.videoHeight}})
+  assert.ok(Math.abs(pinned.width/pinned.height-pinned.ratio)<.02,'fixed preview follows the actual frame without extra bars '+JSON.stringify({width,height,pinned}))
+  if(width>1023){await panel.locator('[data-video-pin]').click();assert.equal(await panel.getAttribute('data-video-docked'),'false')}
+  assert.equal(await page.evaluate(()=>window.keptCameraElement===document.querySelector('.video-preview-media')&&window.keptCameraStream===document.querySelector('.video-preview-media').srcObject),true,'detaching keeps the actual camera session')
   const check=async()=>{
    const measured=await panel.evaluate(el=>{
     const box=el.getBoundingClientRect(),video=el.querySelector('video'),media=video.getBoundingClientRect(),eyes=document.querySelector('[data-avatar-eyes]').getBoundingClientRect()
@@ -71,8 +97,8 @@ try{
   assert.deepEqual(await panel.evaluate(el=>{const s=getComputedStyle(el);return [s.borderTopLeftRadius,s.borderTopRightRadius,s.borderBottomLeftRadius,s.borderBottomRightRadius]}),['0px','0px','0px','0px'])
   const controlBox=await header.boundingBox()
   assert.ok(controlBox.y>=7 && controlBox.y+controlBox.height<=measured.media.y,'controls stay above the video inside the viewport')
-  assert.ok(Math.abs(measured.media.x+measured.media.width/2-measured.eyes.x)<2,'video centered at avatar eyes horizontally')
-  assert.ok(Math.abs(measured.media.y+measured.media.height/2-measured.eyes.y)<2,`video centered at avatar eyes vertically ${JSON.stringify({width,height,measured})}`)
+  assert.ok(Math.abs(measured.media.x+measured.media.width/2-(dockedBox.x+dockedBox.width/2))<2,'detaching preserves the preview horizontal position')
+  assert.ok(Math.abs(measured.media.y+measured.media.height/2-(dockedBox.y+dockedBox.height/2))<2,'detaching preserves the preview vertical position')
   for(const button of await header.getByRole('button').all()){
    const box=await button.boundingBox();assert.ok(box.height<=24&&box.y+box.height<=measured.media.y+1,'controls outside video')
   }
@@ -137,6 +163,7 @@ try{
    await page.locator('.digital-home-voice-dock [data-camera-toggle]').click()
    await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.videoWidth===1280)
    await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.videoWidth===1280)
+   if(width>1023)await panel.locator('[data-video-pin]').click()
    assert.equal(await video.evaluate(v=>v.videoWidth/v.videoHeight),16/9,'fixture keeps ignoring portrait hints')
    await check()
    await check()

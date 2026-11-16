@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "d86333bf129b679563dfbef082d152714e9c08e26c23e399b1b07f8488bd6b34",
+  "revision": "97f5c85c015892876ce25a8febb671de1701984b709ae0de665169f10143d231",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -351,7 +351,6 @@
     "voiceWake.matched": "转写包含唤醒词",
     "voiceWake.unmatched": "转写未包含唤醒词",
     "voiceWake.saved": "配置已保存，监听尚未启用。",
-    "digitalPerson.documentBoundaryText": "实际工作必须交给项目执行会话，绝不亲自执行。指派后立即返回，由后台跟进。",
     "digitalPerson.documentPersona": "人设",
     "digitalPerson.documentRelationship": "相处",
     "digitalPerson.documentDuties": "主要职责",
@@ -415,6 +414,8 @@
     "digitalPerson.homeNoWork": "暂时没有执行中的工作",
     "digitalPerson.homeWorkHint": "直接告诉我你想做什么。",
     "digitalPerson.homeYouSaid": "你说：",
+    "digitalPerson.cameraFloat": "改为浮窗",
+    "digitalPerson.cameraDock": "固定预览",
     "digitalPerson.homeReflection": "主动思考",
     "digitalPerson.homeRecentMessages": "最近消息",
     "digitalPerson.homeExpandConversation": "展开对话",

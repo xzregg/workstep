@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {readFileSync} from 'node:fs'
 
-test('digital person chat entry precedes the default workspace row outside its collapsed content',()=>{
+test('digital person chat entry is pinned outside collapsed project content',()=>{
  const layout=readFileSync(new URL('../src/components/Layout.tsx',import.meta.url),'utf8')
- assert.match(layout, /<div key=\{p.id\}>\s*\{!compact && p.is_default_workspace && <DigitalPersonSidebarEntry project=\{p\} \/>\}/)
+ assert.match(layout, /className="layout-sidebar-pinned-entry"/)
  const expanded=layout.slice(layout.indexOf('{/* Workflow list + sessions under the selected project */}'))
  assert.equal(expanded.includes('<DigitalPersonSidebarEntry'),false)
 })

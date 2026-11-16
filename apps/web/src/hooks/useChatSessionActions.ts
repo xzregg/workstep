@@ -19,7 +19,7 @@ interface Options {
   effectiveEngine: string
   onSessionIdChange: (id: string) => void
   onTitleChange: (title: string) => void
-  prepareContent?: (content: string) => Promise<string>
+  prepareContent?: (content: string, onFaces?: (ids:string[])=>void) => Promise<string>
 }
 
 /** Owns a chat turn's send, live-insert, stop and error recovery lifecycle. */
@@ -36,7 +36,7 @@ export function useChatSessionActions({
     setStopping(false)
   }, [sessionId, projectId])
 
-  const sendMessageNow = useCallback(async (content: string, goalCommand = false, prepared = false): Promise<boolean> => {
+  const sendMessageNow = useCallback(async (content: string, goalCommand = false, prepared = false, facePersonIds:string[]=[]): Promise<boolean> => {
     if (!content || !sessionId) {
       if (!sessionId) setSendError(t('chatSession.noSession'))
       return false
@@ -44,7 +44,7 @@ export function useChatSessionActions({
     if (!projectId) return false
     setSendError('')
     try {
-      if (!prepared && !goalCommand && !content.trimStart().startsWith('/')) content = await prepareContent?.(content) ?? content
+      if (!prepared && !goalCommand && !content.trimStart().startsWith('/')) content = await prepareContent?.(content,ids=>{facePersonIds=ids}) ?? content
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
       return false
@@ -55,6 +55,7 @@ export function useChatSessionActions({
     watchPendingCompletion(projectId, { sessionId })
     try {
       const accepted = await chatSessionApi.chat(sessionId, projectId, content, randomUuid(), {
+        face_person_ids: facePersonIds.length?facePersonIds:undefined,
         permission_mode: permissionMode || undefined,
         plan_mode: goalCommand ? false : planMode || undefined,
         goal_mode: goalCommand ? false : goalMode && effectiveEngine === 'codex_sdk' || undefined,
@@ -109,12 +110,14 @@ export function useChatSessionActions({
     if (!sessionId || !projectId) return false
     if (!running) return sendMessageNow(content)
     setSendError('')
+    let facePersonIds:string[]=[]
     try {
-      if (!content.trimStart().startsWith('/')) content = await prepareContent?.(content) ?? content
+      if (!content.trimStart().startsWith('/')) content = await prepareContent?.(content,ids=>{facePersonIds=ids}) ?? content
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
       return false
     }
+    if(facePersonIds.length)return sendMessageNow(content,false,true,facePersonIds)
     const optimisticId = useChatSessionStore.getState().addUserMessage(sessionId, content)
     flushWsSubscriptionNow()
     const dropOptimistic = () => {

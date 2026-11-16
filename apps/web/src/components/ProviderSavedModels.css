@@ -6,7 +6,7 @@
   font-size: calc(11px * var(--font-scale));
 }
 
-.modal-overlay.provider-saved-models-overlay { z-index: 201; }
+.modal-overlay.provider-saved-models-overlay { z-index: 1301; }
 .provider-saved-models-panel {
   width: min(640px, 92vw);
   height: min(560px, 84vh);

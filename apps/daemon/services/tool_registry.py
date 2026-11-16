@@ -58,6 +58,14 @@ _LEGACY_MEMORY_HISTORY = WorkstepTool(
 
 WORKSTEP_TOOLS: list[WorkstepTool] = [
     WorkstepTool(
+        name="workstep_get_message",
+        description="Read one original persisted chat message by WorkStep session_id and message_id, without memory search. Project-addressable session IDs locate the database directly; project_id is optional for legacy IDs.",
+        method="GET", path="/api/chat-sessions/{session_id}/messages/{message_id}",
+        parameters={key: {"type": "string"} for key in ("session_id", "message_id", "project_id")},
+        required=("session_id", "message_id"), path_params=("session_id", "message_id"),
+        query_params=("project_id",),
+    ),
+    WorkstepTool(
         name="workstep_memory_pending",
         description="Step 1 of background assessment: fetch this execution's assigned unprocessed evidence and companion context. Only the active scheduler assessment can provide a batch. Repeated calls return the same batch. Follow read_ids/read_ranges before producing the final structured assessment. This does not mark evidence completed.",
         method="POST", path="/api/memory/pending",
@@ -895,6 +903,11 @@ class WorkstepClient:
         if tool is None:
             return {"ok": False, "error": f"未知操作：{operation}"}
         args = dict(arguments or {})
+        if operation == 'workstep_get_message' and not args.get('project_id'):
+            from services.chat_identity import session_project_id
+            embedded = session_project_id(str(args.get('session_id', '')))
+            if embedded:
+                args['project_id'] = embedded
         if operation.startswith('workstep_memory_'):
             from services.conversation_context import current_conversation
             context=current_conversation()

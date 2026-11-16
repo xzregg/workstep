@@ -58,6 +58,20 @@ def test_validation_and_versions_and_context_settings(faces):
     assert faces.context([p['id']], 0)['text'] == ''
 
 
+def test_person_background_contains_only_known_enabled_people(faces):
+    p = person(faces)
+    assert faces.person_prompt([p['id']]) == '人脸识别到用户：用户名：小张；关系：朋友。'
+    assert faces.person_prompt([]) == ''
+    assert faces.person_prompt(['missing']) == ''
+    faces.save_settings(faces.Settings(enabled=True, include_relationship=False))
+    assert '朋友' not in faces.person_prompt([p['id']])
+    faces.delete(p['id'])
+    assert faces.person_prompt([p['id']]) == ''
+    from services.digital_person_memory_index import connect
+    with connect() as db:
+        assert db.execute("SELECT name FROM sqlite_master WHERE name='face_frames'").fetchone() is None
+
+
 async def test_api_host_authorization_and_slow_db_canary(faces, monkeypatch):
     from api.digital_person import router
     from services.remote_access import ActorSnapshot, actor_context

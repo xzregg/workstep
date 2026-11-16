@@ -317,6 +317,7 @@ class AssistantRuntime:
         replay_pending: bool = False,
         reset_context: bool = False,
         internal_event: str | None = None,
+        message_context: dict | None = None,
     ) -> AcceptedTurn:
         """Queue one turn; returns immediately with an accepted turn.
 
@@ -441,6 +442,7 @@ class AssistantRuntime:
         session.messages.append(
             {
                 "role": "system" if internal_event else "user",
+                **({"context": message_context} if message_context else {}),
                 "content": normalized,
                 "id": turn_id,
                 "created_at": utc_now().isoformat(),
@@ -1339,6 +1341,7 @@ class AssistantRuntime:
         assistant_message_id: str,
     ) -> None:
         async with session.lock:
+            session.extra['current_turn_id'] = turn_id
             session.last_active = time.monotonic()
             self._turn_states[turn_id]["status"] = "running"
             seq = 0

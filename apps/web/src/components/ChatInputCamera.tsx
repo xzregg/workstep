@@ -7,7 +7,7 @@ interface Props {
   projectId?: string
   ownerKey: string
   content: string
-  onSend: (content?: string) => void
+  onSend: (content?: string, facePersonIds?:string[]) => void
   children: (send: () => void) => ReactNode
 }
 
@@ -23,8 +23,9 @@ function CameraSend({ content, onSend, children, ownerKey }: Props) {
     const current = generation.current
     setError('')
     try {
-      const prepared = await camera.prepare(content)
-      if (current === generation.current) onSend(prepared)
+      let facePersonIds:string[]=[]
+      const prepared = await camera.prepare(content,ids=>{facePersonIds=ids})
+      if (current === generation.current) onSend(prepared,facePersonIds)
     } catch (reason) {
       if (current === generation.current) setError(reason instanceof Error ? reason.message : String(reason))
     } finally { sending.current = false }

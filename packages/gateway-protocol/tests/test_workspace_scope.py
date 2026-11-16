@@ -219,3 +219,13 @@ def test_chat_read_receipt_is_scoped_to_the_editable_project():
     assert not project_http_route_allowed('POST',path,query,'visible',access_level='read')
     assert not project_http_route_allowed('POST',path,[('project_id','other')],'visible',access_level='edit')
     assert not project_http_route_allowed('POST',path,query+query,'visible',access_level='edit')
+
+
+@pytest.mark.parametrize('level', ['read', 'edit'])
+def test_direct_chat_message_read_scope(level):
+    allowed = project_http_route_allowed
+    path = '/api/chat-sessions/5739c385-0f1b-4292-bd18-5beeb30f71fa-abcd-4abc-abcd-123456789abc/messages/m1'
+    assert allowed('GET', path, [('project_id', 'visible')], 'visible', access_level=level)
+    for query in ([], [('project_id', 'private')], [('project_id', 'visible'), ('project_id', 'visible')],
+                  [('project_id', 'visible'), ('extra', '1')]):
+        assert not allowed('GET', path, query, 'visible', access_level=level)

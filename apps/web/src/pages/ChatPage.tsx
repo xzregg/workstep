@@ -184,7 +184,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     || 'pydantic_ai'
   const cameraPrepare = useRef<PrepareCameraMessage | null>(null)
   const setCameraPrepare = useCallback((prepare: PrepareCameraMessage | null) => { cameraPrepare.current = prepare }, [])
-  const prepareCameraContent = useCallback((content: string) => cameraPrepare.current?.(content) ?? Promise.resolve(content), [])
+  const prepareCameraContent = useCallback((content: string, onFaces?: (ids:string[])=>void) => cameraPrepare.current?.(content,onFaces) ?? Promise.resolve(content), [])
   const {
     sendMessageNow, sendPendingContent, stop, continueGoal, endGoal, sendError, setSendError, stopping,
   } = useChatSessionActions({
@@ -386,7 +386,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     }
   }, [activeProject?.id, permissionMode, sessionId, t])
 
-  const send = useCallback(async (contentOverride?: string, prepared = false) => {
+  const send = useCallback(async (contentOverride?: string, prepared = false, facePersonIds?:string[]) => {
     if (workflowSkill.loading || handingOff || engineConfigSaving || (sessionParam && !historyReady)) return false
     const content = (contentOverride ?? input).trim()
     if (!content || !sessionId) {
@@ -394,7 +394,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
       return false
     }
     if (beforeSend && !await beforeSend()) return false
-    const sent = await sendMessageNow(content, false, prepared)
+    const sent = await sendMessageNow(content, false, prepared,facePersonIds)
     if (sent) {
       setInput(current => current.trim() === (prepared ? input.trim() : content) ? '' : current)
       clearDraft(sessionId, activeProject?.id ?? '')
@@ -548,7 +548,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
         attachmentPrefix="chat-session"
         scrollKey={sessionId}
         onInputChange={handleInputChange}
-        onSend={content => void send(content, content !== undefined)}
+        onSend={(content,ids) => void send(content, content !== undefined,ids)}
         onSendContent={(content, ids) => handingOff || engineConfigSaving || (sessionParam && !historyReady) ? Promise.resolve(false) : sendPendingContent(content, ids)}
         composerDisabled={handingOff || engineConfigSaving || Boolean(sessionParam && !historyReady)}
         onStop={() => void stop()}

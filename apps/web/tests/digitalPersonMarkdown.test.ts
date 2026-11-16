@@ -25,3 +25,12 @@ test('editing Markdown synchronizes compatibility labels and never appends text 
  assert.equal(next.role_binding,null)
  assert.ok(next.persona_markdown?.includes('自定义'))
 })
+
+test('changing the UI language updates the same Markdown section and preserves handwritten content',()=>{
+ const french={role:'Identité',personality:'Caractère',tone:'Ton',relationship:'Relation',greeting:'Message d’accueil',duties:'Responsabilités principales',boundary:'Limite d’exécution',memory:'Accords permanents'}
+ const text='## Identité\nAssistant\n\n## Notes personnelles\nConserver ce texte.'
+ const next=setDocumentSection(text,'role',['研发伙伴'])
+ assert.equal((next.match(/^## /gm)||[]).length,2)
+ assert.ok(next.includes('Conserver ce texte.'))
+ assert.deepEqual(documentSection(next,'role',french),['研发伙伴'])
+})

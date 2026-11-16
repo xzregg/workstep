@@ -25,3 +25,7 @@
  .video-preview-resize { display:none; }
  .video-preview-resize--se { display:block; }
 }
+
+.video-preview-window--docked{flex-shrink:0;position:relative;inset:auto;width:100%;height:auto;aspect-ratio:var(--video-preview-ratio,1);box-shadow:none;border:0;min-height:120px}.video-preview-window--docked .video-preview-resize{display:none}.video-preview-window--docked .video-preview-content{cursor:default;touch-action:auto}.video-preview-window--docked .video-preview-header{z-index:2}.video-preview-window--docked[data-video-ready="false"]{aspect-ratio:auto;height:120px}
+
+.video-preview-window--docked[data-video-ready="true"]{min-height:0}

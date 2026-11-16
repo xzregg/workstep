@@ -221,7 +221,7 @@ export interface ChatInputProps {
   roleBinding?: ChatInputRoleBinding
   value: string
   onChange: (value: string) => void
-  onSend: (content?: string) => void
+  onSend: (content?: string, facePersonIds?:string[]) => void
   /** Session owner for the composer draft. */
   sessionId?: string | null
   /** Task owner for the composer draft. Takes precedence over sessionId. */

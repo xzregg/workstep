@@ -64,10 +64,12 @@ class FakeProcess:
         self.stdout = FakeLines(stdout_lines)
         self.stderr = FakeStream()
         self.exit_code = exit_code
+        self.returncode = None
         self.terminated = False
         self.killed = False
 
     async def wait(self):
+        self.returncode = self.exit_code
         return self.exit_code
 
     def terminate(self):
@@ -121,8 +123,8 @@ async def test_claude_live_mode_injects_jsonl_messages(monkeypatch):
         and line.get("message", {}).get("content") == "请停下来修改"
     ]
     assert len(injected) == 1
-    # Completion closes the stream and stdin.
-    assert any(line.get("type") == "close_stream" for line in lines)
+    # Injected turns finish through stdin EOF, not a synthetic CLI message.
+    assert not any(line.get("type") == "close_stream" for line in lines)
     assert process.stdin.closed is True
     # The engine acknowledged the delivery with a live_message event.
     acks = [event for event in events if event.type == "live_message"]
