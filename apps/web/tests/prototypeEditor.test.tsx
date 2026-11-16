@@ -18,6 +18,7 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
   const calls: {path:string;body:Record<string,unknown>;query:string|null}[] = []
   let failChatOnce = true
   let renderVersion = 'v1'
+  let inspectionOnly=false
   let undoExhausted=false
   let documentGate:Promise<void>|null=null
   let releaseDocument:()=>void=()=>{}
@@ -28,7 +29,7 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
     if(url.pathname.endsWith('/document')&&documentGate)await documentGate
     let result:unknown = {}
     if(url.pathname.endsWith('/open')||url.pathname.endsWith('/edit')||url.pathname.endsWith('/undo')) result = undoExhausted?{...workspace,history:workspace.history.map(item=>({...item,undone:true}))}:workspace
-    else if(url.pathname.endsWith('/document')) result = {version:renderVersion,nodes:{n2:{editable:true,text_editable:true,source:'<button>Second</button>',line:1}},html_preview:{token:'ticket-'+renderVersion,entry:url.searchParams.get('path')}}
+    else if(url.pathname.endsWith('/document')) result = {inspection_only:inspectionOnly,version:renderVersion,nodes:{n2:{editable:true,text_editable:true,source:'<button>Second</button>',line:1}},html_preview:{token:'ticket-'+renderVersion,entry:url.searchParams.get('path')}}
     else if(url.pathname.endsWith('/diff')) result = {diff:'@@ -1 +1 @@\n-Before\n+After\n'}
     else if(url.pathname.endsWith('/history')) result = {session_id:'prototype:p:'+url.searchParams.get('path'),messages:[]}
     else if(url.pathname.endsWith('/assistant/list')) result = {assistants:[]}
@@ -205,6 +206,18 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
     const count=calls.filter(call=>call.path.endsWith('/undo')).length
     await act(async()=>undo.dispatchEvent(undoKey()))
     assert.equal(calls.filter(call=>call.path.endsWith('/undo')).length,count,'exhausted shortcut does not request undo')
+    inspectionOnly=true
+    await act(async()=>document.querySelector<HTMLButtonElement>('button[aria-label="刷新"]')!.click())
+    assert.match(document.querySelector('[role="status"]')!.textContent!,/动态渲染页面/)
+    const runtimeFrame=document.querySelector('iframe')!
+    const runtimeMessage=(message:Record<string,unknown>)=>window.dispatchEvent(new window.MessageEvent('message',{source:runtimeFrame.contentWindow,data:{source:'workstep-prototype',token:'ticket-v2',version:'v2',...message}}))
+    await act(async()=>runtimeMessage({type:'select',selection:{...selection,selector:'#root h1',text:'Runtime heading'}}))
+    assert.equal(document.querySelector<HTMLInputElement>('input[aria-label="width"]')!.disabled,true,'runtime properties are read-only')
+    assert.match(document.querySelector('.prototype-comment')!.textContent!,/Runtime heading/,'runtime selection can be commented on')
+    const writes=calls.filter(call=>call.path.endsWith('/edit')).length
+    await act(async()=>runtimeMessage({type:'edit',node_id:'n2',operation:'text',values:{text:'FORGED RUNTIME WRITE'}}))
+    assert.equal(calls.filter(call=>call.path.endsWith('/edit')).length,writes,'active page scripts cannot trigger source writes')
+
   } finally {
     documentGate=null;releaseDocument()
     await act(async()=>root.unmount())

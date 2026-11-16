@@ -26,6 +26,7 @@ class PreviewTicket:
     editor: bool = False
     boundary: Path | None = None
     prototype: bool = False
+    inspection_only: bool = False
 
 
 _tickets: OrderedDict[str, PreviewTicket] = OrderedDict()
@@ -39,7 +40,7 @@ class HtmlPreviewError(Exception):
         self.detail = detail
 
 
-def issue_ticket(file_path: Path, project_id: str | None, *, editor: bool = False, root: Path | None = None, boundary: Path | None = None, prototype: bool = False) -> dict:
+def issue_ticket(file_path: Path, project_id: str | None, *, editor: bool = False, root: Path | None = None, boundary: Path | None = None, prototype: bool = False, inspection_only: bool = False) -> dict:
     now = time.monotonic()
     with _lock:
         for key in list(_tickets):
@@ -49,7 +50,7 @@ def issue_ticket(file_path: Path, project_id: str | None, *, editor: bool = Fals
             _tickets.popitem(last=False)
         token = secrets.token_urlsafe(32)
         ticket_root = (root or file_path.parent).resolve()
-        _tickets[token] = PreviewTicket(project_id, ticket_root, now + TTL_SECONDS, editor, boundary, prototype)
+        _tickets[token] = PreviewTicket(project_id, ticket_root, now + TTL_SECONDS, editor, boundary, prototype, inspection_only)
     return {'token': token, 'entry': file_path.relative_to(ticket_root).as_posix()}
 
 
@@ -65,7 +66,7 @@ def prepare_editor_html(token: str, content: str, resource_path: str | None = No
     navigation = ''
     if ticket.prototype and resource_path is not None:
         config = {'token': token, 'path': resource_path, 'editing': ticket.editor, 'document': {
-            'version': document.version,
+            'version': document.version, 'inspection_only': ticket.inspection_only,
             'nodes': {key: {name: value for name, value in document.context(key).items() if name != 'source'} for key in document.nodes},
             'html_preview': {'token': token, 'entry': resource_path}}}
         script = (Path(__file__).parent.parent / 'data' / 'prototype-frames.js').read_text()
@@ -84,9 +85,10 @@ def prepare_editor_html(token: str, content: str, resource_path: str | None = No
     content = document.preview(disable_refresh=True)
     doctype = re.match(r'[\s\ufeff]*<!doctype[^>]*>', content, re.IGNORECASE)
     index = doctype.end() if doctype else 0
-    policy = f"<meta http-equiv=\"Content-Security-Policy\" content=\"script-src 'nonce-{token}'; frame-src {frame_policy}; object-src 'none'\">"
+    script_policy = "" if ticket.inspection_only else f"script-src 'nonce-{token}'; "
+    policy = f"<meta http-equiv=\"Content-Security-Policy\" content=\"{script_policy}frame-src {frame_policy}; object-src 'none'\">"
     content = content[:index] + policy + content[index:]
-    return content + broker + f'<script nonce="{token}">' + script.replace('__WS_VERSION__', json.dumps(document.version)) + '</script>' + navigation
+    return content + broker + f'<script nonce="{token}">' + script.replace('__WS_VERSION__', json.dumps(document.version)).replace('__WS_INSPECTION_ONLY__', json.dumps(ticket.inspection_only)) + '</script>' + navigation
 
 
 def resource_boundary(token: str, target: Path) -> Path:

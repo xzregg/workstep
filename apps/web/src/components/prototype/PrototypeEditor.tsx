@@ -91,12 +91,12 @@ export default function PrototypeEditor({projectId,path:entry,onClose}:{projectI
   const resetPreview=(node:string)=>postFrame({type:'preview-reset',node_id:node,version:current.current.document?.version})
   const previewEdit=(node:string,operation:string,values:Record<string,string>,version:string)=>{
     const state=current.current
-    if(state.busy||!state.mode||!state.previewEditing||state.document?.version!==version||!state.document.nodes[node]?.editable)return
+    if(state.document?.inspection_only||state.previewDocument?.inspection_only||state.busy||!state.mode||!state.previewEditing||state.document?.version!==version||!state.document.nodes[node]?.editable)return
     if(operation==='text'&&!state.document.nodes[node].text_editable)return
     postFrame({type:'preview-draft',node_id:node,operation,values,version})
   }
   const edit=async(node:string,operation:string,values:Record<string,string>,version:string)=>{
-    const state=current.current;if(!state.work||!state.mode||!state.previewEditing||state.busy||state.work.status!=='idle')return
+    const state=current.current;if(state.document?.inspection_only||state.previewDocument?.inspection_only||!state.work||!state.mode||!state.previewEditing||state.busy||state.work.status!=='idle')return
     mutationEpoch.current++;current.current.busy=true;setBusy(true);setError('')
     try{const value=await prototypeApi(projectId,state.work.id).edit(state.path,node,operation,values,version);setWork(value);await reload()}
     catch(e){resetPreview(node);setError(String(e))}finally{current.current.busy=false;setBusy(false)}
@@ -116,6 +116,7 @@ export default function PrototypeEditor({projectId,path:entry,onClose}:{projectI
       }
       let target:FrameTarget={path:root.html_preview.entry,document:root,route:[],frames:[]}
       if(data?.source==='workstep-prototype-frames'){
+        if(root.inspection_only)return
         if(data.token!==root.html_preview.token)return
         if(data.kind==='hello'){sendMode();return}
         if(data.kind==='loaded'){
@@ -151,6 +152,9 @@ export default function PrototypeEditor({projectId,path:entry,onClose}:{projectI
       if(changing&&['select','delete-request'].includes(data.type))activate(target)
       if(data.type==='edit'&&changing)return
       const activeDocument=target.document
+      const inspectionOnly=root.inspection_only||activeDocument.inspection_only
+      if(inspectionOnly&&['edit','delete-request','undo-request'].includes(data.type))return
+      if(inspectionOnly&&data.selection)data={...data,selection:{...data.selection,node_id:null}}
       if(data.type==='drag-state'){changeLayout('movingElement',Boolean(data.active));return}
       if(data.type==='undo-request'){undoRef.current();return}
       if((data.type==='select'||data.type==='hover'||data.type==='selection-position'||data.type==='delete-request')&&data.selection&&typeof data.selection.tag==='string'&&typeof data.selection.text==='string'){
@@ -219,6 +223,7 @@ export default function PrototypeEditor({projectId,path:entry,onClose}:{projectI
           <Button variant="icon" className="prototype-icon-button prototype-close" title={t('common.close')} aria-label={t('common.close')} onClick={close}><Icon name="x" size={19}/></Button>
         </div>
       </header>
+      {previewDocument?.inspection_only&&<div className="prototype-recovery" role="status">{t('prototype.runtimeInspection')}</div>}
       {error&&<div role="alert" className="prototype-error">{error}</div>}
       {work?.pending&&work.status!=='running'&&<div className="prototype-recovery"><span>{work.error||t('prototype.recovery')}</span><Button disabled={busy} onClick={()=>void action('publish')}>{t('prototype.publish')}</Button><Button disabled={busy} onClick={()=>setConfirm('discard')}>{t('prototype.discard')}</Button></div>}
       {history&&work&&<PrototypeHistory projectId={projectId} work={work} onClose={()=>changeLayout('history',false)} onClean={()=>void action('clean_history')}/>}

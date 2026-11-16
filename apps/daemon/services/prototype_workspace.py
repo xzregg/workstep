@@ -304,6 +304,8 @@ class PrototypeWorkspace:
     def edit(self, path, node_id, operation, values, version):
         with self.lock:
             document = self.document(path)
+            if document.runtime_rendered:
+                raise ValueError('动态页面请通过原型助手修改生成脚本')
             result = document.edit(node_id, operation, values, version)
             self.begin(f'{operation}: {path}')
             # begin refreshed external state: never apply an old source range.

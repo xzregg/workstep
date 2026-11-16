@@ -51,6 +51,15 @@ class HtmlSource(HTMLParser):
         self.feed(source)
         self.close()
 
+    @property
+    def runtime_rendered(self):
+        visible = [node for node in self.nodes.values() if node.tag not in {'html', 'head', 'body', 'meta', 'title', 'style', 'script', 'link', 'base'}]
+        if len(visible) > 3 or not any(node.tag == 'script' for node in self.nodes.values()):
+            return False
+        return any(node.tag in {'div', 'main'} and not node.children and any(
+            attr.group(1).lower() == 'id' and unescape((attr.group(2) or '').strip(chr(34) + chr(39))) in {'root', 'app', '__next'}
+            for attr in attributes(self.source[node.start:node.opening_end])) for node in visible)
+
     def source_offset(self):
         line, column = self.getpos()
         return self.lines[line - 1] + column

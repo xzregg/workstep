@@ -2,9 +2,11 @@
 (() => {
   const version = __WS_VERSION__;
   const token = document.currentScript?.nonce || null;
+  const inspectionOnly = typeof __WS_INSPECTION_ONLY__ !== 'undefined' && __WS_INSPECTION_ONLY__;
   const identities = new WeakMap();
   const nodes = new Map(), drafts = new Map();
   document.querySelectorAll('[data-ws-node]').forEach(element => {
+    if(inspectionOnly)return;
     identities.set(element, element.getAttribute('data-ws-node'));
     nodes.set(element.getAttribute('data-ws-node'), element);
   });
@@ -19,6 +21,7 @@
     .hover{border-style:dashed;background:transparent}
     .label{position:absolute;bottom:100%;right:28px;background:Canvas;color:CanvasText;font:12px sans-serif;padding:3px 6px;white-space:nowrap;pointer-events:none}
     .move-handle{all:unset;box-sizing:border-box;position:absolute;right:0;top:-28px;width:24px;height:24px;display:grid;place-items:center;background:Canvas;color:CanvasText;border:1px solid #b8b8be;border-radius:4px;pointer-events:auto;cursor:grab;touch-action:none}
+    .move-handle[hidden]{display:none}
     .move-handle:active{cursor:grabbing}.move-handle:focus-visible{outline:2px solid CanvasText;outline-offset:2px}
     .snap-line{position:fixed;display:none;background:var(--ws-accent, Highlight);pointer-events:none}
     .snap-x{width:1px}.snap-y{height:1px}
@@ -92,6 +95,7 @@
     const css=getComputedStyle(element);
     const resizable=identities.has(element)&&!['HTML','BODY','HEAD','SCRIPT','STYLE'].includes(element.tagName)&&css.display!=='inline'&&css.transform==='none';
     shadow.querySelectorAll('.handle').forEach(handle=>handle.hidden=!resizable);
+    shadow.querySelector('.move-handle').hidden=!identities.has(element)||['HTML','BODY','HEAD','SCRIPT','STYLE'].includes(element.tagName)||css.display==='inline';
   };
   const snapAxis = (start,size,delta,edges,enabled) => {
     let distance=3,guide=null,adjustment=0;

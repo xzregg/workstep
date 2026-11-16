@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "61903e4a1b7442f2459233863928550a9a54887844fca1196f2ef515a02494ca",
+  "revision": "a2665837897ed37c1887bc82d7b61b29de29da984e10288449ff7d52573572df",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -646,6 +646,7 @@
     "gatewayRecovery.paused": "自动连接已暂停",
     "gatewayRecovery.retry": "重新连接",
     "gatewayRecovery.dismiss": "暂不重试",
+    "prototype.runtimeInspection": "动态渲染页面：可点选评论，由原型助手修改生成脚本；暂不支持属性直接回写。",
     "prototype.navigationBlocked": "请先完成保存，并发送或清空评论后再切换页面。",
     "prototype.files": "文件目录",
     "prototype.moveHandle": "按住拖动元素",

@@ -125,6 +125,18 @@ async def pending(projects, context):
                 if not projects_in_batch.issubset(set(ids)):
                     raise PermissionError('主动思考来源项目不可访问')
                 access.assessment['context'] = copy.deepcopy(context)
+    assigned = access.assessment.get('context')
+    if assigned is None or assigned.get('origin_project_id') not in ids:
+        raise PermissionError('本次执行没有可领取的主动思考批次')
+    async with access.assessment.setdefault('catalog_lock', asyncio.Lock()):
+        context = access.assessment.get('context')
+        if context is not None and context.get('origin_project_id') in ids and 'session_knowledge' not in context:
+            from services.memory_session_context import catalog
+            groups = context.get('conversations', [context])
+            sessions = [(g.get('project_id', g.get('origin_project_id', context['origin_project_id'])),
+                         g.get('session_id', g.get('origin_session_id', '')),
+                         g.get('companion', {}).get('scope', '')) for g in groups]
+            context['session_knowledge'] = await asyncio.to_thread(catalog, sessions, ids)
     with _lock:
         context = access.assessment.get('context')
         if context is None or context.get('origin_project_id') not in ids:

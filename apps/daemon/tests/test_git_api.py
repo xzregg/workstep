@@ -93,6 +93,31 @@ async def test_scan_non_git_root_depth_boundary_and_external_worktree(client, la
     assert (await scan(http))['repositories'] == []
 
 
+async def test_scan_skips_tmp_subtrees(client, layout, monkeypatch):
+    import services.git as git_service_module
+
+    http, _ = client
+    root, repo, _ = layout
+    repository(root / 'tmp' / 'temporary-repo')
+    repository(root / 'services' / 'tmp' / 'nested-temporary-repo')
+    ordinary = repository(root / 'tmp-tools')
+    visited = []
+    original_entries = git_service_module.directory_entries
+
+    def entries(path):
+        visited.append(path)
+        return original_entries(path)
+
+    monkeypatch.setattr(git_service_module, 'directory_entries', entries)
+    result = await scan(http)
+
+    assert all('tmp' not in path.relative_to(root).parts for path in visited)
+    discovered = {tree['path'] for item in result['repositories'] for tree in item['worktrees']}
+    assert str(repo) in discovered
+    assert str(ordinary) in discovered
+    assert not any(item['name'].endswith('temporary-repo') for item in result['repositories'])
+
+
 async def payment_id(http):
     result = await scan(http)
     repo = next(r for r in result['repositories'] if r['name'] == 'payment')

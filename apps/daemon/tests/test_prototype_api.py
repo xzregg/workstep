@@ -287,3 +287,19 @@ async def test_local_iframe_editor_uses_scoped_frames_and_per_file_metadata(edit
     assert undone.status_code==200
     assert (root/'other.html').read_text()=='<p>Other</p>'
     assert (root/'index.html').read_text()==outer_before
+
+
+async def test_react_shell_uses_inspection_without_direct_source_edits(editor):
+    client,root=editor
+    source='<div id="root"></div><script>document.getElementById("root").innerHTML="<p>Runtime UI</p>"</script>'
+    (root/'index.html').write_text(source)
+    work=(await client.post('/api/prototype/open',json={'project_id':'p','path':'index.html'})).json()
+    doc=(await client.get(f"/api/prototype/{work['id']}/document",params={'project_id':'p','path':'index.html'})).json()
+    assert doc['inspection_only'] is True
+    grant=doc['html_preview']
+    preview=await client.get(f"/api/fs/html-resource/p/{grant['token']}/index.html")
+    assert "script-src 'nonce-" not in preview.text
+    assert 'const inspectionOnly = typeof true' in preview.text
+    rejected=await client.post(f"/api/prototype/{work['id']}/edit?project_id=p",json={'path':'index.html','node_id':'n1','operation':'text','values':{'text':'Unsafe DOM snapshot'},'version':doc['version']})
+    assert rejected.status_code==422
+    assert (root/'index.html').read_text()==source

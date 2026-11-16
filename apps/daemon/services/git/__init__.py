@@ -144,7 +144,7 @@ class GitService(GitQueries, GitWrites, GitRecoveries):
                         entries = await asyncio.to_thread(directory_entries, path)
                         if level < depth:
                             stack.extend((path / name, level + 1) for name, is_dir in entries
-                                         if is_dir and name not in {'.git', '.workstep', 'node_modules', '.venv'})
+                                         if is_dir and name not in {'.git', '.workstep', 'node_modules', '.venv', 'tmp'})
                         if any(name == '.git' for name, _ in entries):
                             if str(path) not in verified:
                                 verified[str(path)] = await self.discover_repository(path)

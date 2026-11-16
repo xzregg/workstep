@@ -29,6 +29,7 @@ export interface PrototypeSelection {
 }
 export interface PrototypeDiff {diff:string;files?:{path:string;patch:string}[]}
 export interface PrototypeDocument {
+  inspection_only?: boolean
   version: string
   nodes: Record<string, { editable: boolean; text_editable: boolean; text_value?: string; source?: string; line: number }>
   html_preview: { token: string; entry: string }

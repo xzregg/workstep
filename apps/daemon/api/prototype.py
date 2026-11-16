@@ -84,8 +84,8 @@ async def document(workspace_id: str, project_id: str, path: str, editing: bool 
         work = workspace(project_id, workspace_id)
         source = work.document(path)
         grant = issue_ticket(work.directory / 'workspace' / path, project_id,
-                             editor=editing, prototype=True, root=work.directory / 'workspace', boundary=work.original())
-        return {'version': source.version, 'nodes': {key: {name: value for name, value in source.context(key).items() if name != 'source'} for key in source.nodes}, 'html_preview': grant}
+                             editor=editing, prototype=True, inspection_only=source.runtime_rendered, root=work.directory / 'workspace', boundary=work.original())
+        return {'version': source.version, 'inspection_only': source.runtime_rendered, 'nodes': {key: {name: value for name, value in source.context(key).items() if name != 'source'} for key in source.nodes}, 'html_preview': grant}
     return await io(operation)
 
 

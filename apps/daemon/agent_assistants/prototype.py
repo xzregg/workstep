@@ -90,9 +90,11 @@ class PrototypeModule(AssistantRuntime):
             if len(location['source']) > 1200:
                 selected['source_location']['source_truncated'] = True
         else:
-            selected = {key: selected[key] for key in ('tag', 'id', 'classes', 'text') if selected.get(key)}
+            selected = {key: selected[key] for key in ('selector', 'tag', 'id', 'classes', 'text') if selected.get(key)}
             if 'text' in selected:
                 selected['text'] = selected['text'][:200]
+            if 'selector' in selected:
+                selected['selector'] = selected['selector'][:1000]
         copied = work.directory / 'workspace'
         page = safe_path(copied, session.extra['path'])
         files = collect_resources(copied, [session.extra['path']], max_file=MAX_FILE, max_total=MAX_TOTAL, include_siblings=False)
@@ -100,6 +102,8 @@ class PrototypeModule(AssistantRuntime):
             selected['frame_path'] = [{'file': os.path.relpath(safe_path(copied, frame['file']), page.parent).replace(os.sep, '/'), 'selector': str(frame.get('selector', 'iframe'))[:300]} for frame in frame_path[:8] if isinstance(frame, dict) and isinstance(frame.get('file'), str)]
         message = session.extra.get('request', next((item['content'] for item in reversed(session.messages) if item['role'] == 'user'), ''))
         context = {'current_file': page.name}
+        if not selected.get('node_id') and work.document(session.extra['path']).runtime_rendered:
+            context['rendering'] = 'Runtime-generated UI: edit generating code with bounded searches; bundled text may be Unicode-escaped. Preserve interactions, do not serialize DOM.'
         related = sorted(os.path.relpath(file, page.parent).replace(os.sep, '/') for file in files if file != page)
         if related:
             context['related_files'] = related
