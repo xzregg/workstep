@@ -82,7 +82,7 @@ try{
   const dialog=await page.locator('.settings-dialog-panel').boundingBox()
   const header=await page.locator('.settings-dialog-header').boundingBox()
   assert.ok(header.y>=dialog.y && header.y+header.height<=dialog.y+dialog.height,`${width}: dialog header stays visible`)
-  assert.equal(await page.locator('.digital-person-trait-field').count(),3)
+  assert.equal(await page.locator('.digital-person-documents .markdown-editor-root').count(),3)
   if(width>=1024){
    const metrics=await page.locator('#digital-person-panel').evaluate(el=>({height:el.clientHeight,content:el.scrollHeight,overflow:getComputedStyle(el).overflowY}))
    assert.equal(metrics.height,initialPanelHeight,'configuration area keeps the same height across panels')

@@ -8,7 +8,7 @@ import {I18nProvider,useLocaleStore} from '../src/i18n'
 import {digitalPersonApi,digitalRuntimeApi,type DigitalPersonProfile} from '../src/api/digitalPerson'
 import DigitalPersonSettings from '../src/components/digital-person/DigitalPersonSettings'
 
-test('identity, personality and tone allow multiple presets and free text, then persist together',async()=>{
+test('three shared Markdown editors preserve old values and handwritten text while presets persist to matching documents',async()=>{
  const {window}=installDomEnvironment(),el=document.body.appendChild(document.createElement('div')),root=createRoot(el)
  useLocaleStore.setState({locale:'zh-CN'})
  const oldGet=digitalPersonApi.get,oldSave=digitalPersonApi.save,oldActivity=digitalRuntimeApi.activity
@@ -22,25 +22,31 @@ test('identity, personality and tone allow multiple presets and free text, then 
  })
  try{
   await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonSettings onClose={()=>{}}/></I18nProvider></MemoryRouter>))
-  await click('身份与性格')
-  await click('研发伙伴');await click('项目管家')
-  assert.equal(el.querySelector('[aria-label="身份"]')!.getAttribute('name'),'role')
-  assert.match((el.querySelector('[name="role"]') as HTMLInputElement).value,/自定义身份、研发伙伴、项目管家/)
-  await click('严谨');await click('耐心')
-  await click('专业克制');await click('轻松幽默')
-  const tone=el.querySelector<HTMLInputElement>('[name="tone"]')!
+  await click('人设与职责')
+  assert.equal(el.querySelectorAll('.digital-person-documents .markdown-editor-root').length,3)
+  const editor=(label:string)=>el.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${label}"]`)!
+  assert.match(editor('人设').value,/自定义身份/)
+  assert.match(editor('人设').value,/自定义性格/)
+  assert.match(editor('职责').value,/跟进研发/)
   await act(async()=>{
-   Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(tone,'专业克制、自定义语气')
-   tone.dispatchEvent(new window.Event('input',{bubbles:true}))
+   const field=editor('人设')
+   Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value')!.set!.call(field,field.value+'\n\n## 我的补充\n不要叫我老板。')
+   field.dispatchEvent(new window.Event('input',{bubbles:true}))
   })
+  await click('研发伙伴')
+  await click('严谨');await click('耐心')
   await click('专业克制')
-  assert.equal(tone.value,'自定义语气')
+  assert.match(editor('人设').value,/不要叫我老板/)
+  assert.match(editor('人设').value,/研发伙伴/)
+  assert.match(editor('人设').value,/严谨/)
+  const dutiesBefore=editor('职责').value
+  await click('说明不确定性')
+  assert.match(editor('记忆').value,/信息不确定时/)
+  assert.equal(editor('职责').value,dutiesBefore)
   await click('保存')
-  assert.equal(profile.role,'自定义身份、研发伙伴、项目管家')
-  assert.equal(profile.personality,'自定义性格、严谨、耐心')
-  assert.equal(profile.tone,'自定义语气')
+  assert.match(profile.persona_markdown!,/不要叫我老板/)
+  assert.match(profile.conversation_rules!,/信息不确定时/)
   assert.equal(profile.role_binding,null)
-  // Saving keeps the identity editor open; it no longer returns to the profile card.
-  assert.equal(el.querySelector<HTMLInputElement>('[name="tone"]')!.value,'自定义语气')
+  assert.equal(el.querySelectorAll('.digital-person-documents .markdown-editor-root').length,3)
  }finally{await act(async()=>root.unmount());digitalPersonApi.get=oldGet;digitalPersonApi.save=oldSave;digitalRuntimeApi.activity=oldActivity;await window.happyDOM.close()}
 })

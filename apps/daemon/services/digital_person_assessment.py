@@ -151,9 +151,9 @@ def skip_before(value, project_ids=()):
 def instruction(profile):
     from services.digital_person_affect import STYLES
     from services.memory_policy import RULES
-    return (f'You are {profile.name}. Role: {profile.role}; Personality: {profile.personality}; Tone: {profile.tone}. '
+    persona = profile.persona_markdown if profile.persona_markdown is not None else f'Role: {profile.role}; Personality: {profile.personality}; Tone: {profile.tone}. Relationships: {STYLES[profile.relationship_style]} {profile.relationship_preferences}'
+    return (f'You are {profile.name}. {persona}\nDuties: {profile.duties}\nStanding memory: {profile.conversation_rules}\n'
             'This is your background assessment. Understand recent exchanges, preserve useful knowledge, assess affinity changes, and decide whether to contact the user. '
-            'Relationships: '+STYLES[profile.relationship_style]+' '+profile.relationship_preferences+' '
             'Step 1: Read the workstep-cli skill and references/memory.md, then run memory pending through the engine terminal tool. '
             'Repeated calls return the same batch without marking it complete. Use targeted knowledge search/read only for maintenance, without reviewing old source history. '
             'Follow the skill interpreter, transport and environment recovery instructions. '

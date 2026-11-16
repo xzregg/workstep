@@ -358,3 +358,26 @@ async def test_contact_interval_api_is_independent_bounded_and_persistent(setup)
         assert saved['proactive_interval_minutes']==5
         for invalid in (0,1441):
             assert (await client.put('/api/digital-person',json={**payload,'proactive_contact_interval_minutes':invalid})).status_code==422
+
+
+async def test_markdown_identity_roundtrip_and_prompt_uses_documents(setup, monkeypatch):
+    from services import customization_workspace
+    app, service = setup
+    monkeypatch.setattr(customization_workspace, 'is_default_workspace', lambda _: True)
+    async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
+        payload=(await client.get('/api/digital-person')).json()
+        payload.update(enabled=True, persona_markdown='## 身份\n私人助理\n\n## 性格\n- 耐心',
+                       duties='## 职责\n- 跟进事项',conversation_rules='## 长期约定\n- 先看原型')
+        result=await client.put('/api/digital-person',json=payload)
+        assert result.status_code==200
+        service.config_store._cache=None
+        saved=(await client.get('/api/digital-person')).json()
+        assert saved['persona_markdown']==payload['persona_markdown']
+        text=service.prompt_for_project(SimpleNamespace(id='home'))
+        assert payload['persona_markdown'] in text and payload['duties'] in text
+        assert payload['conversation_rules'] in text and 'HARD BOUNDARY' in text
+        from services.digital_person_assessment import instruction
+        background=instruction(service.get_profile())
+        assert payload['persona_markdown'] in background and payload['conversation_rules'] in background
+        assert 'Personality: '+payload['personality'] not in text
+        assert (await client.put('/api/digital-person',json={**payload,'persona_markdown':'x'*16001})).status_code==422

@@ -1490,6 +1490,8 @@ PC 图片放大由 `ImagePreview.tsx` 与 `.desktop-image-preview` 持有，初�
 
 ### 数字人设备身份与运行层
 
+人设与职责单页编辑：`DigitalPersonSettings.tsx` 接入 `DigitalPersonDocuments.tsx`，复用通用 `MarkdownEditor`，提供人设、职责、记忆三块编辑区。`digitalPersonMarkdown.ts` 管理预设标签对应的 Markdown 章节与旧配置带入，保留其他手写章节；角色中心选择也更新同一份文本。档案 API 保存 `persona_markdown`、`duties`、`conversation_rules`，由 `services/digital_person.py` 装配聊天身份，`digital_person_assessment.instruction` 装配后台身份；职责执行红线仍固定保留。这里的记忆是常驻约定，不是历史记忆索引。行为回归：`digitalPersonMarkdown.test.ts`、`digitalPersonTraits.test.tsx`、`digitalPersonBodySettings.test.tsx`、`test_digital_person.py`；实际组件渲染检查：`scripts/check-digital-person-documents.mjs`（320/390/1023/1440px）。
+
 记忆页默认仅展示脑图与按需节点详情，不在底部重复罗列全部记忆；完整条目列表由用户切换「时间回顾」后查看。组件与测试入口：`components/digital-person/DigitalPersonMemory.tsx`、`tests/digitalPersonMemory.test.tsx`。
 
 记忆页：`components/digital-person/DigitalPersonMemory.tsx` 自管理真实数据查询、全库统计、分类／项目筛选、时间回顾和节点详情；`DigitalPersonMemoryGraph.tsx` 管理分类簇、显式共同实体连线、每类三条分页、缩放与适应画布，`memoryView.ts` 统一标题投影。`DigitalPersonMemory.css` 持有响应式布局；脑形仅用 `src/assets/digital-person-memory-brain.png` 作为低对比背景，文字、节点和数据连线均原生渲染。`DigitalPersonSettings` 在所有分区复用同一人形导航和宽内容区：`DigitalPersonBodyNavigation` 的八项入口包含独立记忆，大脑直接打开引擎；PC左栏上方竖向展示全部十一项配置，下方保留八项人形快捷入口，两个入口共享选中状态；整组顶部对齐，不显示分组标题，PC选中项用浅蓝底与右侧蓝色标记，移动端仍用蓝色下划线。`SettingsPage` 为所有设置使用统一大弹窗，数字形象区默认收起外层导航并保留「全部设置」切换，不随内部选项改变尺寸。移动端在人形下方仅横向展示名片、身份与性格、渠道机器人、运行记录四项，均位于具体内容上方，沿页面纵向滚动；记忆统计为三列。每批整理消息数配置位于主动思考分区，与其他主动思考参数共用保存、数值校验和未保存保护；记忆页仅展示记忆内容。行为测试 `tests/digitalPersonMemory.test.tsx`，设置组装与保护 `tests/digitalPersonBodySettings.test.tsx`、`tests/digitalPersonSettingsSafety.test.tsx`（真实设置窗口的宽画布、全部设置切换与未保存保护）。

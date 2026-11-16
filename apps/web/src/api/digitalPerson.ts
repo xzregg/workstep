@@ -4,6 +4,7 @@ export interface DigitalPersonProfile {
   relationship_style?: 'balanced' | 'warm' | 'reserved' | 'tsundere'
   relationship_preferences?: string
   tone?: string
+  persona_markdown?: string | null
   role_binding?: {kind:'role'|'team';id:string} | null
   avatar: 'robot' | 'spark'; greeting: string
   conversation_rules?: string

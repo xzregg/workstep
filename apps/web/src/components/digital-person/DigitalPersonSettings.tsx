@@ -6,7 +6,8 @@ import DigitalPersonOperations from './DigitalPersonOperations'
 import DigitalPersonVisionSettings from '../face-recognition/DigitalPersonVisionSettings'
 import DigitalPersonGrowth from './DigitalPersonGrowth'
 import DigitalPersonMemory from './DigitalPersonMemory'
-import DigitalPersonTraitField from './DigitalPersonTraitField'
+import DigitalPersonDocuments from './DigitalPersonDocuments'
+import {personaDocument,setDocumentSection,withPersonaDocument} from './digitalPersonMarkdown'
 import DigitalPersonBodyNavigation, { type DigitalPersonBodyPart } from './DigitalPersonBodyNavigation'
 import VoiceWakeSettings from './VoiceWakeSettings'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -98,7 +99,7 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
   const interval = draft?.proactive_interval_minutes ?? 5
   const contactInterval = draft?.proactive_contact_interval_minutes ?? 5
   const memoryBatchSize = draft?.memory_batch_size ?? 100
-  const valid = Boolean(Number.isInteger(memoryBatchSize) && memoryBatchSize >= 1 && memoryBatchSize <= 1000 && Number.isInteger(contactInterval) && contactInterval >= 1 && contactInterval <= 1440 && draft?.name.trim() && draft.duties.trim() && Number.isInteger(interval) && interval >= 1 && interval <= 1440 && [draft.quiet_start ?? 22,draft.quiet_end ?? 8].every(v=>Number.isInteger(v)&&v>=0&&v<=23) && (draft.voice_rate ?? 1)>=.5 && (draft.voice_rate ?? 1)<=2)
+  const valid = Boolean(Number.isInteger(memoryBatchSize) && memoryBatchSize >= 1 && memoryBatchSize <= 1000 && Number.isInteger(contactInterval) && contactInterval >= 1 && contactInterval <= 1440 && draft?.name.trim() && draft.duties.trim() && draft.duties.length<=8000 && (draft.persona_markdown?.length??0)<=16000 && (draft.conversation_rules?.length??0)<=8000 && Number.isInteger(interval) && interval >= 1 && interval <= 1440 && [draft.quiet_start ?? 22,draft.quiet_end ?? 8].every(v=>Number.isInteger(v)&&v>=0&&v<=23) && (draft.voice_rate ?? 1)>=.5 && (draft.voice_rate ?? 1)<=2)
   const save = async (value = draft) => {
     if (!value || blocked || !Number.isInteger(memoryBatchSize) || memoryBatchSize < 1 || memoryBatchSize > 1000) return false
     setBusy(true); setError('')
@@ -171,23 +172,7 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
         <Button onClick={() => setTab('identity')}>{t('digitalPerson.edit')}</Button>
       </div>
     </article>}
-    {tab === 'identity' && <div className="digital-person-form">
-      <label>{t('digitalPerson.name')}<Input name="name" maxLength={80} value={draft.name} disabled={blocked} onChange={event => update('name', event.target.value)} /></label>
-      <DigitalPersonTraitField name="role" label={t('digitalPerson.identityLabel')} value={draft.role} maxLength={200} disabled={blocked}
-        presets={['rd','assistant','manager','study','creative','life'].map(key=>t(`digitalPerson.rolePreset${key}` as never))}
-        onChange={role=>setDraft(current=>current && ({...current,role,role_binding:null}))}/>
-      <Button disabled={blocked} onClick={() => setChooseRole(true)}>{t('digitalPerson.chooseRole')}</Button>
-      <DigitalPersonTraitField name="personality" label={t('digitalPerson.personality')} value={draft.personality} maxLength={2000} disabled={blocked} multiline
-        presets={['rigorous','curious','patient','proactive','rational','optimistic'].map(key=>t(`digitalPerson.personalityPreset${key}` as never))} onChange={value=>update('personality',value)}/>
-      <label>{t('digitalPerson.relationshipStyle')}<Select name="relationship_style" value={draft.relationship_style??'balanced'} disabled={blocked} onChange={event=>update('relationship_style',event.target.value as DigitalPersonProfile['relationship_style'])}>
-        {(['balanced','warm','reserved','tsundere'] as const).map(style=><option key={style} value={style}>{t(`digitalPerson.style${style}` as never)}</option>)}
-      </Select></label>
-      <label>{t('digitalPerson.relationshipPreferences')}<textarea name="relationship_preferences" value={draft.relationship_preferences??''} maxLength={2000} disabled={blocked} placeholder={t('digitalPerson.relationshipPreferencesHint')} onChange={event=>update('relationship_preferences',event.target.value)}/></label>
-      <DigitalPersonTraitField name="tone" label={t('digitalPerson.tone')} value={draft.tone ?? ''} maxLength={1000} disabled={blocked}
-        presets={['direct','warm','professional','humorous','supportive','detailed'].map(key=>t(`digitalPerson.tonePreset${key}` as never))} onChange={value=>update('tone',value)}/>
-      <label>{t('digitalPerson.duties')}<textarea maxLength={8000} value={draft.duties} disabled={blocked} onChange={event => setDraft(current=>current && ({...current,duties:event.target.value,role_binding:null}))} /></label>
-      <label>{t('digitalPerson.greeting')}<Input maxLength={500} value={draft.greeting} disabled={blocked} onChange={event => update('greeting', event.target.value)} /></label>
-    </div>}
+    {tab === 'identity' && <DigitalPersonDocuments value={draft} onChange={setDraft} disabled={blocked} onChooseRole={()=>setChooseRole(true)} />}
     {tab === 'appearance' && <div className="digital-person-form digital-person-appearance-form">
       <label>{t('digitalPerson.avatar')}<Select value={draft.avatar} disabled={blocked} onChange={event => update('avatar', event.target.value as DigitalPersonProfile['avatar'])}>
         <option value="robot">{t('digitalPerson.robot')}</option><option value="spark">{t('digitalPerson.spark')}</option></Select></label>
@@ -235,13 +220,13 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
         if (reference.kind === 'role') {
           const role = await roleCenterApi.getRole(reference.id)
           if (role.prompt.length > 8000) throw new Error(t('digitalPerson.roleTooLong'))
-          setDraft(current => current && ({ ...current, role: role.name, duties: role.prompt, role_binding: reference }))
+          setDraft(current => current && ({ ...withPersonaDocument(current,setDocumentSection(personaDocument(current),'role',[role.name])), role: role.name, duties: role.prompt, role_binding: reference }))
         } else {
           const team = await roleCenterApi.getTeam(reference.id)
           const members = await Promise.all(team.members.map(member => roleCenterApi.getRole(member.role_id)))
           const duties = [team.prompt, ...members.map((member, index) => `${member.name}\n${team.members[index].duty}\n${member.prompt}`)].join('\n\n')
           if (duties.length > 8000) throw new Error(t('digitalPerson.roleTooLong'))
-          setDraft(current => current && ({ ...current, role: team.name, duties, role_binding: reference }))
+          setDraft(current => current && ({ ...withPersonaDocument(current,setDocumentSection(personaDocument(current),'role',[team.name])), role: team.name, duties, role_binding: reference }))
         }
         setChooseRole(false); return true
       } catch (reason) { setError(String(reason instanceof Error ? reason.message : reason)); return false }

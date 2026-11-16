@@ -151,8 +151,8 @@ def apply(project_id,session_id,sources,value,*,kind='chat',scope='local',now=No
 
 
 def prompt(profile,state):
-    return ('[Relationship tone reference]\n'+STYLES[profile.relationship_style]+' '+profile.relationship_preferences+'\n'
-            'Current speaker: '+json.dumps({k:state[k] for k in ('affinity','emotion','valence','arousal')})+'\n'
+    return ('[Relationship tone reference]\n'+((STYLES[profile.relationship_style]+' '+profile.relationship_preferences+'\n') if profile.persona_markdown is None else '')
+            +'Current speaker: '+json.dumps({k:state[k] for k in ('affinity','emotion','valence','arousal')})+'\n'
             'Use this state only as a tone reference alongside the configured personality.')
 
 

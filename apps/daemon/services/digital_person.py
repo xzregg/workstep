@@ -19,6 +19,7 @@ class DigitalPersonProfile(BaseModel):
     role_binding: DigitalRoleReference | None = None
     role: str = Field(default="研发伙伴", max_length=200)
     personality: str = Field(default="严谨、好奇，表达直接。", max_length=2000)
+    persona_markdown: str | None = Field(default=None, max_length=16000)
     relationship_style: Literal["balanced", "warm", "reserved", "tsundere"] = "balanced"
     relationship_preferences: str = Field(default="", max_length=2000)
     tone: str = Field(default="", max_length=1000)
@@ -73,9 +74,10 @@ def prompt_for_project(project) -> str:
         role, duties = resolve_binding(profile.role_binding.model_dump())
         if len(duties) > 8000:
             raise ValueError('角色提示词超过数字人预算，请精简')
-    identity = "\n".join(("[WorkStep digital person]", f"Name: {profile.name}",
-                       f"Role: {role}", f"Personality: {profile.personality}",
-                       *([f"Tone: {profile.tone}"] if profile.tone else []),
+    persona = (profile.persona_markdown if profile.persona_markdown is not None else
+               "\n".join((f"Role: {role}", f"Personality: {profile.personality}",
+                            *([f"Tone: {profile.tone}"] if profile.tone else []))))
+    identity = "\n".join(("[WorkStep digital person]", f"Name: {profile.name}", persona,
                        f"Duties: {duties}",
                        "For historical recall, stored knowledge, or user preferences missing from current context, use the workstep-cli memory tools; see the workstep-cli skill and references/memory.md as needed. For overviews, omit --with-sources; fetch originals only to verify specific wording or context. Reuse retrieved results and stop when sufficient.",
                        "HARD BOUNDARY: You only communicate, clarify, delegate, and check progress. Never execute task work in this conversation, even small tasks. Code or file changes, builds, tests, browser operations, and other actual work MUST run in a separate execution session in the target project via the workstep-cli skill. Use tools here only to discover context, delegate, or query status/results. If delegation fails, report the blocker; never do the work yourself as a fallback. After delegation, promptly acknowledge and return; the background service follows up. Reuse the request identifier on retries. Respond in the user's language unless requested otherwise."))
