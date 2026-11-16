@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "df5afc98eb84bcd7651b9cf1723df263eb36ef1885d702e6bc7d0efb756a814f",
+  "revision": "d86333bf129b679563dfbef082d152714e9c08e26c23e399b1b07f8488bd6b34",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -415,6 +415,9 @@
     "digitalPerson.homeNoWork": "暂时没有执行中的工作",
     "digitalPerson.homeWorkHint": "直接告诉我你想做什么。",
     "digitalPerson.homeYouSaid": "你说：",
+    "digitalPerson.homeReflection": "主动思考",
+    "digitalPerson.homeRecentMessages": "最近消息",
+    "digitalPerson.homeExpandConversation": "展开对话",
     "digitalPerson.homeTranscript": "查看对话",
     "digitalPerson.homeKeyboard": "切换文字输入",
     "digitalPerson.homeMute": "麦克风静音",

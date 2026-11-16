@@ -17,15 +17,9 @@
 - [语音输入](voice-input.md) — 轻量本地首期已接入，保留真机权限验收、上下文联想、云端和更多模型的后续范围。
 - [数字员工与记忆迭代架构图](digital-employee-architecture.html)（[可编辑源图](digital-employee-architecture.drawio)）— 方向草图；以项目作为员工，展示有容量上限的短记忆、历史检索、按需技能及验证后迭代的闭环，图中标明现有基础与规划能力。
 - [Git 合并预览与三栏冲突解决](git-merge-conflict-resolution.md) — 尚未实现；现有 Git 行为见 [开发指南](../docs/development.md#git-管理的现行边界)。
-- [移动端适配与验收](mobile-adaptation.md) — 已实现的适配及仍待完成的 Safari/Chrome 真机检查；现行尺寸规范见 [前端设计](../docs/frontend-design.md)。
+- [移动端适配与验收](mobile-adaptation.md) — 已实现的适配及仍待完成的 Safari/Chrome 真机检查；现行尺寸规范见 [统一设计规范](../DESIGN.md)。
 - [助手提示词传输与查看](assistant-prompt-transport.md) — 已接入各入口，保留适配器恢复、指令更新及输入持久化边界。
 - [会话分叉与跨引擎交接](session-forking.md) — 首版已实现，保留交接约束和任意历史消息分叉的后续范围。
-
-## 设计参考
-
-供应商布局设计参考统一存放于 `prototypes/`：[原型片段](prototypes/provider-layout.html)和[独立预览](prototypes/provider-layout-preview.html)。仅用于设计讨论，不代表当前应用已实现或通过验收。
-
-Jev 决策模型设置：[交互原型](prototypes/jev-model-settings.html)。展示本地托管资源的手动下载、本地及远程 Jev 兼容服务配置，包含模拟下载、测试和错误状态；不发起真实请求，不接入业务场景。
 
 ## 已实现功能的文档入口
 

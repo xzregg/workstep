@@ -4,6 +4,12 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+## 1.0.23
+
+- Add an optional digital-person workspace with profile documents, voice output, animated presence and workspace insights.
+- Improve evidence-based memory extraction, cross-session knowledge search, source verification and conversation scheduling guidance.
+- Synchronize packaged desktop runtime dependencies with the frozen daemon lockfile.
+
 - Add optional decision-model resource management, local or remote service configuration, and an explicitly authenticated local inference proxy; this does not automatically alter workflow decisions.
 - Add per-output artifact templates, read-only archived conversation previews, and an HTML prototype editor with a dedicated assistant, version-checked source updates, undo and history controls.
 - Fix task admission ownership, queued cancellation, stale review actions, interrupted-run recovery and cleanup; preserve cancellation audit records when waiter cleanup races with persistence.

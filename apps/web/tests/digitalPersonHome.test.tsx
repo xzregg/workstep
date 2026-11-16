@@ -7,6 +7,7 @@ import {MemoryRouter,useLocation} from 'react-router-dom'
 import {I18nProvider} from '../src/i18n'
 import DigitalPersonHome from '../src/components/digital-person/DigitalPersonHome'
 import {speechOutputApi} from '../src/api/speechOutput'
+import {digitalRuntimeApi,digitalAffectApi} from '../src/api/digitalPerson'
 import {speechApi} from '../src/api/speech'
 import {voiceCapture} from '../src/utils/voiceCapture'
 import {SpeechOutputPlayer} from '../src/utils/speechOutput'
@@ -156,4 +157,25 @@ test('opening and closing transcript preserves the same live camera stream',asyn
   assert.equal(starts,1);assert.equal(stops,0);assert.equal(video.srcObject,stream)
   await act(async()=>root.unmount());assert.equal(stops,1)
  }finally{await act(async()=>root.unmount());speechOutputApi.status=oldStatus;await window.happyDOM.close()}
+})
+
+
+test('presence corner uses the real digital person, affinity and reflection total without duplicate identity',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const oldRecords=digitalRuntimeApi.records,oldAffect=digitalAffectApi.read,oldStatus=speechOutputApi.status
+ digitalRuntimeApi.records=async()=>({run_total:237,delegation_total:0,checking:false,delegations:[],runs:[{id:'r1',status:'completed',summary:'已整理上下文',created_at:'2026-11-16T01:00:00Z'}]})
+ digitalAffectApi.read=async()=>({state:{person_id:'person',name:'真实会话作者',affinity:71,emotion:'calm',valence:0,arousal:0,updated_at:null,history:[]}})
+ speechOutputApi.status=async()=>structuredClone(outputStatus)
+ try{
+  await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonHome profile={profile} activity={{level:8,delegations:[]} as any} projectId="p" projectName="p" sessionId="main" messages={[]} inputValue="" onDraft={()=>{}} running={false} active onSend={async()=>true} onStop={async()=>true}/></I18nProvider></MemoryRouter>))
+  assert.equal(host.querySelectorAll('.digital-home-identity').length,1)
+  const corner=host.querySelector('.digital-home-presence-info')!
+  assert.match(corner.textContent!,/小研/);assert.match(corner.textContent!,/Lv.8/)
+  assert.match(corner.textContent!,/71/);assert.match(corner.textContent!,/237/)
+  assert.doesNotMatch(corner.textContent!,/真实会话作者|示例|执行次数/)
+  assert.ok(host.querySelector('.digital-presence-orb'))
+  assert.equal(host.querySelector('.digital-home-avatar img'),null)
+  await act(async()=>window.dispatchEvent(new window.CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{projectId:'p',sessionId:'main',playing:true,level:.7}})))
+  assert.match(corner.textContent!,/正在回应/)
+ }finally{await act(async()=>root.unmount());digitalRuntimeApi.records=oldRecords;digitalAffectApi.read=oldAffect;speechOutputApi.status=oldStatus;await window.happyDOM.close()}
 })

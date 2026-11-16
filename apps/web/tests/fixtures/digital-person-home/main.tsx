@@ -46,10 +46,10 @@ function App(){
  }
 
  Object.assign((window as any).homeFixture,{isRunning:()=>running,setHistory:setMessages,resetHistory:()=>setMessages(initial)})
- return <DigitalPersonHome profile={{enabled:true,name:'小研',role:'研发伙伴',personality:'温和',duties:'跟进工作',greeting:'我在，今天想先做什么？',avatar:'robot'}} activity={{delegations:[{id:'work',project_id:'demo',session_id:'worker',instruction:'构建检查',status:'running'}]} as any}
+ return <DigitalPersonHome profile={{enabled:true,name:'小研',role:'研发伙伴',personality:'温和',duties:'跟进工作',greeting:'我在，今天想先做什么？',avatar:'robot'}} activity={{level:3,experience:120,next_level_experience:200,checking:false,feedback:{},delegations:[{id:'work',project_id:'demo',session_id:'worker',instruction:'构建检查',status:'running'}]} as any}
   projectId="demo" projectName="操作手册演示" sessionId="main" active messages={messages} running={running}
   onSend={async value=>{log.sent.push(value);setDraft('');setRunning(true);setMessages(rows=>[...rows,{id:'user-'+rows.length,role:'user',content:value,status:'succeeded'},{id:'reply-'+rows.length,role:'assistant',content:'',status:'running'}]);setTimeout(()=>{setMessages(rows=>rows.map((row,i)=>i===rows.length-1?{...row,content:'好，我来帮你整理今天的安排。',status:'running'}:row));setTimeout(()=>{setRunning(false);setMessages(rows=>rows.map((row,i)=>i===rows.length-1?{...row,status:'succeeded'}:row))},500)},100);return true}}
-  inputValue={draft} onDraft={setDraft} onStop={async()=>{log.stops++;setRunning(false);return true}}><div className="home-fixture-transcript">{messages.map(message=><p key={message.id}>{message.content}</p>)}</div></DigitalPersonHome>
+  inputValue={draft} onDraft={setDraft} onStop={async()=>{log.stops++;setRunning(false);return true}}><div className="home-fixture-transcript">{messages.map(message=><p key={message.id} data-message-id={message.id} tabIndex={-1}>{message.content}</p>)}</div></DigitalPersonHome>
 }
 const customAvatar=new URLSearchParams(location.search).has('skinAvatar')
 if(customAvatar){

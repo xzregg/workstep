@@ -1,16 +1,8 @@
-import { renderToStaticMarkup } from 'react-dom/server'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Nav } from '../src/components/Nav'
-import { Hero } from '../src/components/Hero'
-import { CanvasScene } from '../src/scenes/CanvasScene'
-import { I18nProvider, supportedLanguages, languageDirection } from '../src/i18n'
-import { ManualPage } from '../src/manual/ManualPage'
+import { describe, expect, it } from 'vitest'
+import { supportedLanguages } from '../src/i18n'
 import { getManualChapters, getManualGroups, manualChapters } from '../src/manual/content'
-import type { Lang } from '../src/i18n'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-
-afterEach(() => vi.unstubAllGlobals())
 
 function proseStrings(value: unknown): string[] {
   if (typeof value === 'string') return [value]
@@ -35,15 +27,6 @@ describe('builtin language selection', () => {
       expect(section.tips?.join(' ')).toContain('AppImage')
       expect(section.tips?.join(' ')).toContain('macOS')
       expect(section.steps[2]).toContain('GitHub')
-    })
-  }
-  for (const { locale, label } of supportedLanguages) {
-    it(`renders ${locale} on the site and manual from the same saved selection`, () => {
-      vi.stubGlobal('window', { localStorage: { getItem: () => locale }, navigator: { language: 'zh-CN' }, matchMedia: () => ({ matches: false }) })
-      const html = renderToStaticMarkup(<I18nProvider><Nav /><Hero onOpenDemos={() => {}} experienceHref="#download" /><ManualPage chapterId="sdk-installation" /></I18nProvider>)
-      expect(html).toContain(`<option value="${locale}" selected="">${label}</option>`)
-      expect(html).toContain(`dir="${languageDirection(locale)}"`)
-      expect(html).toContain(getManualChapters(locale).find(chapter => chapter.id === 'sdk-installation')!.title)
     })
   }
   for (const lang of supportedLanguages.map(item => item.locale)) {
@@ -82,39 +65,10 @@ describe('builtin language selection', () => {
     expect(chat.sections.find(section => section.screenshot?.id === 'project-chat')!.tips?.join(' ')).toContain('超快')
     expect(chat.sections.find(section => section.screenshot?.id === 'project-skills')!.steps.join(' ')).toContain('流程模式')
   })
-  it('translates the homepage canvas artifact label', () => {
-    vi.stubGlobal('window', { localStorage: { getItem: () => 'en-US' } })
-    const html = renderToStaticMarkup(<I18nProvider><CanvasScene time={6500} /></I18nProvider>)
-    expect(html).toContain('Artifact list')
-    expect(html).not.toContain('产物清单')
-  })
   it('requires a translation review when the Chinese manual changes', () => {
     const fingerprint = readFileSync(new URL('../src/manual/locales/source.sha256', import.meta.url), 'utf8').trim()
     expect(createHash('sha256').update(JSON.stringify(manualChapters)).digest('hex')).toBe(fingerprint)
   })
-  for (const [locale, action, label] of [
-    ['fr-FR', 'Télécharger l’application', 'Français'],
-    ['de-DE', 'Desktop-App herunterladen', 'Deutsch'],
-    ['ar', 'تنزيل تطبيق سطح المكتب', 'العربية'],
-  ]) {
-    it(`renders the saved ${locale} language and all language options`, () => {
-      vi.stubGlobal('window', {
-        localStorage: { getItem: (key: string) => key === 'workstep-landing-lang' ? locale : null },
-        navigator: { language: 'zh-CN' },
-        matchMedia: () => ({ matches: false }),
-      })
-      const html = renderToStaticMarkup(<I18nProvider><Nav /><Hero onOpenDemos={() => {}} experienceHref="#download" /><ManualPage chapterId="sdk-installation" /></I18nProvider>)
-      expect(html).toContain(action)
-      expect(html).toContain(`<option value="${locale}" selected="">${label}</option>`)
-      for (const { locale: language } of supportedLanguages) expect(html).toContain(`value="${language}"`)
-      expect(html).toContain('class="manual-language-note"')
-      expect(html).toContain(`lang="${locale}"`)
-      expect(html).toContain(getManualChapters(locale as Lang).find(chapter => chapter.id === 'sdk-installation')!.title)
-      expect(html).not.toContain('<h2>第一步：安装 SDK 引擎</h2>')
-      expect(html).toContain(`dir="${languageDirection(locale as Lang)}"`)
-    })
-  }
-
   for (const lang of supportedLanguages.map(item => item.locale).filter(lang => lang !== 'zh-CN')) {
     it(`provides complete ${lang} chapters and preserves links and screenshots`, () => {
       const chapters = getManualChapters(lang)

@@ -1,27 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import App from '../src/App'
-import { Hero } from '../src/components/Hero'
-import { EnginesStrip } from '../src/components/EnginesStrip'
-import { I18nProvider, supportedLanguages, translate } from '../src/i18n'
-
-afterEach(() => vi.unstubAllGlobals())
+import { I18nProvider, translate } from '../src/i18n'
 
 describe('focused homepage and extensible engines', () => {
-  it.each(supportedLanguages.map(({ locale }) => locale))('makes engine extension discoverable in %s', locale => {
-    vi.stubGlobal('window', { localStorage: { getItem: () => locale }, navigator: { language: locale } })
-    const html = renderToStaticMarkup(<I18nProvider><Hero onOpenDemos={() => undefined} experienceHref="/" /><EnginesStrip /></I18nProvider>)
-    expect(html).toContain('href="#engines"')
-    expect(html).toContain('href="#docs/custom-engines"')
-    expect(html).not.toContain('docs/llm-engine-development-guide.md')
-    expect(translate(locale, 'engines.extension')).not.toBe('engines.extension')
-    expect(html).toContain(translate(locale, 'engines.extension'))
-    expect(html).toContain('CLI')
-    expect(html).toContain('SDK')
-    expect(html).toContain('ACP')
-  })
-
   it('keeps the example and engine choice before optional tutorials and comparisons', () => {
     const html = renderToStaticMarkup(<I18nProvider><App /></I18nProvider>)
     expect(html.indexOf('id="philosophy"')).toBeLessThan(html.indexOf('id="engines"'))

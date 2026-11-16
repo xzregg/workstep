@@ -5,7 +5,7 @@ import DigitalPersonFeedback from './DigitalPersonFeedback'
 import MarkdownMessage from '../MarkdownMessage'
 
 /** Presentation-only cleanup; the stored message and full conversation stay intact. */
-function captionContent(content:string){
+export function captionContent(content:string){
  return content
   .replace(/\[本轮附图的人脸识别观察（可能有误）\][\s\S]*?这些是画面中的人物，不代表谁正在发言；不改变消息作者或权限。/g,'')
   .replace(/!\[((?:\\.|[^\]\\])*)\]\(([^\n]*?)\)/g,(image,label:string,url:string)=>/(?:digital-person-camera|(?:^|[/])camera[-_.])/i.test(`${label}\n${url}`)?'':image)

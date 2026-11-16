@@ -199,6 +199,7 @@ const MessageItem = memo(function MessageItem({
   )
   return (
     <ChatMessageBubble
+      rootProps={{'data-message-id':message.id,tabIndex:-1}}
       animatedAvatar
       role={message.role}
       sender={message.role === 'user' ? userSender : copy.agent}

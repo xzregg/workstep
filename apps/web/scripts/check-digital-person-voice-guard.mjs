@@ -36,7 +36,7 @@ try{for(const [width,height]of [[390,844],[1440,1024]]){
  assert.equal(await page.evaluate(()=>window.homeFixture.log.sent.length),1)
  await page.locator('.digital-home-end').click()
  const audioBeforeHistory=await page.evaluate(()=>window.homeFixture.log.audio)
- await page.locator('.digital-home-transcript-button').click()
+ await page.locator(width<=1023?'.digital-home-transcript-button':'.digital-home-dock-transcript').click()
  await page.evaluate(()=>window.homeFixture.setHistory(rows=>[...rows,{id:'inside-history',role:'assistant',content:'查看历史时不要自动朗读。',status:'running'}]))
  await page.waitForTimeout(150)
  assert.equal(await page.evaluate(()=>window.homeFixture.log.audio),audioBeforeHistory,'history list never synthesizes speech')
