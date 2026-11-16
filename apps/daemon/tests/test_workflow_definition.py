@@ -590,6 +590,25 @@ def test_review_config_rejects_non_dict():
         WorkflowDefinition.load(raw).compile()
 
 
+@pytest.mark.parametrize("shape", ["steps", "nodes"])
+@pytest.mark.parametrize("fallback", [None, True, False])
+def test_review_manual_fallback_survives_compilation(shape, fallback):
+    review = {"mode": "auto", "auto": True, "maxRetries": 0}
+    if fallback is not None:
+        review["fallbackToManual"] = fallback
+    step = {"id": 1, "type": "build", "key": "build", "title": "Build", "review": review}
+    compiled = WorkflowDefinition.load({shape: [step]}).compile().to_steps_config()
+    actual = compiled["steps"][0]["review"]
+    assert actual.get("fallbackToManual", True) is (True if fallback is None else fallback)
+
+
+@pytest.mark.parametrize("value", ["false", 0, None, {}])
+def test_review_manual_fallback_rejects_non_boolean(value):
+    raw = {"steps": [{"key": "build", "review": {"fallbackToManual": value}}]}
+    with pytest.raises(WorkflowValidationError, match="fallbackToManual.*boolean"):
+        WorkflowDefinition.load(raw).compile()
+
+
 def test_return_rounds_default_and_step_override():
     raw = {
         "nodes": [

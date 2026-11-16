@@ -461,4 +461,11 @@ class WorkflowDefinition:
                 "prompt": review.get("prompt", ""),
                 "config": dict(review_config),
             }
+            if "fallbackToManual" in review:
+                if not isinstance(review["fallbackToManual"], bool):
+                    raise WorkflowValidationError(
+                        f"step '{normalized['key']}'.review.fallbackToManual: "
+                        "expected a boolean"
+                    )
+                normalized["review"]["fallbackToManual"] = review["fallbackToManual"]
         return normalized

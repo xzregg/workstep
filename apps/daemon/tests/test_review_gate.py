@@ -1321,8 +1321,10 @@ async def test_review_engine_error_waits_for_manual_review_without_rerunning_ste
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("fallback_to_manual", [True, False])
-async def test_auto_review_exhaustion_falls_back_to_manual(tmp_path, fallback_to_manual):
-    """自动审核次数耗尽后转入人工审核（awaiting_review），不再继续自动重跑。"""
+@pytest.mark.parametrize("shape", ["steps", "nodes"])
+async def test_auto_review_exhaustion_falls_back_to_manual(tmp_path, fallback_to_manual, shape):
+    """实际编译后的审核配置决定耗尽后失败还是转人工。"""
+    from services.workflow_definition import WorkflowDefinition
     db = init_db(str(tmp_path / "workstep.db"))
     task = Task.create(
         id="exhaust-review-task",
@@ -1344,18 +1346,22 @@ async def test_auto_review_exhaustion_falls_back_to_manual(tmp_path, fallback_to
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
     try:
+        definition = {
+            shape: [{
+                "id": 1,
+                "type": "build",
+                "key": "build",
+                "label": "构建",
+                "engine": "review-test",
+                "prompt": "完成构建",
+                "dependsOn": [],
+                "review": {"mode": "auto", "auto": True, "maxRetries": 0, "fallbackToManual": fallback_to_manual},
+            }]
+        }
+        compiled = WorkflowDefinition.load(definition).compile().to_steps_config()
         await TaskRunner(EventBus()).run_pipeline(
             task,
-            {
-                "steps": [{
-                    "key": "build",
-                    "label": "构建",
-                    "engine": "review-test",
-                    "prompt": "完成构建",
-                    "dependsOn": [],
-                    "review": {"mode": "auto", "auto": True, "maxRetries": 0, "fallbackToManual": fallback_to_manual},
-                }]
-            },
+            compiled,
             tmp_path / "artifacts",
             workflow_run=workflow_run,
         )

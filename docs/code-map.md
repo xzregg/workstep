@@ -196,6 +196,8 @@ LLM 终端 Git HTTPS 登录复用 Git 工作区设置保存的主机凭据：`ma
 
 CLI 凭据目录沿用 `services.config.CONFIG_DIR`（显式 `WORKSTEP_CONFIG_DIR` 优先），避免测试隔离配置后仍覆盖真实实例；POSIX 发布时拒绝覆盖另一个存活进程的同地址凭据。缺失凭据导致本机 401 时，客户端提示重启目标 daemon 重新生成，不再误导为浏览器登录。`test_local_cli.py` 同时覆盖经本机认证读取远程任务、本机 Token 不转发，以及远端 403 原样保留。
 
+流程自动审核人工兜底由 `services/workflow_definition.py::_normalize_step` 保留 `review.fallbackToManual`，`services/task_runner.py::_apply_review_result` 执行；设为 `false` 时自动拒绝耗尽或审核异常保留失败，不创建人工待审。省略保持原默认。回归 `tests/test_workflow_definition.py::test_review_manual_fallback_survives_compilation`（画布／旧格式、布尔值校验）和 `tests/test_review_gate.py::test_auto_review_exhaustion_falls_back_to_manual`（真实编译后执行两种分支）。
+
 CLI 更新现有流程由 `cli.py` 的 `workflow update --project --workflow --steps-file` 和 `tool_registry.py::workstep_update_workflow` 持有，复用既有 `api/workflow.py::update_workflow` 校验和权限；只更新名称或完整画布，保留流程 ID 与定时绑定。行为测试：`test_cli.py::test_workflow_update_preserves_id_and_sends_canvas`、`test_workflow_update_requires_changes_before_request`、`test_workflow_update_rejects_invalid_canvas_before_request`。
 
 CLI 任务诊断由 `cli.py` 的 `task history/reviews` 和 `tool_registry.py` 的 `workstep_get_task_history/workstep_get_task_reviews` 持有，复用现有任务消息分页与审核记录 API，保留本机认证和远程项目转发。历史消息可查看协调回复、确认提案及当时上下文快照；审核记录保留轮次与人工决定。测试：`test_cli.py::test_task_diagnostics_read_remote_history_and_reviews`、`test_tool_registry.py`。

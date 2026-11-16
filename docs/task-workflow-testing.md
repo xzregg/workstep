@@ -210,4 +210,4 @@ Web、分享 Web、网关 Web 和官网构建／类型检查均通过，`git dif
 
 ### 自动审核的人工兜底
 
-步骤 `review` 配置可设置 `fallbackToManual: false`，使自动审核驳回且返工耗尽、或审核引擎失败时将步骤保留为 `failed`，不创建人工待审记录。默认仍为 `true`，保留既有流程的人工兜底。正常执行与审核恢复共用 `TaskRunner._apply_review_result`；`tests/test_review_gate.py` 覆盖两种配置下的驳回耗尽、引擎错误和无效报告，`tests/test_recovery.py` 覆盖恢复路径。
+步骤 `review` 配置可设置 `fallbackToManual: false`，使自动审核驳回且返工耗尽、或审核引擎失败时将步骤保留为 `failed`，不创建人工待审记录。默认仍为 `true`，保留既有流程的人工兜底。`WorkflowDefinition._normalize_step` 在画布和旧步骤格式编译时保留并校验该布尔值；省略时保持兼容默认，不将字符串 `"false"` 当作关闭。正常执行与审核恢复共用 `TaskRunner._apply_review_result`；`tests/test_review_gate.py` 覆盖两种配置下的驳回耗尽、引擎错误和无效报告，`tests/test_recovery.py` 覆盖恢复路径。`test_workflow_definition.py` 覆盖编译透传和非法值；审核耗尽回归先编译两种真实流程格式，再验证失败结束且无人工待审，避免仅直传执行器配置漏掉中间字段丢失。
