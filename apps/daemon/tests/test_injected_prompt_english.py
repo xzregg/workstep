@@ -89,6 +89,11 @@ def test_digital_person_prompt_scaffolding_is_english(monkeypatch):
     stats = format_identity_snapshot(dict(level=1, experience=0, next_level_experience=10,
         session_count=1, reply_count=0, task_count=0, completed_task_count=0, skills=[]))
     assert not CJK_RE.search(stats)
+    populated = format_identity_snapshot(dict(level=5, experience=204, next_level_experience=250,
+        session_count=6, reply_count=202, task_count=2, completed_task_count=2,
+        skills=[dict(id='cli', name='workstep-cli')]))
+    assert 'Lv.5' in populated and '204' in populated
+    assert 'Enabled skills' not in populated and 'workstep-cli' not in populated
 
 
 def test_channel_source_prompt_scaffolding_is_english():

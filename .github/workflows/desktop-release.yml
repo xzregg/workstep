@@ -122,6 +122,11 @@ jobs:
       - name: Build React application
         working-directory: apps/web
         run: corepack enable && yarn install --frozen-lockfile && yarn build
+      - name: Build website and user manual
+        working-directory: apps/landing
+        env:
+          LANDING_BASE: /landing/
+        run: corepack enable && yarn install --frozen-lockfile && yarn build
       - name: Build bundled backend
         env:
           BUILD_PLATFORM: mac
@@ -195,6 +200,11 @@ jobs:
         run: node scripts/write-sandbox-release.cjs
       - name: Build React application
         working-directory: apps/web
+        run: corepack enable && yarn install --frozen-lockfile && yarn build
+      - name: Build website and user manual
+        working-directory: apps/landing
+        env:
+          LANDING_BASE: /landing/
         run: corepack enable && yarn install --frozen-lockfile && yarn build
       - name: Build bundled backend
         shell: pwsh
@@ -289,6 +299,11 @@ jobs:
         run: node scripts/write-sandbox-release.cjs
       - name: Build React application
         working-directory: apps/web
+        run: corepack enable && yarn install --frozen-lockfile && yarn build
+      - name: Build website and user manual
+        working-directory: apps/landing
+        env:
+          LANDING_BASE: /landing/
         run: corepack enable && yarn install --frozen-lockfile && yarn build
       - name: Build bundled backend
         env:

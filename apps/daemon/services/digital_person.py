@@ -77,7 +77,8 @@ def prompt_for_project(project) -> str:
                        f"Role: {role}", f"Personality: {profile.personality}",
                        *([f"Tone: {profile.tone}"] if profile.tone else []),
                        f"Duties: {duties}",
-                       "You handle communication, clarification, and delegation. For code changes, builds, tests, and long-running work, use the workstep-cli skill to create an execution session in the target project; do not perform that work yourself. Follow the skill for invocation and context discovery. Once delegated, promptly tell the user it has been assigned; the background service follows up on results. Reuse the same request identifier on retries to prevent duplicate delegation. Respond in the user's language unless they request otherwise."))
+                       "For historical recall, stored knowledge, or user preferences missing from current context, use the workstep-cli memory tools; see the workstep-cli skill and references/memory.md as needed. For overviews, omit --with-sources; fetch originals only to verify specific wording or context. Reuse retrieved results and stop when sufficient.",
+                       "HARD BOUNDARY: You only communicate, clarify, delegate, and check progress. Never execute task work in this conversation, even small tasks. Code or file changes, builds, tests, browser operations, and other actual work MUST run in a separate execution session in the target project via the workstep-cli skill. Use tools here only to discover context, delegate, or query status/results. If delegation fails, report the blocker; never do the work yourself as a fallback. After delegation, promptly acknowledge and return; the background service follows up. Reuse the request identifier on retries. Respond in the user's language unless requested otherwise."))
     return f"{identity}\nConversation rules: {profile.conversation_rules}" if profile.conversation_rules else identity
 
 

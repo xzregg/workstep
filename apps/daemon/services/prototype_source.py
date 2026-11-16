@@ -25,7 +25,7 @@ class SourceNode:
 
 VOID = frozenset('area base br col embed hr img input link meta param source track wbr'.split())
 PROPERTIES = frozenset(('color', 'background-color', 'font-size', 'font-weight', 'border-radius',
-    'width', 'height', 'padding', 'padding-left', 'padding-right', 'padding-top', 'padding-bottom',
+    'width', 'height', 'translate', 'padding', 'padding-left', 'padding-right', 'padding-top', 'padding-bottom',
     'margin', 'margin-left', 'margin-right', 'margin-top', 'margin-bottom'))
 
 
@@ -88,7 +88,7 @@ class HtmlSource(HTMLParser):
         end = self.source.find('>', node.closing_start)
         node.end = end + 1 if end >= 0 else None
 
-    def preview(self):
+    def preview(self, *, disable_refresh=False):
         result = []
         cursor = 0
         for node in self.nodes.values():
@@ -97,6 +97,8 @@ class HtmlSource(HTMLParser):
             for attr in reversed(attributes(opening)):
                 if attr.group(1).lower() == 'data-ws-node':
                     opening = opening[:attr.start()] + opening[attr.end():]
+                elif disable_refresh and node.tag == 'meta' and attr.group(1).lower() == 'http-equiv' and unescape((attr.group(2) or '').strip("\"'")).strip().lower() == 'refresh':
+                    opening = opening[:attr.start()] + ' data-ws-disabled-refresh=""' + opening[attr.end():]
             position = len(opening) - (2 if opening.endswith('/>') else 1)
             result.append(opening[:position] + f' data-ws-node="{node.id}"' + opening[position:])
             cursor = node.opening_end

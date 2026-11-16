@@ -3,6 +3,7 @@ import ToolCallRow from './ToolCallRow'
 import { useI18n, type TFunction } from '../i18n'
 import { durationMilliseconds, formatDuration } from '../utils/datetime'
 import type { MessageTimelineItem } from '../utils/messageTimeline'
+import { isMemorySearchCommand, toolKind } from '../utils/toolInput'
 
 interface ToolTimelineItemProps {
   item: Extract<MessageTimelineItem, { type: 'tool' | 'tool-group' }>
@@ -53,6 +54,8 @@ export default function ToolTimelineItem({
   const running = streaming && item.activities.some((activity) => !activity.hasResult)
   const failed = item.activities.some((activity) => activity.isError)
   const duration = groupDuration(item.activities, running, now, t)
+  const memorySearch = item.activities.length > 0 && item.activities.every(activity =>
+    toolKind(activity.name, activity.kind) === 'command' && isMemorySearchCommand(activity.input))
   return (
     <details className={`llm-tool-group llm-tool-group-${running ? 'running' : failed ? 'failed' : 'done'}`}>
       <summary>
@@ -60,7 +63,7 @@ export default function ToolTimelineItem({
           <Icon name="terminal" size={13} strokeWidth={1.7} />
         </span>
         <span className={`llm-tool-call-summary${running ? ' is-shimmer' : ''}`}>
-          {t('trace.commandGroup', { count: item.activities.length })}
+          {memorySearch ? t('trace.searchMemory') : t('trace.commandGroup', { count: item.activities.length })}
           {duration && t('trace.commandDuration', { duration })}
         </span>
         {failed && <span className="process-trace-error">{t('trace.failed')}</span>}

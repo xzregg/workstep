@@ -23,8 +23,24 @@ try{
   try{return route.fulfill({body:await fs.readFile(filename),contentType:{'.js':'text/javascript','.css':'text/css','.webp':'image/webp','.png':'image/png'}[path.extname(filename)]||'application/octet-stream'})}catch{return route.fulfill({status:404,body:''})}
  })
  await page.goto('https://motion.invalid/')
+ const header=await page.evaluate(()=>{
+  const box=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {left:r.left,right:r.right,center:r.top+r.height/2}}
+  return {header:box('.digital-home-header'),back:box('.digital-home-back'),identity:box('.digital-home-identity'),settings:box('.digital-home-settings')}
+ })
+ assert.ok(Math.abs(header.back.center-header.settings.center)<1,'header controls share a vertical center')
+ assert.ok(desktop?Math.abs(header.back.right-(header.header.right-32))<1:Math.abs(header.back.left-(header.header.left+20))<1,'back anchors to the desktop right edge or mobile left edge')
  const canvas=page.locator('.digital-home-avatar canvas[data-avatar-pose]')
  await canvas.waitFor()
+ const reply=page.locator('.digital-home-reply').filter({has:page.locator('.digital-person-feedback')}).first()
+ const feedback=reply.locator('.digital-person-feedback button')
+ assert.equal(await feedback.count(),2,'completed transcript replies expose both feedback controls')
+ await page.mouse.move(0,0);await page.waitForTimeout(200)
+ assert.equal(await feedback.first().evaluate(el=>getComputedStyle(el).opacity),desktop?'0':'1')
+ await reply.hover();await page.waitForTimeout(200)
+ assert.equal(await feedback.first().evaluate(el=>getComputedStyle(el).opacity),'1')
+ await page.screenshot({path:path.join(artifacts,'history-feedback.png')})
+ await page.mouse.move(0,0)
+
  await page.evaluate(()=>window.homeFixture.setActivity('think'))
  await page.waitForFunction(()=>document.querySelector('.digital-home-avatar canvas')?.dataset.avatarPose==='thinking')
  await page.screenshot({path:path.join(artifacts,'thinking.png')})

@@ -5,6 +5,7 @@ $AppsDir = Split-Path -Parent $DesktopDir
 $RepoDir = Split-Path -Parent $AppsDir
 $DaemonDir = Join-Path $AppsDir "daemon"
 $WebDir = Join-Path $AppsDir "web"
+$LandingDir = Join-Path $AppsDir "landing"
 $OutputRoot = Join-Path $RepoDir "build-artifacts/win/backend"
 $OutputDir = Join-Path $OutputRoot "main.dist"
 $StageDir = Join-Path ([System.IO.Path]::GetTempPath()) ("workstep-python-" + [guid]::NewGuid())
@@ -41,7 +42,9 @@ try {
   }
   & $Python (Join-Path $RepoDir "scripts/package_payload.py") copy (Join-Path $WebDir "dist") (Join-Path $OutputDir "web_dist")
   if ($LASTEXITCODE -ne 0) { throw "Web payload validation failed" }
-  & $Python (Join-Path $RepoDir "scripts/package_payload.py") check (Join-Path $OutputDir "app/daemon") (Join-Path $OutputDir "web_dist") (Join-Path $DesktopDir "src")
+  & $Python (Join-Path $RepoDir "scripts/package_payload.py") copy (Join-Path $LandingDir "dist") (Join-Path $OutputDir "landing_dist")
+  if ($LASTEXITCODE -ne 0) { throw "Website payload validation failed" }
+  & $Python (Join-Path $RepoDir "scripts/package_payload.py") check (Join-Path $OutputDir "app/daemon") (Join-Path $OutputDir "web_dist") (Join-Path $OutputDir "landing_dist") (Join-Path $DesktopDir "src")
   if ($LASTEXITCODE -ne 0) { throw "Release payload validation failed" }
   $ReleaseVersion = if ($env:WORKSTEP_BUILD_VERSION) { $env:WORKSTEP_BUILD_VERSION.TrimStart("v") } else { (Get-Content (Join-Path $DesktopDir "package.json") -Raw | ConvertFrom-Json).version }
   @{ version = $ReleaseVersion } | ConvertTo-Json | Set-Content (Join-Path $OutputDir "app/daemon/app-version.json") -Encoding utf8

@@ -44,7 +44,7 @@ async def test_search_pagination_read_and_source_changes(runtime):
     from services import memory_query as query
     from models.chat_session import ChatMessage
     current, project, sid = await seed(runtime, ["天文摄影计划" * 200, "天文摄影已经完成", "天文摄影需要改进"])
-    token = await query.issue_access(current.projects, "local", session_id=sid)
+    token = await query.create_context(current.projects, "local", session_id=sid)
     await extract_seed_knowledge()
     first = await query.search(current.projects, token, query="天文摄影", limit=3)
     assert len(first['knowledge'])==3 and first['items']==[]
@@ -56,18 +56,18 @@ async def test_search_pagination_read_and_source_changes(runtime):
         await query.read(current.projects, token, source['id'])
 
 
-async def test_tokens_restrict_scope_projects_and_expire(runtime, tmp_path, monkeypatch):
+async def test_reading_state_respects_project_access_and_expires(runtime, tmp_path, monkeypatch):
     from services import memory_query as query
     from services.remote_access import ActorSnapshot, actor_context
     current, project, sid = await seed(runtime, ["天文摄影秘密"])
     other = await asyncio.to_thread(current.projects.init_project, tmp_path / "other")
-    channel_token = await query.issue_access(current.projects, "channel:private", session_id="")
+    channel_token = await query.create_context(current.projects, "channel:private", session_id="")
     assert not (await query.search(current.projects, channel_token, query="天文摄影"))["items"]
-    token = await query.issue_access(current.projects, "local", session_id=sid)
+    token = await query.create_context(current.projects, "local", session_id=sid)
     actor = ActorSnapshot("u", "u", "d", "d", "remote", project_id=other.id, access_level="read")
     with actor_context(actor):
-        with pytest.raises(PermissionError):
-            await query.search(current.projects, token, query="天文摄影")
+        result=await query.search(current.projects,token,query="天文摄影")
+        assert not result["items"] and not result["knowledge"]
     with pytest.raises(PermissionError):
         await query.search(current.projects, "fake", query="天文摄影")
     monkeypatch.setattr(query.time, "monotonic", lambda: 10**15)
@@ -78,7 +78,7 @@ async def test_tokens_restrict_scope_projects_and_expire(runtime, tmp_path, monk
 async def test_read_coverage_requires_contiguous_pages_of_the_same_chunk_version(runtime):
     from services import memory_query as query, digital_person_memory_index as index
     current, project, sid = await seed(runtime, ['新的消息内容'*200])
-    token=await query.issue_access(current.projects,'local',session_id=sid)
+    token=await query.create_context(current.projects,'local',session_id=sid)
     with index.connect() as db:
         rows=[dict(r) for r in db.execute("SELECT * FROM memories WHERE project_id=? AND role='user' ORDER BY offset",(project.id,))]
     requirements=[{**r,'id':'memory:'+str(r['id']),'length':800} for r in rows[:1]]
@@ -102,7 +102,7 @@ def test_last_month_uses_calendar_timezone():
 async def test_history_pages_all_indexed_sources_and_reports_coverage(runtime):
     from services import memory_query as query
     current, project, sid = await seed(runtime, ["计划部署", "部署完成", "部署回归通过"])
-    token = await query.issue_access(current.projects, "local", session_id=sid)
+    token = await query.create_context(current.projects, "local", session_id=sid)
     rows, cursor, snapshot = [], 0, ""
     while True:
         page = await query.history(current.projects, token, since="2026-10-01T00:00:00Z", before="2026-11-01T00:00:00Z", limit=1, cursor=cursor, snapshot=snapshot)
@@ -120,7 +120,7 @@ async def test_api_requires_token_and_slow_index_does_not_block_health(runtime, 
     from services import memory_query as query
     from api import memory
     current, project, sid = await seed(runtime, ["天文摄影"])
-    token = await query.issue_access(current.projects, "local", session_id=sid)
+    token = await query.create_context(current.projects, "local", session_id=sid)
     monkeypatch.setattr(memory, "projects", lambda: current.projects)
     app = FastAPI(); app.include_router(memory.router)
     @app.get("/health")
@@ -135,8 +135,8 @@ async def test_api_requires_token_and_slow_index_does_not_block_health(runtime, 
         return original(*args, **kwargs)
     monkeypatch.setattr(memory_knowledge, "_candidates", slow)
     async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
-        assert (await client.post("/api/memory/search", json={"memory_token": "fake"})).status_code == 403
-        pending = asyncio.create_task(client.post("/api/memory/search", json={"memory_token": token, "query": "天文摄影"}))
+        assert (await client.post("/api/memory/search", json={"filter_project_id": "fake"})).status_code == 403
+        pending = asyncio.create_task(client.post("/api/memory/search", json={"query": "天文摄影"}))
         try:
             assert await asyncio.to_thread(entered.wait, 2)
             assert (await asyncio.wait_for(client.get("/health"), .3)).status_code == 200
@@ -149,7 +149,7 @@ async def test_api_requires_token_and_slow_index_does_not_block_health(runtime, 
 async def test_forgotten_chunk_cannot_be_recovered_through_other_chunk(runtime):
     from services import memory_query as query, digital_person_memory_index as index
     current, project, sid = await seed(runtime, ["天文摄影" * 600])
-    token = await query.issue_access(current.projects, "local", session_id=sid)
+    token = await query.create_context(current.projects, "local", session_id=sid)
     rows=await asyncio.to_thread(index.candidates,'local')
     assert len(rows)==2
     mid='memory:'+str(rows[0]['id'])
@@ -161,7 +161,7 @@ async def test_forgotten_chunk_cannot_be_recovered_through_other_chunk(runtime):
 async def test_disabling_memory_revokes_existing_token(runtime, monkeypatch):
     from services import memory_query as query, digital_person
     current, project, sid = await seed(runtime, ["天文摄影"])
-    token = await query.issue_access(current.projects, "local", session_id=sid)
+    token = await query.create_context(current.projects, "local", session_id=sid)
     monkeypatch.setattr(digital_person, "get_profile", lambda: digital_person.DigitalPersonProfile(enabled=False))
     with pytest.raises(PermissionError):
         await query.search(current.projects, token)
@@ -170,7 +170,7 @@ async def test_disabling_memory_revokes_existing_token(runtime, monkeypatch):
 async def test_snapshot_pagination_survives_source_deletion(runtime):
     from services import memory_query as query, digital_person_memory_index as index
     current, project, sid = await seed(runtime, ["分页第一个", "分页第二个", "分页第三个"])
-    token = await query.issue_access(current.projects, "local", session_id=sid)
+    token = await query.create_context(current.projects, "local", session_id=sid)
     first = await query.history(current.projects, token, limit=2, include_knowledge=False)
     await asyncio.to_thread(index.delete_source, project.id, first["items"][0]["source_message_id"])
     second = await query.history(current.projects, token, limit=2, cursor=first["next_cursor"], snapshot=first["snapshot"], include_knowledge=False)
@@ -192,7 +192,7 @@ async def test_history_reads_cold_unindexed_sources_across_projects(runtime, tmp
             ChatMessage.create(id=f"cold-{i:02}", session=other_sid, role="assistant", status="completed",
                                content=f"上月执行完成第{i}件工作", created_at=datetime(2026, 10, 3, tzinfo=timezone.utc))
     await current.projects.run_db(other.id, cold)
-    token = await query.issue_access(current.projects, "local", session_id=sid)
+    token = await query.create_context(current.projects, "local", session_id=sid)
     items, cursor, snapshot = [], 0, ""
     for _ in range(20):
         page = await query.history(current.projects, token, since="2026-10-01", before="2026-11-01", limit=3, cursor=cursor, snapshot=snapshot)
@@ -206,19 +206,19 @@ async def test_history_reads_cold_unindexed_sources_across_projects(runtime, tmp
     assert {row["project_id"] for row in items} == {project.id, other.id}
 
 
-async def test_bound_session_token_revoked_after_channel_binding(runtime):
+async def test_normal_query_does_not_infer_scope_from_channel_binding(runtime):
     from services import memory_query as query
-    current, project, sid = await seed(runtime, ["天文摄影私人记忆"])
-    token = await query.issue_access(current.projects, "local", session_id=sid, issuer_project_id=project.id)
-    runtime[2].set("channel_bots", {"sessions": {"private-peer": sid}})
-    with pytest.raises(PermissionError):
-        await query.search(current.projects, token)
+    current,project,sid=await seed(runtime,["天文摄影私人记忆"])
+    context=query.query_access(current.projects)
+    runtime[2].set('channel_bots',{'sessions':{'private-peer':sid}})
+    result=await query.search(current.projects,context)
+    assert any('天文摄影' in item['content'] for item in result['items'])
 
 
 async def test_history_preserves_long_sources_and_explicit_read_pages(runtime):
     from services import memory_query as query
     current, project, sid = await seed(runtime, ["部署计划" * 2000 + "最后实际失败"])
-    token = await query.issue_access(current.projects, "local", session_id=sid)
+    token = await query.create_context(current.projects, "local", session_id=sid)
     result = await query.history(current.projects, token)
     hit = next(item for item in result["items"] if item["role"]=="user")
     assert not hit["needs_read"] and hit["content"].endswith("最后实际失败")
@@ -226,19 +226,10 @@ async def test_history_preserves_long_sources_and_explicit_read_pages(runtime):
     assert tail["content"].endswith("最后实际失败")
 
 
-def test_memory_instruction_uses_canonical_cli_skill_for_transport():
+def test_memory_instruction_only_supplies_execution_credential():
     from services.memory_query import instruction
-    text = instruction("private-token")
-    assert 'workstep-cli skill' in text and 'references/memory.md' in text
-    assert len(text) < 600
-    assert 'only when' in text
-    assert 'current user instructions take precedence' in text
-    assert 'Never claim' in text
-    assert 'private' in text
-    assert 'workstep memory search --json' not in text
-    assert 'WORKSTEP_CLI_PYTHON' not in text
-    assert 'memory_token=private-token' in text
-    assert 'workstep_call' not in text and 'workstep_memory_' not in text
+    text = instruction()
+    assert text == ''
 
 
 async def test_channel_history_does_not_scan_private_sources_or_leak_counts(runtime):
@@ -252,7 +243,7 @@ async def test_channel_history_does_not_scan_private_sources_or_leak_counts(runt
         return sid
     sid = await current.projects.run_db(project.id, make_channel)
     runtime[2].set("channel_bots", {"sessions": {"peer": sid}})
-    token = await query.issue_access(current.projects, "channel:peer", session_id=sid, issuer_project_id=project.id)
+    token = await query.create_context(current.projects, "channel:peer", session_id=sid, issuer_project_id=project.id)
     page = await query.history(current.projects, token, limit=3)
     assert [item["content"] for item in page["items"]] == ["渠道可见消息","已收到。"]
     assert not page["has_more"]
@@ -272,7 +263,7 @@ async def test_task_history_does_not_scan_other_private_tasks(runtime):
         for i in range(20):
             Message.create(id=f"private-source-{i}", task="private-task", step_key="test", role="assistant", content="私人任务结果", run_status="succeeded", position=i, created_at=now)
     await current.projects.run_db(project.id, make_tasks)
-    token = await query.issue_access(current.projects, "task:public-task", session_id="public-task", issuer_kind="task", issuer_project_id=project.id)
+    token = await query.create_context(current.projects, "task:public-task", session_id="public-task", issuer_kind="task", issuer_project_id=project.id)
     page = await query.history(current.projects, token, limit=2)
     assert len(page["items"]) == 1 and page["items"][0]["task_id"] == "public-task"
     assert not page["has_more"]

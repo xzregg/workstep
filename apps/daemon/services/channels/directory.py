@@ -1,7 +1,11 @@
-"""Optional channel directories. Snapshots live only in this process."""
+"""Optional channel directories with private, persistent JSON snapshots."""
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
+import os
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from functools import partial
@@ -39,11 +43,56 @@ class ChannelDirectoryService:
         self._identities = {}
         self._tasks = {}
         self._retired = set()
+        self._cleanups = {}
+        from services.config import CONFIG_DIR
+        self._cache_dir = CONFIG_DIR / 'channels' / 'directories'
         self._limit = asyncio.Semaphore(2)
         self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix='channel-directory')
 
     async def work(self, operation, *args):
-        return await asyncio.get_running_loop().run_in_executor(self._pool, partial(operation, *args))
+        future = asyncio.get_running_loop().run_in_executor(self._pool, partial(operation, *args))
+        try:
+            return await asyncio.shield(future)
+        except asyncio.CancelledError:
+            # Finish filesystem work before invalidation/deletion can overtake it.
+            await future
+            raise
+
+    def _cache_path(self, bot_id):
+        return self._cache_dir / (hashlib.sha256(bot_id.encode()).hexdigest() + '.json')
+
+    def _fingerprint(self, bot):
+        return hashlib.sha256(json.dumps(self._identity(bot)).encode()).hexdigest()
+
+    def _read_cache(self, bot):
+        try:
+            value = json.loads(self._cache_path(bot['id']).read_text('utf-8'))
+            if value['version'] != 1 or value['identity'] != self._fingerprint(bot):
+                return None
+            if not isinstance(value['updated_at'], str) or not isinstance(value['contacts'], list):
+                return None
+            for row in value['contacts']:
+                if (not isinstance(row, dict)
+                        or not all(isinstance(row.get(key), str) for key in ('contact_id', 'name', 'user_id'))
+                        or not isinstance(row.get('departments'), list)
+                        or not all(isinstance(name, str) for name in row['departments'])):
+                    return None
+            return _index(value['contacts']), value['updated_at']
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def _write_cache(self, bot, snapshot, updated_at):
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(dir=self._cache_dir, prefix='.directory-')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+                json.dump({'version': 1, 'identity': self._fingerprint(bot),
+                           'updated_at': updated_at, 'contacts': list(snapshot[0].values())},
+                          stream, ensure_ascii=False)
+            os.replace(temporary, self._cache_path(bot['id']))
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
 
     @staticmethod
     def _identity(bot):
@@ -51,11 +100,12 @@ class ChannelDirectoryService:
 
     def configure(self, bot):
         identity = self._identity(bot)
-        if self._identities.get(bot['id']) != identity or not (bot.get('enabled') and bot.get('directory_enabled')):
+        if (bot['id'] in self._identities and self._identities[bot['id']] != identity
+                or not (bot.get('enabled') and bot.get('directory_enabled'))):
             self.remove(bot['id'])
         self._identities[bot['id']] = identity
         if bot.get('enabled') and bot.get('directory_enabled') and bot['id'] not in self._snapshots:
-            self.refresh(bot)
+            self.refresh(bot, use_cache=True)
 
     def remove(self, bot_id):
         task = self._tasks.pop(bot_id, None)
@@ -67,6 +117,14 @@ class ChannelDirectoryService:
         self._observed_senders.pop(bot_id, None)
         self._states.pop(bot_id, None)
         self._identities.pop(bot_id, None)
+        previous = self._cleanups.get(bot_id)
+        async def cleanup():
+            await asyncio.gather(*(item for item in (task, previous) if item), return_exceptions=True)
+            await self.work(partial(self._cache_path(bot_id).unlink, missing_ok=True))
+        cleanup_task = asyncio.create_task(cleanup())
+        self._cleanups[bot_id] = cleanup_task
+        self._retired.add(cleanup_task)
+        cleanup_task.add_done_callback(self._retired.discard)
 
     def observe_sender(self, bot_id, sender_id):
         # Only exact IDs received on this bot are usable; names are never evidence.
@@ -87,7 +145,7 @@ class ChannelDirectoryService:
         return {'status': 'idle', 'count': len(self._snapshots.get(bot_id, ({}, {}))[0]),
                 'updated_at': None, 'error': '', **self._states.get(bot_id, {})}
 
-    def refresh(self, bot):
+    def refresh(self, bot, *, use_cache=False):
         self._check(bot)
         task = self._tasks.get(bot['id'])
         if task and not task.done():
@@ -97,19 +155,28 @@ class ChannelDirectoryService:
             raise DirectoryError('directory_unsupported', '该渠道不支持通讯录')
         self._identities[bot['id']] = self._identity(bot)
         self._states[bot['id']] = {**self.status(bot['id']), 'status': 'loading', 'error': ''}
-        self._tasks[bot['id']] = asyncio.create_task(self._refresh(dict(bot), fetch))
+        self._tasks[bot['id']] = asyncio.create_task(self._refresh(dict(bot), fetch, use_cache))
         return self.status(bot['id'])
 
-    async def _refresh(self, bot, fetch):
+    async def _refresh(self, bot, fetch, use_cache):
         try:
+            cleanup = self._cleanups.get(bot['id'])
+            if cleanup:
+                await asyncio.shield(cleanup)
             async with self._limit, asyncio.timeout(120):
-                rows = await fetch()
-                snapshot = await self.work(_index, rows)
+                cached = await self.work(self._read_cache, bot) if use_cache else None
+                if cached is not None:
+                    snapshot, updated_at = cached
+                else:
+                    rows = await fetch()
+                    snapshot = await self.work(_index, rows)
+                    updated_at = datetime.now(timezone.utc).isoformat()
+                    await self.work(self._write_cache, bot, snapshot, updated_at)
             if self._tasks.get(bot['id']) is not asyncio.current_task():
                 return
             self._snapshots[bot['id']] = snapshot
             self._states[bot['id']] = {'status':'ready', 'count':len(snapshot[0]),
-                'updated_at':datetime.now(timezone.utc).isoformat(), 'error':''}
+                'updated_at':updated_at, 'error':''}
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -154,13 +221,14 @@ class ChannelDirectoryService:
         return recipient['user_id']
 
     async def close(self):
-        tasks = set(self._tasks.values()) | self._retired
+        tasks = set(self._tasks.values())
         for task in tasks:
             task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(*tasks, *self._retired, return_exceptions=True)
         self._tasks.clear()
         self._snapshots.clear()
         self._observed_senders.clear()
         self._states.clear()
         self._identities.clear()
+        self._cleanups.clear()
         await asyncio.to_thread(self._pool.shutdown, wait=True, cancel_futures=True)

@@ -47,7 +47,8 @@ test('home resolves and loads the persisted main chat once using the shared chat
  let mainCalls=0,historyCalls=0
  digitalPersonApi.get=async()=>profile
  digitalPersonApi.mainSession=async()=>{mainCalls++;return {id:'main',project_id:'home'} as any}
- digitalRuntimeApi.activity=async()=>({delegations:[],answers:[],runs:[],suggestions:[],feedback:{}}) as any
+ digitalRuntimeApi.activity=async()=>({delegations:[],answers:[],runs:[],suggestions:[{id:'frequent-0',label:'自动推荐不应显示',prompt:'今天几号?',count:3}],feedback:{}}) as any
+ chatSessionApi.quickButtons=async()=>({buttons:[{id:'manual',label:'手动快捷按钮',prompt:'请检查项目',enabled:true}]})
  chatSessionApi.get=async()=>{historyCalls++;return {id:'main',project_id:'home',title:'小研',messages:[],engine:'codex_sdk',running:false} as any}
  assistantApi.list=async()=>({assistants:[{name:'digital_person',configured:{engine:'codex_sdk'},resolved:{engine:'codex_sdk'},fields:[],available_engines:[]}]}) as any
  providerApi.list=async()=>({providers:[]})
@@ -58,6 +59,13 @@ test('home resolves and loads the persisted main chat once using the shared chat
   await act(async()=>root.render(<MemoryRouter initialEntries={['/companion']}><I18nProvider><DigitalPersonHomePage/></I18nProvider></MemoryRouter>))
   assert.equal(mainCalls,1);assert.equal(historyCalls,1)
   assert.ok(host.querySelector('.digital-home'))
+  await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-transcript-button')!.click())
+  assert.ok(!host.textContent!.includes('自动推荐不应显示'))
+  const shortcut = [...host.querySelectorAll('button')].find(button=>button.textContent==='手动快捷按钮')
+  assert.ok(shortcut)
+  assert.equal(host.querySelector('textarea')!.value,'')
+  await act(async()=>shortcut.click())
+  assert.equal(host.querySelector('textarea')!.value,'请检查项目')
   await act(async()=>window.dispatchEvent(new window.Event('workstep:digital-person-changed')))
   assert.equal(mainCalls,1);assert.equal(historyCalls,1)
  }finally{await act(async()=>root.unmount());await window.happyDOM.close();Object.assign(digitalPersonApi,oldPerson);Object.assign(digitalRuntimeApi,oldRuntime);Object.assign(chatSessionApi,oldChat);assistantApi.list=oldAssistant;providerApi.list=oldProviders;speechOutputApi.status=oldOutput;globalThis.fetch=oldFetch}

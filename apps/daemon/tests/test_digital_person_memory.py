@@ -81,7 +81,7 @@ async def test_completed_chat_is_not_automatically_injected_into_another_session
         await current.chats.await_turn(turn.turn_id, timeout=5)
     assert '天文摄影' not in calls[1]
     assert 'Relevant memories' not in calls[1]
-    assert 'memory search' in calls[1]
+    assert 'memory_token=' not in calls[1]
 
 
 async def test_companion_budget_reduces_unanswered_contacts_and_recovers_on_user_reply(runtime):
@@ -377,11 +377,11 @@ async def test_channel_engine_uses_only_its_own_memory_tools(runtime, monkeypatc
     assert '天文摄影' not in prompts[1]
     assert '天文摄影' not in prompts[2]
     from services import memory_query
-    alice_token=prompts[1].split('Pass memory_token=',1)[1].split(' ',1)[0]
-    bob_token=prompts[2].split('Pass memory_token=',1)[1].split(' ',1)[0]
+    alice_token=await memory_query.execution_access(current.projects,project.id,a)
+    bob_token=await memory_query.execution_access(current.projects,project.id,b)
     own=await memory_query.search(current.projects,alice_token,query='天文摄影')
     assert own['items']==[] and own['knowledge']==[]  # Unprocessed sources are not knowledge hits.
     bob_hits=(await memory_query.search(current.projects,bob_token,query='天文摄影'))['items']
     assert all(hit['session_id']==b and '天文摄影' not in hit['content'] for hit in bob_hits)
     with pytest.raises(LookupError):
-        await memory_query.read(current.projects,bob_token,own['items'][0]['id'])
+        await memory_query.read(current.projects,bob_token,(await memory_query.search(current.projects,alice_token))['items'][0]['id'])

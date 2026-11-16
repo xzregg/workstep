@@ -14,6 +14,7 @@ import GitCodeEditor, { type GitCodeEditorHandle } from './GitCodeEditor'
 import MarqueeText from '../MarqueeText'
 import { usePanelGitWrites } from './gitPanelWrites'
 import GitDiffFileTree from './GitDiffFileTree'
+import GitDiffHunks, {GitDiffCodeCell} from './GitDiffHunks'
 
 export default function GitDiffDialog({ id, files, path, comparison, onSelect, onSaved, onClose, recordedDiff, recordedDiffLoader, projectRoot }: { projectRoot?: string; recordedDiff?: GitDiff; recordedDiffLoader?: (path: string) => Promise<GitDiff>; id: string; files: string[]; path: string; comparison: Comparison; onSelect: (path: string) => void; onSaved?: () => Promise<void>; onClose: () => void }) {
   const recorded = Boolean(recordedDiff || recordedDiffLoader)
@@ -208,7 +209,7 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
     const blameColumn = showBlame ? <span className="git-blame" title={author ? `${author.author} · ${new Date(author.time * 1000).toLocaleString()}\n${author.hash.slice(0, 8)} ${author.message}` : uncommitted ? t('git.newLine') : ''}><span className="git-blame-date">{author ? new Date(author.time * 1000).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : ''}</span><MarqueeText className={`git-blame-author${author ? ' is-clickable' : ''}`} speed={36} text={author?.author || (uncommitted ? t('git.newLine') : '')} role={author ? 'button' : undefined} tabIndex={author ? 0 : undefined} onClick={event => { if (author) showCommit(event.currentTarget, author) }} onKeyDown={event => { if (author && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); showCommit(event.currentTarget, author) } }} /></span> : null
     const lineNumber = <span className="git-line-number">{line?.number}</span>
     const source = <code>{line?.text ?? ' '}</code>
-    return <div className={`git-code-cell ${line?.changed ? side === 'before' ? 'removed' : 'added' : ''}`} onContextMenu={event => {
+    return <GitDiffCodeCell line={line} side={side} onContextMenu={event => {
       if (recorded || window.matchMedia('(max-width: 1023px)').matches) return
       event.preventDefault()
       const width = 188
@@ -216,7 +217,7 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
       setContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)) })
     }}>
       {split ? side === 'before' ? <>{source}{action}{blameColumn}{lineNumber}</> : <>{lineNumber}{blameColumn}{source}</> : <>{blameColumn}{lineNumber}{source}</>}
-    </div>
+    </GitDiffCodeCell>
   }
   function splitHunk(hunk: DiffHunk, hunkIndex: number) {
     const blocks = new Map(changedBlocks(hunk).map(block => [block.start, block]))
@@ -239,7 +240,7 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
     <div className="git-diff-labels" style={{ gridTemplateColumns: `${leftWidth}% minmax(0, 1fr)` }}><span>{t('git.before')} · {recorded ? t('git.diff') : data?.base?.slice(0, 8) || '∅'} · {t('git.readonly')}</span><span>{t('git.after')} · {data?.target?.slice(0, 8) || t('git.changes')}{editing ? ` · ${t('git.editable')}` : ''}</span></div>
     {error && <div className="git-error" role="alert">{error}<Button size="sm" onClick={() => setRetry(n => n + 1)}>{t('git.retry')}</Button></div>}
     <div className="git-diff-content" ref={content}>
-      {editing && data ? <div className="git-file-editor" style={{ gridTemplateColumns: `${leftWidth}% minmax(0, 1fr)` }}><GitCodeEditor ref={beforeEditor} filename={data.old_path} value={data.before} targetLine={editLines.before} gutter="right" ariaLabel={t('git.before')} onVerticalScroll={syncFromBefore} /><GitCodeEditor ref={afterEditor} filename={data.path} value={draft} targetLine={editLines.after} editable gutter="left" ariaLabel={t('git.editable')} onChange={setDraft} onSave={() => void save()} onVerticalScroll={syncFromAfter} /></div> : <div className="git-diff-scroll">{loading ? <div className="git-empty"><Icon name="loader-circle" className="git-spin" size={24} />{t('git.loading')}</div> : data?.binary || data?.truncated || data?.submodule ? <p className="git-empty">{t('git.noPreview')}</p> : viewHunks.length ? viewHunks.map((h, i) => <section key={i} id={`git-hunk-${i}`} data-hunk-index={i}>{h.header && <h4>{h.header}</h4>}{split ? splitHunk(h, i) : h.rows.map((row, n) => <div key={n}>{row.before?.changed && cell(row.before, 'before')}{row.after && cell(row.after, 'after', row.before?.number)}</div>)}</section>) : !error && <p className="git-empty">{t('git.noDiff')}</p>}</div>}
+      {editing && data ? <div className="git-file-editor" style={{ gridTemplateColumns: `${leftWidth}% minmax(0, 1fr)` }}><GitCodeEditor ref={beforeEditor} filename={data.old_path} value={data.before} targetLine={editLines.before} gutter="right" ariaLabel={t('git.before')} onVerticalScroll={syncFromBefore} /><GitCodeEditor ref={afterEditor} filename={data.path} value={draft} targetLine={editLines.after} editable gutter="left" ariaLabel={t('git.editable')} onChange={setDraft} onSave={() => void save()} onVerticalScroll={syncFromAfter} /></div> : <div className="git-diff-scroll">{loading ? <div className="git-empty"><Icon name="loader-circle" className="git-spin" size={24} />{t('git.loading')}</div> : data?.binary || data?.truncated || data?.submodule ? <p className="git-empty">{t('git.noPreview')}</p> : viewHunks.length ? <GitDiffHunks hunks={viewHunks} split={split} renderCell={cell} renderSplitHunk={splitHunk}/> : !error && <p className="git-empty">{t('git.noDiff')}</p>}</div>}
       {split && <div className="git-diff-divider" role="separator" aria-label={t('git.resizeSplit')} aria-orientation="vertical" aria-valuemin={20} aria-valuemax={80} aria-valuenow={leftWidth} tabIndex={0} style={{ left: `${leftWidth}%` }}
         onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); dragging.current = true; e.currentTarget.setPointerCapture(e.pointerId) }}
         onPointerMove={e => { if (!dragging.current || !content.current) return; const rect = content.current.getBoundingClientRect(); if (rect.width) setLeftWidth(Math.round(Math.max(20, Math.min(80, (e.clientX - rect.left) / rect.width * 100)))) }}

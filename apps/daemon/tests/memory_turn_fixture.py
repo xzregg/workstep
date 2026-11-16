@@ -20,3 +20,11 @@ def create_completed_reply(**values):
     from services.digital_person_memory import capture_message,scope_for_session
     capture_message(reply,scope_for_session(reply.session_id))
     return reply
+
+
+async def assessment_access(current):
+    from services.conversation_context import current_conversation
+    from services.memory_query import execution_access
+    context=current_conversation()
+    assert context.get('ok') is not False,context
+    return await execution_access(current.projects,context['project_id'],context['session_id'])

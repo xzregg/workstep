@@ -40,7 +40,7 @@ test('identity, personality and tone allow multiple presets and free text, then 
   assert.equal(profile.personality,'自定义性格、严谨、耐心')
   assert.equal(profile.tone,'自定义语气')
   assert.equal(profile.role_binding,null)
-  await click('编辑档案')
+  // Saving keeps the identity editor open; it no longer returns to the profile card.
   assert.equal(el.querySelector<HTMLInputElement>('[name="tone"]')!.value,'自定义语气')
  }finally{await act(async()=>root.unmount());digitalPersonApi.get=oldGet;digitalPersonApi.save=oldSave;digitalRuntimeApi.activity=oldActivity;await window.happyDOM.close()}
 })

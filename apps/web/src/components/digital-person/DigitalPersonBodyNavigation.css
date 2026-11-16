@@ -1,52 +1,49 @@
-.digital-person-body-navigation { min-width: 0; padding: 24px 20px 16px; border-right: .5px solid var(--border-soft); }
-.digital-person-body-profile h2 { margin: 0; font-size: 20px; font-weight: 600; }
-.digital-person-body-profile p { margin: 6px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
-.digital-person-body-map { position: relative; width: 100%; aspect-ratio: 1; margin: 32px 0; isolation: isolate; }
-.digital-person-body-orbit { position: absolute; inset: 15% 3%; border: .5px solid var(--border-soft); border-radius: 50%; z-index: -1; }
-.digital-person-body-image { position: absolute; left: 12%; top: 12%; width: 76%; height: 76%; object-fit: contain; pointer-events: none; user-select: none; }
-.digital-person-body-leaders { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.digital-person-body-leaders polyline { fill: none; stroke: var(--accent); stroke-width: .8px; vector-effect: non-scaling-stroke; opacity: .65; }
-.digital-person-body-point { position: absolute; display: grid; place-items: center; width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; transform: translate(-50%,-50%); border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
-.digital-person-body-point span { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-.digital-person-body-label { position: absolute; transform: translateY(-50%); min-height: 32px; padding: 4px 0; border: 0; background: transparent; color: var(--fg); font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; }
-.digital-person-body-label:hover { text-decoration: underline; text-underline-offset: 4px; }
-.digital-person-body-point:focus-visible, .digital-person-body-label:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.digital-person-body-target[data-part=brain] .digital-person-body-point { left: 45.7%; top: 24.5%; }
-.digital-person-body-target[data-part=eyes] .digital-person-body-point { left: 56.5%; top: 39.3%; }
-.digital-person-body-target[data-part=ears] .digital-person-body-point { left: 30.4%; top: 39.3%; }
-.digital-person-body-target[data-part=mouth] .digital-person-body-point { left: 50.4%; top: 49.2%; }
-.digital-person-body-target[data-part=heart] .digital-person-body-point { left: 49.4%; top: 58.9%; }
-.digital-person-body-target[data-part=hands] .digital-person-body-point { left: 65.4%; top: 54.8%; }
-.digital-person-body-target[data-part=brain] .digital-person-body-label { left: 0; top: 20%; }
-.digital-person-body-target[data-part=eyes] .digital-person-body-label { right: 0; top: 35%; }
-.digital-person-body-target[data-part=ears] .digital-person-body-label { left: 0; top: 39%; }
-.digital-person-body-target[data-part=mouth] .digital-person-body-label { right: 0; top: 48%; }
-.digital-person-body-target[data-part=heart] .digital-person-body-label { left: 0; top: 64%; }
-.digital-person-body-target[data-part=hands] .digital-person-body-label { right: 0; top: 66%; }
-.digital-person-body-navigation button:disabled { cursor: default; opacity: .5; }
+.digital-person-body-navigation { display:flex; flex-direction:column; min-width:0; padding:0 20px 24px 0; border-right:.5px solid var(--border-soft); }
+.digital-person-body-map { position:relative; flex-shrink:0; width:100%; max-width:320px; aspect-ratio:1; margin:0 auto; isolation:isolate; }
+.digital-person-body-image { position:absolute; left:12%; top:12%; width:76%; height:76%; object-fit:contain; pointer-events:none; user-select:none; }
+.digital-person-body-leaders { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+.digital-person-body-leaders polyline { fill:none; stroke:var(--accent); stroke-width:.8px; vector-effect:non-scaling-stroke; opacity:.65; }
+.digital-person-body-point { position:absolute; display:grid; place-items:center; width:36px; height:36px; min-width:0; min-height:0; padding:0; transform:translate(-50%,-50%); border:0; border-radius:50%; background:transparent; cursor:pointer; }
+.digital-person-body-point span { width:5px; height:5px; border-radius:50%; background:var(--accent); }
+.digital-person-body-label { position:absolute; transform:translateY(-50%); min-height:32px; padding:4px 0; border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:var(--fg); font-size:var(--text-title-3); font-weight:600; white-space:nowrap; cursor:pointer; }
+.digital-person-body-navigation .digital-person-body-label:hover { background:transparent; color:var(--accent); }
+.digital-person-body-navigation .digital-person-body-label[aria-pressed=true] { color:var(--accent); border-bottom-color:var(--accent); background:transparent; }
+.digital-person-body-point:focus-visible,.digital-person-body-label:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.digital-person-body-point:hover { background:transparent; }.digital-person-body-navigation button:disabled { cursor:default; opacity:.5; }
+.digital-person-body-target[data-part=brain] .digital-person-body-point { left:45.7%; top:24.5%; }
+.digital-person-body-target[data-part=memory] .digital-person-body-point { left:59%; top:27%; }
+.digital-person-body-target[data-part=eyes] .digital-person-body-point { left:56.5%; top:39.3%; }
+.digital-person-body-target[data-part=ears] .digital-person-body-point { left:30.4%; top:39.3%; }
+.digital-person-body-target[data-part=mouth] .digital-person-body-point { left:50.4%; top:49.2%; }
+.digital-person-body-target[data-part=heart] .digital-person-body-point { left:49.4%; top:58.9%; }
+.digital-person-body-target[data-part=hands] .digital-person-body-point { left:65.4%; top:54.8%; }
+.digital-person-body-target[data-part=feet] .digital-person-body-point { left:55.6%; top:79.6%; }
+.digital-person-body-target[data-part=brain] .digital-person-body-label { left:0; top:15%; }
+.digital-person-body-target[data-part=memory] .digital-person-body-label { right:0; top:15%; }
+.digital-person-body-target[data-part=ears] .digital-person-body-label { left:0; top:36%; }
+.digital-person-body-target[data-part=eyes] .digital-person-body-label { right:0; top:36%; }
+.digital-person-body-target[data-part=heart] .digital-person-body-label { left:0; top:58%; }
+.digital-person-body-target[data-part=mouth] .digital-person-body-label { right:0; top:58%; }
+.digital-person-body-target[data-part=feet] .digital-person-body-label { left:0; top:80%; }
+.digital-person-body-target[data-part=hands] .digital-person-body-label { right:0; top:80%; }
 @media(max-width:1023px) {
-  .digital-person-body-navigation { border-right: 0; border-bottom: .5px solid var(--border-soft); padding: 16px 12px 12px; }
-  .digital-person-body-map { max-width: 330px; margin: 12px auto; }
-  .digital-person-body-label { min-height: var(--mobile-control-regular); }
+ .digital-person-body-navigation { padding:0 0 16px; border-right:0; border-bottom:.5px solid var(--border-soft); }
+ .digital-person-body-map { max-width:280px; margin:8px auto 12px; }
+ .digital-person-body-label { min-height:var(--mobile-control-regular); }
+ .digital-person-body-label::after { content:''; position:absolute; inset:-6px -8px; }
+ .digital-person-body-point { width:44px; height:44px; }
 }
-.digital-person-body-navigation .digital-person-body-point:hover,
-.digital-person-body-navigation .digital-person-body-label:hover { background: transparent; color: var(--fg); }
-
-.digital-person-body-target[data-part=feet] .digital-person-body-point { left: 55.6%; top: 79.6%; }
-.digital-person-body-target[data-part=feet] .digital-person-body-label { right: 0; top: 88%; }
-
-@media (min-width: 1024px) {
-  .digital-person-body-map { margin-bottom: var(--space-4); }
-  .digital-person-body-relationship { padding-top: var(--space-4); border-top: .5px solid var(--border-soft); }
-  .digital-person-body-relationship .digital-person-relationship > label { flex-wrap: wrap; }
-  .digital-person-body-relationship .digital-person-relationship select { min-width: 0; max-width: 100%; flex: 1; }
-  .digital-person-body-relationship .digital-affect-summary { gap: var(--space-2); }
-  .digital-person-body-relationship .digital-affect-recent { flex-wrap: wrap; }
-  .digital-person-body-label { padding-inline: var(--space-2); border-radius: var(--radius-xs); }
-  .digital-person-body-navigation .digital-person-body-label[aria-pressed=true],
-  .digital-person-body-navigation .digital-person-body-label[aria-pressed=true]:hover {
-    background: color-mix(in srgb, var(--accent) 9%, var(--bg));
-    color: var(--accent);
-    text-decoration: none;
-  }
+.digital-person-body-leaders--mobile { display:none; }
+@media(max-width:1023px) {
+ .digital-person-body-map { aspect-ratio:1.25; min-height:216px; margin-top:0; }
+ .digital-person-body-leaders--desktop { display:none; }
+ .digital-person-body-leaders--mobile { display:block; }
+ .digital-person-body-target[data-part=brain] .digital-person-body-point { left:46.56%; }
+ .digital-person-body-target[data-part=memory] .digital-person-body-point { left:57.2%; }
+ .digital-person-body-target[data-part=ears] .digital-person-body-point { left:34.32%; }
+ .digital-person-body-target[data-part=eyes] .digital-person-body-point { left:55.2%; }
+ .digital-person-body-target[data-part=heart] .digital-person-body-point { left:49.52%; }
+ .digital-person-body-target[data-part=mouth] .digital-person-body-point { left:50.32%; }
+ .digital-person-body-target[data-part=feet] .digital-person-body-point { left:54.48%; }
+ .digital-person-body-target[data-part=hands] .digital-person-body-point { left:62.32%; }
 }

@@ -24,13 +24,16 @@ export function useSpeechEnabled(projectId: string, allowed: boolean) {
       loading = false
     }
     const changed = () => { void refresh() }
+    const visible = () => { if (document.visibilityState !== 'hidden') changed() }
     changed()
     window.addEventListener('workstep:speech-settings-changed', changed)
-    window.addEventListener('focus', changed)
+    window.addEventListener('workstep:reconnected', visible)
+    document.addEventListener('visibilitychange', visible)
     return () => {
       disposed = true
       window.removeEventListener('workstep:speech-settings-changed', changed)
-      window.removeEventListener('focus', changed)
+      window.removeEventListener('workstep:reconnected', visible)
+      document.removeEventListener('visibilitychange', visible)
     }
   }, [projectId, allowed])
   return allowed && state.projectId === projectId && state.enabled

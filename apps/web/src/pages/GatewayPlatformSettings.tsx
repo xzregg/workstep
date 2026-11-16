@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import { gatewayFetch } from '../utils/gatewayWorkspacePath'
 import { useEffect, useState, useRef } from 'react'
@@ -95,7 +96,7 @@ export default function GatewayPlatformSettings() {
   }
  }
  return <section className="gateway-platform-settings">
-  <h1>{t('gatewayPlatform.title')}</h1><p>{t(remoteReadOnly ? 'gatewayPlatform.remoteReadOnlyHint' : 'gatewayPlatform.intro')}</p>
+  <h1>{t('gatewayPlatform.title')}<SettingsHelpButton section="remote" /></h1><p>{t(remoteReadOnly ? 'gatewayPlatform.remoteReadOnlyHint' : 'gatewayPlatform.intro')}</p>
   {!state && !error && <p role="status"><Icon className="gateway-platform-spinner" name="loader-circle" size={16} /> {t('gatewayPlatform.loading')}</p>}
   {error && <p role="alert">{error} <button type="button" disabled={busy} onClick={() => {
    if (failure) { if (failure.error.code === 'gateway_key_changed') setFailureOpen(true); else void connect() }

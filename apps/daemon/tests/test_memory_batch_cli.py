@@ -1,3 +1,4 @@
+from tests.memory_turn_fixture import assessment_access
 from tests.memory_turn_fixture import create_completed_user
 import asyncio
 import json
@@ -31,7 +32,7 @@ async def test_cli_lazily_reads_100_across_ten_conversations_once(runtime,monkey
     async def invoke(*args,**kwargs):
         from services import memory_query
         assert reads==[], 'source bodies must not be read before CLI pending'
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+        token=await assessment_access(current)
         first,again=await asyncio.gather(memory_query.pending(current.projects,token),memory_query.pending(current.projects,token))
         assert first==again
         assert len(first['conversations'])==10
@@ -60,15 +61,84 @@ async def test_failed_cli_assessment_releases_all_claimed_messages(runtime,monke
         row=create_completed_user(id='retry',session=sid,role='user',status='completed',content='待整理',created_at=utc_now())
         memory.capture_message(row,'local')
     await current.projects.run_db(project.id,seed)
+    attempts=[]
     async def invoke(*args,**kwargs):
         from services import memory_query
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
-        await memory_query.pending(current.projects,token)
-        return 'INVALID_RESULT',[],'native'
+        token=await assessment_access(current)
+        payload=await memory_query.pending(current.projects,token)
+        attempts.append((token,payload))
+        return ('INVALID_RESULT' if len(attempts)<=2 else '{"decision":"silent","summary":"重试完成","source_ids":[]}'),[],'native'
     monkeypatch.setattr('agent_assistants.base.invoke_engine',invoke)
     assert (await current.check())['status']=='failed'
     with index.connect() as db:
         assert db.execute('SELECT memory_status,pending_ready_at FROM memories').fetchone()[:]==('pending',0)
+    assert (await current.check())['status']=='silent'
+    assert len(attempts)==3
+    assert attempts[0][0] is attempts[1][0]
+    assert attempts[2][0] is not attempts[0][0]
+    assert attempts[0][1]['conversation']==attempts[2][1]['conversation']
+    with index.connect() as db:
+        assert all(r[0]=='done' for r in db.execute('SELECT memory_status FROM memories'))
+
+
+async def test_manual_run_during_automatic_run_keeps_active_batch(runtime,monkeypatch):
+    import pytest
+    from services import memory_query
+    current,project,_=runtime
+    sid=(await current.main_session())['id']
+    await current.projects.run_db(project.id,lambda _:create_completed_user(id='single-run',session=sid,
+        role='user',content='单例检查',created_at=utc_now()))
+    entered=asyncio.Event();finish=asyncio.Event();calls=[]
+    async def invoke(*args,**kwargs):
+        context=await assessment_access(current)
+        payload=await memory_query.pending(current.projects,context)
+        calls.append((context,payload))
+        entered.set()
+        await finish.wait()
+        return '{"decision":"silent","summary":"完成","source_ids":[]}',[],'native'
+    monkeypatch.setattr('agent_assistants.base.invoke_engine',invoke)
+    active=asyncio.create_task(current.check(manual=False))
+    try:
+        await asyncio.wait_for(entered.wait(),3)
+        with pytest.raises(ValueError,match='已有检查正在进行'):
+            await current.check(manual=True)
+        assert len(calls)==1
+        assert memory_query.assessment_observed(calls[0][0])
+    finally:
+        finish.set()
+        result=await asyncio.wait_for(active,5)
+    assert result['status']=='silent',result
+    assert not current._check_lock.locked()
+
+
+async def test_pending_excludes_current_and_old_thinking_sessions_even_if_indexed(runtime,monkeypatch):
+    from services import memory_query
+    from tests.test_digital_person_unified import seed
+    current,project,_=runtime
+    normal=await seed(current,project)
+    checks=await current.projects.run_db(project.id,lambda _:[current.chats.create_session(project.id)['id'] for _ in range(2)])
+    await current.mutate(lambda s:s.update(check_sessions=checks,check_session_id=checks[0]))
+    def indexed_outputs(_):
+        for number,sid in enumerate(checks):
+            reply=ChatMessage.create(id='thinking-output-'+str(number),session=sid,role='assistant',
+                status='completed',content='THINKING_OUTPUT_MUST_NOT_BE_REPROCESSED',created_at=utc_now())
+            memory.capture_message(reply,'local')
+    await current.projects.run_db(project.id,indexed_outputs)
+    calls=[]
+    async def invoke(*args,**kwargs):
+        context=await assessment_access(current)
+        payload=await memory_query.pending(current.projects,context)
+        assert 'THINKING_OUTPUT_MUST_NOT_BE_REPROCESSED' not in json.dumps(payload)
+        assert kwargs['system_prompt'].count('memory pending')==1
+        calls.append(payload)
+        return '{"decision":"silent","summary":"已整理真实消息","source_ids":[]}',[],'native'
+    monkeypatch.setattr('agent_assistants.base.invoke_engine',invoke)
+    first=await current.check()
+    assert first['status']=='silent',first
+    assert {row['session_id'] for row in first['sources']['reflection_batch']}=={normal}
+    again=await current.check()
+    assert again['sources']['no_work']
+    assert len(calls)==1
 
 
 async def test_running_source_is_consolidated_without_work_reminder(runtime,monkeypatch):
@@ -83,7 +153,7 @@ async def test_running_source_is_consolidated_without_work_reminder(runtime,monk
     await current.projects.run_db(project.id,seed)
     async def invoke(*args,**kwargs):
         from services import memory_query
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+        token=await assessment_access(current)
         await memory_query.pending(current.projects,token)
         return json.dumps({'decision':'notify','kind':'work','summary':'请确认','source_ids':['finished']}),[],'native'
     async def forbidden(*args,**kwargs):raise AssertionError('running work must not be reminded')
@@ -109,7 +179,7 @@ async def test_lazy_source_read_does_not_block_event_loop(runtime,monkeypatch):
     monkeypatch.setattr(memory,'_hydrate',slow)
     async def invoke(*args,**kwargs):
         from services import memory_query
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+        token=await assessment_access(current)
         await memory_query.pending(current.projects,token)
         return json.dumps({'decision':'silent','summary':'完成','source_ids':[]}),[],'native'
     monkeypatch.setattr('agent_assistants.base.invoke_engine',invoke)

@@ -534,7 +534,7 @@ async def preview_file(
 async def html_preview_resource(request: Request, project_ref: str, token: str,
                                 resource_path: str, project_id: str | None = Query(None)):
     from urllib.parse import quote
-    from services.html_preview import resource_file, prepare_html, prepare_editor_html, resource_boundary, HtmlPreviewError
+    from services.html_preview import resource_file, prepare_html, prepare_editor_html, resource_boundary, HtmlPreviewError, is_prototype_ticket
     from workstep_gateway_protocol.html_preview import html_preview_policy, PREVIEW_RESOURCES_HEADER
     # The query is rewritten by authenticated remote dispatch; the path preserves
     # the client's remote-project routing hint for relative assets.
@@ -550,11 +550,11 @@ async def html_preview_resource(request: Request, project_ref: str, token: str,
         _assert_preview_path(resource_boundary(token, target), allow_temporary=True)
         media, _ = mimetypes.guess_type(str(target))
         if media == 'text/html':
-            response = HTMLResponse(prepare_html(prepare_editor_html(token, target.read_bytes().decode('utf-8'))))
+            response = HTMLResponse(prepare_html(prepare_editor_html(token, target.read_bytes().decode('utf-8'), resource_path, origin + root)))
         else:
             response = FileResponse(target, media_type=media or 'application/octet-stream')
         response.headers.update({
-            'Content-Security-Policy': html_preview_policy(origin, root),
+            'Content-Security-Policy': html_preview_policy(origin, root).replace("; frame-ancestors 'self'", '') if is_prototype_ticket(token) else html_preview_policy(origin, root),
             PREVIEW_RESOURCES_HEADER: root,
             'Access-Control-Allow-Origin': 'null',
             'Access-Control-Allow-Credentials': 'true',

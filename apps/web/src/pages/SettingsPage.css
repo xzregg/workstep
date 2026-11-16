@@ -3,14 +3,17 @@
 }
 
 .modal.settings-dialog-panel {
-  width: min(1080px, calc(100vw - 48px));
-  height: min(860px, calc(100vh - 48px));
+  width: min(1440px, calc(100vw - 48px));
+  height: calc(100dvh - 48px);
   max-height: calc(100vh - 48px);
 }
 
 .settings-dialog-header {
   padding: 16px 20px;
+  justify-content: flex-start;
+  gap: 12px;
 }
+.settings-dialog-header > .btn:last-child { margin-left:auto; }
 
 .settings-dialog-title {
   display: flex;
@@ -133,3 +136,17 @@
 .desktop-update-check-control { display: flex; align-items: center; gap: 8px; }
 
 .settings-system-history-input { width: 100px; flex: none; }
+
+
+/* All settings share a large dialog; digital-person sections share one body navigation. */
+.settings-navigation-toggle { white-space:nowrap; }
+.settings-layout--digital-person > .settings-nav { display:none; }
+.settings-dialog-panel--digital-person .settings-content { padding:16px 24px 24px; }
+@media(min-width:1024px) {
+ .settings-dialog-panel--digital-person .settings-content { display:flex; flex-direction:column; overflow:hidden; }
+}
+.modal-overlay.settings-dialog-overlay { z-index:1300; }
+@media(max-width:1023px) {
+ .settings-dialog-panel--digital-person .settings-content { padding:12px 16px 24px; }
+ .settings-dialog-header { padding-top:max(12px,env(safe-area-inset-top)); }
+}

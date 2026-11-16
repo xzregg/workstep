@@ -8,7 +8,7 @@ async def test_search_optional_originals_and_paging(runtime, monkeypatch):
     from services import memory_query as query
     current, _, sid = await seed(runtime, ['迁移要求。' * 200])
     await extract_seed_knowledge()
-    token=await query.issue_access(current.projects,'local',session_id=sid)
+    token=await query.create_context(current.projects,'local',session_id=sid)
     plain=await query.search(current.projects,token,query='迁移')
     assert 'source_texts' not in plain
     result=await query.search(current.projects,token,query='迁移',include_sources=True,source_chars=200)
@@ -30,7 +30,7 @@ async def test_cli_preserves_requested_body_and_forwards_flag():
             assert args['include_sources'] and args['source_chars']==300
             return {'items':[], 'source_texts':[{'id':'memory:1','content':'正文'*100,'source_ids':['memory:1'],
                 'source_hash':'private','offset':0,'has_more':False}], 'source_coverage':{'complete':True}}
-    args=build_parser().parse_args(['memory','search','--token','test','--with-sources','--source-chars','300','--json'])
+    args=build_parser().parse_args(['memory','search','--with-sources','--source-chars','300','--json'])
     result=await dispatch(args,Client())
     assert result['source_texts'][0]['content']=='正文'*100
     assert 'source_hash' not in result['source_texts'][0]
@@ -47,7 +47,7 @@ async def test_knowledge_only_match_expands_original_and_budgets_are_visible(run
         'summary':'上线负责人', 'kind':'fact','outcome':'stated','source_ids':['memory:'+str(rows[0]['id'])]
     }]}, rows)
     await extract_seed_knowledge()
-    token=await query.issue_access(current.projects,'local',session_id=sid)
+    token=await query.create_context(current.projects,'local',session_id=sid)
     result=await query.search(current.projects,token,query='上线',include_sources=True)
     assert result['items']==[] and result['knowledge']
     assert result['source_texts'][0]['content']=='张三负责审核。'
@@ -61,17 +61,17 @@ async def test_body_budget_and_http_validation(runtime,monkeypatch):
     from httpx import AsyncClient, ASGITransport
     current, _, sid = await seed(runtime, ['部署'+str(i)+'长正文'*2000 for i in range(3)])
     await extract_seed_knowledge()
-    token=await query.issue_access(current.projects,'local',session_id=sid)
+    token=await query.create_context(current.projects,'local',session_id=sid)
     monkeypatch.setattr(memory,'projects',lambda:current.projects)
     app=FastAPI();app.include_router(memory.router)
     async with AsyncClient(transport=ASGITransport(app=app),base_url='http://test') as client:
-        result=await client.post('/api/memory/search',json={'memory_token':token,'include_sources':True,'source_chars':6000})
+        result=await client.post('/api/memory/search',json={'include_sources':True,'source_chars':6000})
         assert result.status_code==200
         data=result.json()
         assert sum(len(s['content']) for s in data['source_texts'])==12000
         assert data['source_coverage']['deferred_ids'] and not data['source_coverage']['complete']
-        assert (await client.post('/api/memory/search',json={'memory_token':token,'source_chars':6001})).status_code==422
-        assert (await client.post('/api/memory/search',json={'memory_token':'invalid','include_sources':True})).status_code==403
+        assert (await client.post('/api/memory/search',json={'source_chars':6001})).status_code==422
+        assert (await client.post('/api/memory/search',json={'filter_project_id':'invalid','include_sources':True})).status_code==403
 
 
 async def test_slow_source_lookup_is_off_loop_and_unavailable_is_reported(runtime,monkeypatch):
@@ -81,7 +81,7 @@ async def test_slow_source_lookup_is_off_loop_and_unavailable_is_reported(runtim
     from services import memory_query as query
     current, _, sid=await seed(runtime,['原文要求'])
     await extract_seed_knowledge()
-    token=await query.issue_access(current.projects,'local',session_id=sid)
+    token=await query.create_context(current.projects,'local',session_id=sid)
     entered=threading.Event()
     def missing(*args):
         entered.set()

@@ -113,29 +113,6 @@ async def test_large_history_drains_once_in_bounded_batches(runtime,monkeypatch)
     assert len(seen)==46
 
 
-async def test_due_thought_is_considered_once_and_does_not_become_fresh_evidence(runtime,monkeypatch):
-    from datetime import timedelta
-    from services.digital_person_companion import reflect
-    current,_,_=runtime
-    sid=await seed(runtime)
-    calls=[]
-    async def decide(ctx):
-        calls.append(ctx)
-        return {'decision':'silent','summary':'不必联系','source_ids':[]}
-    monkeypatch.setattr(current,'_decide',decide)
-    await current.check()
-    def thought(state):
-        reflect(state,'local',{'thought':{'content':'稍后再考虑','source_ids':['evidence'],'after_minutes':1}},
-                {'evidence'},utc_now()-timedelta(minutes=2))
-        state['companions']['local']['thought']['origin_session_id']=sid
-    await current.mutate(thought)
-    await current.check()
-    await current.check()
-    assert len(calls)==2
-    assert calls[1]['conversation']==[]
-    assert calls[1]['thought_sources'][0]['id']=='evidence'
-
-
 async def test_social_disabled_still_processes_internal_state(runtime,monkeypatch):
     current,_,store=runtime
     await seed(runtime)

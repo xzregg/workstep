@@ -134,6 +134,6 @@ Codex SDK 收到消息开始帧后，正文增量不等待可选的 `phase` 标�
 
 ## 可选通讯录能力
 
-渠道适配器以 `DIRECTORY_PROVIDER` 注册 `ChannelDirectoryProvider`，并声明 `ChannelCapabilities.directory`。提供者仅实现异步 `fetch_snapshot()` 和额外凭证字段元数据；返回 contact_id、name、departments、user_id（身份未验证时为空）。统一服务负责内存快照、姓名消歧、同步任务和查询，不持久化目录，也不改变已有发送协议。
+渠道适配器以 `DIRECTORY_PROVIDER` 注册 `ChannelDirectoryProvider`，并声明 `ChannelCapabilities.directory`。提供者仅实现异步 `fetch_snapshot()` 和额外凭证字段元数据；返回 contact_id、name、departments、user_id（身份未验证时为空）。统一服务负责本地 JSON 快照、内存姓名消歧、同步任务和查询，不改变已有发送协议。缓存按机器人及凭证指纹隔离，原子写入权限为 0600 的文件；启动优先读取有效缓存，缺失或损坏才获取，手动刷新强制请求平台。关闭目录／机器人或删除机器人清除缓存。
 
 发送 API 的 session_id / user_id / group_id / user_name / contact_id 互斥；除 session_id 外必须指定 bot_id。目录目标解析后复用原发送器，重名、未就绪和身份未验证返回结构化 409 错误（code/message/candidates）。目录查询不进行隐式同步；首次启用与用户显式刷新之外不调用平台目录接口。

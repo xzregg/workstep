@@ -1,3 +1,4 @@
+import SettingsHelpButton from './SettingsHelpButton'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import Button from './Button'
 import Input from './Input'
@@ -338,7 +339,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
         <div className="engine-settings-page" hidden={hidden}>
           <div className="engine-settings-header">
             <div className="engine-settings-header-copy">
-              <h1 className="engine-settings-title">{t('settings.enginesTitle')}</h1>
+              <h1 className="engine-settings-title">{t('settings.enginesTitle')}<SettingsHelpButton section="engines" /></h1>
               <p className="engine-settings-intro">
                 {t('settings.enginesIntro')}
               </p>

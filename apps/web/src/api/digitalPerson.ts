@@ -90,11 +90,18 @@ export interface MemoryViewItem {
   relations:Array<{from:string;to:string;relation:string}>
   sources:MemorySource[]
 }
+export interface MemoryLibraryStats {
+  knowledge_count:number; indexed_count:number; processed_count:number; pending_count:number
+  today_count:number; latest_knowledge_at:string|null; by_kind:Record<MemoryKind,number>
+}
+export interface MemoryBrowseResult {
+  items:MemoryViewItem[]; bounded:boolean; stats?:MemoryLibraryStats
+}
 export interface MemorySourcePage {
   id:string; content:string; source_hash:string; offset:number; next_offset:number|null
   has_more:boolean; total_chars:number; created_at:string; project_id:string
 }
 export const digitalMemoryApi = {
-  browse: (query='') => request<{items:MemoryViewItem[];bounded:boolean}>(`/digital-person/memory/view?${new URLSearchParams({query})}`),
+  browse: (query='') => request<MemoryBrowseResult>(`/digital-person/memory/view?${new URLSearchParams({query})}`),
   read: (id:string,offset=0) => request<MemorySourcePage>(`/digital-person/memory/source/${encodeURIComponent(id)}?offset=${offset}`),
 }

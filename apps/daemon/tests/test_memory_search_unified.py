@@ -9,7 +9,7 @@ async def test_search_without_text_reads_unindexed_history_and_pages(runtime):
     current, project, sid = await seed(runtime, ['发布计划', '发布失败', '修复完成'])
     with index.connect() as db:
         db.execute('DELETE FROM memories')
-    token=await query.issue_access(current.projects,'local',session_id=sid)
+    token=await query.create_context(current.projects,'local',session_id=sid)
     args=dict(since='2026-10-01T00:00:00Z',before='2026-11-01T00:00:00Z',limit=1)
     page=await query.search(current.projects,token,**args)
     assert page['coverage']['basis']=='authoritative_terminal_messages'
@@ -25,7 +25,7 @@ async def test_search_without_text_reads_unindexed_history_and_pages(runtime):
 async def test_search_text_keeps_relevance_and_snapshot_cannot_switch_routes(runtime):
     from services import memory_query as query
     current, _, sid = await seed(runtime, ['发布计划', '迁移失败'])
-    token=await query.issue_access(current.projects,'local',session_id=sid)
+    token=await query.create_context(current.projects,'local',session_id=sid)
     await extract_seed_knowledge()
     result=await query.search(current.projects,token,query='迁移')
     assert result['coverage']['basis']=='knowledge_index'
@@ -42,8 +42,8 @@ def test_only_one_search_tool_and_intent_guidance():
     assert 'workstep_memory_search' in TOOL_BY_NAME
     assert 'workstep_memory_history' not in names
     assert 'workstep_memory_history' in TOOL_BY_NAME  # legacy callers only
-    prompt=instruction('placeholder')
-    assert 'references/memory.md' in prompt and 'workstep_memory_history' not in prompt
+    prompt=instruction()
+    assert prompt == ''
 
 
 async def test_unified_search_http_and_scope(runtime, monkeypatch):
@@ -55,22 +55,22 @@ async def test_unified_search_http_and_scope(runtime, monkeypatch):
     monkeypatch.setattr(memory,'projects',lambda:current.projects)
     app=FastAPI()
     app.include_router(memory.router)
-    token=await query.issue_access(current.projects,'local',session_id=sid)
-    empty=await query.issue_access(current.projects,'local',project_ids=[])
+    token=await query.create_context(current.projects,'local',session_id=sid)
+    empty=await query.create_context(current.projects,'local',project_ids=[])
     async with AsyncClient(transport=ASGITransport(app=app),base_url='http://test') as client:
         for path in ('search','history'):
-            result=await client.post('/api/memory/'+path,json={'memory_token':token,'since':'2026-10-01T00:00:00Z','before':'2026-11-01T00:00:00Z'})
+            result=await client.post('/api/memory/'+path,json={'since':'2026-10-01T00:00:00Z','before':'2026-11-01T00:00:00Z'})
             assert result.status_code==200
             assert result.json()['items'][0]['source_message_id']=='query-0'
-        result=await client.post('/api/memory/search',json={'memory_token':empty})
-        assert result.json()['items']==[]
-        assert (await client.post('/api/memory/search',json={'memory_token':'bad'})).status_code==403
+        result=await client.post('/api/memory/search',json={'filter_project_id':'missing'})
+        assert result.status_code==403
+        assert (await client.post('/api/memory/search',json={'filter_project_id':'bad'})).status_code==403
 
 
 async def test_date_review_filters_keywords_and_binds_them_to_cursor(runtime):
     from services import memory_query as query
     current, _, sid = await seed(runtime, ['发布计划', '迁移失败', '部署完成'])
-    token=await query.issue_access(current.projects,'local',session_id=sid)
+    token=await query.create_context(current.projects,'local',session_id=sid)
     args=dict(query='迁移 部署',since='2026-10-03T00:00:00Z',before='2026-11-01T00:00:00Z',limit=1)
     page=await query.search(current.projects,token,**args)
     results=list(page['items'])
@@ -89,7 +89,7 @@ async def test_date_review_filters_keywords_and_binds_them_to_cursor(runtime):
 async def test_date_keywords_advance_through_empty_pages(runtime):
     from services import memory_query as query
     current, _, sid=await seed(runtime,['无关内容','迁移完成'])
-    token=await query.issue_access(current.projects,'local',session_id=sid)
+    token=await query.create_context(current.projects,'local',session_id=sid)
     args=dict(query='迁移',period='',since='2026-10-01T00:00:00Z',limit=1)
     first=await query.search(current.projects,token,**args)
     assert first['items']==[] and first['has_more']

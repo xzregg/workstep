@@ -109,11 +109,13 @@ def test_release_entrypoints_enforce_payload_checks():
         text = (ROOT / f'apps/desktop/build-backend.{suffix}').read_text()
         assert 'package_payload.py' in text
         assert 'copy' in text and 'check' in text
+        assert 'landing_dist' in text, 'include the existing website in native desktop builds'
     docker = (ROOT / 'Dockerfile').read_text()
     assert 'package_payload.py' in docker
     assert '--ignore-runtime-venv' in docker
     hook = (ROOT / 'apps/desktop/scripts/validate-sandbox-release.cjs').read_text()
     assert 'package_payload.py' in hook, 'check injected payload again before electron-builder'
+    assert "path.join(backend, 'landing_dist')" in hook
 
 
 def test_docker_context_excludes_private_and_nonruntime_paths():

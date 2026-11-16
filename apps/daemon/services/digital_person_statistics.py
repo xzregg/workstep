@@ -45,13 +45,9 @@ def format_identity_snapshot(snapshot):
     if not snapshot:
         return ''
     if snapshot.get('unavailable'):
-        return 'Current runtime statistics are unavailable. Do not infer level, experience, skills, or session counts.'
-    skills = snapshot['skills']
-    names = ', '.join(item['name'][:60] for item in skills[:20]) or 'None'
-    suffix = ' (first 20 only)' if len(skills) > 20 else ''
+        return 'Current runtime statistics are unavailable. Do not infer level, experience, or session counts.'
     return '\n'.join((
         'Current runtime statistics (default workspace, excluding background check sessions):',
         f"Level: Lv.{snapshot['level']}; Experience: {snapshot['experience']}; Next level threshold: {snapshot['next_level_experience']}",
         f"User sessions: {snapshot['session_count']}; Completed replies: {snapshot['reply_count']}; Execution tasks: {snapshot['task_count']}; Completed tasks: {snapshot['completed_task_count']}",
-        f"Enabled skills ({len(skills)}): {names}{suffix}",
     ))

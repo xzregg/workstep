@@ -3,5 +3,3 @@
 .digital-person-feedback .digital-person-feedback-button[aria-pressed=true] { color: var(--accent); background: var(--accent-light); }
 .digital-person-feedback .digital-person-feedback-button:hover { color: var(--fg); background: var(--surface); }
 .digital-person-feedback-error { color: var(--danger); font-size: var(--text-caption); }
-
-.chat-message-row .digital-person-feedback .digital-person-feedback-button { opacity: 1; pointer-events: auto; }

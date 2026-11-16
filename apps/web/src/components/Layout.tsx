@@ -562,7 +562,6 @@ export default function Layout({ onSelectProject, children }: Props) {
             const searchResult = sidebarSearchResults.get(p.id)!
             return (
             <div key={p.id}>
-              {!compact && p.is_default_workspace && <DigitalPersonSidebarEntry project={p} />}
               <div
                 onClick={() => {
                   if (consumeSidebarLongPressClick()) return

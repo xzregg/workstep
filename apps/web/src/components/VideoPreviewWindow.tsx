@@ -29,9 +29,9 @@ function clamp(bounds:Bounds):Bounds{
 }
 
 /** Shared video surface: media ratio, viewport fitting and window gestures live here. */
-export default function VideoPreviewWindow({open,onClose,label,closeLabel,videoRef:externalVideo,actions,error,getAnchor}:{
+export default function VideoPreviewWindow({open,onClose,label,closeLabel,videoRef:externalVideo,actions,error,getAnchor,overlay}:{
  open:boolean;onClose:()=>void;label:string;closeLabel?:string;videoRef?:RefObject<HTMLVideoElement|null>
- actions?:ReactNode;error?:string;getAnchor?:()=>Point|null
+ actions?:ReactNode;error?:string;getAnchor?:()=>Point|null;overlay?:ReactNode
 }){
  const {t}=useI18n(),internalVideo=useRef<HTMLVideoElement>(null),video=externalVideo??internalVideo
  const panel=useRef<HTMLDivElement>(null),border=useRef(1)
@@ -124,6 +124,7 @@ export default function VideoPreviewWindow({open,onClose,label,closeLabel,videoR
     if(delta&&bounds){event.preventDefault();moved.current=true;setBounds(clamp({...bounds,left:bounds.left+delta[0],top:bounds.top+delta[1]}))}
    }} onPointerDown={event=>start(event)}>
    <video ref={video} className="video-preview-media" autoPlay playsInline muted aria-label={label}/>
+   {ready&&overlay}
    {!ready&&!error&&<div className="video-preview-loading"><Spinner size={16}/></div>}
    {error&&<p role="alert" className="video-preview-error">{error}</p>}
   </div>

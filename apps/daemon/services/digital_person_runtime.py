@@ -77,13 +77,35 @@ def parse_check_result(content):
         raise ValueError('主动检查未返回检查结果，请检查数字人引擎配置后重试')
     if body in ('NO_REPLY', '[SILENT]', 'HEARTBEAT_OK'):
         return {'decision': 'silent', 'summary': '无需要通知的新变化', 'source_ids': []}
+    if '<json>' in body or '</json>' in body:
+        prefix, opening, payload = body.partition('<json>')
+        if not opening or '</json>' in prefix:
+            raise ValueError('主动检查结果需要唯一完整的 <json>...</json> 标签')
+        try:
+            payload = payload.lstrip()
+            _, end = json.JSONDecoder().raw_decode(payload)
+        except json.JSONDecodeError as exc:
+            raise ValueError('主动检查标签内不是有效的 JSON') from exc
+        remainder = payload[end:].lstrip()
+        if (not remainder.startswith('</json>') or '<json>' in remainder[7:]
+                or '</json>' in remainder[7:]):
+            raise ValueError('主动检查结果需要唯一完整的 <json>...</json> 标签')
+        body = payload[:end]
     lines = body.splitlines()
     if len(lines) >= 3 and lines[0].strip().lower() in ('```', '```json') and lines[-1].strip() == '```':
         body = '\n'.join(lines[1:-1]).strip()
     try:
         result = json.loads(body)
     except json.JSONDecodeError as exc:
-        raise ValueError('主动检查结果不是有效的 JSON，请重试或更换数字人引擎') from exc
+        import re
+        blocks = re.findall(r'^```([^\r\n]*)\r?\n(.*?)^```[ \t]*$', body,
+                            flags=re.MULTILINE | re.DOTALL | re.IGNORECASE)
+        if len(blocks) != 1 or blocks[0][0].strip().lower() not in ('', 'json'):
+            raise ValueError('主动检查结果不是有效的 JSON，请重试或更换数字人引擎') from exc
+        try:
+            result = json.loads(blocks[0][1])
+        except json.JSONDecodeError as block_error:
+            raise ValueError('主动检查结果不是有效的 JSON，请重试或更换数字人引擎') from block_error
     if (not isinstance(result, dict) or result.get('decision') not in ('silent', 'notify')
             or not isinstance(result.get('summary'), str)
             or not isinstance(result.get('source_ids'), list)
@@ -140,12 +162,7 @@ class DigitalPersonRuntime:
             feedback = state['feedback']
             from services.digital_person_statistics import read_statistics
             statistics = read_statistics(state)
-            from collections import Counter
-            recent = ChatMessage.select(ChatMessage.content).where(ChatMessage.role == 'user', ChatMessage.session.not_in(state.get('check_sessions', []))).order_by(ChatMessage.created_at.desc()).limit(200)
-            counts = Counter(' '.join(r.content.strip().split())[:180] for r in recent if r.content.strip() and len(r.content) <= 300)
-            suggestions = [{'id':'frequent-' + str(index),'label':text[:24],'prompt':text,'count':count}
-                           for index,(text,count) in enumerate(counts.most_common(3)) if count >= 2]
-            return {**state, **statistics, 'suggestions': suggestions, 'checking': self._check_lock.locked(),
+            return {**state, **statistics, 'suggestions': [], 'checking': self._check_lock.locked(),
                     'answers': [{'id': row.id, 'content': row.content[:300], 'feedback': feedback.get(row.id, 0)} for row in answers[:20]]}
         from services.digital_person_statistics import enabled_skills
         result, skills = await asyncio.gather(self.projects.run_db(home.id, operation), asyncio.to_thread(enabled_skills, home))
@@ -373,24 +390,8 @@ class DigitalPersonRuntime:
             system_prompt_transport=True,
             system_prompt=assessment.instruction(profile))
         scope = context.get('companion', {}).get('scope') or 'local'
-        token = None
-        if context.get('origin_session_id') or context.get('_load'):
-            from services import memory_query
-            token = await memory_query.issue_access(self.projects, scope,
-                session_id=context.get('origin_session_id',''), issuer_project_id=context.get('origin_project_id',home.id),
-                issuer_kind='task' if context.get('source_kind')=='task' else 'chat')
-            from services.digital_person_reflection import model_context
-            if context.get('_load'):
-                async def load():
-                    await context['_load']()
-                    return model_context(context, home.id)
-                memory_query.bind_assessment_loader(token, load)
-            else:
-                memory_query.bind_assessment(token, model_context(context, home.id))
-            checker._config = replace(checker._config, system_prompt=checker._config.system_prompt +
-                '\n' + memory_query.assessment_instruction(token) +
-                '\nFirst use the workstep-cli skill to run memory pending to fetch this assessment batch. Read the complete conversation bodies returned by pending. '
-                'Use targeted existing-knowledge lookup only when needed to compare or maintain this batch\'s knowledge; never scan old source history.')
+        from services import memory_query
+        from services.digital_person_reflection import model_context
         def start(_):
             state = read_state(home.id)
             legacy_scopes = state.pop('check_sessions_by_scope', {})
@@ -437,6 +438,17 @@ class DigitalPersonRuntime:
                                               schedule=False, reset_context=reset_context)
             return row, accepted
         row, accepted = await self.projects.run_db(home.id, start)
+        access=None
+        if context.get('origin_session_id') or context.get('_load'):
+            access=await memory_query.execution_access(self.projects,home.id,row['id'],fresh=True)
+            if context.get('_load'):
+                async def load():
+                    await context['_load']()
+                    return model_context(context,home.id)
+                memory_query.bind_assessment_loader(access,load)
+            else:
+                memory_query.bind_assessment(access,model_context(context,home.id))
+
         await self.bus.publish({'type': 'CUSTOM', 'name': 'channel.session_changed',
                                 'channel': 'session_chat', 'project_id': home.id})
         self._active_check = (checker, home.id, row['id'])
@@ -445,7 +457,7 @@ class DigitalPersonRuntime:
             await asyncio.to_thread(attach, home.id, row['id'])
             checker.start_queued_turn(accepted.turn_id)
             retried_empty = False
-            retried_invalid = False
+            repair_errors = set()
             async with asyncio.timeout(180):
                 while True:
                     def result(_):
@@ -468,30 +480,26 @@ class DigitalPersonRuntime:
                         try:
                             decision = parse_check_result(content)
                             from services.memory_policy import validate_memories
-                            versions=memory_query.observed_knowledge_versions(token) if token else {}
+                            versions=memory_query.observed_knowledge_versions(access) if access else {}
                             validate_memories(decision,context,versions)
                         except ValueError as exc:
-                            if retried_invalid:
+                            error=str(exc)
+                            if error in repair_errors or len(repair_errors)>=2:
                                 raise
-                            retried_invalid=True
-                            from services.memory_secrets import redact
-                            error=redact(str(exc))[:1500]
+                            repair_errors.add(error)
+                            from services.memory_policy import repair_instruction
+                            correction=repair_instruction(error,context)
                             def repair(_):
                                 return checker.submit_internal_event(home.id,row['id'],'digital_person.reflection',
-                                    'The assessment was not applied. Validation error: '+error+
-                                    '\nReturn a corrected complete assessment JSON for the same pending batch. '
-                                    'Correct fields using the existing evidence; do not invent missing entities, facts or source IDs. '
-                                    'For missing relation endpoints, declare the evidenced entity or omit the unsupported relation. '
-                                    'Omit unsupported memory candidates. Preserve unaffected valid candidates. '
-                                    'Do not send messages or repeat completed operations.',str(uuid.uuid4()),schedule=False)
+                                    correction,str(uuid.uuid4()),schedule=False)
                             accepted=await self.projects.run_db(home.id,repair)
                             checker.start_queued_turn(accepted.turn_id)
                             continue
-                        if token:
-                            if not memory_query.assessment_observed(token):
+                        if access:
+                            if not memory_query.assessment_observed(access):
                                 raise ValueError('尚未领取本轮待整理消息，保留待处理状态')
-                            decision['_retrieved_knowledge_ids'] = memory_query.observed_knowledge_versions(token)
-                            decision['_read_source_ids'] = memory_query.observed_sources(token, context.get('_read_requirements', []))
+                            decision['_retrieved_knowledge_ids'] = memory_query.observed_knowledge_versions(access)
+                            decision['_read_source_ids'] = memory_query.observed_sources(access, context.get('_read_requirements', []))
                         def confirmed(state):
                             state['check_trigger_version'] = 1
                             state['check_context_scope'] = scope
@@ -503,8 +511,8 @@ class DigitalPersonRuntime:
                         raise RuntimeError('主动检查未完成：' + status)
                     await asyncio.sleep(.25)
         finally:
-            if token:
-                memory_query.clear_assessment(token)
+            if access:
+                memory_query.release_execution(home.id,row['id'],access)
             await checker.stop_current(row['id'], home.id)
             await checker.shutdown()
             self._active_check = None

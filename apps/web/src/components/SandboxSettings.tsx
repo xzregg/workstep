@@ -1,3 +1,4 @@
+import SettingsHelpButton from './SettingsHelpButton'
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import type { SandboxSettings as Settings, SandboxStatus, HostSandboxProject, SandboxMigrationOptions } from '../utils/desktopSandbox'
@@ -108,7 +109,7 @@ export default function SandboxSettings({ onDirtyChange }: { onDirtyChange?: (di
   </>
   if (!bridge) return null
   return <div className="sandbox-settings">
-    <header className="sandbox-heading"><div><h1>{t('sandbox.title')}</h1><p>{t('sandbox.wizard.intro')}</p></div><span className={`sandbox-mode-chip${status?.running ? ' sandbox-mode-chip--running' : ''}`}>{t(status?.running ? 'sandbox.running' : status?.settings.enabled ? 'sandbox.enabled' : 'sandbox.disabled')}</span></header>
+    <header className="sandbox-heading"><div><h1>{t('sandbox.title')}<SettingsHelpButton section="sandbox" /></h1><p>{t('sandbox.wizard.intro')}</p></div><span className={`sandbox-mode-chip${status?.running ? ' sandbox-mode-chip--running' : ''}`}>{t(status?.running ? 'sandbox.running' : status?.settings.enabled ? 'sandbox.enabled' : 'sandbox.disabled')}</span></header>
     {!status ? <div className="sandbox-loading">{!error && <Spinner />}<p>{error || t('sandbox.wizard.loading')}</p>{error && <Button loading={busy} onClick={() => setLoadAttempt(value => value + 1)}>{t('common.retry')}</Button>}</div> : <>
       {!status.supported && <p className="sandbox-error" role="alert">{t('sandbox.unsupported')}</p>}
       <div className="sandbox-wizard">

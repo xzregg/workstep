@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import ProviderImportDialog from '../components/ProviderImportDialog'
 import ProviderModelsDialog from '../components/ProviderModelsDialog'
 import ProviderSavedModels from '../components/ProviderSavedModels'
@@ -292,7 +293,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
     <div className="provider-settings-page">
       <div className="provider-settings-header">
         <div className="provider-settings-heading">
-          <div className="settings-heading-row"><h1 className="provider-settings-title">{t('providerSettings.title')}</h1><Button variant="ghost" onClick={() => void refresh()} disabled={loading}>{t('settings.refresh')}</Button></div>
+          <div className="settings-heading-row"><h1 className="provider-settings-title">{t('providerSettings.title')}<SettingsHelpButton section="providers" /></h1><Button variant="ghost" onClick={() => void refresh()} disabled={loading}>{t('settings.refresh')}</Button></div>
           <p className="provider-settings-intro">{t('providerSettings.intro')}</p>
         </div>
         <div className="provider-settings-header-actions">

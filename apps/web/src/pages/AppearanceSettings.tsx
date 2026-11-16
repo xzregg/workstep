@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import { useEffect, useState } from 'react'
 import { useI18n, useLocaleStore } from '../i18n'
 import Select from '../components/Select'
@@ -36,7 +37,7 @@ export default function AppearanceSettings() {
     saveFontFamilyPreference(value)
   }
   const preferences = <section className="settings-appearance-font" aria-label={t('settings.appearanceBasicsTitle')}>
-      <div className="settings-appearance-font-copy"><h2>{t('settings.appearanceBasicsTitle')}</h2></div>
+      <div className="settings-appearance-font-copy"><h2>{t('settings.appearanceBasicsTitle')}<SettingsHelpButton section="appearance" /></h2></div>
       <div className="settings-appearance-controls">
         <div className="settings-appearance-field">
           <label htmlFor="appearance-font-family">{t('settings.fontFamily')}</label>

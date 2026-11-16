@@ -43,8 +43,7 @@ def test_roleplay_guidance_connects_state_to_behavior():
 def test_background_assessment_does_not_request_historical_search():
     from services.digital_person_assessment import instruction
     from services.digital_person import DigitalPersonProfile
-    from services.memory_query import assessment_instruction
-    text=instruction(DigitalPersonProfile())+assessment_instruction('test')
+    text=instruction(DigitalPersonProfile())
     assert 'Use only this assigned batch' in text
     assert 'Search older' not in text
     assert 'reading the old knowledge' not in text
@@ -77,8 +76,7 @@ def test_assessment_distinguishes_unfinished_work_from_social_contact():
 def test_assessment_prompt_describes_current_actions_only():
     from services.digital_person_assessment import instruction
     from services.digital_person import DigitalPersonProfile
-    from services.memory_query import assessment_instruction
-    text=instruction(DigitalPersonProfile())+assessment_instruction('placeholder')
+    text=instruction(DigitalPersonProfile())
     for retired in ('mood','emotion','valence','arousal','thought','Do not','Never','never '):
         assert retired not in text
 def test_experience_prompt_uses_the_persisted_outcome_contract():
@@ -90,3 +88,53 @@ def test_experience_prompt_uses_the_persisted_outcome_contract():
     assert 'Relation endpoints must exactly match entities[].name within the same memory' in prompt
     assert 'supersedes only for fully read knowledge IDs' in prompt
     assert 'Search summaries alone are insufficient' in prompt
+
+
+def test_memory_prompt_identifies_user_preferences_with_evidence_and_conditions():
+    from services.digital_person import DigitalPersonProfile
+    from services.digital_person_assessment import instruction
+    prompt=instruction(DigitalPersonProfile())
+    assert 'response language and length' in prompt
+    assert 'communication and notifications' in prompt
+    assert 'work methods, tool choices and everyday habits' in prompt
+    assert 'conditions and exceptions' in prompt
+    assert 'Facts and preferences require user evidence' in prompt
+    assert 'A one-off request' in prompt
+
+
+def test_assessment_has_one_pending_instruction_and_keeps_completion_semantics():
+    from services.digital_person import DigitalPersonProfile
+    from services.digital_person_assessment import instruction
+    prompt=instruction(DigitalPersonProfile())
+    assert prompt.count('memory pending')==1
+    assert 'Repeated calls return the same batch' in prompt
+    assert 'without reviewing old source history' in prompt
+
+
+def test_assessment_final_body_is_directly_parseable_json():
+    from services.digital_person import DigitalPersonProfile
+    from services.digital_person_assessment import instruction
+    prompt=instruction(DigitalPersonProfile())
+    assert 'exactly one <json>...</json> pair' in prompt
+    assert 'all explanations belong inside JSON string fields' in prompt
+
+
+def test_memory_language_follows_evidence_independently_of_character():
+    from services.digital_person import DigitalPersonProfile
+    from services.digital_person_assessment import instruction
+    prompt=instruction(DigitalPersonProfile())
+    for contract in ('dominant language of the supporting source messages',
+                     'independent of the character, interface and reply language',
+                     'summaries, entity labels, relationship labels and experience fields',
+                     'original spelling of names, identifiers, error codes and quoted key terms',
+                     'each memory separately'):
+        assert contract in prompt
+
+
+def test_memory_skill_explains_literal_cross_language_retrieval():
+    from pathlib import Path
+    text=' '.join((Path(__file__).parents[1]/'data/skills/workstep-cli/references/memory.md').read_text().split())
+    for contract in ('literal matching', 'language of the stored evidence',
+                     'Translate general topic or relationship words',
+                     'evidence-backed identity aliases'):
+        assert contract in text

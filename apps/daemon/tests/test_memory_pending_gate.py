@@ -20,6 +20,27 @@ def test_gate_tracks_claim_release_and_completion(knowledge):
     assert not queue.has_pending(['p'])
 
 
+def test_crashed_batch_lease_expires_without_a_release(knowledge,monkeypatch):
+    from services import memory_pending_queue as queue, digital_person_assessment as assessment
+    from services import memory_query
+    import time
+    now=time.time()
+    monkeypatch.setattr(time,'time',lambda:now)
+    seed()
+    rows=assessment.pending(['p'],baseline='2026-01-01T00:00:00+00:00')
+    assert assessment.claim(rows)
+    assert not queue.has_pending(['p'])
+    # Process memory disappears on a crash; no finally/release is executed.
+    memory_query._executions.clear()
+    monkeypatch.setattr(time,'time',lambda:now+241)
+    assert queue.has_pending(['p'])
+    retry=assessment.pending(['p'],baseline='2026-01-01T00:00:00+00:00')
+    assert [r['id'] for r in retry]==[r['id'] for r in rows]
+    assert assessment.claim(retry)
+    assessment.commit(retry,[],'recovered')
+    assert not queue.has_pending(['p'])
+
+
 def test_batch_selects_oldest_across_sessions_and_respects_limit(knowledge):
     from services import digital_person_memory_index as index, digital_person_assessment as assessment
     for i in range(120):

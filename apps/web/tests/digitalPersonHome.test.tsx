@@ -134,3 +134,26 @@ test('switching sessions cannot carry the previous voice glow into the new avata
   assert.equal(host.querySelector('.digital-home')?.getAttribute('data-state'),'idle')
  }finally{await act(async()=>root.unmount());speechOutputApi.status=oldStatus;await window.happyDOM.close()}
 })
+
+test('opening and closing transcript preserves the same live camera stream',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host),oldStatus=speechOutputApi.status
+ speechOutputApi.status=async()=>structuredClone(outputStatus)
+ let starts=0,stops=0
+ const track={stop(){stops++},addEventListener(){},readyState:'live'}
+ const stream={getTracks:()=>[track],getVideoTracks:()=>[track]}
+ Object.defineProperty(document,'hidden',{configurable:true,value:false})
+ Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>{starts++;return stream}}})
+ Object.defineProperty(window.HTMLVideoElement.prototype,'srcObject',{configurable:true,writable:true,value:null})
+ window.HTMLVideoElement.prototype.play=async()=>{}
+ try{
+  await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonHome profile={profile} activity={null} projectId="p" projectName="p" sessionId="main" messages={[]} inputValue="" onDraft={()=>{}} running={false} active onSend={async()=>true} onStop={async()=>true}><div data-transcript>完整对话</div></DigitalPersonHome></I18nProvider></MemoryRouter>))
+  await act(async()=>host.querySelector<HTMLButtonElement>('[data-camera-toggle]')!.click())
+  const video=host.querySelector('video')!
+  assert.equal(video.srcObject,stream)
+  await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-transcript-button')!.click())
+  assert.ok(host.querySelector('[data-transcript]'));assert.equal(stops,0);assert.equal(host.querySelector('video'),video);assert.equal(video.srcObject,stream)
+  await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-chat header button')!.click())
+  assert.equal(starts,1);assert.equal(stops,0);assert.equal(video.srcObject,stream)
+  await act(async()=>root.unmount());assert.equal(stops,1)
+ }finally{await act(async()=>root.unmount());speechOutputApi.status=oldStatus;await window.happyDOM.close()}
+})

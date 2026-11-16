@@ -7,6 +7,8 @@ import Button from './Button'
 import Icon, { type IconName } from './Icon'
 import ScheduleCenter from './ScheduleCenter'
 import DesktopUpdateRailAction from './DesktopUpdateRailAction'
+import DigitalPersonSidebarEntry from './digital-person/DigitalPersonSidebarEntry'
+import { useCompactLayout } from '../hooks/useCompactLayout'
 
 export const WORKSPACE_TOOL_RAIL_WIDTH = 48
 
@@ -23,6 +25,8 @@ export default function WorkspaceNavigationActions({ onOpenSettings, activeSetti
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const projectId = useProjectStore(state => state.activeProject?.id)
+  const projects = useProjectStore(state => state.projects)
+  const compact = useCompactLayout()
   const { bound, can } = useGatewayProjectPermissions(projectId)
   const action = (label: string, icon: IconName, onClick: () => void, active = false, extra = '') => (
     <Button variant="ghost" className={`layout-sidebar-nav-button ${extra}`} aria-label={label}
@@ -37,6 +41,7 @@ export default function WorkspaceNavigationActions({ onOpenSettings, activeSetti
       <Icon name={sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'} size={17} strokeWidth={2} />
       <span className="layout-sidebar-action-label">{t(sidebarCollapsed ? 'layout.expandConversationList' : 'layout.collapseConversationList')}</span>
     </Button>}
+    {!compact && projects.filter(project => project.is_default_workspace).map(project => <DigitalPersonSidebarEntry key={project.id} project={project} rail />)}
     {can('statistics.read') && action(t('nav.statistics'), 'bar-chart', () => navigate('/statistics'), pathname === '/statistics')}
     <ScheduleCenter />
     {!bound && action(t('connectors.title'), 'plug', () => onOpenSettings('connectors'), activeSettingsSection === 'connectors', 'layout-sidebar-external-only')}

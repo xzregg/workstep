@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import { useEffect, useState } from 'react'
 import Button from '../components/Button'
 import Icon from '../components/Icon'
@@ -48,7 +49,7 @@ export default function RoleCenterSettings({ onDirtyChange }: { onDirtyChange?: 
   }
 
   return <div className="role-center">
-    <header className="role-center-header"><div><h1>{t('roleCenter.title')}</h1>
+    <header className="role-center-header"><div><h1>{t('roleCenter.title')}<SettingsHelpButton section="roles" /></h1>
       <p>{t('roleCenter.intro')}</p></div>
       <Button variant="primary" disabled={!catalog} onClick={() => setEditing({ kind: view === 'roles' ? 'role' : 'team', id: null })}>
         <Icon name="plus" size={16} />{t(view === 'roles' ? 'roleCenter.newRole' : 'roleCenter.newTeam')}

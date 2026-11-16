@@ -84,7 +84,7 @@ async def document(workspace_id: str, project_id: str, path: str, editing: bool 
         work = workspace(project_id, workspace_id)
         source = work.document(path)
         grant = issue_ticket(work.directory / 'workspace' / path, project_id,
-                             editor=editing, root=work.directory / 'workspace', boundary=work.original())
+                             editor=editing, prototype=True, root=work.directory / 'workspace', boundary=work.original())
         return {'version': source.version, 'nodes': {key: {name: value for name, value in source.context(key).items() if name != 'source'} for key in source.nodes}, 'html_preview': grant}
     return await io(operation)
 
@@ -134,6 +134,8 @@ async def chat(workspace_id: str, project_id: str, req: ChatRequest,
         if work.load()['status'] != 'idle':
             raise SourceConflict('请先处理工作副本中的未完成修改')
         work.document(req.path)
+        from agent_assistants.prototype import selection_context
+        selection_context(work, req.path, req.selection)
     await io(check)
     accepted = await project_manager.run_db(project_id, lambda _project: prototype_module.submit(
         project_id, workspace_id, req.path, req.content, idempotency_key, selection=req.selection,

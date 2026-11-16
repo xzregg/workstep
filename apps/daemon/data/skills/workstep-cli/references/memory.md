@@ -1,35 +1,6 @@
 # Shared memory
 
-## Background assessment
-
-Only when assigned a background assessment, first use `memory pending --token '<memory_token>' --json`
-through the interpreter/transport described below. This returns the current
-scheduler-assigned complete message bodies and companion review context, not arbitrary historical
-backlog. Ordinary chat capabilities cannot use it. Repeated calls return the same
-batch and do not mark it complete.
-
-During background assessment, use this assigned batch as new evidence and the supplied
-relationship/contact state. For knowledge maintenance only, search existing knowledge
-by a specific entity/topic, then `memory read --id knowledge:N` until fully read before
-referencing that ID in `supersedes`. Search summaries alone do not authorize replacement.
-Preserve supported conditions and exceptions; uncertain identities or unresolved conflicts
-must not be merged. Keep missing context uncertain. Do not browse old conversations,
-use time-history searches or `--with-sources`, or derive new notification/affinity reasons
-from old knowledge. The general historical investigation guidance below applies to
-ordinary conversations, not this background job.
-
-The first pending call selects the oldest unprocessed messages across authorized projects,
-up to the memory setting (default 100), claims them and reads their complete originals.
-Multiple conversations are grouped in `conversations[]`; each group carries its project,
-session, relationship state and `conversation[]`. A single group may appear directly at the top level.
-Read every returned `conversation[].content`, including those inside `conversations[]`. Background
-assessment does not truncate bodies into 160-character previews and needs no
-follow-up read to complete them. Batches are bounded by message count, not by
-cutting a message. Keep message IDs separate from `memory_ids` used as knowledge
-evidence. Return one final JSON with memories, relationship_updates (source_ids, affinity_delta, reason),
-and decision/kind/summary/source_ids. Keep knowledge evidence within its original scope;
-a notification must refer to one source conversation. The program validates the result, saves knowledge and delivers notifications. Pending preserves complete
-bodies even without --verbose; normal search remains compact.
+Retrieve past facts, user preferences and reusable experience when relevant.
 
 Use the transport and environment rules in [the skill](../SKILL.md) and
 [transport](transport.md). Do not assume the `workstep` command is installed.
@@ -37,16 +8,23 @@ Use CLI through the engine terminal tool for all memory operations, even when
 other WorkStep operations have native tools. If terminal execution is unavailable,
 report memory access as unavailable; do not invent a successful search.
 
-The current execution prompt supplies `memory_token`. It is not provided as an
-environment variable. Pass that exact value as `--token`; never substitute a desktop token, save it, display it to the
-user, or retrieve an old token from history. An expired token needs a new turn.
+Memory queries search across projects and conversations by default. The model
+chooses an explicit project filter with `--project <project_id>` when needed.
+Caller environment IDs do not narrow results automatically. For the current
+project use `--project "$WORKSTEP_PROJECT_ID"`. Existing person/event/object/place/time and
+relationship filters can be combined with these. The daemon applies the supplied
+filters without inferring contact scope from the calling conversation.
+
+Normal queries do not require a current conversation or a separate memory
+credential. Standard daemon authentication is handled by the transport.
+
 
 Examples from another project when the daemon directory is inherited:
 
 ```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli memory search --token '<memory_token>' --query 'release migration'
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli memory search --token '<memory_token>' --period last_month --timezone Asia/Shanghai
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli memory read --token '<memory_token>' --id memory:123 --offset 0 --limit 2400
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli memory search --query 'release migration'
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli memory search --period last_month --timezone Asia/Shanghai
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli memory read --id memory:123 --offset 0 --limit 2400
 ```
 
 In a confirmed WorkStep source checkout replace the directory argument with
@@ -54,14 +32,25 @@ In a confirmed WorkStep source checkout replace the directory argument with
 desktop, use the bundled interpreter instead of uv, retaining the action flags:
 
 ```bash
-"$WORKSTEP_CLI_PYTHON" "$WORKSTEP_DAEMON_DIR/cli.py" memory search --token '<memory_token>' --query 'release migration'
+"$WORKSTEP_CLI_PYTHON" "$WORKSTEP_DAEMON_DIR/cli.py" memory search --query 'release migration'
 ```
 
 ## Small output first
 
+For overviews, omit `--with-sources`, including date-range questions such as
+“我昨天问了啥？”. Start with titles and compact summaries; do not expand every result.
+Reuse already returned evidence. Once it is sufficient to answer at the requested
+detail, stop searching; refine only to resolve a named gap, not to repeat the same
+coverage with synonyms. An overview may use a bounded sample if its coverage is
+stated; paginate to the end before claiming a complete review of the period.
+Use `--with-sources` or `memory read` only for selected claims that require exact
+wording, original context, or verification. A `needs_read` marker is not a request
+to open all originals for a topic overview.
+
 - `memory search`: concise text with ID, title and a short
   preview (up to 160 characters of source/summary text). The title is not
-  repeated in the summary. Previews are deterministic excerpts, not newly
+  repeated in the summary. For a text query, the preview selects a matching passage within the summary.
+  Previews are deterministic excerpts, not newly
   generated facts. Role, knowledge kind/outcome/conflict state and necessary
   paging/coverage metadata remain visible.
 - `--json`: the same compact fields as one-line JSON, for structured parsing;
@@ -91,6 +80,15 @@ Plan retrieval from the user's intent, then refine it from evidence. The model
 does the association; the CLI performs the requested lookup. A user's sentence
 is a question to understand, not a query to copy verbatim.
 
+Search uses literal matching rather than automatic semantic translation. Inspect
+the language of the stored evidence in entity-only results before narrowing text
+or relation filters. Translate general topic or relationship words into that
+language, and try short alternative expressions when results are missing or
+irrelevant. A Chinese question can need English search terms, and vice versa.
+Keep original names, identifiers and error codes. Use only evidence-backed
+identity aliases in typed entity filters; a guessed translation of a name is a
+search hypothesis, not an established identity alias. Verify decisive originals.
+
 ### Search by people, events, objects, places and time
 
 Interpret the question into dimensions first. Use whichever dimensions the
@@ -112,7 +110,7 @@ point's context. For example, `负责` can match `负责审核`, but a different
 `负责执行` in the same knowledge point cannot satisfy `--person 小林`.
 
 For “小林负责什么？”, use this progression with the skill transport and the
-current execution's private `--token`:
+current execution context:
 
 1. `memory search --person 小林 --json`: locate the person and review summaries
    plus `matched_entities` (canonical names). An alias such as Lin can also be
@@ -123,7 +121,10 @@ current execution's private `--token`:
    requires that item. Follow newly discovered entity names into another search,
    and use `--with-sources` or `memory read` to verify decisive claims.
 
-Prefer these typed conditions when the question identifies an entity. Use
+Prefer these typed conditions when the question identifies an entity. Put known
+person names in --person and topic words in --query; a name in a broad query can
+also match unrelated memories about that person. Full query-term matches rank
+ahead of partial matches, with partial matches retained as fallback. Use
 `--query` for additional symptoms or text clues; typed constraints still apply.
 If a label or relationship expression is unknown, first locate the entity and
 read its evidence, then try supported alternative labels in another call. Empty
@@ -134,6 +135,7 @@ Any typed filter or `--relation` selects knowledge search, even without query.
 In that mode, `--since/--before/--period` constrain the knowledge's explicit
 `event_time` (unknown event times are excluded); no history cursor applies.
 `--time 十一月` is a stored label, while `--period last_month` is a date range.
+For original-message review, including the context of a short answer, omit typed/relation filters; use date bounds and text clues, then read the relevant question and answer.
 For complete chronological review, omit typed/relation filters and use the date
 review below; discover actual entities before follow-up dimensional searches.
 
@@ -141,8 +143,9 @@ For time-based investigative questions, use this sequence:
 
 1. Establish the time range and the subject. When concrete incidents and service
    names are unknown, first review source messages for that period. Start with
-   a bounded page of `memory search --period ... --with-sources --json`, without
-   a query, to discover what actually happened. These are conversation records;
+   a bounded page of `memory search --period ...`, without a query or
+   `--with-sources`, to discover candidate topics from titles and summaries.
+   Expand selected originals only when the investigation needs their details. These are conversation records;
    execution event logs are requested separately only when needed as evidence.
 2. Briefly organize the returned evidence into incidents, symptoms, dates,
    projects, people, services and outcomes. Distinguish plans, assistant reports
@@ -162,8 +165,8 @@ For time-based investigative questions, use this sequence:
 Example: the user asks, “我上个月的服务器有什么问题？”
 
 - First call `memory search --period last_month --timezone Asia/Shanghai
-  --limit 20 --with-sources --json`, passing this execution's token through the
-  skill transport. Page through the relevant records to establish the incidents.
+  --limit 20`, using the skill transport. Review compact results first, then
+  expand only incident evidence needed to establish the answer.
 - Suppose the records identify 北辰 / Polaris, api-gateway, Nginx, 502 and an
   upstream-port mismatch. Summarize that finding, then search knowledge with
   `--query '北辰 Polaris api-gateway Nginx 502 上游端口 监听地址'`. These example
@@ -206,7 +209,7 @@ conditions unchanged while paging source history.
   directly instead of repeating the search with every source expanded.
 
 ```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli memory search --token '<memory_token>' --query '发布前 迁移演练' --limit 3 --with-sources
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli memory search --query '发布前 迁移演练' --limit 3 --with-sources
 ```
 
 Use the transport rules above if that environment variable is unavailable.

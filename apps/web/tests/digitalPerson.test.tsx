@@ -68,7 +68,7 @@ test('digital person persists its profile, guards drafts, and shows native memor
     digitalPersonApi.save = workingSave
     await act(async () => toggle.click())
     assert.equal(profile.enabled, false)
-    assert.equal(rootElement.querySelectorAll('[data-body-part]').length, 7)
+    assert.equal(rootElement.querySelectorAll('[data-body-part]').length, 8)
     await click('主动性')
     const intervalInput = rootElement.querySelector<HTMLInputElement>('input[name="proactive_interval_minutes"]')!
     assert.ok(intervalInput)
@@ -78,21 +78,14 @@ test('digital person persists its profile, guards drafts, and shows native memor
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(intervalInput, '15')
       intervalInput.dispatchEvent(new window.Event('input', { bubbles: true }))
     })
-    const delegationInput = rootElement.querySelector<HTMLInputElement>('input[name="delegation_interval_seconds"]')!
-    assert.ok(delegationInput)
-    assert.equal(delegationInput.value,'60')
-    await act(async()=>{
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(delegationInput,'3')
-      delegationInput.dispatchEvent(new window.Event('input',{bubbles:true}))
-    })
-    const shared = rootElement.querySelector<HTMLInputElement>('input[name="proactive_shared_context"]')!
+    assert.equal(rootElement.querySelector('input[name="delegation_interval_seconds"]'),null)
+    const shared=rootElement.querySelector<HTMLInputElement>('input[name="proactive_shared_context"]')!
     assert.ok(shared)
-    assert.equal(shared.checked, true)
-    await act(async () => shared.click())
+    assert.equal(shared.checked,true)
+    await act(async()=>shared.click())
     await click('保存')
     assert.equal((profile as any).proactive_interval_minutes, 15)
-    assert.equal((profile as any).delegation_interval_seconds, 3)
-    assert.equal((profile as any).proactive_shared_context, false)
+    assert.equal((profile as any).proactive_shared_context,false)
     await click('大脑')
     assert.ok(rootElement.querySelector('[aria-label="' + '默认助手引擎' + '"]') || rootElement.querySelector('select'))
     assert.equal(rootElement.querySelector('textarea[name="conversation_rules"]'), null)
@@ -102,8 +95,8 @@ test('digital person persists its profile, guards drafts, and shows native memor
     assert.equal(savedAssistant, 'digital_person')
     assert.doesNotMatch(rootElement.textContent!, /流程助手|任务创建助手/)
     await click('记忆')
-    assert.equal(rootElement.querySelector('[role="tab"][aria-selected="true"]')?.textContent, '记忆')
-    assert.ok(rootElement.querySelector('[role="tabpanel"]'))
+    assert.equal(rootElement.querySelector('[data-body-part=memory]')?.getAttribute('aria-pressed'),'true')
+    assert.ok(rootElement.querySelector('[role="region"][aria-labelledby="digital-person-tab-memory"]'))
     assert.equal(rootElement.querySelector('iframe'), null)
     assert.ok(rootElement.querySelector('.digital-person-memory-map'))
   } finally {

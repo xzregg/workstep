@@ -29,14 +29,14 @@ async def setup(current, project):
                 entities=entities,relations=relations,event_time='2026-11-01T00:00:00+00:00'))
         assert knowledge.store_extraction({'memories':values},index.candidates('local'),strict=True)==2
     await asyncio.to_thread(seed)
-    return await query.issue_access(current.projects,'local',project_ids=[project.id])
+    return await query.create_context(current.projects,'local',project_ids=[project.id])
 
 
 async def cli(current,token,*flags):
     class Client:
         async def call(self,operation,arguments):
-            return await query.search(current.projects,**arguments)
-    args=build_parser().parse_args(['memory','search','--token',token,*flags,'--json'])
+            return await query.search(current.projects,context=token,**arguments)
+    args=build_parser().parse_args(['memory','search',*flags,'--json'])
     return await dispatch(args,Client())
 
 
@@ -64,9 +64,9 @@ async def test_dimensions_and_time_bounds_permissions(runtime):
     assert result['coverage']['basis']=='knowledge_index'
     assert not (await cli(current,token,*flags,'--before','2026-10-01T00:00:00Z'))['knowledge']
     assert not (await cli(current,token,'--person','小林','--place','上海'))['knowledge']
-    foreign=await query.issue_access(current.projects,'channel:other',project_ids=[project.id])
+    foreign=await query.create_context(current.projects,'channel:other',project_ids=[project.id])
     assert not (await cli(current,foreign,'--person','小林'))['knowledge']
-    empty=await query.issue_access(current.projects,'local',project_ids=[])
+    empty=await query.create_context(current.projects,'local',project_ids=[])
     assert not (await cli(current,empty,'--person','小林'))['knowledge']
     for bad in [' '*3,'x'*121]:
         with pytest.raises(ValueError):
@@ -104,11 +104,11 @@ async def test_http_and_dispatch_contract(runtime,monkeypatch):
     monkeypatch.setattr(memory,'projects',lambda:current.projects)
     app=FastAPI();app.include_router(memory.router)
     async with AsyncClient(transport=ASGITransport(app=app),base_url='http://test') as client:
-        response=await client.post('/api/memory/search',json={'memory_token':token,'person':'Lin','relation':'负责'})
+        response=await client.post('/api/memory/search',json={'person':'Lin','relation':'负责'})
         assert response.status_code==200
         assert len(response.json()['knowledge'])==1
-        assert (await client.post('/api/memory/search',json={'memory_token':token,'person':'x'*121})).status_code==422
-        assert (await client.post('/api/memory/search',json={'memory_token':'invalid','person':'小林'})).status_code==403
+        assert (await client.post('/api/memory/search',json={'person':'x'*121})).status_code==422
+        assert (await client.post('/api/memory/search',json={'filter_project_id':'invalid','person':'小林'})).status_code==403
 
 
 def test_cli_guidance_covers_dimension_progression():
@@ -119,7 +119,7 @@ def test_cli_guidance_covers_dimension_progression():
     assert 'Different dimensions are AND' in text
     assert '--time 十一月' in text
     assert 'not implemented' not in text
-    assert 'typed CLI filters' in query.instruction('test-private-token')
+    assert query.instruction() == ''
 
 
 async def test_filters_apply_before_limit_and_forgotten_sources(runtime):
@@ -143,3 +143,17 @@ async def test_filters_apply_before_limit_and_forgotten_sources(runtime):
         index.forget(row['id'])
     await asyncio.to_thread(forget)
     assert not (await cli(current,token,'--person','小林','--relation','负责'))['knowledge']
+
+
+async def test_all_query_terms_rank_ahead_of_generic_person_matches(runtime):
+    current,project,_=runtime
+    access=await setup(current,project)
+    def seed_topics():
+        rows=index.candidates('local');mid=rows[0]['id']
+        values=[{'summary':'Lin collects astronomy books and maintains a library.','kind':'fact','outcome':'stated','source_ids':[f'memory:{mid}']}]
+        values += [{'summary':f'Lin attends a meeting number {i}.','kind':'event','outcome':'reported','source_ids':[f'memory:{mid}']} for i in range(20)]
+        knowledge.store_extraction({'memories':values},rows,strict=True)
+    await asyncio.to_thread(seed_topics)
+    result=await cli(current,access,'--query','Lin astronomy','--limit','1')
+    item=result['knowledge'][0]
+    assert 'astronomy' in item.get('title','')+item.get('summary','')

@@ -8,7 +8,7 @@ from tests.test_digital_person_runtime import runtime
 async def test_pending_requires_internal_assignment_and_preserves_context(runtime):
     from services import memory_query as query
     current, project, _ = runtime
-    token = await query.issue_access(current.projects, 'local', project_ids=[project.id])
+    token = await query.create_context(current.projects, 'local', project_ids=[project.id])
     with pytest.raises(PermissionError):
         await query.pending(current.projects, token)
     payload = {'origin_project_id': project.id, 'conversation': [{'id':'m1','content':'证据'}]}
@@ -28,7 +28,7 @@ async def test_pending_does_not_block_event_loop(runtime, monkeypatch):
     import time
     from services import memory_query as query
     current, project, _ = runtime
-    token = await query.issue_access(current.projects, 'local')
+    token = await query.create_context(current.projects, 'local')
     query.bind_assessment(token, {'origin_project_id':project.id})
     from services import digital_person
     original = digital_person.get_profile
@@ -50,7 +50,7 @@ def test_assessment_contract_and_cli():
     prompt = instruction(DigitalPersonProfile())
     for text in ('memory pending', 'entities', 'relations', 'event_time', 'Step 1', 'Step 2', 'Step 3'):
         assert text in prompt
-    args=build_parser().parse_args(['memory','pending','--token','private','--json'])
+    args=build_parser().parse_args(['memory','pending','--json'])
     assert args.subcommand=='pending'
     payload={'conversation':[{'id':'m1','read_ranges':[{'id':'memory:1','offset':0,'length':100}]}]}
     assert compact(payload,'pending')==payload
@@ -64,19 +64,20 @@ async def test_pending_http_capability_and_cli_transport(runtime, monkeypatch):
     from services import memory_query as query
     from cli import build_parser, dispatch
     current, project, _ = runtime
-    token = await query.issue_access(current.projects, 'local')
+    sid=(await current.main_session())['id']
+    token = await query.execution_access(current.projects,project.id,sid,fresh=True)
     monkeypatch.setattr(memory, 'projects', lambda: current.projects)
     app=FastAPI()
     app.include_router(memory.router)
     async with AsyncClient(transport=ASGITransport(app=app),base_url='http://test') as client:
-        assert (await client.post('/api/memory/pending',json={'memory_token':token})).status_code==403
+        assert (await client.post('/api/memory/pending',json={'project_id':project.id,'session_id':sid})).status_code==403
         query.bind_assessment(token,{'origin_project_id':project.id,'conversation':[]})
-        assert (await client.post('/api/memory/pending',json={'memory_token':token})).status_code==200
+        assert (await client.post('/api/memory/pending',json={'project_id':project.id,'session_id':sid})).status_code==200
     class Client:
         async def call(self, operation, arguments):
-            assert operation=='workstep_memory_pending' and arguments=={'memory_token':token}
+            assert operation=='workstep_memory_pending' and arguments=={}
             return await query.pending(current.projects, token)
-    args=build_parser().parse_args(['memory','pending','--token',token,'--json'])
+    args=build_parser().parse_args(['memory','pending','--json'])
     assert (await dispatch(args,Client()))['conversation']==[]
 
 

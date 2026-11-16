@@ -1,3 +1,4 @@
+import SettingsHelpButton from './SettingsHelpButton'
 import { useI18n } from '../i18n'
 import { useEffect, useRef, useState } from 'react'
 import Button, { ButtonLink } from './Button'
@@ -38,7 +39,7 @@ export default function ProblemFeedbackSettings() {
   }
   return (
     <div className="settings-system-page">
-      <h1 className="settings-system-title">{t('settings.problemFeedback')}</h1>
+      <h1 className="settings-system-title">{t('settings.problemFeedback')}<SettingsHelpButton section="feedback" /></h1>
       <p className="settings-system-description">{t('settings.problemFeedbackIntro')}</p>
       <div className="settings-system-group problem-feedback">
         <Button variant="primary" loading={busy} onClick={() => void open()}>{t('settings.oneClickFeedback')}</Button>

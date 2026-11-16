@@ -39,6 +39,57 @@ export function toolKind(name: string, protocolKind?: string): ToolKind {
   return 'other'
 }
 
+/** Recognize the invoked memory CLI, including shell/runner prefixes, not prose. */
+export function isMemorySearchCommand(input: unknown): boolean {
+  const record = extractToolTarget(input).record
+  const value = record?.command ?? record?.cmd ?? (typeof input === 'string' && !record ? input : null)
+  const basename = (value: string) => value.split(/[\\/]/).pop() || value
+  const unquote = (value: string) => /^(["']).*\1$/s.test(value) ? value.slice(1, -1) : value
+  function invoked(tokens: string[], depth = 0): boolean {
+    if (depth > 3) return false
+    tokens = tokens.map(unquote)
+    while (tokens.length && /^(?:[A-Za-z_]\w*=|env$)/.test(tokens[0])) tokens.shift()
+    if (basename(tokens[0] || '') === 'rtk') {
+      tokens.shift()
+      if (tokens[0] === 'proxy') tokens.shift()
+    }
+    const executable = basename(tokens[0] || '')
+    if (/^(?:bash|sh|zsh|cmd(?:\.exe)?)$/.test(executable) && /^-(?:l?c|c)|^\/c$/i.test(tokens[1] || '')) {
+      return typeof tokens[2] === 'string' && shell(tokens[2], depth + 1)
+    }
+    const python = (value: string) => /^(?:python(?:\d+(?:\.\d+)*)?(?:\.exe)?|\$\{?WORKSTEP_CLI_PYTHON\}?)$/.test(basename(value))
+    if (executable === 'uv' && tokens[1] === 'run') {
+      const start = tokens.findIndex((value, index) => index > 1 && (python(value) || basename(value) === 'workstep'))
+      if (start < 0) return false
+      tokens = tokens.slice(start)
+    }
+    if (/^workstep(?:\.exe)?$/.test(basename(tokens[0] || ''))) tokens.shift()
+    else if (python(tokens[0] || '')) {
+      tokens.shift()
+      if (tokens[0] === '-m' && tokens[1] === 'cli') tokens.splice(0, 2)
+      else if (basename(tokens[0] || '') === 'cli.py') tokens.shift()
+      else return false
+    } else return false
+    if (tokens[0] === '--url') tokens.splice(0, 2)
+    return tokens[0] === 'memory' && tokens[1] === 'search'
+  }
+  function shell(command: string, depth = 0): boolean {
+    const tokens = command.match(/"(?:\\.|[^"\\])*"|'[^']*'|&&|\|\||[;|\n]|[^\s"';&|]+/g) || []
+    const segments: string[][] = [[]]
+    for (const token of tokens) {
+      if (/^(?:&&|\|\||[;|\n])$/.test(token)) segments.push([])
+      else segments[segments.length - 1].push(token)
+    }
+    // Directory/environment preparation is common; unrelated commands retain
+    // the generic execution label rather than hiding their work as a search.
+    const commands = segments.filter(segment => segment.length && !/^(?:cd|export)$/.test(segment[0]))
+    return commands.length > 0 && commands.every(segment => invoked(segment, depth))
+  }
+  return Array.isArray(value) && value.every(item => typeof item === 'string')
+    ? invoked(value)
+    : typeof value === 'string' && shell(value)
+}
+
 export type ToolTargetInfo = {
   /** 尽力解析出的入参对象（可能来自片段合并）。 */
   record: Record<string, unknown> | null

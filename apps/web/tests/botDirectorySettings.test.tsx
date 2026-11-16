@@ -27,7 +27,7 @@ test('directory searches only local API, refreshes explicitly and saves disabled
   try {
     await act(async () => root.render(<I18nProvider><BotDirectorySettings bot={bot} onDirtyChange={onDirty} onBusyChange={onBusy} /></I18nProvider>))
     assert.match(container.textContent!, /张三/)
-    assert.match(container.textContent!, /仅缓存在内存/)
+    assert.match(container.textContent!, /缓存在本地，重启后直接使用/)
     assert.equal(calls.filter(row => row.startsWith('POST')).length, 0)
     const input=container.querySelector<HTMLInputElement>('input[placeholder]')!
     await act(async () => {

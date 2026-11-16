@@ -17,6 +17,7 @@ import {selectRobotActivity} from './avatar/robotActivity'
 import {useDigitalPersonAffect} from './useDigitalPersonAffect'
 import DigitalPersonSpeech from './DigitalPersonSpeech'
 import DigitalPersonCamera, {DigitalPersonCameraToggle, type PrepareCameraMessage} from './DigitalPersonCamera'
+import FaceHomePanel from '../face-recognition/FaceHomePanel'
 import {useDigitalPersonDialogue} from './useDigitalPersonDialogue'
 import {DIGITAL_OUTPUT_FRAME,type DigitalOutputFrame} from './digitalPersonVoiceEvents'
 import DigitalPersonCaptions from './DigitalPersonCaptions'
@@ -35,11 +36,12 @@ export default function DigitalPersonHome(props:Props){
  const [outputFrame,setOutput]=useState({projectId,sessionId,playing:false,level:0,busy:false}),[keyboardShown,setKeyboardShown]=useState(false),[chatShown,setChatShown]=useState(false)
  const output=active&&outputFrame.projectId===projectId&&outputFrame.sessionId===sessionId?outputFrame:{playing:false,level:0,busy:false}
  const [speakerMuted,setSpeakerMuted]=useState(false)
+ const [facesShown,setFacesShown]=useState(false)
  useEffect(()=>{
   if(!active)return
-  setProactiveSpeechContext({projectId,sessionId,profile:{...profile,auto_speak:true},muted:speakerMuted||chatShown})
+  setProactiveSpeechContext({projectId,sessionId,profile:{...profile,auto_speak:true},muted:speakerMuted||chatShown||facesShown})
   return()=>setProactiveSpeechContext(null)
- },[active,projectId,sessionId,profile,speakerMuted,chatShown])
+ },[active,projectId,sessionId,profile,speakerMuted,chatShown,facesShown])
  const textButton=useRef<HTMLButtonElement>(null),inputRef=useRef<HTMLTextAreaElement>(null)
  const dialogue=useDigitalPersonDialogue({projectId,sessionId,active,running,speaking:output.playing||output.busy,onSend:props.onSend,onStop:props.onStop})
  useEffect(()=>{
@@ -79,9 +81,10 @@ export default function DigitalPersonHome(props:Props){
  return <main className={`digital-home${chatShown?' digital-home--chat':''}`} data-state={state}>
   <header className="digital-home-header">
    <div className="digital-home-brand"><BrandIcon size={26}/><strong>WorkStep</strong><span>{t('digitalPerson.homeWorkspace')}</span></div>
-   <Button variant="ghost" className="digital-home-back" onClick={returnWorkbench}><Icon name="chevron-right" size={16}/>{t('digitalPerson.homeBack')}</Button>
     <div className="digital-home-identity"><strong>{profile.name}</strong><span>{['thinking','checking'].includes(state)?<Spinner size={16}/>:<Icon name="audio-lines" size={16}/>} {t(`digitalPerson.homeState${state}` as never)}</span></div>
+   <Button variant="ghost" className="digital-home-settings digital-home-face-entry" disabled={!active} aria-label={t('faceRecognition.title')} title={t('faceRecognition.title')} aria-expanded={facesShown} aria-haspopup="dialog" onClick={()=>{dialogue.mute();setFacesShown(true)}}><Icon name="scan-face" size={16}/></Button>
    <Button variant="ghost" className="digital-home-settings" aria-label={t('digitalPerson.title')} onClick={()=>{dialogue.mute();window.dispatchEvent(new window.Event('workstep:open-digital-person-settings'))}}><Icon name="settings" size={16}/></Button>
+   <Button variant="ghost" className="digital-home-back" onClick={returnWorkbench}><Icon name="chevron-right" size={16}/>{t('digitalPerson.homeBack')}</Button>
   </header>
   <div className="digital-home-main">
    <section className="digital-home-stage" aria-label={profile.name}>
@@ -96,20 +99,21 @@ export default function DigitalPersonHome(props:Props){
     {task?<><p className="digital-home-work-instruction" title={task.instruction.slice(0,400)}>{task.instruction.split(/[。！？\n]/).find(line=>line.trim())?.slice(0,140)}</p><div className="digital-home-task-state">{['running','queued'].includes(task.status)?<Spinner size={22}/>:<Icon name="check" size={22}/>}<div><strong>{t(`digitalPerson.status${task.status.charAt(0).toUpperCase()+task.status.slice(1)}` as never)}</strong><p>{t(['running','queued'].includes(task.status)?'digitalPerson.homeDelegated':'digitalPerson.homeExecutionEnded')}</p></div></div></>:
      <div className="digital-home-empty-work"><Icon name="workflow" size={32}/><h3>{t('digitalPerson.homeNoWork')}</h3><p>{t('digitalPerson.homeWorkHint')}</p></div>}
    </section>}
-   {!chatShown&&<DigitalPersonCaptions projectId={projectId} messages={messages} sessionId={sessionId} greeting={profile.greeting} liveText={dialogue.text||dialogue.draft}/>}
+   {!chatShown&&<DigitalPersonCaptions projectId={projectId} messages={messages} feedback={activity?.feedback} sessionId={sessionId} greeting={profile.greeting} liveText={dialogue.text||dialogue.draft}/>}
    {chatShown&&<section className="digital-home-chat" aria-label={t('digitalPerson.homeTranscript')}><header><h2>{t('digitalPerson.homeTranscript')}</h2><Button variant="ghost" onClick={()=>setChatShown(false)} aria-label={t('common.close')}><Icon name="x" size={18}/></Button></header>{props.children}</section>}
   </div>
   {(props.error||dialogue.error)&&<p className="digital-home-error" role="alert">{props.error||t(dialogue.error as never)}</p>}
   <footer className="digital-home-footer">
-   {!chatShown&&<DigitalPersonCamera key={`${projectId}/${sessionId}`} compact projectId={projectId} active={active} onPrepare={props.onPrepareCamera}>{keyboardShown&&<div className="digital-home-composer"><ChatInput inputRef={inputRef} value={props.inputValue} onChange={props.onDraft} onSend={content=>{primeSpeechOutput();void props.onSend(content ?? props.inputValue, content !== undefined)}} projectId={projectId} sessionId={sessionId} imageAttach={{projectId}} running={running} onStop={()=>{void props.onStop()}} disabled={!active}/></div>}
-   <div className="digital-home-voice-dock">
+   <DigitalPersonCamera key={`${projectId}/${sessionId}`} compact projectId={projectId} active={active&&!facesShown} onPrepare={props.onPrepareCamera}>{!chatShown&&keyboardShown&&<div className="digital-home-composer"><ChatInput inputRef={inputRef} value={props.inputValue} onChange={props.onDraft} onSend={content=>{primeSpeechOutput();void props.onSend(content ?? props.inputValue, content !== undefined)}} projectId={projectId} sessionId={sessionId} imageAttach={{projectId}} running={running} onStop={()=>{void props.onStop()}} disabled={!active}/></div>}
+   {!chatShown&&<div className="digital-home-voice-dock">
     <Button variant="ghost" className="digital-home-speaker" onClick={()=>setSpeakerMuted(value=>!value)} aria-label={t(speakerMuted?'digitalPerson.homeEnableSound':'digitalPerson.homeMuteSound')} aria-pressed={!speakerMuted}><Icon name={speakerMuted?'volume-off':'volume'} size={24}/></Button>
     <Button variant="ghost" className="digital-home-microphone" aria-label={t(ready?'digitalPerson.homeMute':'digitalPerson.homeStartVoice')} aria-pressed={ready} loading={busy} onClick={dialogue.toggle} disabled={!active||dialogue.sending}><Icon name={ready?'mic':'mic-off'} size={24}/></Button>
     <div className="digital-home-wave" aria-hidden="true"><Icon name="audio-lines" size={36}/><span>{t(ready?'digitalPerson.homeMicOn':'digitalPerson.homeMicOff')}</span></div>
     <DigitalPersonCameraToggle/>
     <Button variant="ghost" className="digital-home-end" aria-label={t('digitalPerson.homeEnd')} disabled={!dialogue.connected&&!running&&!output.playing&&!output.busy} onClick={dialogue.end}><Icon name="phone-off" size={24}/></Button>
-   </div><div className="digital-home-input-actions"><Button variant="ghost" ref={textButton} className="digital-home-keyboard" onClick={openText} aria-label={t('digitalPerson.homeKeyboard')} aria-expanded={keyboardShown}><Icon name="keyboard" size={24}/></Button><Button variant="ghost" className="digital-home-transcript-button" onClick={()=>{dialogue.mute();setChatShown(true)}}>{t('digitalPerson.homeTranscript')}<Icon name="chevron-right" size={14}/></Button></div></DigitalPersonCamera>}
-   <DigitalPersonSpeech muted={speakerMuted||chatShown} hideControls profile={{...profile,auto_speak:true}} projectId={projectId} sessionId={sessionId} messages={messages} active={active}/>
+   </div>}{!chatShown&&<div className="digital-home-input-actions"><Button variant="ghost" ref={textButton} className="digital-home-keyboard" onClick={openText} aria-label={t('digitalPerson.homeKeyboard')} aria-expanded={keyboardShown}><Icon name="keyboard" size={24}/></Button><Button variant="ghost" className="digital-home-transcript-button" onClick={()=>{dialogue.mute();setChatShown(true)}}>{t('digitalPerson.homeTranscript')}<Icon name="chevron-right" size={14}/></Button></div>}</DigitalPersonCamera>
+   <DigitalPersonSpeech muted={speakerMuted||chatShown||facesShown} hideControls profile={{...profile,auto_speak:true}} projectId={projectId} sessionId={sessionId} messages={messages} active={active}/>
   </footer>
+  {facesShown&&active&&<FaceHomePanel key={`${projectId}/${sessionId}`} onClose={()=>setFacesShown(false)}/>}
  </main>
 }

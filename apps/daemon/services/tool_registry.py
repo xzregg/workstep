@@ -46,23 +46,23 @@ class WorkstepTool:
 # Compatibility dispatch only; not advertised to models.
 _LEGACY_MEMORY_HISTORY = WorkstepTool(
         name="workstep_memory_history",
-        description="Review authoritative terminal chat and workflow messages within since/before or a calendar period, independent of index lag. Pass snapshot and next_cursor until has_more=false; explicitly disclose coverage gaps. Separate plans from completed work and assistant claims from execution evidence. Never display or save memory_token.",
+        description="Review authoritative terminal chat and workflow messages within since/before or a calendar period, independent of index lag. Pass snapshot and next_cursor until has_more=false; explicitly disclose coverage gaps. Separate plans from completed work and assistant claims from execution evidence.",
         method="POST", path="/api/memory/history",
-        parameters={"memory_token": {"type": "string"}, "cursor": {"type": "integer"}, "snapshot": {"type": "string"}, "limit": {"type": "integer"},
+        parameters={"cursor": {"type": "integer"}, "snapshot": {"type": "string"}, "limit": {"type": "integer"},
                     "since": {"type": "string"}, "before": {"type": "string"}, "period": {"type": "string"},
                     "timezone_name": {"type": "string"}},
-        required=("memory_token",),
-        body_params=("memory_token", "cursor", "snapshot", "limit", "since", "before", "period", "timezone_name"),
+        required=(),
+        body_params=("project_id", "session_id", "filter_project_id", "filter_session_id", "cursor", "snapshot", "limit", "since", "before", "period", "timezone_name"),
     )
 
 
 WORKSTEP_TOOLS: list[WorkstepTool] = [
     WorkstepTool(
         name="workstep_memory_pending",
-        description="Step 1 of background assessment: fetch this execution's assigned unprocessed evidence and companion context. Only a scheduler-issued assessment capability works. Repeated calls return the same batch. Follow read_ids/read_ranges before producing the final structured assessment. This does not mark evidence completed.",
+        description="Step 1 of background assessment: fetch this execution's assigned unprocessed evidence and companion context. Only the active scheduler assessment can provide a batch. Repeated calls return the same batch. Follow read_ids/read_ranges before producing the final structured assessment. This does not mark evidence completed.",
         method="POST", path="/api/memory/pending",
-        parameters={"memory_token": {"type": "string"}},
-        required=("memory_token",), body_params=("memory_token",),
+        parameters={},
+        required=(), body_params=("project_id", "session_id", "filter_project_id", "filter_session_id", ),
     ),
     WorkstepTool(
         name="workstep_stop_digital_person_check",
@@ -72,9 +72,9 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
     ),
     WorkstepTool(
         name="workstep_memory_search",
-        description="Search memory after interpreting user intent and deriving evidence clues from conversation; do not blindly copy the question. Locate typed person/event/object/place/time entities by canonical name or alias, then narrow by relation anchored to the selected person/object. Combine dimensions with AND. Typed filters imply knowledge search; date bounds then constrain knowledge event_time. Supply query for additional text clues. Omit query for authoritative source browsing or complete date-range reviews, independent of index lag. Follow snapshot/next_cursor and report coverage gaps. Inferred clues are hypotheses, not facts. Set include_sources=true to also fetch original message bodies for returned evidence (no event logs); inspect source_coverage and continue with memory_read when truncated. Keep memory_token private.",
+        description="Search memory after interpreting user intent and deriving evidence clues from conversation; do not blindly copy the question. Locate typed person/event/object/place/time entities by canonical name or alias, then narrow by relation anchored to the selected person/object. Combine dimensions with AND. Typed filters imply knowledge search; date bounds then constrain knowledge event_time. Supply query for additional text clues. Omit query for authoritative source browsing or complete date-range reviews, independent of index lag. Follow snapshot/next_cursor and report coverage gaps. Inferred clues are hypotheses, not facts. Set include_sources=true to also fetch original message bodies for returned evidence (no event logs); inspect source_coverage and continue with memory_read when truncated.",
         method="POST", path="/api/memory/search",
-        parameters={"memory_token": {"type": "string"}, "query": {"type": "string", "description": "Intent-derived text clues; omit for complete source review, optionally bounded by dates."},
+        parameters={"query": {"type": "string", "description": "Intent-derived text clues; omit for complete source review, optionally bounded by dates."},
                     **{kind: {"type": "string", "description": "Exact typed entity name or alias; AND across dimensions. time is a stored tag, not a date range."}
                        for kind in ("person", "event", "object", "place", "time")},
                     "relation": {"type": "string", "description": "Literal relationship substring anchored to selected person/object."},
@@ -84,16 +84,16 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
                     "since": {"type": "string"}, "before": {"type": "string"},
                     "period": {"type": "string", "description": "last_month, this_month, yesterday, today"},
                     "timezone_name": {"type": "string", "description": "IANA timezone; default Asia/Shanghai"}},
-        required=("memory_token",),
-        body_params=("memory_token", "query", "cursor", "snapshot", "limit", "since", "before", "period", "timezone_name", "include_sources", "source_chars", "person", "event", "object", "place", "time", "relation"),
+        required=(),
+        body_params=("project_id", "session_id", "filter_project_id", "filter_session_id", "query", "cursor", "snapshot", "limit", "since", "before", "period", "timezone_name", "include_sources", "source_chars", "person", "event", "object", "place", "time", "relation"),
     ),
     WorkstepTool(
         name="workstep_memory_read",
-        description="Read a memory's original source text with offset/limit paging; events=true reads workflow execution events with event offset. Use an actual memory ID from search/pending, not an invented ID. Never display or save memory_token.",
+        description="Read a memory's original source text with offset/limit paging; events=true reads workflow execution events with event offset. Use an actual memory ID from search/pending, not an invented ID.",
         method="POST", path="/api/memory/read",
-        parameters={"memory_token": {"type": "string"}, "memory_id": {"type": "string"},
+        parameters={"memory_id": {"type": "string"},
                     "offset": {"type": "integer"}, "limit": {"type": "integer"}, "events": {"type": "boolean"}},
-        required=("memory_token", "memory_id"), body_params=("memory_token", "memory_id", "offset", "limit", "events"),
+        required=("memory_id",), body_params=("project_id", "session_id", "filter_project_id", "filter_session_id", "memory_id", "offset", "limit", "events"),
     ),
     WorkstepTool(
         name="workstep_delegate_digital_person",
@@ -895,6 +895,11 @@ class WorkstepClient:
         if tool is None:
             return {"ok": False, "error": f"未知操作：{operation}"}
         args = dict(arguments or {})
+        if operation.startswith('workstep_memory_'):
+            from services.conversation_context import current_conversation
+            context=current_conversation()
+            if context.get('ok') is not False:
+                args.update(project_id=context['project_id'],session_id=context['session_id'])
         missing = [
             key for key in tool.required
             if (not args.get(key) or str(args[key]).strip() == "")

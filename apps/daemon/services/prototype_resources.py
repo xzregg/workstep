@@ -67,13 +67,19 @@ class HtmlReferences(HTMLParser):
             self.scripts.append(data)
 
 
-def collect_resources(root: Path, entries, *, max_file: int, max_total: int):
+def collect_resources(root: Path, entries, *, max_file: int, max_total: int, include_siblings: bool = True):
     """Include sibling pages and their transitive local dependencies, off-loop."""
     queue = deque()
     for entry in entries:
         parent = (root / entry).parent
         queue.append((root / entry, parent))
-        queue.extend((page, parent) for page in sorted(parent.iterdir()) if page.suffix.lower() in {'.html', '.htm'})
+        if not include_siblings:
+            continue
+        try:
+            siblings = sorted(parent.iterdir())
+        except FileNotFoundError:
+            continue
+        queue.extend((page, parent) for page in siblings if page.suffix.lower() in {'.html', '.htm'})
     paths, seen, contents, total = {}, set(), {}, 0
 
     def enqueue(raw, base, document_base):

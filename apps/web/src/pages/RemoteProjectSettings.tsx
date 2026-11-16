@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import { useCallback, useEffect, useState } from 'react'
 import Button from '../components/Button'
 import Field from '../components/Field'
@@ -112,7 +113,7 @@ export default function RemoteProjectSettings() {
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <section style={{ paddingBottom: 24, borderBottom: '1px solid var(--border-soft)' }}>
-        <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.remoteAccessTitle')}</h1>
+        <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.remoteAccessTitle')}<SettingsHelpButton section="remote" /></h1>
         <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', marginBottom: 18 }}>{t('settings.remoteAccessIntro')}</p>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', marginBottom: 16 }}>
           <input

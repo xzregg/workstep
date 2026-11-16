@@ -196,6 +196,7 @@ def _load_app(host: str, port: int):
     os.environ["WORKSTEP_HOST"] = host
     os.environ["WORKSTEP_PORT"] = str(port)
     os.environ.setdefault("WORKSTEP_WEB_DIST", str(_bundle_dir() / "web_dist"))
+    os.environ.setdefault("WORKSTEP_LANDING_DIST", str(_bundle_dir() / "landing_dist"))
     prepare_cli_environment(host, port)
 
     if "__compiled__" in globals():

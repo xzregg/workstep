@@ -1,3 +1,4 @@
+from tests.memory_turn_fixture import assessment_access
 from tests.memory_turn_fixture import create_completed_user
 import asyncio
 import json
@@ -105,7 +106,7 @@ async def test_long_new_event_is_complete_after_pending(runtime,monkeypatch):
     body='这是新的交流内容。'*100+'结尾要求：发布前做迁移演练。'
     await current.projects.run_db(project.id,lambda _:ChatMessage.update(content=body).where(ChatMessage.id=='new-event').execute())
     async def invoke(*args,**kwargs):
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+        token=await assessment_access(current)
         assert body not in args[3]
         ctx=await memory_query.pending(current.projects,token)
         assert ctx['conversation'][0]['content']==body
@@ -141,7 +142,7 @@ async def test_one_configured_engine_call_stores_memory_relationship_and_notice(
     async def invoke(*args,**kwargs):
         calls.append((args,kwargs))
         from services import memory_query
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+        token=await assessment_access(current)
         assert 'Data to reflect on:' not in args[3]
         ctx=await memory_query.pending(current.projects,token)
         mid=ctx['conversation'][0]['memory_ids'][0]
@@ -235,14 +236,14 @@ async def test_correction_requires_on_demand_read_and_supersedes_prior_memory(ru
     sid=await seed(current,project)
     calls=[]
     async def invoke(*args,**kwargs):
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+        token=await assessment_access(current)
         ctx=await memory_query.pending(current.projects,token)
         calls.append(ctx)
         source=ctx['conversation'][0]['memory_ids'][0]
         item={'summary':'发布前必须演练迁移' if len(calls)==1 else '实验项目发布前可跳过迁移演练',
               'kind':'preference','outcome':'stated','source_ids':[source]}
         if len(calls)==2:
-            token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+            token=await assessment_access(current)
             old=await memory_query.search(current.projects,token,query='迁移演练')
             assert old['knowledge']
             await memory_query.read(current.projects,token,old['knowledge'][0]['id'],limit=6000)

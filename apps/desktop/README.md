@@ -77,7 +77,7 @@ cd apps/desktop && corepack yarn test
 uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_entry.py
 ```
 
-本机 macOS ARM64 试用包可在仓库根直接运行 `./apps/desktop/package-local-macos.sh 1.0.9`。脚本会更新桌面版本、从 Web favicon 重新生成图标、构建 Web 和内置后台、注入资源、生成带版本号的 DMG，并完成 ad-hoc 签名校验与 SHA-256 输出；省略版本号时使用 `apps/desktop/package.json` 中的当前版本。打包前会清理旧 macOS DMG/ZIP，避免误用历史包。Electron Builder 生成 DMG 时需要临时创建 `WorkStep.app`，脚本会在校验后删除该目录，不把它作为独立产物保留。该命令关闭 hardened runtime，不使用开发者证书或公证。Electron fuses 会修改可执行文件，不能只跳过签名后直接分发，否则可能因签名页不匹配在启动前被 macOS 终止。正式 Developer ID 发布应继续使用默认 hardened runtime 与证书签名配置。
+本机 macOS ARM64 试用包可在仓库根直接运行 `./apps/desktop/package-local-macos.sh 1.0.9`。脚本会更新桌面版本、从 Web favicon 重新生成图标、构建工作台、官网（含操作手册）和内置后台、注入资源、生成带版本号的 DMG，并完成 ad-hoc 签名校验与 SHA-256 输出；省略版本号时使用 `apps/desktop/package.json` 中的当前版本。打包前会清理旧 macOS DMG/ZIP，避免误用历史包。Electron Builder 生成 DMG 时需要临时创建 `WorkStep.app`，脚本会在校验后删除该目录，不把它作为独立产物保留。该命令关闭 hardened runtime，不使用开发者证书或公证。Electron fuses 会修改可执行文件，不能只跳过签名后直接分发，否则可能因签名页不匹配在启动前被 macOS 终止。正式 Developer ID 发布应继续使用默认 hardened runtime 与证书签名配置。
 
 ## 发布
 
@@ -87,18 +87,20 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 
 内置 Python 启动时禁用字节码缓存写入，避免改变已签名的应用包资源；验收时应在实际启动前后分别检查签名。
 
-根目录的 `build.sh` 可先构建 Web dist，再生成桌面后端包：
+原生桌面包将官网和操作手册放在 `resources/backend/landing_dist/`，由内置后台托管 `/landing`。工作台仍放在 `web_dist/`；两者均通过发布内容过滤和扫描，不另生成手册副本。
+
+根目录的 `build.sh` 可先构建工作台和官网，再生成桌面后端包：
 
 ```bash
-./build.sh              # 构建 web dist 后打包桌面后端
+./build.sh              # 构建工作台和官网后打包桌面后端
 ./build.sh web          # 只构建 web dist
-./build.sh --with-web   # 构建 web dist 后打包桌面后端
-./build.sh --no-web     # 复用已有 apps/web/dist
+./build.sh --with-web   # 构建工作台和官网后打包桌面后端
+./build.sh --no-web     # 复用已有 apps/web/dist 和 apps/landing/dist
 ```
 
 推送 `v*` tag 后，CI 在 Windows x64、macOS ARM64、macOS Intel x64 和 Linux x64 分别完成以下流程；安装包内置与自身架构一致的 CPython。Mac ARM64 使用 `macos-15`，Intel 使用 `macos-15-intel` 原生构建；两者分别产出 `WorkStep-macos-arm64.dmg` 和 `WorkStep-macos-x64.dmg`，不能混用。Mac 上传前从真实 DMG 安装到临时目录，验证架构、签名、首次启动、后台版本、认证、UTF-8 配置持久化与重启退出；实机 Gatekeeper、既有安装升级和真实模型／沙箱仍需另行验收：
 
-1. 构建 React 前端。
+1. 构建工作台及官网前端（包含操作手册）。
 2. 下载可重定位的 CPython，并安装锁定的基础 `requirements-prod.txt`（不含可点击安装的引擎 SDK）。
 3. 生成 `build-artifacts/{win,mac,linux}/backend/main.dist/`，其中包含 Python runtime 与 daemon 源码。
 4. 把完整 standalone 目录注入 Electron 的 `resources/backend/`。

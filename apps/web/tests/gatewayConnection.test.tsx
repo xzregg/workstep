@@ -106,8 +106,16 @@ test('stable gateway status has no polling interval and refreshes only on a chan
     await act(async () => root.render(<I18nProvider><GatewayConnectionStatus onOpenSettings={() => {}} /></I18nProvider>))
     assert.equal(calls, 1)
     assert.equal(intervals, 0)
-    await act(async () => window.dispatchEvent(new window.Event('workstep:gateway-connection-changed')))
+    await act(async () => {
+      for (let i = 0; i < 3; i++) window.dispatchEvent(new window.Event('focus'))
+    })
+    assert.equal(calls, 1, 'returning from developer tools must not reload settings')
+    await act(async () => document.dispatchEvent(new window.Event('visibilitychange')))
     assert.equal(calls, 2)
+    await act(async () => window.dispatchEvent(new window.Event('workstep:reconnected')))
+    assert.equal(calls, 3)
+    await act(async () => window.dispatchEvent(new window.Event('workstep:gateway-connection-changed')))
+    assert.equal(calls, 4)
   } finally {
     await act(async () => root.unmount()); globalThis.setInterval = interval; globalThis.fetch = original; await window.happyDOM.close()
   }

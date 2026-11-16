@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import { visibleTemplates } from '../utils/contentLocale'
 import ResizablePanel from '../components/ResizablePanel'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -193,7 +194,7 @@ export default function TemplateSettings() {
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('templateSettings.title')}</h1>
+          <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('templateSettings.title')}<SettingsHelpButton section="templates" /></h1>
           <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>
             {t('templateSettings.introPart1')} <code style={{ fontFamily: 'var(--font-mono)', fontSize: 'calc(13px * var(--font-scale))' }}>~/.workstep/data/templates/</code>{' '}
             {t('templateSettings.introPart2')}<code style={{ fontFamily: 'var(--font-mono)', fontSize: 'calc(13px * var(--font-scale))' }}>default: true</code>{t('templateSettings.introPart3')}

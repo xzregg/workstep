@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../SettingsHelpButton'
 import { useEffect, useState } from 'react'
 import { connectorApi, type Connector, type DiscoveredConnector } from '../../api/connectors'
 import { useI18n } from '../../i18n'
@@ -44,7 +45,7 @@ export default function ConnectorSettingsPanel() {
     <footer><small>{t('connectors.visualConfiguration')}</small><Button onClick={() => setEdit({ kind: item.kind, transport: item.transport })}>{t('connectors.addShort')}<Icon name="plus" size={13} /></Button></footer>
   </article>)}</div>
   return <div className="connector-settings">
-    <header className="connector-settings-header"><div className="connector-heading"><h2>{t('connectors.title')}</h2><p>{t('connectors.subtitle')}</p></div><div className="connector-header-actions">
+    <header className="connector-settings-header"><div className="connector-heading"><h2>{t('connectors.title')}<SettingsHelpButton section="connectors" /></h2><p>{t('connectors.subtitle')}</p></div><div className="connector-header-actions">
       <Button disabled={!!busy} loading={busy === 'scan'} onClick={scan}><Icon name="scan" size={16} />{t('connectors.scan')}</Button>
       <Button variant="primary" onClick={() => setEdit({})}><Icon name="plus" size={16} />{t('connectors.add')}</Button>
     </div></header>

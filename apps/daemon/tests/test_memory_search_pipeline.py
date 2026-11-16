@@ -1,3 +1,4 @@
+from tests.memory_turn_fixture import assessment_access
 """Deterministic extraction fixture, real persistence/CLI/search/source paths.
 
 This verifies wiring and lexical association, not a live model's extraction quality.
@@ -31,12 +32,14 @@ async def test_completed_turn_to_cli_search_summary_entities_relations_and_origi
     class Client:
         async def call(self,operation,arguments):
             action=operation.removeprefix('workstep_memory_')
+            arguments['context']=getattr(self,'context',None) or await assessment_access(current)
             return await getattr(memory_query,action)(current.projects,**arguments)
     async def cli(action,token,*flags):
-        args=build_parser().parse_args(['memory',action,'--token',token,*flags,'--json'])
-        return await dispatch(args,Client())
+        args=build_parser().parse_args(['memory',action,*flags,'--json'])
+        client=Client();client.context=token
+        return await dispatch(args,client)
     async def invoke(*args,**kwargs):
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+        token=await assessment_access(current)
         pending=await cli('pending',token)
         messages=[message for group in pending['conversations'] for message in group['conversation']]
         evidence={m['id']:m['memory_ids'][0] for m in messages if m['role']=='user'}
@@ -59,7 +62,7 @@ async def test_completed_turn_to_cli_search_summary_entities_relations_and_origi
     processed=await current.check()
     assert processed['status']=='silent',processed.get('error')
     assert processed['memory_processing']['knowledge']['created']==2
-    token=await memory_query.issue_access(current.projects,'local',project_ids=[project.id])
+    token=await memory_query.create_context(current.projects,'local',project_ids=[project.id])
     history=await cli('search',token,'--since','2026-10-01T00:00:00Z','--before','2026-11-01T00:00:00Z',
                       '--with-sources','--limit','20')
     assert not history['has_more'] and history['coverage']['complete_source_history']

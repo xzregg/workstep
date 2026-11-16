@@ -62,13 +62,11 @@ export function useGatewayConnection() {
     if (consumers === 1 && (gatewayRemotePortalUrl() || !useGatewayConnectionStore.getState().status || useGatewayConnectionStore.getState().error)) refresh()
     window.addEventListener('workstep:gateway-connection-changed', refresh)
     window.addEventListener('workstep:reconnected', refresh)
-    window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', refresh)
     return () => {
       consumers--
       window.removeEventListener('workstep:gateway-connection-changed', refresh)
       window.removeEventListener('workstep:reconnected', refresh)
-      window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', refresh)
       if (!consumers) {
         generation++; request = null

@@ -12,6 +12,79 @@ def member(id='u1', name='张三'):
     return {'contact_id':id, 'name':name, 'departments':['研发'], 'user_id':id}
 
 
+@pytest.fixture(autouse=True)
+def directory_storage(tmp_path, monkeypatch):
+    monkeypatch.setattr('services.config.CONFIG_DIR', tmp_path)
+
+
+async def test_json_cache_survives_restart_and_manual_refresh(tmp_path):
+    fetch = AsyncMock(return_value=[member()])
+    service = ChannelDirectoryService(lambda _: fetch)
+    service.configure(bot())
+    await service.wait('b')
+    updated = service.status('b')['updated_at']
+    await service.close()
+    files = list(tmp_path.rglob('*.json'))
+    assert len(files) == 1
+    assert 'secret' not in files[0].read_text()
+    assert files[0].stat().st_mode & 0o777 == 0o600
+    service = ChannelDirectoryService(lambda _: fetch)
+    try:
+        service.configure(bot())
+        await service.wait('b')
+        assert fetch.await_count == 1
+        assert service.status('b')['updated_at'] == updated
+        assert await service.resolve(bot(), user_name='张三') == 'u1'
+        fetch.return_value = [member('u2', '李四')]
+        service.refresh(bot())
+        await service.wait('b')
+        assert fetch.await_count == 2
+    finally:
+        await service.close()
+    service = ChannelDirectoryService(lambda _: fetch)
+    try:
+        service.configure(bot())
+        await service.wait('b')
+        assert await service.resolve(bot(), user_name='李四') == 'u2'
+        assert fetch.await_count == 2
+    finally:
+        await service.close()
+
+
+@pytest.mark.parametrize('change', ['credentials', 'corrupt', 'malformed', 'empty'])
+async def test_invalid_json_cache_fetches_again(tmp_path, change):
+    fetch = AsyncMock(return_value=[] if change == 'empty' else [member()])
+    service = ChannelDirectoryService(lambda _: fetch)
+    service.configure(bot())
+    await service.wait('b')
+    await service.close()
+    if change == 'corrupt':
+        next(tmp_path.rglob('*.json')).write_text('{broken')
+    if change == 'malformed':
+        import json
+        path = next(tmp_path.rglob('*.json'))
+        value = json.loads(path.read_text())
+        value['contacts'] = [None]
+        path.write_text(json.dumps(value))
+    service = ChannelDirectoryService(lambda _: fetch)
+    try:
+        service.configure(bot(secret='changed') if change == 'credentials' else bot())
+        await service.wait('b')
+        assert fetch.await_count == (1 if change == 'empty' else 2)
+    finally:
+        await service.close()
+
+
+async def test_disable_removes_json_cache(tmp_path):
+    service = ChannelDirectoryService(lambda _: AsyncMock(return_value=[member()]))
+    service.configure(bot())
+    await service.wait('b')
+    assert list(tmp_path.rglob('*.json'))
+    service.configure(bot(directory_enabled=False))
+    await service.close()
+    assert not list(tmp_path.rglob('*.json'))
+
+
 async def test_cache_and_failure():
     fetch = AsyncMock(return_value=[member()])
     service = ChannelDirectoryService(lambda _: fetch)
@@ -76,6 +149,31 @@ async def test_deduplication_and_invalidation():
 from httpx import ASGITransport, AsyncClient
 import main
 from tests.test_channel_bots import bots
+
+
+@pytest.mark.parametrize('operation', ['_read_cache', '_write_cache'])
+async def test_slow_cache_disk_does_not_block_health(bots, monkeypatch, operation):
+    import threading
+    from services.channels.directory_providers.dingtalk import DingTalkDirectory
+    monkeypatch.setattr(DingTalkDirectory, 'fetch_snapshot', AsyncMock(return_value=[member()]))
+    manager, project, *_ = bots
+    entered, release = threading.Event(), threading.Event()
+    original = getattr(manager.directory, operation)
+    def slow(*args):
+        entered.set()
+        assert release.wait(3)
+        return original(*args)
+    monkeypatch.setattr(manager.directory, operation, slow)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+        created = await manager.create_bot({'platform':'dingtalk','name':'研发','app_id':'app','secret':'secret',
+            'enabled':True,'directory_enabled':True,'default_target_type':'project','default_project_id':project.id})
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get('/api/health'), .5)).status_code == 200
+        finally:
+            release.set()
+        await manager.directory.wait(created['id'])
+        assert manager.directory.status(created['id'])['status'] == 'ready'
 
 
 async def test_directory_api_and_named_send_are_scoped_and_cached(bots, monkeypatch):

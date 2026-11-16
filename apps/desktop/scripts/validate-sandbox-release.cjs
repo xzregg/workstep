@@ -18,6 +18,7 @@ module.exports = async function beforePack(context) {
     ? path.join(backend, 'python/python.exe') : path.join(backend, 'python/bin/python3.12')
   // Check the actual injected files, not only the repository or build inputs.
   execFileSync(python, [path.resolve(root, '../../scripts/package_payload.py'), 'check',
-    path.join(root, 'src'), path.join(backend, 'app/daemon'), path.join(backend, 'web_dist')], { stdio: 'inherit' })
+    path.join(root, 'src'), path.join(backend, 'app/daemon'), path.join(backend, 'web_dist'),
+    path.join(backend, 'landing_dist')], { stdio: 'inherit' })
 }
 module.exports.validateRelease = validateRelease

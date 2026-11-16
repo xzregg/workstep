@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import DigitalPersonSettings from '../components/digital-person/DigitalPersonSettings'
 import ConnectorSettingsPanel from '../components/connectors/ConnectorSettingsPanel'
 import MessageHistorySetting from '../components/MessageHistorySetting'
@@ -62,6 +63,7 @@ export default function SettingsPage({
   const channelBotDirty = useRef(false)
   const digitalPersonDirty = useRef(false)
   const [digitalPersonBusy, setDigitalPersonBusy] = useState(false)
+  const [settingsNavigationExpanded,setSettingsNavigationExpanded]=useState(false)
   const onDigitalPersonDirty = useCallback((dirty: boolean) => { digitalPersonDirty.current = dirty }, [])
   const decisionDirty = useRef(false)
   const onDecisionDirty = useCallback((dirty: boolean) => { decisionDirty.current = dirty }, [])
@@ -122,6 +124,7 @@ export default function SettingsPage({
     setUserNameSaved(true)
   }
 
+  const digitalPersonSection=activeSection==='digital-person'
   return (
     <div
       ref={settingsDialogRef}
@@ -145,7 +148,7 @@ export default function SettingsPage({
           if (section) setActiveSection(section); else onClose()
         }} />
       <ResizablePanel
-        className="modal settings-dialog-panel"
+        className={`modal settings-dialog-panel${digitalPersonSection?' settings-dialog-panel--digital-person':''}`}
         data-ui="settings"
         onMouseDown={(event) => event.stopPropagation()}
       >
@@ -154,10 +157,11 @@ export default function SettingsPage({
             <Icon name="sliders-horizontal" size={18} strokeWidth={2} />
             <span className="modal-title">{t('nav.settings')}</span>
           </div>
+          {digitalPersonSection&&<Button data-settings-navigation-toggle disabled={digitalPersonBusy} className="settings-navigation-toggle" aria-expanded={settingsNavigationExpanded} onClick={()=>setSettingsNavigationExpanded(value=>!value)}><Icon name="panel-left-open" size={16}/>{t('digitalMemoryView.allSettings')}</Button>}
           <Button variant="icon" disabled={digitalPersonBusy} aria-label={t('settings.closeSettings')} onClick={closeSettings}>✕</Button>
         </div>
 
-      <div className="settings-layout">
+      <div className={`settings-layout${digitalPersonSection&&!settingsNavigationExpanded?' settings-layout--digital-person':''}`}>
       <SettingsNavigation activeSection={activeSection} onSelect={selectSection} />
 
       <section className="settings-content">
@@ -203,7 +207,7 @@ export default function SettingsPage({
           <AppearanceSettings />
         ) : activeSection === 'system' ? (
           <div className="settings-system-page">
-            <h1 className="settings-system-title">{t('settings.systemTitle')}</h1>
+            <h1 className="settings-system-title">{t('settings.systemTitle')}<SettingsHelpButton section="system" /></h1>
             <p className="settings-system-intro">
               {t('settings.systemIntro')}
             </p>

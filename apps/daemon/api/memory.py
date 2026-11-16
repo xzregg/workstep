@@ -1,6 +1,6 @@
-"""Capability-scoped memory endpoints shared by all engine tool transports."""
+"""Explicitly filtered memory endpoints shared by all engine tool transports."""
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from services import memory_query
 
 router = APIRouter(prefix='/api/memory', tags=['memory'])
@@ -11,8 +11,15 @@ def projects():
     return project_manager
 
 
-class SearchRequest(BaseModel):
-    memory_token: str = Field(min_length=1, max_length=200, repr=False)
+class ExecutionRequest(BaseModel):
+    project_id: str = ''
+    session_id: str = ''
+    model_config=ConfigDict(extra="forbid")
+
+
+class SearchRequest(ExecutionRequest):
+    filter_project_id: str = Field(default='',max_length=200)
+    filter_session_id: str = Field(default='',max_length=200)
     query: str = Field(default='', max_length=1000)
     cursor: int = Field(default=0, ge=0)
     snapshot: str = Field(default='', max_length=100)
@@ -35,21 +42,25 @@ class ExpandedSearchRequest(SearchRequest):
     source_chars: int = Field(default=2400, ge=1, le=6000)
 
 
-class ReadRequest(BaseModel):
-    memory_token: str = Field(min_length=1, max_length=200, repr=False)
+class ReadRequest(ExecutionRequest):
+    filter_project_id: str = Field(default='',max_length=200)
+    filter_session_id: str = Field(default='',max_length=200)
     memory_id: str
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=2400, ge=1, le=6000)
     events: bool = False
 
 
-class PendingRequest(BaseModel):
-    memory_token: str = Field(min_length=1, max_length=200, repr=False)
+class PendingRequest(ExecutionRequest):
+    pass
 
 
 async def invoke(operation, request):
     try:
-        return await operation(projects(), **request.model_dump())
+        args=request.model_dump()
+        project_id=args.pop('project_id');session_id=args.pop('session_id')
+        args['context']=memory_query.query_access(projects(),project_id,session_id)
+        return await operation(projects(), **args)
     except PermissionError as exc:
         raise HTTPException(403, str(exc)) from exc
     except LookupError as exc:

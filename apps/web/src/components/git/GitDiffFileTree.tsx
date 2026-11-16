@@ -32,8 +32,8 @@ function fileTree(files: string[], projectRoot?: string): TreeNode[] {
   return merge(roots)
 }
 
-export default function GitDiffFileTree({ files, path, projectRoot, disabled = false, onSelect }: {
-  files: string[]; path: string; projectRoot?: string; disabled?: boolean; onSelect: (path: string) => void
+export default function GitDiffFileTree({ files, path, projectRoot, disabled = false, isFileDisabled, onSelect }: {
+  files: string[]; path: string; projectRoot?: string; disabled?: boolean; isFileDisabled?: (path: string) => boolean; onSelect: (path: string) => void
 }) {
   const { t } = useI18n()
   const [search, setSearch] = useState('')
@@ -59,7 +59,7 @@ export default function GitDiffFileTree({ files, path, projectRoot, disabled = f
     return <li key={node.key} role="none">
       <button type="button" role="treeitem" className="git-diff-tree-entry" title={node.key}
         aria-expanded={node.path ? undefined : open} aria-selected={node.path ? node.path === path : undefined}
-        disabled={Boolean(node.path && disabled)} onClick={() => {
+        disabled={Boolean(node.path && (disabled || isFileDisabled?.(node.path)))} onClick={() => {
           if (node.path) onSelect(node.path)
           else setCollapsed(current => {
             const next = new Set(current)

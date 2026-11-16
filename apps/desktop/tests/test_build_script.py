@@ -50,6 +50,9 @@ def _fake_repo(tmp_path: Path, *, include_corepack: bool = True) -> tuple[Path, 
     repo = tmp_path / "repo"
     web_dir = repo / "apps" / "web"
     desktop_dir = repo / "apps" / "desktop"
+    landing_dir = repo / "apps" / "landing"
+    (landing_dir / "node_modules" / ".bin").mkdir(parents=True)
+    _write_executable(landing_dir / "node_modules/.bin/vite", "#!/usr/bin/env bash\nexit 0\n")
     bin_dir = tmp_path / "bin"
     (web_dir / "node_modules" / ".bin").mkdir(parents=True)
     desktop_dir.mkdir(parents=True)
@@ -122,7 +125,8 @@ def test_with_web_builds_dist_before_backend(tmp_path: Path) -> None:
     result = _run_build(repo, bin_dir, "--with-web")
 
     assert result.returncode == 0, result.stderr
-    assert result.build_log == "yarn:build\nbackend\n"
+    assert result.build_log == "yarn:build\nyarn:build\nbackend\n"
+    assert (repo / "apps/landing/dist/index.html").is_file()
 
 
 def test_web_builds_only_web_dist(tmp_path: Path) -> None:
@@ -141,7 +145,7 @@ def test_with_web_falls_back_to_yarn_when_corepack_is_unavailable(tmp_path: Path
 
     assert result.returncode == 0, result.stderr
     assert "未找到 Corepack" in result.stdout
-    assert result.build_log == "yarn:--version\nyarn:build\nbackend\n"
+    assert result.build_log == "yarn:--version\nyarn:build\nyarn:build\nbackend\n"
 
 
 def test_without_web_reuses_existing_dist(tmp_path: Path) -> None:
@@ -149,6 +153,10 @@ def test_without_web_reuses_existing_dist(tmp_path: Path) -> None:
     dist_dir = repo / "apps" / "web" / "dist"
     dist_dir.mkdir()
     (dist_dir / "index.html").write_text("<html>existing</html>\n", encoding="utf-8")
+
+    landing_dist = repo / "apps/landing/dist"
+    landing_dist.mkdir()
+    (landing_dist / "index.html").write_text("manual")
 
     result = _run_build(repo, bin_dir, "--no-web")
 
@@ -245,3 +253,14 @@ def test_package_action_uses_current_version_when_input_is_empty() -> None:
     assert 'exec ./apps/desktop/package-local-macos.sh "$version"' in script
     assert 'exec ./apps/desktop/package-local-macos.sh\n' in script
     assert "请输入桌面版本号" not in script
+
+
+def test_without_web_requires_existing_website(tmp_path):
+    repo, bin_dir = _fake_repo(tmp_path)
+    web = repo / "apps/web/dist"
+    web.mkdir()
+    (web / "index.html").write_text("web")
+    result = _run_build(repo, bin_dir, "--no-web")
+    assert result.returncode != 0
+    assert "apps/landing/dist/index.html" in result.stderr
+    assert "backend" not in result.build_log

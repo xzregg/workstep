@@ -51,3 +51,12 @@
 .manual-layout[dir="rtl"] .manual-directory-toggle::before { transform: rotate(180deg); }
 .manual-layout[dir="rtl"] .manual-group-toggle[aria-expanded="true"] .manual-group-chevron,
 .manual-layout[dir="rtl"] .manual-directory-toggle[aria-expanded="true"]::before { transform: rotate(90deg); }
+
+.manual-layout--embedded { padding: 24px; gap: 32px; grid-template-columns: 208px minmax(0, 1fr); }
+.manual-layout--embedded .manual-sidebar { top: 24px; max-height: calc(100dvh - 48px); }
+.manual-layout--embedded .manual-sidebar h1 { margin-top: 0; }
+.manual-layout--embedded .manual-article h2 { font-size: 24px; margin-top: 0; }
+@media (max-width: 760px) {
+  .manual-layout--embedded { padding: 16px; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .manual-layout--embedded .manual-sidebar { max-height: none; }
+}

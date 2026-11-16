@@ -29,6 +29,7 @@ function scrollToDemos() {
 }
 
 export default function App() {
+  const embedded = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('embed') === '1'
   const [hash, setHash] = useState(() => typeof window === 'undefined' ? '' : window.location.hash)
   useEffect(() => {
     const update = () => setHash(window.location.hash)
@@ -44,8 +45,8 @@ export default function App() {
 
   return (
     <>
-      <Nav />
-      {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : hash === '#acceptable-use' ? <AcceptableUsePage /> : <main className="landing-home">
+      {!embedded && <Nav />}
+      {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} embedded={embedded} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : hash === '#acceptable-use' ? <AcceptableUsePage /> : <main className="landing-home">
         <FlowBackdrop />
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
         <ProductIntro />
@@ -61,7 +62,7 @@ export default function App() {
         <Compare />
         <FinalCta experienceHref={experienceHref} />
       </main>}
-      <Footer />
+      {!embedded && <Footer />}
       {openDemo && <DemoModal demo={openDemo} onClose={() => setOpenDemo(null)} />}
     </>
   )

@@ -79,12 +79,7 @@ def claude_mcp_config(overrides):
 
 
 async def scoped_task_stream(iterator, project_id, task_id):
-    # Do not change legacy execution context when no connector was selected.
-    selected = await asyncio.to_thread(connector_store.selected, project_id, 'task:' + task_id) if project_id else []
-    if not selected:
-        async for event in iterator:
-            yield event
-        return
+    # CLI memory and connectors both use the task's existing execution identity.
     from services.conversation_context import conversation_context
     try:
         while True:

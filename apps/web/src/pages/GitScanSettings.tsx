@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import { useEffect, useState } from 'react'
 import Button from '../components/Button'
 import Input from '../components/Input'
@@ -32,7 +33,7 @@ export default function GitScanSettings() {
     } finally { setSaving(false) }
   }
   return <section className="git-scan-settings" style={{ maxWidth: 680, margin: '0 auto' }}>
-    <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 8 }}>{t('gitSettings.title')}</h1>
+    <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 8 }}>{t('gitSettings.title')}<SettingsHelpButton section="git" /></h1>
     <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.7, marginBottom: 28 }}>{t('gitSettings.intro')}</p>
     <label htmlFor="git-scan-depth" style={{ display: 'block', fontSize: 'calc(14px * var(--font-scale))', fontWeight: 600, marginBottom: 8 }}>{t('gitSettings.depth')}</label>
     <p id="git-scan-hint" style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', lineHeight: 1.8, marginBottom: 14 }}>{t('gitSettings.depthHint')}</p>

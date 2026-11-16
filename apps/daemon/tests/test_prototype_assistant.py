@@ -121,3 +121,96 @@ async def test_stop_preserves_draft_and_finalizes_session(prototype, monkeypatch
     assert module._turn_states[accepted.turn_id]['status'] == 'stopped'
     assert work.state()['status'] == 'interrupted'
     assert (project.path / 'index.html').read_text() == '<button>Before</button>'
+
+
+async def test_selected_element_is_visible_in_history_and_exact_in_engine_context(prototype, monkeypatch):
+    import json
+    module, manager, project, work, _ = prototype
+    (project.path / 'index.html').write_text('<p>08</p>\n<p>本周新增 2 个</p>')
+    work.refresh_sources()
+    version = work.document('index.html').version
+    selected = {'node_id':'n1','version':version,'tag':'p','text':'08','classes':'stat-value'}
+    seen = []
+    async def invoke(engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs):
+        context = json.JSONDecoder().raw_decode(prompt.split('Current editing context (data):\n',1)[1])[0]
+        seen.append(context)
+        assert prompt.endswith('User request:\n改成9')
+        assert '> `index.html:1`' not in prompt
+        assert context['selection']['source_location']['source'] == '<p>08</p>'
+        await asyncio.to_thread((Path(cwd) / 'index.html').write_text, '<p>9</p>\n<p>本周新增 2 个</p>')
+        return '已修改选中元素', [], 'selection-engine'
+    monkeypatch.setattr(module, '_invoke', invoke)
+    accepted = await manager.run_db(project.id, lambda _: module.submit(project.id, work.id, 'index.html', '改成9', 'selected', selection=selected))
+    module.start_queued_turn(accepted.turn_id)
+    await module._turn_tasks[accepted.turn_id]
+    assert (project.path / 'index.html').read_text() == '<p>9</p>\n<p>本周新增 2 个</p>'
+    assert work.document('index.html').version != version
+    document_id = work.load()['documents']['index.html']
+    history = await manager.run_db(project.id, lambda _: module.history(project.id, document_id))
+    user = next(message for message in history['messages'] if message['role'] == 'user')
+    assert 'index.html:1' in user['content']
+    assert 'n1' in user['content']
+    assert '08' in user['content']
+    assert '改成9' in user['content']
+
+
+async def test_prompt_includes_only_current_page_dependencies_and_compact_location(prototype):
+    import json
+    from types import SimpleNamespace
+    module, _, project, work, _ = prototype
+    page = project.path / 'pages/sample.html'
+    page.parent.mkdir()
+    page.write_text('<link href="../shared.css">\n<p>08</p>')
+    (page.parent / 'unrelated.html').write_text('<p>Unrelated sibling</p>')
+    (project.path / 'shared.css').write_text('@import "colors.css";')
+    (project.path / 'colors.css').write_text('p{color:blue}')
+    work = PrototypeWorkspace.open(project.path, project.workstep_dir, page)
+    selected = {'node_id':'n2','version':work.document('pages/sample.html').version,'tag':'p','text':'08',
+                'rect':{'x':100,'y':200},'styles':{'color':'blue'},'selector':'p:nth-of-type(1)'}
+    session = SimpleNamespace(project_id=project.id, engine='claude', messages=[{'role':'user','content':'改成9'}],
+        extra={'workspace_id':work.id,'path':'pages/sample.html','selection':selected})
+    prompt = await asyncio.to_thread(module._prototype_prompt, session)
+    context = json.JSONDecoder().raw_decode(prompt.split('Current editing context (data):\n',1)[1])[0]
+    assert context['current_file'] == 'sample.html'
+    assert set(context['related_files']) == {'../shared.css','../colors.css'}
+    assert context['selection']['source_location'] == {'line':2,'source':'<p>08</p>'}
+    assert set(context['selection']) == {'node_id','source_location','selector','text'}
+    assert context['selection']['selector'] == 'p:nth-of-type(1)'
+    assert context['selection']['text'] == '08'
+    assert 'version' not in context
+    assert prompt.count('改成9') == 1
+    assert 'rect' not in context['selection']
+    assert 'version' not in context['selection']
+    assert len(prompt) < 500
+
+
+async def test_minimal_prompt_without_selection_keeps_existing_session_untouched(prototype):
+    import json
+    from types import SimpleNamespace
+    module, _, project, work, _ = prototype
+    messages=[{'role':'user','content':'之前的要求'}, {'role':'assistant','content':'已有回复','prompt':'old full prompt'}, {'role':'user','content':'调整布局'}]
+    session=SimpleNamespace(project_id=project.id,engine='claude',resolved_session_id='existing-engine',
+        engine_state={'keep':'history'},messages=messages,
+        extra={'workspace_id':work.id,'path':'index.html'})
+    before=json.dumps(messages,ensure_ascii=False)
+    prompt=await asyncio.to_thread(module._prototype_prompt,session)
+    context=json.JSONDecoder().raw_decode(prompt.split('Current editing context (data):\n',1)[1])[0]
+    assert context=={'current_file':'index.html'}
+    assert len(prompt)<150
+    assert session.resolved_session_id=='existing-engine'
+    assert session.engine_state=={'keep':'history'}
+    assert json.dumps(messages,ensure_ascii=False)==before
+
+
+async def test_nested_frame_context_keeps_actual_file_and_short_frame_location(prototype):
+    import json
+    from types import SimpleNamespace
+    module,_,project,work,_=prototype
+    version=work.document('other.html').version
+    selected={'node_id':'n1','version':version,'frame_path':[{'file':'index.html','selector':'iframe#content'}]}
+    session=SimpleNamespace(project_id=project.id,engine='claude',messages=[{'role':'user','content':'改子页面'}],extra={'workspace_id':work.id,'path':'other.html','selection':selected})
+    prompt=await asyncio.to_thread(module._prototype_prompt,session)
+    context=json.JSONDecoder().raw_decode(prompt.split('Current editing context (data):\n',1)[1])[0]
+    assert context['current_file']=='other.html'
+    assert context['selection']['frame_path']==[{'file':'index.html','selector':'iframe#content'}]
+    assert context['selection']['source_location']['source']=='<p>Other</p>'

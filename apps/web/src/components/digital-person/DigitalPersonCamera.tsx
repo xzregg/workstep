@@ -8,6 +8,12 @@ import Spinner from '../Spinner'
 import VideoPreviewWindow from '../VideoPreviewWindow'
 import { DigitalPersonCameraControlContext, useDigitalPersonCameraControl } from './digitalPersonCameraControl'
 import './DigitalPersonCamera.css'
+import {useFaceRecognition,type RecognizedFrame} from '../face-recognition/useFaceRecognition'
+import {copyFrame} from '../face-recognition/runtime'
+import FaceOverlay from '../face-recognition/FaceOverlay'
+import {faceApi} from '../../api/faces'
+import {waitForRecognition} from '../face-recognition/operation'
+import {annotateFaceFrame} from '../face-recognition/annotateFrame'
 
 export type PrepareCameraMessage = (content: string) => Promise<string>
 
@@ -23,17 +29,32 @@ function cameraPortraitScreen() {
 }
 
 /** Camera remains local; a frame is encoded and uploaded only when a message is sent. */
-export default function DigitalPersonCamera({ projectId, autoStart = false, active = true, compact = false, floating = false, enabled = true, children, onPrepare }: {
+export default function DigitalPersonCamera({ projectId, autoStart = false, active = true, compact = false, floating = false, enabled = true, children, onPrepare, enrollment = false, onCaptureReady }: {
   projectId?: string; autoStart?: boolean; active?: boolean; compact?: boolean; floating?: boolean; enabled?: boolean; children?: ReactNode
   onPrepare?: (prepare: PrepareCameraMessage | null) => void
+  enrollment?: boolean
+  onCaptureReady?: (capture: (()=>Promise<RecognizedFrame>)|null)=>void
 }) {
   const { t } = useI18n()
   const root = useRef<HTMLDivElement>(null)
   const video = useRef<HTMLVideoElement>(null), stream = useRef<MediaStream | null>(null)
   const generation = useRef(0), uploading = useRef(false)
+  const captureSession=useRef<AbortController|null>(null)
   const [phase, setPhase] = useState<'off' | 'opening' | 'on'>('off')
   const [error, setError] = useState(''), [facing, setFacing] = useState<'environment' | 'user'>('environment')
+  const recognition=useFaceRecognition(phase==='on',video,enrollment)
+  const analyzeFrame=recognition.analyze
+  const captureFace=useCallback(async()=>{
+    const source=video.current,request=generation.current
+    if(!source||!stream.current||source.readyState<2)throw new Error(t('faceRecognition.notReady'))
+    const frame=copyFrame(source)
+    const result=await waitForRecognition(analyzeFrame(frame,true),captureSession.current?.signal)
+    if(request!==generation.current)throw new Error(t('faceRecognition.notReady'))
+    return result
+  },[analyzeFrame,t])
+  useEffect(()=>{onCaptureReady?.(phase==='on'?captureFace:null);return()=>onCaptureReady?.(null)},[onCaptureReady,phase,captureFace])
   const stop = useCallback(() => {
+    captureSession.current?.abort();captureSession.current=null
     generation.current++
     const current = stream.current
     stream.current = null
@@ -65,6 +86,7 @@ export default function DigitalPersonCamera({ projectId, autoStart = false, acti
       } })
       if (request !== generation.current || document.hidden) { media.getTracks().forEach(track => track.stop()); return }
       stream.current = media
+      captureSession.current=new AbortController()
       media.getVideoTracks().forEach(track => track.addEventListener('ended', stop, { once: true }))
       preview = true
       if (video.current) { video.current.srcObject = media; await video.current.play() }
@@ -105,6 +127,15 @@ export default function DigitalPersonCamera({ projectId, autoStart = false, acti
       const context = canvas.getContext('2d')
       if (!context) throw new Error(t('digitalPerson.cameraNotReady'))
       context.drawImage(source, 0, 0, width, height, 0, 0, canvas.width, canvas.height)
+      try {
+        const frame=await analyzeFrame(canvas)
+        if(frame.catalog?.settings.enabled&&frame.catalog.settings.include_people){
+          const ids=[...new Set(frame.faces.flatMap(face=>face.person?[face.person.id]:[]))]
+          const people=await faceApi.context(ids,frame.faces.filter(face=>!face.person).length)
+          annotateFaceFrame(canvas,frame.faces,people.people,t('faceRecognition.unknown'))
+        }
+      } catch { /* Optional recognition must not prevent sending the camera photo. */ }
+      if(request!==generation.current||current!==stream.current)throw new Error(t('digitalPerson.cameraNotReady'))
       const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error(t('digitalPerson.cameraNotReady'))), 'image/jpeg', .85))
       if (request !== generation.current || current !== stream.current) throw new Error(t('digitalPerson.cameraNotReady'))
       const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })
@@ -112,11 +143,18 @@ export default function DigitalPersonCamera({ projectId, autoStart = false, acti
       if (request !== generation.current || current !== stream.current) throw new Error(t('digitalPerson.cameraNotReady'))
       return `${content}\n\n${formatMarkdownAttachment(file, uploaded.url)}`
     } finally { uploading.current = false }
-  }, [phase, projectId, t])
+  }, [phase, projectId, t, analyzeFrame])
   useEffect(() => { onPrepare?.(prepare); return () => onPrepare?.(null) }, [onPrepare, prepare])
   const switchButton = phase === 'on' && <Button className="digital-person-camera-switch" variant="ghost" aria-label={t('digitalPerson.switchCamera')} title={t('digitalPerson.switchCamera')} onClick={() => { const next = facing === 'environment' ? 'user' : 'environment'; setFacing(next); void start(next) }}>{compact || floating ? <Icon name="switch-camera" size={14} /> : t('digitalPerson.switchCamera')}</Button>
+  const overlay=<FaceOverlay videoRef={video} faces={recognition.faces} showNames={recognition.catalog?.settings.show_names??true}/>
   const preview = <>
+    <div className="face-camera-surface">
     <video ref={video} className="digital-person-camera-preview" hidden={phase === 'off'} autoPlay playsInline muted aria-label={t('digitalPerson.cameraPreview')} />
+    {phase==='on'&&overlay}
+    </div>
+    {phase==='on'&&<span className="face-camera-status face-camera-status--live" role="status">
+      {recognition.notice||(enrollment||recognition.catalog?.settings.enabled?<><Spinner size={12}/>{t('faceRecognition.detecting',{count:recognition.faces.length})}</>:null)}
+    </span>}
     {error && <p role="alert" className="digital-person-error">{error}</p>}
   </>
   const getAnchor = useCallback(() => {
@@ -131,7 +169,7 @@ export default function DigitalPersonCamera({ projectId, autoStart = false, acti
         onClick={() => phase === 'off' ? void start(facing) : stop()}>{phase === 'opening' ? <Spinner size={16} /> : <Icon name="camera" size={floating ? 14 : compact ? 24 : 16} />}{!compact && !floating && t(phase === 'off' ? 'digitalPerson.openCamera' : 'digitalPerson.closeCamera')}</Button>
       {!compact && !floating && switchButton}
     </div>}
-    {compact || floating ? <VideoPreviewWindow videoRef={video} actions={switchButton} error={error} getAnchor={getAnchor} label={t('digitalPerson.cameraPreview')} closeLabel={t('digitalPerson.closeCamera')} open={phase !== 'off' || Boolean(error)} onClose={() => { stop(); setError('') }}/> : <div className="digital-person-camera-media">{preview}</div>}
+    {compact || floating ? <VideoPreviewWindow videoRef={video} overlay={overlay} actions={switchButton} error={error} getAnchor={getAnchor} label={t('digitalPerson.cameraPreview')} closeLabel={t('digitalPerson.closeCamera')} open={phase !== 'off' || Boolean(error)} onClose={() => { stop(); setError('') }}/> : <div className="digital-person-camera-media">{preview}</div>}
   </div>
   if (!children) return camera
   return <DigitalPersonCameraControlContext.Provider value={enabled ? {

@@ -12,8 +12,5 @@ export default function DigitalPersonGrowth(){
    <div><dt>{t('digitalPerson.taskCount')}</dt><dd>{data.task_count ?? '—'}</dd></div>
    <div><dt>{t('digitalPerson.completedTaskCount')}</dt><dd>{data.completed_task_count ?? '—'}</dd></div>
   </dl>
-  <details className="digital-person-stat-skills"><summary>{t('digitalPerson.enabledSkills')}<span>{data.skills?.length ?? '—'}</span></summary>
-   {data.skills?.length ? <ul>{data.skills.map(skill=><li key={skill.id}>{skill.name}</li>)}</ul> : <p>{t(data.skills ? 'digitalPerson.noEnabledSkills' : 'digitalPerson.statsUnavailable')}</p>}
-  </details>
  </section>
 }

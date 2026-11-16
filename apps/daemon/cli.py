@@ -142,11 +142,12 @@ def build_parser() -> argparse.ArgumentParser:
             )
 
     memory = subparsers.add_parser('memory', help='search memory with intent-derived text clues or date bounds')
-    memory_sub = memory.add_subparsers(dest='subcommand', required=True)
+    memory_sub = memory.add_subparsers(dest='subcommand', required=True,metavar='{search,history,read}')
     for operation in ('search', 'history', 'read', 'pending'):
         reader = memory_sub.add_parser(operation)
-        reader.add_argument('--token', dest='memory_token', required=True, help='private capability provided by the current execution')
         if operation != 'pending':
+            reader.add_argument('--project',dest='filter_project_id',default='',help='restrict to this project ID; default searches all accessible projects')
+            reader.add_argument('--session',dest='filter_session_id',default='',help=argparse.SUPPRESS)
             reader.add_argument('--limit', type=_positive_int, default=2400 if operation == 'read' else 20)
         if operation == 'read':
             reader.add_argument('--id', dest='memory_id', required=True)
@@ -493,7 +494,7 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
         return result
     if args.command == 'memory' and not args.verbose:
         from cli_memory_output import compact
-        return compact(result, args.subcommand, events=getattr(args, 'events', False))
+        return compact(result, args.subcommand, events=getattr(args, 'events', False), query=getattr(args, 'query', ''))
     fields = getattr(args, "fields", None)
     if args.subcommand != "list":
         if fields and isinstance(result, dict):
@@ -538,9 +539,9 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
     command = args.command
     if command == 'memory':
         if args.subcommand == 'pending':
-            return await client.call('workstep_memory_pending', {'memory_token': args.memory_token})
-        fields = ('memory_token', 'limit', 'memory_id', 'offset', 'events') if args.subcommand == 'read' else (
-            'memory_token', 'limit', 'query', 'cursor', 'snapshot', 'since', 'before', 'period', 'timezone_name', 'include_sources', 'source_chars', 'person', 'event', 'object', 'place', 'time', 'relation')
+            return await client.call('workstep_memory_pending', {})
+        fields = ('filter_project_id', 'filter_session_id', 'limit', 'memory_id', 'offset', 'events') if args.subcommand == 'read' else (
+            'filter_project_id', 'filter_session_id', 'limit', 'query', 'cursor', 'snapshot', 'since', 'before', 'period', 'timezone_name', 'include_sources', 'source_chars', 'person', 'event', 'object', 'place', 'time', 'relation')
         operation = 'search' if args.subcommand == 'history' else args.subcommand
         return await client.call('workstep_memory_' + operation, {
             key: getattr(args, key) for key in fields if getattr(args, key, None) is not None})

@@ -42,7 +42,7 @@ for (const projectScoped of [false, true]) test(`phone gateway ${projectScoped ?
   try {
     await act(async () => root.render(<MemoryRouter initialEntries={['/chat?project=phone&session=phone-session']}>
       <I18nProvider><MobileHeaderActionsProvider>
-        <div className="mobile-header-session-actions"><MobileHeaderActionsSlot /></div>
+        <div className="mobile-header-session-actions"><MobileHeaderActionsSlot beforeNew /><MobileHeaderActionsSlot /></div>
         <ChatPage />
       </MobileHeaderActionsProvider></I18nProvider>
     </MemoryRouter>))

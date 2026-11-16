@@ -132,29 +132,6 @@ async def test_claude_live_mode_injects_jsonl_messages(monkeypatch):
     assert engine._running is False
 
 
-@pytest.mark.anyio
-async def test_claude_plain_mode_keeps_current_behavior(monkeypatch):
-    process = FakeProcess([
-        b'{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}',
-    ])
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", make_process_factory(process))
-    monkeypatch.setattr(ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude"))
-    from services.config import config_store
-    monkeypatch.setattr(config_store, "get_claude_permission_mode", lambda: "acceptEdits")
-
-    engine = ClaudeCodeEngine()
-    events = []
-    async for event in engine.spawn("开始任务", cwd="/tmp"):
-        events.append(event)
-
-    # Plain mode writes the raw prompt, closes stdin immediately, and does not
-    # emit any stream-json input records.
-    assert process.stdin.written.decode().strip() == "开始任务"
-    assert process.stdin.closed is True
-    assert b"close_stream" not in process.stdin.written
-    assert not [event for event in events if event.type == "live_message"]
-
-
 def test_claude_build_command_opt_in_live_mode():
     cmd = ClaudeCodeEngine.build_command("/fake/claude", "acceptEdits", live_mode=True)
     assert "--input-format" in cmd

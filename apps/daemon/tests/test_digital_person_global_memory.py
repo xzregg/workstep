@@ -108,10 +108,10 @@ async def test_other_project_history_requires_explicit_tool_search_from_main_cha
     await current.chats.await_turn(turn.turn_id,timeout=5)
     assert '北辰发布必须回归验证' not in prompts[0]
     assert 'Relevant memories' not in prompts[0]
-    assert 'memory search' in prompts[0]
+    assert 'memory_token=' not in prompts[0]
     # The model can choose to call the authorized tools after seeing the prompt.
     from services import memory_query
-    token=prompts[0].split('Pass memory_token=',1)[1].split(' ',1)[0]
+    token=await memory_query.execution_access(current.projects,home.id,main)
     from services import digital_person_memory_index as index, memory_knowledge as knowledge
     rows=await asyncio.to_thread(index.candidates,'local',project_ids=[other.id])
     await asyncio.to_thread(knowledge.store_extraction,{'memories':[{'summary':'北辰发布必须回归验证。',

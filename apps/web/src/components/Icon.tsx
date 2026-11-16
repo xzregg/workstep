@@ -1,9 +1,9 @@
 import type { CSSProperties, ReactNode } from 'react'
 import {
-  AudioLines, Keyboard, MicOff, PhoneOff, Camera, SwitchCamera, ThumbsUp, ThumbsDown, Volume2, VolumeX, Square, ScanLine, Plug, Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock, Copy, Download, Drama, Ellipsis, Eye,
+  AudioLines, Keyboard, MicOff, PhoneOff, Camera, SwitchCamera, ScanFace, ThumbsUp, ThumbsDown, Volume2, VolumeX, Square, ScanLine, Plug, Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock, Copy, Download, Drama, Ellipsis, Eye,
   ExternalLink, FileText, Folder, FolderOpen, GitFork, GripVertical, Image as ImageIcon, Layers, LayoutGrid, List, Monitor, Smartphone, MousePointer2, PanelTop,
-  Crosshair, Maximize2, Menu, Mic, Lightbulb, LoaderCircle, Minimize2, Minus, Paperclip, Pencil, Play, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
-  PanelLeftClose, PanelLeftOpen, Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
+  CircleHelp, Crosshair, Maximize2, Menu, Mic, Lightbulb, LoaderCircle, Minimize2, Minus, Paperclip, Pencil, Play, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
+  MessageCircleHeart, PanelLeftClose, PanelLeftOpen, Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
 } from 'lucide-react'
 
 import {composerSendGlyphs} from '../skins/composerSendGlyphs'
@@ -18,12 +18,14 @@ const glyphs = {
   scan: ScanLine,
   plug: Plug,
   menu: Menu,
+  'message-circle-heart': MessageCircleHeart,
   mic: Mic,
   'mic-off': MicOff,
   'audio-lines': AudioLines,
   'phone-off': PhoneOff,
   keyboard: Keyboard,
   camera: Camera,
+  'scan-face': ScanFace,
   'switch-camera': SwitchCamera,
   monitor: Monitor,
   'mouse-pointer': MousePointer2,
@@ -33,6 +35,7 @@ const glyphs = {
   'bar-chart': BarChart3,
   bell: Bell,
   book: Book,
+  'circle-help': CircleHelp,
   bookmark: Bookmark,
   bot: Bot,
   check: Check,

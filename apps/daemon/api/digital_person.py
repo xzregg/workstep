@@ -13,6 +13,8 @@ def authorize():
 
 
 router = APIRouter(prefix="/api/digital-person", dependencies=[Depends(authorize)])
+from api.face_recognition import router as face_router
+router.include_router(face_router)
 
 
 @router.get("", response_model=DigitalPersonProfile)

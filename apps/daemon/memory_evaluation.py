@@ -160,7 +160,7 @@ async def evaluate(data, root, repeats, ks, extraction=None, query_plan=None,dia
                                 index.forget(row['id'])
                     await asyncio.to_thread(forget)
                 ids = [projects[n] for n in case.get('projects', projects)]
-                token = await memory_query.issue_access(manager, 'local', project_ids=ids)
+                token = await memory_query.create_context(manager, 'local', project_ids=ids)
                 times, sizes, retrieved = [], [], []
                 for _ in range(repeats):
                     start = time.perf_counter()

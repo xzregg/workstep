@@ -220,6 +220,8 @@ def store_extraction(payload, rows, existing_ids=(), *, report=False, strict=Fal
                 if strict:
                     raise ValueError('纠正的知识不存在或越过范围')
                 continue
+            if value['kind'] == 'event' and any(row['kind'] in ('fact','preference') for row in corrections):
+                raise ValueError('A progress event cannot supersede a fact or preference. Store the event separately; correct the same fact in a separate fact/preference candidate when explicitly evidenced.')
             if isinstance(existing_ids,dict) and any(existing_ids.get('knowledge:'+str(r['id']))!=record_version(dict(r)) for r in corrections):
                 raise ValueError('旧知识已变化，请重新读取后再更新')
             for old in corrections:
@@ -267,16 +269,18 @@ def record_version(row):
     return hashlib.sha256(json.dumps([row[k] for k in ('fingerprint','summary','state','outcome','event_time','valid_until','entities_json','relations_json','supersedes_json')],ensure_ascii=False).encode()).hexdigest()
 
 
-def read_record(scope,project_ids,knowledge_id):
+def read_record(scope,project_ids,knowledge_id,session_id=''):
     """Read one located knowledge record without expanding old conversation bodies."""
     kid=_id(knowledge_id,'knowledge:')
     with index.connect() as db:
-        row=db.execute("SELECT * FROM memory_knowledge WHERE id=? AND scope=? AND state IN ('active','conflict') AND (valid_until IS NULL OR valid_until>?)",
-            (kid,scope,datetime.now(timezone.utc).isoformat())).fetchone()
+        row=db.execute("SELECT * FROM memory_knowledge WHERE id=? AND (? IS NULL OR scope=?) AND state IN ('active','conflict') AND (valid_until IS NULL OR valid_until>?)",
+            (kid,scope,scope,datetime.now(timezone.utc).isoformat())).fetchone()
         if row is None: raise LookupError('知识已变化或不可访问')
         sources=list(db.execute('SELECT m.*,s.source_hash AS evidence_hash FROM memory_knowledge_sources s LEFT JOIN memories m ON m.id=s.memory_id WHERE s.knowledge_id=?',(kid,)))
-        if not sources or any(r['id'] is None or r['forgotten'] or r['scope']!=scope or r['project_id'] not in project_ids or r['source_hash']!=r['evidence_hash'] for r in sources):
+        if not sources or any(r['id'] is None or r['forgotten'] or (scope is not None and r['scope']!=scope) or r['project_id'] not in project_ids or r['source_hash']!=r['evidence_hash'] for r in sources):
             raise LookupError('知识来源失效或不可访问')
+        if session_id and not any(r['session_id']==session_id.removeprefix('task:') for r in sources):
+            raise LookupError('知识不在指定会话中')
         value=dict(row)
         content=json.dumps({'summary':value['summary'],'kind':value['kind'],'outcome':value['outcome'],
             'event_time':value['event_time'],'valid_until':value['valid_until'],
@@ -446,7 +450,7 @@ def _dimension_conditions(filters, relation):
     return where,args
 
 
-def _candidates(scope,query,limit,project_ids,since,before,candidate_limit=200,filters=None,relation=''):
+def _candidates(scope,query,limit,project_ids,since,before,candidate_limit=200,filters=None,relation='',session_id=''):
     ensure_schema()
     if not project_ids:
         return []
@@ -462,6 +466,9 @@ def _candidates(scope,query,limit,project_ids,since,before,candidate_limit=200,f
             WHERE s.knowledge_id=k.id AND (m.id IS NULL OR m.forgotten=1 OR m.scope!=k.scope
               OR m.source_hash!=s.source_hash OR m.project_id NOT IN ({placeholders})))''')
         args.extend(project_ids)
+        if session_id:
+            where.append('EXISTS (SELECT 1 FROM memory_knowledge_sources ks JOIN memories ms ON ms.id=ks.memory_id WHERE ks.knowledge_id=k.id AND ms.session_id=?)')
+            args.append(session_id.removeprefix('task:'))
         for value,operator in ((since,'>='),(before,'<')):
             if value:
                 where.append('k.event_time'+operator+'?')
@@ -483,6 +490,9 @@ def _candidates(scope,query,limit,project_ids,since,before,candidate_limit=200,f
                 where.append('memory_knowledge_search MATCH ?')
                 args.append(' OR '.join('"'+word.replace('"','""')+'"' for word in words))
                 order='bm25(memory_knowledge_search), k.id DESC'
+                if len(words)>1:
+                    order='CASE WHEN k.id IN (SELECT rowid FROM memory_knowledge_search WHERE memory_knowledge_search MATCH ?) THEN 0 ELSE 1 END, '+order
+                    args.append(' AND '.join('"'+word.replace('"','""')+'"' for word in words))
             else:
                 where.append('0')
         matched=[dict(r) for r in db.execute('SELECT k.* FROM memory_knowledge k'+join+' WHERE '+' AND '.join(where)+' ORDER BY '+order+' LIMIT ?',(*args,bound))]
@@ -499,11 +509,11 @@ def _candidates(scope,query,limit,project_ids,since,before,candidate_limit=200,f
         return result
 
 
-async def search(projects, scope, query='', *, limit=20, project_ids=None, since=None, before=None, candidate_limit=200, filters=None, relation=''):
+async def search(projects, scope, query='', *, limit=20, project_ids=None, since=None, before=None, candidate_limit=200, filters=None, relation='',session_id=''):
     from services import digital_person_memory as memory
     allowed=set(memory.allowed_projects(projects))
     ids=allowed if project_ids is None else allowed.intersection(project_ids)
-    rows=await asyncio.to_thread(_candidates,scope,query,limit,ids,since,before,candidate_limit,filters,relation)
+    rows=await asyncio.to_thread(_candidates,scope,query,limit,ids,since,before,candidate_limit,filters,relation,session_id)
     def still_valid():
         with index.connect() as db:
             return {row['id'] for row in rows if db.execute("SELECT 1 FROM memory_knowledge WHERE id=? AND state IN ('active','conflict')",(row['id'],)).fetchone()}

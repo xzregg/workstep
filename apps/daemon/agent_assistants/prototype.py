@@ -1,15 +1,48 @@
 """Prototype-specific context; conversation mechanics belong to AssistantRuntime."""
 import asyncio
 import json
+import os
 
 from agent_assistants.base import AssistantConfig, AssistantRuntime, assistant_registry
 from agent_assistants.persistence import JsonRowPersistence
 from agent_assistants.event_journal import TurnEventJournal
 from models.prototype_session import PrototypeSession
-from services.prototype_workspace import PrototypeWorkspace, safe_path
+from services.prototype_workspace import PrototypeWorkspace, safe_path, MAX_FILE, MAX_TOTAL
+from services.prototype_resources import collect_resources
+from services.prototype_source import SourceConflict
+
+
+def selection_context(work, path, selection):
+    selected = dict(selection or {})
+    node_id = selected.get('node_id')
+    if node_id:
+        document = work.document(path)
+        if selected.get('version') != document.version or node_id not in document.nodes:
+            raise SourceConflict('选中元素已过期，请刷新预览并重新选择')
+        selected['source_location'] = document.context(node_id)
+        selected['tag'] = selected['source_location']['tag']
+        selected['text'] = selected['source_location'].get('text_value', selected.get('text', ''))
+    return selected
+
+
+def located_request(path, content, selected):
+    if not selected:
+        return content
+    def code(value):
+        return '`' + str(value).replace('`', '').replace('\r', ' ').replace('\n', ' ') + '`'
+    selector = selected.get('tag', '')
+    if selected.get('id'):
+        selector += '#' + selected['id']
+    if selected.get('classes'):
+        selector += '.' + '.'.join(selected['classes'].split())
+    line = selected.get('source_location', {}).get('line')
+    location = f'{path}:{line}' if line else path
+    text = selected.get('text', '').replace('\r', ' ').replace('\n', ' ')[:120]
+    return f"> {code(location)}  \n> {code(selector)} {code(selected.get('node_id') or 'dynamic')}  \n> {text}\n\n{content}"
 
 SYSTEM_PROMPT = '''You are the WorkStep prototype assistant. Make precise edits to the user's existing HTML prototype.
-The current directory is the page directory inside a persistent working copy. Edit only HTML/CSS/JS listed in this turn's context; do not access or write to the original directory.
+The current directory is the page directory inside a persistent working copy. Edit only HTML/CSS/JS listed in this turn's context or other prototype pages explicitly requested by the user; do not access or write to the original directory.
+File paths in the editing context are relative to the current directory. The file list covers this page's static dependencies, not every page in the workspace.
 By default, edit only the current page or selected element. Change other pages only when explicitly requested. Explain effects of shared styles on multiple pages.
 Read the latest source before making minimal edits. Preserve structure, interactions, and styling conventions; avoid unrelated rewrites, dependency installation, or starting services.
 Node IDs are temporary preview markers absent from original files. Locate elements using supplied source locations, original text, and parent context, not repeated class names alone. Inspect generating scripts for dynamic nodes; verify uncertain locations first.
@@ -46,17 +79,32 @@ class PrototypeModule(AssistantRuntime):
 
     def _prototype_prompt(self, session):
         work = self.workspace(session)
-        document = work.document(session.extra['path'])
-        selected = dict(session.extra.get('selection') or {})
-        node_id = selected.get('node_id')
-        if node_id and selected.get('version') == document.version:
-            selected['source_location'] = document.context(node_id)
-        elif node_id:
-            selected['stale'] = True
-            selected.pop('node_id', None)
-        message = next((item['content'] for item in reversed(session.messages) if item['role'] == 'user'), '')
-        context = {'current_file': session.extra['path'], 'workspace_files': work.state()['files'],
-                   'version': document.version, 'selection': selected}
+        selected = selection_context(work, session.extra['path'], session.extra.get('selection'))
+        frame_path = selected.get('frame_path', [])
+        # Keep human-readable locators, without computed styles or coordinates.
+        location = selected.get('source_location')
+        if location:
+            selector = selected.get('selector') or selected.get('tag', '') + ('.' + '.'.join(selected['classes'].split()) if selected.get('classes') else '')
+            selected = {'node_id': selected['node_id'], 'selector': selector[:1000], 'text': selected.get('text', '')[:200], 'source_location': {
+                'line': location['line'], 'source': location['source'][:1200]}}
+            if len(location['source']) > 1200:
+                selected['source_location']['source_truncated'] = True
+        else:
+            selected = {key: selected[key] for key in ('tag', 'id', 'classes', 'text') if selected.get(key)}
+            if 'text' in selected:
+                selected['text'] = selected['text'][:200]
+        copied = work.directory / 'workspace'
+        page = safe_path(copied, session.extra['path'])
+        files = collect_resources(copied, [session.extra['path']], max_file=MAX_FILE, max_total=MAX_TOTAL, include_siblings=False)
+        if frame_path:
+            selected['frame_path'] = [{'file': os.path.relpath(safe_path(copied, frame['file']), page.parent).replace(os.sep, '/'), 'selector': str(frame.get('selector', 'iframe'))[:300]} for frame in frame_path[:8] if isinstance(frame, dict) and isinstance(frame.get('file'), str)]
+        message = session.extra.get('request', next((item['content'] for item in reversed(session.messages) if item['role'] == 'user'), ''))
+        context = {'current_file': page.name}
+        related = sorted(os.path.relpath(file, page.parent).replace(os.sep, '/') for file in files if file != page)
+        if related:
+            context['related_files'] = related
+        if selected:
+            context['selection'] = selected
         # Resume retains conversation; every turn still supplies fresh file context.
         from engines.core.registry import create_engine
         engine = create_engine(session.engine)
@@ -74,10 +122,13 @@ class PrototypeModule(AssistantRuntime):
         document_id = work.load()['documents'].get(path)
         if not document_id:
             raise ValueError('原型文档不存在')
+        selected = selection_context(work, path, selection)
+        request = content
+        content = located_request(path, content, selected)
         sid = f'prototype:{project_id}:{document_id}'
         return self.submit_message(project_id, content, key, session_id=sid,
             memory_key=(project_id, document_id), scope_key=document_id, idempotency_sid=sid,
-            extra={'workspace_id': workspace_id, 'path': path, 'selection': selection or {}},
+            extra={'workspace_id': workspace_id, 'path': path, 'selection': selected, 'request': request},
             schedule=False, **options)
 
     async def _parse_response(self, session, raw):

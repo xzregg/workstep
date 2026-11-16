@@ -119,7 +119,7 @@ const I18nContext = createContext<I18nContextValue | null>(null)
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => typeof window === 'undefined' ? 'zh-CN'
-    : initialLang(storedLanguage(), window.navigator?.language))
+    : initialLang(new URLSearchParams(window.location.search).get('lang') || storedLanguage(), window.navigator?.language))
 
   useEffect(() => {
     document.documentElement.lang = lang

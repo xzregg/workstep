@@ -102,6 +102,8 @@ class PrototypeWorkspace:
         if not entry.is_relative_to(domain) or entry.suffix.lower() not in {'.html', '.htm'} or entry.is_relative_to(data_root / 'prototype-editor'):
             raise ValueError('请选择项目内的 HTML 文件')
         safe_path(domain, entry.relative_to(domain).as_posix(), allow_hidden=True)
+        if not entry.is_file():
+            raise FileNotFoundError(entry)
         root = (root or entry.parent).resolve()
         if not root.is_relative_to(domain) or not entry.is_relative_to(root):
             raise ValueError('原型目录必须位于项目内并包含当前文件')
@@ -192,7 +194,8 @@ class PrototypeWorkspace:
             if data['status'] != 'idle':
                 return
             original = self.original(data)
-            entries = list(data.get('entries', data['documents']))
+            entries = [path for path in data.get('entries', data['documents'])
+                       if safe_path(original, path).is_file()]
             if entry and entry not in entries:
                 entries.append(entry)
             paths = collect_resources(original, entries or ['index.html'], max_file=MAX_FILE, max_total=MAX_TOTAL)
@@ -362,7 +365,7 @@ class PrototypeWorkspace:
             data = self.load()
             if revision == 'pending':
                 if not data['pending']:
-                    return {'diff': ''}
+                    return {'diff': '', 'files': []}
                 changes = {}
                 for path, before in data['pending']['before'].items():
                     target = safe_path(self.directory / 'workspace', path)
@@ -373,15 +376,19 @@ class PrototypeWorkspace:
                 if item is None:
                     raise ValueError('历史版本不存在')
                 changes = {path: (self.blob(change['before']), self.blob(change['after'])) for path, change in item['changes'].items()}
-            output = []
+            output, files, remaining = [], [], 200000
             for path, (before, after) in changes.items():
                 if before == after or Path(path).suffix.lower() not in EDITABLE:
                     continue
-                output.extend(difflib.unified_diff(before.decode('utf-8', errors='replace').splitlines(True),
-                    after.decode('utf-8', errors='replace').splitlines(True), fromfile=path, tofile=path))
-                if sum(map(len, output)) > 200000:
+                lines = difflib.unified_diff(before.decode('utf-8', errors='replace').splitlines(True),
+                    after.decode('utf-8', errors='replace').splitlines(True), fromfile=path, tofile=path)
+                patch = ''.join(line if line.endswith('\n') else line + '\n\\ No newline at end of file\n' for line in lines)[:remaining]
+                output.append(patch)
+                files.append({'path': path, 'patch': patch})
+                remaining -= len(patch)
+                if remaining <= 0:
                     break
-            return {'diff': ''.join(output)[:200000]}
+            return {'diff': ''.join(output), 'files': files}
 
     def prune(self):
         data = self.load()

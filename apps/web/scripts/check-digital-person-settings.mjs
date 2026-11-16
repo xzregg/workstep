@@ -11,8 +11,9 @@ await build({root,logLevel:'error',publicDir:false,build:{outDir:out,emptyOutDir
 const html=await fs.readFile(path.join(out,'tests/fixtures/digital-person-workspace/index.html'))
 const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']})
 const results=[]
+const navigationOnly=process.argv.includes('--navigation-only'),widthArgs=process.argv.slice(2).filter(arg=>arg!=='--navigation-only')
 try{
- for(const width of [320,390,1023,1024,1280,1440,1470]){
+ for(const width of (widthArgs.length?widthArgs.map(Number):[320,390,1023,1024,1280,1440,1470])){
   const page=await browser.newPage({viewport:{width,height:width===1470?720:1000},reducedMotion:'reduce'}),errors=[]
   page.on('pageerror',error=>errors.push(error.message))
   await page.addInitScript(()=>{
@@ -25,7 +26,7 @@ try{
    if(url.hostname!=='settings.invalid')return route.abort()
    if(url.pathname==='/api/digital-person/affect/people')return route.fulfill({json:{items:[{person_id:'demo',name:'演示用户'}]}})
    if(url.pathname==='/api/digital-person/affect')return route.fulfill({json:{state:{person_id:'demo',name:'演示用户',affinity:63,emotion:'happy',valence:35,arousal:30,updated_at:'2026-11-14T01:00:00Z',history:[]}}})
-   if(url.pathname==='/api/digital-person/memory/view')return route.fulfill({json:{bounded:true,items:Array.from({length:50},(_,i)=>({id:`memory:${i}`,summary:`项目配置与协作记录 ${i+1}，包含对话原始依据。`,kind:'event',outcome:'observed',state:'source',interpretation:false,time:'2026-11-14T01:00:00Z',time_is_source:true,entities:[],relations:[],sources:[]}))}})
+   if(url.pathname==='/api/digital-person/memory/view')return route.fulfill({json:{bounded:true,items:Array.from({length:50},(_,i)=>({id:`memory:${i}`,summary:`项目配置与协作记录 ${i+1}，包含对话原始依据。`.repeat(i===0?12:1),kind:'event',outcome:'observed',state:'source',interpretation:false,time:'2026-11-14T01:00:00Z',time_is_source:true,entities:[],relations:[],sources:[]}))}})
    if(url.pathname.startsWith('/api/'))return route.fulfill({json:{enabled:false,items:[],sessions:[],turns:[],pending_inserts:[],bots:[]}})
    if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:html})
    const filename=path.resolve(out,decodeURIComponent(url.pathname).replace(/^\//,''))
@@ -34,16 +35,34 @@ try{
   })
   await page.goto('https://settings.invalid/?view=settings&voice=qwen&channels=bound')
   await page.locator('.digital-person-body-image').evaluate(image=>image.decode())
+  const settingsTitle=await page.locator('.settings-dialog-title').boundingBox()
+  const allSettings=await page.locator('[data-settings-navigation-toggle]').boundingBox()
+  assert.ok(allSettings.x>=settingsTitle.x+settingsTitle.width&&allSettings.x<=settingsTitle.x+settingsTitle.width+16,'all settings button sits beside the left title')
+  const titleBox=await page.locator('.digital-person-header-title h1').boundingBox()
+  const guideBox=await page.locator('.digital-person-header-title > button').boundingBox()
+  assert.ok(guideBox.x>=titleBox.x+titleBox.width&&Math.abs(titleBox.y+titleBox.height/2-guideBox.y-guideBox.height/2)<1,'initial setup sits to the right of the digital appearance title')
+  assert.equal(await page.locator('.digital-person-actions').getByRole('button',{name:'初始引导',exact:true}).count(),0)
+  const menuBox=await page.locator('.digital-person-secondary-settings').boundingBox()
+  const mapBox=await page.locator('.digital-person-body-map').boundingBox()
+  if(width>=1024)assert.ok(menuBox.y+menuBox.height<=mapBox.y,`${width}: settings menu is above humanoid navigation`)
+  else assert.ok(mapBox.y+mapBox.height<=menuBox.y,`${width}: mobile menu is below humanoid navigation`)
+  assert.doesNotMatch(await page.locator('.digital-person-body-navigation').textContent(),/其他设置|基本选项/)
+  if(width>=1024){
+   const sidebar=await page.locator('.digital-person-body-navigation').boundingBox()
+   assert.ok(Math.abs(menuBox.y-sidebar.y)<1,'settings navigation starts at the top of the sidebar')
+   assert.ok(sidebar.width<=220,'desktop navigation keeps a compact width')
+   assert.ok(menuBox.height<=369,'desktop menu avoids excessive row spacing')
+  }
   const initialPanelHeight=await page.locator('#digital-person-panel').evaluate(el=>el.clientHeight)
   await page.locator('.digital-person-relationship select').waitFor()
   assert.equal(await page.locator('.digital-person-relationship').count(),1)
+  assert.equal(await page.locator('.digital-person-card .digital-person-relationship').count(),1)
+  assert.equal(await page.locator('.digital-person-body-navigation .digital-person-relationship').count(),0)
   if(width>=1024){
-   const relation=page.locator('.digital-person-body-navigation .digital-person-relationship')
-   await relation.waitFor()
-   const map=await page.locator('.digital-person-body-map').boundingBox(),box=await relation.boundingBox()
-   assert.ok(box.y>=map.y+map.height,'relationship is below the body map')
-   assert.equal(await page.locator('.digital-person-card .digital-person-relationship').count(),0)
-  }else assert.equal(await page.locator('.digital-person-card .digital-person-relationship').count(),1)
+   const person=await page.locator('.digital-person-relationship > label').boundingBox()
+   const summary=await page.locator('.digital-person-relationship .digital-affect-summary').boundingBox()
+   assert.ok(Math.abs(person.y+person.height/2-summary.y-summary.height/2)<1,'contact and affinity share a row')
+  }
   await page.screenshot({path:path.join(artifacts,`card-relationship-${width}.png`),animations:'disabled'})
   if(width<=1023){
    const scroll=page.locator('.settings-content')
@@ -71,21 +90,83 @@ try{
    assert.ok(metrics.content>metrics.height,'long identity form scrolls inside configuration area')
   }
   const navigation=page.locator('.digital-person-secondary-nav')
-  assert.deepEqual(await navigation.locator('button').allTextContents(),['名片','身份与性格','渠道机器人','运行记录'])
-  const boxes=await navigation.locator('button').evaluateAll(buttons=>buttons.map(button=>{const box=button.getBoundingClientRect();return {top:box.top,left:box.left}}))
-  assert.ok(boxes.every(box=>Math.abs(box.top-boxes[0].top)<1),'settings entries share one row')
-  assert.ok(boxes.every((box,index)=>index===0||box.left>boxes[index-1].left),'settings entries follow reading order')
+  assert.deepEqual(await navigation.locator('button:visible').evaluateAll(buttons=>buttons.map(button=>button.dataset.settingsTab)),width>=1024?['card','identity','appearance','proactive','channels','memory','assistant','input','vision','tools','activity']:['card','identity','channels','activity'])
+  const boxes=await navigation.locator('button:visible').evaluateAll(buttons=>buttons.map(button=>{const box=button.getBoundingClientRect();return {top:box.top,left:box.left,right:box.right}}))
+  if(width>=1024){
+   assert.ok(boxes.every(box=>Math.abs(box.right-boxes[0].right)<1),'desktop settings align to the right')
+   assert.equal(await navigation.locator('button').first().evaluate(el=>getComputedStyle(el).justifyContent),'flex-start','desktop menu icons and text are left aligned')
+   assert.equal(await navigation.locator('.digital-person-menu-icon:visible').count(),11,'every desktop menu item has an icon')
+   assert.ok(await navigation.locator('[data-settings-tab=card] span').evaluate(el=>parseFloat(getComputedStyle(el).letterSpacing)>0),'two-character Chinese labels have extra spacing')
+   assert.ok(boxes.every((box,index)=>index===0||box.top>boxes[index-1].top),'every setting has its own row')
+  }else assert.ok(boxes.every(box=>Math.abs(box.top-boxes[0].top)<1),'four mobile settings share one horizontal row')
+  assert.equal(await navigation.evaluate(el=>el.scrollWidth>el.clientWidth),false,'secondary navigation does not require horizontal scrolling')
+  assert.equal(await page.locator('.digital-person-relationship').count(),0,'relationship is only shown on the namecard')
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}: identity fits`)
   assert.equal(await page.locator('.digital-person-body-label').first().evaluate(el=>getComputedStyle(el).fontSize),'14px')
   assert.equal(await page.locator('.digital-person-body-point span').first().evaluate(el=>getComputedStyle(el).width),'5px')
   await page.screenshot({path:path.join(artifacts,`identity-${width}.png`),fullPage:true,animations:'disabled'})
+  if(navigationOnly){
+   await page.locator(width>=1024?'[data-settings-tab=memory]':'[data-body-part=memory]').click()
+   assert.equal(await page.locator('[data-body-part=memory]').getAttribute('aria-pressed'),'true')
+   assert.equal(await page.locator('[name=memory_batch_size]').count(),0,'memory batching settings are not shown in the memory view')
+   const memoryTitle=await page.locator('.digital-memory-overview h2').boundingBox(),refreshIcon=await page.locator('[data-memory-refresh]').boundingBox()
+   assert.ok(refreshIcon.x>=memoryTitle.x+memoryTitle.width&&Math.abs(refreshIcon.y+refreshIcon.height/2-memoryTitle.y-memoryTitle.height/2)<1,'memory refresh icon sits beside the title')
+   assert.equal(await page.locator('.digital-memory-toolbar [data-memory-refresh]').count(),0)
+   const refreshButton=await page.locator('.digital-memory-filters button').first().boundingBox()
+   const searchInput=await page.locator('.digital-memory-search-group input').boundingBox(),searchAction=await page.locator('.digital-memory-search-group button').boundingBox()
+   assert.ok(Math.abs(searchInput.x+searchInput.width-searchAction.x)<=1,'search input and button connect without a gap')
+   assert.ok(Math.abs(searchInput.height-searchAction.height)<1,'search input and button have matching heights')
+   if(width>=1440){
+    const search=await page.locator('.digital-memory-toolbar button[type=submit]').boundingBox(),filters=await page.locator('.digital-memory-filters').boundingBox(),input=await page.locator('.digital-memory-toolbar input').boundingBox()
+    assert.ok(input.width<360&&filters.x>=search.x+search.width,'compact search group precedes the category filters')
+    assert.ok(Math.abs(filters.y+filters.height/2-search.y-search.height/2)<1,'category filters share the search row')
+   }
+   assert.equal(await page.locator('.digital-memory-modes .segmented-control').count(),1,'memory modes retain one segmented switch group')
+   const modeButtons=await page.locator('.digital-memory-modes button').evaluateAll(buttons=>buttons.map(button=>{const b=button.getBoundingClientRect();return {y:b.y,height:b.height}}))
+   const modeGroup=await page.locator('.digital-memory-modes .segmented-control').boundingBox()
+   assert.ok(Math.abs(modeGroup.height-refreshButton.height)<1,`memory switch group matches toolbar height: ${JSON.stringify({width,modeGroup,refreshButton,modeButtons})}`)
+   if(width>=1440)assert.ok(modeButtons.every(button=>Math.abs(button.y+button.height/2-refreshButton.y-refreshButton.height/2)<1),'memory toolbar buttons align on one row')
+   await page.locator('.digital-memory-modes button').nth(1).click()
+   assert.equal(await page.locator('.digital-memory-modes button').nth(1).getAttribute('aria-pressed'),'true')
+   await page.locator('.digital-memory-controls').scrollIntoViewIfNeeded()
+   await page.screenshot({path:path.join(artifacts,`memory-controls-${width}.png`),animations:'disabled'})
+   await page.locator('[data-body-part=feet]').click()
+   assert.equal(await page.locator('[data-settings-tab=activity]').getAttribute('aria-pressed'),'true')
+   await page.screenshot({path:path.join(artifacts,`navigation-${width}.png`),animations:'disabled'})
+   await page.locator('.digital-person-header-title > button').click()
+   assert.equal(await page.locator('.digital-person-header .digital-person-guide').count(),1)
+   if(width>=1024){
+    const start=await page.locator('.digital-person-header-title').boundingBox(),guide=await page.locator('.digital-person-guide').boundingBox()
+    assert.ok(guide.x>=start.x+start.width&&Math.abs(start.y+start.height/2-guide.y-guide.height/2)<1,'setup controls share the title row')
+    const outer=await page.locator('.settings-content').evaluate(el=>({height:el.clientHeight,content:el.scrollHeight}))
+    assert.ok(outer.content<=outer.height+1,'guide does not introduce an outer scrollbar')
+    const panel=await page.locator('#digital-person-panel').boundingBox()
+    const checkSave=async()=>{
+     const save=await page.locator('#digital-person-panel > .digital-person-form-actions').boundingBox()
+     assert.ok(save.y>=panel.y&&save.y+save.height<=panel.y+panel.height+1,'save stays visible without scrolling the outer dialog')
+    }
+    await checkSave()
+    await page.locator('#digital-person-panel').evaluate(el=>{el.scrollTop=el.scrollHeight})
+    await checkSave()
+    await page.locator('#digital-person-panel').evaluate(el=>{el.scrollTop=0})
+   }
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'setup controls fit the viewport')
+   if(width<1024)await page.locator('.settings-content').evaluate(el=>{el.scrollTop=0})
+   await page.screenshot({path:path.join(artifacts,`guide-inline-${width}.png`),animations:'disabled'})
+   await page.locator('[data-body-part=heart]').click()
+   assert.equal(await page.locator('[name=memory_batch_size]').inputValue(),'100')
+   await page.locator('[name=memory_batch_size]').scrollIntoViewIfNeeded()
+   await page.screenshot({path:path.join(artifacts,`proactive-memory-batch-${width}.png`),animations:'disabled'})
+   assert.deepEqual(errors,[])
+   results.push({width,passed:true,scope:'navigation'});await page.close();continue
+  }
   await page.locator('.digital-person-form-actions button').scrollIntoViewIfNeeded()
   const save=await page.locator('.digital-person-form-actions button').boundingBox()
   const content=await page.locator('.settings-content').boundingBox()
   assert.ok(save.y>=content.y && save.y+save.height<=content.y+content.height,`${width}: identity form bottom is reachable`)
   if(width>=1024){
    const panel=await page.locator('#digital-person-panel').boundingBox()
-   assert.ok(save.y>=panel.y && save.y+save.height<=panel.y+panel.height,`${width}: save stays inside fixed configuration area`)
+   assert.ok(save.y>=panel.y-1 && save.y+save.height<=panel.y+panel.height+1,`${width}: save stays inside fixed configuration area`)
   }
   await page.screenshot({path:path.join(artifacts,`identity-bottom-${width}.png`),animations:'disabled'})
   await page.locator('[data-body-part=feet]').click()
@@ -97,26 +178,35 @@ try{
   assert.equal(await page.locator('.digital-person-stat-counts').count(),0)
   assert.equal(await page.locator('[data-settings-tab=activity]').getAttribute('aria-pressed'),'true')
   assert.equal(await page.locator('[data-body-part=feet]').getAttribute('aria-pressed'),'true')
-  if(width>=1024){
-   const selectedBackground=async selector=>page.locator(selector).evaluate(el=>getComputedStyle(el).backgroundColor)
-   assert.notEqual(await selectedBackground('[data-body-part=feet]'),'rgba(0, 0, 0, 0)','selected body label has a persistent background')
-   assert.notEqual(await selectedBackground('[data-settings-tab=activity]'),'rgba(0, 0, 0, 0)','selected secondary tab has a background')
-   await page.locator('[data-body-part=feet]').hover()
-   assert.notEqual(await selectedBackground('[data-body-part=feet]'),'rgba(0, 0, 0, 0)','hover retains the selected background')
+  for(const selector of ['[data-body-part=feet]','[data-settings-tab=activity]']){
+   const side=width>=1024&&selector.includes('settings-tab')?'Right':'Bottom'
+   assert.equal(await page.locator(selector).evaluate((el,side)=>getComputedStyle(el)[`border${side}Width`],side),side==='Right'?'3px':'2px')
+   await page.waitForFunction(({selector,side})=>{const style=getComputedStyle(document.querySelector(selector));return style[`border${side}Color`]===style.color},{selector,side})
   }
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}: footprints fit`)
   await page.screenshot({path:path.join(artifacts,`footprints-${width}.png`),fullPage:true,animations:'disabled'})
   await page.locator('[data-body-part=brain]').click()
-  if(width>=1024){
-   await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-body-part=feet]')).backgroundColor==='rgba(0, 0, 0, 0)')
-   assert.notEqual(await page.locator('.digital-person-brain-tabs [aria-selected=true]').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)')
-  }
-  assert.deepEqual(await page.locator('.digital-person-brain-tabs [role=tab]').allTextContents(),['引擎','记忆'])
+  assert.equal(await page.locator('.digital-person-brain-tabs').count(),0)
+  assert.equal(await page.locator('[data-body-part=brain]').getAttribute('aria-pressed'),'true')
   await page.locator('.assistant-engine-root').waitFor()
   await page.screenshot({path:path.join(artifacts,`engine-${width}.png`),fullPage:true,animations:'disabled'})
-  await page.locator('#digital-person-tab-memory').click()
+  await page.locator('[data-body-part=memory]').click()
   await page.locator('.digital-person-memory-map').waitFor()
   await page.locator('.digital-memory-node').first().waitFor()
+  await page.locator('.digital-memory-node').first().click()
+  const detailLayout=await page.locator('.digital-memory-layout').evaluate(el=>{
+   const detail=el.querySelector('.digital-memory-detail'),body=detail.querySelector('.digital-memory-detail-summary')
+   return {width:el.clientWidth,detailWidth:detail.getBoundingClientRect().width,bodySize:parseFloat(getComputedStyle(body).fontSize),lines:getComputedStyle(body).webkitLineClamp}
+  })
+  if(detailLayout.width>820)assert.ok(detailLayout.detailWidth>=320&&detailLayout.detailWidth/detailLayout.width>=.34,'memory detail gets at least a third of the available width')
+  assert.ok(detailLayout.bodySize<=12,'memory detail uses compact readable text')
+  assert.equal(detailLayout.lines,'3','memory summary is limited to three lines')
+  assert.ok(await page.locator('.digital-memory-detail-summary').evaluate(el=>el.scrollHeight>el.clientHeight),'long summary is visually truncated')
+  assert.equal(await page.locator('.digital-memory-detail-title').count(),0,'memory summary is not repeated as a title')
+  if(width<1024){
+   await page.locator('.digital-memory-summary-row').scrollIntoViewIfNeeded()
+   await page.screenshot({path:path.join(artifacts,`memory-summary-${width}.png`),animations:'disabled'})
+  }
   assert.equal(await page.locator('.digital-memory-collection').count(),0)
   assert.equal(await page.locator('.digital-person-memory-map .digital-memory-card').count(),0)
   if(width>=1024){

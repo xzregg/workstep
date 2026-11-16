@@ -13,14 +13,14 @@ _snapshots = {}
 _lock = threading.Lock()
 
 
-def _scan(project_id, kind, scope, since, before, cutoff, after, limit, query=""):
+def _scan(project_id, kind, scope, since, before, cutoff, after, limit, query="",session_id=""):
     from models.chat_session import ChatMessage, ChatSession
     from models import Message
     from services.digital_person_runtime import read_state
     # Narrow non-owner scopes before LIMIT/counting; post-filtering would reveal
     # private activity through empty pages and scanned/excluded counters.
     scoped_session = scoped_task = None
-    if scope != 'local':
+    if scope is not None and scope != 'local':
         if kind == 'chat':
             data = memory.digital_person.config_store.get('channel_bots', {})
             if scope.startswith('channel:'):
@@ -51,6 +51,9 @@ def _scan(project_id, kind, scope, since, before, cutoff, after, limit, query=""
         stamp = pw.fn.JULIANDAY(pw.fn.COALESCE(Message.ended_at, Message.created_at))
         rows = Message.select(Message, stamp.alias('_memory_time')).where(
             Message.run_status.in_(memory.TASK_TERMINAL), Message.role.in_(['user','assistant']))
+    if session_id:
+        if kind=='chat' and session_id.startswith('task:'):return [],0,after,0
+        rows=rows.where((ChatMessage.session if kind=='chat' else Message.task)==session_id.removeprefix('task:'))
     if scoped_session:
         rows = rows.where(ChatMessage.session == scoped_session)
     if scoped_task:
@@ -67,14 +70,14 @@ def _scan(project_id, kind, scope, since, before, cutoff, after, limit, query=""
     for message in batch:
         source_id = message.id if kind == 'chat' else 'task:'+message.id
         source_scope = memory.scope_for_session(message.session_id) if kind == 'chat' else memory.scope_for_task(project_id, message.task_id)
-        if source_scope != scope or memory.source_forgotten({'project_id':project_id,'source_message_id':source_id}):
+        if (scope is not None and source_scope != scope) or memory.source_forgotten({'project_id':project_id,'source_message_id':source_id}):
             excluded_count += 1
             continue
         full_text = message.content if kind == 'chat' else memory.task_source_text(message)
         if query and not any(term.casefold() in full_text.casefold() for term in query.split()):
             continue
         if kind == 'chat':
-            memory.capture_message(message, scope)
+            memory.capture_message(message, source_scope)
         else:
             memory.capture_task_message(project_id, message)
         with index.connect() as db:
@@ -92,12 +95,12 @@ def _scan(project_id, kind, scope, since, before, cutoff, after, limit, query=""
 
 
 async def page(projects, scope, project_ids, token, *, cursor=0, limit=20, since=None, before=None,
-               period='', timezone_name='Asia/Shanghai', snapshot='', query=''):
+               period='', timezone_name='Asia/Shanghai', snapshot='', query='',session_id=''):
     from services.memory_query import time_range
     query=query.strip()
     if cursor < 0 or not 1 <= limit <= 100 or len(query)>1000:
         raise ValueError('无效分页参数')
-    fingerprint = (token, scope, tuple(project_ids), str(since), str(before), period, timezone_name, query)
+    fingerprint = (token, scope, tuple(project_ids), str(since), str(before), period, timezone_name, query,session_id)
     if snapshot:
         with _lock:
             saved = _snapshots.get(snapshot)
@@ -134,7 +137,7 @@ async def page(projects, scope, project_ids, token, *, cursor=0, limit=20, since
             if not project or not await asyncio.to_thread(project.db_path.is_file):
                 raise LookupError('source unavailable')
             hits, scanned, last, excluded_count = await projects.run_db(pid, lambda _: _scan(
-                pid, kind, scope, *bounds, cutoff, state['after'], limit-scanned_this_page, query))
+                pid, kind, scope, *bounds, cutoff, state['after'], limit-scanned_this_page, query,session_id))
         except (ValueError, LookupError, OSError, pw.DatabaseError):
             state['unavailable_projects'].append(pid)
             state.update(project=state['project']+1, kind=0, after=None)
@@ -160,7 +163,7 @@ async def page(projects, scope, project_ids, token, *, cursor=0, limit=20, since
     return {'items': items, 'snapshot': snapshot, 'has_more': has_more,
             'next_cursor': next_cursor if has_more else None,
             'coverage': {'basis': 'authoritative_terminal_messages', 'project_ids': project_ids,
-                         'since': bounds[0], 'before': bounds[1], 'snapshot_at': cutoff,
+                         'since': bounds[0], 'before': bounds[1], 'filter_session_id':session_id, 'snapshot_at': cutoff,
                          'scanned_sources': state['scanned'], 'excluded_sources': state['excluded'],
                          'unavailable_projects': state['unavailable_projects'],
                          'query':query, 'keyword_match':'any whitespace-separated literal term; case-insensitive',

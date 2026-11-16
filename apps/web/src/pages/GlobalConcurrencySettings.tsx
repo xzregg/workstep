@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import { useEffect, useState } from 'react'
 import { assistantApi } from '../api/client'
 import Button from '../components/Button'
@@ -87,7 +88,7 @@ export default function GlobalConcurrencySettings() {
     <div className="global-concurrency-settings" style={{ maxWidth: 640, margin: '0 auto' }}>
       <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>
         {t('projectSettings.concurrency.title')}
-      </h1>
+      <SettingsHelpButton section="concurrency" /></h1>
       <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', marginBottom: 22 }}>
         {t('projectSettings.concurrency.hint')}
       </p>

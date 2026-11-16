@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import VoiceWakeSettings from '../components/digital-person/VoiceWakeSettings'
 import { useEffect, useRef, useState } from 'react'
 import { speechApi, type SpeechStatus } from '../api/speech'
@@ -52,7 +53,7 @@ export default function VoiceInputSettings({ onDirtyChange, sections = ['input',
     finally { if (alive.current) setSaving(false) }
   }
   return <div className="speech-settings">
-    <h1>{t('speech.settings')}</h1>
+    <h1>{t('speech.settings')}<SettingsHelpButton section="speech" /></h1>
     <div className="project-sharing-tabs" role="tablist" aria-label={t('speech.settings')}>
       {sections.map(value => <button type="button" role="tab" key={value}
         id={`speech-tab-${value}`} aria-controls={`speech-panel-${value}`} aria-selected={tab === value}

@@ -111,6 +111,13 @@ def test_person_prompt_only_in_fixed_workspace_and_when_enabled(setup, monkeypat
     prompt = service.prompt_for_project(home)
     assert "复查证据" in prompt
     assert "workstep-cli skill" in prompt
+    assert 'historical recall, stored knowledge, or user preferences' in prompt
+    assert 'workstep-cli memory' in prompt and 'references/memory.md' in prompt
+    assert 'For overviews, omit --with-sources' in prompt
+    assert "HARD BOUNDARY" in prompt
+    assert "even small tasks" in prompt
+    assert "Never execute task work in this conversation" in prompt
+    assert "If delegation fails, report the blocker" in prompt
     assert "workstep digital-person delegate" not in prompt
     assert "workstep project list" not in prompt
     assert "workstep context get" not in prompt

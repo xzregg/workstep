@@ -6,6 +6,7 @@ apps_dir="$(cd "$desktop_dir/.." && pwd)"
 repo_dir="$(cd "$apps_dir/.." && pwd)"
 daemon_dir="$apps_dir/daemon"
 web_dir="$apps_dir/web"
+landing_dir="$apps_dir/landing"
 platform_name="${BUILD_PLATFORM:-$(uname -s | tr '[:upper:]' '[:lower:]')}"
 case "$platform_name" in
   darwin|mac|macos) platform_name="mac" ;;
@@ -56,7 +57,8 @@ for runtime_dir in agent_assistants api data engines models schemas services sta
   "$python_bin" "$repo_dir/scripts/package_payload.py" copy "$daemon_dir/$runtime_dir" "$output_dir/app/daemon/$runtime_dir"
 done
 "$python_bin" "$repo_dir/scripts/package_payload.py" copy "$web_dir/dist" "$output_dir/web_dist"
-"$python_bin" "$repo_dir/scripts/package_payload.py" check "$output_dir/app/daemon" "$output_dir/web_dist" "$desktop_dir/src"
+"$python_bin" "$repo_dir/scripts/package_payload.py" copy "$landing_dir/dist" "$output_dir/landing_dist"
+"$python_bin" "$repo_dir/scripts/package_payload.py" check "$output_dir/app/daemon" "$output_dir/web_dist" "$output_dir/landing_dist" "$desktop_dir/src"
 
 release_version="${WORKSTEP_BUILD_VERSION:-$(node -p "require('$desktop_dir/package.json').version")}"
 release_version="${release_version#v}"

@@ -110,7 +110,7 @@ async def test_external_project_data_copy_keeps_original_preview_boundary(editor
         grant=response.json()['html_preview']
         preview=await client.get(f"/api/fs/html-resource/p/{grant['token']}/{grant['entry']}")
         assert preview.status_code==200,preview.text
-        assert ('workstep-prototype' in preview.text)==(editing=='true')
+        assert ('data-ws-editor-overlay' in preview.text)==(editing=='true')
         if editing=='true':
             assert f"script-src 'nonce-{grant['token']}'" in preview.text
 
@@ -166,3 +166,124 @@ async def test_dependency_scan_is_off_loop_and_ignores_unrelated_large_files(edi
     grant = document.json()['html_preview']
     image = await client.get(f"/api/fs/html-resource/p/{grant['token']}/used.svg")
     assert image.status_code == 200, image.text
+
+
+async def test_open_new_html_recovers_workspace_with_removed_source_directory(editor):
+    client, root = editor
+    old = root / 'old/page.html'
+    old.parent.mkdir()
+    old.write_text('<p>Old</p>')
+    first = await client.post('/api/prototype/open', json={'project_id':'p','path':'index.html'})
+    first_id = first.json()['id']
+    await client.post('/api/prototype/open', json={'project_id':'p','path':'old/page.html'})
+    old.unlink()
+    old.parent.rmdir()
+    sample = root / 'tmp/prototype-editor-sample/index.html'
+    sample.parent.mkdir(parents=True)
+    sample.write_text('<h1>Sample</h1>')
+    opened = await client.post('/api/prototype/open', json={'project_id':'p','path':str(sample)})
+    assert opened.status_code == 200, opened.text
+    assert opened.json()['id'] == first_id
+    document = await client.get(f'/api/prototype/{first_id}/document', params={'project_id':'p','path':opened.json()['path']})
+    assert document.status_code == 200, document.text
+    grant = document.json()['html_preview']
+    preview = await client.get(f"/api/fs/html-resource/p/{grant['token']}/{grant['entry']}")
+    assert preview.status_code == 200, preview.text
+    assert 'Sample' in preview.text
+    assert (await client.post('/api/prototype/open', json={'project_id':'p','path':'not-found.html'})).status_code == 404
+
+
+async def test_stale_selection_is_rejected_off_loop_before_starting_engine(editor, monkeypatch):
+    import agent_assistants.prototype as module
+    from types import SimpleNamespace
+    client, root = editor
+    opened = (await client.post('/api/prototype/open', json={'project_id':'p','path':'index.html'})).json()
+    monkeypatch.setattr(main, 'prototype_module', SimpleNamespace())
+    original = module.selection_context
+    def slow(*args):
+        time.sleep(.15)
+        return original(*args)
+    monkeypatch.setattr(module, 'selection_context', slow)
+    request = asyncio.create_task(client.post(f"/api/prototype/{opened['id']}/chat?project_id=p", headers={'Idempotency-Key':'stale'}, json={
+        'path':'index.html','content':'改成9','selection':{'node_id':'n1','version':'old-version','tag':'p','text':'08'},
+    }))
+    await asyncio.sleep(.02)
+    start = time.monotonic()
+    assert (await client.get('/health')).status_code == 200
+    assert time.monotonic() - start < .08
+    response = await request
+    assert response.status_code == 409, response.text
+    assert '重新选择' in response.json()['detail']
+
+
+async def test_history_file_patches_and_times_keep_health_responsive(editor, monkeypatch):
+    client, _ = editor
+    opened = (await client.post('/api/prototype/open',json={'project_id':'p','path':'index.html'})).json()
+    document = (await client.get(f"/api/prototype/{opened['id']}/document",params={'project_id':'p','path':'index.html'})).json()
+    saved = await client.post(f"/api/prototype/{opened['id']}/edit?project_id=p",json={
+        'path':'index.html','node_id':'n1','operation':'text','values':{'text':'Updated'},'version':document['version'],
+    })
+    assert saved.status_code == 200, saved.text
+    revision = saved.json()['history'][-1]
+    assert isinstance(revision['time'],(int,float))
+    original = PrototypeWorkspace.diff
+    def slow(self,*args):
+        time.sleep(.15)
+        return original(self,*args)
+    monkeypatch.setattr(PrototypeWorkspace,'diff',slow)
+    request = asyncio.create_task(client.get(f"/api/prototype/{opened['id']}/diff",params={'project_id':'p','revision':revision['id']}))
+    await asyncio.sleep(.02)
+    start = time.monotonic()
+    assert (await client.get('/health')).status_code == 200
+    assert time.monotonic() - start < .08
+    response = await request
+    assert response.status_code == 200, response.text
+    file = response.json()['files'][0]
+    assert file['path'] == 'index.html'
+    assert '-<button>First</button><button>Second</button>\n' in file['patch']
+    assert '+<button>Updated</button><button>Second</button>\n' in file['patch']
+
+
+async def test_prototype_navigation_reports_actual_resource_in_browse_and_select(editor):
+    client,root=editor
+    (root/'index.html').write_text('<a href="other.html">Next</a>')
+    opened=(await client.post('/api/prototype/open',json={'project_id':'p','path':'index.html'})).json()
+    for editing in (False,True):
+        doc=(await client.get(f"/api/prototype/{opened['id']}/document",params={'project_id':'p','path':'index.html','editing':editing})).json()
+        grant=doc['html_preview']
+        target=await client.get(f"/api/fs/html-resource/p/{grant['token']}/other.html")
+        assert target.status_code==200
+        assert 'workstep-prototype-navigation' in target.text
+        assert '"path": "other.html"' in target.text
+        assert grant['token'] in target.text
+        if editing:
+            assert f"frame-src http://test/api/fs/html-resource/p/{grant['token']}/" in target.text
+
+
+async def test_local_iframe_editor_uses_scoped_frames_and_per_file_metadata(editor):
+    client,root=editor
+    (root/'index.html').write_text('<meta http-equiv="refresh" content="0;url=https://external.invalid"><nav>Menu</nav><iframe name="content" src="other.html"></iframe>')
+    opened=(await client.post('/api/prototype/open',json={'project_id':'p','path':'index.html'})).json()
+    doc=(await client.get(f"/api/prototype/{opened['id']}/document",params={'project_id':'p','path':'index.html'})).json()
+    grant=doc['html_preview']
+    parent=await client.get(f"/api/fs/html-resource/p/{grant['token']}/index.html")
+    child=await client.get(f"/api/fs/html-resource/p/{grant['token']}/other.html")
+    assert parent.status_code==child.status_code==200
+    assert "frame-src 'none'" not in parent.text
+    assert 'workstep-prototype-frames' in child.text
+    assert 'data-ws-disabled-refresh' in parent.text
+    assert 'http-equiv="refresh"' in (root/'index.html').read_text(), 'preview restriction never rewrites original HTML'
+    assert '"path": "other.html"' in child.text
+    assert "frame-ancestors 'self'" not in child.headers['content-security-policy']
+    assert 'allow-same-origin' not in child.headers['content-security-policy']
+    assert f'/api/fs/html-resource/p/{grant["token"]}/' in parent.text
+    child_doc=(await client.get(f"/api/prototype/{opened['id']}/document",params={'project_id':'p','path':'other.html'})).json()
+    outer_before=(root/'index.html').read_text()
+    response=await client.post(f"/api/prototype/{opened['id']}/edit?project_id=p",json={'path':'other.html','node_id':'n1','operation':'text','values':{'text':'Child saved'},'version':child_doc['version']})
+    assert response.status_code==200,response.text
+    assert (root/'other.html').read_text()=='<p>Child saved</p>'
+    assert (root/'index.html').read_text()==outer_before
+    undone=await client.post(f"/api/prototype/{opened['id']}/action/undo?project_id=p")
+    assert undone.status_code==200
+    assert (root/'other.html').read_text()=='<p>Other</p>'
+    assert (root/'index.html').read_text()==outer_before

@@ -85,10 +85,9 @@ the required runtime context, report that the engine CLI environment is missing;
 do not claim a memory search returned no results. A successful command in a
 different shell does not prove the engine shell received the same variables.
 
-The memory capability supplied in the current prompt is separate from daemon
-authentication: it goes in `--token`, not `WORKSTEP_DESKTOP_TOKEN`. The CLI
-handles daemon authentication through the inherited environment and local
-runtime discovery. Do not persist either credential.
+Memory queries use explicit project filters; inherited conversation IDs
+do not narrow query scope. No separate memory credential is used. The CLI handles normal daemon authentication through
+the inherited environment and local runtime discovery.
 
 ## First-run improvement
 

@@ -21,7 +21,8 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert mirrored.is_file()
     text = mirrored.read_text(encoding="utf-8")
     assert "quick buttons" in text.split("---", 2)[1]
-    assert len(text) < 6500
+    assert len(text) < 3200
+    assert len(text.split('description:',1)[1].split('\n',1)[0]) < 260
     references = re.findall(r"\]\((references/[^)]+)\)", text)
     assert len(set(references)) >= 8
     for reference in references:
@@ -112,20 +113,27 @@ def test_memory_cli_skill_documents_environment_and_parseable_commands():
     root = BUILTIN_SKILLS / 'workstep-cli'
     skill = (root / 'SKILL.md').read_text()
     assert 'references/memory.md' in skill
-    assert 'daemon startup' in skill and 'sys.executable' in skill
-    assert 'not your project virtualenv' in skill
+    description=skill.split('description:',1)[1].split('\n',1)[0]
+    assert 'historical memories, user preferences and reusable experience' in description
+    assert 'Decide whether retrieval is needed' in description
     transport = (root / 'references/transport.md').read_text()
+    assert 'at startup' in transport and 'daemon interpreter' in transport
+    assert "current project's virtualenv" in transport
     assert 'missing environment variables' in transport
-    assert 'not provided as an environment variable' in ' '.join((root / 'references/memory.md').read_text().split())
+    assert 'Normal queries do not require a current conversation' in (root / 'references/memory.md').read_text()
     commands = re.findall(r'^uv run .*python -m cli (memory .+)$', (root / 'references/memory.md').read_text(), re.M)
     assert len(commands) >= 3
     for command in commands:
         parsed = build_parser().parse_args(shlex.split(command))
         assert not parsed.verbose and not parsed.json
-        assert parsed.memory_token == '<memory_token>'
+        assert not hasattr(parsed,'memory_token')
     reference = (root / 'references/memory.md').read_text()
     assert '--verbose' in reference and 'source_ids' in reference
     assert 'same compact fields' in reference
+    assert 'For overviews, omit `--with-sources`' in reference
+    assert 'do not expand every result' in reference
+    assert 'sufficient to answer' in reference
+    assert 'memory search --period ... --with-sources --json' not in reference
 
 
 def test_project_local_workstep_cli_skill_wins_over_new_builtin(tmp_path):

@@ -1,3 +1,4 @@
+import SettingsHelpButton from './SettingsHelpButton'
 import './AssistantEngineSettings.css'
 import { useEffect, useRef, useState } from 'react'
 import { assistantApi, providerApi, systemSettingsApi, type ModelSetting, fetchEngineModels, getCachedEngineModels, type AssistantConfigInfo, type AssistantConfiguredDefaults, type EngineInfo, type EngineModel, type ProviderInfo } from '../api/client'
@@ -245,7 +246,7 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange, 
   return (
     <div className="assistant-engine-root">
       {!assistantName && <div className="assistant-engine-heading">
-        <h1 className="assistant-engine-title">{t('settings.assistantTitle')}</h1>
+        <h1 className="assistant-engine-title">{t('settings.assistantTitle')}<SettingsHelpButton section="assistants" /></h1>
         <p className="assistant-engine-intro">
           {t('settings.assistantIntro')}
         </p>

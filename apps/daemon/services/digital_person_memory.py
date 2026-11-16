@@ -490,9 +490,7 @@ def prompt(hits):
 
 async def context_prompt(projects, scope, query, *, session_id='', hits=None, project_ids=None, issuer_project_id='', issuer_kind='chat'):
     """Offer scoped tools; never attach unsolicited history or derived knowledge."""
-    from services import memory_query
-    token = await memory_query.issue_access(projects,scope,project_ids=project_ids,session_id=session_id,issuer_project_id=issuer_project_id,issuer_kind=issuer_kind)
-    return memory_query.instruction(token)
+    return ''
 
 
 async def _task_context_prompt(projects, project_id, task_id, query):

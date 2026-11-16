@@ -8,7 +8,7 @@ import './git/git.css'
 import { useI18n, type TFunction } from '../i18n'
 import { durationMilliseconds, formatDuration } from '../utils/datetime'
 import type { ToolActivity } from '../utils/messageTimeline'
-import { extractToolTarget, toolKind, type ToolKind, type ToolTargetInfo } from '../utils/toolInput'
+import { extractToolTarget, isMemorySearchCommand, toolKind, type ToolKind, type ToolTargetInfo } from '../utils/toolInput'
 import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
 
 /**
@@ -166,7 +166,9 @@ export default function ToolCallRow({
     && targetInfo.targetComplete
     ? classifyProjectFileLink(targetInfo.fileTarget, projectId)
     : null
-  const summary = isRunning
+  const summary = kind === 'command' && isMemorySearchCommand(activity.input)
+    ? t('trace.searchMemory')
+    : isRunning
     ? t('chat.toolRunning', { name: activity.name || t('chat.tool') })
     : completedSummary(activity, t, fileLink, targetInfo)
   const endedAt = activity.endedAt ?? (isRunning ? now : undefined)

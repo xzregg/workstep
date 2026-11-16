@@ -100,7 +100,7 @@ async function renderShare(mode: 'read_only' | 'interactive') {
       hasResizeHandle: Boolean(document.querySelector('.chat-composer-resize-handle')),
       hasComposer: Boolean(document.querySelector<HTMLTextAreaElement>('.task-detail-composer textarea')),
       hasAnalysisTab: Array.from(document.querySelectorAll('[role="tab"]'))
-        .some((tab) => /执行分析/.test(tab.textContent ?? '')),
+        .some((tab) => /执行分析|Execution analysis/i.test(tab.textContent ?? '')),
       hasAttachment: Boolean(document.querySelector('.chat-input-attach')),
       fileInputCount: document.querySelectorAll('input[type="file"]').length,
       text: document.body.textContent ?? '',

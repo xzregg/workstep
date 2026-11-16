@@ -43,12 +43,6 @@
 .digital-person-stat-counts > div { display: grid; gap: 6px; min-width: 0; }
 .digital-person-stat-counts dt { color: var(--muted); font-size: 12px; }
 .digital-person-stat-counts dd { margin: 0; color: var(--fg); font-size: 20px; font-weight: 500; }
-.digital-person-stat-skills { font-size: 13px; border-top: .5px solid var(--border-soft); padding-top: 14px; min-width: 0; }
-.digital-person-stat-skills summary { cursor: pointer; color: var(--fg-2); }
-.digital-person-stat-skills summary > span { margin-left: 8px; color: var(--muted); }
-.digital-person-stat-skills ul { display: flex; flex-wrap: wrap; gap: 8px 16px; list-style: none; padding: 0; margin: 12px 0 0; }
-.digital-person-stat-skills li { overflow-wrap: anywhere; color: var(--muted); }
-.digital-person-stat-skills p { color: var(--muted); font-size: 12px; }
 @media(max-width: 1023px) { .digital-person-stat-counts { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; } }
 
 .digital-person-delegation-row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 8px 0; border-bottom: .5px solid var(--border-soft); }

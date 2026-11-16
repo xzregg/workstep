@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useI18n, languageDirection } from '../i18n'
 import { getManualChapters, manualGroups, getManualGroups, screenshotUrl } from './content'
 import './manual.css'
@@ -28,18 +28,27 @@ function ManualDirectory({ chapterId, query }: { chapterId: string; query: strin
   </nav>
 }
 
-export function ManualPage({ chapterId }: { chapterId: string }) {
+export function ManualPage({ chapterId, embedded = false }: { chapterId: string; embedded?: boolean }) {
   const { t, lang } = useI18n()
   const [query, setQuery] = useState('')
-  const [directoryOpen, setDirectoryOpen] = useState(true)
+  const [directoryOpen, setDirectoryOpen] = useState(!embedded)
+  useEffect(() => {
+    if (!embedded) return
+    window.parent.postMessage({ type: 'workstep:manual-ready', chapterId }, window.location.origin)
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); window.parent.postMessage({ type: 'workstep:manual-close' }, window.location.origin) }
+    }
+    document.addEventListener('keydown', close)
+    return () => document.removeEventListener('keydown', close)
+  }, [embedded, chapterId, lang])
   const chapters = getManualChapters(lang)
   const chapter = chapters.find(c => c.id === chapterId) ?? chapters[0]
   const index = chapters.indexOf(chapter)
   const previousArrow = languageDirection(lang) === 'rtl' ? '→' : '←'
   const nextArrow = languageDirection(lang) === 'rtl' ? '←' : '→'
-  return <main className="manual-layout" id="manual" lang={lang} dir={languageDirection(lang)}>
+  return <main className={`manual-layout${embedded ? ' manual-layout--embedded' : ''}`}  id="manual" lang={lang} dir={languageDirection(lang)}>
     <aside className="manual-sidebar">
-      <a className="manual-home" href="#top">{previousArrow} {t('manual.home')}</a>
+      {!embedded && <a className="manual-home" href="#top">{previousArrow} {t('manual.home')}</a>}
       <h1>{t('manual.title')}</h1>
       <label className="manual-search-label" htmlFor="manual-search">{t('manual.search')}</label>
       <input id="manual-search" type="search" value={query} onChange={e => {

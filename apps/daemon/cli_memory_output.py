@@ -7,11 +7,18 @@ def _pick(value, fields):
     return {key:value[key] for key in fields if key in value}
 
 
-def _summary(item):
+def _summary(item, query=''):
     result = _pick(item, ('id','role','kind','outcome','state','event_time','created_at','needs_read','matched_entities','matched_relations'))
     original = str(item.get('summary') or item.get('content') or '')
     text = re.sub(r'\s+', ' ', original).strip()
     preview = text[:159] + '…' if len(text) > 160 else text
+    if query and len(text)>160:
+        terms=list(dict.fromkeys(re.findall(r'\w+',query.casefold())))[:64]
+        matches=[m.start() for term in terms for m in re.finditer(re.escape(term),text.casefold())]
+        if matches:
+            starts={max(0,pos-35) for pos in matches}
+            start=max(starts,key=lambda pos:(sum(term in text[pos:pos+158].casefold() for term in terms),-pos))
+            preview=('…' if start else '')+text[start:start+158]+('…' if start+158<len(text) else '')
     title = str(item.get('title') or re.split(r'[。！？\n]', text)[0])[:40]
     result['title'] = title
     # Avoid repeating the title in both fields. These are deterministic excerpts,
@@ -26,7 +33,7 @@ def _summary(item):
     return result
 
 
-def compact(result, operation, *, events=False):
+def compact(result, operation, *, events=False, query=''):
     if not isinstance(result, dict) or result.get('ok') is False or events or operation == 'pending':
         return result
     if operation == 'read':
@@ -35,7 +42,7 @@ def compact(result, operation, *, events=False):
     output = _pick(result, ('snapshot','has_more','next_cursor'))
     for field in ('items','knowledge'):
         if field in result:
-            output[field] = [_summary(item) for item in result[field]]
+            output[field] = [_summary(item,query) for item in result[field]]
     if 'coverage' in result:
         output['coverage'] = _pick(result['coverage'], ('basis','since','before','query','keyword_match','complete_filtered_history','complete_source_history',
             'unavailable_or_changed','unavailable_projects','snapshot_truncated'))

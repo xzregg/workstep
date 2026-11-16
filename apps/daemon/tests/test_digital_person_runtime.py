@@ -1,3 +1,4 @@
+from tests.memory_turn_fixture import assessment_access
 from tests.memory_turn_fixture import create_completed_user
 import asyncio
 import pytest
@@ -77,7 +78,7 @@ async def test_heartbeat_checker_has_tools_and_silence_marker(runtime, monkeypat
     calls = []
     async def invoke(*args, **kwargs):
         from services import memory_query
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+        token=await assessment_access(runtime)
         await memory_query.pending(runtime.projects,token)
         calls.append(kwargs)
         return 'NO_REPLY', [], 'heartbeat-engine'
@@ -161,6 +162,18 @@ async def test_main_session_stable_concurrent_and_recreated_after_archive(runtim
     await runtime.projects.run_db(project.id, lambda _: ChatSession.update(archived=True).where(ChatSession.id == rows[0]['id']).execute())
     assert (await runtime.main_session())['id'] != rows[0]['id']
 
+async def test_overview_does_not_recommend_repeated_user_messages(runtime):
+    runtime, project, _ = runtime
+    from models.chat_session import ChatMessage
+    from models.fields import utc_now
+    sid = (await runtime.main_session())['id']
+    def seed(_):
+        for index in range(3):
+            ChatMessage.create(id=f'repeated-{index}', session=sid, role='user',
+                               status='completed', content='今天几号?', created_at=utc_now())
+    await runtime.projects.run_db(project.id, seed)
+    assert (await runtime.overview())['suggestions'] == []
+
 async def test_feedback_is_idempotent_and_negative_earns_no_experience(runtime):
     runtime, project, _ = runtime
     from models.chat_session import ChatMessage
@@ -229,7 +242,7 @@ async def test_real_checker_uses_separate_visible_session_and_bounded_context(ru
     monkeypatch.setattr(runtime.bus, 'publish', record)
     async def invoke(engine, model, cwd, prompt, *args, **kwargs):
         from services import memory_query
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+        token=await assessment_access(runtime)
         await memory_query.pending(runtime.projects,token)
         calls.append((prompt,kwargs))
         return '{"decision":"silent","summary":"无新增结果","source_ids":[]}', [], 'check-thread'
@@ -460,7 +473,7 @@ async def test_checker_accepts_fenced_json_without_changing_notification_policy(
     await seed_pending(runtime)
     async def invoke(*args, **kwargs):
         from services import memory_query
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+        token=await assessment_access(runtime)
         await memory_query.pending(runtime.projects,token)
         return '```'+fence+'\n{"decision":"silent","summary":"无变化","source_ids":[]}\n```', [], "check-thread"
     monkeypatch.setattr("agent_assistants.base.invoke_engine", invoke)

@@ -8,7 +8,7 @@ export interface PrototypeState {
   status: string
   documents: { id: string; path: string }[]
   files: string[]
-  history: { id: string; label: string; changes: Record<string, { before: string; after: string }> }[]
+  history: { id: string; label: string; time?: number; undone?: boolean; undo_id?: string | null; changes: Record<string, { before: string; after: string }> }[]
   error: string
   pending: boolean
   bytes: number
@@ -18,11 +18,16 @@ export interface PrototypeSelection {
   version: string
   tag: string
   text: string
+  id?: string
   classes?: string
+  frame_path?: {file:string;selector:string}[]
+  selector?: string
+  source_location?: { line: number }
   rect: { x: number; y: number; width: number; height: number }
   styles: Record<string, string>
   ancestors: { node_id: string | null; tag: string }[]
 }
+export interface PrototypeDiff {diff:string;files?:{path:string;patch:string}[]}
 export interface PrototypeDocument {
   version: string
   nodes: Record<string, { editable: boolean; text_editable: boolean; text_value?: string; source?: string; line: number }>
@@ -33,7 +38,7 @@ export function prototypeApi(projectId: string, workspaceId = '') {
   const post = <T>(path: string, body = {}) => request<T>(path, {method:'POST', body:JSON.stringify(body)})
   return {
     open: (path: string) => post<PrototypeState>(`/prototype/open?project_id=${encodeURIComponent(projectId)}`,  {project_id:projectId, path}),
-    diff: (revision = 'pending') => request<{diff:string}>(url('/diff',{revision})),
+    diff: (revision = 'pending') => request<PrototypeDiff>(url('/diff',{revision})),
     state: () => request<PrototypeState>(url()),
     document: (path: string, editing = true) => request<PrototypeDocument>(url('/document',{path,editing:String(editing)})),
     history: (path: string) => request<{session_id:string; engine?:string; model?:string; messages:AssistantChatMessage[]}>(url('/history',{path})),

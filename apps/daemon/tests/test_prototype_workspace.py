@@ -284,3 +284,59 @@ def test_selected_resources_still_enforce_total_budget(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match='引用资源总量'):
         PrototypeWorkspace.open(root, root / '.workstep', root / 'index.html')
     assert not list((root / '.workstep/prototype-editor').glob('*'))
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+def test_removed_historical_page_directory_does_not_block_opening_new_page(tmp_path, legacy):
+    root, work = setup_workspace(tmp_path)
+    old = root / 'old/page.html'
+    old.parent.mkdir()
+    old.write_text('<p>Old</p>')
+    work = PrototypeWorkspace.open(root, root / '.workstep', old)
+    existing_id = work.load()['documents']['index.html']
+    if legacy:
+        data = work.load()
+        data.pop('entries')
+        work.save(data)
+    old.unlink()
+    old.parent.rmdir()
+    new = root / 'new/index.html'
+    new.parent.mkdir()
+    new.write_text('<p>New</p>')
+    reopened = PrototypeWorkspace.open(root, root / '.workstep', new)
+    assert reopened.id == work.id
+    assert reopened.document('new/index.html').source == '<p>New</p>'
+    assert reopened.load()['documents']['index.html'] == existing_id
+    assert 'old/page.html' not in reopened.load()['entries']
+    assert 'old/page.html' not in reopened.load()['documents']
+
+
+
+def test_element_move_publishes_only_selected_translate_and_can_undo(tmp_path):
+    root = tmp_path / 'project'
+    root.mkdir()
+    source = '<button style="color:red;transform:rotate(5deg)">One</button><button>Two</button>'
+    (root / 'index.html').write_text(source)
+    work = PrototypeWorkspace.open(root, root / '.workstep', root / 'index.html')
+    work.edit('index.html','n1','style',{'translate':'120px -20px'},work.document('index.html').version)
+    saved = (root / 'index.html').read_text()
+    assert 'translate:120px -20px' in saved.replace(': ',':')
+    assert 'transform:rotate(5deg)' in saved
+    assert saved.endswith('<button>Two</button>')
+    work.undo()
+    assert (root / 'index.html').read_text() == source
+
+
+
+def test_history_diff_exposes_file_patches_without_joining_unterminated_lines(tmp_path):
+    root, work = setup_workspace(tmp_path)
+    work.edit('index.html','n1','text',{'text':'Changed'},work.document('index.html').version)
+    revision = work.state()['history'][-1]
+    assert isinstance(revision['time'],(int,float))
+    result = work.diff(revision['id'])
+    assert result['files'][0]['path'] == 'index.html'
+    patch = result['files'][0]['patch']
+    assert '-<button>A</button>\n' in patch
+    assert '+<button>Changed</button>\n' in patch
+    assert '\\ No newline at end of file' in patch
+    assert result['diff'] == patch

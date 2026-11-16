@@ -1026,8 +1026,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             if person:
                 try:
                     state = await asyncio.to_thread(affect.read, person)
-                    session.extra['digital_person_affect'] = {'source': latest, 'scope': scope,
-                                                            'prompt': affect.prompt(profile, state)}
+                    session.extra['digital_person_affect'] = {'prompt': affect.prompt(profile, state)}
                 except Exception:
                     logger.warning('Relationship state unavailable', exc_info=True)
         from services.digital_person_browser import attach
@@ -1047,16 +1046,10 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
 
     async def _parse_response(self, session, raw):
         reply, structured, events = await super()._parse_response(session, raw)
-        context = session.extra.get('digital_person_affect')
-        if context:
-            from services import digital_person_affect as affect
-            reply, change = affect.parse_output(reply)
-            if change:
-                try:
-                    await asyncio.to_thread(affect.apply, session.project_id, session.session_id,
-                                            [context['source']], change, scope=context['scope'])
-                except Exception:
-                    logger.warning('Relationship update unavailable; reply continues', exc_info=True)
+        if session.extra.get('digital_person_affect'):
+            # Old resumed engine contexts may still emit the retired header; hide it without applying updates.
+            from services.digital_person_affect import visible_text
+            reply = visible_text(reply)
         return reply, structured, events
 
     def _digital_person_prompt(self, session) -> str:
@@ -1103,7 +1096,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
     async def _run_turn_guarded(self, session, turn_id, assistant_message_id):
         from services.conversation_context import conversation_context
 
-        if self._config.name not in {"chat_session", "channel_chat"}:
+        if self._config.name not in {"chat_session", "channel_chat", "digital_person"}:
             return await super()._run_turn_guarded(session, turn_id, assistant_message_id)
         with conversation_context(session.project_id, session.session_id):
             return await super()._run_turn_guarded(session, turn_id, assistant_message_id)

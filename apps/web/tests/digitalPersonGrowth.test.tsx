@@ -7,7 +7,7 @@ import {I18nProvider,useLocaleStore} from '../src/i18n'
 import {digitalRuntimeApi} from '../src/api/digitalPerson'
 import DigitalPersonGrowth from '../src/components/digital-person/DigitalPersonGrowth'
 
-test('namecard shows real growth, conversation counts and enabled skills from one request',async()=>{
+test('namecard shows growth and counts without skill configuration from one request',async()=>{
  const {window}=installDomEnvironment(),el=document.body.appendChild(document.createElement('div')),root=createRoot(el)
  useLocaleStore.setState({locale:'zh-CN'})
  const old=digitalRuntimeApi.activity;let calls=0
@@ -17,6 +17,8 @@ test('namecard shows real growth, conversation counts and enabled skills from on
   assert.equal(calls,1)
   const values=[...el.querySelectorAll('dl dd')].map(n=>n.textContent)
   assert.deepEqual(values,['12','44','8','5'])
-  assert.match(el.textContent!,/Lv.3/);assert.match(el.textContent!,/代码评审/)
+  assert.match(el.textContent!,/Lv.3/)
+  assert.doesNotMatch(el.textContent!,/启用技能|代码评审/)
+  assert.equal(el.querySelector('details'),null)
  }finally{await act(async()=>root.unmount());digitalRuntimeApi.activity=old;await window.happyDOM.close()}
 })

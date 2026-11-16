@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 web_dir="$repo_dir/apps/web"
+landing_dir="$repo_dir/apps/landing"
 desktop_build="$repo_dir/apps/desktop/build-backend.sh"
 build_web=""
 build_desktop=1
@@ -28,10 +29,10 @@ usage() {
 用法: ./build.sh [web|--with-web|--no-web]
 
   web         只构建 apps/web/dist
-  --with-web  先构建 apps/web/dist，再构建桌面后端包
-  --no-web    跳过前端构建，复用已有 apps/web/dist
+  --with-web  先构建工作台和官网，再构建桌面后端包
+  --no-web    跳过前端构建，复用已有工作台和官网 dist
 
-不带参数时构建 Web dist 和桌面后端包。
+不带参数时构建工作台、官网和桌面后端包。
 EOF
 }
 
@@ -79,6 +80,18 @@ else
 fi
 
 if [[ "$build_desktop" == "1" ]]; then
+  if [[ "$build_web" == "1" ]]; then
+    echo "构建官网和操作手册..."
+    cd "$landing_dir"
+    if [[ ! -x node_modules/.bin/vite ]]; then
+      run_yarn install --frozen-lockfile
+    fi
+    LANDING_BASE=/landing/ run_yarn build
+  fi
+  test -f "$landing_dir/dist/index.html" || {
+    echo "未找到 apps/landing/dist/index.html，请先运行 ./build.sh --with-web" >&2
+    exit 1
+  }
   echo "构建桌面后端包..."
   cd "$repo_dir"
   "$desktop_build"

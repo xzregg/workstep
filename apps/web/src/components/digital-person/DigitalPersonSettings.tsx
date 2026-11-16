@@ -1,7 +1,9 @@
+import { useCompactLayout } from '../../hooks/useCompactLayout'
+import SettingsHelpButton from '../SettingsHelpButton'
 import { useNavigate } from 'react-router-dom'
 import DigitalPersonRelationship from './DigitalPersonRelationship'
 import DigitalPersonOperations from './DigitalPersonOperations'
-import DigitalPersonCamera from './DigitalPersonCamera'
+import DigitalPersonVisionSettings from '../face-recognition/DigitalPersonVisionSettings'
 import DigitalPersonGrowth from './DigitalPersonGrowth'
 import DigitalPersonMemory from './DigitalPersonMemory'
 import DigitalPersonTraitField from './DigitalPersonTraitField'
@@ -12,9 +14,9 @@ import { digitalPersonApi, digitalRuntimeApi, type DigitalPersonProfile } from '
 import { roleCenterApi } from '../../api/roleCenter'
 import { useProjectStore } from '../../stores/projectStore'
 import { useI18n } from '../../i18n'
-import { useCompactLayout } from '../../hooks/useCompactLayout'
 import Button from '../Button'
 import Input from '../Input'
+import Icon, { type IconName } from '../Icon'
 import Select from '../Select'
 import Spinner from '../Spinner'
 import ConfirmDialog from '../ConfirmDialog'
@@ -30,11 +32,13 @@ import { DIGITAL_ACTIVITY_CHANGED } from './useDigitalActivity'
 import './DigitalPersonSettings.css'
 
 type Tab = 'card' | 'identity' | 'appearance' | 'proactive' | 'channels' | 'memory' | 'assistant' | 'activity' | 'input' | 'vision' | 'tools'
-const bodyTabs: Record<DigitalPersonBodyPart, Tab> = { brain: 'assistant', eyes: 'vision', ears: 'input', mouth: 'appearance', heart: 'proactive', hands: 'tools', feet: 'activity' }
-const auxiliaryTabs = ['card', 'identity', 'channels', 'activity'] as const
+const bodyTabs: Record<DigitalPersonBodyPart, Tab> = { brain: 'assistant', eyes: 'vision', ears: 'input', mouth: 'appearance', heart: 'proactive', hands: 'tools', feet: 'activity', memory: 'memory' }
+const settingsTabs = ['card', 'identity', 'appearance', 'proactive', 'channels', 'memory', 'assistant', 'input', 'vision', 'tools', 'activity'] as const
+const mobileSettingsTabs: readonly Tab[] = ['card', 'identity', 'channels', 'activity']
+const menuIcons: Record<Tab, IconName> = { card:'user', identity:'shield', appearance:'volume', proactive:'lightbulb', channels:'bot', memory:'book', assistant:'settings', input:'mic', vision:'eye', tools:'mouse-pointer', activity:'clock' }
 export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyChange }: { onClose: () => void; onDirtyChange?: (dirty: boolean) => void; onBusyChange?: (busy: boolean) => void }) {
   const { t } = useI18n()
-  const compactLayout = useCompactLayout()
+  const compact = useCompactLayout()
   const navigate = useNavigate()
   const enterHome = () => { onDirtyChange?.(false); onClose(); navigate('/companion') }
   const projects = useProjectStore(state => state.projects)
@@ -125,15 +129,7 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
   if (loading) return <div className="digital-person-loading"><Spinner />{t('digitalPerson.loading')}</div>
   if (!draft || !saved) return <div role="alert">{error}<Button onClick={() => setRetry(value => value + 1)}>{t('common.retry')}</Button></div>
   return <div className="digital-person-settings">
-    <header className="digital-person-header"><h1>{t('digitalPerson.title')}</h1>
-      <div className="digital-person-header-actions">
-        {busy && <Spinner />}
-        <span className="digital-person-status">{t(saved.enabled ? 'digitalPerson.enabled' : 'digitalPerson.disabled')}</span>
-        <button type="button" className="settings-switch" role="switch" aria-label={t('digitalPerson.title')}
-          aria-checked={saved.enabled} disabled={blocked} onClick={() => void toggleEnabled()}><span className="settings-switch-thumb" /></button>
-      </div>
-    </header>
-    {error && <p role="alert" className="digital-person-error">{error}</p>}
+    <header className="digital-person-header"><div className="digital-person-header-title"><h1>{t('digitalPerson.title')}<SettingsHelpButton section="digital-person" /></h1><Button size="sm" disabled={blocked || dirty} onClick={beginGuide}>{t('digitalPerson.setup')}</Button></div>
     {guide !== null && <div className="digital-person-guide"><strong>{t('digitalPerson.setupStep',{step:guide+1,total:guideTabs.length})}</strong><span>{t(`digitalPerson.${guideTabs[guide]}`)}</span>
       <Button disabled={blocked} onClick={()=>setGuide(null)}>{t('digitalPerson.setupLater')}</Button>
       <Button disabled={blocked || childDirty || !valid} onClick={async()=>{
@@ -142,28 +138,37 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
         if(profileDirty || done){if(!await save({...draft, ...(done?{enabled:true,onboarding_completed:true}:{})}))return}
         if(done){setGuide(null);setTab('card')}else{setGuide(next);setTab(guideTabs[next])}
       }}>{t(guide===guideTabs.length-1?'digitalPerson.finishSetup':'digitalPerson.nextStep')}</Button></div>}
+      <div className="digital-person-header-actions">
+        {busy && <Spinner />}
+        <span className="digital-person-status">{t(saved.enabled ? 'digitalPerson.enabled' : 'digitalPerson.disabled')}</span>
+        <button type="button" className="settings-switch" role="switch" aria-label={t('digitalPerson.title')}
+          aria-checked={saved.enabled} disabled={blocked} onClick={() => void toggleEnabled()}><span className="settings-switch-thumb" /></button>
+      </div>
+    </header>
+    {error && <p role="alert" className="digital-person-error">{error}</p>}
     <div className="digital-person-settings-body">
-    <DigitalPersonBodyNavigation name={draft.name} role={draft.role} disabled={blocked}
-      selected={tab === 'memory' ? 'brain' : (Object.keys(bodyTabs) as DigitalPersonBodyPart[]).find(part => bodyTabs[part] === tab) ?? null}
+    <DigitalPersonBodyNavigation disabled={blocked}
+      selected={(Object.keys(bodyTabs) as DigitalPersonBodyPart[]).find(part => bodyTabs[part] === tab) ?? null}
       onSelect={part => switchTab(bodyTabs[part])}>
-      {!compactLayout && <div className="digital-person-body-relationship"><DigitalPersonRelationship /></div>}
+      <div className="digital-person-secondary-settings">
+        <nav className="digital-person-secondary-nav" aria-label={t('digitalPerson.moreSettings')}>
+          {settingsTabs.map(value=>{
+            const label=t(value==='identity'?'digitalPerson.identityPersonality':value==='input'?'digitalPerson.bodyears':value==='vision'?'digitalPerson.bodyeyes':value==='tools'?'digitalPerson.bodyhands':`digitalPerson.${value}`)
+            return <button type="button" key={value} data-settings-tab={value} data-mobile-hidden={!mobileSettingsTabs.includes(value)} aria-pressed={tab===value} disabled={blocked} onClick={()=>switchTab(value)}><Icon name={menuIcons[value]} className="digital-person-menu-icon"/><span data-short-label={/^[\u3400-\u9fff]{2}$/.test(label)}>{label}</span></button>
+          })}
+        </nav>
+      </div>
     </DigitalPersonBodyNavigation>
-    <section ref={panelRef} id="digital-person-panel" aria-labelledby="digital-person-panel-title">
-    <nav className="digital-person-secondary-nav" aria-label={t('digitalPerson.moreSettings')}>
-      {auxiliaryTabs.map(value => <button type="button" key={value} data-settings-tab={value} aria-pressed={tab === value} disabled={blocked} onClick={() => switchTab(value)}>{t(value === 'identity' ? 'digitalPerson.identityPersonality' : `digitalPerson.${value}`)}</button>)}
-    </nav>
-    {tab !== 'channels' && tab !== 'activity' && <h2 id="digital-person-panel-title">{t(tab === 'identity' ? 'digitalPerson.identityPersonality' : tab === 'assistant' || tab === 'memory' ? 'digitalPerson.bodybrain' : tab === 'appearance' ? 'digitalPerson.bodymouth' : tab === 'input' ? 'digitalPerson.bodyears' : tab === 'vision' ? 'digitalPerson.bodyeyes' : tab === 'tools' ? 'digitalPerson.bodyhands' : `digitalPerson.${tab}`)}</h2>}
-    {(tab === 'assistant' || tab === 'memory') && <div className="digital-person-brain-tabs" role="tablist" aria-label={t('digitalPerson.bodybrain')}>
-      {(['assistant', 'memory'] as const).map(value => <button type="button" key={value} id={`digital-person-tab-${value}`} role="tab" aria-selected={tab === value} aria-controls="digital-person-brain-panel" disabled={blocked} onClick={() => switchTab(value)}>{t(value === 'assistant' ? 'digitalPerson.engineTab' : 'digitalPerson.memory')}</button>)}
-    </div>}
-    {(['identity', 'appearance', 'proactive', 'memory'] as Tab[]).includes(tab) && <div className="digital-person-form-actions"><Button variant="primary" disabled={!valid || !profileDirty || childDirty || childBusy} loading={busy}
+    <section ref={panelRef} id="digital-person-panel" aria-labelledby={tab==='memory'?undefined:'digital-person-panel-title'} aria-label={tab==='memory'?t('digitalPerson.memory'):undefined}>
+    {tab !== 'memory' && tab !== 'channels' && tab !== 'activity' && <h2 id="digital-person-panel-title">{t(tab === 'identity' ? 'digitalPerson.identityPersonality' : tab === 'assistant' ? 'digitalPerson.bodybrain' : tab === 'appearance' ? 'digitalPerson.bodymouth' : tab === 'input' ? 'digitalPerson.bodyears' : tab === 'vision' ? 'digitalPerson.bodyeyes' : tab === 'tools' ? 'digitalPerson.bodyhands' : `digitalPerson.${tab}`)}</h2>}
+    {(['identity', 'appearance', 'proactive'] as Tab[]).includes(tab) && <div className="digital-person-form-actions"><Button variant="primary" disabled={!valid || !profileDirty || childDirty || childBusy} loading={busy}
       onClick={() => void save()}>{t(tab === 'appearance' ? 'digitalPerson.saveAppearance' : 'common.save')}</Button></div>}
     {tab === 'card' && <article className="digital-person-card">
-      {compactLayout && <DigitalPersonRelationship/>}
       <div className="digital-person-card-main"><DigitalPersonAvatar avatar={saved.avatar} /><div><h2>{saved.name}</h2><p className="digital-person-role">{saved.role}</p><p>{[saved.personality,saved.tone].filter(Boolean).join('，')}</p><span className="digital-person-status">{t(saved.enabled ? 'digitalPerson.enabled' : 'digitalPerson.disabled')}</span></div></div>
-      <DigitalPersonGrowth /><details className="digital-person-card-details"><summary>{t('digitalPerson.duties')}</summary><p className="digital-person-duties">{saved.duties}</p></details>
+      <div className="digital-person-card-relationship"><DigitalPersonRelationship /></div>
+      <DigitalPersonGrowth /><details className="digital-person-card-details" open={!compact}><summary>{t('digitalPerson.duties')}</summary><p className="digital-person-duties">{saved.duties}</p></details>
       <div className="digital-person-actions"><DigitalPersonChatButton workspace={workspace} onClose={onClose} />
-        <Button onClick={() => setTab('identity')}>{t('digitalPerson.edit')}</Button><Button onClick={beginGuide}>{t('digitalPerson.setup')}</Button>
+        <Button onClick={() => setTab('identity')}>{t('digitalPerson.edit')}</Button>
       </div>
     </article>}
     {tab === 'identity' && <div className="digital-person-form">
@@ -202,18 +207,19 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
         value={Number.isNaN(interval) ? '' : interval} disabled={blocked} onChange={event => update('proactive_interval_minutes', event.target.valueAsNumber)} /></label>
       <label>{t('digitalPerson.contactInterval')}<Input name="proactive_contact_interval_minutes" type="number" min={1} max={1440} step={1}
         value={Number.isNaN(contactInterval) ? '' : contactInterval} disabled={blocked} onChange={event=>update('proactive_contact_interval_minutes',event.target.valueAsNumber)}/></label>
+      <div className="digital-person-context-setting"><label>{t('digitalPerson.memoryBatchSize')}<Input name="memory_batch_size" type="number" min={1} max={1000} step={1} value={Number.isNaN(memoryBatchSize) ? '' : memoryBatchSize} disabled={blocked} onChange={event=>update('memory_batch_size',event.target.valueAsNumber)}/></label><p>{t('digitalPerson.memoryBatchSizeHint')}</p></div>
       <div className="digital-person-field-pair"><label>{t('digitalPerson.quietStart')}<Input disabled={blocked} type="number" min={0} max={23} value={Number.isNaN(draft.quiet_start) ? '' : draft.quiet_start ?? 22} onChange={e=>update('quiet_start',e.target.valueAsNumber)}/></label>
       <label>{t('digitalPerson.quietEnd')}<Input disabled={blocked} type="number" min={0} max={23} value={Number.isNaN(draft.quiet_end) ? '' : draft.quiet_end ?? 8} onChange={e=>update('quiet_end',e.target.valueAsNumber)}/></label></div>
       <Button disabled={blocked || dirty} onClick={()=>void checkNow()}>{t('digitalPerson.thinkNow')}</Button>
     </div>}
     {tab === 'channels' && <DigitalPersonChannels workspaceId={workspace?.id} name={saved.name} onDirtyChange={childChanged} onBusyChange={childBusyChanged} />}
-    {(tab === 'assistant' || tab === 'memory') && <div id="digital-person-brain-panel" role="tabpanel" aria-labelledby={`digital-person-tab-${tab}`}>
-      {tab === 'assistant' ? <AssistantEngineSettings assistantName="digital_person" onDirtyChange={childChanged} onBusyChange={childBusyChanged} /> : <>
-        <div className="digital-person-form"><label>{t('digitalPerson.memoryBatchSize')}<Input name="memory_batch_size" type="number" min={1} max={1000} step={1} value={Number.isNaN(memoryBatchSize) ? '' : memoryBatchSize} disabled={blocked} onChange={event=>update('memory_batch_size',event.target.valueAsNumber)}/></label><p>{t('digitalPerson.memoryBatchSizeHint')}</p></div>
-        <DigitalPersonMemory name={saved.name} avatar={saved.avatar} /></>}
+    {(tab === 'assistant' || tab === 'memory') && <div id="digital-person-brain-panel" role="region" aria-labelledby={`digital-person-tab-${tab}`}>
+      {tab === 'assistant' ? <AssistantEngineSettings assistantName="digital_person" onDirtyChange={childChanged} onBusyChange={childBusyChanged} /> :
+        <DigitalPersonMemory name={saved.name} avatar={saved.avatar} />
+      }
     </div>}
     {tab === 'input' && <div className="digital-person-input-settings"><VoiceWakeSettings parametersOnly onDirtyChange={childChanged} onBusyChange={childBusyChanged} /></div>}
-    {tab === 'vision' && <div className="digital-person-vision"><DigitalPersonCamera autoStart projectId={workspace?.id} /><AssistantEngineSettings assistantName="digital_person" section="vision" onDirtyChange={childChanged} onBusyChange={childBusyChanged} /></div>}
+    {tab === 'vision' && <DigitalPersonVisionSettings onDirtyChange={childChanged} onBusyChange={childBusyChanged}/>}
     {tab === 'tools' && <DigitalPersonOperations />}
     </section>
     </div>

@@ -1,3 +1,4 @@
+from tests.memory_turn_fixture import assessment_access
 import asyncio
 from datetime import timedelta
 import json
@@ -64,11 +65,11 @@ def test_validation_repetition_caps_and_reflection_cannot_mix_people(affect):
     assert affect.subject(source(author=''), 'channel:bot:group:g') is None
 
 
-async def test_chat_uses_one_generation_and_strips_metadata_from_history(runtime,monkeypatch):
+async def test_chat_uses_one_generation_with_reference_only_relationship(runtime,monkeypatch):
     from services import digital_person_affect as affect
     current,project,_=runtime
     calls=[]
-    raw='<workstep-affect>'+json.dumps(update())+'</workstep-affect>\n一起完成了，很开心！'
+    raw='一起完成了，很开心！'
     published=[]
     original=current.chats._publish
     async def publish(session,mid,kind,data,seq):
@@ -79,7 +80,7 @@ async def test_chat_uses_one_generation_and_strips_metadata_from_history(runtime
         on_event=on_event or args[5]
         from engines.core.events import InternalEvent
         calls.append(kwargs)
-        assert 'workstep-affect' in kwargs['system_prompt']
+        assert 'workstep-affect' not in kwargs['system_prompt']
         for start in range(0,len(raw),3):
             await on_event(InternalEvent('agent_message_chunk',{'content':{'text':raw[start:start+3]}}))
         return raw,[],'affect-engine'
@@ -94,7 +95,8 @@ async def test_chat_uses_one_generation_and_strips_metadata_from_history(runtime
     assert ''.join(published)=='一起完成了，很开心！'
     assert rows[-1]['content']=='一起完成了，很开心！'
     person=affect.subject(next(r for r in rows if r['role']=='user'),'local')
-    assert (await asyncio.to_thread(affect.read,person))['affinity']==51
+    assert (await asyncio.to_thread(affect.read,person))['affinity']==50
+    assert await asyncio.to_thread(affect.people)==[]
 
 
 def test_reflection_only_settles_real_unprocessed_same_person_sources(affect):
@@ -141,10 +143,10 @@ async def test_affect_api_is_host_read_only_and_slow_storage_keeps_health_respon
 async def test_slow_chat_relationship_storage_keeps_event_loop_responsive(runtime,monkeypatch):
     import threading
     from services import digital_person_affect as affect
-    current,project,_=runtime;entered,release=threading.Event(),threading.Event();original=affect.apply
+    current,project,_=runtime;entered,release=threading.Event(),threading.Event();original=affect.read
     def slow(*args,**kwargs):
         entered.set();assert release.wait(3);return original(*args,**kwargs)
-    monkeypatch.setattr(affect,'apply',slow)
+    monkeypatch.setattr(affect,'read',slow)
     async def invoke(*args,**kwargs):return '<workstep-affect>'+json.dumps(update())+'</workstep-affect>\n收到',[],'engine'
     monkeypatch.setattr('agent_assistants.base.invoke_engine',invoke)
     sid=(await current.main_session())['id']
@@ -169,7 +171,7 @@ async def test_heartbeat_reuses_its_generation_for_unsettled_relationships(runti
         calls.append(kwargs)
         assert 'relationship_updates' in kwargs['system_prompt']
         from services import memory_query
-        token=kwargs['system_prompt'].split('Pass memory_token=',1)[1].split(' ',1)[0]
+        token=await assessment_access(current)
         await memory_query.pending(current.projects,token)
         return json.dumps({'decision':'silent','summary':'已回顾互动，无需发消息','source_ids':[], 'relationship_updates':[{**update(),'source_ids':['unsettled']}]}),[],'reflection-engine'
     monkeypatch.setattr('agent_assistants.base.invoke_engine',invoke)
@@ -193,6 +195,7 @@ def test_concurrent_duplicate_settlement_is_atomic(affect):
 
 @pytest.mark.parametrize('reply',[
     '正常回复，没有附加数据',
+    '<workstep-affect>'+json.dumps(update())+'</workstep-affect>\n正常回复',
     '<workstep-affect>{bad}</workstep-affect>\n正常回复',
     '<workstep-affect>{"affinity_delta":100,"emotion":"happy","valence":40,"arousal":35,"reason":"越界"}</workstep-affect>\n正常回复',
 ])
@@ -230,3 +233,16 @@ async def test_session_readout_resolves_latest_real_author_from_project_database
         assert response.json()['state']['person_id']=='bob'
         assert response.json()['state']['affinity']==50
         assert (await client.get('/api/digital-person/affect',params={'project_id':'missing','session_id':sid})).status_code==404
+
+
+def test_relationship_prompt_is_a_short_tone_reference(affect):
+    profile = digital_person.DigitalPersonProfile(relationship_style='warm', relationship_preferences='说话自然一点')
+    state = dict(affinity=62, emotion='curious', valence=10, arousal=20)
+    text = affect.prompt(profile, state)
+    assert len(text) < 400
+    assert 'tone reference' in text
+    assert '"affinity": 62' in text and '"emotion": "curious"' in text
+    assert '说话自然一点' in text
+    assert 'workstep-affect' not in text
+    assert 'affinity_delta' not in text
+    assert '0-29' not in text and '60-79' not in text

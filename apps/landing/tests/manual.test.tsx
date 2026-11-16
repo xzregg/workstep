@@ -7,6 +7,13 @@ import { Nav } from '../src/components/Nav'
 import { I18nProvider } from '../src/i18n'
 
 describe('operation manual', () => {
+  it('embeds the same chapter without the website home link', () => {
+    const html = renderToStaticMarkup(<I18nProvider><ManualPage chapterId="templates-ai-flow" embedded /></I18nProvider>)
+    expect(html).toContain('manual-layout--embedded')
+    expect(html).toContain('模板与 AI 流程助手')
+    expect(html).not.toContain('manual-home')
+    expect(html).toContain('manual-search')
+  })
   it('documents prototype selection, recovery and the static editing boundary with a real screenshot', () => {
     const section = manualChapters.find(chapter => chapter.id === 'results')!.sections.find(section => section.screenshot?.id === 'prototype-editor')
     expect(section).toBeDefined()

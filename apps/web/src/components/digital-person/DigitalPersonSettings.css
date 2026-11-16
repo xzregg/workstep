@@ -1,16 +1,18 @@
-.digital-person-settings { container-type: inline-size; min-width: 0; max-width: 1120px; margin: 0 auto; font-size: 14px; color: var(--fg); }
-.digital-person-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.digital-person-settings { container-type: inline-size; min-width: 0; max-width: 1440px; margin: 0 auto; font-size: var(--text-body); color: var(--fg); }
+.digital-person-header { display: flex; flex-wrap:wrap; align-items: center; gap: 16px; margin-bottom: 24px; }
 .digital-person-header h1 { font-size: 20px; font-weight: 600; margin: 0; }
-.digital-person-header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.digital-person-header-title { display:flex; align-items:center; gap:12px; min-width:0; }
+.digital-person-header-title h1,.digital-person-header-title .btn { white-space:nowrap; }
+.digital-person-header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-left:auto; }
 .digital-person-header-actions .settings-switch { background: var(--border); flex-shrink: 0; }
 .digital-person-header-actions .settings-switch[aria-checked=true] { background: var(--accent); }
-.digital-person-settings-body { display: grid; grid-template-columns: minmax(260px,34%) minmax(0,1fr); align-items: stretch; min-height: 620px; border: .5px solid var(--border-soft); border-radius: var(--radius-lg); overflow: clip; }
+.digital-person-settings-body { display:grid; grid-template-columns:220px minmax(0,1fr); align-items:stretch; min-height:320px; border:0; border-radius:0; }
 #digital-person-panel { min-width: 0; }
-.digital-person-card { max-width: 640px; border: .5px solid var(--border); border-radius: 16px; padding: 28px; background: var(--bg); }
+.digital-person-card { max-width:none; border:0; padding:0; background:transparent; }
 .digital-person-card-main { display: flex; align-items: center; gap: 18px; padding-bottom: 24px; }
 .digital-person-card h2 { font-size: 24px; letter-spacing: -.02em; margin: 0; }
 .digital-person-card-main > div:last-child { min-width: 0; flex: 1; }
-.digital-person-card-main p { margin: 6px 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.digital-person-card-main p { margin: 6px 0; color: var(--muted); overflow-wrap:anywhere; white-space:normal; line-height:1.6; }
 .digital-person-card-main .digital-person-role { color: var(--fg-2); }
 .digital-person-status { font-size: 12px; color: var(--muted); }
 .digital-person-card-details { margin-top: 20px; padding-top: 16px; border-top: .5px solid var(--border); color: var(--fg-2); }
@@ -29,13 +31,16 @@
 .digital-person-voice-preview { grid-column: 1/-1; display: flex; align-items: center; gap: 20px; border: .5px solid var(--border); border-radius: 12px; padding: 16px; background: var(--surface); }
 .digital-person-voice-preview > .btn { margin-left: auto; white-space: normal; }
 .digital-person-channel-check { display: flex !important; align-items: center; gap: 8px; font-size: 13px; }
-.digital-person-guide { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; margin-bottom: 20px; border-bottom: .5px solid var(--border); font-size: 13px; }
+.digital-person-guide { display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; font-size:var(--text-body); }
+.digital-person-guide > strong,.digital-person-guide > span,.digital-person-guide > .btn { white-space:nowrap; }
 .digital-person-chat-action { min-width: 0; }
 .digital-person-chat-action p { max-width: 32ch; overflow-wrap: anywhere; }
 @media (max-width:1023px) {
   .digital-person-settings-body { display: block; }
   .digital-person-header { padding: 8px 0; margin-bottom: 12px; }
-  .digital-person-card { padding: 20px; border-radius: 12px; }
+  .digital-person-header-actions { order:1; }
+  .digital-person-guide { order:2; }
+  .digital-person-card { padding:0; }
   .digital-person-card-main { gap: 12px; padding-bottom: 20px; }
   .digital-person-card-main .digital-person-avatar { width: 56px; height: 56px; }
   .digital-person-card h2 { font-size: 20px; }
@@ -44,14 +49,27 @@
   .digital-person-field-pair { gap: 12px; }
 }
 
-#digital-person-panel { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
-#digital-person-panel > h2 { margin: 0; font-size: 20px; font-weight: 600; }
-.digital-person-secondary-nav { display: flex; justify-content: flex-start; flex-wrap: nowrap; gap: 16px; overflow-x: auto; }
-.digital-person-secondary-nav button { flex-shrink: 0; min-height: 32px; padding: 4px 0; white-space: nowrap; border: 0; background: transparent; color: var(--muted); font-size: 13px; cursor: pointer; }
-.digital-person-secondary-nav button[aria-pressed=true] { color: var(--fg); text-decoration: underline; text-underline-offset: 4px; }
-.digital-person-brain-tabs { display: flex; gap: 24px; border-bottom: .5px solid var(--border-soft); }
-.digital-person-brain-tabs button { padding: 0 0 10px; min-height: 32px; border: 0; border-radius: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 14px; cursor: pointer; }
-.digital-person-brain-tabs [aria-selected=true] { border-bottom-color: var(--accent); color: var(--accent); }
+#digital-person-panel { padding:0 0 0 24px; display: flex; flex-direction: column; gap: 20px; }
+#digital-person-panel > h2 { margin: 0; font-size:var(--text-title-2); font-weight: 600; }
+.digital-person-secondary-settings { flex-shrink:0; padding-bottom:16px; margin:0 0 16px; border-bottom:.5px solid var(--border-soft); }
+.digital-person-secondary-nav { display:grid; grid-template-columns:minmax(0,1fr); justify-items:start; gap:4px; }
+.digital-person-secondary-nav button { min-height:32px; max-width:100%; padding:4px 0; white-space:normal; text-align:left; border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:var(--text-secondary); font-size:var(--text-body); cursor:pointer; }
+.digital-person-secondary-nav button[aria-pressed=true] { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+.digital-person-menu-icon { display:none; flex-shrink:0; }
+@media(min-width:1024px) {
+ .digital-person-secondary-nav { justify-items:stretch; gap:0; }
+ .digital-person-secondary-nav button { justify-content:flex-start; text-align:left; gap:8px; padding:6px 12px; border:0; border-right:3px solid transparent; border-radius:var(--radius-sm); }
+ .digital-person-menu-icon { display:block; }
+ .digital-person-secondary-nav [data-short-label=true] { letter-spacing:.5em; margin-right:-.5em; }
+ .digital-person-secondary-nav button:hover { background:var(--surface); }
+ .digital-person-secondary-nav button[aria-pressed=true] { background:color-mix(in srgb,var(--accent) 9%,var(--bg)); border-right-color:var(--accent); }
+}
+@media(max-width:1023px) {
+ .digital-person-secondary-settings { order:1; padding:16px 0 0; margin:12px 0 0; border-bottom:0; border-top:.5px solid var(--border-soft); }
+ .digital-person-secondary-nav { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+ .digital-person-secondary-nav button { white-space:nowrap; text-align:center; }
+ .digital-person-secondary-nav button[data-mobile-hidden=true] { display:none; }
+}
 #digital-person-panel > .digital-person-form-actions { order: 10; margin: auto 0 0; padding-top: 16px; border-top: .5px solid var(--border-soft); }
 .digital-person-input-settings .speech-settings { padding: 0; max-width: none; }
 .digital-person-input-settings .speech-settings > h1 { display: none; }
@@ -60,26 +78,23 @@
 .digital-person-tool-status span { color: var(--muted); font-size: 13px; }
 @media(max-width:1023px) {
  .digital-person-settings-body { display: block; min-height: 0; }
- #digital-person-panel { padding: 20px 16px; }
- .digital-person-brain-tabs button { min-height: var(--mobile-control-regular); }
+ #digital-person-panel { padding:20px 0; }
 }
 
-@media (min-width: 1024px) {
-  .digital-person-settings-body { height: min(680px, calc(100dvh - 240px)); min-height: 320px; }
-  .digital-person-body-navigation { min-height: 0; overflow-y: auto; }
-  #digital-person-panel { height: 100%; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--meta) var(--surface); }
-  #digital-person-panel::-webkit-scrollbar { width: 8px; }
-  #digital-person-panel::-webkit-scrollbar-track { background: var(--surface); }
-  #digital-person-panel::-webkit-scrollbar-thumb { background: var(--meta); border-radius: var(--radius-xs); }
-  #digital-person-panel > * { flex-shrink: 0; }
-@container (max-width: 760px) {
-  .digital-person-settings-body { display: block; height: auto; min-height: 0; }
-  #digital-person-panel { height: min(680px, calc(100dvh - 240px)); min-height: 320px; }
-  .digital-person-body-navigation { border-right: 0; border-bottom: .5px solid var(--border-soft); }
-  .digital-person-body-map { max-width: 330px; margin: 24px auto; }
+@media(min-width:1024px) {
+ .digital-person-settings { display:flex; flex-direction:column; flex:1; width:100%; min-height:0; }
+ .digital-person-header,.digital-person-settings > .digital-person-error { flex-shrink:0; }
+ .digital-person-settings-body { flex:1; min-height:0; }
+ .digital-person-body-navigation { min-height:0; overflow-y:auto; }
+ #digital-person-panel { height:100%; min-height:0; overflow-y:auto; scrollbar-gutter:stable; scrollbar-width:thin; scrollbar-color:var(--meta) var(--surface); }
+ #digital-person-panel > * { flex-shrink:0; }
+ #digital-person-panel > .digital-person-form-actions { position:sticky; bottom:0; z-index:1; padding:12px 0; background:var(--bg); }
 }
+@container (max-width:760px) {
+ .digital-person-settings-body { display:block; height:auto; }
+ .digital-person-body-navigation { border-right:0; border-bottom:.5px solid var(--border-soft); padding-right:0; }
+ #digital-person-panel { height:auto; overflow:visible; padding:20px 0; }
 }
-
 @media(max-width:1023px) { #digital-person-panel { scroll-margin-top: var(--space-4); } }
 
 .digital-person-context-setting { display: grid; gap: 8px; }
@@ -87,13 +102,12 @@
 
 .digital-person-field-pair > label { grid-template-rows: 1fr auto; align-items: start; }
 
-@media (min-width: 1024px) {
-  .digital-person-secondary-nav button,
-  .digital-person-brain-tabs button { padding-inline: var(--space-2); border-radius: var(--radius-xs); }
-  .digital-person-secondary-nav button[aria-pressed=true],
-  .digital-person-brain-tabs [aria-selected=true] {
-    background: color-mix(in srgb, var(--accent) 9%, var(--bg));
-    color: var(--accent);
-    text-decoration: none;
-  }
-}
+
+
+.digital-person-card-relationship { margin-bottom:24px; padding-bottom:24px; border-bottom:.5px solid var(--border-soft); }
+.digital-person-card-relationship .digital-person-relationship { display:flex; flex-wrap:wrap; align-items:center; gap:8px 24px; }
+.digital-person-card-relationship .digital-person-relationship > label { max-width:320px; margin-bottom:0; }
+.digital-person-card-relationship .digital-affect { display:contents; }
+.digital-person-card-relationship .digital-affect-summary { justify-content:flex-start; padding:0; background:transparent; }
+.digital-person-card-relationship .digital-affect-recent { flex-basis:100%; padding:0; }
+.digital-person-card-relationship .digital-affect-detail { flex-basis:100%; }

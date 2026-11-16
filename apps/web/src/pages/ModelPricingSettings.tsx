@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import { useEffect, useMemo, useState } from 'react'
 import Button from '../components/Button'
 import Input from '../components/Input'
@@ -229,7 +230,7 @@ export default function ModelSettingsPage() {
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.pricingTitle')}</h1>
+          <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.pricingTitle')}<SettingsHelpButton section="pricing" /></h1>
           <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>{t('settings.pricingIntro')}</p>
         </div>
         <Button variant="primary" onClick={() => void save()} disabled={loading || saving || !validNumbers} loading={saving}>

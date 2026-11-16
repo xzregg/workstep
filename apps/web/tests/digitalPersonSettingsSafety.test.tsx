@@ -14,8 +14,10 @@ test('memory batch size defaults to 100 and validates and saves the edited limit
  const ui=await setup()
  try{
   await ui.click('[data-body-part=brain]')
-  await ui.click('#digital-person-tab-memory')
+  await ui.click('[data-body-part=memory]')
   const selector='[name=memory_batch_size]'
+  assert.equal(ui.host.querySelector(selector),null,'memory page only displays memory content')
+  await ui.click('[data-body-part=heart]')
   assert.equal(ui.host.querySelector<HTMLInputElement>(selector)!.value,'100')
   for(const invalid of ['', '0', '1001', '1.5']){
    await ui.input(selector,invalid)
@@ -171,13 +173,13 @@ test('outer settings cannot close, escape or change sections while a child save 
  voiceWakeApi.save=async value=>{await new Promise<void>(r=>release=r);return value as any}
  try{
   await ui.click('[data-body-part=ears]');await ui.input('.voice-wake-settings input','新的唤醒词');await ui.click('[data-save-wake]')
-  assert.equal(ui.host.querySelector<HTMLButtonElement>('.settings-dialog-header button')!.disabled,true)
-  await ui.click('.settings-dialog-header button')
+  assert.equal(ui.host.querySelector<HTMLButtonElement>('.settings-dialog-header .btn-icon')!.disabled,true)
+  await ui.click('.settings-dialog-header .btn-icon')
   await ui.click('.settings-nav button:not([aria-current=page])')
   await act(async()=>document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
   assert.equal(ui.closes(),0);assert.equal(document.querySelector('.confirm-dialog-confirm'),null);assert.ok(ui.host.querySelector('.voice-wake-settings'))
   await act(async()=>release())
-  await ui.click('.settings-dialog-header button');assert.equal(ui.closes(),1)
+  await ui.click('.settings-dialog-header .btn-icon');assert.equal(ui.closes(),1)
  }finally{await ui.close()}
 })
 
@@ -194,5 +196,26 @@ test('contact interval is visible, bounded and saved independently of the thinki
   await ui.click('.digital-person-form-actions button')
   assert.equal(ui.getSaved().proactive_contact_interval_minutes,30)
   assert.equal(ui.host.querySelector<HTMLInputElement>('[name=proactive_interval_minutes]')!.value,'5')
+ }finally{await ui.close()}
+})
+
+
+test('digital-person settings keeps one dialog and navigation while content changes',async()=>{
+ const ui=await setup(true,true)
+ try{
+  const dialog=ui.host.querySelector('.settings-dialog-panel')
+  assert.ok(ui.host.querySelector('.settings-layout--digital-person'))
+  for(const part of ['brain','memory','ears','feet']){
+   await ui.click(`[data-body-part=${part}]`)
+   assert.equal(ui.host.querySelector('.settings-dialog-panel'),dialog)
+   assert.ok(ui.host.querySelector('.settings-layout--digital-person'))
+   assert.equal(ui.host.querySelectorAll('.digital-person-body-image').length,1)
+  }
+  await ui.click('[data-settings-navigation-toggle]')
+  assert.equal(ui.host.querySelector('.settings-layout--digital-person'),null)
+  await ui.click('[data-settings-navigation-toggle]')
+  assert.ok(ui.host.querySelector('.settings-layout--digital-person'))
+  await ui.click('.digital-person-secondary-nav [data-settings-tab=identity]')
+  assert.ok(ui.host.querySelector('.settings-layout--digital-person'))
  }finally{await ui.close()}
 })

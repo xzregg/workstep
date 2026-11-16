@@ -1,3 +1,4 @@
+import SettingsHelpButton from '../components/SettingsHelpButton'
 import { useEffect, useState } from 'react'
 import { BOT_PLATFORMS, channelBotApi, type ChannelBot, type BotPlatform } from '../api/channelBots'
 import Button from '../components/Button'
@@ -75,7 +76,7 @@ export default function BotSettings({ onDirtyChange }: { onDirtyChange?: (dirty:
   }
   const platformBots = bots.filter(bot => bot.platform === platform)
   return <div className="bot-settings">
-    <header className="bot-settings-heading"><h1>{t('channelBot.title')}</h1><p>{t('channelBot.intro')}</p></header>
+    <header className="bot-settings-heading"><h1>{t('channelBot.title')}<SettingsHelpButton section="channels" /></h1><p>{t('channelBot.intro')}</p></header>
     <div className="bot-settings-workspace">
       <nav className="bot-settings-platforms" aria-label={t('channelBot.platform')}>
         {BOT_PLATFORMS.map(value => {

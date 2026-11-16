@@ -16,10 +16,10 @@ async def test_ordinary_project_chat_gets_tools_without_automatic_history_each_t
         turn = await current.projects.run_db(project.id,lambda _:current.chats.submit_message(project.id,sid,text,str(i),schedule=False))
         current.chats.start_queued_turn(turn.turn_id)
         await current.chats.await_turn(turn.turn_id,timeout=5)
-    assert '数据库迁移' not in calls[-1]['system_prompt']
-    assert 'Relevant memories' not in calls[-1]['system_prompt']
-    assert 'memory search' in calls[-1]['system_prompt']
-    assert calls[-1].get('system_prompt_each_turn') is True
+    assert '数据库迁移' not in calls[-1].get('system_prompt','')
+    assert 'Relevant memories' not in calls[-1].get('system_prompt','')
+    assert 'memory_token=' not in calls[-1].get('system_prompt','')
+    assert not calls[-1].get('system_prompt_each_turn')
 
 async def test_task_context_uses_shared_memory_and_task_bound_scope(runtime,monkeypatch):
     from services import digital_person_memory as memory
@@ -58,11 +58,11 @@ async def test_real_task_runner_injects_shared_memory_on_initial_and_resume(scen
     await s.db(seed)
     assert await s.start() == 'completed'
     calls = s.script.select(channel='execution')
-    assert calls and all('memory search' in call['prompt'] for call in calls)
+    assert calls and all('memory_token=' not in call['prompt'] for call in calls)
     assert 'Relevant memories' not in calls[0]['prompt']
     await s.start('requirements')
     resumed = [call for call in s.script.select(channel='execution') if call['resumed']]
-    assert resumed and all('memory search' in call['prompt'] for call in resumed)
+    assert resumed and all('memory_token=' not in call['prompt'] for call in resumed)
 
 
 async def test_memory_sqlite_contention_degrades_chat_without_blocking_loop(runtime,monkeypatch):
@@ -95,7 +95,7 @@ async def test_memory_sqlite_contention_degrades_chat_without_blocking_loop(runt
         await asyncio.sleep(.01)
         assert asyncio.get_running_loop().time()-started < .08
         await current.chats.await_turn(turn.turn_id,timeout=5)
-        assert calls and 'memory search' in calls[0]
+        assert calls and 'memory_token=' not in calls[0]
         assert 'Relevant memories' not in calls[0]
     finally:
         await release_task
@@ -114,5 +114,5 @@ async def test_chat_and_task_preparation_never_search_raw_or_derived_history(run
     monkeypatch.setattr(memory_knowledge,'recall_prompt',forbidden)
     monkeypatch.setattr(memory,'capture_session',forbidden_scan)
     scope,hits,prompt=await memory.prepare_chat_context(current.projects,project.id,sid,'以前说过什么','message')
-    assert scope=='local' and hits==[] and 'memory search' in prompt
-    assert 'memory search' in await memory.task_context_prompt(current.projects,project.id,'task-memory','以前说过什么')
+    assert scope=='local' and hits==[] and 'memory_token=' not in prompt
+    assert 'memory_token=' not in await memory.task_context_prompt(current.projects,project.id,'task-memory','以前说过什么')

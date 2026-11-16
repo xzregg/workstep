@@ -251,7 +251,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     closePrompt: t('aiFlow.closePrompt'),
   }), [t, compact, hasEmbeddedIntro, embedded?.placeholder, isEmbedded, activeProject?.name, digitalPerson])
   const quickPromptItems = useMemo(
-    () => [...(digitalPerson ? (digitalActivity?.suggestions || []).map(item => ({...item,kind:'prompt' as const,enabled:true,content:item.prompt})) : []), ...quickButtons].filter((button) => !isEmbedded && button.enabled !== false && (button.kind !== 'action' || can('action.run'))).map((button) => ({
+    () => quickButtons.filter((button) => !isEmbedded && button.enabled !== false && (button.kind !== 'action' || can('action.run'))).map((button) => ({
       id: button.id,
       label: button.label,
       prompt: button.prompt,
@@ -259,7 +259,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
       kind: button.kind || 'prompt',
       disabled: button.kind === 'action' && projectActions.activeActionIds.includes(button.action_id || button.id),
     })),
-    [isEmbedded, quickButtons, projectActions.activeActionIds, can, digitalPerson, digitalActivity?.suggestions],
+    [isEmbedded, quickButtons, projectActions.activeActionIds, can],
   )
 
   // Resolve project/workflow from the URL (mirrors CanvasEditor's loader).

@@ -131,7 +131,7 @@ async def test_real_worker_backfills_extracts_and_makes_knowledge_searchable(run
     worker = MemoryWorker(current.projects, None)
     state = await worker.sweep()
     assert state['knowledge']['created'] == 1 and state['knowledge']['queue']['done'] == 2
-    token = await memory_query.issue_access(current.projects, 'local', session_id=sid, issuer_project_id=project.id)
+    token = await memory_query.create_context(current.projects, 'local', session_id=sid, issuer_project_id=project.id)
     result = await memory_query.search(current.projects, token, query='Polaris')
     assert result['knowledge'][0]['summary'] == '北辰发布前需要数据库迁移演练'
     assert (await asyncio.to_thread(index.read_state, 'memory_worker'))['status'] == 'idle'

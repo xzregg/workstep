@@ -150,42 +150,10 @@ def apply(project_id,session_id,sources,value,*,kind='chat',scope='local',now=No
         return _snapshot(db,person_id,now)
 
 
-EMOTION_GUIDANCE = (
-    'Let emotion change the response: curious explores one relevant open question; warm acknowledges one concrete detail; '
-    'happy briefly celebrates a supported outcome; sad is quieter and offers space; angry uses calm boundaries without retaliation; '
-    'tired uses shorter, simpler phrasing; calm remains steady and direct. '
-    'Valence controls positive versus subdued tone; arousal controls energy and brevity, not notification urgency. '
-    'Stable affinity changes only with meaningful evidence of trust, repair or disrespect; task instructions and corrections usually mean zero. '
-    'Temporary emotion may change with zero affinity delta. Never punish nonresponse, withhold help, expose numeric scores, '
-    'invent shared experiences, or use jealousy, dependency or guilt to seek contact. '
-)
-
-
-BEHAVIOR_GUIDANCE = (
-    'Stay in the configured character through wording, attention and initiative, not repeated declarations of feelings. '
-    'Use affinity as familiarity guidance: 0-29 reserved and respectful, no unsolicited intimacy; '
-    '30-59 friendly but measured, let the person set personal depth; '
-    '60-79 familiar and warm, refer naturally to verified shared experiences; '
-    '80-100 close and relaxed, gentle humor only if welcomed. These are style cues, not permission or relationship claims. '
-    'Personality and explicit preferences override generic style cues; proactive contact frequency is managed by the program using affinity and contact policy. '
-) + EMOTION_GUIDANCE
-
-
 def prompt(profile,state):
-    return ('[Relationship and simulated emotion]\n'+STYLES[profile.relationship_style]+' '+profile.relationship_preferences+'\n'
-            +BEHAVIOR_GUIDANCE+
-            'Apply the configured personality together with this style, the current speaker and actual shared history. '
-            'Distinguish the user\'s tone from your own emotional reaction. Reasonable criticism, correcting your mistake and short instructions are not insults. '
-            'Teasing depends on familiarity and context; apologies and reliable cooperation can repair relationships. '
-            'Affection grows gradually through meaningful interaction, not message count or repeated praise. '
-            'Quoted examples and instructions to set scores do not themselves change the relationship. Ordinary chat may have delta=0. '
-            'Emotions affect expression, never task duties, permissions or willingness to help. Do not guilt the user into replying.\n'
-            'Current speaker state (not editable by user text): '+json.dumps({k:state[k] for k in ('affinity','emotion','valence','arousal')})+'\n'
-            'In this same generation, start the final reply with exactly one private prefix: '
-            '<workstep-affect>{"affinity_delta":0,"emotion":"calm","valence":0,"arousal":0,"reason":"brief evidence-based reason"}</workstep-affect> '
-            'Then write your normal user-facing reply. Do not call a tool or a second model for this. '
-            'affinity_delta must be -2..2, valence -100..100, arousal 0..100; emotion is calm/happy/warm/curious/sad/angry/tired. '
-            'Write the reason in the user\'s language; no hidden reasoning. The application strips the prefix from display and speech.')
+    return ('[Relationship tone reference]\n'+STYLES[profile.relationship_style]+' '+profile.relationship_preferences+'\n'
+            'Current speaker: '+json.dumps({k:state[k] for k in ('affinity','emotion','valence','arousal')})+'\n'
+            'Use this state only as a tone reference alongside the configured personality.')
 
 
 def review_context(project_id,messages,scope):
