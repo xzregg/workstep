@@ -12,6 +12,8 @@ from typing import AsyncIterator
 
 from engines.codex_cli_events import CodexCLIEventMapper, _is_codex_terminal_event
 from engines.codex_compaction import compact_codex_thread
+from engines.core.base import EngineSkillPolicy
+from engines.core.permissions import EnginePermissionPolicy
 from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
     EngineInstallResult,
@@ -65,6 +67,20 @@ def _escalate_sandbox(mode: str) -> str:
 
 class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
     ENGINE_ID = "codex"
+    SUPPORTS_SERVICE_TIER = True
+    SKILL_POLICY = EngineSkillPolicy.CODEX_CONFIG
+    PERMISSION_POLICY = EnginePermissionPolicy(
+        overrides={
+            'read-only': {'sandbox_mode': 'read-only'},
+            'workspace-write': {'sandbox_mode': 'workspace-write'},
+            'danger-full-access': {'sandbox_mode': 'danger-full-access'},
+            'auto': {'approval_policy': 'full-auto'},
+            'ask': {'approval_policy': 'on-request'},
+        },
+        plan_overrides={'sandbox_mode': 'read-only'},
+        consent_key='approval_policy',
+        consent_values={'full-auto': True, 'never': True},
+    )
     supports_mcp = True
     RUNTIME_PACKAGE = RuntimePackage('@openai/codex', 'npm')
 

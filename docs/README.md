@@ -5,11 +5,13 @@
 - [Multi-engine architecture](multi-engine-architecture.md) *(简体中文)* — engine base classes, auto-discovery, ACP/AG-UI event boundary, capability declarations, and the engine list.
 - [Workflow engine execution](workflow-engine-execution.md) *(简体中文)* — task creation, DAG scheduling, stage prompts, reviews, artifact routing, reruns, coordinator actions, and recovery.
 - [Engine runtime management](engine-runtime-management.md) *(简体中文)* — version selection, measured package downloads, and rollback.
+- 自定义引擎： [CLI 接入流程](../apps/daemon/data/skills/workstep-cli/references/custom-engine.md)、[接口契约](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md)、[测试规范](../apps/daemon/data/skills/workstep-cli/references/custom-engine-testing.md)。
 - [桌面沙箱模式](desktop-sandbox.md) *(简体中文)* — Podman 下载、独立 Home、项目挂载、配置导入、模式切换与清理。
 - [容器 Home 与运行时持久化](container-runtime.md) *(简体中文)* — 整体 Home 挂载、基础运行时初始化、引擎持久化与旧挂载迁移。
 - [Development](development.md) — setup, test commands, module boundaries, Git management, onboarding, and pull-request checks.
 - [动态皮肤开发规范](skins.md) *(简体中文)* — 包格式、全站样式部位、PC/手机布局、事件边界与聊天制作。
 - [决策模型与代理](decision-models.md) *(简体中文)* — 可选模型下载、宿主目录、代理地址、共用密钥与性能边界。
+- [记忆系统 LoCoMo 完整版评测（2026-11-16）](memory-locomo-evaluation-2026-11-16.md) *(简体中文)* — 10 组、5,882 条消息、1,540 题的准确率、用量、性能与版本边界。
 - [Code map](code-map.md) *(简体中文)* — find feature owners, API and service boundaries, tests, and change workflow.
 - [Gateway 开发与部署](gateway-development.md) *(简体中文)* — Gateway 分层、账号、授权、接口及部署入口；未完成验收仍以平台计划为准。
 - [Gateway 运维](gateway-operations.md) *(简体中文)* — 域名、TLS、备份恢复和客户端发布。

@@ -37,18 +37,21 @@ export interface DigitalActivity {
   feedback: Record<string,number>; suggestions: Array<{id:string;label:string;prompt:string;count:number}>
   experience: number; level: number; next_level_experience: number; checking: boolean
   runs: Array<{ id: string; status: string; summary?: string; error?: string; created_at: string; sources: unknown; deliveries: unknown }>
-  delegations: Array<{ id: string; project_id: string; session_id: string; instruction: string; status: string }>
+  delegations: Array<{ id: string; project_id: string; session_id: string; instruction: string; status: string; created_at?:string }>
   answers: Array<{ id: string; content: string; feedback: number }>
 }
+export interface DigitalRunOutcome {message_preview?:string;sent:number;failed:number;affinity_increased:number;affinity_decreased:number}
 export interface DigitalActivityRecords {
   checking: boolean
+  reflection_count?:number
+  reflection_count_lower_bound?:boolean
   run_total: number
   delegation_total: number
   delegation_pending?: boolean
   delegations: Array<DigitalActivity['delegations'][number] & {notification_state?: string; notification_run_id?: string | null}>
-  runs: Array<Pick<DigitalActivity['runs'][number], 'id' | 'status' | 'summary' | 'created_at'>>
+  runs: Array<Pick<DigitalActivity['runs'][number], 'id' | 'status' | 'summary' | 'created_at'> & {outcome?:DigitalRunOutcome|null}>
 }
-export type DigitalRunDetail = Pick<DigitalActivity['runs'][number], 'id' | 'status' | 'summary' | 'error' | 'created_at'>
+export type DigitalRunDetail = Pick<DigitalActivity['runs'][number], 'id' | 'status' | 'summary' | 'error' | 'created_at'> & {outcome?:DigitalRunOutcome|null;draft_summary?:string|null;failure_reason?:string|null}
 const json = (body: unknown, method = 'POST') => ({ method, body: JSON.stringify(body) })
 export const digitalRuntimeApi = {
   records: (runOffset = 0, delegationOffset = 0) => request<DigitalActivityRecords>(`/digital-person/activity/records?run_offset=${runOffset}&delegation_offset=${delegationOffset}`),

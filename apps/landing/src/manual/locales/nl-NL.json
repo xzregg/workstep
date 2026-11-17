@@ -753,11 +753,11 @@
           "Open een HTML-voorbeeld van het project en de prototype-editor. Stel voor AI-wijzigingen een engine in via Instellingen → Assistenten → Prototype-assistent.",
           "Klik op de bestandsnaam boven het voorbeeld om HTML in dezelfde map of een submap te kiezen. Elk HTML-bestand behoudt zijn eigen gesprek. Versleep vensterranden en scheidingslijnen om de grootte aan te passen.",
           "Beweeg de aanwijzer voor markering, klik om te selecteren of rechtsklik om commentaar te geven. Bijvoorbeeld: “Maak deze knop groen en laat de knop ernaast ongewijzigd.” Stuur dit naar de chat.",
-          "Wijzig tekst, kleur of width (bijvoorbeeld 180px) bij Eigenschappen en verlaat het veld om op te slaan. U kunt ook dubbelklikken op eenvoudige tekst of formaatgrepen slepen. Selecteer het juiste element voordat u verwijdering bevestigt.",
+          "Wijzig bij statische elementen tekst, kleur of width (bijvoorbeeld 180px) in het eigenschappenpaneel; opslaan gebeurt bij focusverlies. Verplaats alleen via de verplaatsgreep van het selectiekader. Alt schakelt uitlijnen uit, Esc annuleert. Controleer de geselecteerde node vóór verwijderen. Gebruik Ctrl+Z/⌘Z of «Ongedaan maken» bovenaan voor opgeslagen handelingen.",
           "Bekijk verschillen, draai wijzigingen terug of wis de wijzigingsgeschiedenis. Controleer na een onderbreking de bewaarde kopie en hervat het opslaan of verwerp deze. Conflicterende originelen worden niet overschreven."
         ],
         "tips": [
-          "Direct bewerken werkt met statische HTML. Selectiemodus pauzeert paginascripts; bladermodus voert interacties uit. Alleen wijzigingen aan bestaande HTML/CSS/JS-bestanden worden gepubliceerd; volledige bestanden toevoegen of verwijderen wordt niet ondersteund."
+          "Direct bewerken geldt voor statische HTML. Publicatie ondersteunt wijzigingen in bestaande HTML/CSS/JS, geen nieuwe of verwijderde volledige bestanden. Gebruik voor dynamische pagina’s de alleen-lezeninspectie en opmerkingen in de volgende sectie. De oude afbeelding toont de nieuwe verplaatsgreep en dynamische inspectie nog niet."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Projectgeheugeneditor met demonstratieconventies",
           "caption": "Conventies bewerken en opslaan in .workstep/MEMORY.md. Er wordt geen bevestiging van de archiefles getoond."
         }
+      },
+      {
+        "title": "Dynamische HTML-/React-prototypes inspecteren",
+        "steps": [
+          "Open «Prototype bewerken» in de HTML-voorvertoning. Dynamische pagina’s behouden scriptrendering. Selecteer elementen of rechtsklik voor een opmerking, beschrijf de wijziging en kies «Naar chat sturen». De prototypeassistent past de generatielogica aan.",
+          "Dynamische eigenschappen zijn alleen-lezen en hebben geen grepen: formaat wijzigen of verwijderen kan niet rechtstreeks zoals bij statische HTML. Canvas kan alleen als geheel worden aangewezen. Open geneste pagina’s van een dynamische hoofdpagina apart vanuit de bestandsboom.",
+          "Volg in bladermodus werkruimtelinks naar andere pagina’s en selecteer daar elementen. Statische subframes zijn ter plaatse bewerkbaar. Verzend of wis ongezonden opmerkingen en wacht op opslaan vóór paginawisseling. Bekijk in de geschiedenis bestandsverschillen naast elkaar of verenigd."
+        ],
+        "tips": [
+          "Opmerkingen verzenden roept de ingestelde prototypeassistent aan; selecteren en handmatige eigenschappen gebruiken geen model. Controleer teruggeschreven wijzigingen; lees bij versieconflicten eerst opnieuw in."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Alleen-lezeneigenschappen, elementopmerkingen en bestandswisseling bij dynamische prototypes",
+          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+        }
+      },
+      {
+        "title": "Een uitvoerformaatsjabloon voor resultaten invullen",
+        "steps": [
+          "Klik op «Sjabloon» in de resultaatregel van een workflowstap en schrijf structuur en acceptatie-eisen in Markdown. Gebruik bijvoorbeeld {{任务名称}} als titel met conclusies en verificatie eronder. Nieuwe uitvoeringen gebruiken de eisen na opslaan van de workflow.",
+          "Klik in taakdetails op het sjabloonpictogram naast het resultaat om alleen deze taak te wijzigen, leeg te maken of de workflowstandaard te herstellen. Tijdens uitvoering is het alleen-lezen; gedeelde pagina’s laten alleen bekijken toe.",
+          "Controleer of het gegenereerde bestand aan het sjabloon voldoet. Het sjabloon blijft bij kopiëren en import/export van de workflow behouden, maar is zelf geen al gegenereerd resultaat."
+        ],
+        "tips": [
+          "Alleen {{任务名称}} wordt vervangen. Overige formaateisen gaan ongewijzigd naar het model. Strikte naleving is niet gegarandeerd; beoordeling blijft nodig."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Formaatsjablooneditor voor workflow- en taakresultaten",
+          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Een berichtconcept inspreken",
         "steps": [
-          "Open Instellingen → Spraakinvoer, schakel dit in, download model en runtime, kies een taal en test de microfoon. Installatie gebeurt op de verbonden WorkStep-host, niet op de telefoon. Mandarijn, Kantonees en Engels worden ondersteund.",
-          "Klik op de pc op de microfoon. Houd op de telefoon het tekstvak 500 ms vast; daar staat geen microfoonpictogram. Laat los, controleer de ingevoegde tekst en verzend handmatig. Maximaal twee minuten; annuleren verstuurt niets."
+          "Open «Instellingen → Spraakinstellingen → Invoer» en kies een lokaal model, cloudprovider of eigen externe dienst. Download lokaal eerst runtime en model, en kies «Dit model gebruiken». Paraformer ondersteunt Mandarijn, Kantonees en Engels; Zipformer Mandarijn en Engels. Sla op en controleer met «Microfoon testen». De modellen staan op de WorkStep-host.",
+          "Gebruik op de computer de microfoonknop. Tik op de telefoon bij een leeg concept rechtsonder op het luidsprekertje; met tekst verschijnt de verzendknop. Lang indrukken behoudt systeemtekstselectie. Controleer na opname de transcriptie en verzend handmatig. Maximaal twee minuten per opname; annuleren verzendt niets."
         ],
         "tips": [
-          "Herkenning gebeurt op de verbonden host; audio wordt niet opgeslagen. Sta de microfoon toe via HTTPS of een lokaal adres. Controleer bij fouten site- en systeemrechten en herstart een verouderde backend. Herkende tekst kan expliciet worden behouden."
+          "De microfoon vereist systeem- en sitetoestemming; de browser vereist HTTPS of een lokaal adres. In cloud-/externe modus stuurt de host audio naar de gekozen dienst. HTTP-transcriptie geeft pas na afloop tekst en ondersteunt geen realtime activering. Modellen zijn afzonderlijk te verwijderen: controleer eerst welk model actief is. Spraakinvoer en -uitvoer worden apart ingesteld."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Connectoren instellen en gebruiken",
         "steps": [
-          "Open Instellingen → Connectoren → Toevoegen. Vul voor lokale MCP opdracht en argumenten apart in, voor externe MCP een URL of voor CLI het uitvoerbare bestand. Selecteer toegestane projecten.",
+          "Open «Instellingen → Connectors → Connector toevoegen» of het stekkerpictogram op desktop. Geef bij lokale MCP opdracht en argumenten apart op; bewerk argumenten afzonderlijk of met JSON. Externe MCP gebruikt URL, CLI het uitvoerbare bestand. Geen projecten geselecteerd betekent alle projecten.",
           "Ontdek tools via Test → Verbinding detecteren. Tools uitvoeren doet echte aanroepen: controleer argumenten. Deze test gebruikt geen LLM; sla daarna op.",
-          "Schakel in het gesprek + → Connectoren in voor het volgende bericht. MCP vereist een geschikte engine; meld CLI aan met de officiële opdracht in de hostterminal. Configureer bij 401 een ondersteund Bearer-token of authenticatieheader. Browser-OAuth is niet beschikbaar."
+          "Gebruik in gewone projectchat en taakinvoer «＋ → Connectors», /连接器 of /apps. Inschakelen geldt voor het volgende bericht; taakcoördinatie laadt ze niet automatisch. MCP vereist engineondersteuning, CLI de officiële aanmeldopdracht. Stel bij 401 Bearer Token of authenticatieheaders in; browser-OAuth wordt niet ondersteund. Lokale detectie kopieert geen inloggegevens."
         ],
         "tips": [
           "Voorbeeld: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Connectoren instellen en gebruiken",
           "caption": "Echte schermafbeelding ontbreekt: configuratie, test en gespreksselectie."
+        }
+      },
+      {
+        "title": "Conversatiegroepen en terugkijken in het archief",
+        "steps": [
+          "Rechtsklik op de conversatietitel, lijst of losse conversatie in de projectzijbalk om een groep te maken. Sleep gesprekken erin of terug naar ongegroepeerd. Het menu van gewone groepen kan direct gesprekken maken. Gewone en kanaalgroepen worden apart beheerd.",
+          "Archiveer of verwijder via het groepsmenu. Standaard wordt alleen de groep ontbonden. Pas als je ook conversaties verwijderen aanvinkt, worden de berichten verwijderd; controleer eerst het bereik. Actieve leden en leden waarvoor de handeling mislukt, worden overgeslagen en behouden.",
+          "Klik in de archieflijst op een titel om de laatste vraag en antwoorden alleen-lezen uit te klappen. Dit herstelt het gesprek niet en laadt geen volledige uitvoeringsdetails. Herstel uitdrukkelijk om verder te chatten."
+        ],
+        "tips": [
+          "Archiveren bewaart inhoud. Gesprekken en berichten verwijderen heeft grotere gevolgen; verwar «Groep ontbinden» niet met «Ook gesprekken verwijderen»."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Groepsmenu in de projectzijbalk en alleen-lezenarchiefvoorbeeld",
+          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Demonstratie mislukt veroorzaakt door een niet-bestaand model",
           "caption": "De foutmelding geeft aan dat het gekozen model niet wordt ondersteund. Herstel de modelconfiguratie van de stap voordat u deze opnieuw uitvoert; op deze afbeelding is het niet gerepareerd."
+        }
+      },
+      {
+        "title": "Optionele beslismodellen configureren",
+        "steps": [
+          "Open «Instellingen → Modellen en mogelijkheden → Beslismodellen» en kies lokaal beheerd, lokale dienst of externe dienst. Lokale werking vereist een geschikte host; download componenten en model apart handmatig. Gebruik anders een bestaande dienst.",
+          "Voer in dienstmodus adres en authenticatie in. Met «Modellijst lezen» zoek en kies je een model; handmatig invoeren kan ook. Test het concept zonder op te slaan. Controleer de uitkomst en kies «Configuratie opslaan».",
+          "Schakel «Andere apparaten het lokale model laten aanroepen» alleen in als externe toegang tot het lokaal beheerde model nodig is. Stel de sleutel voor externe toegang in of hergebruik die, sla op en gebruik het getoonde adres. Ontbrekende bronnen worden niet automatisch gedownload; probeer bij bezetting opnieuw."
+        ],
+        "tips": [
+          "Dit is een optionele Jev-beslisinterface, geen algemene chatinterface. Deze neemt taken of gesprekken niet automatisch over. Downloaden en proxy inschakelen zijn aparte handelingen.",
+          "Het model gebruikt CPU en geheugen van de host. Een geslaagde test bewijst geen inhoudelijke nauwkeurigheid. Een proxy-inferentietoken geeft geen bronbeheerrechten; zet geen sleutels op afbeeldingen."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Beslismodelmodi, bronnen, testen, opslaan en optionele proxy",
+          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+        }
+      },
+      {
+        "title": "De handleiding openen via het vraagteken in instellingen",
+        "steps": [
+          "Klik op het vraagteken naast een sectietitel om het bijbehorende hoofdstuk in de app te lezen. Gebruik inhoudsopgave en zoeken. De handleiding volgt de interfacetaal; op desktop kun je het leesvenster vergroten of verkleinen.",
+          "Probeer opnieuw bij laadfouten. Kies voor de volledige pagina «Openen in browser»; hoofdstuk en taal blijven behouden. Instellingssecties zonder passende uitleg tonen geen vraagteken."
+        ],
+        "tips": [
+          "De ingebedde handleiding vereist websitebestanden in de backend. Controleer bij laadproblemen installatieversie en bestanden; vervang de inhoud niet door ongerelateerde hoofdstukken."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Vraagteken naast instellingstitels en meertalige handleiding in de app",
+          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Digitale persoon en globaal geheugen",
+    "summary": "Stel communicatiestijl, hoofdgesprek, proactieve reflectie en kanaalontvangst in. Bekijk herinneringen met bronnen en schakel zo nodig stem en persoonsherkenning in.",
+    "sections": [
+      {
+        "title": "Persoonlijkheid, verantwoordelijkheden en hoofdgesprek instellen",
+        "steps": [
+          "Open «Instellingen → Digitale persoon → Eerste begeleiding», vul de naam in en bewerk persoonlijkheid, verantwoordelijkheden en vast geheugen onder «Persoonlijkheid en verantwoordelijkheden». Gebruik voorinstellingen of importeer uit het rollencentrum, configureer een beschikbare engine en kies «Voltooien en inschakelen».",
+          "Sla het profiel op en open de startpagina via «Praat met de digitale persoon» in de zijbalk. Gebruik de toetsenbordknop voor tekst; «Gesprek bekijken» opent hetzelfde hoofdgesprek. Je kunt terug naar de gewone werkruimte.",
+          "Persoonlijkheid, verantwoordelijkheden en vast geheugen gebruiken Markdown; voorinstellingen wijzigen alleen het betreffende deel. Een opslagfout bewaart het concept; probeer opnieuw zoals aangegeven. Handel niet-opgeslagen wijzigingen af voordat je sluit of van pagina wisselt."
+        ],
+        "tips": [
+          "Vast geheugen bevat handmatige afspraken, geen historische geheugenbank. Taalwisseling vertaalt opgeslagen tekst niet. De digitale persoon communiceert en volgt op; het echte werk wordt uitgevoerd in sessies van het doelproject."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Begeleiding voor de digitale persoon, persoonlijkheidsdocumenten en hoofdgesprek",
+          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+        }
+      },
+      {
+        "title": "Geheugen doorzoeken en bronnen controleren",
+        "steps": [
+          "Zoek onder «Digitale persoon → Geheugen» op inhoud, entiteit of projectnaam. Filter voorkeuren, ervaringen, feiten of gebeurtenissen en wissel tussen mindmap en tijdsoverzicht.",
+          "Open een record voor kennisdetails en klik vervolgens op de bron om originele berichten gepagineerd te lezen. Vergelijk bij twijfel de oorspronkelijke tekst; een samenvatting is geen letterlijk gebruikerscitaat of bewijs van voltooide taken.",
+          "Een interactie wordt pas geregistreerd na het volledige assistentantwoord. Gewone chat en taken gebruiken geheugentools naar behoefte. Niet alle geschiedenis wordt automatisch in elke aanvraag gestopt of uit alle oude projecten aangevuld."
+        ],
+        "tips": [
+          "De gedeelde geheugenbank kan over projecten en gesprekken zoeken binnen identiteits- en projectrechten. Categorietellingen, bankstatistieken en het aantal huidige zoekresultaten zijn verschillende maten.",
+          "Vaste afspraken, project-MEMORY.md en historische kennis dienen andere doelen. Onverwerkte berichten zijn geen al afgeleide kennis; de interface biedt nog geen vergeetknop."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Globaal geheugenzoeken, categorieën en gepagineerde oorspronkelijke bronnen",
+          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+        }
+      },
+      {
+        "title": "Proactieve reflectie en uitvoeringsgeschiedenis",
+        "steps": [
+          "Sla onder «Digitale persoon → Proactieve reflectie» automatisch inschakelen, reflectie-interval, proactief contact, minimaal contactinterval en niet storen op. Berichten per verwerkingsbatch stel je in bij geheugen: standaard 100, bereik 1–1000.",
+          "Kies «Nu reflecteren» voor onmiddellijke controle. Bekijk onder «Uitvoeringsgeschiedenis» meldingen over delegaties en reflecties apart, vernieuw, blader en open samenvattingen of fouten. Delegatieregels kunnen de werkelijke uitvoeringssessie openen.",
+          "Probeer de melding opnieuw bij bezorgfouten. Controleer reflectievoltooiing en berichtbezorging apart. Automatische reflectie uitzetten pauzeert geplande controles; gewone chat en handmatige reflectie blijven werken."
+        ],
+        "tips": [
+          "Het standaardinterval is 5 minuten. Proactief contact toestaan betekent niet elke ronde een bericht; zonder nieuwe gebeurtenissen kan een ronde stil eindigen. Modeloproepen kunnen geld kosten; het overzicht is geen volledige gedachteketen."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Proactieve-reflectieconfiguratie en afzonderlijk gepagineerde uitvoeringsgeschiedenis",
+          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+        }
+      },
+      {
+        "title": "Kanalen koppelen voor ontvangst en meldingen",
+        "steps": [
+          "Configureer eerst een bot onder «Instellingen → Kanaalbots» en stuur die een bericht om de bestemming vast te stellen. Voeg daarna onder «Digitale persoon → Kanaalbots» een koppeling toe met bot en groep of contact.",
+          "Schakel zo nodig «Proactieve meldingen ontvangen» in. Alleen inkomende berichten behandelen geeft geen toestemming voor proactieve bezorging. Controleer na bevestiging de ontvangstbestemming; bestaande taakgroepen volgen hun taakkoppeling.",
+          "Controleer de bestemming en bevestig vóór «Test verzenden». Verwijder ongebruikte koppelingen. Succes betekent dat het platform het bericht accepteerde, niet dat het is gelezen."
+        ],
+        "tips": [
+          "De test verstuurt echt een bericht. Gebruik demobestemmingen; beschouw een verkeerd gegokt contact niet als bevoegde ontvanger."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Kanaalkoppelingen van de digitale persoon, proactieve meldingen en bezorgstatus",
+          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+        }
+      },
+      {
+        "title": "Stem, activering en microfoon instellen",
+        "steps": [
+          "Kies onder «Spraakinstellingen → Uitvoer» systeemstem, lokaal model, cloudprovider of eigen externe dienst. Download lokale bronnen handmatig; configureer voor cloud/extern dienst en authenticatie, luister een voorbeeld en sla op. Pas op de stempagina van de digitale persoon klank, tempo en andere parameters aan.",
+          "Stel bij «Gehoor» activeringswoord en gevoeligheid in en start luisteren uitdrukkelijk. Beschikbare streaming-spraakinvoer is vereist. Het woord opslaan start geen opname; HTTP-transcriptie na afloop ondersteunt geen realtime activering.",
+          "Klik op de startpagina op de microfoon voor een spraakgesprek; de luidspreker regelt het voorlezen op deze pagina. Zet de microfoon uit om opnemen te stoppen; de luidspreker dempen doet dat niet. Verbergen, vernieuwen of verlaten stopt luisteren."
+        ],
+        "tips": [
+          "Microfoon, camera en afspelen vereisen afzonderlijke systeem-/sitetoestemming. Externe diensten ontvangen relevante audio. Werkelijk geluid op telefoon en desktop vereist nog controle op die apparaten.",
+          "Alleen nieuwe antwoorden worden voorgelezen. Het volledige gesprekspaneel openen pauzeert automatisch voorlezen; sluiten haalt oude inhoud niet in. Verwacht geen doorlopend luisteren met vergrendeld scherm of gesloten app."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Spraakuitvoermodi, proefluisteren en expliciete luisterbediening",
+          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+        }
+      },
+      {
+        "title": "Bekenden registreren en herkennen met de camera",
+        "steps": [
+          "Configureer het model onder «Digitale persoon → Zicht → Gezichtsherkenning», open «Bekenden beheren → Gezicht registreren», vul naam en relatie in en bevestig toestemming van de persoon.",
+          "Open de camera en neem drie heldere monsters met één persoon: van voren en licht naar links en rechts. Controleer en sla op. Controleer de naam in de herkenningstest; monsters kunnen worden aangevuld, uitgeschakeld of verwijderd.",
+          "Kies zo nodig naamweergave en het meesturen van persoon en relatie met berichten, en verzend daarna de afbeelding expliciet. Controleer bij mislukking model, cameratoestemming en beeld; vervang de identiteit niet door een gok."
+        ],
+        "tips": [
+          "Opgenomen foto’s worden niet langdurig opgeslagen, maar persoonskenmerken blijven gevoelig. In beeld zijn maakt iemand niet de spreker en verandert auteur, rechten of aanmeldidentiteit niet. Beelden en persoonsinformatie die naar modellen gaan blijven niet gegarandeerd altijd lokaal."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Toestemming voor bekende personen, opname in drie stappen en herkenningsinstellingen",
+          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
         }
       }
     ]

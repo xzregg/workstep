@@ -96,7 +96,7 @@ test('numeric settings can be cleared and retyped without inserting zero',async(
  const ui=await setup()
  try{
   await ui.click('[data-body-part=heart]')
-  const selectors=['[name=proactive_contact_interval_minutes]','[name=proactive_interval_minutes]','.digital-person-field-pair:last-of-type input:first-of-type']
+  const selectors=['[name=proactive_contact_interval_minutes]','[name=proactive_interval_minutes]']
   for(const selector of selectors){
    await ui.input(selector,'')
    assert.equal(ui.host.querySelector<HTMLInputElement>(selector)!.value,'')
@@ -108,7 +108,6 @@ test('numeric settings can be cleared and retyped without inserting zero',async(
   await ui.click('.digital-person-form-actions button')
   assert.equal(ui.getSaved().proactive_contact_interval_minutes,12)
   assert.equal(ui.getSaved().proactive_interval_minutes,12)
-  assert.equal(ui.getSaved().quiet_start,12)
  }finally{await ui.close()}
 })
 
@@ -217,5 +216,25 @@ test('digital-person settings keeps one dialog and navigation while content chan
   assert.ok(ui.host.querySelector('.settings-layout--digital-person'))
   await ui.click('.digital-person-secondary-nav [data-settings-tab=identity]')
   assert.ok(ui.host.querySelector('.settings-layout--digital-person'))
+ }finally{await ui.close()}
+})
+
+test('quiet hours offer labelled times and save numeric hours including midnight',async()=>{
+ const ui=await setup()
+ try{
+  await ui.click('[data-body-part=heart]')
+  for(const [name,initial,next] of [['quiet_start','22','0'],['quiet_end','8','23']]){
+   const select=ui.host.querySelector<HTMLSelectElement>(`select[name=${name}]`)
+   assert.ok(select)
+   assert.equal(select.value,initial)
+   assert.equal(select.options.length,24)
+   assert.equal(select.options[0].textContent,'00:00')
+   assert.equal(select.options[23].textContent,'23:00')
+   await act(async()=>{select.value=next;select.dispatchEvent(new window.Event('change',{bubbles:true}))})
+  }
+  await ui.click('.digital-person-form-actions button')
+  assert.equal(ui.getSaved().quiet_start,0)
+  assert.equal(ui.getSaved().quiet_end,23)
+  assert.equal(ui.host.querySelector<HTMLSelectElement>('[name=quiet_start]')!.value,'0')
  }finally{await ui.close()}
 })

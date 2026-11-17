@@ -36,19 +36,20 @@ test('shared video window fits portrait and landscape frames, anchors to eyes an
 })
 
 
-test('panel preview shares the same video when switching between fixed and floating placement',async()=>{
+test('panel preview has no placement toggle and preserves video across responsive presentation changes',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host),video=createRef<HTMLVideoElement>()
  try{
   await act(async()=>root.render(<I18nProvider><VideoPreviewWindow presentation="panel" open videoRef={video} label="摄像头" onClose={()=>{}}/></I18nProvider>))
   const source=video.current,panel=host.querySelector<HTMLElement>('.video-preview-window')!
   assert.equal(panel.getAttribute('data-video-docked'),'true')
+  assert.equal(host.querySelector('.video-preview-header-title')?.textContent, '摄像头')
+  assert.equal(host.querySelector('[data-video-pin]'),null)
   Object.defineProperties(source!,{videoWidth:{configurable:true,value:720},videoHeight:{configurable:true,value:1280}})
   await act(async()=>source!.dispatchEvent(new window.Event('loadedmetadata')))
   assert.equal(panel.style.getPropertyValue('--video-preview-ratio'),'0.5625')
-  await act(async()=>host.querySelector<HTMLButtonElement>('[data-video-pin]')!.click())
-  assert.equal(panel.getAttribute('data-video-docked'),'false');assert.equal(video.current,source)
-  await act(async()=>host.querySelector<HTMLButtonElement>('[data-video-pin]')!.click())
-  assert.equal(panel.getAttribute('data-video-docked'),'true');assert.equal(video.current,source)
+  await act(async()=>host.querySelector<HTMLElement>('[data-video-drag]')!.dispatchEvent(new window.MouseEvent('dblclick',{bubbles:true})))
+  assert.equal(panel.getAttribute('data-video-docked'),'true','panel does not detach on double click')
+  assert.equal(video.current,source)
   await act(async()=>root.render(<I18nProvider><VideoPreviewWindow presentation="window" open videoRef={video} label="摄像头" onClose={()=>{}}/></I18nProvider>))
   assert.equal(panel.classList.contains('video-preview-window--docked'),false)
   assert.equal(panel.getAttribute('data-video-docked'),null);assert.equal(video.current,source)

@@ -116,3 +116,32 @@ async def test_retried_execution_rechecks_scope_and_uses_current_run_actor(tmp_p
         await runner.close()
         await asyncio.to_thread(executor.close)
         await asyncio.to_thread(db.close)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host_ids,existing", [(False, None), (True, None), (True, "native-existing")])
+async def test_step_session_id_allocation_uses_capability_not_engine_name(tmp_path, monkeypatch, host_ids, existing):
+    from types import SimpleNamespace
+    import services.step_execution_messages as execution
+    db = await asyncio.to_thread(init_db, str(tmp_path / "workstep.db"))
+    executor = ProjectDatabaseExecutor(db, "project-test")
+    def seed():
+        now = utc_now()
+        task = Task.create(id="session-owner", title="会话", cwd=str(tmp_path), created_at=now, updated_at=now)
+        step = TaskStep.create(task=task, step_key="build", status="running", session_id=existing)
+        return task, StartedStepState(step, None, None, None, None, None, {}, None)
+    task, state = await executor.run(seed)
+    runner = TaskRunner(EventBus(), source_project_id="project-test", database_executor=executor)
+    monkeypatch.setattr(execution, "assemble_prompt", lambda *args, **kwargs: "probe")
+    try:
+        started = await runner._execution_messages.start(
+            task=task, step=Step(key="build", label="Build", engine="custom-host-session"),
+            artifacts_dir=tmp_path / ".workstep" / "artifacts", user_input="", input_snapshot={},
+            state=state, review_feedback="", resolved_model="model",
+            engine=SimpleNamespace(supports_resume=True, supports_host_session_ids=host_ids),
+        )
+        assert started.engine_session_id == (existing or (started.message_id if host_ids else None))
+    finally:
+        await runner.close()
+        await asyncio.to_thread(executor.close)
+        await asyncio.to_thread(db.close)

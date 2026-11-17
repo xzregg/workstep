@@ -18,7 +18,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, AsyncIterator
 
+from engines.core.base import EngineSkillPolicy
 from engines.core.acp_base import AcpEngineBase
+from engines.core.permissions import EnginePermissionPolicy
 from engines.core.packages import RuntimePackage
 from engines.core.base import (
     EngineCapabilities,
@@ -89,6 +91,9 @@ class DeepSeekHarnessEngine(AcpEngineBase):
     """Run the official local DeepSeek Harness composition through its SDK."""
 
     ENGINE_ID = "deepseek_harness"
+    PERMISSION_POLICY = EnginePermissionPolicy(overrides={})
+    SKILL_POLICY = EngineSkillPolicy.FILESYSTEM_PROVIDER
+    SUPPORTS_MANUAL_COMPACTION = False
     SDK_PACKAGE = "deepseek-harness-sdk"
     RUNTIME_PACKAGE = RuntimePackage("deepseek-harness-sdk", "pypi")
     UPDATE_PACKAGE = SDK_PACKAGE

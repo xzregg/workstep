@@ -15,7 +15,7 @@ async def test_live_messages_cover_whole_run_and_repeated_names(tmp_path):
     async def on_event(event):
         collected.append(event)
     from engines.pydantic_ai.coder import WorkStepCoder
-    from pydantic_ai_harness.subagents import SubAgents
+    from pydantic_ai_harness.sub_agents import SubAgents
     capability = PydanticAIEngine()._make_subagent_capability(on_event)
     coder = WorkStepCoder(tmp_path, subagent_capability=capability)
     shared = next(c for c in coder.capabilities if isinstance(c, SubAgents)).shared_capabilities

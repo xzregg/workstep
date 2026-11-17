@@ -8,6 +8,8 @@ import type { CoordinatorEngineSummary, EngineQuota } from './task'
 // --- Engine API ---
 
 export interface EngineInfo {
+  permission_modes?: string[]
+  supports_service_tier?: boolean
   custom?: boolean
   name?: string
   description?: string

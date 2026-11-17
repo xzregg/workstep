@@ -67,7 +67,8 @@ class InteractionEngine(AcpEngineBase):
 ])
 async def test_shared_backend_approval_uses_effective_engine_config(engine_id, config):
     engine = InteractionEngine()
-    engine.ENGINE_ID = engine_id
+    from engines.core.registry import _ALL_ENGINES
+    engine.PERMISSION_POLICY = _ALL_ENGINES[engine_id].PERMISSION_POLICY
     engine.configure_interaction_policy(config)
     published = []
     event = elicitation_request(
@@ -94,7 +95,8 @@ async def test_shared_backend_approval_uses_effective_engine_config(engine_id, c
 ])
 async def test_assistant_ask_overrides_engine_auto(runtime, config):
     engine = InteractionEngine()
-    engine.ENGINE_ID = "codex_sdk"
+    from engines.codex_sdk import CodexSDKEngine
+    engine.PERMISSION_POLICY = CodexSDKEngine.PERMISSION_POLICY
     engine._runtime_permission_mode = runtime
     engine.configure_interaction_policy(config)
     queue = asyncio.Queue()

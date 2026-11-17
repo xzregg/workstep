@@ -753,11 +753,11 @@
           "Åbn projektets HTML-forhåndsvisning og prototypeeditoren. Ved AI-ændringer konfigureres motoren under Indstillinger → Assistenter → Prototypeassistent.",
           "Klik på filnavnet over forhåndsvisningen for at vælge HTML i samme mappe eller en undermappe. Hver HTML har sin egen samtale. Træk i vindueskanter og skillelinjer for at ændre størrelsen.",
           "Hold markøren over for at fremhæve, klik for at vælge eller højreklik for at kommentere. Eksempel: “Gør denne knap grøn, og bevar knappen ved siden af.” Send til chatten.",
-          "Rediger tekst, farve eller width (f.eks. 180px) i egenskaberne, og forlad feltet for at gemme. Du kan også dobbeltklikke på almindelig tekst eller trække i størrelseshåndtag. Vælg det præcise element, før sletning bekræftes.",
+          "Statiske elementers tekst, farve eller width, f.eks. 180px, ændres i egenskabspanelet og gemmes ved fokusskift. Flyt kun via markeringsrammens flyttegreb; Alt slår fastgørelse fra, Esc annullerer flytning. Kontrollér noden før sletning. Ctrl+Z／⌘Z eller „Fortryd“ øverst ruller gemte handlinger tilbage.",
           "I ændringshistorikken kan du se forskelle, fortryde eller rydde historikken. Efter en afbrydelse kontrolleres den bevarede kopi; genoptag lagring eller kassér den. Originaler med konflikter overskrives ikke."
         ],
         "tips": [
-          "Direkte redigering gælder statisk HTML. Markeringstilstand pauser sidescripts; visningstilstand kører interaktioner. Kun ændringer af eksisterende HTML/CSS/JS udgives; hele filer kan ikke tilføjes eller slettes."
+          "Direkte redigering gælder statisk HTML og udgiver ændringer af eksisterende HTML/CSS/JS, ikke oprettelse eller sletning af hele filer. Dynamiske sider bruger næste afsnits skrivebeskyttede inspektion og kommentarer. Gamle billeder viser endnu ikke det nye flyttegreb eller dynamisk inspektion."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Project-memory editor, der indeholder demonstrationskonventioner",
           "caption": "Rediger og gem konventioner i .workstep/MEMORY.md. Der vises ingen bekræftelse af arkivlektioner."
         }
+      },
+      {
+        "title": "Inspicér dynamiske HTML／React-prototyper",
+        "steps": [
+          "Åbn „Redigér prototype“ i HTML-forhåndsvisningen. Dynamiske sider beholder scriptgengivelse. Vælg elementer eller højreklik for kommentarer, beskriv ændringer og „Send til chat“, så prototypeassistenten ændrer genereringslogikken.",
+          "Dynamiske noders egenskaber er skrivebeskyttede uden trækhåndtag; størrelser og sletning kan ikke ændres direkte som statisk HTML. Canvas-indhold kan kun lokaliseres til lærredet. Indlejrede sider i en dynamisk forældreside kan åbnes særskilt fra mappen.",
+          "I browsertilstand kan interne arbejdsområdelinks skifte side før inspektion. Statiske underrammer kan vælges og redigeres på stedet. Send eller ryd usendte kommentarer, og vent på lagring, før du skifter. Historikken viser sideordnede eller samlede forskelle pr. fil."
+        ],
+        "tips": [
+          "Afsendelse af kommentarer kalder den konfigurerede prototypeassistent; valg og manuelle egenskabsjusteringer kalder ikke modellen. Kontrollér de skrevne ændringer, og læs først igen ved versionskonflikt."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Skrivebeskyttede egenskaber, elementkommentarer og filskift i en dynamisk prototype",
+          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+        }
+      },
+      {
+        "title": "Udfyld format-skabeloner for leverancer",
+        "steps": [
+          "Klik „Skabelon“ i leverancerækken på et arbejdsgangstrin, og beskriv struktur og acceptkrav i Markdown. Brug f.eks. {{任务名称}} i overskriften og konklusioner og valideringsresultater nedenunder. Nye kørsler bruger kravet, når arbejdsgangen er gemt.",
+          "Klik skabelonikonet ved leverancen i opgavedetaljerne for kun at ændre denne opgave, rydde eller gendanne arbejdsgangens standard. Skrivebeskyttet under kørsel; delingssider tillader kun visning.",
+          "Kontrollér bagefter, at filen opfylder skabelonen. Den bevares ved kopiering, import og eksport af arbejdsgangen, men er ikke i sig selv en genereret leverance."
+        ],
+        "tips": [
+          "Kun {{任务名称}} erstattes; andre formatkrav gives uændret til modellen. Skabelonen garanterer ikke præcis efterlevelse, så resultatet skal stadig gennemgås."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Editor for leveranceformatskabeloner i arbejdsgange og opgaver",
+          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Udfyld en beskedkladde med stemmen",
         "steps": [
-          "Åbn Indstillinger → Stemmeinput, aktivér, hent model og kørselsmiljø, vælg sprog og test mikrofonen. Installationen sker på den tilsluttede WorkStep-vært; telefonen behøver ingen model. Mandarin, kantonesisk og engelsk understøttes.",
-          "På computeren klikker du på mikrofonen. På telefonen holder du tekstfeltet i 500 ms; der vises intet mikrofonikon. Slip, kontrollér teksten og send manuelt. Højst to minutter; annullering sender intet."
+          "Åbn „Indstillinger → Taleindstillinger → Input“, og vælg lokal model, cloududbyder eller egen fjerntjeneste. Hent først kørselsmiljø og model lokalt, og klik „Brug denne model“. Paraformer understøtter mandarin, kantonesisk og engelsk; Zipformer mandarin og engelsk. Gem, og kontrollér med „Test mikrofon“. Modellen installeres på WorkStep-værten.",
+          "Brug mikrofonindgangen på computer. På telefon starter den lille højttaler nederst til højre optagelse, når kladden er tom; med tekst vises Send. Langt tryk bevarer systemets tekstmarkering. Kontrollér transskriptionskladden efter optagelse, og send manuelt. Højst to minutter ad gangen; annullering sender ikke."
         ],
         "tips": [
-          "Lyd genkendes på den tilsluttede vært og gemmes ikke. Tillad mikrofon via HTTPS eller lokal adresse. Kontrollér webstedets og systemets tilladelser ved fejl; genstart en gammel backend. Genkendt tekst kan udtrykkeligt beholdes."
+          "Mikrofonen kræver system- og webstedstilladelser, og browseren kræver HTTPS eller lokal adresse. Cloud/fjernfunktion sender lyd via værten til den valgte tjeneste. HTTP returnerer først tekst efter transskription og kan ikke vække i realtid. Modeller kan slettes enkeltvis; kontrollér først den aktive. Taleoutput og -input konfigureres hver for sig."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Opsæt og brug forbindelser",
         "steps": [
-          "Åbn Indstillinger → Forbindelser → Tilføj. Angiv kommando og argumenter separat for lokal MCP, URL for fjern-MCP eller programfil for CLI. Vælg tilladte projekter.",
+          "Åbn „Indstillinger → Forbindelser → Tilføj forbindelse“, eller brug skrivebordets stikgenvej. Lokal MCP har separate kommando- og argumentfelter; argumenter redigeres enkeltvis eller som JSON. Fjern-MCP bruger URL, CLI den eksekverbare fil. Tomt felt for tilladte projekter betyder alle.",
           "Find værktøjer under Test → Find forbindelse. Værktøjskørsel udfører rigtige kald: kontrollér argumenterne. Testen kalder ikke en LLM; gem bagefter.",
-          "Aktivér + → Forbindelser i samtalen til næste besked. MCP kræver en kompatibel motor; CLI-login bruger den officielle kommando i værtsterminalen. Ved 401 konfigureres understøttet Bearer-token eller godkendelsesheader. Browser-OAuth er ikke tilgængelig."
+          "Normale projektchats og opgaveudførelse vælger via „＋ → Forbindelser“, /连接器 eller /apps; de bruges til næste besked efter aktivering. Opgavekoordinering tilslutter dem ikke automatisk. MCP kræver motorunderstøttelse, CLI den officielle login-kommando. Ved 401 konfigurér Bearer Token eller godkendelsesheadere; web-OAuth understøttes endnu ikke. Lokal opdagelse kopierer ikke legitimationsoplysninger."
         ],
         "tips": [
           "Eksempel: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Opsæt og brug forbindelser",
           "caption": "Ægte skærmbillede mangler: opsætning, test og samtalevalg."
+        }
+      },
+      {
+        "title": "Gruppér samtaler, og gennemse arkivet",
+        "steps": [
+          "Højreklik på samtaleoverskriften, listen eller en samtale i projektets sidebjælke for at oprette grupper. Træk samtaler ind i grupper eller tilbage til Ugrupperet; normale gruppers menu kan oprette nye samtaler. Normale grupper og kanalgrupper administreres særskilt.",
+          "Brug gruppemenuen til at arkivere eller slette. Sletning opløser som standard kun gruppen; beskeder slettes kun, hvis du også vælger at slette samtaler. Kontrollér omfanget. Medlemmer under kørsel eller med fejlet handling springes over og bevares.",
+          "Åbn arkivlisten, og klik titlen for skrivebeskyttet at folde sidste spørgsmål og svar ud. Visning gendanner ikke samtalen og henter ikke fulde udførelsesdetaljer. Gendan udtrykkeligt for at fortsætte."
+        ],
+        "tips": [
+          "Arkivering bevarer indhold. Sletning af samtaler og beskeder har større konsekvenser; forveksl ikke opløsning af gruppen med samtidig sletning."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Gruppemenu i projektets sidebjælke og skrivebeskyttet arkivvisning",
+          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Demonstrationsfejl forårsaget af en ikke-eksisterende model",
           "caption": "Fejlen siger, at den valgte model ikke understøttes. Reparer trinets modelkonfiguration, før du kører igen; det er ikke repareret på dette billede."
+        }
+      },
+      {
+        "title": "Konfigurér en valgfri beslutningsmodel",
+        "steps": [
+          "Åbn „Indstillinger → Modeller og funktioner → Beslutningsmodel“. Vælg lokalt administreret model, lokal tjeneste eller fjerntjeneste. Lokal administration afhænger af værtens miljø; komponenter og modeller hentes manuelt hver for sig. Brug en eksisterende tjeneste, hvis kravene ikke er opfyldt.",
+          "Angiv adresse og godkendelse i tjenestetilstand. „Hent modelliste“ giver søgning og valg, eller indtast manuelt. Test kontrollerer kladden uden at gemme; kontrollér resultatet og vælg „Gem konfiguration“.",
+          "Slå kun „Tillad andre enheder at kalde den lokale model“ til, hvis den administrerede model skal tilgås udefra. Angiv eller genbrug fjernadgangsnøglen, gem, og brug den viste adresse. Manglende ressourcer hentes ikke automatisk; prøv igen ved travlhed."
+        ],
+        "tips": [
+          "Dette er en valgfri Jev-beslutningsgrænseflade, ikke en generel chatgrænseflade. Den overtager ikke automatisk opgaver eller samtaler. Download og aktivering af proxy er særskilte handlinger.",
+          "Modellen kører på værten og bruger CPU og hukommelse. En bestået test beviser ikke forretningsmæssig nøjagtighed. Proxyens inferenstoken giver ikke ressourcestyring; vis ikke nøgler på skærmbilleder."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Beslutningsmodellens driftstilstand, ressourcer, test, lagring og valgfrie proxy",
+          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+        }
+      },
+      {
+        "title": "Læs manualen via spørgsmålstegnet i indstillinger",
+        "steps": [
+          "Klik spørgsmålstegnet ved afsnitstitlen for at læse det tilsvarende kapitel i appen. Brug indholdsfortegnelse og søgning. Manualen følger grænsefladens sprog, og læsevinduet kan skaleres på computer.",
+          "Prøv igen, hvis indlæsning fejler. „Åbn i browser“ viser hele siden med kapitel og sprog bevaret. Afsnit uden tilhørende vejledning har ikke et spørgsmålstegn."
+        ],
+        "tips": [
+          "Den indlejrede manual kræver webstedets ressourcer i baggrundstjenesten. Kontrollér installationens version og ressourcer ved fejl; brug ikke et uvedkommende kapitel som erstatning."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Spørgsmålstegn ved indstillingstitlen og flersproget manual i appen",
+          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Digital person og global hukommelse",
+    "summary": "Konfigurér kommunikationsstil, hovedsamtale, proaktiv refleksion og kanalbetjening. Se minder med kilder, og aktivér lyd og persongenkendelse efter behov.",
+    "sections": [
+      {
+        "title": "Konfigurér personlighed, ansvar og hovedsamtale",
+        "steps": [
+          "Åbn „Indstillinger → Digital figur → Førstegangsvejledning“, skriv navnet, og redigér personlighed, ansvar og faste minder under „Personlighed og ansvar“. Brug forvalg eller importér fra rollecentret, konfigurér en tilgængelig motor, og vælg „Afslut og aktivér“.",
+          "Efter profilen er gemt, åbner sidebjælkens „Tal med den digitale person“ forsiden. Tastaturknappen åbner tekstinput, og „Vis samtale“ viser den samme hovedsessions historik. Du kan vende tilbage til det almindelige arbejdsområde.",
+          "Personlighed, ansvar og faste minder bruger Markdown. Forvalg opdaterer kun deres egen del. Kladden bevares ved lagringsfejl, så du kan prøve igen. Håndtér ugemte ændringer før sideskift eller lukning."
+        ],
+        "tips": [
+          "Faste minder er manuelle aftaler, ikke historikbiblioteket. Sprogskift oversætter ikke gemt tekst. Den digitale person kommunikerer og følger op; faktisk arbejde går til udførelsessessioner i målprojektet."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Vejledning til digital figur, personlighedsdokumenter og hovedsamtale",
+          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+        }
+      },
+      {
+        "title": "Søg minder, og kontrollér kilder",
+        "steps": [
+          "Søg indhold, entiteter eller projektnavne under „Digital figur → Hukommelse“. Filtrér præferencer, erfaringer, fakta eller hændelser, og skift mellem tankekort og tidsoversigt.",
+          "Vælg en post for vidensdetaljer og derefter kilder for at læse originalbeskeder i sider. Sammenlign tvivl med originalen; resuméer er ikke brugerens ord eller bevis for udført arbejde.",
+          "En interaktion registreres først efter assistentens fulde svar. Normale chats og opgaver søger med hukommelsesværktøjer efter behov uden at fylde hver anmodning med al historik eller automatisk efterregistrere alle gamle projekter."
+        ],
+        "tips": [
+          "Det fælles hukommelsesbibliotek kan søges på tværs af projekter og sessioner inden for identitets- og projektrettigheder. Kategorital, globale statistikker og antal aktuelle søgeresultater er forskellige.",
+          "Faste aftaler, projektets MEMORY.md og historisk viden har forskellige formål. Uorganiserede beskeder er ikke udledt viden; der er endnu ingen glem-knap i grænsefladen."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Global hukommelsessøgning, kategorier og sideinddelte originalkilder",
+          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+        }
+      },
+      {
+        "title": "Proaktiv refleksion og kørselshistorik",
+        "steps": [
+          "Gem automatisk aktivering, refleksionsinterval, proaktiv kontakt, mindste kontaktinterval og Forstyr ikke under „Digital figur → Proaktiv refleksion“. Beskeder pr. batch sættes i hukommelsesindstillingerne: standard 100, interval 1–1000.",
+          "Klik „Tænk nu“ for en straks-kontrol. I „Kørselshistorik“ ses delegationsnotifikationer og refleksioner separat. Opdatér, blad, og fold resuméer eller fejl ud; delegationer kan åbne den faktiske udførelsessession.",
+          "Fejlet levering kan forsøges igen som notifikation. Kontrollér færdig refleksion og modtaget besked hver for sig. Slukning af automatisk refleksion pauser planlagte kontroller; almindelig chat og manuel refleksion bevares."
+        ],
+        "tips": [
+          "Standardintervallet er 5 minutter. Tilladelse til proaktiv kontakt giver ikke beskeder hver runde; uden ventende hændelser kan runden ende stille. Modelkald kan koste penge, og resuméet er ikke en fuld tankekæde."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Refleksionsindstillinger og separat sideinddelt kørselshistorik",
+          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+        }
+      },
+      {
+        "title": "Bind kanalbetjening og notifikationer",
+        "steps": [
+          "Konfigurér først en bot under „Indstillinger → Kanalbots“, og send den en besked for at identificere målet. Tilføj binding i „Digital figur → Kanalbots“, og vælg bot og gruppe eller kontakt.",
+          "Aktivér „Modtag proaktive notifikationer“ efter behov. At besvare indgående beskeder giver ikke automatisk tilladelse til proaktive udsendelser. Kontrollér målet efter binding; grupper med opgavebinding beholder den.",
+          "Kontrollér og bekræft målet før „Test afsendelse“. Fjern bindingen, når den ikke bruges. Succes betyder kun, at platformen accepterede, ikke at modtageren læste."
+        ],
+        "tips": [
+          "Testen sender faktisk en besked. Brug demomål, og antag ikke, at en usikker kontakt er en autoriseret modtager."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Digitale personers kanalbinding, proaktive notifikationer og leveringsstatus",
+          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+        }
+      },
+      {
+        "title": "Konfigurér lyd, vækning og mikrofon",
+        "steps": [
+          "Vælg systemtale, lokal model, cloududbyder eller egen fjerntjeneste i de globale „Taleindstillinger → Output“. Hent lokale ressourcer manuelt; angiv tjeneste og godkendelse for cloud/fjernadgang, prøvelyt, og gem. Den digitale figurs lydside justerer stemme, hastighed m.m.",
+          "Sæt vækkeord og følsomhed under „Hørelse“, og begynd derefter udtrykkeligt at lytte. Det kræver tilgængeligt streaming-taleinput. At gemme ordet starter ikke optagelse; HTTP-transskription ved afslutning kan ikke vække i realtid.",
+          "Klik mikrofonen på forsiden for stemmesamtale. Højttaleren styrer sidens oplæsning; sluk mikrofonen for at stoppe lydoptagelse. At slå højttaleren fra slukker ikke mikrofonen. Skjult side, genindlæsning eller lukning stopper lytningen."
+        ],
+        "tips": [
+          "Mikrofon, kamera og afspilning kræver hver deres system-/webstedstilladelser. Fjerntjenester modtager den relevante lyd. Faktisk lyd på telefon og computer skal stadig efterprøves på enheden.",
+          "Kun nye svar læses op. Åbning af hele samtalepanelet pauser automatisk oplæsning; lukning afspiller ikke gammelt indhold. Forvent ikke fortsat lytning med låst skærm eller lukket app."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Taleoutput, prøvelytning og udtrykkelig lyttekontrol",
+          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+        }
+      },
+      {
+        "title": "Registrér kendte personer, og genkend med kamera",
+        "steps": [
+          "Konfigurér modellen under „Digital figur → Syn → Ansigtsgenkendelse“. Åbn derefter „Kendte personer → Registrér ansigt“, udfyld navn og relation, og bekræft personens samtykke.",
+          "Åbn kameraet, og optag tre klare enkeltpersonseksempler: forfra og let mod venstre og højre. Kontrollér og gem; efterprøv navnet i genkendelsestesten. Du kan supplere, deaktivere eller slette eksempler.",
+          "Vælg efter behov navnevisning og at medtage personer og relationer i beskeden, og send billedet udtrykkeligt. Kontrollér model, kameratilladelse og billede ved fejl; gæt ikke identiteten."
+        ],
+        "tips": [
+          "Optagne fotos gemmes ikke langsigtet, men personkendetegn er stadig følsomme data. En person i billedet er ikke nødvendigvis taleren og ændrer ikke afsender, rettigheder eller loginidentitet. Billeder og personoplysninger sendt til modellen kan ikke siges altid at blive lokalt."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Samtykke, optagelse i tre trin og persongenkendelsesindstillinger",
+          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
         }
       }
     ]

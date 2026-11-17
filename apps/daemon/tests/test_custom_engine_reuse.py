@@ -180,7 +180,7 @@ async def test_custom_reuse_preserves_prepared_controls_and_closes_unused_worker
         assert pool._entries[(str(source), session)] is entry
         assert prepared.process.returncode is not None
         three = cls()
-        await three.set_permission_mode('deny')
+        await three.set_permission_mode('auto')
         await anext_until_finished(three, source, session)
         assert pool._entries[(str(source), session)] is not entry
         assert entry.client.process.returncode is not None

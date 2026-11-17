@@ -753,11 +753,11 @@
           "Avaa projektin HTML-esikatselu ja prototyyppieditori. AI-muutoksia varten määritä moottori kohdassa Asetukset → Avustajat → Prototyyppiavustaja.",
           "Valitse saman kansion tai alikansion HTML napsauttamalla tiedostonimeä esikatselun yläpuolella. Jokaisella HTML-tiedostolla on oma keskustelu. Muuta kokoa vetämällä ikkunan reunoja ja jakajia.",
           "Vie osoitin elementin päälle korostaaksesi sen, napsauta valitaksesi tai avaa kommentti hiiren oikealla painikkeella. Esimerkiksi: ”Muuta tämä painike vihreäksi, mutta älä muuta viereistä.” Lähetä keskusteluun.",
-          "Muokkaa tekstiä, väriä tai width-arvoa (esim. 180px) ominaisuuksissa ja poistu kentästä tallentaaksesi. Voit myös kaksoisnapsauttaa tavallista tekstiä tai vetää koonsäätökahvoja. Valitse täsmällinen elementti ennen poiston vahvistamista.",
+          "Staattisen elementin tekstiä, väriä tai width-arvoa, esimerkiksi 180px, muokataan ominaisuuspaneelissa; kohdistuksen poistuminen tallentaa. Siirrä vain valintakehyksen siirtokahvasta. Alt poistaa kohdistusnapautuksen ja Esc peruu siirron. Tarkista solmu ennen poistoa. Ctrl+Z／⌘Z tai yläreunan ”Kumoa” palauttaa tallennettuja toimia.",
           "Muutoshistoriassa voit tarkistaa erot, kumota muutoksia tai tyhjentää historian. Keskeytyksen jälkeen tarkista säilytetty kopio ja jatka tallennusta tai hylkää se. Ristiriitaisia alkuperäistiedostoja ei korvata."
         ],
         "tips": [
-          "Suora muokkaus tukee staattista HTML:ää. Valintatila keskeyttää sivun skriptit; selaustila suorittaa vuorovaikutukset. Vain olemassa olevien HTML/CSS/JS-tiedostojen muutokset julkaistaan; kokonaisia tiedostoja ei voi lisätä tai poistaa."
+          "Suora muokkaus koskee staattista HTML-sisältöä ja julkaisee olemassa olevien HTML/CSS/JS-tiedostojen muutokset, ei kokonaisten tiedostojen luontia tai poistoa. Dynaamisille sivuille käytä seuraavan osan lukutilaista tarkistusta ja kommentteja. Vanhoissa kuvissa eivät näy uusi siirtokahva tai dynaaminen tarkistus."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Projektimuistieditori, joka sisältää esittelykonventioita",
           "caption": "Muokkaa ja tallenna käytäntöjä .workstep/MEMORY.md.:ssa Arkiston oppitunnin vahvistusta ei näytetä."
         }
+      },
+      {
+        "title": "Dynaamisten HTML／React-prototyyppien tarkistus",
+        "steps": [
+          "Avaa HTML-esikatselusta ”Muokkaa prototyyppiä”. Dynaamiset sivut säilyttävät komentosarjarenderöinnin. Valitse elementti tai kommentoi hiiren oikealla painikkeella, kuvaa muutos ja valitse ”Lähetä keskusteluun”; prototyyppiassistentti muuttaa generointilogiikkaa.",
+          "Dynaamisten solmujen ominaisuudet ovat vain luettavia ilman vetokahvoja; kokoa ei voi muuttaa eikä solmua poistaa kuten staattisessa HTML:ssä. Canvas-sisältö kohdistuu vain piirtoalueeseen. Dynaamisen pääsivun sisäsivut voi avata erikseen hakemistosta.",
+          "Selaustilassa siirry työtilan sisäisistä linkeistä sivulle ja valitse sitten tarkistettava kohta. Staattisia alikehyksiä voi valita ja muokata paikallaan. Lähetä tai tyhjennä lähettämättömät kommentit ja odota tallennus loppuun ennen sivunvaihtoa. Historia näyttää tiedostokohtaiset erot rinnakkain tai yhtenäisesti."
+        ],
+        "tips": [
+          "Kommenttien lähetys kutsuu määritettyä prototyyppiassistenttia; valinta ja käsin tehty ominaisuussäätö eivät kutsu mallia. Tarkista kirjoitetut tulokset ja lue versioristiriidassa ensin uudelleen."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Dynaamisen prototyypin vain luettavat ominaisuudet, kommentit ja tiedostonvaihto",
+          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+        }
+      },
+      {
+        "title": "Tuotoksen tulostusmuodon mallipohjan määrittäminen",
+        "steps": [
+          "Valitse työnkulun vaiheen tuotosriviltä ”Mallipohja” ja kirjoita rakenne ja hyväksymisvaatimukset Markdown-muodossa. Käytä esimerkiksi otsikossa {{任务名称}} ja luettele päätelmät ja tarkistustulokset. Tallennettuasi työnkulun uudet suoritukset käyttävät vaatimusta.",
+          "Tehtävän tiedoissa tuotoksen vieressä oleva pohjakuvake muuttaa vain tämän tehtävän pohjaa; sen voi tyhjentää tai palauttaa työnkulun oletuksen. Suorituksen aikana vain luettava, ja jakosivulla saa vain katsella.",
+          "Tarkista lopuksi tiedoston vastaavuus pohjaan. Pohja säilyy työnkulun kopioinnissa, tuonnissa ja viennissä, mutta ei itsessään ole luotu tuotos."
+        ],
+        "tips": [
+          "Vain {{任务名称}} korvataan; muut muotovaatimukset annetaan mallille sellaisinaan. Pohja ei takaa tarkkaa noudattamista, joten tarkistus on tarpeen."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Työnkulun ja tehtävän tuotosten muotopohjaeditori",
+          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Täytä viestiluonnos puheella",
         "steps": [
-          "Avaa Asetukset → Puheensyöttö, ota käyttöön, lataa malli ja ajonaikainen ympäristö, valitse kieli ja testaa mikrofoni. Asennus tehdään yhdistetylle WorkStep-palvelimelle, ei puhelimeen. Tuetut kielet ovat mandariinikiina, kantoninkiina ja englanti.",
-          "Tietokoneella napsauta mikrofonia. Puhelimella paina tekstikenttää 500 ms; mikrofonikuvaketta ei näy. Vapauta, tarkista lisätty teksti ja lähetä itse. Enintään kaksi minuuttia; peruutus ei lähetä mitään."
+          "Avaa ”Asetukset → Puheasetukset → Syöte” ja valitse paikallinen malli, pilvipalveluntarjoaja tai oma etäpalvelu. Lataa paikallisesti ensin suoritusympäristö ja malli ja valitse ”Käytä tätä mallia”. Paraformer tukee mandariinia, kantoninkiinaa ja englantia, Zipformer mandariinia ja englantia. Tallenna ja tarkista ”Testaa mikrofoni”. Malli asennetaan WorkStep-isäntälaitteelle.",
+          "Tietokoneella käytä mikrofonipainiketta. Puhelimella tyhjän luonnoksen oikean alakulman pieni kaiutin aloittaa tallennuksen; tekstin kanssa näkyy lähetyspainike. Pitkä painallus säilyttää järjestelmän tekstinvalinnan. Tarkista litterointiluonnos ja lähetä käsin. Tallennus kestää enintään kaksi minuuttia; peruminen ei lähetä."
         ],
         "tips": [
-          "Ääni tunnistetaan yhdistetyllä palvelimella eikä sitä tallenneta. Salli mikrofoni HTTPS- tai paikallisosoitteessa. Tarkista virheissä sivuston ja järjestelmän oikeudet ja käynnistä vanha taustapalvelu uudelleen. Tunnistetun tekstin voi erikseen säilyttää."
+          "Mikrofoni tarvitsee järjestelmän ja sivuston luvat; selain tarvitsee HTTPS-yhteyden tai paikallisen osoitteen. Pilvi-/etätila lähettää äänen isäntälaitteen kautta valittuun palveluun. HTTP palauttaa tekstin vasta litteroinnin lopussa eikä sovi reaaliaikaiseen herätykseen. Mallit voi poistaa yksitellen; tarkista ensin käytössä oleva. Puheen syöte ja tuloste määritetään erikseen."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Yhdistimien määritys ja käyttö",
         "steps": [
-          "Avaa Asetukset → Yhdistimet → Lisää. Anna paikalliselle MCP:lle komento ja argumentit erikseen, etä-MCP:lle URL tai CLI:lle suoritettava tiedosto. Valitse sallitut projektit.",
+          "Avaa ”Asetukset → Liittimet → Lisää liitin” tai työpöydän pistokepikavalinta. Paikalliselle MCP:lle anna komento ja argumentit erikseen; argumentit voi muokata yksitellen tai JSON-muodossa. Etä-MCP tarvitsee URL-osoitteen, CLI suoritustiedoston. Tyhjä projektilista sallii kaikki projektit.",
           "Etsi työkalut kohdasta Testi → Tunnista yhteys. Työkalun suoritus tekee oikean kutsun: tarkista argumentit. Testi ei kutsu LLM:ää; tallenna asetukset sen jälkeen.",
-          "Ota keskustelussa + → Yhdistimet käyttöön seuraavaa viestiä varten. MCP tarvitsee yhteensopivan moottorin; CLI-kirjautuminen tehdään virallisella komennolla isäntäkoneen päätteessä. Määritä 401-virheessä tuettu Bearer-tunniste tai todennusotsake. Selain-OAuth ei ole käytettävissä."
+          "Valitse tavallisessa projektikeskustelussa ja tehtävän suoritussyötteessä ”＋ → Liittimet”, /连接器 tai /apps. Käyttöönotto koskee seuraavaa viestiä; tehtävien koordinointi ei liitä niitä automaattisesti. MCP vaatii moottorituen, CLI virallisen kirjautumiskomennon. Virheessä 401 määritä Bearer Token tai tunnistautumisotsakkeet; selain-OAuth ei vielä toimi. Paikallinen tunnistus ei kopioi tunnuksia."
         ],
         "tips": [
           "Esimerkki: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Yhdistimien määritys ja käyttö",
           "caption": "Oikea kuvakaappaus puuttuu: määritys, testi ja keskusteluvalinta."
+        }
+      },
+      {
+        "title": "Keskusteluryhmät ja arkistojen tarkastelu",
+        "steps": [
+          "Luo ryhmä projektisivupalkin keskusteluotsikon, listan tai keskustelun oikean painikkeen valikosta. Vedä keskustelu ryhmään tai takaisin ryhmittämättömiin; tavallisen ryhmän valikossa voi luoda keskustelun. Tavalliset ja kanavaryhmät hallitaan erikseen.",
+          "Arkistoi tai poista ryhmävalikosta. Poisto purkaa oletuksena vain ryhmän; viestit poistetaan vain valitsemalla myös keskustelujen poisto. Tarkista laajuus. Käynnissä olevat tai epäonnistuneen toimen kohteet ohitetaan ja säilytetään.",
+          "Avaa arkistolista ja valitse otsikko nähdäksesi viimeisen kysymys-vastausparin lukutilassa. Katselu ei palauta istuntoa eikä lataa kaikkia suoritustietoja. Palauta erikseen jatkaaksesi keskustelua."
+        ],
+        "tips": [
+          "Arkistointi säilyttää sisällön. Keskustelujen ja viestien poistolla on suurempi vaikutus; ryhmän purkaminen ja sisällön poisto ovat eri asioita."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Projektisivupalkin ryhmävalikko ja arkistojen lukuesikatselu",
+          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Demonstraatiovirhe, joka johtuu olemattomasta mallista",
           "caption": "Virhe kertoo, että valittua mallia ei tueta. Korjaa vaiheen mallikokoonpano ennen kuin suoritat sen uudelleen; sitä ei ole korjattu tässä kuvassa."
+        }
+      },
+      {
+        "title": "Valinnaisen päätösmallin määrittäminen",
+        "steps": [
+          "Avaa ”Asetukset → Mallit ja ominaisuudet → Päätösmalli”. Valitse paikallinen hallittu malli, paikallinen tai etäpalvelu. Hallittu käyttö tunnistetaan isäntälaitteen mukaan; komponentit ja mallit ladataan erikseen käsin. Jos ehdot eivät täyty, käytä olemassa olevaa palvelua.",
+          "Anna palvelutilassa osoite ja tunnistautuminen. ”Lue malliluettelo” mahdollistaa haun ja valinnan; voit myös kirjoittaa käsin. Testi tarkistaa luonnoksen tallentamatta. Tarkista tulos ja valitse ”Tallenna asetukset”.",
+          "Ota ”Salli muiden laitteiden kutsua paikallista mallia” käyttöön vain ulkoiseen käyttöön. Aseta tai käytä etäkäyttöavainta, tallenna ja yhdistä näytettyyn osoitteeseen. Puuttuvia resursseja ei ladata automaattisesti; yritä uudestaan varattuna."
+        ],
+        "tips": [
+          "Tämä on valinnainen Jev-päätösrajapinta, ei yleinen keskustelurajapinta. Se ei ota tehtäviä tai keskusteluja automaattisesti hoitaakseen. Lataus ja välityspalvelimen käyttöönotto ovat erillisiä toimia.",
+          "Malli toimii isäntälaitteella ja käyttää CPU-resursseja ja muistia. Onnistunut testi ei todista toimialan tarkkuutta. Välityspalvelimen päättelytunnus ei anna resurssien hallintaoikeutta; älä kuvaa avaimia."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Päätösmallin käyttötila, resurssit, testi, tallennus ja valinnainen välitys",
+          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+        }
+      },
+      {
+        "title": "Käyttöohjeen lukeminen asetusten kysymysmerkistä",
+        "steps": [
+          "Valitse osion otsikon kysymysmerkki lukeaksesi siihen liittyvän luvun sovelluksessa. Käytä sisällysluetteloa ja hakua. Ohje seuraa käyttöliittymän kieltä, ja lukuruudun kokoa voi muuttaa tietokoneella.",
+          "Yritä uudelleen latausvirheessä. ”Avaa selaimessa” näyttää koko sivun nykyisellä luvulla ja kielellä. Ilman vastaavaa ohjetta olevissa osioissa ei ole kysymysmerkkiä."
+        ],
+        "tips": [
+          "Upotettu ohje vaatii verkkosivuston resurssit taustapalvelussa. Tarkista versio ja resurssit latausvirheessä; älä korvaa ohjetta asiaankuulumattomalla luvulla."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Asetusotsikon kysymysmerkki ja sovelluksen monikielinen ohje",
+          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Digitaalinen henkilö ja yleinen muisti",
+    "summary": "Määritä viestintätyyli, pääkeskustelu, oma-aloitteinen pohdinta ja kanavapalvelu. Tarkastele lähteistettyjä muistoja ja ota ääni sekä henkilöntunnistus tarvittaessa käyttöön.",
+    "sections": [
+      {
+        "title": "Persoonan, vastuiden ja pääkeskustelun määrittäminen",
+        "steps": [
+          "Avaa ”Asetukset → Digitaalinen hahmo → Aloitusopastus”. Anna nimi ja muokkaa persoonaa, vastuita ja pysyviä muistoja kohdassa ”Persoona ja vastuut”. Käytä esiasetuksia tai tuo roolikeskuksesta, määritä käytettävä moottori ja valitse ”Valmis ja käyttöön”.",
+          "Tallennetun profiilin jälkeen avaa sivupalkin ”Keskustele digitaalisen henkilön kanssa”. Näppäimistöpainike avaa tekstisyötteen, ”Näytä keskustelu” saman pääistunnon historian. Voit palata tavalliseen työtilaan.",
+          "Persoona, vastuut ja pysyvät muistot käyttävät Markdown-muotoa. Esiasetukset muuttavat vain oman osansa. Tallennusvirhe säilyttää luonnoksen uudelleenyritystä varten. Käsittele tallentamattomat muutokset ennen vaihtoa tai sulkemista."
+        ],
+        "tips": [
+          "Pysyvät muistot ovat käsin sovittuja ohjeita, eivät historiakirjasto. Kielen vaihto ei käännä tallennettuja tekstejä. Digitaalinen henkilö viestii ja seuraa edistystä; todellinen työ tehdään kohdeprojektin suoritusistunnoissa."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Digitaalisen hahmon opastus, persoonadokumentit ja pääkeskustelu",
+          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+        }
+      },
+      {
+        "title": "Muistojen haku ja lähteiden tarkistus",
+        "steps": [
+          "Hae kohdassa ”Digitaalinen hahmo → Muisti” sisältöä, entiteettejä tai projektinimiä. Suodata mieltymykset, kokemukset, faktat tai tapahtumat ja vaihda ajatuskartan ja aikakatsauksen välillä.",
+          "Valitse tietue tietojen tarkasteluun ja avaa lähteet alkuperäisviestien sivutettua lukua varten. Vertaa epäselvyyksiä alkuperäiseen; tiivistelmä ei ole käyttäjän lainaus tai tehtävän valmistumisen todiste.",
+          "Vuorovaikutus rekisteröidään vasta assistentin täyden vastauksen jälkeen. Tavalliset keskustelut ja tehtävät käyttävät muistityökaluja tarpeen mukaan; koko historiaa ei lisätä joka pyyntöön eikä kaikkea vanhaa projektihistoriaa tuoda automaattisesti."
+        ],
+        "tips": [
+          "Yhteinen muisti tukee projektien ja istuntojen välistä hakua henkilöllisyys- ja projektioikeuksien rajoissa. Luokkamäärät, koko kirjaston tilastot ja nykyisten hakutulosten määrä eroavat toisistaan.",
+          "Pysyvät sopimukset, projektin MEMORY.md ja historiallinen tietokanta ovat eri tarkoituksiin. Järjestämättömät viestit eivät ole jalostettua tietoa; unohtamispainiketta ei vielä ole."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Yleinen muistihaku, luokat ja sivutetut alkuperäislähteet",
+          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+        }
+      },
+      {
+        "title": "Oma-aloitteinen pohdinta ja suoritushistoria",
+        "steps": [
+          "Tallenna kohdassa ”Digitaalinen hahmo → Oma-aloitteinen pohdinta” automatiikka, pohdintaväli, yhteydenotto, vähimmäisyhteysväli ja häiriöttömyysaika. Muistiasetusten eräkoko on oletuksena 100 viestiä, väliltä 1–1000.",
+          "”Pohdi nyt” aloittaa välittömän tarkistuksen. ”Suoritushistoria” näyttää delegointi-ilmoitukset ja pohdinnat erikseen; päivitä, selaa ja avaa tiivistelmä tai virhe. Delegoinnista voi avata todellisen suoritusistunnon.",
+          "Epäonnistunutta ilmoitustoimitusta voi yrittää uudelleen. Tarkista pohdinnan valmistuminen ja viestin toimitus erikseen. Automaattisen pohdinnan sulkeminen keskeyttää ajastetut tarkistukset, ei keskustelua tai käsin käynnistettyä pohdintaa."
+        ],
+        "tips": [
+          "Oletusväli on 5 minuuttia. Oma-aloitteisen yhteydenoton salliminen ei tarkoita viestiä joka kierroksella; ilman odottavia tapahtumia kierros voi päättyä hiljaa. Mallikutsuista voi tulla maksu, eikä tiivistelmä ole koko ajatusketju."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Pohdinta-asetukset ja erikseen sivutettu suoritushistoria",
+          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+        }
+      },
+      {
+        "title": "Kanavapalvelun ja ilmoitusten liittäminen",
+        "steps": [
+          "Määritä ensin botti kohdassa ”Asetukset → Kanavabotit” ja lähetä sille viesti kohteen tunnistamiseksi. Lisää sidonta kohdassa ”Digitaalinen hahmo → Kanavabotit” ja valitse botti sekä ryhmä tai yhteyshenkilö.",
+          "Ota ”Vastaanota oma-aloitteiset ilmoitukset” käyttöön tarpeen mukaan. Pelkkä saapuvien viestien käsittely ei salli oma-aloitteista lähetystä. Tarkista kohde sidonnan jälkeen; tehtäväryhmät pitävät alkuperäisen sidontansa.",
+          "Tarkista kohde ja vahvista ennen ”Testilähetystä”. Poista sidonta, kun sitä ei tarvita. Onnistuminen tarkoittaa alustan hyväksyntää, ei vastaanottajan lukemista."
+        ],
+        "tips": [
+          "Testi lähettää todellisen viestin. Käytä esittelykohdetta, älä oleta epäselvää yhteyshenkilöä valtuutetuksi vastaanottajaksi."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Kanavasidonnat, oma-aloitteiset ilmoitukset ja toimitustila",
+          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+        }
+      },
+      {
+        "title": "Äänen, herätyksen ja mikrofonin asetukset",
+        "steps": [
+          "Valitse yleisistä ”Puheasetukset → Tuloste” järjestelmäpuhe, paikallinen malli, pilvitarjoaja tai oma etäpalvelu. Lataa paikalliset resurssit käsin; pilvi/etäpalvelu tarvitsee osoitteen ja tunnistautumisen, kuuntele testi ja tallenna. Digitaalisen hahmon äänisivu säätää ääntä, nopeutta ja muita parametreja.",
+          "Aseta herätesana ja herkkyys kohdassa ”Kuulo” ja aloita kuuntelu erikseen. Käytettävissä on oltava jatkuva puhesyöte. Sanan tallennus ei käynnistä nauhoitusta; päättymisen jälkeinen HTTP-litterointi ei herätä reaaliajassa.",
+          "Aloita puhekeskustelu etusivun mikrofonista. Kaiutin ohjaa sivun ääneenlukua; äänenkeruun lopettamiseksi sulje mikrofoni. Kaiuttimen mykistys ei sulje sitä. Sivun piilottaminen, lataus uudelleen tai poistuminen lopettaa kuuntelun."
+        ],
+        "tips": [
+          "Mikrofoni, kamera ja toisto tarvitsevat erilliset järjestelmä-/sivustoluvat. Etäpalvelut saavat kyseisen äänen. Todellinen äänen kuuluminen on tarkistettava puhelimessa ja tietokoneella.",
+          "Vain uudet vastaukset luetaan. Koko keskustelupaneelin avaaminen keskeyttää automaattisen luvun; sulkeminen ei toista vanhaa sisältöä. Älä oleta jatkuvaa kuuntelua lukitusnäytöllä tai suljetussa sovelluksessa."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Puhetulosteen tavat, kuuntelutesti ja nimenomainen kuuntelun hallinta",
+          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+        }
+      },
+      {
+        "title": "Tuttujen tallennus ja kameratunnistus",
+        "steps": [
+          "Määritä malli kohdassa ”Digitaalinen hahmo → Näkö → Kasvojentunnistus”, sitten ”Tuttujen hallinta → Tallenna kasvot”. Anna nimi ja suhde ja vahvista henkilön suostumus.",
+          "Avaa kamera ja ota kolme selvää yhden henkilön näytettä: edestä ja hieman vasemmalta sekä oikealta. Tarkista ja tallenna; varmista nimi tunnistustestissä. Voit täydentää, poistaa käytöstä tai poistaa näytteitä.",
+          "Valitse tarpeen mukaan nimien näyttö sekä henkilöiden ja suhteiden liittäminen viestiin ja lähetä kuva nimenomaisesti. Jos tunnistus epäonnistuu, tarkista malli, kameran lupa ja kuva; älä korvaa tulosta arvauksella."
+        ],
+        "tips": [
+          "Kuvattuja valokuvia ei säilytetä pitkään, mutta henkilöpiirteet ovat silti arkaluonteisia. Kuvassa olo ei määritä puhujaa eikä muuta kirjoittajaa, oikeuksia tai kirjautumisidentiteettiä. Mallille lähetettyjen kuvien ja henkilötietojen ei voi väittää pysyvän aina paikallisina."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Suostumus, kolmivaiheinen näytteenotto ja henkilöntunnistusasetukset",
+          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
         }
       }
     ]

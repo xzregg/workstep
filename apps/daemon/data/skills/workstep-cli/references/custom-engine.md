@@ -1,26 +1,49 @@
-# 自定义执行引擎接入
+# 自定义引擎接入流程
 
-本指南使用现有项目聊天，不创建新助手。接入完成的标准是公共验收通过且注册成功。
+适用于创建、更新和导入 CLI／ACP／SDK／Agent 引擎，使用普通项目聊天，不创建专用助手。
 
-接入时必须检查原生运行时能否持续接收请求。支持的 SDK、ACP 或双向流 CLI 按[接口规范的进程复用约定](custom-engine-contract.md#进程复用声明与验收)实现并声明复用，使用共享 600 秒空闲缓存；一次性命令保持每轮启动，不用会话恢复冒充进程复用。声明复用的包必须通过 `session_transport_reuse`，专属测试同时核对内层原生进程、审批／停止／异常、会话隔离和资源回收；导入包也执行相同检查，不能因已有成功报告跳过。
+| 文档 | 负责内容 |
+| --- | --- |
+| 本页 | 准备包、CLI 操作、注册与分发 |
+| [接口契约](custom-engine-contract.md) | 适配器、权限、事件、MCP 与连接生命周期 |
+| [测试规范](custom-engine-testing.md) | 必测场景、公共验收覆盖范围与通过证据 |
 
-还须单独检查[跨会话共享条件](custom-engine-contract.md#同会话复用与跨会话共享)。同会话进程复用不等于多个会话同时共用进程；当前自定义宿主仍按会话分配独占 worker，不能直接套用内置 Codex 的五会话池。原生支持时先补齐宿主的共享路由与生命周期，再验证内层原生 PID、上下文隔离、审批互不阻塞、局部停止和进程崩溃后旧审批失效；未完成前如实保持独占模式。
+## 准备与实现
 
-## 接入步骤
+1. 确认名称、唯一小写 ID、官方 SDK/CLI 文档、认证方式、目标系统和所需能力。先查已有引擎；更新时检查旧包，导入时沿用已有包，不重新创建适配器。
+2. 在返回的共享 Runtime 工作目录下建立具名包目录，避免覆盖其他成果。按接口契约准备 `manifest.json`、Python 入口和 `tests/test_*.py`；先写行为测试，再实现适配。未经注册的源码不直接放入正式 `runtime/engines`。
+3. 按[连接生命周期](custom-engine-contract.md#连接生命周期)区分一次性调用、同会话复用与跨会话共享，只声明已落实的能力；具体测试见测试规范，不在提示词或本页重复维护清单。
 
-1. 补全引擎名称、唯一小写 ID、官方 SDK/CLI/ACP 文档、认证方式、操作系统和需要的能力。优先查询官方文档。使用 `workstep-cli` Skill 的可用传输执行 `engine list --verbose --json`，确认是否已经接入；更新现有引擎先检查旧包，明确替换意图。
-2. 在共享 Runtime 根目录里自行建立具名包目录，再创建 `manifest.json`、`engine.py`、`tests/test_adapter.py`（标准库 unittest）。会话工作目录是固定 Runtime 根目录；不覆盖其他已有成果。先写失败测试，再实现映射。参考 [接口规范](custom-engine-contract.md)。不要直接把未验证源码放到正式 `runtime/engines`。
-3. Python 类继承 `engines.core.custom_sdk.CustomEngineBase`（或 `AcpEngineBase`），调用 `super().__init__()`，声明唯一 `ENGINE_ID`。实现真实事件转换、实际依赖检查、版本、配置、安装、spawn 与 stop。MCP 连接器按接口规范声明 `supports_mcp`，支持时显式实现 `configure_mcp_servers` 并让实际执行和会话恢复消费配置；不支持则明确为 false。能力声明必须与真实支持一致；不支持的能力安全降级，不能伪造用量、会话分叉或成功事件。
-4. 使用 CLI `engine inspect <绝对目录或py路径> --json`。修复清单、接口、能力与配置错误。inspect 导入发生在独立进程；不要在守护进程里导入用户源码。
-5. 实现异步 `install()`，返回 `EngineInstallResult`。读取 `self.install_context` 的系统、架构和目标目录。依赖只能装入 `target_dir`；Python 使用 `install_python_dependencies("官方包==版本")`，Node 使用 `install_node_dependencies("官方包@版本")`。Node 运行时未安装时应明确提示，或按官方校验下载到目标目录；不能假定应用提供 Node。不要写全局 Python site-packages。SDK 必须延迟 import，让 inspect/install 在尚未安装时也能运行。
-6. `engine install <路径> --json` 等待成功。供应商优先复用 WorkStep 配置：按 `supported_provider_protocols()` 声明协议，运行时通过 `resolve_provider_runtime(provider_id=(config_overrides or {}).get("provider_id"), model=model)` 获取认证；也支持自定义供应商或引擎私有配置。密钥通过设置/受保护配置传入，禁止写进 py、清单、测试和聊天。`engine configure <路径> --config-file <本机私有JSON> --json` 支持 values/clear/confirmed/provider_id/model；用后删除临时凭据文件。
-7. `engine validate <路径> --json`。要求真实联网连接、专属映射测试、生命周期与停止、事件到 AG-UI 转换、执行→下游→审核探测；其他声明的可选能力必须有 `tests/scenarios.json` 真实场景；MCP 声明会额外触发公共 `mcp_connector_roundtrip` 真实工具调用验收（支持恢复时也探测恢复后的调用），专属 unittest 同时覆盖配置合并、空配置、审批和停止。失败必须修复重测，不改报告、不删测试、不通过关闭必要能力绕过。请告知用户真实探测会产生供应商调用费用。
-8. 通过后 `engine register <路径> --json`，只有更新已存在引擎才使用 `--replace`。注册会验证报告签名与代码、依赖和配置指纹，原子发布到可写 runtime 目录，保留旧版。代码/依赖/配置变化后需要重新 validate。
-9. 只有注册返回 ok=true 后，才提示在设置的引擎页面点击“重新扫描”；后台会重新发现自定义引擎，各处引擎选择列表随之更新，无需重启 WorkStep。引擎仍需完成配置与连接验证；若其它操作返回 restart_required=true，按该操作结果提示重启。
+## CLI 操作
 
-## 故障与分发
+先按 [Transport](transport.md) 选择可用传输。以下 `workstep` 是简写，可替换为文档中的 `uv … python -m cli` 或桌面内置 Python；路径使用包目录或 Python 入口的绝对路径。
 
-- install/validate 默认轮询长操作；`--no-wait` 返回 operation ID，可用 `engine operation <ID> --json` 查询，`engine stop <ID> --json` 停止。
-- `engine export <引擎ID> --output <绝对ZIP路径> --json` 或设置页导出 ZIP。导出只包含清单显式列出的源码/测试/资源及安全测试摘要，排除 dependencies/cache/本机配置/密钥。接收者解压后按自己的系统重新 inspect/install/configure/validate/register，不直接复制已安装的依赖。
-- `engine disable <ID>` 停用自定义运行，`engine enable <ID>` 恢复；这与“下拉显示”开关不同。`engine rollback <ID>` 回退旧版后重新验收注册。
-- 不能正常启动时使用 `WORKSTEP_SKIP_CUSTOM_ENGINES=1` 启动，跳过全部自定义引擎。用户代码运行在子进程但拥有本机权限，进程隔离不等于文件/网络沙箱。
+```bash
+workstep engine list --verbose --json
+workstep engine inspect /absolute/adapter --json
+workstep engine install /absolute/adapter --json
+workstep engine configure /absolute/adapter --config-file /private/engine-config.json --json
+workstep engine validate /absolute/adapter --json
+workstep engine register /absolute/adapter --json
+```
+
+| 操作 | 完成条件 |
+| --- | --- |
+| inspect | 清单、接口、能力与配置检查通过；用户源码只在隔离 worker 导入 |
+| install | 依赖安装成功；SDK 延迟 import，未安装时仍能 inspect/install |
+| configure | 保存认证、供应商与模型；优先复用 WorkStep 供应商配置 |
+| validate | 按测试规范完成真实探测和专属测试，报告 `ok=true` |
+| register | 报告签名及代码、依赖、配置指纹匹配，返回 `ok=true` |
+
+依赖安装到引擎自己的目标目录：Python 用 `install_python_dependencies("官方包==版本")`，Node 用 `install_node_dependencies("官方包@版本")`。不要修改 WorkStep 的 Python 环境；不能假定桌面端已安装 Node。认证通过设置或私有配置文件传入，`--config-file` 支持 `values/clear/confirmed/provider_id/model`；临时凭据文件用后删除，不写入源码、包或聊天。
+
+真实 validate 会产生供应商调用，执行前说明所需认证与调用成本。失败后修复再测，不编辑报告、删除测试或关闭所需能力绕过验收。代码、依赖或配置改变后重新 validate；仅在用户已明确更新现有引擎时给 register 加 `--replace`。
+
+注册成功后在设置的引擎页面点击“重新扫描”，无需重启；其他操作返回 `restart_required=true` 时按返回值处理。
+
+## 长操作、回退与分发
+
+- install/validate 默认等待结束；加 `--no-wait` 返回操作 ID，用 `engine operation <ID> --json` 查询、`engine stop <ID> --json` 停止。排队或启动成功不等于验收通过。
+- `engine export <ID> --output <绝对ZIP路径> --json` 只导出清单声明的源码、测试、资源和安全摘要，不含依赖、缓存、凭据及本机验收报告。接收者在自己的系统重新执行上述流程。
+- `engine disable <ID>` 停用执行，`engine enable <ID>` 恢复；显示开关只影响选择列表。`engine rollback <ID>` 回退旧版，后续动作以返回结果为准。
+- 启动故障可设置 `WORKSTEP_SKIP_CUSTOM_ENGINES=1` 跳过自定义引擎。worker 隔离不提供文件或网络沙箱，用户代码仍有宿主权限。

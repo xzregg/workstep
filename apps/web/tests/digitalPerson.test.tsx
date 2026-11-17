@@ -72,7 +72,7 @@ test('digital person persists its profile, guards drafts, and shows native memor
     await click('主动性')
     const intervalInput = rootElement.querySelector<HTMLInputElement>('input[name="proactive_interval_minutes"]')!
     assert.ok(intervalInput)
-    assert.equal(rootElement.querySelector('.schedule-page'), null)
+    assert.equal(rootElement.querySelector('.schedule-page') === null, true, 'proactivity settings do not mount the schedule page')
     assert.ok(rootElement.querySelector('input[type="checkbox"]'))
     await act(async () => {
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(intervalInput, '15')
@@ -88,7 +88,7 @@ test('digital person persists its profile, guards drafts, and shows native memor
     assert.equal((profile as any).proactive_shared_context,false)
     await click('大脑')
     assert.ok(rootElement.querySelector('[aria-label="' + '默认助手引擎' + '"]') || rootElement.querySelector('select'))
-    assert.equal(rootElement.querySelector('textarea[name="conversation_rules"]'), null)
+    assert.equal(rootElement.querySelector('textarea[name="conversation_rules"]') === null, true, 'brain settings do not expose conversation rules')
     let savedAssistant = ''
     assistantApi.setConfig = async (name) => { savedAssistant = name; return { configured: {}, resolved: {} } as any }
     await act(async () => rootElement.querySelector<HTMLButtonElement>('.assistant-engine-footer button')!.click())
@@ -97,7 +97,7 @@ test('digital person persists its profile, guards drafts, and shows native memor
     await act(async () => rootElement.querySelector<HTMLButtonElement>('[data-body-part="memory"]')!.click())
     assert.equal(rootElement.querySelector('[data-body-part=memory]')?.getAttribute('aria-pressed'),'true')
     assert.ok(rootElement.querySelector('[role="region"][aria-labelledby="digital-person-tab-memory"]'))
-    assert.equal(rootElement.querySelector('iframe'), null)
+    assert.equal(rootElement.querySelector('iframe') === null, true, 'memory uses native components instead of an iframe')
     assert.ok(rootElement.querySelector('.digital-person-memory-map'))
   } finally {
     assistantApi.list = oldList; providerApi.list = oldProviders; assistantApi.setConfig = oldConfig

@@ -753,11 +753,11 @@
           "Projenin HTML önizlemesini ve prototip düzenleyicisini açın. AI değişiklikleri için Ayarlar → Asistanlar → Prototip asistanı altında motoru yapılandırın.",
           "Aynı klasördeki veya alt klasördeki HTML dosyasını seçmek için önizlemenin üstündeki dosya adına tıklayın. Her HTML kendi konuşmasını saklar. Boyutu değiştirmek için pencere kenarlarını ve ayırıcıları sürükleyin.",
           "Vurgulamak için imleci üzerine getirin, seçmek için tıklayın veya yorum için sağ tıklayın. Örnek: “Bu düğmeyi yeşil yap, yanındaki düğmeyi değiştirme.” Sohbete gönderin.",
-          "Özelliklerde metni, rengi veya width değerini (örneğin 180px) değiştirip kaydetmek için alandan çıkın. Düz metne çift tıklayabilir veya boyut tutamaçlarını sürükleyebilirsiniz. Silmeyi onaylamadan önce tam olarak ilgili öğeyi seçin.",
+          "Statik öğelerin metnini, rengini veya width değerini (örneğin 180px) özellik panelinde değiştirin; odak kaybında kaydedilir. Yalnızca seçim çerçevesinin taşıma tutamacından sürükleyin. Alt hizalamayı kapatır, Esc taşımayı iptal eder. Silmeden önce düğümü doğrulayın. Ctrl+Z/⌘Z veya üstteki «Geri al» kaydedilmiş işlemleri geri alır.",
           "Değişiklik geçmişinde farkları inceleyin, geri alın veya geçmişi temizleyin. Kesinti sonrası korunan kopyayı kontrol edip kaydetmeye devam edin ya da kopyayı atın. Çakışan asıl dosyaların üzerine yazılmaz."
         ],
         "tips": [
-          "Doğrudan düzenleme statik HTML içindir. Seçim modu sayfa betiklerini duraklatır; göz atma modu etkileşimleri çalıştırır. Yalnızca mevcut HTML/CSS/JS değişiklikleri yayımlanır; dosyaların tamamını ekleme veya silme desteklenmez."
+          "Doğrudan düzenleme statik HTML içindir. Mevcut HTML/CSS/JS değişiklikleri yayımlanır; tüm dosyaları ekleme veya silme desteklenmez. Dinamik sayfalarda sonraki bölümün salt okunur inceleme ve yorum akışını kullanın. Eski görüntü yeni taşıma tutamacını ve dinamik incelemeyi henüz göstermez."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Gösterim kurallarını içeren proje belleği düzenleyicisi",
           "caption": ".workstep/MEMORY.md.'da kuralları düzenleyin ve kaydedin. Arşiv dersi onayı gösterilmez."
         }
+      },
+      {
+        "title": "Dinamik HTML/React prototiplerini inceleme",
+        "steps": [
+          "HTML önizlemesinde «Prototip düzenleme» açın. Dinamik sayfalar betikle oluşturmayı korur. Öğeyi seçin veya sağ tıklayıp yorum açın, isteği yazın ve «Sohbete gönder» seçin. Prototip asistanı oluşturma mantığını değiştirir.",
+          "Dinamik düğüm özellikleri salt okunurdur, tutamaçları yoktur; statik HTML gibi doğrudan boyut değiştiremez veya silemezsiniz. Canvas yalnızca tuval olarak hedeflenebilir. Dinamik üst sayfanın iç içe sayfalarını dizinden ayrı açıp inceleyin.",
+          "Gezinme modunda çalışma alanı bağlantılarıyla sayfa değiştirip öğe seçin. Statik alt çerçeveler yerinde seçilip düzenlenebilir. Sayfa değiştirmeden yorumları gönderin veya temizleyin ve kaydın bitmesini bekleyin. Geçmişte dosya farklarını yan yana veya birleşik görüntüleyin."
+        ],
+        "tips": [
+          "Yorum göndermek yapılandırılmış prototip asistanını çağırır; seçim ve elle özellik düzenleme modeli çağırmaz. Yazılan sonucu kontrol edin; sürüm çakışmasında önce yeniden okuyun."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Dinamik prototipin salt okunur özellikleri, öğe yorumları ve dosya değiştirme",
+          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+        }
+      },
+      {
+        "title": "Çıktı biçimi şablonu doldurma",
+        "steps": [
+          "İş akışı adımının çıktı satırında «Şablon» seçin, yapı ve kabul ölçütlerini Markdown ile yazın; örneğin başlık {{任务名称}}, altında sonuç ve doğrulama bilgileri. Akış kaydedildikten sonra yeni yürütmeler bu koşulları kullanır.",
+          "Görev ayrıntılarında çıktı adının yanındaki şablon simgesiyle yalnızca geçerli görevi değiştirin, temizleyin veya akış varsayılanına dönün. Çalışırken salt okunurdur; paylaşım sayfası yalnızca görüntüler.",
+          "Oluşan dosyanın şablona uyduğunu kontrol edin. Şablon akış kopyalama ve içe/dışa aktarmada korunur, ancak kendisi üretilmiş çıktı değildir."
+        ],
+        "tips": [
+          "Yalnızca {{任务名称}} değiştirilir; diğer biçim koşulları modele aynen iletilir. Şablon tam uyumu garanti etmez, inceleme gerekir."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Akış ve görevlerin çıktı biçimi şablon düzenleyicisi",
+          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Mesaj taslağını sesle doldurma",
         "steps": [
-          "Ayarlar → Ses girişi bölümünü açıp etkinleştirin; modeli ve çalışma ortamını indirin, dili seçip mikrofonu deneyin. Kurulum bağlı WorkStep sunucusundadır, telefona model gerekmez. Mandarin, Kantonca ve İngilizce desteklenir.",
-          "Bilgisayarda mikrofona tıklayın. Telefonda metin alanını 500 ms basılı tutun; mikrofon simgesi gösterilmez. Bırakın, eklenen metni kontrol edip elle gönderin. En fazla iki dakika; iptal hiçbir şey göndermez."
+          "«Ayarlar → Ses ayarları → Giriş» bölümünde yerel model, bulut sağlayıcısı veya kendi uzak hizmetinizi seçin. Yerelde önce çalışma ortamını ve modeli indirin, sonra «Bu modeli kullan» seçin. Paraformer Mandarin, Kantonca ve İngilizceyi; Zipformer Mandarin ve İngilizceyi destekler. Kaydedip «Mikrofonu test et» ile doğrulayın. Modeller WorkStep ana makinesine kurulur.",
+          "Bilgisayarda mikrofon girişini kullanın. Telefonda taslak boşken sağ alttaki küçük hoparlöre dokunun; metin varsa gönder düğmesi görünür. Uzun basma sistemin metin seçimini korur. Kayıt bitince dökümü kontrol edip elle gönderin. Tek kayıt en fazla iki dakikadır; iptal etmek göndermez."
         ],
         "tips": [
-          "Ses bağlı sunucuda tanınır ve kaydedilmez. HTTPS veya yerel adres üzerinden mikrofona izin verin. Hatalarda site ve sistem izinlerini kontrol edin; eski arka ucu yeniden başlatın. Tanınan metni açıkça koruyabilirsiniz."
+          "Mikrofon sistem ve site izni gerektirir; tarayıcıda HTTPS veya yerel adres gerekir. Bulut/uzak modda ana makine sesi seçilen hizmete gönderir. HTTP dökümü metni ancak sonunda verir; gerçek zamanlı uyandırmada kullanılamaz. Modeller ayrı silinebilir; önce kullanımda olanı kontrol edin. Ses girişi ve çıkışı ayrı yapılandırılır."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Bağlayıcıları yapılandırma ve kullanma",
         "steps": [
-          "Ayarlar → Bağlayıcılar → Ekle bölümünü açın. Yerel MCP için komut ve argümanları ayrı, uzak MCP için URL, CLI için yürütülebilir dosyayı girin. İzin verilen projeleri seçin.",
+          "«Ayarlar → Bağlayıcılar → Bağlayıcı ekle» veya masaüstündeki fiş kısayolunu açın. Yerel MCP için komut ve bağımsız değişkenleri ayırın; değişkenler tek tek veya JSON olarak düzenlenebilir. Uzak MCP için URL, CLI için çalıştırılabilir dosya girin. Projelerin boş bırakılması tüm projeler demektir.",
           "Test → Bağlantıyı algıla ile araçları bulun. Araç çalıştırmak gerçek çağrı yapar: argümanları denetleyin. Test LLM çağırmaz; ardından kaydedin.",
-          "Sohbette + → Bağlayıcılar ile sonraki mesaj için etkinleştirin. MCP uyumlu motor gerektirir; CLI oturumu ana makine terminalindeki resmî komutla açılır. 401 için desteklenen Bearer belirtecini veya kimlik başlığını ayarlayın. Tarayıcı OAuth henüz yoktur."
+          "Normal proje sohbetinde ve görev yürütme girişinde «＋ → Bağlayıcılar», /连接器 veya /apps ile seçin. Etkinleştirme sonraki mesaja uygulanır; görev koordinasyonu otomatik bağlamaz. MCP motor desteği gerektirir; CLI resmî giriş komutunu kullanır. 401 durumunda Bearer Token veya kimlik doğrulama başlıklarını ayarlayın; tarayıcı OAuth desteklenmez. Yerel keşif kimlik bilgilerini kopyalamaz."
         ],
         "tips": [
           "Örnek: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Bağlayıcıları yapılandırma ve kullanma",
           "caption": "Gerçek ekran görüntüsü bekleniyor: yapılandırma, test ve sohbet seçimi."
+        }
+      },
+      {
+        "title": "Sohbet grupları ve arşiv görüntüleme",
+        "steps": [
+          "Proje kenar çubuğunun sohbet başlığına, listesine veya bir sohbete sağ tıklayıp grup oluşturun. Sohbetleri gruba veya gruplanmamış alana sürükleyin; normal grup menüsü doğrudan yeni sohbet açabilir. Normal ve kanal grupları ayrı yönetilir.",
+          "Grup menüsünden arşivleyin veya silin. Varsayılan silme yalnızca grubu dağıtır. Mesajlar ancak sohbetleri de silme seçilirse silinir; kapsamı kontrol edin. Çalışan veya işlemi başarısız üyeler atlanıp korunur.",
+          "Arşivde başlığa tıklayıp son soru ve cevapları salt okunur açın. Görüntülemek sohbeti geri getirmez ve tüm yürütme ayrıntılarını yüklemez. Devam etmek için açıkça geri yükleyin."
+        ],
+        "tips": [
+          "Arşivleme içeriği korur; sohbet ve mesaj silme daha büyük etki yaratır. «Grubu dağıt» ile «Sohbetleri de sil» seçeneklerini karıştırmayın."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Kenar çubuğu grup menüsü ve arşivin salt okunur önizlemesi",
+          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Var olmayan bir modelin neden olduğu gösteri başarısızlığı",
           "caption": "Hata, seçilen modelin desteklenmediğini söylüyor. Tekrar çalıştırmadan önce adımın model yapılandırmasını onarın; bu görüntüde onarılmamıştır."
+        }
+      },
+      {
+        "title": "İsteğe bağlı karar modelini yapılandırma",
+        "steps": [
+          "«Ayarlar → Modeller ve yetenekler → Karar modelleri» bölümünde yerel yönetim, yerel hizmet veya uzak hizmet seçin. Yerel yönetim ana makine ortamının denetimine bağlıdır; bileşen ve modeli ayrı ayrı elle indirin. Koşullar uygun değilse mevcut hizmet kullanın.",
+          "Hizmet modunda adres ve kimlik doğrulamayı girin. «Model listesini oku» ile arayıp seçin veya elle yazın. Test taslağı denetler, kaydetmez; sonucu kontrol edip «Yapılandırmayı kaydet» seçin.",
+          "Yerel yönetilen modeli dışarıya sunmak gerekiyorsa «Diğer cihazların yerel modeli çağırmasına izin ver» açın. Uzak erişim anahtarını ayarlayın veya yeniden kullanın, kaydedip gösterilen adresi kullanın. Eksik kaynaklar otomatik indirilmez; meşgulse tekrar deneyin."
+        ],
+        "tips": [
+          "Bu isteğe bağlı bir Jev karar arayüzüdür, genel sohbet arayüzü değildir. Görev veya sohbetleri otomatik devralmaz. İndirme ve vekili açma ayrı işlemlerdir.",
+          "Model ana makinenin CPU ve belleğini kullanır. Başarılı test uygulama doğruluğunu kanıtlamaz. Vekil çıkarım belirteci kaynak yönetim yetkisi vermez; anahtarları görüntülere koymayın."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Karar modeli modları, kaynaklar, test, kayıt ve isteğe bağlı vekil",
+          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+        }
+      },
+      {
+        "title": "Ayarlar soru işaretinden kullanım kılavuzunu okuma",
+        "steps": [
+          "Bölüm başlığının yanındaki soru işaretine tıklayarak ilgili bölümü uygulamada okuyun. İçindekiler ve aramayı kullanın. Kılavuz arayüz dilini izler; masaüstünde pencere boyutu değiştirilebilir.",
+          "Yükleme hatasında yeniden deneyin. Tam sayfa için «Tarayıcıda aç» seçin; bölüm ve dil korunur. İlgili yönergesi olmayan ayar bölümlerinde soru işareti görünmez."
+        ],
+        "tips": [
+          "Gömülü kılavuz arka uçta site kaynaklarını gerektirir. Yüklenmezse kurulum sürümü ve kaynakları kontrol edin; ilgisiz bölümle değiştirmeyin."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Ayar başlığındaki soru işareti ve uygulama içi çok dilli kılavuz",
+          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Dijital kişi ve genel bellek",
+    "summary": "İletişim tarzını, ana sohbeti, proaktif düşünmeyi ve kanal karşılamasını yapılandırın. Kaynaklı anıları inceleyin; gerekirse ses ve kişi tanımayı açın.",
+    "sections": [
+      {
+        "title": "Kişilik, sorumluluk ve ana sohbet ayarları",
+        "steps": [
+          "«Ayarlar → Dijital kişi → İlk kurulum» açın, adı girin ve «Kişilik ve sorumluluklar» içinde kişilik, görevler ve kalıcı belleği düzenleyin. Hazır ayarlar veya rol merkezinden içe aktarma kullanın, kullanılabilir motoru ayarlayıp «Tamamla ve aç» seçin.",
+          "Profili kaydettikten sonra kenar çubuğundan «Dijital kişiyle konuş» ile ana sayfaya girin. Klavye düğmesi metin girer; «Sohbeti görüntüle» aynı ana sohbet geçmişini açar. Normal çalışma alanına dönebilirsiniz.",
+          "Kişilik, sorumluluklar ve kalıcı bellek Markdown kullanır; hazır ayarlar yalnızca ilgili bölümü değiştirir. Kayıt hatasında taslak korunur; yönergeye göre tekrar deneyin. Sayfa değiştirmeden veya kapatmadan kaydedilmemiş değişiklikleri çözün."
+        ],
+        "tips": [
+          "Kalıcı bellek elle yazılan anlaşmalardır, geçmiş bellek deposu değildir. Dil değişimi kayıtlı metni çevirmez. Dijital kişi iletişim ve takibi yürütür; gerçek iş hedef projenin yürütme oturumlarına verilir."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Dijital kişi kurulumu, kişilik belgeleri ve ana sohbet",
+          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+        }
+      },
+      {
+        "title": "Bellekte arama ve kaynak doğrulama",
+        "steps": [
+          "«Dijital kişi → Bellek» içinde içerik, varlık veya proje adı arayın; tercih, deneyim, gerçek veya olayları filtreleyin ve zihin haritasıyla zaman görünümü arasında geçin.",
+          "Bilgi ayrıntıları için kaydı, ardından asıl mesajları sayfalayarak okumak için kaynağı açın. Kuşkuda aslıyla karşılaştırın; özet kullanıcının birebir sözü veya görevin tamamlandığının kanıtı değildir.",
+          "Etkileşim ancak tam asistan yanıtından sonra kaydedilir. Normal sohbet ve görevler gerektiğinde bellek araçlarıyla arar; tüm geçmiş her isteğe doldurulmaz ve eski projelerin tamamı otomatik eklenmez."
+        ],
+        "tips": [
+          "Birleşik bellek proje ve sohbetler arasında arama yapar; kimlik ve proje izinleri korunur. Kategori sayıları, tüm depo istatistikleri ve mevcut sonuç sayıları farklıdır.",
+          "Kalıcı anlaşmalar, projenin MEMORY.md dosyası ve geçmiş bilgi deposunun amaçları farklıdır. İşlenmemiş mesajlar çıkarılmış bilgi değildir; arayüzde henüz unutma düğmesi yoktur."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Genel bellek araması, kategoriler ve sayfalı asıl kaynaklar",
+          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+        }
+      },
+      {
+        "title": "Proaktif düşünme ve çalışma kayıtları",
+        "steps": [
+          "«Dijital kişi → Proaktif düşünme» içinde otomatik anahtarı, düşünme aralığını, proaktif iletişimi, en kısa iletişim aralığını ve rahatsız etmeme ayarını kaydedin. Parti başına mesaj sayısı bellek ayarlarındadır: varsayılan 100, aralık 1–1000.",
+          "Anında kontrol için «Şimdi düşün» seçin. «Çalışma kayıtları» içinde görevlendirme bildirimleri ve düşünmeleri ayrı görün; yenileyin, sayfalayın, özet veya hatayı açın. Görevlendirme gerçek yürütme sohbetini açabilir.",
+          "Teslim hatasında bildirimi tekrar deneyin. Düşünmenin bitmesini ve mesajın teslimini ayrı doğrulayın. Otomatik düşünmeyi kapatmak zamanlı kontrolleri duraklatır; normal sohbet ve elle düşünme sürer."
+        ],
+        "tips": [
+          "Varsayılan aralık 5 dakikadır. Proaktif iletişim izni her tur mesaj demek değildir; bekleyen olay yoksa sessiz bitebilir. Model çağrıları ücretli olabilir; özet tam düşünce zinciri değildir."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Proaktif düşünme ayarları ve ayrı sayfalı çalışma kayıtları",
+          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+        }
+      },
+      {
+        "title": "Karşılama ve bildirim için kanal bağlama",
+        "steps": [
+          "Önce «Ayarlar → Kanal botları» içinde bot yapılandırıp mesaj göndererek hedefi belirleyin. Sonra «Dijital kişi → Kanal botları» içinde bağ ekleyip bot ve grup veya kişiyi seçin.",
+          "Gerektiğinde «Proaktif bildirim al» açın. Yalnızca gelen mesajları karşılamak proaktif gönderime otomatik izin vermez. Onaydan sonra hedefi kontrol edin; mevcut görev grupları görev bağını izlemeye devam eder.",
+          "«Test gönder» öncesi hedefi kontrol edip onaylayın. Gerekmeyen bağı kaldırın. Başarı platformun kabulünü belirtir, kişinin okuduğunu değil."
+        ],
+        "tips": [
+          "Test gerçekten mesaj gönderir. Demo hedefleri kullanın; yanlış tahmin edilmiş kişiyi yetkili alıcı saymayın."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Dijital kişi kanal bağları, proaktif bildirimler ve teslim durumu",
+          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+        }
+      },
+      {
+        "title": "Ses, uyandırma ve mikrofon ayarları",
+        "steps": [
+          "Genel «Ses ayarları → Çıkış» içinde sistem sesi, yerel model, bulut sağlayıcısı veya kendi uzak hizmetinizi seçin. Yerel kaynakları elle indirin; hizmetler için adres ve kimlik doğrulamayı girip dinleyin ve kaydedin. Dijital kişinin ses sayfasında tını, hız ve diğer parametreleri ayarlayın.",
+          "«İşitme» içinde uyandırma sözü ve hassasiyeti ayarlayıp dinlemeyi açıkça başlatın. Kullanılabilir akışlı ses girişi gerekir. Sözü kaydetmek kayıt başlatmaz; sonunda dönen HTTP dökümü gerçek zamanlı uyandıramaz.",
+          "Ana sayfada mikrofon sesli sohbeti başlatır, hoparlör bu sayfanın seslendirmesini yönetir. Ses alımını durdurmak için mikrofonu kapatın; hoparlörü susturmak kapatmaz. Sayfayı gizlemek, yenilemek veya çıkmak dinlemeyi durdurur."
+        ],
+        "tips": [
+          "Mikrofon, kamera ve oynatma için ayrı sistem/site izinleri gerekir. Uzak hizmetler ilgili sesi alır. Telefon ve masaüstünde gerçekten ses çıkması cihazlarda doğrulanmalıdır.",
+          "Yalnızca yeni yanıtlar seslendirilir. Tam sohbet panelini açmak otomatik seslendirmeyi duraklatır; kapatınca eski içerik tamamlanmaz. Ekran kilitliyken veya uygulama kapalıyken dinlemenin süreceğini varsaymayın."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Ses çıkış modları, örnek dinleme ve açık dinleme denetimi",
+          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+        }
+      },
+      {
+        "title": "Tanıdık kaydı ve kamerayla tanıma",
+        "steps": [
+          "«Dijital kişi → Görme → Yüz tanıma» içinde modeli ayarlayın. Ardından «Tanıdık yönetimi → Yüz kaydet» açın, ad ve ilişkiyi girin, kişinin onayını aldığınızı doğrulayın.",
+          "Kamerayı açıp tek kişilik üç net örnek alın: önden, hafif soldan ve sağdan. Kontrol edip kaydedin. Tanıma testinde adı kontrol edin; örnek ekleyebilir, devre dışı bırakabilir veya silebilirsiniz.",
+          "Gerektiğinde ad gösterme ve mesajla kişi/ilişki eklemeyi seçin; sonra görüntüyü açıkça gönderin. Hata varsa kimliği tahmin etmek yerine modeli, kamera iznini ve görüntüyü kontrol edin."
+        ],
+        "tips": [
+          "Çekilen fotoğraflar uzun süre saklanmaz, ancak kişi özellikleri hâlâ hassas veridir. Kadrajda bulunmak konuşanı belirlemez; yazar, izin veya giriş kimliğini değiştirmez. Modele gönderilen görüntü ve kişi bilgilerinin daima yerelde kaldığı söylenemez."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Tanıdık onayı, üç aşamalı örnek toplama ve kişi tanıma ayarları",
+          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
         }
       }
     ]

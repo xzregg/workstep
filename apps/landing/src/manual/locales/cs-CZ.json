@@ -753,11 +753,11 @@
           "Otevřete náhled HTML projektu a editor prototypů. Pro úpravy pomocí AI nastavte engine v Nastavení → Asistenti → Asistent prototypů.",
           "Kliknutím na název nad náhledem vyberte HTML ve stejné složce nebo podsložce. Každý HTML má vlastní konverzaci. Přetažením okrajů a dělicích čar změňte velikost.",
           "Přejetím zvýrazníte prvek, kliknutím jej vyberete a pravým tlačítkem otevřete komentář. Například: „Změň tento knoflík na zelený, sousední ponech beze změny.“ Odešlete do chatu.",
-          "Ve vlastnostech změňte text, barvu nebo width (například 180px) a opusťte pole pro uložení. Lze také dvojkliknout na prostý text nebo táhnout za úchyty velikosti. Před potvrzením smazání vyberte přesný prvek.",
+          "U statických prvků lze v panelu vlastností upravit text, barvu nebo width, například 180px; ztráta fokusu uloží. Přesouvejte pouze úchytem rámečku výběru; Alt vypne přichytávání, Esc přesun zruší. Před smazáním ověřte uzel. Ctrl+Z／⌘Z nebo horní „Zpět“ vrátí uložené operace.",
           "V historii změn zkontrolujte rozdíly, vraťte změny nebo historii vyčistěte. Po přerušení ověřte zachovanou kopii a obnovte ukládání nebo ji zahoďte. Konfliktní originály se nepřepisují."
         ],
         "tips": [
-          "Přímé úpravy podporují statické HTML. Režim výběru pozastaví skripty, režim prohlížení spustí interakce. Publikují se jen změny existujících HTML/CSS/JS; přidávání a mazání celých souborů není podporováno."
+          "Přímá úprava je pro statické HTML a nyní publikuje změny existujících HTML/CSS/JS, nepodporuje přidání či odstranění celých souborů. Dynamické stránky používají kontrolu pouze pro čtení a komentáře v další části. Staré snímky neukazují nový přesouvací úchyt ani dynamickou kontrolu."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Editor paměti projektu obsahující demonstrační konvence",
           "caption": "Upravit a uložit konvence v .workstep/MEMORY.md. Nezobrazuje se žádné potvrzení archivní lekce."
         }
+      },
+      {
+        "title": "Kontrola dynamických prototypů HTML／React",
+        "steps": [
+          "V náhledu HTML otevřete „Upravit prototyp“. Dynamické stránky zachovávají vykreslování skripty. Vyberte prvek nebo přidejte komentář pravým tlačítkem, popište změnu a klikněte na „Odeslat do chatu“; asistent změní generující logiku.",
+          "Vlastnosti dynamických uzlů jsou jen ke čtení, bez úchytů. Nelze přímo měnit velikost nebo mazat jako ve statickém HTML. Obsah Canvas lze zaměřit pouze na plátno; vnořené stránky dynamického rodiče otevřete samostatně z adresáře.",
+          "V režimu prohlížení lze interními odkazy přepnout stránku a pak vybírat ke kontrole. Statické podřízené rámce lze upravit přímo na místě. Před přepnutím odešlete či vymažte neodeslané komentáře a počkejte na uložení. Historie nabízí rozdíly jednotlivých souborů vedle sebe nebo sjednoceně."
+        ],
+        "tips": [
+          "Odeslání komentáře volá nastaveného asistenta prototypů; výběr a ruční úpravy vlastností model nevolají. Ověřte zapsané výsledky a při konfliktu verzí nejprve znovu načtěte."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Vlastnosti jen ke čtení, komentáře prvků a přepínání souborů dynamického prototypu",
+          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+        }
+      },
+      {
+        "title": "Vyplnění šablony výstupního formátu",
+        "steps": [
+          "Na řádku výstupu kroku pracovního postupu klikněte na „Šablona“ a v Markdown popište strukturu a kritéria přijetí. Například použijte {{任务名称}} v nadpisu a níže závěry a výsledky ověření. Po uložení postupu nové běhy použijí tyto požadavky.",
+          "V podrobnostech úkolu klikněte na ikonu šablony u výstupu a upravte pouze tento úkol, vymažte šablonu nebo obnovte výchozí z postupu. Během běhu je jen ke čtení, sdílená stránka umožňuje pouze zobrazení.",
+          "Po dokončení ověřte soubor proti šabloně. Šablona se zachová při kopírování, importu a exportu postupu, ale sama není již vytvořeným výstupem."
+        ],
+        "tips": [
+          "Nahrazuje se pouze {{任务名称}}; ostatní formátovací požadavky se předají modelu beze změny. Šablona nezaručuje přesné dodržení, proto je stále nutná kontrola."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Editor šablon formátu výstupů postupů a úkolů",
+          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Vyplnění konceptu zprávy hlasem",
         "steps": [
-          "Otevřete Nastavení → Hlasový vstup, zapněte jej, stáhněte model a prostředí, vyberte jazyk a otestujte mikrofon. Instalace probíhá na připojeném hostiteli WorkStep, ne v telefonu. Podporována je mandarínština, kantonština a angličtina.",
-          "Na počítači klikněte na mikrofon. V telefonu podržte textové pole 500 ms; ikona mikrofonu se nezobrazuje. Pusťte, ověřte vložený text a odešlete ručně. Nejvýše dvě minuty; zrušení nic neodesílá."
+          "Otevřete „Nastavení → Nastavení hlasu → Vstup“ a vyberte místní model, cloudového poskytovatele nebo vlastní vzdálenou službu. Místně nejprve stáhněte běhové prostředí a model a klikněte na „Použít tento model“. Paraformer podporuje mandarínštinu, kantonštinu a angličtinu, Zipformer mandarínštinu a angličtinu. Uložte a ověřte přes „Otestovat mikrofon“. Model se instaluje na hostitele WorkStep.",
+          "Na počítači použijte vstup mikrofonu. Na telefonu při prázdném konceptu klepněte na malý reproduktor vpravo dole pro nahrávání; s textem se zobrazí Odeslat. Dlouhý stisk stále umožňuje systémový výběr textu. Po nahrávání zkontrolujte přepis a odešlete ručně. Nejvýše dvě minuty na nahrávku; zrušení nic neposílá."
         ],
         "tips": [
-          "Zvuk se rozpoznává na připojeném hostiteli a neukládá se. Povolte mikrofon přes HTTPS nebo místní adresu. Při chybě zkontrolujte oprávnění webu a systému a restartujte starý backend. Rozpoznaný text lze výslovně zachovat."
+          "Mikrofon vyžaduje oprávnění systému i webu; prohlížeč potřebuje HTTPS nebo místní adresu. Cloudový či vzdálený režim posílá zvuk přes hostitele vybrané službě. HTTP vrací text až po dokončení a nelze jej použít k probuzení v reálném čase. Modely lze mazat jednotlivě; nejprve ověřte používaný. Hlasový výstup a vstup se nastavují odděleně."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Nastavení a použití konektorů",
         "steps": [
-          "Otevřete Nastavení → Konektory → Přidat. Pro místní MCP zadejte zvlášť příkaz a argumenty, pro vzdálené MCP URL, pro CLI spustitelný soubor. Vyberte povolené projekty.",
+          "Otevřete „Nastavení → Konektory → Přidat konektor“ nebo desktopovou zkratku se zástrčkou. Pro místní MCP vyplňte příkaz a argumenty zvlášť; argumenty lze upravit jednotlivě nebo jako JSON. Vzdálené MCP potřebuje URL, CLI spustitelný soubor. Prázdný seznam projektů znamená všechny projekty.",
           "V Test → Zjistit připojení načtěte nástroje. Jejich spuštění provádí skutečné volání: zkontrolujte argumenty. Test nevolá LLM; potom nastavení uložte.",
-          "V konverzaci zapněte + → Konektory pro další zprávu. MCP vyžaduje kompatibilní engine; CLI se přihlašuje oficiálním příkazem v terminálu hostitele. Při 401 nastavte podporovaný Bearer token nebo ověřovací hlavičku. OAuth v prohlížeči není dostupný."
+          "V běžném projektovém chatu a vstupu provádění úkolu vybírejte přes „＋ → Konektory“, /连接器 nebo /apps. Po zapnutí platí pro další zprávu; koordinace úkolu je nepřipojuje automaticky. MCP vyžaduje podporu enginu, CLI oficiální přihlašovací příkaz. Při 401 nastavte Bearer Token nebo autentizační hlavičky; webové OAuth zatím není podporováno. Místní detekce nekopíruje přihlašovací údaje."
         ],
         "tips": [
           "Příklad: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Nastavení a použití konektorů",
           "caption": "Skutečný snímek chybí: nastavení, test a výběr v konverzaci."
+        }
+      },
+      {
+        "title": "Seskupení konverzací a prohlížení archivu",
+        "steps": [
+          "Pravým tlačítkem na nadpis, seznam nebo jednotlivou konverzaci v postranním panelu projektu vytvořte skupinu. Přetáhněte relace do skupiny nebo zpět do Nezařazených; nabídka běžné skupiny umí vytvořit konverzaci. Běžné a kanálové skupiny se spravují odděleně.",
+          "Archivujte nebo mažte v nabídce skupiny. Mazání ve výchozím stavu pouze rozpustí skupinu; zprávy se smažou jen při zaškrtnutí současného smazání konverzací. Ověřte rozsah. Běžící členové nebo neúspěšné operace se přeskočí a zachovají.",
+          "Otevřete archiv a klikněte na nadpis pro rozbalení poslední otázky a odpovědi jen ke čtení. Prohlížení neobnoví relaci ani nenačte všechny detaily provádění. Chcete-li pokračovat, výslovně ji obnovte."
+        ],
+        "tips": [
+          "Archivace zachová obsah; mazání konverzací a zpráv má větší dopad. Nerozaměňujte rozpuštění skupiny se současným smazáním obsahu."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Nabídka skupin v postranním panelu a archivní náhled jen ke čtení",
+          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Selhání demonstrace způsobené neexistujícím modelem",
           "caption": "Chyba říká, že vybraný model není podporován. Před opětovným spuštěním opravte konfiguraci modelu kroku; na tomto obrázku to není opraveno."
+        }
+      },
+      {
+        "title": "Nastavení volitelného rozhodovacího modelu",
+        "steps": [
+          "Otevřete „Nastavení → Modely a schopnosti → Rozhodovací model“. Vyberte místně spravovaný model, místní nebo vzdálenou službu. Spravovaný režim se detekuje podle hostitele; komponenty a modely stahujte ručně zvlášť. Pokud podmínky chybějí, použijte existující službu.",
+          "V režimu služby vyplňte adresu a ověřování. „Načíst seznam modelů“ umožní hledat a vybrat, případně zadejte model ručně. Test zkontroluje koncept bez uložení; ověřte výsledek a klikněte na „Uložit konfiguraci“.",
+          "„Povolit ostatním zařízením volat místní model“ zapněte jen při požadavku na vnější přístup. Nastavte nebo převezměte klíč vzdáleného přístupu, uložte a použijte zobrazenou adresu. Chybějící zdroje se nestahují automaticky; při vytížení zkuste znovu."
+        ],
+        "tips": [
+          "Jde o volitelné rozhodovací rozhraní Jev, nikoli obecný chat. Nepřebírá automaticky úkoly ani konverzace. Stažení a povolení proxy jsou nezávislé operace.",
+          "Model běží na hostiteli a využívá CPU a paměť. Úspěšný test neprokazuje věcnou přesnost. Token proxy pro inferenci nedává právo spravovat zdroje; klíče nezobrazujte na snímcích."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Režimy, zdroje, test, uložení a volitelná proxy rozhodovacího modelu",
+          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+        }
+      },
+      {
+        "title": "Čtení příručky přes otazník v nastavení",
+        "steps": [
+          "Klikněte na otazník vedle nadpisu oddílu a přečtěte si odpovídající kapitolu v aplikaci. Použijte obsah a hledání. Příručka přebírá jazyk rozhraní, na počítači lze měnit velikost čtecího okna.",
+          "Při chybě načítání zkuste znovu. „Otevřít v prohlížeči“ zobrazí celou stránku se zachovanou kapitolou i jazykem. Oddíly bez odpovídajícího návodu nemají otazník."
+        ],
+        "tips": [
+          "Vložená příručka vyžaduje prostředky webu v backendu. Při chybě ověřte verzi instalace a zdroje; nenahrazujte ji nesouvisející kapitolou."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Otazník v nadpisu nastavení a vícejazyčná příručka v aplikaci",
+          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Digitální osoba a globální paměť",
+    "summary": "Nastavte styl komunikace, hlavní konverzaci, proaktivní přemýšlení a obsluhu kanálů. Prohlížejte paměť se zdroji a podle potřeby zapněte zvuk i rozpoznávání osob.",
+    "sections": [
+      {
+        "title": "Nastavení osobnosti, povinností a hlavního chatu",
+        "steps": [
+          "Otevřete „Nastavení → Digitální postava → Úvodní průvodce“, vyplňte jméno a v „Osobnost a povinnosti“ upravte osobnost, povinnosti a trvalou paměť. Použijte předvolby nebo import z centra rolí, nastavte dostupný engine a zvolte „Dokončit a zapnout“.",
+          "Po uložení profilu otevřete z postranního panelu „Mluvit s digitální osobou“. Tlačítko klávesnice umožní psát, „Zobrazit konverzaci“ otevře historii téže hlavní relace. Lze se vrátit do běžného pracovního prostoru.",
+          "Osobnost, povinnosti a trvalá paměť používají Markdown. Předvolby mění jen příslušnou část. Při chybě ukládání koncept zůstává pro opakování. Před přepnutím nebo zavřením vyřešte neuložené změny."
+        ],
+        "tips": [
+          "Trvalá paměť jsou ruční dohody, nikoli historická knihovna. Změna jazyka nepřeloží uložené texty. Digitální osoba komunikuje a sleduje pokrok; skutečnou práci předává vykonávacím relacím cílového projektu."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Průvodce digitální postavou, dokumenty osobnosti a hlavní chat",
+          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+        }
+      },
+      {
+        "title": "Hledání paměti a ověřování zdrojů",
+        "steps": [
+          "V „Digitální postava → Paměť“ hledejte obsah, entity nebo názvy projektů. Filtrujte preference, zkušenosti, fakta či události a přepínejte mezi myšlenkovou mapou a časovým přehledem.",
+          "Vyberte záznam pro podrobnosti znalosti, pak zdroj pro stránkované čtení původních zpráv. Pochybnosti porovnejte s originálem; souhrn není výrok uživatele ani důkaz dokončení úkolu.",
+          "Výměna se registruje až po úplné odpovědi asistenta. Běžné chaty a úkoly používají paměťové nástroje podle potřeby, nevkládají celou historii do každého požadavku ani automaticky nedoplňují minulost všech projektů."
+        ],
+        "tips": [
+          "Sjednocená paměť dovoluje hledání mezi projekty a relacemi v mezích identity a projektových oprávnění. Počty kategorií, globální statistiky a aktuální počet výsledků se liší.",
+          "Trvalé dohody, projektový MEMORY.md a historická znalostní báze mají různé účely. Nezpracované zprávy nejsou vytěženými znalostmi; rozhraní zatím nenabízí tlačítko zapomenutí."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Globální hledání paměti, kategorie a stránkované původní zdroje",
+          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+        }
+      },
+      {
+        "title": "Proaktivní přemýšlení a historie běhů",
+        "steps": [
+          "V „Digitální postava → Proaktivní přemýšlení“ uložte automatický přepínač, interval, proaktivní kontakt, nejkratší interval kontaktu a nerušení. Počet zpráv na dávku je v nastavení paměti: výchozí 100, rozsah 1–1000.",
+          "Pro okamžitou kontrolu klikněte na „Přemýšlet nyní“. V „Historii běhů“ sledujte oznámení delegací a přemýšlení zvlášť, obnovujte, stránkujte a rozbalujte souhrny či chyby. Delegace může otevřít skutečnou vykonávací relaci.",
+          "Při chybě doručení opakujte oznámení; dokončení přemýšlení a doručení zprávy ověřujte zvlášť. Vypnutí automatiky pozastaví plánované kontroly, běžný chat i ruční přemýšlení zůstávají dostupné."
+        ],
+        "tips": [
+          "Výchozí interval je 5 minut. Povolení proaktivního kontaktu neznamená zprávu při každém kole; bez čekajících událostí může skončit tiše. Volání modelu může být placené a souhrn není úplný myšlenkový řetězec."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Nastavení přemýšlení a samostatně stránkovaná historie",
+          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+        }
+      },
+      {
+        "title": "Propojení obsluhy kanálů a oznámení",
+        "steps": [
+          "Nejprve nastavte bota v „Nastavení → Kanáloví boti“ a pošlete mu zprávu pro rozpoznání cíle. V „Digitální postava → Kanáloví boti“ přidejte vazbu a vyberte bota i skupinu nebo kontakt.",
+          "Podle potřeby zapněte „Přijímat proaktivní oznámení“. Pouhý příjem příchozích zpráv automaticky neopravňuje proaktivní odesílání. Po potvrzení vazby zkontrolujte cíl; existující skupiny úkolů si zachovávají vazbu na úkol.",
+          "Před „Testem odeslání“ ověřte a potvrďte cíl. Nepotřebnou vazbu zrušte. Úspěch znamená pouze přijetí platformou, nikoli přečtení adresátem."
+        ],
+        "tips": [
+          "Test skutečně odesílá zprávu. Použijte demonstrační cíl a nepovažujte nejistý kontakt za oprávněného příjemce."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Vazby kanálů digitální osoby, proaktivní oznámení a stav doručení",
+          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+        }
+      },
+      {
+        "title": "Nastavení zvuku, probuzení a mikrofonu",
+        "steps": [
+          "V globálním „Nastavení hlasu → Výstup“ vyberte systémový hlas, místní model, cloud nebo vlastní vzdálenou službu. Místní zdroje stáhněte ručně; cloud/vzdálená služba potřebuje adresu a ověřování, poté poslechněte test a uložte. Zvuková stránka digitální postavy upravuje hlas, rychlost a další parametry.",
+          "V „Sluchu“ nastavte probouzecí slovo a citlivost a výslovně spusťte naslouchání. Je nutný dostupný streamovaný hlasový vstup. Uložení slova není nahrávání; HTTP přepis po dokončení neumožňuje probuzení v reálném čase.",
+          "Na hlavní stránce spustí mikrofon hlasovou konverzaci a reproduktor ovládá čtení této stránky. Snímání ukončíte vypnutím mikrofonu; ztlumení reproduktoru jej nevypíná. Skrytí, obnovení nebo opuštění stránky zastaví naslouchání."
+        ],
+        "tips": [
+          "Mikrofon, kamera i přehrávání vyžadují samostatná systémová či webová oprávnění. Vzdálené služby přijímají příslušný zvuk. Skutečné ozvučení je nutné ověřit na telefonu i počítači.",
+          "Čtou se jen nové odpovědi. Otevření úplného panelu konverzace pozastaví automatické čtení; zavření nedohraje starý obsah. Nepředpokládejte trvalý poslech při zamčené obrazovce či zavřené aplikaci."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Režimy hlasového výstupu, poslech testu a výslovné ovládání naslouchání",
+          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+        }
+      },
+      {
+        "title": "Záznam známých osob a rozpoznávání kamerou",
+        "steps": [
+          "Nastavte model v „Digitální postava → Zrak → Rozpoznávání obličejů“. Pak otevřete „Správa známých → Zaznamenat obličej“, vyplňte jméno a vztah a potvrďte souhlas osoby.",
+          "Otevřete kameru a pořiďte tři jasné vzorky jedné osoby: zepředu a mírně zleva a zprava. Zkontrolujte a uložte; v testu ověřte jméno. Vzorky můžete doplnit, deaktivovat nebo smazat.",
+          "Podle potřeby nastavte zobrazení jména a připojení osob i vztahů ke zprávě a výslovně odešlete obrázek. Při chybě ověřte model, kamerová oprávnění a obraz; nepoužívejte odhadnutou identitu."
+        ],
+        "tips": [
+          "Fotografie ze snímání se neuchovávají dlouhodobě, ale osobní rysy jsou citlivá data. Osoba v záběru není nutně mluvčí a nemění autora, oprávnění ani přihlášení. Nelze tvrdit, že obrázky a údaje poslané modelu vždy zůstávají místně."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Souhlas známé osoby, tři kroky snímání a nastavení rozpoznávání",
+          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
         }
       }
     ]

@@ -5431,6 +5431,7 @@ async def test_pydantic_ai_spawn_separates_context_snapshot_from_cumulative_usag
 
     class FakeModel:
         model_id = "openai:unknown-custom-model"
+        context_window = None
 
     class FakeUsage:
         input_tokens = 280_782

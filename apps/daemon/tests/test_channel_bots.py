@@ -380,6 +380,17 @@ async def test_channel_session_reset_replaces_mapping_and_reuses_new_session(bot
     old = await projects.run_db(project.id, lambda _project: module.create_session(
         project.id, title="渠道对话", engine="codex_sdk", model="gpt-6.1-sol",
     ))
+
+    def seed_channel_message(_project):
+        from models.fields import utc_now
+
+        ChatMessage.create(
+            id="channel-before-reset", session=old["id"], role="user", content="你好",
+            author_id="channel:wecom:user-1", author_device_id="channel:old-bot",
+            created_at=utc_now(),
+        )
+
+    await projects.run_db(project.id, seed_channel_message)
     submitted = []
 
     def submit(project_id, session_id, content, key, **kwargs):

@@ -1,6 +1,8 @@
 """QoderSDKEngine — Qoder via the official ``qoder-agent-sdk`` Python package."""
 
 import asyncio
+from engines.core.base import EngineSkillPolicy
+from engines.core.permissions import EnginePermissionPolicy
 from engines.core.session_pool import exclusive_engine_run
 from engines.core.process_cleanup import close_sdk_client
 import importlib.metadata
@@ -29,7 +31,6 @@ from engines.core.interactions import elicitation_request
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from engines._config.qoder import QODER_PERMISSION_MODES
 from services.config import config_store
-from services.chat_permissions import map_permission_overrides
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         if client is None:
             return
         mapped = (
-            map_permission_overrides(self.ENGINE_ID, mode).get("permission_mode", "")
+            self.permission_config_overrides(mode).get("permission_mode", "")
             if mode
             else str(
                 (await asyncio.to_thread(config_store.get_qoder_sdk_config))
@@ -74,6 +75,19 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         await client.set_permission_mode(mapped)
 
     ENGINE_ID = "qoder_sdk"
+    SKILL_POLICY = EngineSkillPolicy.QODER_PLUGIN
+    PERMISSION_POLICY = EnginePermissionPolicy(
+        overrides={
+            'read-only': {'permission_mode': 'plan'},
+            'workspace-write': {'permission_mode': 'acceptEdits'},
+            'danger-full-access': {'permission_mode': 'bypassPermissions'},
+            'auto': {'permission_mode': 'auto'},
+            'ask': {'permission_mode': 'default'},
+        },
+        plan_overrides={'permission_mode': 'plan'},
+        consent_key='permission_mode',
+        consent_values={'plan': False, 'auto': True, 'bypassPermissions': True, 'deny': False, 'deny_all': False, 'read-only': False},
+    )
     supports_mcp = True
     SYSTEM_PROMPT_MODE = "system"
     RUNTIME_PACKAGE = RuntimePackage('qoder-agent-sdk', 'pypi')

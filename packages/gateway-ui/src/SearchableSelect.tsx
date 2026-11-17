@@ -1,4 +1,4 @@
-import React, { Children, forwardRef, isValidElement, useEffect, useId, useRef, useState, type ReactNode, type SelectHTMLAttributes, type KeyboardEvent } from 'react'
+import React, { Children, forwardRef, isValidElement, useEffect, useLayoutEffect, useId, useRef, useState, type ReactNode, type SelectHTMLAttributes, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 
 type Option = { value: string; label: string; disabled: boolean; group: string; hidden: boolean }
@@ -68,7 +68,8 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, SearchableSelectPr
     }).join(' ') || rest.title || openLabel)
   }, [rest['aria-label'], rest.title, openLabel, children])
   useEffect(() => { if (rest.disabled) setOpen(false) }, [rest.disabled])
-  useEffect(() => {
+  // Commit the measured position before paint so the popup never flashes at its initial coordinates.
+  useLayoutEffect(() => {
     if (!open) return
     const element = panel.current
     if (!element) return
@@ -91,7 +92,7 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, SearchableSelectPr
       if (event.key !== 'Escape') return
       event.preventDefault(); event.stopImmediatePropagation(); closeRef.current()
     }
-    measure(); search.current?.focus()
+    measure(); search.current?.focus({ preventScroll: true })
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
     observer?.observe(element)
     document.addEventListener('pointerdown', outside, true)

@@ -753,11 +753,11 @@
           "Open a project HTML preview and click Prototype editor. For AI changes, configure an engine under Settings → Agent assistants (Agent 助手) → Prototype assistant.",
           "Click the filename above the preview to browse sibling and nested HTML files. Each HTML keeps its own conversation. Drag window edges and dividers to resize.",
           "Hover to highlight, click to select, or right-click to comment. For example: “Make this button green; keep the adjacent button unchanged.” Click Send to chat.",
-          "Edit text, color or width (for example 180px) in Properties; leave the field to save. You can also double-click plain text or drag resize handles. Select the exact element before confirming deletion.",
+          "For static elements, edit text, color or width (for example 180px) in Properties; leaving the field saves it. Move elements only with the selection box's move handle. Alt disables snapping; Esc cancels the move. Check the selected node before deleting it. Use Ctrl+Z/⌘Z or Undo in the toolbar to reverse saved changes.",
           "Use Change history to inspect differences, undo or clear history. After interruption, inspect the retained copy and choose Resume saving or discard. Conflicting original files are not overwritten."
         ],
         "tips": [
-          "Direct editing supports static HTML. Selection mode pauses page scripts; Browse runs interactions. Only changes to existing HTML/CSS/JS files are published; adding or deleting whole files is unsupported."
+          "Direct editing supports static HTML and updates to existing HTML/CSS/JS files, without adding or deleting whole files. For dynamic pages, use the read-only inspection and comments described next. The existing screenshot does not show the new move handle or dynamic inspection."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Project-memory editor containing demonstration conventions",
           "caption": "Edit and save conventions in .workstep/MEMORY.md. No archive-lesson confirmation is shown."
         }
+      },
+      {
+        "title": "Inspect dynamic HTML/React prototypes",
+        "steps": [
+          "Open Prototype editor from an HTML preview. Dynamic pages retain script rendering. Select an element or right-click to comment, describe the change and Send to chat so the prototype assistant can update the rendering logic.",
+          "Dynamic nodes have read-only properties and no move handle; they cannot be resized or deleted directly like static HTML. Canvas content can only be selected as a canvas. Open pages nested inside a dynamic parent separately from the directory to inspect them.",
+          "In browse mode, follow workspace links to switch pages, then select elements to inspect. Static child frames support in-place selection and editing. Send or clear unsent comments and wait for saving before switching pages. Use history to view side-by-side or unified differences for each file."
+        ],
+        "tips": [
+          "Sending comments calls the configured prototype assistant; selection and manual property edits do not call a model. Review the written changes and reload first if a version conflict occurs."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Read-only dynamic prototype properties, element comments and file switching",
+          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+        }
+      },
+      {
+        "title": "Set an artifact output format template",
+        "steps": [
+          "Click Template on a workflow step's artifact row. Use Markdown to describe structure and acceptance requirements; for example, use {{任务名称}} in the heading and list conclusions and validation results below. Save the workflow to apply these requirements to new executions.",
+          "In task details, click the template icon beside the artifact name to override it for that task, clear it or restore the workflow default. It is read-only while running; shared pages only allow viewing.",
+          "Check the generated file against the template. Templates survive workflow copying, import and export, but a template is not a generated artifact."
+        ],
+        "tips": [
+          "Only {{任务名称}} is substituted. Other formatting requirements are passed to the model unchanged. A template does not guarantee exact compliance; review the result."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Artifact format template editors for workflows and tasks",
+          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Fill a message draft by voice",
         "steps": [
-          "Open Settings → Voice input, enable it, download the model and runtime, choose a language and test the microphone. Installation is on the connected WorkStep host; phones need no model download. The model supports Mandarin, Cantonese and English.",
-          "On desktop click the microphone. On a phone hold the text-input area for 500 ms; no microphone icon is shown. Release to finish, review the inserted text and send manually. Recordings last at most two minutes; cancel sends nothing."
+          "Open Settings → Speech settings → Input and choose a local model, cloud provider or self-hosted remote service. For local input, download the runtime and model, then click Use this model. Paraformer supports Mandarin, Cantonese and English; Zipformer supports Mandarin and English. Save and use Test microphone to check recognition. Models are installed on the WorkStep host.",
+          "On desktop, use the microphone control. On mobile, tap the small speaker at the bottom right when the draft is empty; text replaces it with Send, and long press still selects text using system controls. Review the transcription draft and send it manually. A recording lasts at most two minutes; cancelling does not send it."
         ],
         "tips": [
-          "Audio is recognized on the connected host and is not saved. Allow microphone access over HTTPS or a local address. Check site and system permissions on failure; restart an outdated backend. Recognized text can be kept explicitly after an error."
+          "The microphone needs system and site permission; browsers require HTTPS or a local address. Cloud and remote modes send audio through the host to the selected service. HTTP transcription returns text after recording and cannot provide live wake-word detection. Models can be deleted individually; check which one is active first. Configure input and output separately."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Configure and use connectors",
         "steps": [
-          "Open Settings → Connectors → Add. Choose local MCP and enter a command with separate arguments, remote MCP and a URL, or a CLI executable. Select the allowed projects.",
+          "Open Settings → Connectors → Add connector, or use the desktop plug shortcut. For local MCP, enter the command and arguments separately; edit arguments individually or as JSON. Remote MCP needs a URL; CLI needs an executable. Leaving available projects empty means all projects.",
           "Open Test → Detect connection to discover tools. Tool execution is real: check its arguments first. This test does not call an LLM; save the configuration afterwards.",
-          "In a conversation choose + → Connectors and enable the connection for the next message. MCP requires a compatible engine; CLI login uses its official host-terminal command. For 401 configure a supported Bearer token or authentication header; browser OAuth is not available."
+          "In ordinary project chats and task execution composers, choose connectors through + → Connectors, /连接器 or /apps for the next message. Task coordination does not mount them automatically. MCP requires engine support; use the official login command for CLI tools. For 401 errors, configure a Bearer Token or authentication headers; browser OAuth is not supported yet. Local discovery does not copy credentials."
         ],
         "tips": [
           "Example: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Configure and use connectors",
           "caption": "Real screenshot pending: connector configuration, testing and conversation selection."
+        }
+      },
+      {
+        "title": "Group conversations and preview archives",
+        "steps": [
+          "Right-click the conversation heading, list or a conversation in the project sidebar to create a group. Drag sessions into groups or back to ungrouped; ordinary group menus can create a new conversation. Ordinary and channel groups are managed separately.",
+          "Archive or delete through the group menu. By default, deletion only dissolves the group. Messages are deleted only if you also select deletion of its conversations; check the scope first. Running members and failed operations are skipped and retained.",
+          "In the archive list, click a title to expand the last question and answer in read-only mode. Viewing does not restore the session or load full execution details. Restore explicitly when you want to continue chatting."
+        ],
+        "tips": [
+          "Archiving preserves content. Deleting conversations and messages has a greater impact; distinguish dissolving a group from deleting its contents."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Sidebar conversation group menu and read-only archive preview",
+          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Demonstration failure caused by a nonexistent model",
           "caption": "The error says the chosen model is unsupported. Repair the step's model configuration before running again; it is not repaired in this image."
+        }
+      },
+      {
+        "title": "Configure an optional decision model",
+        "steps": [
+          "Open Settings → Models and capabilities → Decision model. Choose locally managed, local service or remote service. Locally managed mode checks the host environment; download components and models separately by hand. Use an existing service if the host does not meet requirements.",
+          "For a service, enter its address and authentication. Read the model list to search and select, or enter a model manually. Test checks your draft without saving; review the result and Save configuration.",
+          "Enable Allow other devices to call the local model only when external access is needed. Set or reuse a remote access key, save and connect using the displayed address. Missing resources are not downloaded automatically; retry when the service is busy."
+        ],
+        "tips": [
+          "This optional Jev decision interface is not a general chat endpoint and does not automatically take over tasks or conversations. Downloads and enabling the proxy are separate actions.",
+          "The model uses the host's CPU and memory. A successful connection test does not establish business accuracy. A proxy inference token grants no resource management permission; keep keys out of screenshots."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Decision model modes, resources, test/save and optional proxy",
+          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+        }
+      },
+      {
+        "title": "Read the manual from settings help",
+        "steps": [
+          "Click the question mark beside a settings section title to read its chapter inside the app. Use the contents and search to find instructions. The manual follows the current interface language; on desktop, resize its reading window.",
+          "Retry if loading fails. Use Open in browser for the full page, retaining the current chapter and language. Settings without matching instructions do not show a question mark."
+        ],
+        "tips": [
+          "The embedded manual requires website resources in the backend installation. If it fails to load, check the installed version and resources instead of opening an unrelated chapter."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Settings question mark and embedded multilingual manual",
+          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Digital person and global memory",
+    "summary": "Configure communication style, the main conversation, proactive thinking and channel reception. Review memories with sources and optionally enable speech and person recognition.",
+    "sections": [
+      {
+        "title": "Set persona, duties and the main conversation",
+        "steps": [
+          "Open Settings → Digital avatar → Initial setup and enter a name. In Persona and duties, edit persona, duties and standing memory using presets or imports from the role center. Configure an available engine, then Finish and enable.",
+          "After saving the profile, choose Talk to digital person in the sidebar to open its home. Use the keyboard button for text. View conversation opens the same persistent main session; you can return to the normal workbench.",
+          "Persona, duties and standing memory use Markdown. Presets update only their corresponding part. A failed save preserves your draft; follow the error and retry. Handle unsaved changes before switching pages or closing."
+        ],
+        "tips": [
+          "Standing memory is a manual agreement, separate from the historical memory library. Changing interface language does not translate saved documents. The digital person communicates and follows up; actual work is delegated to execution sessions in the target project."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Digital avatar setup, persona documents and main conversation",
+          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+        }
+      },
+      {
+        "title": "Search memories and check their sources",
+        "steps": [
+          "In Digital avatar → Memory, search content, entities or project names. Filter preferences, experience, facts or events, and switch between the mind map and timeline review.",
+          "Open a record's knowledge details, then page through its source messages. Check originals when uncertain; a summary is neither the user's exact words nor proof that a task was completed.",
+          "A turn is registered only after the assistant completes its reply. Ordinary chats and tasks retrieve memories through tools when needed; the entire history is not automatically inserted in every request, nor is all old project history automatically backfilled."
+        ],
+        "tips": [
+          "The unified memory library supports searches across projects and sessions, subject to identity and project permissions. Category counts, whole-library statistics and current search result counts are different.",
+          "Standing agreements, project MEMORY.md and historical knowledge have different purposes. Unprocessed messages are not distilled knowledge; the interface currently has no forget button."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Global memory search, categories and paginated original sources",
+          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+        }
+      },
+      {
+        "title": "Proactive thinking and activity records",
+        "steps": [
+          "In Digital avatar → Proactive thinking, save the automatic switch, thinking interval, proactive contact, minimum contact interval and do-not-disturb settings. Memory settings controls messages per processing batch: default 100, range 1–1000.",
+          "Click Think now for an immediate check. In Activity records, separately view delegation notifications and thinking records. Refresh, page through and expand summaries or errors; delegation records can open the actual execution session.",
+          "Retry failed notification delivery. Check thinking completion and delivery separately. Disabling automatic thinking pauses scheduled checks; ordinary chat and manual thinking remain available."
+        ],
+        "tips": [
+          "The default interval is 5 minutes. Allowing proactive contact does not mean every check sends a message; a check with no pending event may finish silently. Model calls may cost money; activity summaries are not full chains of thought."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Proactive thinking settings and separately paginated activity records",
+          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+        }
+      },
+      {
+        "title": "Bind channel reception and notifications",
+        "steps": [
+          "First configure a bot in Settings → Channel bots and message it so the target is recognized. Add a binding in Digital avatar → Channel bots and select the bot and group or contact.",
+          "Enable Receive proactive notifications only as needed. Receiving incoming messages alone does not authorize proactive delivery. Check the reception target after binding; existing task groups retain their task bindings.",
+          "Check and confirm the target before Test send. Unbind when no longer needed. Success means the platform accepted the message, not that the recipient read it."
+        ],
+        "tips": [
+          "A test sends a real message. Use a demo target; never assume a guessed contact is an authorized recipient."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Digital person channel bindings, proactive notifications and delivery status",
+          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+        }
+      },
+      {
+        "title": "Configure speech, wake words and microphone",
+        "steps": [
+          "In global Speech settings → Output, choose system speech, a local model, cloud provider or self-hosted remote service. Download local resources manually, or enter service and authentication details for cloud/remote output. Preview and save. The digital avatar's voice page adjusts voice, rate and related parameters.",
+          "In Hearing, set the wake word and sensitivity, then explicitly start listening. A working streaming speech input is required. Saving a wake word does not start recording; HTTP transcription after recording cannot detect wake words live.",
+          "Click the microphone on the home page to start voice conversation. The speaker controls playback on this page. Turn off the microphone to stop recording; muting the speaker does not do that. Hiding, refreshing or leaving the page stops listening."
+        ],
+        "tips": [
+          "Microphone, camera and playback each require their applicable system/site permissions. Remote services receive relevant audio. Actual playback on phones and desktops still needs device verification.",
+          "Only new replies are spoken. Opening the full conversation panel pauses automatic speech; closing it does not replay old content. Do not assume listening continues after screen lock or app closure."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Speech output options, preview and explicit digital person listening controls",
+          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+        }
+      },
+      {
+        "title": "Enroll familiar people and use camera recognition",
+        "steps": [
+          "Configure the model in Digital avatar → Vision → Face recognition. Then open Familiar people → Enroll face, enter the person's name and relationship, and confirm their consent.",
+          "Enable the camera and capture three clear single-person views: front, slightly left and slightly right. Review and save. Check the name in recognition tests; add, disable or delete samples as needed.",
+          "Optionally show names and include people and relationships with messages, then explicitly send an image. If recognition fails, check the model, camera permission and image; do not substitute a guessed identity."
+        ],
+        "tips": [
+          "Captured photos are not retained long-term, but facial features remain sensitive data. Appearing on camera does not identify the speaker or change authorship, permissions or login identity. Images and person information sent to a model cannot be claimed to always stay on the local machine."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Consent-based enrollment, three-view capture and person recognition settings",
+          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
         }
       }
     ]

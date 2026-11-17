@@ -163,7 +163,7 @@ test('opening and closing transcript preserves the same live camera stream',asyn
 test('presence corner uses the real digital person, affinity and reflection total without duplicate identity',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
  const oldRecords=digitalRuntimeApi.records,oldAffect=digitalAffectApi.read,oldStatus=speechOutputApi.status
- digitalRuntimeApi.records=async()=>({run_total:237,delegation_total:0,checking:false,delegations:[],runs:[{id:'r1',status:'completed',summary:'已整理上下文',created_at:'2026-11-16T01:00:00Z'}]})
+ digitalRuntimeApi.records=async()=>({reflection_count:237,run_total:100,delegation_total:0,checking:false,delegations:[],runs:[{id:'r1',status:'completed',summary:'已整理上下文',created_at:'2026-11-16T01:00:00Z'}]})
  digitalAffectApi.read=async()=>({state:{person_id:'person',name:'真实会话作者',affinity:71,emotion:'calm',valence:0,arousal:0,updated_at:null,history:[]}})
  speechOutputApi.status=async()=>structuredClone(outputStatus)
  try{

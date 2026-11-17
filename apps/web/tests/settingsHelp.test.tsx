@@ -13,6 +13,11 @@ test('every advertised settings help target exists in the website manual', () =>
   for (const [section, chapter] of Object.entries(settingsManualChapters)) assert.ok(ids.has(chapter), section)
 })
 
+test('digital person and decision help point to their newly documented capabilities', () => {
+  assert.equal(settingsManualChapters['digital-person'], 'digital-person')
+  assert.equal(settingsManualChapters.decision, 'settings-troubleshooting')
+})
+
 test('settings help opens the corresponding local chapter, follows language and closes independently', async () => {
   const { window } = installDomEnvironment()
   const host = document.body.appendChild(document.createElement('div'))
@@ -42,12 +47,15 @@ test('settings help opens the corresponding local chapter, follows language and 
   }
 })
 
-test('a settings section without matching instructions does not advertise an unrelated chapter', async () => {
+test('decision settings now opens its documented manual chapter', async () => {
   const { window } = installDomEnvironment()
   const host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
   try {
     await act(async () => root.render(<I18nProvider><SettingsHelpButton section="decision" /></I18nProvider>))
-    assert.equal(host.querySelector('button'), null)
+    const button = host.querySelector<HTMLButtonElement>('button')!
+    assert.ok(button)
+    await act(async () => button.click())
+    assert.match(document.querySelector<HTMLIFrameElement>('.manual-help-frame')!.getAttribute('src')!, /#docs\/settings-troubleshooting$/)
   } finally {
     await act(async () => root.unmount())
     window.happyDOM.abort()

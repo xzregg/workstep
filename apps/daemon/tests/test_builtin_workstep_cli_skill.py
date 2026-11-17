@@ -152,3 +152,37 @@ def test_project_local_workstep_cli_skill_wins_over_new_builtin(tmp_path):
     assert len(enabled) == 1
     assert enabled[0].source == "project"
     assert local.joinpath("SKILL.md").read_text(encoding="utf-8").endswith("local\n")
+
+
+def test_custom_engine_guides_have_valid_links_commands_and_runtime_mirrors(tmp_path):
+    import shlex
+    from cli import build_parser
+
+    root = BUILTIN_SKILLS / "workstep-cli"
+    project = tmp_path / "project"
+    SkillCenter(source_roots={"builtin": BUILTIN_SKILLS}).runtime_selection(project)
+    mirrored = project / ".workstep" / "skills" / "workstep-cli"
+    documents = ["custom-engine.md", "custom-engine-contract.md", "custom-engine-testing.md"]
+    for name in documents:
+        source = root / "references" / name
+        assert source.is_file()
+        text = source.read_text()
+        assert (mirrored / "references" / name).read_text() == text
+        for target in re.findall(r"\]\(([^)]+\.md(?:#[^)]+)?)\)", text):
+            if "://" in target:
+                continue
+            filename, _, anchor = target.partition("#")
+            linked = source.parent / filename
+            assert linked.is_file(), target
+            if anchor:
+                headings = re.findall(r"^#{1,6} (.+)$", linked.read_text(), re.M)
+                anchors = {re.sub(r"[^\w -]", "", h.lower()).replace(" ", "-") for h in headings}
+                assert anchor in anchors, target
+
+    flow = (root / "references" / "custom-engine.md").read_text()
+    commands = re.findall(r"^workstep engine .+$", flow, re.M)
+    actions = set()
+    for command in commands:
+        args = build_parser().parse_args(shlex.split(command)[1:])
+        actions.add(args.subcommand)
+    assert {"inspect", "install", "configure", "validate", "register"} <= actions

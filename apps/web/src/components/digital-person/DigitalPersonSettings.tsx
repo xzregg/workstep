@@ -193,8 +193,9 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
       <label>{t('digitalPerson.contactInterval')}<Input name="proactive_contact_interval_minutes" type="number" min={1} max={1440} step={1}
         value={Number.isNaN(contactInterval) ? '' : contactInterval} disabled={blocked} onChange={event=>update('proactive_contact_interval_minutes',event.target.valueAsNumber)}/></label>
       <div className="digital-person-context-setting"><label>{t('digitalPerson.memoryBatchSize')}<Input name="memory_batch_size" type="number" min={1} max={1000} step={1} value={Number.isNaN(memoryBatchSize) ? '' : memoryBatchSize} disabled={blocked} onChange={event=>update('memory_batch_size',event.target.valueAsNumber)}/></label><p>{t('digitalPerson.memoryBatchSizeHint')}</p></div>
-      <div className="digital-person-field-pair"><label>{t('digitalPerson.quietStart')}<Input disabled={blocked} type="number" min={0} max={23} value={Number.isNaN(draft.quiet_start) ? '' : draft.quiet_start ?? 22} onChange={e=>update('quiet_start',e.target.valueAsNumber)}/></label>
-      <label>{t('digitalPerson.quietEnd')}<Input disabled={blocked} type="number" min={0} max={23} value={Number.isNaN(draft.quiet_end) ? '' : draft.quiet_end ?? 8} onChange={e=>update('quiet_end',e.target.valueAsNumber)}/></label></div>
+      <div className="digital-person-field-pair">{(['quiet_start', 'quiet_end'] as const).map(key => <label key={key}>{t(key === 'quiet_start' ? 'digitalPerson.quietStart' : 'digitalPerson.quietEnd')}<Select name={key} disabled={blocked} value={draft[key] ?? (key === 'quiet_start' ? 22 : 8)} onChange={event => update(key, Number(event.target.value))}>
+        {Array.from({length: 24}, (_, hour) => <option key={hour} value={hour}>{String(hour).padStart(2, '0')}:00</option>)}
+      </Select></label>)}</div>
       <Button disabled={blocked || dirty} onClick={()=>void checkNow()}>{t('digitalPerson.thinkNow')}</Button>
     </div>}
     {tab === 'channels' && <DigitalPersonChannels workspaceId={workspace?.id} name={saved.name} onDirtyChange={childChanged} onBusyChange={childBusyChanged} />}

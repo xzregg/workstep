@@ -58,6 +58,8 @@
 .engine-settings-status { min-width: 60px; text-align: center; padding: 3px 8px; border-radius: 999px; font-size: calc(11px * var(--font-scale)); font-weight: 600; color: var(--meta); background: var(--surface); }
 .engine-settings-status[data-state="verified"] { color: var(--success); background: color-mix(in oklab, var(--success), transparent 88%); }
 .engine-settings-status[data-state="needs-test"] { color: var(--warn); background: color-mix(in oklab, var(--warn), transparent 88%); }
+.engine-settings-config-actions { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); }
+.engine-settings-config-actions:empty { display: none; }
 .engine-settings-save-button.btn { min-width: 84px; height: 30px; justify-content: center; }
 .engine-settings-card-details[hidden] { display: none; }
 

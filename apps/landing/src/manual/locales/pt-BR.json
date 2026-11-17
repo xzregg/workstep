@@ -753,11 +753,11 @@
           "Abra a prévia HTML do projeto e o editor de protótipos. Para alterações com IA, configure o mecanismo em Configurações → Assistentes → Assistente de protótipos.",
           "Clique no nome acima da prévia para escolher outro HTML da mesma pasta ou de uma subpasta. Cada HTML mantém sua conversa. Arraste bordas e divisórias para ajustar o tamanho.",
           "Passe o cursor para destacar, clique para selecionar ou use o botão direito para comentar. Exemplo: “Deixe este botão verde e mantenha o botão ao lado”. Envie ao chat.",
-          "Edite texto, cor ou width (por exemplo 180px) nas propriedades e saia do campo para salvar. Também pode dar dois cliques em texto simples ou arrastar as alças de tamanho. Selecione o elemento exato antes de confirmar a exclusão.",
+          "Em elementos estáticos, altere texto, cor ou width (por exemplo 180px) nas propriedades; sair do campo salva. Mova somente pela alça de movimento da seleção. Alt desliga o encaixe, Esc cancela. Confira o nó antes de excluir. Ctrl+Z/⌘Z ou «Desfazer» no topo revertem operações salvas.",
           "No histórico, confira diferenças, desfaça alterações ou limpe os registros. Após uma interrupção, revise a cópia preservada e retome o salvamento ou descarte-a. Originais em conflito não são sobrescritos."
         ],
         "tips": [
-          "A edição direta aceita HTML estático. O modo de seleção pausa scripts; a navegação executa as interações. Somente alterações em HTML/CSS/JS existentes são publicadas; adicionar ou excluir arquivos inteiros não é suportado."
+          "Edição direta aplica-se a HTML estático. A publicação aceita alterações em HTML/CSS/JS existentes, não a criação ou exclusão de arquivos inteiros. Para páginas dinâmicas, use a inspeção somente leitura e os comentários da próxima seção. A captura antiga ainda não mostra a nova alça e a inspeção dinâmica."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Editor de memória de projeto contendo convenções de demonstração",
           "caption": "Edite e salve convenções em .workstep/MEMORY.md. Nenhuma confirmação de arquivo de lição é mostrada."
         }
+      },
+      {
+        "title": "Inspecionar protótipos dinâmicos HTML/React",
+        "steps": [
+          "Na prévia HTML, abra «Editar protótipo». Páginas dinâmicas mantêm a renderização por scripts. Selecione um elemento ou abra um comentário com o botão direito, descreva a mudança e escolha «Enviar ao chat». O assistente altera a lógica de geração.",
+          "Propriedades de nós dinâmicos são somente leitura, sem alças; não é possível redimensionar ou excluir diretamente como no HTML estático. Canvas só permite localizar a tela inteira. Abra páginas aninhadas de um pai dinâmico separadamente pelo diretório.",
+          "No modo de navegação, siga links internos da área de trabalho e selecione elementos. Subquadros estáticos podem ser selecionados e editados no lugar. Envie ou limpe comentários pendentes e aguarde o salvamento antes de trocar de página. No histórico, veja diferenças por arquivo lado a lado ou unificadas."
+        ],
+        "tips": [
+          "Enviar comentários aciona o assistente configurado; selecionar e ajustar propriedades manualmente não usa modelo. Confira as alterações gravadas; em conflito de versão, releia primeiro."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Propriedades somente leitura, comentários e troca de arquivos de protótipos dinâmicos",
+          "caption": "Falta captura real do ambiente fixo de demonstração 8777; exemplos de componentes não a substituem."
+        }
+      },
+      {
+        "title": "Definir um modelo de formato para artefatos",
+        "steps": [
+          "Na linha de artefato da etapa, clique em «Modelo» e escreva estrutura e critérios de aceitação em Markdown; por exemplo, título {{任务名称}} seguido de conclusões e verificações. Após salvar o fluxo, novas execuções usam os requisitos.",
+          "Nos detalhes da tarefa, clique no ícone de modelo ao lado do artefato para alterar só a tarefa atual, limpar ou restaurar o padrão do fluxo. Durante execução fica somente leitura; a página compartilhada permite apenas visualizar.",
+          "Confira se o arquivo gerado atende ao modelo. O modelo permanece ao copiar e importar/exportar o fluxo, mas não é um artefato já gerado."
+        ],
+        "tips": [
+          "Só {{任务名称}} é substituído; os demais requisitos seguem intactos para o modelo. O formato não garante obediência estrita; a revisão continua necessária."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Editor de modelo de formato dos artefatos de fluxos e tarefas",
+          "caption": "Falta captura real do ambiente fixo de demonstração 8777; exemplos de componentes não a substituem."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Preencher um rascunho por voz",
         "steps": [
-          "Abra Configurações → Entrada de voz, ative, baixe o modelo e o ambiente, escolha o idioma e teste o microfone. A instalação ocorre no host WorkStep conectado; o celular não precisa do modelo. Suporta mandarim, cantonês e inglês.",
-          "No computador clique no microfone. No celular segure a área de texto por 500 ms; não há ícone de microfone. Solte, confira o texto inserido e envie manualmente. Máximo dois minutos; cancelar não envia nada."
+          "Abra «Configurações → Configurações de voz → Entrada» e escolha modelo local, fornecedor em nuvem ou serviço remoto próprio. No modo local, baixe runtime e modelo e clique em «Usar este modelo». Paraformer suporta mandarim, cantonês e inglês; Zipformer mandarim e inglês. Salve e confira com «Testar microfone». Os modelos ficam no host WorkStep.",
+          "No computador, use o microfone; no celular, com rascunho vazio, toque no pequeno alto-falante no canto inferior direito. Com texto, aparece enviar; pressionar prolongadamente mantém a seleção de texto do sistema. Ao terminar, confira a transcrição e envie manualmente. Limite de dois minutos por gravação; cancelar não envia."
         ],
         "tips": [
-          "O áudio é reconhecido no host conectado e não é salvo. Permita o microfone por HTTPS ou endereço local. Se falhar, confira permissões do site e do sistema e reinicie um backend antigo. É possível manter explicitamente o texto reconhecido."
+          "O microfone exige permissões do sistema e do site; o navegador exige HTTPS ou endereço local. No modo nuvem/remoto, o host envia áudio ao serviço escolhido. Transcrição HTTP só retorna texto ao final e não permite ativação em tempo real. Exclua modelos individualmente após conferir o atual. Entrada e saída de voz têm configurações separadas."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Configurar e usar conectores",
         "steps": [
-          "Abra Configurações → Conectores → Adicionar. Para MCP local, informe comando e argumentos separados; para MCP remoto, uma URL; para CLI, o executável. Selecione os projetos permitidos.",
+          "Abra «Configurações → Conectores → Adicionar conector» ou o atalho de plugue no computador. Em MCP local, separe comando e argumentos, editáveis por item ou JSON; em MCP remoto, informe URL; em CLI, o executável. Projetos vazios significam todos os projetos.",
           "Em Teste → Detectar conexão, descubra ferramentas. A execução faz chamadas reais: confira os argumentos. O teste não chama um LLM; salve depois.",
-          "Na conversa, ative + → Conectores para a próxima mensagem. MCP exige um mecanismo compatível; entre no CLI com o comando oficial no terminal do host. Para 401, configure o token Bearer ou cabeçalho aceito. OAuth no navegador não está disponível."
+          "Na conversa comum do projeto e na entrada de execução de tarefas, selecione por «＋ → Conectores», /连接器 ou /apps. Ativar vale para a próxima mensagem; a coordenação de tarefas não os carrega automaticamente. MCP exige suporte do mecanismo; CLI usa o login oficial. Para 401, configure Bearer Token ou cabeçalhos de autenticação; OAuth pelo navegador não é suportado. A descoberta local não copia credenciais."
         ],
         "tips": [
           "Exemplo: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Configurar e usar conectores",
           "caption": "Captura real pendente: configuração, teste e seleção na conversa."
+        }
+      },
+      {
+        "title": "Grupos de conversas e consulta ao arquivo",
+        "steps": [
+          "Clique com o botão direito no título das conversas, na lista ou em uma conversa da barra lateral para criar um grupo. Arraste conversas para dentro ou de volta às não agrupadas; o menu de grupos comuns cria conversas diretamente. Grupos comuns e de canais são separados.",
+          "Arquive ou exclua pelo menu do grupo. Excluir, por padrão, apenas dissolve o grupo. Só marcar a exclusão conjunta das conversas apaga suas mensagens; confira o alcance. Membros em execução ou cuja operação falhe são ignorados e mantidos.",
+          "No arquivo, clique no título para expandir somente leitura a última rodada de pergunta e respostas. Isso não restaura a conversa nem carrega todos os detalhes de execução. Para continuar conversando, restaure explicitamente."
+        ],
+        "tips": [
+          "Arquivar preserva conteúdo; excluir conversas e mensagens tem maior impacto. Não confunda «Dissolver grupo» com «Excluir também conversas»."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Menu de grupos na barra lateral e prévia somente leitura de conversas arquivadas",
+          "caption": "Falta captura real do ambiente fixo de demonstração 8777; exemplos de componentes não a substituem."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Falha na demonstração causada por um modelo inexistente",
           "caption": "O erro diz que o modelo escolhido não é compatível. Repare a configuração do modelo da etapa antes de executar novamente; não é reparado nesta imagem."
+        }
+      },
+      {
+        "title": "Configurar modelos de decisão opcionais",
+        "steps": [
+          "Abra «Configurações → Modelos e capacidades → Modelos de decisão» e escolha gerenciado localmente, serviço local ou remoto. O modo gerenciado depende das condições do host; componentes e modelo são baixados manualmente e separadamente. Se não houver suporte, use um serviço existente.",
+          "No modo serviço, informe endereço e autenticação. Use «Ler lista de modelos» para pesquisar e escolher, ou digite manualmente. Teste o rascunho sem salvar; confira o resultado e clique em «Salvar configuração».",
+          "Ative «Permitir que outros dispositivos chamem o modelo local» apenas se precisar expor o modelo gerenciado. Defina ou reutilize a chave de acesso remoto, salve e use o endereço mostrado. Recursos ausentes não são baixados automaticamente; tente novamente se estiver ocupado."
+        ],
+        "tips": [
+          "É uma interface de decisão Jev opcional, não um chat genérico, e não assume tarefas ou conversas automaticamente. Download e ativação do proxy são operações separadas.",
+          "O modelo usa CPU e memória do host. Um teste bem-sucedido não comprova precisão no uso real. O token de inferência do proxy não concede administração de recursos; não mostre chaves em capturas."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Modos, recursos, teste, salvamento e proxy opcional do modelo de decisão",
+          "caption": "Falta captura real do ambiente fixo de demonstração 8777; exemplos de componentes não a substituem."
+        }
+      },
+      {
+        "title": "Ler o manual pelo ponto de interrogação nas configurações",
+        "steps": [
+          "Clique no ponto de interrogação ao lado do título da seção para ler o capítulo correspondente no aplicativo. Use sumário e busca. O manual segue o idioma da interface; no computador, a janela é redimensionável.",
+          "Se o carregamento falhar, tente novamente. Para a página completa, clique em «Abrir no navegador», mantendo capítulo e idioma. Seções sem orientação correspondente não exibem interrogação."
+        ],
+        "tips": [
+          "O manual incorporado exige os recursos do site no backend. Se não carregar, confira versão instalada e recursos; não o substitua por capítulos sem relação."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Interrogação no título de configurações e manual multilíngue no aplicativo",
+          "caption": "Falta captura real do ambiente fixo de demonstração 8777; exemplos de componentes não a substituem."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Pessoa digital e memória global",
+    "summary": "Configure estilo de comunicação, conversa principal, reflexão proativa e atendimento em canais. Consulte memórias com fontes e ative voz e reconhecimento de pessoas conforme necessário.",
+    "sections": [
+      {
+        "title": "Configurar personalidade, responsabilidades e conversa principal",
+        "steps": [
+          "Abra «Configurações → Pessoa digital → Guia inicial», preencha o nome e edite personalidade, responsabilidades e memória permanente em «Personalidade e responsabilidades». Use predefinições ou importe da central de papéis, configure um mecanismo disponível e clique em «Concluir e ativar».",
+          "Após salvar o perfil, entre pela opção «Conversar com a pessoa digital» na barra lateral. O botão de teclado permite escrever; «Ver conversa» abre o mesmo histórico principal. É possível voltar à área de trabalho comum.",
+          "Personalidade, responsabilidades e memória permanente usam Markdown; predefinições atualizam só a parte correspondente. Falhas de salvamento preservam o rascunho; tente novamente conforme indicado. Resolva mudanças não salvas antes de trocar de página ou fechar."
+        ],
+        "tips": [
+          "Memória permanente contém acordos manuais, não o banco histórico. Trocar idioma não traduz texto salvo. A pessoa digital comunica e acompanha; o trabalho real é delegado a sessões do projeto de destino."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Guia da pessoa digital, documentos de personalidade e conversa principal",
+          "caption": "Falta captura real do ambiente fixo de demonstração 8777; exemplos de componentes não a substituem."
+        }
+      },
+      {
+        "title": "Pesquisar memória e conferir fontes",
+        "steps": [
+          "Em «Pessoa digital → Memória», pesquise conteúdo, entidade ou projeto; filtre preferências, experiências, fatos ou eventos e alterne entre mapa mental e visão temporal.",
+          "Abra um registro para os detalhes do conhecimento e clique na fonte para ler mensagens originais por páginas. Em caso de dúvida compare o original; resumos não são falas literais nem comprovantes de tarefa concluída.",
+          "A interação só é registrada após a resposta completa do assistente. Chats comuns e tarefas usam ferramentas de memória sob demanda, sem inserir todo o histórico em cada pedido nem importar automaticamente todo o passado de projetos antigos."
+        ],
+        "tips": [
+          "A memória unificada pesquisa entre projetos e conversas, respeitando identidade e permissões. Contagens por categoria, estatísticas globais e número de resultados atuais são medidas diferentes.",
+          "Acordos permanentes, MEMORY.md do projeto e conhecimento histórico têm usos distintos. Mensagens não processadas não são conhecimento já extraído; a interface ainda não oferece botão para esquecer."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Busca global de memória, categorias e fontes originais paginadas",
+          "caption": "Falta captura real do ambiente fixo de demonstração 8777; exemplos de componentes não a substituem."
+        }
+      },
+      {
+        "title": "Reflexão proativa e registros de execução",
+        "steps": [
+          "Em «Pessoa digital → Reflexão proativa», salve ativação automática, intervalo de reflexão, contato proativo, intervalo mínimo de contato e não perturbe. O tamanho dos lotes fica nas configurações de memória: padrão 100, faixa 1–1000.",
+          "Clique em «Refletir agora» para verificar imediatamente. Em «Registros de execução», veja notificações de delegação e reflexões separadamente, atualize, pagine e expanda resumos ou erros. Itens delegados podem abrir a sessão real de execução.",
+          "Se a entrega falhar, tente reenviar a notificação. Confira separadamente reflexão concluída e mensagem entregue. Desativar reflexão automática pausa verificações periódicas; chat comum e reflexão manual continuam disponíveis."
+        ],
+        "tips": [
+          "O intervalo padrão é 5 minutos. Permitir contato proativo não significa mensagem a cada rodada; sem eventos pendentes, pode terminar em silêncio. Chamadas de modelo podem gerar custos; o resumo não é a cadeia de pensamento completa."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Configuração de reflexão proativa e registros com paginação independente",
+          "caption": "Falta captura real do ambiente fixo de demonstração 8777; exemplos de componentes não a substituem."
+        }
+      },
+      {
+        "title": "Vincular canais para atendimento e notificações",
+        "steps": [
+          "Configure primeiro um robô em «Configurações → Robôs de canais» e envie-lhe uma mensagem para identificar o destino. Depois adicione um vínculo em «Pessoa digital → Robôs de canais», escolhendo robô e grupo ou contato.",
+          "Ative «Receber notificações proativas» se necessário. Só atender mensagens recebidas não autoriza envios proativos. Após confirmar, confira o destino; grupos já ligados a tarefas continuam seguindo o vínculo da tarefa.",
+          "Antes de «Enviar teste», confira o destino e confirme. Remova vínculos desnecessários. Sucesso significa aceitação pela plataforma, não leitura pelo destinatário."
+        ],
+        "tips": [
+          "O teste envia mensagem de verdade. Use destinos demonstrativos; um contato presumido incorretamente não é um destinatário autorizado."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Vínculos de canais, notificações proativas e estado de entrega da pessoa digital",
+          "caption": "Falta captura real do ambiente fixo de demonstração 8777; exemplos de componentes não a substituem."
+        }
+      },
+      {
+        "title": "Configurar voz, ativação e microfone",
+        "steps": [
+          "Em «Configurações de voz → Saída», escolha voz do sistema, modelo local, fornecedor em nuvem ou serviço remoto próprio. Baixe recursos locais manualmente; para serviços, preencha configuração e autenticação, ouça a amostra e salve. Na página de voz da pessoa digital, ajuste timbre, velocidade e outros parâmetros.",
+          "Em «Audição», configure palavra de ativação e sensibilidade e inicie a escuta explicitamente. É necessária entrada de voz em streaming disponível. Salvar a palavra não inicia gravação; transcrição HTTP após o término não ativa em tempo real.",
+          "Na página principal, o microfone inicia a conversa por voz e o alto-falante controla a leitura nesta página. Para parar a captura, desligue o microfone; silenciar o alto-falante não o desliga. Ocultar, recarregar ou sair da página interrompe a escuta."
+        ],
+        "tips": [
+          "Microfone, câmera e reprodução precisam de permissões separadas do sistema/site. Serviços remotos recebem o áudio pertinente. A emissão real de som no celular e computador ainda precisa ser verificada nos dispositivos.",
+          "Só novas respostas são lidas. Abrir o painel completo da conversa pausa a leitura automática; fechá-lo não reproduz conteúdos antigos. Não suponha escuta contínua com tela bloqueada ou aplicativo fechado."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Modos de saída de voz, amostra e controle explícito da escuta",
+          "caption": "Falta captura real do ambiente fixo de demonstração 8777; exemplos de componentes não a substituem."
+        }
+      },
+      {
+        "title": "Cadastrar conhecidos e reconhecer pela câmera",
+        "steps": [
+          "Em «Pessoa digital → Visão → Reconhecimento facial», configure o modelo; depois abra «Gerenciar conhecidos → Cadastrar rosto», informe nome e relação e confirme o consentimento da pessoa.",
+          "Abra a câmera e capture três amostras nítidas de uma única pessoa: frente, levemente à esquerda e à direita. Confira e salve. Verifique o nome no teste de reconhecimento; amostras podem ser acrescentadas, desativadas ou excluídas.",
+          "Escolha se deseja mostrar o nome e anexar pessoa e relação às mensagens; depois envie a imagem explicitamente. Se falhar, confira modelo, permissão da câmera e enquadramento, sem substituir a identidade por um palpite."
+        ],
+        "tips": [
+          "As fotos não são guardadas por longo prazo, mas características pessoais continuam sendo dados sensíveis. Aparecer na imagem não identifica quem fala nem altera autor, permissões ou login. Imagens e informações enviadas ao modelo não podem ser descritas como sempre locais."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Cadastro com consentimento, captura em três passos e reconhecimento de pessoas",
+          "caption": "Falta captura real do ambiente fixo de demonstração 8777; exemplos de componentes não a substituem."
         }
       }
     ]

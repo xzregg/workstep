@@ -32,7 +32,8 @@ async def test_heartbeat_reads_existing_conversation_without_main_pointer(runtim
     assert [m['id'] for m in context['conversation']] == ['request', 'reply']
 
 
-async def test_heartbeat_can_notify_conversation_source_once(runtime, monkeypatch):
+@pytest.mark.parametrize('reference_kind', ['message', 'memory'])
+async def test_heartbeat_can_notify_conversation_source_once(runtime, monkeypatch, reference_kind):
     runtime, project, _ = runtime
     from models.chat_session import ChatMessage
     from models.fields import utc_now
@@ -41,7 +42,8 @@ async def test_heartbeat_can_notify_conversation_source_once(runtime, monkeypatc
     async def decide(context):
         if context.get('_load'): await context['_load']()
         assert context['conversation'][0]['id'] == 'watch'
-        return {'decision': 'notify', 'summary': '部署已完成，健康检查通过', 'source_ids': ['watch']}
+        reference = context['conversation'][0]['memory_ids'][0] if reference_kind == 'memory' else 'watch'
+        return {'decision': 'notify', 'summary': '部署已完成，健康检查通过', 'source_ids': [reference]}
     monkeypatch.setattr(runtime, '_decide', decide)
     monkeypatch.setattr('services.digital_person_channels.get_bindings', lambda: [])
     first = await runtime.check()
@@ -50,6 +52,7 @@ async def test_heartbeat_can_notify_conversation_source_once(runtime, monkeypatc
     second = await runtime.check()
     assert second['sources']['no_work'] is True, second
     assert second['deliveries'] == []
+    assert (await runtime.activity_records())['reflection_count'] == 1
 
 
 async def test_heartbeat_waits_for_foreground_turn(runtime, monkeypatch):
@@ -762,6 +765,7 @@ async def test_activity_records_api_paginates_previews_and_loads_detail_on_deman
         assert len(first['runs']) == 5
         assert first['run_total'] == 12
         assert len(first['delegations']) == 5 and first['delegation_total'] == 12
+        assert first['delegations'][0]['created_at'] == '2026-11-14T01:11:00'
         assert 'sources' not in first['runs'][0] and 'deliveries' not in first['runs'][0]
         assert len(first['runs'][0]['summary']) <= 120
         assert 'answers' not in first
@@ -823,6 +827,8 @@ async def test_activity_separates_thoughts_from_delegation_notifications(runtime
     await runtime.mutate(seed)
     first=await runtime.activity_records()
     second=await runtime.activity_records(run_offset=5)
+    assert first['reflection_count']==8
+    assert first['reflection_count_lower_bound'] is False
     assert first['run_total']==8
     assert len(first['runs'])==5 and len(second['runs'])==3
     assert all(row['id'].startswith('thought-') for row in first['runs']+second['runs'])
@@ -929,3 +935,76 @@ async def test_failed_scope_switch_never_resumes_previous_contacts_engine(runtim
     await current._decide({'companion':{'scope':'channel:b'},'retry':'retry-contact'})
     assert calls[-1][1] is None
     assert 'private-first-contact' not in calls[-1][0]
+
+
+async def test_activity_outcomes_report_actual_delivery_and_affinity_changes(runtime):
+    runtime, _, _ = runtime
+    await runtime.mutate(lambda state: state.update(runs=[
+        {'id':'outcome','status':'delivery_failed','summary':'复盘结束','created_at':'2026-11-17',
+         'deliveries':[{'status':'delivered'},{'status':'failed'}],
+         'relationship_updates':[{'affinity_delta':2},{'affinity_delta':-1}]},
+        {'id':'silent','status':'silent','deliveries':[],'relationship_updates':[]},
+        {'id':'running','status':'running','deliveries':[],'relationship_updates':[]},
+        {'id':'old','status':'silent'},
+    ]))
+    records = await runtime.activity_records()
+    items = {row['id']:row for row in records['runs']}
+    expected = {'sent':1,'failed':1,'affinity_increased':2,'affinity_decreased':1,'message_preview':'复盘结束'}
+    assert items['outcome']['outcome'] == expected
+    assert (await runtime.run_detail('outcome'))['outcome'] == expected
+    assert items['silent']['outcome'] == {'sent':0,'failed':0,'affinity_increased':0,'affinity_decreased':0}
+    assert items['running']['outcome'] is None
+    assert items['old']['outcome'] is None
+
+
+async def test_reflection_counter_survives_record_trimming_and_runtime_reload(runtime, monkeypatch):
+    runtime, _, _ = runtime
+    await seed_pending(runtime)
+    await runtime.mutate(lambda state: state.update(runs=[{'id':f'old-{i}','status':'silent','trigger':'interval'} for i in range(100)]))
+    async def fail(_):
+        raise ValueError('测试失败记录也属于一次实际运行')
+    monkeypatch.setattr(runtime, '_decide', fail)
+    for expected in (101,102):
+        await runtime.check()
+        records = await runtime.activity_records()
+        assert records['run_total'] == 100
+        assert records['reflection_count'] == expected
+        assert records['reflection_count_lower_bound'] is True
+    from services.digital_person_runtime import DigitalPersonRuntime
+    restored = DigitalPersonRuntime(runtime.projects, runtime.chats, runtime.bots, runtime.bus)
+    assert (await restored.activity_records())['reflection_count'] == 102
+
+
+async def test_failed_reflection_preserves_generated_content_and_separates_failure_reason(runtime, monkeypatch):
+    current, _, _ = runtime
+    await seed_pending(current)
+    async def decide(context):
+        await context['_load']()
+        return {'decision':'notify','summary':'我想跟进昨天的安排。','source_ids':['not-a-source']}
+    monkeypatch.setattr(current, '_decide', decide)
+    run = await current.check()
+    assert run['status'] == 'failed'
+    detail = await current.run_detail(run['id'])
+    assert detail['draft_summary'] == '我想跟进昨天的安排。'
+    assert detail['failure_reason'] == '本轮引用的 1 条来源中，有 1 条未能对应到本批次消息，结果未采用。'
+    assert detail['outcome']['affinity_increased'] == 0
+    records = await current.activity_records()
+    assert records['runs'][0]['summary'] == '本轮思考未完成'
+    await current.mutate(lambda state: state['runs'].append({'id':'legacy-failure','status':'failed','error':'检查结果来源无效'}))
+    legacy = await current.run_detail('legacy-failure')
+    assert not legacy.get('draft_summary')
+    assert legacy['failure_reason'] == '未能确认思考内容对应的消息，本轮结果未采用。'
+
+
+def test_reflection_source_references_resolve_only_unique_current_batch_aliases():
+    from services.digital_person_runtime import resolve_check_sources
+    context={'origin_project_id':'p','origin_session_id':'s','conversation':[{'id':'msg1','memory_ids':['memory:1'],'read_ids':['memory:1']} ]}
+    assert resolve_check_sources(context,['memory:1','msg1']) == ['msg1']
+    with pytest.raises(ValueError,match='未能对应'):
+        resolve_check_sources(context,['memory:other'])
+    with pytest.raises(ValueError,match='格式'):
+        resolve_check_sources(context,[123])
+    other={'origin_project_id':'other','origin_session_id':'other','conversation':[{'id':'msg1','memory_ids':['memory:2']} ]}
+    with pytest.raises(ValueError,match='多个'):
+        resolve_check_sources({'_groups':[context,other]},['msg1'])
+    assert resolve_check_sources({'_groups':[context,other]},['memory:2']) == ['msg1']

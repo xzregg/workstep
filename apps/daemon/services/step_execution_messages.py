@@ -172,7 +172,8 @@ class StepExecutionMessages:
         )
         if (
             engine is not None and engine.supports_resume
-            and engine_session_id is None and step.engine == "pydantic_ai"
+            and engine_session_id is None
+            and getattr(engine, "supports_host_session_ids", False)
         ):
             engine_session_id = new_message_id() if retry_message_id else msg_id
         journal_ref = await self._journal.astart(

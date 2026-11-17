@@ -40,7 +40,7 @@ from engines.core.interactions import (
     permission_signature,
 )
 from engines.core.plans import NativePlanTracker
-from engines.core.interaction_policy import automatic_response, engine_decision, mode_decision
+from engines.core.interaction_policy import automatic_response, mode_decision
 
 logger = logging.getLogger(__name__)
 
@@ -123,14 +123,17 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
 
     def runtime_permission_decision(self) -> bool | None:
         """Resolve modes that WorkStep can enforce at its approval bridge."""
+        configured = getattr(self, "_interaction_policy_decision", None)
+        if configured is False:
+            return False
         mode = self.runtime_permission_mode()
         if mode:
             return mode_decision(mode)
-        return getattr(self, "_interaction_policy_decision", None)
+        return configured
 
     def configure_interaction_policy(self, effective_config: dict) -> None:
         """Receive the same merged config passed to this engine invocation."""
-        self._interaction_policy_decision = engine_decision(self.ENGINE_ID, effective_config)
+        self._interaction_policy_decision = self.configured_permission_decision(effective_config)
 
     def _execution_retry_delays(self, message: str) -> tuple[float, ...]:
         """Delays before each retry; adapters may specialize transient failures."""
@@ -300,9 +303,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
     ) -> AsyncIterator[InternalEvent]:
         """Run normal execution with the adapter's failure retry policy."""
         if str(kwargs.get("prompt") or "").strip() == "/compact":
-            from engines.core.input_items import NO_MANUAL_COMPACTION
-
-            if self.ENGINE_ID in NO_MANUAL_COMPACTION:
+            if not self.supports_manual_compaction:
                 yield InternalEvent(type="error", data={
                     "message": f"{self.ENGINE_ID} 当前不支持手动压缩会话",
                 })

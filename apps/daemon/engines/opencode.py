@@ -21,6 +21,7 @@ WorkStep 通过 ``OPENCODE_CONFIG`` 环境变量（**文件路径**，env JSON �
 """
 
 from contextlib import aclosing
+from engines.core.permissions import EnginePermissionPolicy
 from engines.core.session_pool import exclusive_engine_run
 import asyncio
 import json
@@ -135,6 +136,17 @@ def _ensure_permission_config(mode: str = "ask") -> str:
 
 class OpencodeEngine(AcpEngineBase):
     ENGINE_ID = "opencode"
+    PERMISSION_POLICY = EnginePermissionPolicy(
+        overrides={
+            'read-only': {'permission_mode': 'deny'},
+            'workspace-write': {'permission_mode': 'ask'},
+            'danger-full-access': {'permission_mode': 'allow'},
+            'auto': {'permission_mode': 'allow'},
+            'ask': {'permission_mode': 'ask'},
+        },
+        consent_key='permission_mode',
+        consent_values={'allow': True, 'deny': False},
+    )
     supports_mcp = True
 
     #: ACP 原生全量词汇 + 子代理提升（`task` 委托工具 → `subagent`）。

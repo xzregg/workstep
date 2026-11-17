@@ -16,6 +16,7 @@ from typing import AsyncIterator, ClassVar
 from engines.core.session_pool import exclusive_engine_run
 from engines.core.image_input import render_image_prompt
 from engines.core.acp_base import AcpEngineBase
+from engines.core.permissions import EnginePermissionPolicy
 from engines.core.base import ProviderRuntimeConfig
 from engines.core.events import InternalEvent
 from engines.core.packages import RuntimePackage
@@ -31,6 +32,8 @@ def _sdk_available() -> bool:
 
 class CursorSdkEngine(AcpEngineBase):
     ENGINE_ID = "cursor"
+    SUPPORTS_MANUAL_COMPACTION = False
+    PERMISSION_POLICY = EnginePermissionPolicy(overrides={})
 
     #: 按需安装：默认不随 daemon 打包，设置页安装按钮执行 pip install cursor-sdk。
     RUNTIME_PACKAGE: ClassVar[RuntimePackage] = RuntimePackage("cursor-sdk", "pypi")

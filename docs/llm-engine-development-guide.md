@@ -38,7 +38,7 @@ Claude Agent SDK／Qoder SDK 由 `core/sdk_reuse.py` 保留双向客户端，轮
 
 Claude Agent SDK／Qoder SDK／Claude CLI 若本轮有运行中插入消息，原生传输可能合并或排队输入，不能按输入数量推算结果数量；此时关闭输入、消费到 EOF 后回收，下一轮按原生 session ID 恢复，防止旧回复串入下一请求。
 
-自定义引擎声明、宿主隔离 worker 的复用和必测项见 [接口规范](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md#进程复用声明与验收)。导入、安装、验证及注册遵守同一约定；公共 `session_transport_reuse` 之外，专属测试必须核对内层原生客户端 PID／连接，不能只证明外层 worker 常驻。
+自定义引擎声明、宿主隔离 worker 的复用和必测项见 [测试规范](../apps/daemon/data/skills/workstep-cli/references/custom-engine-testing.md#进程复用声明与验收)。导入、安装、验证及注册遵守同一约定；公共 `session_transport_reuse` 之外，专属测试必须核对内层原生客户端 PID／连接，不能只证明外层 worker 常驻。
 
 ### 跨会话共享支持边界
 
@@ -56,7 +56,7 @@ Claude Agent SDK／Qoder SDK／Claude CLI 若本轮有运行中插入消息，�
 
 ACP 多会话上下文的依据是[官方 v1 Session Setup](https://agentclientprotocol.com/protocol/v1/session-setup)，它不能代替具体 Agent 的并发验收。[Claude Python SDK](https://code.claude.com/docs/en/agent-sdk/python) 与 [Qoder Python SDK](https://docs.qoder.com/cli/sdk/references-python) 分别说明其流式客户端、响应消费及 interrupt 行为；这里对当前接入不启用共享是依据控制粒度作出的保守判断，不是断言供应商所有版本都不可能支持。
 
-自定义引擎的创建和导入提示由 `services/custom_engine_onboarding.py::SESSION_TRANSPORT_GUIDANCE` 共用。它要求区分同会话复用与跨会话共享，保留当前外层 worker 独占边界，并要求共享前验证内层原生 PID／连接、实际并发上下文、审批互不阻塞、局部停止、进程崩溃后旧审批失效与恢复后的新审批。`session_transport_reuse` 只证明当前宿主 worker 的连续复用，不能升级成原生共享认证。详细要求见[自定义引擎契约](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md#同会话复用与跨会话共享)。
+自定义引擎的创建和导入共用 `services/custom_engine_onboarding.py::ENGINE_ONBOARDING_GUIDANCE`，只提供工作目录、流程和规范入口。[接口契约](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md#连接生命周期)定义连接边界，[测试规范](../apps/daemon/data/skills/workstep-cli/references/custom-engine-testing.md#同会话复用与跨会话共享)统一维护原生共享的必测项；提示词不再重复完整测试清单。
 
 ### 会话系统指令追加
 
@@ -424,27 +424,30 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 `pydantic-ai-harness` 是 PydanticAI 引擎的固定依赖（不是独立引擎、也不替代
 `AcpEngineBase` 的会话/审批缝）。引擎在 `Agent(..., capabilities=[...])` 挂载：
 
-- `Coder(project_root)`；项目记忆只使用流程层注入的 `.workstep/MEMORY.md`，不挂载 Harness 私有 Memory；
+- `WorkStepCoder(project_root)` 包装 Harness `Coder()`，显式挂载原生工作区（macOS/Linux 使用 `LocalWorkspace`，Windows 使用 `WindowsWorkspace`）、固定 `Planning(InMemoryPlanStore)`、Shell 命令白名单和子任务事件能力；项目记忆只使用流程层注入的 `.workstep/MEMORY.md`，不挂载 Harness 私有 Memory。文件及命令 I/O 通过 SDK 异步工作区执行，不再对整个文件工具嵌套运行事件循环；
 - `Skills(project_root / ".workstep" / "skills")`，目录内容只来自 SkillCenter 白名单镜像；
 - 有效的 `thinking_effort` 通过 Pydantic AI `Thinking(effort=...)` 挂载，不再传入 `model_settings.thinking`。
 
-- 压缩与持久化开关：动态配置不暴露 `harness` 字段（见 4.6），保存配置时统一写回 `harness="auto"`；旧配置显式为 `off` 时仅停用下列扩展并回退 `message_history`。
+- 压缩与持久化开关：动态配置不暴露 `harness` 字段（见 4.6），保存配置时统一写回 `harness="auto"`；旧配置显式为 `off` 时停用下列扩展，也停用跨轮历史恢复；不接受宿主回传的 `message_history` 作为替代。
 - 扩展能力（`_harness_capabilities`）：
-  - `TieredCompaction(target_fraction=0.9, tiers=[ClearToolResults(max_messages=200, keep_pairs=10), SummarizingCompaction(max_messages=120, keep_messages=30, receipts=True)])`：上下文超限时自动压缩；
+  - `TieredCompaction(target_fraction=0.9, tiers=[ClearToolResults(max_messages=200, keep_pairs=10), SlidingWindowCompaction(max_messages=200, keep_messages=60), SummarizingCompaction(max_messages=120, keep_messages=30, receipts=True)])`：上下文超限时自动压缩；
   - `WarnNearLimits(max_context_fraction=0.85)`：接近上限时告警；
   - `StepPersistence(store, agent_name="workstep")`：会话持久化，store 为
-    `SqliteStepStore(database=<项目根>/.workstep/harness_runs.db, max_snapshots_per_run=30)`。
+    `SqliteStepStore(database=<项目数据目录>/harness_runs.db, max_snapshots_per_run=1)`。该限制按 run 生效，不是整个会话只保留一份快照；必要时额外保留最近的 complete 快照。Harness 0.69 使用 `snapshot_messages` 按单条消息 JSON 的 SHA-256 共享正文，`snapshot_message_refs` 保存每份快照的消息顺序。跨轮快照仍保留供搜索使用，正文不再随每份累计历史重复保存；引用行、事件和每轮新增数据仍会增长。
 - 会话恢复：`spawn(..., session_id=...)` 开启时以 `conversation_id=session_id` 调用
   `continue_run` 恢复最近一个有快照的 run（跳过重试时刚注册但尚无快照的新 run）；无可恢复
-  快照时回退 `message_history`。持久化后不再依赖
+  快照时从当前输入开始，不接受宿主传入的历史兜底。持久化后不再依赖
   `engine_state` 往返携带消息历史（`engine_state` 事件仍保留用于协调只读 turn）。
+- 旧库兼容：0.27 的内联 JSON 快照可以继续读取；新写入使用去重格式，升级不会自动改写或缩小旧数据。新格式写入后不可降级到旧 SDK 读取；历史迁移、保留策略与 SQLite 空间回收须独立实施。删除会话时保留 SDK 的快照删除触发器，自动释放无引用消息，不能直接清空共享消息表。回归入口 `tests/test_harness_snapshot_storage.py` 覆盖 50 次真实引擎运行、旧新格式共存、共享消息删除隔离及慢写入健康检查；Windows 工作区选择有单元测试，Windows 原生运行仍需对应平台验收。
 - 请求次数保护：每次 `Agent.run_stream_events()` 显式传入
   `UsageLimits(request_limit=100)`，避免长编码任务撞上 SDK 默认 50 次上限，同时保留循环失控保护。
 - 工具纠错：`Agent` 使用 `retries={"tools": 3, "output": 1}`，允许模型修正 Harness 工具的
   参数类型错误，同时保持最终输出校验的默认重试强度。
-- Coder shell：在 Harness 默认命令基础上补充 `yarn/npm/npx/node`，满足前端检查和构建；命令
-  固定从项目根执行，提示词明确禁止 `cd/bash/sh`，子目录任务使用 `yarn --cwd apps/web ...` 或
-  `uv --project apps/daemon ...`，不通过 shell 包装器绕过白名单。`WorkStepCoder` 将 Shell 的
+- Coder shell：`danger-full-access` 向 SDK 传空命令白名单，允许任意命令；`workspace-write` 和
+  `read-only` 保留 `PYDANTIC_AI_CODER_COMMANDS` 白名单，前者额外允许 `cd`。命令从项目根启动；
+  受限模式可使用 `yarn --cwd apps/web ...` 或 `uv --project apps/daemon ...`，不通过 shell
+  包装器绕过白名单。完全权限只放开命令策略，不安装可执行文件或保证宿主 PATH 中存在它。
+  `WorkStepCoder` 将 Shell 的
   命令策略拒绝转换为普通模型可见工具结果，不消耗 `run_command` 的工具重试预算；参数 schema
   错误等真正需要模型修正的调用仍使用上述 3 次重试限制。
 - `compacted` 事件：本轮压缩接收（receipt）在 run 结束后经 `open_receipt_scope` /
@@ -453,6 +456,33 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 
 关键参考：https://pydantic.dev/docs/ai/harness/compaction/ ；能力类位于
 `pydantic_ai_harness.compaction` / `pydantic_ai_harness.step_persistence`。
+
+### 4.8 引擎自行声明的权限与输入策略
+
+`engines/core/permissions.py::EnginePermissionPolicy` 只定义统一模式和可序列化声明，不维护引擎 ID 分支。各适配器在自己的模块声明 `PERMISSION_POLICY`：权限模式对应的原生配置 `overrides`、计划限制 `plan_overrides`、默认审批字段 `consent_key/consent_values/consent_default`。`BaseLLMEngine.permission_config_overrides/plan_config_overrides/configured_permission_decision` 读取该声明；助手 `run_engine_turn` 依次合并调用配置、显式权限、计划限制，并仍通过 `set_permission_mode` 传递运行态控制。未知显式模式在启动 worker 前失败，不静默沿用默认权限。
+
+`CustomEngineBase` 使用相同声明；`custom_worker.describe` 验证并序列化策略，`CustomEngineProxy` 从安装元数据重建。新接入引擎不修改中央映射表；旧元数据未声明原生模式时，仅保留公共审批桥的 auto/ask，更新策略后须重新验收注册。`get_available_engines` 输出 `permission_modes`，聊天输入框按实际选中或默认引擎筛选选项，保存过的未支持值仍显示原标签，不能伪装成默认。声明只是 SDK 参数契约，适配器必须实现实际权限限制及运行中切换；不能把声明本身当作操作系统沙箱或已验证的只读保证。
+
+技能策略改由适配器 `SKILL_POLICY` / `skill_policy` 声明，默认 unsupported；手动压缩由 `SUPPORTS_MANUAL_COMPACTION` / `supports_manual_compaction` 同时控制菜单和执行入口。默认沿用 ACP 命令入口，不具备能力的适配器必须关闭。自定义引擎均通过元数据传递上述声明。公共事件翻译、审批交互注册表、配置 schema、消息历史、图片、实时插入、会话恢复／分叉和 MCP 协议继续复用，不复制成每个引擎各一份。
+
+回归：`tests/test_engine_permission_policy.py` 使用实际隔离 worker 验证自定义原生字段映射、计划限制优先、缺声明失败、默认审批以及技能／压缩声明；`test_engine_interactions.py` 与 `test_assistant_engine_invocation.py` 验证显式 ask 覆盖默认自动审批、用户问答不自动回答。Web `tests/chatInputPermissions.test.tsx` 覆盖引擎默认值及五个宽度的权限菜单筛选。
+
+服务档位改由 `SUPPORTS_SERVICE_TIER` / `supports_service_tier` 声明；助手统一入口只向支持的引擎注入本轮 `service_tier`，目录与 Web 配置菜单使用同一能力。首轮持久化前接受宿主分配会话 ID 的引擎声明 `SUPPORTS_HOST_SESSION_IDS` / `supports_host_session_ids`，任务消息层按此能力预分配并写入恢复日志。两者默认关闭，均通过自定义 worker 元数据传递，不按引擎名称判断。历史回放中的 Codex 格式转换继续仅兼容既有数据。
+
+当前内置权限接入边界（11 个适配器均显式声明）：
+
+| 引擎 | 可选权限模式 | 执行边界 |
+| --- | --- | --- |
+| Codex CLI／Codex SDK | 只读、工作区写入、完全权限、自动、询问 | 原生 sandbox 与审批参数 |
+| Claude CLI／Claude Agent SDK／Qoder SDK | 同上 | 原生 plan／acceptEdits／bypassPermissions／auto／manual 或 default；plan 的拒绝不能被自动审批覆盖 |
+| OpenCode | 同上 | deny／ask／allow 控制 edit、bash、webfetch；没有原生目录沙箱，工作区写入与完全权限均映射 allow |
+| Pydantic AI | 同上 | 工具执行入口拦截只读写入及全部 Shell；ask 在非只读工具前审批；连接器保留自己的审批入口；子代理共享同一策略 |
+| Hermes | 自动、询问 | ACP 工具审批桥，不宣称原生只读或目录沙箱 |
+| Cursor／OpenClaw／DeepSeek Harness | 无额外模式，仅引擎默认 | 当前接入没有工具审批控制，不能显示自动／询问或声称实现原生限制 |
+
+Pydantic 的只读允许文件读取及运行内计划更新，拒绝命令、文件修改、WorkStep 操作和委托；外置项目数据文件同样受工具入口控制。运行中切换权限会改变后续工具检查及 Shell 命令策略，不能撤销已执行或已启动的命令；计划模式在本轮保持只读。工作区写入模式的文件工具仍限根目录，Shell 只有命令策略，不是操作系统沙箱（Python、构建工具等仍能访问宿主）；完全权限解除命令白名单，仍保留 SDK 的危险命令／操作符保护。此限制不能仅靠模式标签消除。
+
+上述检查与回归为本仓库的离线接入验收，不等同于每家服务商、每个平台的真实模型端到端验收。
 
 ## 5. `InternalEvent` 协议（ACP 词汇）
 
@@ -1052,7 +1082,7 @@ Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多�
 
 设置 → 执行引擎 → 自定义接入会创建一个普通项目对话，预填接入提示词，由 `workstep-cli` 引导按需阅读规范，不加载独立技能。草稿默认在 `$WORKSTEP_CONFIG_DIR/runtime/engine-workspaces/<id>`；有容器项目根目录限制时草稿在允许的项目根目录 `workstep-engine-workspaces/<id>`。正式注册目录统一是 `$WORKSTEP_CONFIG_DIR/runtime/engines/<engine-id>`，不写应用安装目录，因此桌面应用升级与只读源码打包不影响用户引擎。
 
-可移植包由 manifest.json、一个 Python 入口及 files 白名单声明的测试/资源组成；规范与步骤见 [接入指南](../apps/daemon/data/skills/workstep-cli/references/custom-engine.md) 和 [接口契约](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md)。CLI 可 inspect 指定目录或 py 文件，然后 install/configure/validate/register；install/validate 可异步查询或取消。只有公开验收通过，签名及代码/依赖/配置指纹一致才允许原子注册。注册后在设置的引擎页面点击“重新扫描”即可发现并同步到引擎选择列表，无需重启；已加载代理发现文件变化会拒绝执行并要求重新验收。
+可移植包由 manifest.json、一个 Python 入口及 files 白名单声明的测试/资源组成；规范分为 [CLI 接入流程](../apps/daemon/data/skills/workstep-cli/references/custom-engine.md)、[接口契约](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md) 和 [测试规范](../apps/daemon/data/skills/workstep-cli/references/custom-engine-testing.md)，各自只维护对应职责。CLI 可 inspect 指定目录或 py 文件，然后 install/configure/validate/register；install/validate 可异步查询或取消。只有公开验收通过，签名及代码/依赖/配置指纹一致才允许原子注册。注册后在设置的引擎页面点击“重新扫描”即可发现并同步到引擎选择列表，无需重启；已加载代理发现文件变化会拒绝执行并要求重新验收。
 
 每个引擎自行实现异步 install，按系统/架构判断下载依赖，获取 staged target_dir 而不修改后台 Python 环境；SDK import 必须延迟到依赖存在后。Python SDK、CLI、Node 桥接均可接入，Node 并非桌面包保证提供的运行时，需要引擎检测并安装或说明环境要求。导出 ZIP 仅携带源码/测试/资源及安全测试摘要，不含 dependencies/cache/凭据；接收方按其平台重新安装与验证。支持复用现有供应商及自定义供应商，按协议声明进行匹配；配置 schema 自动生成设置表单，敏感值脱敏。
 

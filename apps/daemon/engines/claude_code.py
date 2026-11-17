@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from engines.claude_image_input import build_claude_user_content
+from engines.core.base import EngineSkillPolicy
+from engines.core.permissions import EnginePermissionPolicy
 from engines.core.session_pool import exclusive_engine_run
 from engines.core.acp_base import AcpEngineBase
 from engines.claude_code_events import ClaudeCodeEventMapper
@@ -103,6 +105,19 @@ _PERMISSION_REJECT_FOR_SESSION_CONTENT = (
 )
 class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
     ENGINE_ID = "claude"
+    SKILL_POLICY = EngineSkillPolicy.CLAUDE_PLUGIN
+    PERMISSION_POLICY = EnginePermissionPolicy(
+        overrides={
+            'read-only': {'permission_mode': 'plan'},
+            'workspace-write': {'permission_mode': 'acceptEdits'},
+            'danger-full-access': {'permission_mode': 'bypassPermissions'},
+            'auto': {'permission_mode': 'auto'},
+            'ask': {'permission_mode': 'manual'},
+        },
+        plan_overrides={'permission_mode': 'plan'},
+        consent_key='permission_mode',
+        consent_values={'plan': False, 'auto': True, 'bypassPermissions': True, 'deny': False, 'deny_all': False, 'read-only': False},
+    )
     supports_mcp = True
     RUNTIME_PACKAGE = RuntimePackage('@anthropic-ai/claude-code', 'npm')
 

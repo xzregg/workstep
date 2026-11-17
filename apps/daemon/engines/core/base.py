@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 from engines.core.packages import RuntimePackage
 from engines.core.events import InternalEvent
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
+from engines.core.permissions import EnginePermissionPolicy
 
 
 # WorkStep thinking-effort values. ``"auto"`` means "let the engine decide":
@@ -368,12 +369,36 @@ class BaseLLMEngine(ABC):
     ``AcpEngineBase`` 提供；上层调用方只按 ACP 风格接口使用引擎。
     """
 
+    PERMISSION_POLICY: ClassVar[EnginePermissionPolicy] = EnginePermissionPolicy()
+    SKILL_POLICY: ClassVar[EngineSkillPolicy] = EngineSkillPolicy.UNSUPPORTED
+    SUPPORTS_MANUAL_COMPACTION: ClassVar[bool] = True
+    SUPPORTS_SERVICE_TIER: ClassVar[bool] = False
+    SUPPORTS_HOST_SESSION_IDS: ClassVar[bool] = False
+
+    @classmethod
+    def permission_modes(cls) -> tuple[str, ...]:
+        return tuple(cls.PERMISSION_POLICY.overrides)
+
+    @classmethod
+    def permission_config_overrides(cls, mode: str) -> dict:
+        return cls.PERMISSION_POLICY.permission_overrides(mode)
+
+    @classmethod
+    def plan_config_overrides(cls) -> dict:
+        from copy import deepcopy
+        return deepcopy(cls.PERMISSION_POLICY.plan_overrides)
+
+    def configured_permission_decision(self, config: dict) -> bool | None:
+        return self.PERMISSION_POLICY.configured_consent(config)
+
     @classmethod
     def set_binary_override(cls, path: str | None) -> None:
         cls._binary_override = path or None
 
     async def set_permission_mode(self, mode: str) -> None:
         """Apply a unified permission mode to the current engine run."""
+        if mode:
+            self.permission_config_overrides(mode)
         self._runtime_permission_mode = mode or None
 
     def runtime_permission_mode(self) -> str | None:
@@ -762,18 +787,7 @@ class BaseLLMEngine(ABC):
 
     @property
     def skill_policy(self) -> EngineSkillPolicy:
-        policies = {
-            "codex": EngineSkillPolicy.CODEX_CONFIG,
-            "codex_sdk": EngineSkillPolicy.CODEX_CONFIG,
-            "claude": EngineSkillPolicy.CLAUDE_PLUGIN,
-            "claude_agent_sdk": EngineSkillPolicy.CLAUDE_PLUGIN,
-            "qoder_sdk": EngineSkillPolicy.QODER_PLUGIN,
-            "hermes": EngineSkillPolicy.HERMES_PROFILE,
-            "openclaw": EngineSkillPolicy.OPENCLAW_CONFIG,
-            "deepseek_harness": EngineSkillPolicy.FILESYSTEM_PROVIDER,
-            "pydantic_ai": EngineSkillPolicy.PROJECT_REGISTRY,
-        }
-        return policies.get(self.ENGINE_ID, EngineSkillPolicy.UNSUPPORTED)
+        return self.SKILL_POLICY
 
     @property
     def supports_controlled_skills(self) -> bool:
@@ -807,15 +821,25 @@ class BaseLLMEngine(ABC):
 
     def input_commands(self) -> list[dict[str, str]]:
         """Return executable input commands owned by this adapter."""
-        from engines.core.input_items import (
-            NO_MANUAL_COMPACTION,
-            workstep_input_commands,
-        )
+        from engines.core.input_items import workstep_input_commands
 
         commands = workstep_input_commands(goal=self.supports_goal_mode)
-        if self.ENGINE_ID in NO_MANUAL_COMPACTION:
+        if not self.supports_manual_compaction:
             return [item for item in commands if item["name"] != "compact"]
         return commands
+
+    @property
+    def supports_manual_compaction(self) -> bool:
+        return self.SUPPORTS_MANUAL_COMPACTION
+
+    @property
+    def supports_service_tier(self) -> bool:
+        return self.SUPPORTS_SERVICE_TIER
+
+    @property
+    def supports_host_session_ids(self) -> bool:
+        """Accept a host-allocated ID before the first run for crash recovery."""
+        return self.SUPPORTS_HOST_SESSION_IDS
 
     # --- Execution ---
 

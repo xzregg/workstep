@@ -8,8 +8,10 @@ import shutil
 import uuid
 from typing import AsyncIterator
 
+from engines.core.base import EngineSkillPolicy
 from engines.core.image_input import render_image_prompt
 from engines.core.acp_base import AcpEngineBase
+from engines.core.permissions import EnginePermissionPolicy
 from engines.core.schema import EngineImage
 from engines.core.events import (
     InternalEvent,
@@ -24,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 class OpenClawEngine(AcpEngineBase):
     ENGINE_ID = "openclaw"
+    PERMISSION_POLICY = EnginePermissionPolicy(overrides={})
+    SKILL_POLICY = EngineSkillPolicy.OPENCLAW_CONFIG
+    SUPPORTS_MANUAL_COMPACTION = False
 
     """OpenClaw's stable one-shot ``agent exec --json`` integration."""
 

@@ -57,7 +57,7 @@ test('selectors keep all engine-declared efforts selectable regardless of model 
         root.render(
           <I18nProvider>
             <CoordinatorConfigBar
-              engines={[{ id: engine, config: { fields: [field], values: {}, secrets: {}, step_fields: [] } } as CoordinatorEngineSummary]}
+              engines={[{ id: engine, supports_service_tier: engine !== 'example_custom', config: { fields: [field], values: {}, secrets: {}, step_fields: [] } } as CoordinatorEngineSummary]}
               engine="" defaultEngine={engine} model="native" fastModel=""
               thinkingEffort="" defaultThinkingEffort="low"
               onServiceTierChange={() => {}}

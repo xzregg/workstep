@@ -16,12 +16,11 @@ dependencies = [
     "websockets>=15.0",
     "python-socks>=2.0.0",
     "logfire[fastapi]>=4.0",
-    "pydantic-ai-slim[anthropic,logfire,openai,duckduckgo,web-fetch]>=2.53.0,<3",
+    "pydantic-ai-slim[anthropic,logfire,openai,duckduckgo,web-fetch]>=2.69.0,<3",
     "croniter>=6.0",
     "tzdata>=2025.2",
-    # 0.59 requires a POSIX-only local workspace. CodeMode is not enabled here;
-    # retain Windows support until its workspace migration is validated.
-    "pydantic-ai-harness[skills]==0.27.0",
+    # Includes deduplicated SQLite snapshot messages and WindowsWorkspace.
+    "pydantic-ai-harness[coder,skills]==0.69.0",
     "wecom-aibot-python-sdk>=1.0.2",
     "dingtalk-stream>=0.24.3",
     "workstep-gateway-protocol[http]",

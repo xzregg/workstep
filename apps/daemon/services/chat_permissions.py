@@ -9,75 +9,15 @@ The chat input exposes one permission selector with cross-engine meanings:
 - ``auto`` — auto-approve tool/interaction requests.
 - ``ask`` — require user approval for tool/interaction requests.
 
-``map_permission_overrides(engine_id, mode)`` translates the unified mode
-into the engine's own ``config_overrides`` keys. Engines that cannot express
-a mode (e.g. ACP always asks) simply get an empty override and keep their
-global/engine default.
+Native config translation belongs to each adapter's PERMISSION_POLICY,
+not a central engine-id dispatch table.
 """
 
-CHAT_PERMISSION_MODES = (
-    "read-only",
-    "workspace-write",
-    "danger-full-access",
-    "auto",
-    "ask",
-)
-
-_SANDBOX_MODES = {"read-only", "workspace-write", "danger-full-access"}
-
-_CLAUDE_PERMISSION = {
-    "read-only": "plan",
-    "workspace-write": "acceptEdits",
-    "danger-full-access": "bypassPermissions",
-    "auto": "auto",
-    "ask": "manual",
-}
-
-_QODER_PERMISSION = {
-    "read-only": "plan",
-    "workspace-write": "acceptEdits",
-    "danger-full-access": "bypassPermissions",
-    "auto": "auto",
-    "ask": "default",
-}
-
-_OPENCODE_PERMISSION = {
-    "read-only": "deny",
-    "workspace-write": "ask",
-    "danger-full-access": "allow",
-    "auto": "allow",
-    "ask": "ask",
-}
+from engines.core.permissions import CHAT_PERMISSION_MODES
 
 
 def is_valid_permission_mode(mode: str) -> bool:
     return mode in CHAT_PERMISSION_MODES
-
-
-def map_permission_overrides(engine_id: str, mode: str) -> dict:
-    """Return engine-specific ``config_overrides`` for a unified mode."""
-    if not mode:
-        return {}
-    if engine_id == "codex":
-        if mode in _SANDBOX_MODES:
-            return {"sandbox_mode": mode}
-        return {"approval_policy": "full-auto" if mode == "auto" else "on-request"}
-    if engine_id == "codex_sdk":
-        if mode in _SANDBOX_MODES:
-            return {"sandbox": mode}
-        return {"approval_mode": "auto_review"} if mode == "auto" else {}
-    if engine_id in ("claude", "claude_agent_sdk"):
-        return {"permission_mode": _CLAUDE_PERMISSION[mode]}
-    if engine_id == "qoder_sdk":
-        return {"permission_mode": _QODER_PERMISSION[mode]}
-    if engine_id == "opencode":
-        return {"permission_mode": _OPENCODE_PERMISSION[mode]}
-    if engine_id == "pydantic_ai":
-        if mode in _SANDBOX_MODES:
-            return {"sandbox": mode}
-        return {}
-    # hermes / openclaw: no unified permission override.
-    return {}
 
 
 # ── Plan mode (Codex-style lightbulb) ──────────────────────────────────
@@ -94,23 +34,6 @@ GOAL_MODE_INSTRUCTION = (
     "and report progress. If you are blocked and cannot proceed, state exactly "
     "what you need. Do not stop with a partial result while executable steps remain."
 )
-
-
-def map_plan_mode_overrides(engine_id: str) -> dict:
-    """Engine-specific ``config_overrides`` for Codex-style plan mode.
-
-    Engines without a native "plan-only" mode return an empty dict; the
-    prompt-level instruction still applies to every engine.
-    """
-    if engine_id == "codex":
-        return {"sandbox_mode": "read-only"}
-    if engine_id == "codex_sdk":
-        return {"sandbox": "read-only"}
-    if engine_id in ("claude", "claude_agent_sdk", "qoder_sdk"):
-        return {"permission_mode": "plan"}
-    if engine_id == "pydantic_ai":
-        return {"sandbox": "read-only"}
-    return {}
 
 
 def parse_goal_command(prompt: str) -> tuple[str, str] | None:

@@ -753,11 +753,11 @@
           "Öppna projektets HTML-förhandsvisning och prototypredigeraren. För AI-ändringar konfigurerar du motorn under Inställningar → Assistenter → Prototypassistent.",
           "Klicka på filnamnet ovanför förhandsvisningen för att välja HTML i samma mapp eller en undermapp. Varje HTML har en egen konversation. Dra fönsterkanter och avdelare för att ändra storleken.",
           "Hovra för markering, klicka för att välja eller högerklicka för att kommentera. Exempel: ”Gör den här knappen grön och lämna knappen bredvid oförändrad.” Skicka till chatten.",
-          "Ändra text, färg eller width (till exempel 180px) i egenskaperna och lämna fältet för att spara. Du kan även dubbelklicka på enkel text eller dra i storlekshandtagen. Välj exakt element innan du bekräftar borttagning.",
+          "För statiska element ändrar du text, färg eller width (t.ex. 180px) i egenskapspanelen; lämna fältet för att spara. Flytta bara med markeringsramens flytthandtag. Alt stänger av fästning, Esc avbryter. Kontrollera noden före borttagning. Ctrl+Z/⌘Z eller «Ångra» högst upp återställer sparade åtgärder.",
           "I ändringshistoriken granskar du skillnader, ångrar eller rensar historiken. Efter ett avbrott kontrollerar du den sparade kopian och återupptar sparandet eller kasserar den. Original med konflikter skrivs inte över."
         ],
         "tips": [
-          "Direktredigering gäller statisk HTML. Urvalsläget pausar sidskript, medan visningsläget kör interaktionerna. Endast ändringar av befintliga HTML/CSS/JS publiceras; hela filer kan inte läggas till eller tas bort."
+          "Direkt redigering gäller statisk HTML. Publicering stöder ändringar i befintliga HTML/CSS/JS, inte nya eller borttagna hela filer. Dynamiska sidor använder nästa avsnitts skrivskyddade inspektion och kommentarer. Den äldre bilden visar inte det nya flytthandtaget eller dynamisk inspektion."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Projektminnesredigerare som innehåller demonstrationskonventioner",
           "caption": "Redigera och spara konventioner i .workstep/MEMORY.md. Ingen arkiv-lektionsbekräftelse visas."
         }
+      },
+      {
+        "title": "Inspektera dynamiska HTML-/React-prototyper",
+        "steps": [
+          "Öppna «Prototypredigering» i HTML-förhandsgranskningen. Dynamiska sidor behåller skriptrendering. Välj element eller högerklicka för kommentar, skriv önskemålet och välj «Skicka till chatten». Assistenten ändrar genereringslogiken.",
+          "Dynamiska nodegenskaper är skrivskyddade och saknar handtag; storlek och borttagning kan inte ändras direkt som statisk HTML. Canvas kan bara lokaliseras som hel yta. Öppna undersidor till en dynamisk föräldrasida separat från katalogen.",
+          "I bläddringsläge följer du arbetsytans länkar och väljer sedan element. Statiska underramar kan redigeras på plats. Skicka eller rensa oskickade kommentarer och invänta lagring före sidbyte. Historiken visar fildifferenser sida vid sida eller enhetligt."
+        ],
+        "tips": [
+          "Kommentarer anropar den konfigurerade prototypassistenten; val och manuella egenskaper anropar ingen modell. Kontrollera återförda ändringar; läs in på nytt vid versionskonflikt."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Skrivskyddade egenskaper, elementkommentarer och filbyte för dynamiska prototyper",
+          "caption": "En riktig skärmbild från den fasta demomiljön på 8777 saknas; komponentexempel ersätter den inte."
+        }
+      },
+      {
+        "title": "Ange en formatmall för leveranser",
+        "steps": [
+          "Välj «Mall» på leveransraden i ett arbetsflödessteg och ange struktur och acceptanskrav i Markdown, exempelvis {{任务名称}} som titel följt av slutsats och verifiering. Nya körningar använder kraven efter att flödet sparats.",
+          "Välj mallikonen vid leveransen i uppgiftsdetaljerna för att ändra bara aktuell uppgift, tömma eller återställa flödets standard. Under körning är mallen skrivskyddad; delningssidan tillåter bara visning.",
+          "Kontrollera att den genererade filen följer mallen. Mallen följer med vid kopiering och import/export av flödet, men är inte själv en redan skapad leverans."
+        ],
+        "tips": [
+          "Bara {{任务名称}} ersätts; övriga formatkrav skickas oförändrade till modellen. Strikt efterlevnad garanteras inte; granskning behövs fortfarande."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Formatmallredigerare för arbetsflödens och uppgifters leveranser",
+          "caption": "En riktig skärmbild från den fasta demomiljön på 8777 saknas; komponentexempel ersätter den inte."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Fyll ett meddelandeutkast med rösten",
         "steps": [
-          "Öppna Inställningar → Röstinmatning, aktivera, hämta modell och körmiljö, välj språk och testa mikrofonen. Installationen sker på ansluten WorkStep-värd; telefonen behöver ingen modell. Mandarin, kantonesiska och engelska stöds.",
-          "På datorn klickar du på mikrofonen. På telefonen håller du textfältet 500 ms; ingen mikrofonikon visas. Släpp, granska texten och skicka manuellt. Högst två minuter; avbryt skickar inget."
+          "Öppna «Inställningar → Talinställningar → Inmatning» och välj lokal modell, molnleverantör eller egen fjärrtjänst. Ladda lokalt ner körmiljö och modell och välj «Använd denna modell». Paraformer stöder mandarin, kantonesiska och engelska; Zipformer mandarin och engelska. Spara och kontrollera med «Testa mikrofon». Modellerna installeras på WorkStep-värden.",
+          "Använd mikrofonen på datorn. På telefon trycker du på den lilla högtalaren nere till höger vid tomt utkast; med text visas skicka-knappen. Långt tryck behåller systemets textmarkering. Kontrollera transkriptionen efter inspelningen och skicka manuellt. Högst två minuter; avbryt skickar inget."
         ],
         "tips": [
-          "Ljud känns igen på ansluten värd och sparas inte. Tillåt mikrofon via HTTPS eller lokal adress. Kontrollera webbplatsens och systemets behörigheter vid fel; starta om en gammal backend. Igenkänd text kan uttryckligen behållas."
+          "Mikrofonen kräver system- och webbplatsbehörighet; webbläsaren behöver HTTPS eller lokal adress. I moln-/fjärrläge skickar värden ljud till vald tjänst. HTTP-transkription ger text först efter avslut och stöder inte aktivering i realtid. Modeller kan tas bort separat; kontrollera aktuell modell först. Talutmatning och -inmatning ställs in var för sig."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Konfigurera och använd anslutningar",
         "steps": [
-          "Öppna Inställningar → Anslutningar → Lägg till. Ange kommando och argument separat för lokal MCP, URL för fjärr-MCP eller programfil för CLI. Välj tillåtna projekt.",
+          "Öppna «Inställningar → Anslutningar → Lägg till anslutning» eller skrivbordets kontaktikon. Ange kommando och argument separat för lokal MCP, med argumentvis redigering eller JSON. Fjärr-MCP använder URL, CLI en körbar fil. Tomt projektval betyder alla projekt.",
           "Hitta verktyg under Test → Upptäck anslutning. Verktygskörning gör riktiga anrop: granska argumenten. Testet anropar ingen LLM; spara efteråt.",
-          "Aktivera + → Anslutningar i samtalet för nästa meddelande. MCP kräver en kompatibel motor; CLI-inloggning använder det officiella kommandot i värdterminalen. Vid 401 anger du stödd Bearer-token eller autentiseringshuvud. Webbläsar-OAuth saknas ännu."
+          "Vanlig projektchatt och uppgiftens körningsinmatning använder «＋ → Anslutningar», /连接器 eller /apps. Aktivering gäller nästa meddelande; uppgiftssamordnaren ansluter inte automatiskt. MCP kräver motorstöd, CLI det officiella inloggningskommandot. Vid 401 anger du Bearer Token eller autentiseringshuvuden; webbläsar-OAuth stöds inte. Lokal upptäckt kopierar inga inloggningsuppgifter."
         ],
         "tips": [
           "Exempel: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Konfigurera och använd anslutningar",
           "caption": "Verklig skärmbild saknas: inställningar, test och samtalsval."
+        }
+      },
+      {
+        "title": "Samtalsgrupper och arkivgenomgång",
+        "steps": [
+          "Högerklicka på samtalsrubriken, listan eller ett samtal i projektets sidofält för att skapa en grupp. Dra samtal in eller tillbaka till ogrupperat. Vanliga gruppers meny kan skapa samtal direkt. Vanliga grupper och kanalgrupper hanteras separat.",
+          "Arkivera eller ta bort via gruppmenyn. Borttagning löser normalt bara upp gruppen. Först när du markerar att även ta bort samtalen raderas meddelandena; kontrollera omfattningen. Medlemmar som körs eller misslyckas under åtgärden hoppas över och behålls.",
+          "Klicka på titeln i arkivlistan för att visa senaste frågan och svaren skrivskyddat. Det återställer inte samtalet och läser inte in fullständiga körningsdetaljer. Återställ uttryckligen för att fortsätta chatta."
+        ],
+        "tips": [
+          "Arkivering behåller innehållet. Att radera samtal och meddelanden har större konsekvenser; blanda inte ihop «Lös upp grupp» med «Ta även bort samtal»."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Samtalsgruppsmeny i sidofältet och skrivskyddad arkivförhandsgranskning",
+          "caption": "En riktig skärmbild från den fasta demomiljön på 8777 saknas; komponentexempel ersätter den inte."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Demonstrationsfel orsakat av en obefintlig modell",
           "caption": "Felet säger att den valda modellen inte stöds. Reparera stegets modellkonfiguration innan du kör igen; det är inte reparerat i denna bild."
+        }
+      },
+      {
+        "title": "Konfigurera valfria beslutsmodeller",
+        "steps": [
+          "Öppna «Inställningar → Modeller och funktioner → Beslutsmodeller» och välj lokalt hanterad modell, lokal eller fjärrtjänst. Lokal hantering kräver godkänd värdmiljö; komponenter och modell laddas ner manuellt var för sig. Använd befintlig tjänst om kraven inte uppfylls.",
+          "I tjänsteläge anger du adress och autentisering. «Läs modellista» ger sökning och val; manuell inmatning går också. Testa utkastet utan att spara. Kontrollera resultatet och välj «Spara konfiguration».",
+          "Aktivera «Tillåt andra enheter att anropa lokal modell» bara om den lokalt hanterade modellen behöver exponeras. Ange eller återanvänd fjärråtkomstnyckeln, spara och använd visad adress. Saknade resurser laddas inte ner automatiskt; försök igen vid upptaget."
+        ],
+        "tips": [
+          "Detta är ett valfritt Jev-beslutsgränssnitt, inte allmän chatt. Det tar inte automatiskt över uppgifter eller samtal. Nedladdning och proxyaktivering är separata åtgärder.",
+          "Modellen använder värdens CPU och minne. Lyckat test bevisar inte verksamhetsmässig träffsäkerhet. Proxyinferensens token ger inte resursadministration; visa inte nycklar i bilder."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Beslutsmodellens lägen, resurser, test, lagring och valfria proxy",
+          "caption": "En riktig skärmbild från den fasta demomiljön på 8777 saknas; komponentexempel ersätter den inte."
+        }
+      },
+      {
+        "title": "Läs handboken från frågetecknet i inställningarna",
+        "steps": [
+          "Klicka på frågetecknet vid avsnittsrubriken för rätt kapitel i appen. Använd innehållsförteckning och sökning. Handboken följer gränssnittsspråket; på dator kan läsfönstret ändra storlek.",
+          "Försök igen vid laddningsfel. «Öppna i webbläsare» visar hela sidan med samma kapitel och språk. Avsnitt utan motsvarande instruktion visar inget frågetecken."
+        ],
+        "tips": [
+          "Inbäddad handbok kräver webbplatsresurser i backend. Kontrollera installationsversion och resurser vid laddningsfel; ersätt inte med orelaterade kapitel."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Frågetecken vid inställningsrubriker och flerspråkig handbok i appen",
+          "caption": "En riktig skärmbild från den fasta demomiljön på 8777 saknas; komponentexempel ersätter den inte."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Digital person och globalt minne",
+    "summary": "Konfigurera samtalsstil, huvudsamtal, proaktiv reflektion och kanalmottagning. Se källbelagda minnen och aktivera röst och personigenkänning vid behov.",
+    "sections": [
+      {
+        "title": "Konfigurera personlighet, uppgifter och huvudsamtal",
+        "steps": [
+          "Öppna «Inställningar → Digital person → Inledande guide», fyll i namn och redigera personlighet, uppgifter och bestående minne under «Personlighet och uppgifter». Använd förval eller importera från rollcentret, konfigurera en tillgänglig motor och välj «Slutför och aktivera».",
+          "Spara profilen och öppna startsidan via «Prata med den digitala personen» i sidofältet. Tangentbordsknappen ger textinmatning; «Visa samtal» öppnar samma huvudsamtal. Du kan återgå till vanliga arbetsytan.",
+          "Personlighet, uppgifter och bestående minne använder Markdown; förval uppdaterar bara sin del. Vid sparfel behålls utkastet; försök enligt anvisningarna. Hantera osparade ändringar innan du byter sida eller stänger."
+        ],
+        "tips": [
+          "Bestående minne är manuella överenskommelser, inte historikarkivet. Språkbyte översätter inte sparad text. Den digitala personen kommunicerar och följer upp; arbetet utförs av målprojektets körningssamtal."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Digital person-guide, personlighetsdokument och huvudsamtal",
+          "caption": "En riktig skärmbild från den fasta demomiljön på 8777 saknas; komponentexempel ersätter den inte."
+        }
+      },
+      {
+        "title": "Sök i minnet och kontrollera källor",
+        "steps": [
+          "Sök efter innehåll, entitet eller projektnamn under «Digital person → Minne». Filtrera preferenser, erfarenheter, fakta eller händelser och växla mellan tankekarta och tidsöversikt.",
+          "Öppna en post för kunskapsdetaljer och sedan källan för sidvis läsning av originalmeddelanden. Jämför originalet vid tveksamhet; sammanfattningar är inte ordagranna användarcitat eller bevis för slutförda uppgifter.",
+          "Interaktionen registreras först efter ett fullständigt assistentsvar. Vanlig chatt och uppgifter söker med minnesverktyg vid behov; hela historiken läggs inte i varje anrop och all gammal projekthistorik registreras inte automatiskt."
+        ],
+        "tips": [
+          "Det gemensamma minnet kan sökas över projekt och samtal inom identitets- och projektbehörigheter. Kategoriantal, totalstatistik och aktuella sökresultat är olika mått.",
+          "Bestående överenskommelser, projektets MEMORY.md och historisk kunskap har olika syften. Obearbetade meddelanden är inte färdig utvunnen kunskap; gränssnittet saknar ännu en glöm-knapp."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Global minnessökning, kategorier och sidvisade originalkällor",
+          "caption": "En riktig skärmbild från den fasta demomiljön på 8777 saknas; komponentexempel ersätter den inte."
+        }
+      },
+      {
+        "title": "Proaktiv reflektion och körningshistorik",
+        "steps": [
+          "Spara automatisk aktivering, reflektionsintervall, proaktiv kontakt, minsta kontaktintervall och stör ej under «Digital person → Proaktiv reflektion». Meddelanden per bearbetningsomgång ställs in under minne: standard 100, intervall 1–1000.",
+          "Välj «Reflektera nu» för direkt kontroll. I «Körningshistorik» visas delegeringsaviseringar och reflektioner separat; uppdatera, bläddra och öppna sammanfattningar eller fel. Delegeringar kan öppna det verkliga körningssamtalet.",
+          "Försök aviseringen igen vid leveransfel. Kontrollera slutförd reflektion och levererat meddelande separat. Avstängd automatisk reflektion pausar schemalagda kontroller; vanlig chatt och manuell reflektion fungerar fortfarande."
+        ],
+        "tips": [
+          "Standardintervallet är 5 minuter. Tillåten proaktiv kontakt betyder inte ett meddelande varje omgång; utan väntande händelser kan den avslutas tyst. Modellanrop kan kosta; sammanfattningen är ingen fullständig tankekedja."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Proaktiv reflektionskonfiguration och separat sidvisad körningshistorik",
+          "caption": "En riktig skärmbild från den fasta demomiljön på 8777 saknas; komponentexempel ersätter den inte."
+        }
+      },
+      {
+        "title": "Koppla kanaler för mottagning och aviseringar",
+        "steps": [
+          "Konfigurera först en bot under «Inställningar → Kanalbotar» och skicka ett meddelande för att identifiera målet. Lägg sedan till en koppling under «Digital person → Kanalbotar» och välj bot samt grupp eller kontakt.",
+          "Aktivera «Ta emot proaktiva aviseringar» vid behov. Att bara ta emot inkommande meddelanden tillåter inte automatiskt proaktiva utskick. Kontrollera mottagningsmålet efter bekräftelse; befintliga uppgiftsgrupper följer fortfarande uppgiftskopplingen.",
+          "Kontrollera målet och bekräfta före «Skicka test». Ta bort kopplingen när den inte behövs. Framgång betyder att plattformen accepterat meddelandet, inte att mottagaren läst det."
+        ],
+        "tips": [
+          "Testet skickar ett riktigt meddelande. Använd demomottagare; en felaktigt antagen kontakt är ingen behörig mottagare."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Digitala personens kanalkopplingar, proaktiva aviseringar och leveransstatus",
+          "caption": "En riktig skärmbild från den fasta demomiljön på 8777 saknas; komponentexempel ersätter den inte."
+        }
+      },
+      {
+        "title": "Konfigurera röst, aktivering och mikrofon",
+        "steps": [
+          "Välj systemröst, lokal modell, molnleverantör eller egen fjärrtjänst under «Talinställningar → Utmatning». Lokala resurser laddas ner manuellt; ange tjänst och autentisering för moln/fjärr, provlyssna och spara. Justera klang, hastighet och andra parametrar på digitala personens röstsida.",
+          "Ställ in aktiveringsord och känslighet under «Hörsel» och starta lyssningen uttryckligen. Tillgänglig strömmande talinmatning krävs. Att spara ordet startar inte inspelning; HTTP-transkription efter avslut kan inte aktivera i realtid.",
+          "På startsidan startar mikrofonen röstsamtal och högtalaren styr uppläsningen på sidan. Stäng av mikrofonen för att stoppa upptagning; att tysta högtalaren stänger inte av den. Dold, omladdad eller lämnad sida stoppar lyssningen."
+        ],
+        "tips": [
+          "Mikrofon, kamera och uppspelning kräver separata system-/webbplatsbehörigheter. Fjärrtjänster tar emot relevant ljud. Faktiskt ljud på telefon och dator behöver fortfarande verifieras på enheterna.",
+          "Bara nya svar läses upp. Hela samtalspanelen pausar automatisk uppläsning när den öppnas; stängning spelar inte upp äldre innehåll. Anta inte fortsatt lyssning med låst skärm eller stängd app."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Talutmatningslägen, provlyssning och uttrycklig lyssningsstyrning",
+          "caption": "En riktig skärmbild från den fasta demomiljön på 8777 saknas; komponentexempel ersätter den inte."
+        }
+      },
+      {
+        "title": "Registrera bekanta och känna igen med kamera",
+        "steps": [
+          "Konfigurera modellen under «Digital person → Syn → Ansiktsigenkänning». Öppna sedan «Hantera bekanta → Registrera ansikte», fyll i namn och relation och bekräfta personens samtycke.",
+          "Öppna kameran och ta tre tydliga prover med en person: framifrån och lätt åt vänster respektive höger. Kontrollera och spara. Kontrollera namnet i igenkänningstestet; prover kan kompletteras, inaktiveras eller tas bort.",
+          "Välj vid behov namnvisning och att bifoga person och relation till meddelanden; skicka sedan bilden uttryckligen. Vid fel kontrollerar du modell, kamerabehörighet och bild i stället för att gissa identiteten."
+        ],
+        "tips": [
+          "Bilderna sparas inte långsiktigt, men personkännetecken är ändå känsliga data. Att synas i bild betyder inte att personen talar och ändrar inte avsändare, behörighet eller inloggning. Bilder och personuppgifter som skickas till modeller kan inte sägas alltid stanna lokalt."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Samtyckt registrering, insamling i tre steg och personigenkänning",
+          "caption": "En riktig skärmbild från den fasta demomiljön på 8777 saknas; komponentexempel ersätter den inte."
         }
       }
     ]

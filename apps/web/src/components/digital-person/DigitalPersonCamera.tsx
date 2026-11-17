@@ -8,6 +8,7 @@ import Spinner from '../Spinner'
 import VideoPreviewWindow from '../VideoPreviewWindow'
 import { DigitalPersonCameraControlContext, useDigitalPersonCameraControl } from './digitalPersonCameraControl'
 import './DigitalPersonCamera.css'
+import {useCameraPanelDrag} from './useCameraPanelDrag'
 import {useFaceRecognition,type RecognizedFrame} from '../face-recognition/useFaceRecognition'
 import {copyFrame} from '../face-recognition/runtime'
 import FaceOverlay from '../face-recognition/FaceOverlay'
@@ -42,6 +43,7 @@ export default function DigitalPersonCamera({ projectId, autoStart = false, acti
   const captureSession=useRef<AbortController|null>(null)
   const [phase, setPhase] = useState<'off' | 'opening' | 'on'>('off')
   const [error, setError] = useState(''), [facing, setFacing] = useState<'environment' | 'user'>('environment')
+  const panelDrag=useCameraPanelDrag(root,presentation==='panel'&&(phase!=='off'||Boolean(error)))
   const recognition=useFaceRecognition(phase==='on',video,enrollment)
   const analyzeFrame=recognition.analyze
   const captureFace=useCallback(async()=>{
@@ -168,19 +170,27 @@ export default function DigitalPersonCamera({ projectId, autoStart = false, acti
   }, [])
   useEffect(()=>{
     if(presentation!=='panel'||typeof ResizeObserver==='undefined')return
-    const node=root.current,home=node?.closest<HTMLElement>('.digital-home')
-    if(!node||!home)return
-    const update=()=>home.style.setProperty('--home-camera-height',`${node.getBoundingClientRect().height}px`)
-    const observer=new ResizeObserver(update);observer.observe(node);update()
-    return()=>{observer.disconnect();home.style.removeProperty('--home-camera-height')}
+    const node=root.current,home=node?.closest<HTMLElement>('.digital-home'),footer=node?.closest<HTMLElement>('.digital-home-footer')
+    const info=home?.querySelector<HTMLElement>('.digital-home-presence-info')
+    const main=home?.querySelector<HTMLElement>('.digital-home-main')
+    if(!footer||!home||!info||!main)return
+    const update=()=>{
+      const infoBox=info.getBoundingClientRect()
+      const anchorBottom=infoBox.height?infoBox.bottom:main.getBoundingClientRect().top
+      home.style.setProperty('--home-camera-top',`${anchorBottom-home.getBoundingClientRect().top}px`)
+      home.style.setProperty('--home-footer-height',`${footer.getBoundingClientRect().height}px`)
+    }
+    const observer=new ResizeObserver(update)
+    for(const element of [footer,info,main,home])observer.observe(element)
+    update()
+    return()=>{observer.disconnect();home.style.removeProperty('--home-footer-height');home.style.removeProperty('--home-camera-top')}
   },[presentation])
-  const camera = <div ref={root} className={`digital-person-camera${compact || floating ? ' digital-person-camera--compact' : ''}${floating ? ' digital-person-camera--floating' : ''}${children ? ' digital-person-camera--menu' : ''}${presentation==='panel'?' digital-person-camera--panel':''}`} data-camera-phase={phase} hidden={presentation==='panel'&&phase==='off'&&!error}>
+  const camera = <div ref={root} style={panelDrag.style} data-camera-moved={Boolean(panelDrag.style)} onPointerDown={panelDrag.onPointerDown} onKeyDown={panelDrag.onKeyDown} className={`digital-person-camera${compact || floating ? ' digital-person-camera--compact' : ''}${floating ? ' digital-person-camera--floating' : ''}${children ? ' digital-person-camera--menu' : ''}${presentation==='panel'?' digital-person-camera--panel':''}`} data-camera-phase={phase} hidden={presentation==='panel'&&phase==='off'&&!error}>
     {!children && <div className="digital-person-camera-actions">
       <Button data-camera-toggle variant="ghost" aria-label={t(phase === 'off' ? 'digitalPerson.openCamera' : 'digitalPerson.closeCamera')} aria-busy={phase === 'opening'} aria-pressed={phase !== 'off'} disabled={!active}
         onClick={() => phase === 'off' ? void start(facing) : stop()}>{phase === 'opening' ? <Spinner size={16} /> : <Icon name="camera" size={floating ? 14 : compact ? 24 : 16} />}{!compact && !floating && t(phase === 'off' ? 'digitalPerson.openCamera' : 'digitalPerson.closeCamera')}</Button>
       {!compact && !floating && switchButton}
     </div>}
-    {presentation==='panel'&&<header className="digital-home-camera-title"><Icon name="camera" size={16}/><span>{t('digitalPerson.cameraPreview')}</span></header>}
     {compact || floating ? <VideoPreviewWindow presentation={presentation} videoRef={video} overlay={overlay} actions={switchButton} error={error} getAnchor={getAnchor} label={t('digitalPerson.cameraPreview')} closeLabel={t('digitalPerson.closeCamera')} open={phase !== 'off' || Boolean(error)} onClose={() => { stop(); setError('') }}/> : <div className="digital-person-camera-media">{preview}</div>}
     {presentation==='panel'&&panelContent}
   </div>

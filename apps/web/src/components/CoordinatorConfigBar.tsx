@@ -219,7 +219,7 @@ export default function CoordinatorConfigBar({
   const catalogScope = `${engineId}::${supportsProvider ? providerId : ''}::${projectId || ''}`
   const models = catalog.scope === catalogScope ? catalog.models : []
   const thinkingOptions = [...engineEffortOptions(selectedEngine)].reverse()
-  const showSpeed = ['codex', 'codex_sdk'].includes(engineId) && onServiceTierChange
+  const showSpeed = selectedEngine?.supports_service_tier && onServiceTierChange
   const speedOptions = [
     { value: '', label: t('coord.speedDefault') },
     { value: 'ultrafast', label: t('coord.speedUltrafast') },

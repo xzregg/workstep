@@ -27,8 +27,70 @@ def completed_activity_summary(run):
     parts=[]
     if increased:parts.append(f'上升 {increased:g}')
     if decreased:parts.append(f'下降 {decreased:g}')
-    affinity='好感度'+'、'.join(parts) if parts else '好感度无变化'
+    affinity='好感度'+'、'.join(parts) if parts else '好感度 0'
     return f"整理 {knowledge.get('processed',0)} 条消息（{sessions} 个会话），新增 {knowledge.get('created',0)} 条记忆；{affinity}"
+
+
+def resolve_check_sources(context, references):
+    """Resolve exact current-batch read aliases; reject unknown or ambiguous origins."""
+    if not isinstance(references, list) or any(not isinstance(value, str) for value in references):
+        raise ValueError('思考引用的来源编号格式不正确。')
+    aliases = {}
+    for group in context.get('_groups', [context]):
+        for key in ('messages', 'delegations', 'conversation', 'memory', 'thought_sources'):
+            for row in group.get(key, []):
+                target = (group.get('origin_project_id'), group.get('origin_session_id'), row['id'])
+                for value in [row['id'], *row.get('memory_ids', []), *row.get('read_ids', [])]:
+                    if isinstance(value, str):
+                        aliases.setdefault(value, set()).add(target)
+    unknown = sum(not aliases.get(value) for value in references)
+    ambiguous = sum(len(aliases.get(value, ())) > 1 for value in references)
+    if unknown:
+        raise ValueError(f'本轮引用的 {len(references)} 条来源中，有 {unknown} 条未能对应到本批次消息，结果未采用。')
+    if ambiguous:
+        raise ValueError(f'本轮引用的 {ambiguous} 条来源对应多个会话，暂未采用这轮结果。')
+    return list(dict.fromkeys(next(iter(aliases[value]))[2] for value in references))
+
+
+def activity_failure_reason(run):
+    error = run.get('error')
+    if not error:
+        return None
+    if error == '检查结果来源无效':
+        return '未能确认思考内容对应的消息，本轮结果未采用。'
+    if error == '尚未调用 CLI 获取待整理消息':
+        return '本轮尚未读取待整理消息，思考未完成。'
+    if error.startswith('本轮引用的') or error == '思考引用的来源编号格式不正确。':
+        return error
+    if 'JSON' in error or '结果结构' in error:
+        return '返回的思考内容格式不完整，本轮未完成。'
+    if '尚未读取' in error:
+        return '本轮需要阅读的消息尚未读完，结果未采用。'
+    if '来源已变化' in error:
+        return '思考期间原始消息发生了变化，旧结果未采用。'
+    return str(error)
+
+
+def activity_preview(run):
+    if run.get('status') in ('failed', 'error'):
+        return '本轮思考未完成'
+    return str(run.get('activity_summary') or run.get('summary') or '').replace('好感度无变化', '好感度 0')[:120]
+
+
+def activity_outcome(run):
+    """Small factual projection; never expose recipients or relationship source data."""
+    if run.get('status') == 'running' or 'deliveries' not in run or 'relationship_updates' not in run:
+        return None
+    receipts = run.get('deliveries') or []
+    changes = [row.get('affinity_delta', 0) for row in run.get('relationship_updates') or []]
+    sent = sum(row.get('status') == 'delivered' for row in receipts)
+    return {
+        **({'message_preview': str(run.get('summary') or '')[:120]} if sent else {}),
+        'sent': sent,
+        'failed': sum(row.get('status') in ('failed', 'delivery_failed') for row in receipts),
+        'affinity_increased': sum(max(delta, 0) for delta in changes),
+        'affinity_decreased': -sum(min(delta, 0) for delta in changes),
+    }
 
 
 def assessment_audit(context):
@@ -191,13 +253,16 @@ class DigitalPersonRuntime:
             return {
                 'checking': self._check_lock.locked(),
                 'run_total': len(runs),
+                'reflection_count': state.get('reflection_count', len(runs)),
+                'reflection_count_lower_bound': state.get('reflection_count_lower_bound', len(all_runs) >= 100),
                 'delegation_total': len(delegations),
                 'delegation_pending': any(not d.get('notified') or notification(d)['notification_state'] == 'notifying' for d in delegations),
-                'delegations': [{**{key: row.get(key) for key in ('id', 'project_id', 'session_id', 'status')},
+                'delegations': [{**{key: row.get(key) for key in ('id', 'project_id', 'session_id', 'status', 'created_at')},
                                  'instruction': str(row.get('instruction') or '')[:120], **notification(row)}
                                 for row in delegations[delegation_offset:delegation_offset + limit]],
                 'runs': [{**{key: row.get(key) for key in ('id', 'status', 'created_at')},
-                          'summary': str(row.get('error') or row.get('activity_summary') or row.get('summary') or '')[:120]}
+                          'outcome': activity_outcome(row),
+                          'summary': activity_preview(row)}
                          for row in runs[run_offset:run_offset + limit]],
             }
         return await self.projects.run_db(home.id, read)
@@ -209,8 +274,11 @@ class DigitalPersonRuntime:
             if row is None:
                 raise ValueError('运行记录已不存在')
             result={key: row.get(key) for key in ('id', 'status', 'summary', 'error', 'created_at', 'ended_at')}
+            result['outcome'] = activity_outcome(row)
+            result['draft_summary'] = row.get('draft_summary')
+            result['failure_reason'] = activity_failure_reason(row)
             if row.get('activity_summary'):
-                result['summary']=row['activity_summary']+('\n'+row['summary'] if row.get('summary') else '')
+                result['summary']=row['activity_summary'].replace('好感度无变化', '好感度 0')+('\n'+row['summary'] if row.get('summary') else '')
             return result
         return await self.projects.run_db(home.id, read)
 
@@ -608,7 +676,13 @@ class DigitalPersonRuntime:
             if not await asyncio.to_thread(has_pending,allowed_projects(self.projects)):
                 return {'status':'silent','sources':{'no_work':True},'deliveries':[]}
             run = {'id':str(uuid.uuid4()),'created_at':utc_now(),'status':'running','trigger':'manual' if manual else 'interval','sources':[],'deliveries':[],'relationship_updates':[],'memory_updates':[]}
-            await self.mutate(lambda s: s['runs'].insert(0, run.copy()))
+            def start_run(state):
+                if 'reflection_count' not in state:
+                    state['reflection_count'] = sum(row.get('trigger') != 'delegation' for row in state['runs'])
+                    state['reflection_count_lower_bound'] = len(state['runs']) >= 100
+                state['reflection_count'] += 1
+                state['runs'].insert(0, run.copy())
+            await self.mutate(start_run)
             claimed = False
             committed = False
             context = {}
@@ -637,17 +711,17 @@ class DigitalPersonRuntime:
                     raise
                 finally:
                     self._active_assessment_task = None
+                from services.memory_secrets import redact
+                run['draft_summary'] = redact(str(decision.get('summary', '')))[:3000]
                 if '_load' in context:
                     raise ValueError('尚未调用 CLI 获取待整理消息')
                 if context.get('no_work'):
                     run.update(status='silent',summary='没有待处理事件')
                     return run
-                ids = decision.get('source_ids', [])
-                known = {row['id'] for key in ('messages', 'delegations', 'conversation', 'memory', 'thought_sources') for row in context.get(key, [])}
-                if decision.get('decision') not in ('silent','notify') or not isinstance(ids,list) or not set(ids).issubset(known):
-                    raise ValueError('检查结果来源无效')
-                from services.memory_secrets import redact
-                run['summary'] = redact(str(decision.get('summary','')))[:3000]
+                if decision.get('decision') not in ('silent','notify'):
+                    raise ValueError('思考结果缺少有效的处理方式。')
+                ids = resolve_check_sources(context, decision.get('source_ids', []))
+                run['summary'] = run.pop('draft_summary', '')
                 run['status'] = decision['decision']
                 run['kind'] = decision.get('kind', 'work')
                 if run['kind'] not in ('work', 'social'):

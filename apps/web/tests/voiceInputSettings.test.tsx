@@ -165,7 +165,7 @@ test('speech settings separates input output and wake, preserves output drafts a
     await switchTab('唤醒')
     assert.equal(host.querySelector<HTMLElement>('#speech-panel-input')!.hidden, true)
     assert.ok(host.querySelector('#speech-panel-wake .voice-wake-settings'))
-    assert.equal(host.querySelector('#speech-panel-wake h2'), null, 'tab label replaces the extra wake title')
+    assert.equal(host.querySelector('#speech-panel-wake h2') === null, true, 'tab label replaces the extra wake title')
     assert.equal(host.querySelectorAll('#speech-panel-wake .voice-wake-settings').length, 1, 'wake control is not another settings container')
     await switchTab('输出')
     assert.equal(output.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked, true)

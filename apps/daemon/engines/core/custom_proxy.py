@@ -14,6 +14,7 @@ from engines.core.custom_sdk import raw_config
 from engines.core.custom_transport import CustomWorkerClient
 from engines.core.events import InternalEvent
 from engines.core.schema import EngineConfigField, EngineConfigOption
+from engines.core.permissions import EnginePermissionPolicy
 from engines.core.session_pool import exclusive_engine_run
 from services.config import config_store
 
@@ -306,6 +307,7 @@ class CustomEngineProxy(AcpEngineBase):
 def make_custom_engine(root: Path, metadata: dict):
     info = dict(metadata)
     namespace = {"ENGINE_ID": info["id"], "_root": root, "_metadata": info,
+                 "PERMISSION_POLICY": EnginePermissionPolicy(**info.get("permission_policy", {})),
                  "workstep_events": frozenset(info.get("workstep_events", ())),
                  "acp_events": frozenset(info.get("acp_events", {"error"})),
                  "SYSTEM_PROMPT_MODE": info.get("system_prompt_mode", "body")}

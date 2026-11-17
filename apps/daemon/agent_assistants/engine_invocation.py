@@ -8,8 +8,6 @@ from typing import Any, Awaitable, Callable
 from engines.core.events import InternalEvent, is_commentary
 from engines.core.schema import EngineImage
 from services.chat_permissions import (
-    map_permission_overrides,
-    map_plan_mode_overrides,
     parse_goal_command,
     GOAL_MODE_INSTRUCTION,
     PLAN_MODE_INSTRUCTION,
@@ -36,6 +34,7 @@ async def run_engine_turn(
     images: list[EngineImage] | None = None,
     report_engine_state: bool = False,
     thinking_effort: str | None = None,
+    service_tier: str | None = None,
     permission_mode: str | None = None,
     plan_mode: bool | None = None,
     goal_mode: bool | None = None,
@@ -65,6 +64,7 @@ async def run_engine_turn(
     engine = await asyncio.to_thread(engine_factory, engine_id)
     if engine is None:
         raise RuntimeError(f"{error_prefix} is unavailable: {engine_id}")
+    permission_overrides = engine.permission_config_overrides(permission_mode) if permission_mode else {}
     if permission_mode:
         await engine.set_permission_mode(permission_mode)
     supports_native_plan_mode = bool(
@@ -144,12 +144,12 @@ async def run_engine_turn(
         ):
             spawn_kwargs["thinking_effort"] = thinking_effort
         merged_overrides = dict(config_overrides or {})
+        if service_tier and getattr(engine, "supports_service_tier", False):
+            merged_overrides["service_tier"] = service_tier
         if permission_mode:
-            merged_overrides.update(
-                map_permission_overrides(engine_id, permission_mode)
-            )
+            merged_overrides.update(permission_overrides)
         if plan_mode:
-            merged_overrides.update(map_plan_mode_overrides(engine_id))
+            merged_overrides.update(engine.plan_config_overrides())
         if supports_native_plan_mode:
             spawn_kwargs["plan_mode"] = bool(plan_mode)
         if goal_command:

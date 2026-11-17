@@ -11,6 +11,8 @@ from pathlib import Path
 import uuid
 from typing import Any, AsyncIterator, Awaitable, Callable
 
+from engines.core.base import EngineSkillPolicy
+from engines.core.permissions import EnginePermissionPolicy
 from engines.core.image_input import render_image_prompt
 from engines.core.acp_base import AcpEngineBase
 from engines.pydantic_ai.harness_runtime import PydanticAIHarnessRuntime
@@ -37,6 +39,7 @@ logger = logging.getLogger(__name__)
 PYDANTIC_AI_REQUEST_LIMIT = 100
 PYDANTIC_AI_TOOL_RETRIES = 3
 PYDANTIC_AI_CODER_COMMANDS = (
+    "date",
     "git",
     "rg",
     "grep",
@@ -74,7 +77,24 @@ PYDANTIC_PLANNING_TOOL_NAMES = frozenset({
 
 class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
     ENGINE_ID = "pydantic_ai"
+    SUPPORTS_HOST_SESSION_IDS = True
+    SKILL_POLICY = EngineSkillPolicy.PROJECT_REGISTRY
+    SUPPORTS_MANUAL_COMPACTION = False
+    PERMISSION_POLICY = EnginePermissionPolicy(
+        overrides={
+            'read-only': {'sandbox': 'read-only'},
+            'workspace-write': {'sandbox': 'workspace-write'},
+            'danger-full-access': {'sandbox': 'danger-full-access'},
+            'auto': {},
+            'ask': {},
+        },
+        plan_overrides={'sandbox': 'read-only'},
+    )
     supports_mcp = True
+
+    @property
+    def supports_plan_mode(self) -> bool:
+        return True
     SYSTEM_PROMPT_MODE = "system"
 
     @classmethod
@@ -591,8 +611,10 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
 
     @staticmethod
     def _accumulate_usage(total, result):
+        from pydantic_ai import RunUsage
+
         usage_attr = getattr(result, "usage", None)
-        usage = usage_attr() if callable(usage_attr) else usage_attr
+        usage = usage_attr() if callable(usage_attr) and not isinstance(usage_attr, RunUsage) else usage_attr
         if usage is None:
             return total
         return usage if total is None else total + usage
@@ -687,6 +709,8 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         tool_input: dict[str, Any],
     ) -> bool:
         """Request ACP-style permission for a mutating in-process tool."""
+        if self.tools_read_only():
+            return False
         runtime_decision = self.runtime_permission_decision()
         if runtime_decision is not None:
             return runtime_decision
@@ -745,6 +769,23 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
             self._interaction_permission_rejects.add(tool_name)
         return bool(selected and str(selected["kind"]).startswith("allow"))
 
+    def tools_read_only(self) -> bool:
+        return self._tool_sandbox() == "read-only"
+
+    def _tool_sandbox(self) -> str:
+        if getattr(self, "_active_plan_mode", False):
+            return "read-only"
+        mode = self.runtime_permission_mode()
+        if mode in {"read-only", "workspace-write", "danger-full-access"}:
+            return mode
+        return getattr(self, "_active_sandbox", "workspace-write")
+
+    def _command_policy(self) -> list[str]:
+        sandbox = self._tool_sandbox()
+        if sandbox == "danger-full-access":
+            return []
+        return [*PYDANTIC_AI_CODER_COMMANDS, *(["cd"] if sandbox == "workspace-write" else [])]
+
     async def _run_agent(
         self,
         *,
@@ -761,11 +802,16 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         sandbox: str = "workspace-write",
         system_prompt: str | None = None,
         connectors_enabled: bool = False,
+        plan_mode: bool = False,
     ) -> tuple[Any, Any]:
         """Run the agent, injecting queued live messages between rounds."""
         from pydantic_ai import Agent
         from pydantic_ai.capabilities import Thinking, WebFetch, WebSearch
         from pydantic_ai_harness import Skills
+        from engines.pydantic_ai.permissions import ToolPermissions
+
+        self._active_sandbox = sandbox
+        self._active_plan_mode = plan_mode
 
         root = await asyncio.to_thread(Path(cwd).resolve)
 
@@ -777,27 +823,30 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
             self._harness_capabilities, root, session_id
         )
         effort = resolve_thinking_effort(thinking_effort)
-        allowed = list(PYDANTIC_AI_CODER_COMMANDS)
-        if sandbox in ("workspace-write", "danger-full-access"):
-            allowed.append("cd")
+        # An empty SDK allowlist means unrestricted commands. Full access must
+        # not retain the restricted modes' command policy.
+        allowed = self._command_policy()
         subagent_capability = self._make_subagent_capability(on_event)
+        tool_permissions = ToolPermissions(self, on_event)
         coder = WorkStepCoder(
             root,
             allowed_commands=allowed,
             subagent_capability=subagent_capability,
+            permission_capability=tool_permissions,
+            command_policy=self._command_policy,
         )
         # The pinned Planning store is the authoritative source for the
         # harness planning tools (write_plan / update_task_status / …);
         # reset the dedupe cache because the store is fresh per spawn.
         self._active_plan_store = getattr(coder, "plan_store", None)
         self._last_plan_snapshot = None
-        capabilities = [coder]
+        capabilities = [tool_permissions, coder]
         storage_root = await asyncio.to_thread(data_directory, root)
         if not storage_root.is_relative_to(root):
             from engines.pydantic_ai.coder import ProjectDataFileSystem
             capabilities.append(ProjectDataFileSystem(
                 root_dir=storage_root,
-                protected_patterns=["MEMORY.md", "project.json", "*.db", "*.db-*", "runtime/**", "skills/**"],
+                read_only_patterns=["MEMORY.md", "project.json", "*.db", "*.db-*", "runtime/**", "skills/**"],
                 description="Project data tools: paths are relative to " + str(storage_root) + "; use these tools for artifacts outside the code workspace.",
             ))
         skill_library = storage_root / "skills"
@@ -1127,7 +1176,11 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         config_overrides: dict | None = None,
         workstep_tools: bool = False,
         system_prompt: str | None = None,
+        plan_mode: bool = False,
     ) -> AsyncIterator[InternalEvent]:
+        if plan_mode and prompt.strip() != "/compact":
+            from services.chat_permissions import PLAN_MODE_INSTRUCTION
+            prompt = f"{prompt}\n\n{PLAN_MODE_INSTRUCTION}"
         config = self.merge_config_overrides(
             await asyncio.to_thread(config_store.get_pydantic_ai_engine_config),
             config_overrides,
@@ -1195,6 +1248,8 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
                 "session_id": session_uuid,
                 "sandbox": str(config.get("sandbox") or "workspace-write"),
             }
+            if plan_mode:
+                run_kwargs["plan_mode"] = True
             if any(isinstance(server, dict) and str(server.get("name", "")).startswith("workstep_")
                    for server in (config_overrides or {}).get("mcp_servers", [])):
                 run_kwargs["connectors_enabled"] = True

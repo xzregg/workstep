@@ -753,11 +753,11 @@
           "Ouvrez un aperçu HTML du projet, puis l’éditeur de prototype. Pour les modifications par IA, configurez le moteur dans Paramètres → Assistants → Assistant de prototype.",
           "Cliquez sur le nom du fichier au-dessus de l’aperçu pour choisir un HTML voisin ou dans un sous-dossier. Chaque HTML conserve sa conversation. Faites glisser les bords et séparateurs pour redimensionner.",
           "Survolez pour surligner, cliquez pour sélectionner, ou faites un clic droit pour commenter. Exemple : « Passe ce bouton en vert sans modifier le bouton voisin. » Envoyez le commentaire au chat.",
-          "Modifiez le texte, la couleur ou width (par exemple 180px) dans les propriétés, puis quittez le champ pour enregistrer. Vous pouvez aussi double-cliquer sur du texte simple ou tirer les poignées. Sélectionnez précisément l’élément avant de confirmer sa suppression.",
+          "Pour les éléments statiques, modifiez texte, couleur ou width, par exemple 180px, dans Propriétés ; la perte du focus enregistre. Déplacez uniquement par la poignée du cadre de sélection ; Alt désactive l’alignement et Esc annule le déplacement. Vérifiez le nœud avant suppression. Ctrl+Z／⌘Z ou « Annuler » en haut reviennent sur les opérations enregistrées.",
           "Dans l’historique des modifications, comparez, annulez ou effacez l’historique. Après une interruption, inspectez la copie conservée puis reprenez l’enregistrement ou abandonnez. Les originaux en conflit ne sont pas écrasés."
         ],
         "tips": [
-          "L’édition directe concerne le HTML statique. Le mode sélection suspend les scripts ; le mode navigation exécute les interactions. Seules les modifications de fichiers HTML/CSS/JS existants sont publiées, sans ajout ni suppression de fichiers entiers."
+          "L’édition directe concerne le HTML statique et publie les modifications de fichiers HTML/CSS/JS existants, sans ajout ni suppression de fichiers entiers. Pour les pages dynamiques, utilisez l’inspection en lecture seule et les commentaires de la section suivante. Les anciennes captures ne montrent pas la nouvelle poignée ni l’inspection dynamique."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Éditeur de mémoire avec conventions fictives",
           "caption": "Éditez et enregistrez .workstep/MEMORY.md. Aucune confirmation d’extraction d’enseignements n’est montrée."
         }
+      },
+      {
+        "title": "Inspecter les prototypes dynamiques HTML／React",
+        "steps": [
+          "Dans l’aperçu HTML, ouvrez « Éditer le prototype ». Les pages dynamiques conservent leurs scripts ; sélectionnez un élément ou commentez par clic droit, décrivez les changements puis « Envoyer au chat ». L’assistant de prototypage modifie la logique de génération.",
+          "Les propriétés des nœuds dynamiques sont en lecture seule, sans poignée ; on ne peut ni les redimensionner ni les supprimer comme du HTML statique. Canvas ne permet de cibler que le canevas. Ouvrez séparément les pages imbriquées d’un parent dynamique depuis le répertoire.",
+          "En navigation, suivez les liens internes à l’espace de travail pour changer de page puis inspecter. Les sous-cadres statiques se sélectionnent et s’éditent sur place. Envoyez ou videz les commentaires en attente et attendez la fin de l’enregistrement avant de changer. Consultez les différences par fichier, côte à côte ou unifiées, dans l’historique."
+        ],
+        "tips": [
+          "Envoyer un commentaire appelle l’assistant de prototypage configuré ; sélectionner et ajuster manuellement les propriétés n’appellent pas le modèle. Vérifiez les changements écrits et relisez d’abord en cas de conflit de versions."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Propriétés en lecture seule, commentaires d’éléments et changement de fichiers du prototype dynamique",
+          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+        }
+      },
+      {
+        "title": "Définir un modèle de format pour les livrables",
+        "steps": [
+          "Sur la ligne du livrable d’une étape de flux, cliquez sur « Modèle » et précisez structure et critères d’acceptation en Markdown. Par exemple, utilisez {{任务名称}} dans le titre puis listez conclusions et résultats de validation. Les nouvelles exécutions suivent ces exigences après enregistrement du flux.",
+          "Dans les détails de tâche, cliquez sur l’icône de modèle près du livrable pour modifier cette tâche seulement, vider le modèle ou restaurer celui du flux. Lecture seule pendant l’exécution ; la page partagée permet uniquement de consulter.",
+          "Une fois terminé, vérifiez le fichier produit par rapport au modèle. Celui-ci est conservé lors des copies, imports et exports du flux, mais n’est pas un livrable déjà généré."
+        ],
+        "tips": [
+          "Seul {{任务名称}} est remplacé ; les autres exigences de format sont transmises telles quelles au modèle. Leur respect strict n’est pas garanti : une revue reste nécessaire."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Éditeur de modèles de format de livrables pour flux et tâches",
+          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Dicter un brouillon de message",
         "steps": [
-          "Ouvrez Paramètres → Saisie vocale, activez-la, téléchargez le modèle et le moteur, choisissez la langue puis testez le microphone. L’installation se fait sur l’hôte WorkStep connecté, pas sur le téléphone. Le mandarin, le cantonais et l’anglais sont pris en charge.",
-          "Sur ordinateur, cliquez sur le microphone. Sur téléphone, maintenez la zone de texte 500 ms ; aucune icône de microphone n’apparaît. Relâchez, vérifiez le texte inséré et envoyez manuellement. Maximum deux minutes ; annuler n’envoie rien."
+          "Ouvrez « Paramètres → Paramètres vocaux → Entrée » et choisissez un modèle local, un fournisseur cloud ou un service distant auto-hébergé. En local, téléchargez environnement et modèle puis cliquez sur « Utiliser ce modèle ». Paraformer prend en charge mandarin, cantonais et anglais ; Zipformer, mandarin et anglais. Enregistrez puis vérifiez avec « Tester le microphone ». Le modèle est installé sur l’hôte WorkStep.",
+          "Sur ordinateur, utilisez l’entrée microphone. Sur téléphone, avec un brouillon vide, touchez le petit haut-parleur en bas à droite pour enregistrer ; avec du texte, le bouton Envoyer apparaît. L’appui long conserve la sélection système. Vérifiez le brouillon transcrit puis envoyez manuellement. Deux minutes maximum par enregistrement ; annuler n’envoie rien."
         ],
         "tips": [
-          "L’hôte connecté reconnaît le son sans le conserver. Autorisez le microphone via HTTPS ou une adresse locale. En cas d’échec, vérifiez les permissions du site et du système ; redémarrez un serveur obsolète. Vous pouvez conserver explicitement le texte déjà reconnu."
+          "Le microphone exige les autorisations système et du site ; le navigateur nécessite HTTPS ou une adresse locale. En mode cloud ou distant, l’hôte transmet l’audio au service choisi. HTTP ne renvoie le texte qu’en fin de transcription et ne permet pas l’activation en temps réel. Vous pouvez supprimer les modèles séparément après vérification du modèle utilisé. Entrée et sortie vocales se configurent séparément."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Configurer et utiliser les connecteurs",
         "steps": [
-          "Ouvrez Paramètres → Connecteurs → Ajouter. Pour MCP local, séparez commande et arguments ; pour MCP distant, indiquez l’URL ; pour CLI, l’exécutable. Choisissez les projets autorisés.",
+          "Ouvrez « Paramètres → Connecteurs → Ajouter un connecteur », ou utilisez la prise du bureau. Pour MCP local, saisissez séparément commande et arguments ; éditez ces derniers un par un ou en JSON. Pour MCP distant indiquez l’URL ; pour CLI, l’exécutable. Laisser les projets disponibles vides autorise tous les projets.",
           "Dans Test → Détecter la connexion, découvrez les outils. Leur exécution est réelle : vérifiez les arguments. Ce test n’appelle pas de LLM ; enregistrez ensuite.",
-          "Dans la conversation, activez via + → Connecteurs pour le prochain message. MCP nécessite un moteur compatible ; connectez le CLI avec sa commande officielle dans le terminal hôte. Pour 401, configurez le jeton Bearer ou l’en-tête accepté. OAuth navigateur reste indisponible."
+          "Dans les chats ordinaires et les entrées d’exécution de tâches, choisissez via « ＋ → Connecteurs », /连接器 ou /apps ; l’activation vaut pour le message suivant. La coordination des tâches ne les monte pas automatiquement. MCP exige un moteur compatible ; CLI utilise la commande officielle de connexion. Pour 401, configurez Bearer Token ou les en-têtes d’authentification ; OAuth web n’est pas encore pris en charge. La détection locale ne copie pas les identifiants."
         ],
         "tips": [
           "Exemple: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Configurer et utiliser les connecteurs",
           "caption": "Capture réelle à fournir : configuration, test et sélection en conversation."
+        }
+      },
+      {
+        "title": "Grouper les conversations et consulter les archives",
+        "steps": [
+          "Créez un groupe par clic droit sur le titre des conversations, la liste ou une conversation de la barre latérale. Glissez les sessions dans un groupe ou vers Sans groupe ; le menu des groupes ordinaires permet de créer un chat. Groupes ordinaires et de canaux sont gérés séparément.",
+          "Archivez ou supprimez depuis le menu du groupe. Par défaut, la suppression dissout seulement le groupe ; les messages sont supprimés uniquement si vous cochez aussi la suppression des conversations. Vérifiez la portée. Les membres en cours ou en échec sont ignorés et conservés.",
+          "Ouvrez les archives et cliquez sur un titre pour déplier en lecture seule le dernier échange. Consulter ne restaure pas la session et ne charge pas tous les détails d’exécution. Restaurez explicitement pour reprendre le chat."
+        ],
+        "tips": [
+          "Archiver conserve le contenu ; supprimer conversations et messages a un effet plus important. Ne confondez pas dissolution du groupe et suppression de son contenu."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Menu des groupes dans la barre latérale et aperçu en lecture seule des archives",
+          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Échec fictif causé par un modèle inexistant",
           "caption": "L’erreur indique un modèle non pris en charge. Corrigez sa configuration avant reprise ; ce n’est pas encore fait sur l’image."
+        }
+      },
+      {
+        "title": "Configurer un modèle de décision facultatif",
+        "steps": [
+          "Ouvrez « Paramètres → Modèles et capacités → Modèle de décision ». Choisissez hébergement local, service local ou distant. L’hébergement est détecté selon l’hôte ; composants et modèles se téléchargent séparément et manuellement. Si les conditions manquent, utilisez un service existant.",
+          "En mode service, indiquez adresse et authentification. « Lire la liste des modèles » permet de rechercher et choisir ; la saisie manuelle reste possible. Tester vérifie le brouillon sans enregistrer. Confirmez le résultat puis « Enregistrer la configuration ».",
+          "Pour rendre le modèle hébergé accessible à d’autres appareils seulement, activez « Autoriser les autres appareils à appeler le modèle local », définissez ou réutilisez la clé d’accès distant et enregistrez. Utilisez l’adresse affichée. Les ressources manquantes ne se téléchargent pas seules ; réessayez si occupé."
+        ],
+        "tips": [
+          "C’est une interface de décision Jev facultative, pas une API de chat générale. Elle ne prend pas automatiquement en charge tâches ou conversations. Téléchargement et activation du proxy sont indépendants.",
+          "Le modèle tourne sur l’hôte et consomme CPU et mémoire. Un test réussi ne valide pas la précision métier. Le jeton d’inférence du proxy ne donne pas de droits de gestion des ressources ; ne montrez pas les clés dans les captures."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Modes, ressources, test, enregistrement et proxy facultatif du modèle de décision",
+          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+        }
+      },
+      {
+        "title": "Lire le manuel depuis le point d’interrogation des paramètres",
+        "steps": [
+          "Cliquez sur le point d’interrogation près du titre d’une section pour lire son chapitre dans l’application. Utilisez sommaire et recherche ; le manuel suit la langue actuelle et sa fenêtre est redimensionnable sur ordinateur.",
+          "Réessayez si le chargement échoue. « Ouvrir dans le navigateur » affiche la page complète en conservant chapitre et langue. Une section sans guide correspondant n’affiche pas de point d’interrogation."
+        ],
+        "tips": [
+          "Le manuel intégré nécessite les ressources du site dans le service. En cas d’échec, vérifiez version et ressources, sans substituer un chapitre sans rapport."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Point d’interrogation des paramètres et manuel multilingue intégré",
+          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Personne numérique et mémoire globale",
+    "summary": "Configurez communication, chat principal, réflexion et accueil sur les canaux ; consultez des souvenirs sourcés et activez voix ou reconnaissance des personnes au besoin.",
+    "sections": [
+      {
+        "title": "Configurer personnalité, responsabilités et chat principal",
+        "steps": [
+          "Ouvrez « Paramètres → Figure numérique → Guide initial », renseignez le nom et éditez personnalité, responsabilités et mémoire permanente dans « Personnalité et responsabilités ». Utilisez les préréglages ou importez du centre de rôles, configurez un moteur disponible puis « Terminer et activer ».",
+          "Après enregistrement du profil, ouvrez « Discuter avec la personne numérique » dans la barre latérale. Le clavier permet la saisie ; « Voir la conversation » ouvre l’historique de la même session principale. Vous pouvez revenir à l’espace de travail ordinaire.",
+          "Personnalité, responsabilités et mémoire permanente utilisent Markdown. Les préréglages ne modifient que leur partie. En cas d’échec, le brouillon est conservé pour réessayer. Traitez les modifications non enregistrées avant de changer de section ou fermer."
+        ],
+        "tips": [
+          "La mémoire permanente correspond à des accords manuels, pas à la bibliothèque historique. Changer de langue ne traduit pas les textes enregistrés. La personne numérique communique et suit l’avancement ; le travail réel va aux sessions d’exécution du projet cible."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Guide de figure numérique, documents de personnalité et conversation principale",
+          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+        }
+      },
+      {
+        "title": "Chercher les souvenirs et vérifier les sources",
+        "steps": [
+          "Dans « Figure numérique → Mémoire », cherchez contenu, entités ou projets ; filtrez préférences, expériences, faits ou événements et alternez carte mentale et revue chronologique.",
+          "Sélectionnez un enregistrement pour voir le savoir puis ouvrez les sources pour lire les messages originaux paginés. En cas de doute, comparez à l’original : un résumé n’est ni une citation utilisateur ni une preuve de tâche terminée.",
+          "L’échange n’est enregistré qu’après une réponse complète de l’assistant. Chats et tâches utilisent les outils de mémoire au besoin, sans injecter tout l’historique dans chaque requête ni reprendre automatiquement tout le passé des projets."
+        ],
+        "tips": [
+          "La bibliothèque unifiée se consulte entre projets et sessions, sous réserve des droits de projet et d’identité. Comptes par catégorie, statistiques globales et nombre de résultats courants sont distincts.",
+          "Accords permanents, MEMORY.md du projet et bibliothèque historique ont des usages différents. Les messages non organisés ne sont pas des connaissances extraites ; aucun bouton d’oubli n’est encore proposé."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Recherche globale, catégories et pagination des sources originales",
+          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+        }
+      },
+      {
+        "title": "Réflexion proactive et historique d’exécution",
+        "steps": [
+          "Dans « Figure numérique → Réflexion proactive », enregistrez activation automatique, intervalle, contact proactif, intervalle minimal de contact et Ne pas déranger. Les paramètres de mémoire règlent la taille des lots : 100 par défaut, de 1–1000.",
+          "Cliquez sur « Réfléchir maintenant » pour un contrôle immédiat. Dans « Historique d’exécution », consultez séparément notifications de délégation et réflexions, actualisez, changez de page et développez résumé ou erreur. Une délégation ouvre sa véritable session d’exécution.",
+          "Réessayez la notification si sa livraison échoue. Vérifiez séparément fin de réflexion et remise du message. Désactiver la réflexion automatique suspend les contrôles planifiés, mais laisse chat et réflexion manuelle disponibles."
+        ],
+        "tips": [
+          "L’intervalle par défaut est 5 minutes. Autoriser le contact proactif ne signifie pas un message à chaque tour ; sans événement en attente, le tour peut finir silencieusement. Les appels peuvent être facturés ; le résumé n’est pas la chaîne complète de pensée."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Configuration de réflexion et historique à pagination indépendante",
+          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+        }
+      },
+      {
+        "title": "Lier l’accueil des canaux et les notifications",
+        "steps": [
+          "Configurez d’abord un bot dans « Paramètres → Bots de canaux » et envoyez-lui un message pour identifier la cible. Ajoutez une liaison dans « Figure numérique → Bots de canaux », puis choisissez bot et groupe ou contact.",
+          "Activez « Recevoir les notifications proactives » au besoin. Accueillir les messages entrants n’autorise pas automatiquement des envois proactifs. Confirmez et vérifiez la cible ; les groupes liés à une tâche gardent leur liaison.",
+          "Vérifiez la cible et confirmez avant « Tester l’envoi ». Supprimez la liaison si inutile. Le succès indique seulement l’acceptation par la plateforme, pas la lecture par le destinataire."
+        ],
+        "tips": [
+          "Le test envoie réellement un message. Utilisez une cible de démonstration ; ne supposez pas qu’un contact incertain est autorisé."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Liaisons de canaux, notifications proactives et état de livraison",
+          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+        }
+      },
+      {
+        "title": "Configurer voix, activation et microphone",
+        "steps": [
+          "Dans les réglages globaux « Paramètres vocaux → Sortie », choisissez voix système, modèle local, fournisseur cloud ou service distant auto-hébergé. Téléchargez les ressources locales manuellement ; pour cloud ou distant, indiquez service et authentification, écoutez puis enregistrez. La page Son de Figure numérique règle timbre, débit et paramètres.",
+          "Réglez mot d’activation et sensibilité dans « Audition », puis démarrez explicitement l’écoute. Une entrée vocale en continu disponible est nécessaire. Enregistrer le mot ne démarre pas l’enregistrement ; la transcription HTTP après la fin ne permet pas l’activation en temps réel.",
+          "Sur l’accueil, cliquez sur le microphone pour discuter à la voix. Le haut-parleur contrôle la lecture de cette page ; coupez le microphone pour arrêter la capture. Couper le haut-parleur ne le coupe pas. Masquer, recharger ou quitter la page arrête l’écoute."
+        ],
+        "tips": [
+          "Microphone, caméra et lecture exigent leurs autorisations système ou site séparées. Les services distants reçoivent l’audio concerné. Le son réel doit être vérifié sur les appareils mobiles et de bureau.",
+          "Seules les nouvelles réponses sont lues. Ouvrir le panneau complet suspend la lecture automatique ; le fermer ne rejoue pas les anciens contenus. Ne présumez pas d’une écoute continue écran verrouillé ou application fermée."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Modes de sortie vocale, écoute de test et commande explicite d’écoute",
+          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+        }
+      },
+      {
+        "title": "Enregistrer des proches et les reconnaître avec la caméra",
+        "steps": [
+          "Configurez le modèle dans « Figure numérique → Vision → Reconnaissance faciale », puis « Gestion des personnes connues → Enregistrer un visage ». Renseignez nom et relation et confirmez le consentement de la personne.",
+          "Ouvrez la caméra et capturez trois échantillons nets d’une personne seule : de face, puis légèrement à gauche et à droite. Vérifiez et enregistrez ; contrôlez le nom au test de reconnaissance. Vous pouvez ajouter, désactiver ou supprimer des échantillons.",
+          "Choisissez d’afficher les noms et d’inclure personnes et relations dans le message, puis envoyez explicitement l’image. En cas d’échec, vérifiez modèle, permissions et image ; n’utilisez pas une identité supposée."
+        ],
+        "tips": [
+          "Les photos de capture ne sont pas conservées durablement, mais les caractéristiques restent sensibles. Être dans le champ ne désigne pas le locuteur et ne change ni auteur, droits ni identité de connexion. Les images et informations envoyées au modèle ne restent pas nécessairement sur l’appareil."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Consentement, capture en trois étapes et paramètres de reconnaissance",
+          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
         }
       }
     ]

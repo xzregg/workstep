@@ -37,14 +37,13 @@ export default function VideoPreviewWindow({open,onClose,label,closeLabel,videoR
  const panel=useRef<HTMLDivElement>(null),border=useRef(1)
  const cleanup=useRef<(()=>void)|null>(null),ratio=useRef<number|null>(null),moved=useRef(false),resized=useRef(false),anchor=useRef(getAnchor)
  anchor.current=getAnchor
- const [docked,setDocked]=useState(presentation==='panel')
+ const docked=presentation==='panel'
  const previousPresentation=useRef(presentation)
- useLayoutEffect(()=>{if(previousPresentation.current===presentation)return;previousPresentation.current=presentation;cleanup.current?.();restore.current=null;moved.current=false;resized.current=false;setDocked(presentation==='panel')},[presentation])
+ useLayoutEffect(()=>{if(previousPresentation.current===presentation)return;previousPresentation.current=presentation;cleanup.current?.();restore.current=null;moved.current=false;resized.current=false},[presentation])
  const lastTouch=useRef(0)
  const restore=useRef<Bounds|null>(null),lastTap=useRef<{time:number;x:number;y:number}|null>(null)
  const expand=()=>{
-  if(!bounds||!ratio.current)return
-  setDocked(false)
+  if(docked||!bounds||!ratio.current)return
   cleanup.current?.();moved.current=true;resized.current=true
   if(restore.current){const previous=restore.current;restore.current=null;setBounds(clamp({...previous,...size(previous.width,ratio.current,border.current,null,false)}));return}
   restore.current=bounds
@@ -54,7 +53,7 @@ export default function VideoPreviewWindow({open,onClose,label,closeLabel,videoR
  const [ready,setReady]=useState(false)
  const [bounds,setBounds]=useState<Bounds|null>(null)
  useLayoutEffect(()=>{
-  if(!open){setDocked(presentation==='panel');restore.current=null;lastTap.current=null;ratio.current=null;setReady(false);moved.current=false;resized.current=false;setBounds(null);return}
+  if(!open){restore.current=null;lastTap.current=null;ratio.current=null;setReady(false);moved.current=false;resized.current=false;setBounds(null);return}
   const source=video.current
   const layout=()=>{
    if(source?.videoWidth&&source.videoHeight)ratio.current=source.videoWidth/source.videoHeight
@@ -79,13 +78,6 @@ export default function VideoPreviewWindow({open,onClose,label,closeLabel,videoR
    window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize)
   }
  },[open,video,presentation])
- useLayoutEffect(()=>{
-  if(docked||presentation!=='panel'||!ratio.current)return
-  const style=panel.current?getComputedStyle(panel.current):null
-  border.current=(parseFloat(style?.borderLeftWidth??'')+parseFloat(style?.borderRightWidth??''))||1
-  moved.current=true
-  setBounds(current=>current?clamp({...current,...size(current.width,ratio.current,border.current,null,false)}):current)
- },[docked,presentation])
  useEffect(()=>{if(!open)cleanup.current?.();return()=>cleanup.current?.()},[open])
  const start=(event:ReactPointerEvent,edge?:typeof edges[number])=>{
   if(docked||event.button!==0||!bounds||(edge&&!ratio.current)||(event.target as HTMLElement).closest('button'))return
@@ -125,8 +117,8 @@ export default function VideoPreviewWindow({open,onClose,label,closeLabel,videoR
   window.addEventListener('pointermove',move);window.addEventListener('pointerup',finish);window.addEventListener('pointercancel',finish)
  }
  return <div ref={panel} className={`video-preview-window${docked?' video-preview-window--docked':''}`} data-video-docked={presentation==='panel'?docked:undefined} data-video-ready={ready} data-video-expanded={Boolean(restore.current)} hidden={!open} style={docked?{'--video-preview-ratio':ratio.current??1} as CSSProperties:bounds??undefined} role="region" aria-label={label}>
-  <div className="video-preview-header">
-   {presentation==='panel'&&<Button data-video-pin variant="ghost" aria-label={t(docked?'digitalPerson.cameraFloat':'digitalPerson.cameraDock')} title={t(docked?'digitalPerson.cameraFloat':'digitalPerson.cameraDock')} onClick={()=>{restore.current=null;cleanup.current?.();if(docked){const rect=panel.current?.getBoundingClientRect();if(rect?.width&&rect.height)setBounds(clamp({left:rect.left,top:rect.top,width:rect.width,height:rect.height}))}setDocked(value=>!value)}}><Icon name={docked?'panel-left-open':'panel-left-close'} size={14}/></Button>}
+  <div className="video-preview-header" tabIndex={docked?0:undefined}>
+   {presentation==='panel'&&docked&&<span className="video-preview-header-title"><Icon name="camera" size={14}/>{label}</span>}
    {actions}
    <Button data-video-close variant="ghost" onClick={onClose} aria-label={closeLabel??t('common.close')}><Icon name="x" size={14}/></Button>
   </div>

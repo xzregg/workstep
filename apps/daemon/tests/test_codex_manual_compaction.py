@@ -402,6 +402,9 @@ async def test_plan_mode_does_not_append_instructions_to_compact_command(monkeyp
         supports_resume = True
         supports_message_history = False
 
+        def plan_config_overrides(self):
+            return {}
+
         async def spawn_with_retry(self, **kwargs):
             received.append(kwargs["prompt"])
             yield compacted_event()

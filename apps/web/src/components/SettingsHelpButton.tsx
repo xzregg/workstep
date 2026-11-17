@@ -7,12 +7,12 @@ import ManualHelpDialog from './ManualHelpDialog'
 import './ManualHelpDialog.css'
 
 export const settingsManualChapters: Partial<Record<SettingsSection, string>> = {
-  'digital-person': 'chat-skills', providers: 'sdk-credentials', engines: 'sdk-installation',
+  'digital-person': 'digital-person', providers: 'sdk-credentials', engines: 'sdk-installation',
   assistants: 'settings-troubleshooting', speech: 'chat-skills', pricing: 'faq',
   templates: 'templates-ai-flow', connectors: 'chat-skills', roles: 'chat-skills',
   channels: 'bots', remote: 'sharing-remote', concurrency: 'settings-troubleshooting',
   git: 'git', appearance: 'appearance', system: 'settings-troubleshooting',
-  feedback: 'settings-troubleshooting', sandbox: 'sandbox',
+  feedback: 'settings-troubleshooting', sandbox: 'sandbox', decision: 'settings-troubleshooting',
 }
 
 export default function SettingsHelpButton({ section }: { section: SettingsSection }) {

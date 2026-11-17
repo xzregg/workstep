@@ -96,9 +96,9 @@ class PydanticAIHarnessRuntime:
         workstep_dir.mkdir(parents=True, exist_ok=True)
         return SqliteStepStore(
             database=workstep_dir / "harness_runs.db",
-            # WorkStep 的会话恢复（continue_run）只读最新一个 complete
-            # 快照，从不消费中间 step 回退点；保留多份完整累积历史纯属
-            # 磁盘冗余（单 run 曾达 ~130MB）。保留 1 份即可，单 run ~5MB。
+            # Bound checkpoints within each run. Across turns, the SDK shares
+            # message bodies via snapshot_messages / snapshot_message_refs;
+            # older runs remain available for conversation search.
             max_snapshots_per_run=1,
         )
 
@@ -132,6 +132,13 @@ class PydanticAIHarnessRuntime:
                     conn.execute(
                         f"DELETE FROM tool_effects WHERE run_id IN ({ph})", run_ids
                     )
+                    if conn.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                        "AND name = 'snapshot_idempotency_keys'"
+                    ).fetchone():
+                        conn.execute(
+                            f"DELETE FROM snapshot_idempotency_keys WHERE run_id IN ({ph})", run_ids
+                        )
                 for table in ("runs", "events", "snapshots"):
                     conn.execute(
                         f"DELETE FROM {table} WHERE conversation_id = ?",

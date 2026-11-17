@@ -6,11 +6,11 @@
 .face-box--known>span{background:#69bd8a}
 .face-camera-status{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);line-height:1.6}
 .face-camera-status--live{min-height:1.6em}.face-camera-status--live>svg{flex-shrink:0}
-.face-home-backdrop{position:fixed;inset:0;z-index:1500;display:flex;justify-content:flex-end;background:rgb(0 0 0 / 25%)}
-.face-home-panel{width:min(440px,100vw);height:100dvh;display:flex;flex-direction:column;position:relative;background:var(--bg);color:var(--fg);border-left:.5px solid var(--border-soft);box-shadow:0 12px 32px rgb(0 0 0 / 12%)}
+.face-home-backdrop{position:fixed;inset:0;z-index:1500;display:flex;align-items:center;justify-content:center;padding:var(--space-5);background:rgb(0 0 0 / 25%)}
+.face-home-panel{width:min(800px,100%);height:min(720px,calc(100dvh - var(--space-5) * 2));max-width:100%;display:flex;flex-direction:column;position:relative;background:var(--bg);color:var(--fg);border:.5px solid var(--border-soft);border-radius:var(--radius-xl);box-shadow:0 12px 32px rgb(0 0 0 / 12%)}
 .face-home-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 24px;flex-shrink:0;border-bottom:.5px solid var(--border-soft)}
 .face-home-header h2{font-size:16px;font-weight:600;margin:0}.face-home-content{padding:24px;overflow:auto;overscroll-behavior:contain;min-height:0;flex:1}
-@media(max-width:1023px){.face-home-backdrop{align-items:flex-end}.face-home-panel{width:100%;height:90dvh;max-height:90dvh;border:0;border-radius:var(--radius-xl) var(--radius-xl) 0 0}.face-home-content{padding:20px 24px max(24px,env(safe-area-inset-bottom))}}
+@media(max-width:1023px){.face-home-backdrop{padding:max(var(--space-4),env(safe-area-inset-top)) var(--space-4) max(var(--space-4),env(safe-area-inset-bottom))}.face-home-panel{width:100%;height:min(720px,calc(100dvh - max(var(--space-4),env(safe-area-inset-top)) - max(var(--space-4),env(safe-area-inset-bottom))));max-height:100%;box-shadow:none}.face-home-header,.face-home-content{padding:var(--space-4)}}
 .face-panel{display:grid;gap:16px;min-width:0}
 .face-panel-header,.face-toolbar,.face-footer,.face-person-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .face-panel h2,.face-panel h3{margin:0}.face-panel h2{font-size:16px}.face-panel h3{font-size:14px}

@@ -35,3 +35,41 @@
 @media(prefers-reduced-motion:reduce){.digital-home-stage{transition:none}.digital-home-chat{animation:none}}
 
 .digital-home-presence-info .digital-home-identity strong>span{display:block;min-width:0;max-width:8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.digital-home-work-summary{display:flex;align-items:flex-start;gap:var(--space-2);padding:var(--space-3) 0;font-size:12px;line-height:1.6}.digital-home-work-summary>svg{flex-shrink:0;margin-top:var(--space-1);color:var(--home-muted)}.digital-home-work-summary>span,.digital-home-recent-item>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.digital-home-recent-item{padding:var(--space-3) 0;font-size:12px;line-height:1.6;color:var(--home-ink)}.digital-home-recent-item+.digital-home-recent-item{border-top:.5px solid var(--border-soft)}
+@media(min-width:1024px){.digital-home{--home-content-width:1440px}.digital-home-main{width:100%;max-width:var(--home-content-width);align-self:center}}
+
+@media(min-width:1280px){.digital-home{--home-content-inset:calc(var(--space-6) * 2)}.digital-home-context{left:var(--home-content-inset)}.digital-home-presence-info{right:var(--home-content-inset)}}
+
+.digital-home-context .digital-home-event-summary{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.digital-home-reflections .btn>span,.digital-home-work-summary>span{display:block;overflow:visible;-webkit-line-clamp:unset}.digital-home-event-meta{display:block;margin-top:var(--space-1);font-size:12px;font-weight:400;color:var(--home-muted)}.digital-home-event-meta time{display:block}.digital-home-work-summary+.digital-home-work-summary{border-top:.5px solid var(--border-soft)}
+
+@media(min-width:1024px){
+ .digital-home-context{top:var(--space-7);display:flex;flex-direction:column;overflow:hidden;width:240px}
+ .digital-home-activity-header{flex-shrink:0;padding:var(--space-1) 0 var(--space-5)}
+ .digital-home-context .digital-home-activity-header h2{margin:0;font-size:16px;line-height:24px;font-weight:600;color:var(--home-ink)}
+ .digital-home-activity-header small{display:block;margin-top:var(--space-1);font-size:12px;color:var(--home-muted)}
+ .digital-home-activity-regions{flex:1;min-height:0;display:grid;grid-template-rows:minmax(0,3fr) minmax(0,2fr)}
+ .digital-home-context section{display:flex;flex-direction:column;min-height:0}
+ .digital-home-context section+section{margin:0;border-top:.5px solid var(--border-soft);padding-top:var(--space-4)}
+ .digital-home-context h3{display:flex;align-items:center;gap:var(--space-2);flex-shrink:0;margin:0 0 var(--space-2);font-size:14px;line-height:24px;font-weight:500}
+ .digital-home-activity-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;padding-bottom:var(--space-4)}
+ .digital-home-activity-scroll::-webkit-scrollbar,.digital-home-context::-webkit-scrollbar,.digital-home-subtitles::-webkit-scrollbar{display:none;width:0;height:0}
+ .digital-home-subtitles{scrollbar-width:none}
+ .digital-home-context .digital-home-thought-event{position:relative;isolation:isolate}
+ .digital-home-context .digital-home-thought-event:not(:last-of-type)::after{content:"";position:absolute;left:6px;top:32px;bottom:-12px;border-left:.5px solid var(--border);z-index:-1}
+ .digital-home-context .digital-home-thought-event+.digital-home-thought-event{border-top:0}
+ .digital-home-context .btn.digital-home-thought-event>span{display:block;overflow:visible}
+ .digital-home-event-heading{display:flex;align-items:flex-start;gap:var(--space-2);justify-content:space-between}
+ .digital-home-event-heading strong{min-width:0;font-size:12px;font-weight:500;line-height:1.6}
+ .digital-home-event-heading time{flex-shrink:0;color:var(--home-muted);font-size:12px;line-height:1.6;font-variant-numeric:tabular-nums}
+ .digital-home-thought-event .digital-home-event-summary{margin-top:var(--space-1);font-weight:400;color:var(--home-muted);-webkit-line-clamp:3}
+ .digital-home-work-summary>span{width:100%;min-width:0}
+ .digital-home-work-summary .digital-home-event-meta{display:flex;align-items:center;gap:var(--space-1)}
+ .digital-home-work-summary .digital-home-event-meta svg{flex-shrink:0}
+}
+
+.digital-home-subtitles{scrollbar-width:none}.digital-home-subtitles::-webkit-scrollbar{display:none;width:0;height:0}
+
+.digital-home-context .digital-home-work-summary .digital-home-event-summary{display:block;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;-webkit-line-clamp:unset}.digital-home-work-summary .digital-home-event-heading{align-items:baseline}
+
+.digital-home-activity-regions,.digital-home-context section,.digital-home-activity-scroll{min-width:0}

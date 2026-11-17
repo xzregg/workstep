@@ -304,3 +304,5 @@ CLI pending 返回 companion.contact_timing（上次联系尝试时间、距今�
 主动思考运行时手动再次触发返回409（已有检查正在进行），不启动第二轮、不替换当前领取状态。正常异常／取消通过 finally 释放未提交批次与运行期读取状态，下次建立新状态可重新领取。进程硬退出时 finally 不执行，但持久领取租约为240秒，到期后 gate/pending 重新允许领取；重启不会保留进程内活动状态，也不会造成永久403。403表示普通会话没有该活动领取入口，与忙碌409和租约等待不同。完成回执与知识同事务提交，已完成来源不因重启而重新处理。测试 test_memory_batch_cli.py、test_memory_pending_gate.py 分别覆盖运行中手动重入、失败后新一轮领取同批及模拟进程状态丢失后的租约到期恢复。
 
 记忆跨批会话目录：`memory_query.pending` 首次领取后通过工作线程调用 `memory_session_context.catalog`，按本批项目／会话／可信范围返回 `session_knowledge`，重复领取复用缓存。只读连接；最多64组，整批来源探测窗口最多512条、每组最多64条，关联窗口每组128条；每会话最多4条知识，整批最多24条，标题40字符、摘要160字符，整个目录JSON最多12000字节。只包含有效的active/conflict知识，去重且不读取正文、不COUNT全量、不登记完整读取凭据。目录恒标complete=false，窗口外／超限内容由模型按主题CLI search/read，目录缺失不能判定旧知识不存在。`memory_policy.RULES` 要求逐会话盘点并自查事件、日期、决定、偏好与人物归属，默认追加独立事件，明确纠正才完整读取后supersedes；不增加第二次模型审核。测试 `test_memory_session_context.py` 覆盖大小限制、范围隔离、万条知识扇出、缓存和慢查询事件循环canary，另跑批次与维护回归。
+
+主动思考通知来源编号：顶层 `source_ids` 优先使用本轮 `conversation.id`；兼容同一批次内精确的 `memory_ids/read_ids`，由 `resolve_check_sources` 按来源项目、会话和消息映射为真实消息 ID。未知编号、跨会话歧义编号拒绝处理；不修改记忆候选自己的索引编号，也不跳过已读、来源时效、单一通知会话或投递前检查。

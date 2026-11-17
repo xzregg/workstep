@@ -187,6 +187,7 @@ async def invoke_engine(
     images: list[EngineImage] | None = None,
     report_engine_state: bool = False,
     thinking_effort: str | None = None,
+    service_tier: str | None = None,
     permission_mode: str | None = None,
     plan_mode: bool | None = None,
     goal_mode: bool | None = None,
@@ -212,6 +213,7 @@ async def invoke_engine(
         images=images,
         report_engine_state=report_engine_state,
         thinking_effort=thinking_effort,
+        service_tier=service_tier,
         permission_mode=permission_mode,
         plan_mode=plan_mode,
         goal_mode=goal_mode,
@@ -2393,11 +2395,6 @@ class AssistantRuntime:
         config_overrides = (
             {"provider_id": provider_id} if provider_id else None
         )
-        if engine_id in {"codex", "codex_sdk"} and turn_state.get("service_tier"):
-            config_overrides = {
-                **(config_overrides or {}),
-                "service_tier": turn_state["service_tier"],
-            }
         if run_key:
             turn_state["resolved_provider_id"] = provider_id
             selected, snapshot = await self._usage_provider_snapshot(
@@ -2419,6 +2416,7 @@ class AssistantRuntime:
             run_key=run_key,
             running_engines=self._running_engines,
             thinking_effort=thinking_effort,
+            service_tier=turn_state.get("service_tier"),
             permission_mode=permission_mode,
             plan_mode=plan_mode,
             goal_mode=goal_mode,

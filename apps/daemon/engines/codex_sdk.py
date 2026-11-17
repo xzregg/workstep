@@ -20,6 +20,8 @@ from engines.codex_sdk_clients import (
     get_codex_client_pool,
 )
 from engines.codex_image_input import codex_sdk_input, codex_wire_input
+from engines.core.base import EngineSkillPolicy
+from engines.core.permissions import EnginePermissionPolicy
 from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
     EngineInstallResult,
@@ -85,6 +87,21 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     """
 
     ENGINE_ID = "codex_sdk"
+    SUPPORTS_SERVICE_TIER = True
+    SKILL_POLICY = EngineSkillPolicy.CODEX_CONFIG
+    PERMISSION_POLICY = EnginePermissionPolicy(
+        overrides={
+            'read-only': {'sandbox': 'read-only'},
+            'workspace-write': {'sandbox': 'workspace-write'},
+            'danger-full-access': {'sandbox': 'danger-full-access'},
+            'auto': {'approval_mode': 'auto_review'},
+            'ask': {},
+        },
+        plan_overrides={'sandbox': 'read-only'},
+        consent_key='approval_mode',
+        consent_values={'': True, 'auto_review': True, 'deny_all': False},
+        consent_default='',
+    )
     supports_mcp = True
     SYSTEM_PROMPT_MODE = "developer"
     RUNTIME_PACKAGE = RuntimePackage('openai-codex', 'pypi')

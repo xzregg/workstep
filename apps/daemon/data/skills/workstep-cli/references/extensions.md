@@ -12,24 +12,7 @@ Use the Transport above with `skill create --json` to start an ordinary conversa
 
 ## Custom engines
 
-When creating or updating a custom engine, read [the onboarding guide](custom-engine.md) and [adapter contract](custom-engine-contract.md) on demand. These are reference documents within this CLI skill; do not load a separate custom-engine skill. MCP connector support must declare `supports_mcp`, implement `configure_mcp_servers`, and pass real tool-call acceptance including resume when supported; see the adapter contract. Commands accept an absolute package directory or its Python entry file.
-
-```bash
-workstep engine inspect /absolute/adapter --json
-workstep engine install /absolute/adapter --json
-workstep engine configure /absolute/adapter --config-file /private/config.json --json
-workstep engine validate /absolute/adapter --json
-workstep engine register /absolute/adapter --json
-workstep engine register /absolute/adapter --replace --json
-workstep engine export engine_id --output /absolute/engine.zip --json
-workstep engine disable engine_id --json
-workstep engine enable engine_id --json
-workstep engine rollback engine_id --json
-```
-
-Install/validate wait for the final result. Add `--no-wait` to get an operation ID, query with `engine operation ID --json`, or cancel with `engine stop ID --json`. A passed report is bound to code, dependencies and configuration; changes require validation again. Registration is atomic and requires a daemon restart to discover the new adapter. Export excludes dependencies and credentials; recipients reinstall for their own OS/architecture. Visibility switches only hide engines in selectors; `disable` actually prevents custom engine execution.
-
-
+Read [the CLI workflow](custom-engine.md), [adapter contract](custom-engine-contract.md), and [test specification](custom-engine-testing.md) on demand. These are references within workstep-cli, not a separate skill. The workflow owns command examples, registration, import/export and recovery; the contract and tests own implementation and acceptance requirements.
 
 ## Custom skins
 

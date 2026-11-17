@@ -12,10 +12,11 @@ import { resetEngineAvailabilityStoreForTests, useCoordinatorEngines } from '../
 test('Pydantic AI keeps engine controls without a separate skills and MCP viewer', async () => {
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))
-  const originalList = engineApi.list, originalExecutionConfig = engineApi.executionConfig
+  const originalList = engineApi.list, originalExecutionConfig = engineApi.executionConfig, originalModels = engineApi.models
   engineApi.list = async () => ({ engines: [{ id: 'pydantic_ai', name: 'Pydantic AI', installed: true,
     config: { fields: [], step_fields: [], values: {}, secrets: {} } } as EngineInfo] })
   engineApi.executionConfig = async () => ({ engine: '' })
+  engineApi.models = async () => ({ engine_id: 'pydantic_ai', models: [], default_model: '', error: null })
   try {
     await act(async () => root.render(<I18nProvider><EngineSettingsPanel hidden={false} refreshRevision={0} preferredProviderProtocol="" /></I18nProvider>))
     assert.match(document.body.textContent!, /Pydantic AI/)
@@ -23,8 +24,14 @@ test('Pydantic AI keeps engine controls without a separate skills and MCP viewer
     assert.equal(document.querySelectorAll('.engine-settings-test-button').length, 1, 'retain only the engine connection test')
     assert.ok(!buttons.includes('查看技能与 MCP'))
     assert.equal(document.querySelector('.engine-capabilities-overlay'), null)
+    assert.equal(document.querySelector('.engine-settings-card-actions .engine-settings-save-button'), null)
+    const save = document.querySelector('.engine-settings-card-details .engine-settings-save-button')
+    assert.ok(save, 'save belongs to the expanded configuration area')
+    assert.equal(save.closest<HTMLElement>('.engine-settings-card-details')!.hidden, true)
+    await act(async () => document.querySelector<HTMLButtonElement>('.engine-settings-expand-button')!.click())
+    assert.equal(save.closest<HTMLElement>('.engine-settings-card-details')!.hidden, false)
   } finally {
-    engineApi.list = originalList; engineApi.executionConfig = originalExecutionConfig
+    engineApi.list = originalList; engineApi.executionConfig = originalExecutionConfig; engineApi.models = originalModels
     await act(async () => root.unmount())
     await window.happyDOM.close()
   }

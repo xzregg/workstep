@@ -158,11 +158,13 @@ async def test_external_images_and_harness_files_use_project_data_root(api_conte
     assert len(images) == 1
     artifacts = project.workstep_dir / "artifacts"
     artifacts.mkdir()
-    files = ProjectDataFileSystem(root_dir=project.workstep_dir, protected_patterns=["MEMORY.md"]).get_toolset().wrapped
-    await files.write_file(str(artifacts / "result.md"), "result")
+    files = ProjectDataFileSystem(root_dir=project.workstep_dir, read_only_patterns=["MEMORY.md"]).get_toolset().wrapped
+    from pydantic_ai.workspaces import LocalWorkspaceBackend
+    workspace = LocalWorkspaceBackend(root)
+    await files.write_file(str(artifacts / "result.md"), "result", workspace=workspace)
     assert (artifacts / "result.md").read_text() == "result"
     with pytest.raises(Exception):
-        await files.write_file(str(root.parent / "escape.md"), "escape")
+        await files.write_file(str(root.parent / "escape.md"), "escape", workspace=workspace)
     assert not (root.parent / "escape.md").exists()
 
 

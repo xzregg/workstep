@@ -15,6 +15,18 @@ async def test_group_lifecycle_and_running_members(chat_module, monkeypatch):
     monkeypatch.setattr(main, "chat_session_module", module)
     first = await manager.run_db(project.id, lambda _: module.create_session(project.id))
     second = await manager.run_db(project.id, lambda _: module.create_session(project.id))
+
+    def seed_message(_project):
+        from models.chat_session import ChatMessage
+        from models.fields import utc_now
+
+        # This case exercises archive-and-restore, not empty-session cleanup.
+        ChatMessage.create(
+            id="group-archive-message", session=first["id"], role="user",
+            content="保留分组对话", created_at=utc_now(),
+        )
+
+    await manager.run_db(project.id, seed_message)
     url = f"/api/chat-sessions/groups?project_id={project.id}"
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
         assert (await client.post(url, json={"action": "create", "name": "  "})).status_code == 400

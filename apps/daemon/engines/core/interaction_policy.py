@@ -9,19 +9,6 @@ def mode_decision(mode: str | None) -> bool | None:
     return None
 
 
-def engine_decision(engine_id: str, config: dict) -> bool | None:
-    if engine_id == "codex_sdk":
-        mode = config.get("approval_mode", "")
-        if mode in {"", "auto_review"}:
-            return True
-        return False if mode == "deny_all" else None
-    if engine_id == "codex":
-        return True if config.get("approval_policy") in {"full-auto", "never"} else None
-    if engine_id in {"claude", "claude_agent_sdk", "qoder_sdk", "opencode"}:
-        return mode_decision(config.get("permission_mode"))
-    return None
-
-
 def automatic_response(data: dict, decision: bool | None) -> dict | None:
     if decision is None:
         return None

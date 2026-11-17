@@ -562,11 +562,13 @@ async def test_assistant_config_provider_must_exist_and_be_enabled(assistant_cli
 async def test_invoke_engine_merges_provider_config_overrides(monkeypatch):
     """供应商以引擎动态配置（config_overrides）传给内置引擎 spawn。"""
     import agent_assistants.base as base
+    from engines.pydantic_ai import PydanticAIEngine
     from types import SimpleNamespace
 
     captured: dict = {}
 
     class BuiltinEngine:
+        plan_config_overrides = PydanticAIEngine.plan_config_overrides
         capabilities = SimpleNamespace(
             supports_thinking_effort=False,
             supports_workstep_tools=False,

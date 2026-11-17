@@ -753,11 +753,11 @@
           "Otwórz podgląd HTML projektu i edytor prototypów. Dla zmian z AI skonfiguruj silnik w Ustawienia → Asystenci → Asystent prototypów.",
           "Kliknij nazwę nad podglądem, aby wybrać HTML z tego samego folderu lub podfolderu. Każdy HTML zachowuje osobną rozmowę. Przeciągaj krawędzie okna i separatory, aby zmienić rozmiar.",
           "Najedź kursorem, aby podświetlić, kliknij, aby zaznaczyć, lub kliknij prawym przyciskiem, aby skomentować. Przykład: „Zmień ten przycisk na zielony, pozostaw sąsiedni bez zmian”. Wyślij do czatu.",
-          "Zmień tekst, kolor lub width (np. 180px) we właściwościach i opuść pole, aby zapisać. Możesz też dwukrotnie kliknąć prosty tekst lub przeciągać uchwyty rozmiaru. Zaznacz dokładny element przed potwierdzeniem usunięcia.",
+          "Dla statycznych elementów zmieniaj tekst, kolor lub width (np. 180px) w panelu właściwości; zapis następuje po utracie fokusu. Przesuwaj tylko uchwytem ramki zaznaczenia. Alt wyłącza przyciąganie, Esc anuluje ruch. Przed usunięciem sprawdź wybrany węzeł. Ctrl+Z/⌘Z lub górne «Cofnij» cofają zapisane operacje.",
           "W historii zmian sprawdź różnice, cofnij zmiany lub wyczyść historię. Po przerwaniu sprawdź zachowaną kopię i wznów zapis albo ją odrzuć. Oryginały z konfliktem nie są nadpisywane."
         ],
         "tips": [
-          "Bezpośrednia edycja obsługuje statyczny HTML. Tryb wyboru wstrzymuje skrypty, a przeglądanie uruchamia interakcje. Publikowane są tylko zmiany istniejących HTML/CSS/JS, bez dodawania i usuwania całych plików."
+          "Bezpośrednia edycja dotyczy statycznego HTML. Publikowane są zmiany istniejących HTML/CSS/JS, bez tworzenia i usuwania całych plików. Strony dynamiczne korzystają z opisanej dalej inspekcji tylko do odczytu i komentarzy. Stary zrzut nie pokazuje nowego uchwytu ani inspekcji dynamicznej."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Edytor pamięci projektu zawierający konwencje demonstracyjne",
           "caption": "Edytuj i zapisz konwencje w .workstep/MEMORY.md.. Potwierdzenie lekcji archiwalnej nie jest wyświetlane."
         }
+      },
+      {
+        "title": "Inspekcja dynamicznych prototypów HTML/React",
+        "steps": [
+          "W podglądzie HTML otwórz «Edycja prototypu». Strony dynamiczne zachowują renderowanie skryptów. Zaznacz element lub otwórz komentarz prawym przyciskiem, opisz zmianę i kliknij «Wyślij do czatu». Asystent zmieni logikę generowania.",
+          "Właściwości dynamicznych węzłów są tylko do odczytu i nie mają uchwytów; nie można ich bezpośrednio skalować ani usuwać jak statycznego HTML. Canvas można wskazać tylko jako całe płótno. Zagnieżdżone strony dynamicznego rodzica otwieraj osobno z katalogu.",
+          "W trybie przeglądania przechodź przez linki obszaru roboczego, potem wybieraj elementy. Statyczne podramki można edytować na miejscu. Przed zmianą strony wyślij lub wyczyść komentarze i poczekaj na zapis. W historii oglądaj różnice plików obok siebie lub w widoku ujednoliconym."
+        ],
+        "tips": [
+          "Wysłanie komentarza wywołuje skonfigurowanego asystenta; wybieranie i ręczne właściwości nie wywołują modelu. Sprawdzaj zapisane wyniki; przy konflikcie wersji najpierw odczytaj ponownie."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Właściwości tylko do odczytu, komentarze i zmiana plików dynamicznego prototypu",
+          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+        }
+      },
+      {
+        "title": "Szablon formatu wynikowego artefaktu",
+        "steps": [
+          "W wierszu artefaktu kroku przepływu kliknij «Szablon» i zapisz strukturę oraz kryteria akceptacji w Markdown, np. tytuł {{任务名称}}, a pod nim wnioski i wyniki weryfikacji. Nowe wykonania użyją wymagań po zapisaniu przepływu.",
+          "W szczegółach zadania kliknij ikonę szablonu przy nazwie artefaktu, aby zmienić tylko to zadanie, wyczyścić lub przywrócić domyślny szablon przepływu. Podczas działania jest tylko do odczytu; strona udostępniona pozwala jedynie przeglądać.",
+          "Sprawdź zgodność wygenerowanego pliku z szablonem. Szablon zachowuje się przy kopiowaniu i imporcie/eksporcie przepływu, ale sam nie jest już wygenerowanym artefaktem."
+        ],
+        "tips": [
+          "Zastępowane jest wyłącznie {{任务名称}}; pozostałe wymagania trafiają do modelu bez zmian. Szablon nie gwarantuje ścisłego przestrzegania, nadal wymagana jest ocena."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Edytor formatu artefaktów przepływu i zadania",
+          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Wprowadzanie szkicu głosem",
         "steps": [
-          "Otwórz Ustawienia → Wprowadzanie głosowe, włącz je, pobierz model i środowisko, wybierz język i przetestuj mikrofon. Instalacja odbywa się na połączonym hoście WorkStep, nie na telefonie. Obsługiwane są mandaryński, kantoński i angielski.",
-          "Na komputerze naciśnij mikrofon. W telefonie przytrzymaj pole tekstowe 500 ms; nie ma tam ikony mikrofonu. Puść, sprawdź wstawiony tekst i wyślij ręcznie. Maksymalnie dwie minuty; anulowanie niczego nie wysyła."
+          "Otwórz «Ustawienia → Ustawienia głosu → Wejście» i wybierz model lokalny, dostawcę chmurowego lub własną usługę zdalną. Lokalnie pobierz środowisko i model, potem kliknij «Użyj tego modelu». Paraformer obsługuje mandaryński, kantoński i angielski, Zipformer mandaryński i angielski. Zapisz i sprawdź «Test mikrofonu». Modele instaluje się na hoście WorkStep.",
+          "Na komputerze użyj mikrofonu; na telefonie przy pustym szkicu kliknij głośniczek na dole po prawej. Gdy jest tekst, widoczny jest przycisk wysyłania. Długie naciśnięcie zachowuje systemowe zaznaczanie tekstu. Po nagraniu sprawdź transkrypcję i wyślij ręcznie. Limit to dwie minuty; anulowanie niczego nie wysyła."
         ],
         "tips": [
-          "Dźwięk jest rozpoznawany na połączonym hoście i nie jest zapisywany. Zezwól na mikrofon przez HTTPS lub adres lokalny. Przy błędach sprawdź uprawnienia witryny i systemu, uruchom ponownie stary backend. Rozpoznany tekst można jawnie zachować."
+          "Mikrofon wymaga zgody systemu i witryny; przeglądarka wymaga HTTPS lub adresu lokalnego. W trybie chmurowym/zdalnym host przesyła dźwięk do wybranej usługi. Transkrypcja HTTP zwraca tekst po zakończeniu i nie obsługuje wybudzania na żywo. Modele można usuwać osobno; sprawdź aktywny. Wejście i wyjście głosowe konfiguruje się oddzielnie."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Konfigurowanie i używanie łączników",
         "steps": [
-          "Otwórz Ustawienia → Łączniki → Dodaj. Dla lokalnego MCP podaj osobno polecenie i argumenty, dla zdalnego MCP adres URL, a dla CLI plik wykonywalny. Wybierz dozwolone projekty.",
+          "Otwórz «Ustawienia → Konektory → Dodaj konektor» lub skrót z wtyczką na komputerze. Dla lokalnego MCP podaj osobno polecenie i argumenty, edytowane pojedynczo lub jako JSON. Dla zdalnego MCP podaj URL, dla CLI plik wykonywalny. Puste projekty oznaczają wszystkie projekty.",
           "W Test → Wykryj połączenie odczytaj narzędzia. Uruchomienie narzędzia wykonuje rzeczywiste wywołanie: sprawdź argumenty. Test nie wywołuje LLM; potem zapisz ustawienia.",
-          "W rozmowie włącz + → Łączniki dla następnej wiadomości. MCP wymaga zgodnego silnika; CLI loguje się oficjalnym poleceniem w terminalu hosta. Przy 401 ustaw obsługiwany token Bearer lub nagłówek uwierzytelnienia. OAuth w przeglądarce jest niedostępny."
+          "W zwykłej rozmowie projektu i polu wykonania zadania wybieraj przez «＋ → Konektory», /连接器 lub /apps. Włączenie dotyczy następnej wiadomości; koordynator nie dołącza ich automatycznie. MCP wymaga wsparcia silnika, CLI oficjalnego polecenia logowania. Przy 401 ustaw Bearer Token lub nagłówki uwierzytelniania; przeglądarkowy OAuth nie jest obsługiwany. Lokalne wykrywanie nie kopiuje poświadczeń."
         ],
         "tips": [
           "Przykład: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Konfigurowanie i używanie łączników",
           "caption": "Brakuje rzeczywistego zrzutu: konfiguracja, test i wybór w rozmowie."
+        }
+      },
+      {
+        "title": "Grupy rozmów i przeglądanie archiwum",
+        "steps": [
+          "Kliknij prawym przyciskiem nagłówek rozmów, listę lub pojedynczą rozmowę w pasku projektu, aby utworzyć grupę. Przeciągaj rozmowy do grupy lub z powrotem do niepogrupowanych. Menu zwykłej grupy pozwala tworzyć rozmowy. Grupy zwykłe i kanałowe są oddzielne.",
+          "Archiwizuj lub usuwaj z menu grupy. Domyślne usunięcie tylko rozwiązuje grupę; wiadomości usuwa dopiero zaznaczenie również usuwania rozmów. Sprawdź zakres. Aktywne rozmowy i te, dla których operacja zawiodła, są pomijane i zachowywane.",
+          "W archiwum kliknij tytuł, aby rozwinąć ostatnią rundę pytań i odpowiedzi tylko do odczytu. Nie przywraca to rozmowy ani nie ładuje pełnych szczegółów wykonania. Aby kontynuować, jawnie przywróć rozmowę."
+        ],
+        "tips": [
+          "Archiwizacja zachowuje treść; usunięcie rozmów i wiadomości ma większe skutki. Nie myl «Rozwiąż grupę» z «Usuń również rozmowy»."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Menu grup rozmów w pasku projektu i podgląd archiwum tylko do odczytu",
+          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Błąd demonstracyjny spowodowany nieistniejącym modelem",
           "caption": "Błąd informuje, że wybrany model nie jest obsługiwany. Napraw konfigurację modelu kroku przed ponownym uruchomieniem; na tym obrazie nie jest on naprawiony."
+        }
+      },
+      {
+        "title": "Konfiguracja opcjonalnych modeli decyzyjnych",
+        "steps": [
+          "Otwórz «Ustawienia → Modele i możliwości → Modele decyzyjne». Wybierz model zarządzany lokalnie, usługę lokalną lub zdalną. Zarządzanie lokalne zależy od środowiska hosta; komponent i model pobiera się ręcznie osobno. Jeśli warunki nie są spełnione, użyj istniejącej usługi.",
+          "W trybie usługi podaj adres i uwierzytelnianie. «Odczytaj listę modeli» pozwala wyszukać i wybrać model; można też wpisać ręcznie. Test sprawdza szkic bez zapisu. Zweryfikuj wynik i kliknij «Zapisz konfigurację».",
+          "Włącz «Zezwól innym urządzeniom wywoływać model lokalny» tylko gdy potrzebny jest dostęp zewnętrzny. Ustaw lub wykorzystaj klucz dostępu zdalnego, zapisz i użyj wskazanego adresu. Brakujące zasoby nie pobiorą się automatycznie; przy zajętości ponów próbę."
+        ],
+        "tips": [
+          "To opcjonalny interfejs decyzyjny Jev, nie ogólny czat. Nie przejmuje automatycznie zadań ani rozmów. Pobieranie i uruchamianie proxy to osobne operacje.",
+          "Model zużywa CPU i pamięć hosta. Udany test nie potwierdza jakości decyzji w praktyce. Token wnioskowania proxy nie daje uprawnień zarządzania zasobami; nie umieszczaj kluczy na zrzutach."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Tryby, zasoby, test, zapis i opcjonalne proxy modelu decyzyjnego",
+          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+        }
+      },
+      {
+        "title": "Czytanie instrukcji przez znak zapytania w ustawieniach",
+        "steps": [
+          "Kliknij znak zapytania przy tytule sekcji, aby czytać właściwy rozdział w aplikacji. Korzystaj ze spisu i wyszukiwania. Instrukcja podąża za językiem interfejsu; na komputerze można zmieniać rozmiar okna.",
+          "Po błędzie ładowania ponów próbę. «Otwórz w przeglądarce» otwiera pełną stronę, zachowując rozdział i język. Sekcje bez odpowiedniej instrukcji nie pokazują znaku zapytania."
+        ],
+        "tips": [
+          "Osadzona instrukcja wymaga zasobów witryny w zapleczu. Jeśli nie działa, sprawdź wersję instalacji i zasoby; nie zastępuj jej niepowiązanym rozdziałem."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Znak zapytania przy ustawieniach i wielojęzyczna instrukcja w aplikacji",
+          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Cyfrowa osoba i pamięć globalna",
+    "summary": "Skonfiguruj styl rozmowy, główną konwersację, samodzielną refleksję i obsługę kanałów. Przeglądaj pamięć ze źródłami, a w razie potrzeby włącz głos i rozpoznawanie osób.",
+    "sections": [
+      {
+        "title": "Osobowość, obowiązki i główna rozmowa",
+        "steps": [
+          "Otwórz «Ustawienia → Cyfrowa osoba → Pierwsze kroki», wpisz imię i edytuj osobowość, obowiązki oraz stałą pamięć w «Osobowość i obowiązki». Użyj ustawień wstępnych lub importu z centrum ról, skonfiguruj dostępny silnik i wybierz «Zakończ i włącz».",
+          "Po zapisaniu profilu otwórz stronę główną przez «Porozmawiaj z cyfrową osobą» w pasku bocznym. Przycisk klawiatury służy do pisania; «Pokaż rozmowę» otwiera ten sam główny wątek. Możesz wrócić do zwykłego obszaru roboczego.",
+          "Osobowość, obowiązki i stała pamięć używają Markdown; ustawienia wstępne zmieniają tylko odpowiedni fragment. Błąd zapisu zachowuje szkic; ponów według wskazówek. Przed zmianą strony lub zamknięciem rozstrzygnij niezapisane zmiany."
+        ],
+        "tips": [
+          "Stała pamięć to ręczne ustalenia, nie archiwum historii. Zmiana języka nie tłumaczy zapisanej treści. Cyfrowa osoba rozmawia i monitoruje, a właściwą pracę wykonują sesje docelowego projektu."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Wprowadzenie do cyfrowej osoby, dokumenty osobowości i główna rozmowa",
+          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+        }
+      },
+      {
+        "title": "Wyszukiwanie pamięci i sprawdzanie źródeł",
+        "steps": [
+          "W «Cyfrowa osoba → Pamięć» wyszukuj treść, encję lub nazwę projektu, filtruj preferencje, doświadczenia, fakty albo zdarzenia i przełączaj mapę myśli oraz przegląd czasowy.",
+          "Otwórz wpis, aby poznać szczegóły wiedzy, potem źródło, aby stronicować oryginalne wiadomości. Przy wątpliwościach porównuj oryginał; streszczenie nie jest cytatem użytkownika ani dowodem zakończenia zadania.",
+          "Interakcja jest rejestrowana dopiero po pełnej odpowiedzi asystenta. Rozmowy i zadania korzystają z narzędzi pamięci w razie potrzeby, bez automatycznego dodawania całej historii do każdego żądania i bez uzupełniania wszystkich starych projektów."
+        ],
+        "tips": [
+          "Wspólna pamięć pozwala szukać między projektami i rozmowami z zachowaniem tożsamości i uprawnień. Liczniki kategorii, statystyki całości i liczba bieżących wyników to różne dane.",
+          "Stałe ustalenia, projektowy MEMORY.md i historyczna wiedza mają różne cele. Nieopracowane wiadomości nie są już wyodrębnioną wiedzą; interfejs nie oferuje jeszcze przycisku zapominania."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Globalne wyszukiwanie pamięci, kategorie i stronicowane oryginalne źródła",
+          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+        }
+      },
+      {
+        "title": "Samodzielna refleksja i historia działania",
+        "steps": [
+          "W «Cyfrowa osoba → Samodzielna refleksja» zapisz automatykę, odstęp refleksji, aktywny kontakt, minimalny odstęp kontaktów i nie przeszkadzać. Wielkość partii wiadomości ustawia się w pamięci: domyślnie 100, zakres 1–1000.",
+          "Aby sprawdzić od razu, kliknij «Pomyśl teraz». W «Historii działania» przeglądaj oddzielnie powiadomienia delegacji i refleksje, odświeżaj, stronicuj oraz rozwijaj podsumowania lub błędy. Delegacja może otworzyć rzeczywistą sesję wykonania.",
+          "Po błędzie dostarczenia można ponowić powiadomienie. Osobno sprawdź zakończenie refleksji i doręczenie. Wyłączenie automatycznej refleksji wstrzymuje kontrole okresowe; zwykły czat i ręczna refleksja działają nadal."
+        ],
+        "tips": [
+          "Domyślny odstęp to 5 minut. Zgoda na aktywny kontakt nie oznacza wiadomości w każdej rundzie; bez oczekujących zdarzeń runda może skończyć się cicho. Wywołania modelu mogą kosztować; podsumowanie nie jest pełnym łańcuchem rozumowania."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Konfiguracja samodzielnej refleksji i oddzielnie stronicowane rejestry",
+          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+        }
+      },
+      {
+        "title": "Łączenie kanałów obsługi i powiadomień",
+        "steps": [
+          "Najpierw skonfiguruj bota w «Ustawienia → Boty kanałów» i wyślij mu wiadomość, aby rozpoznać cel. Potem w «Cyfrowa osoba → Boty kanałów» dodaj powiązanie, wybierając bota i grupę lub kontakt.",
+          "W razie potrzeby włącz «Odbieraj aktywne powiadomienia». Sama obsługa wiadomości przychodzących nie upoważnia do aktywnych wysyłek. Po potwierdzeniu sprawdź cel; istniejące grupy zadań nadal używają powiązania z zadaniem.",
+          "Przed «Wyślij test» sprawdź odbiorcę i potwierdź. Usuń niepotrzebne powiązanie. Sukces oznacza przyjęcie przez platformę, nie przeczytanie przez odbiorcę."
+        ],
+        "tips": [
+          "Test naprawdę wysyła wiadomość. Używaj celów demonstracyjnych; błędnie odgadnięty kontakt nie jest upoważnionym odbiorcą."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Powiązania kanałów cyfrowej osoby, aktywne powiadomienia i stan dostarczenia",
+          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+        }
+      },
+      {
+        "title": "Głos, wybudzanie i mikrofon",
+        "steps": [
+          "W «Ustawienia głosu → Wyjście» wybierz głos systemowy, model lokalny, dostawcę chmurowego lub własną usługę zdalną. Lokalne zasoby pobiera się ręcznie; dla usług podaj adres i uwierzytelnianie, odsłuchaj i zapisz. Na stronie głosu cyfrowej osoby ustaw barwę, tempo i pozostałe parametry.",
+          "W «Słuch» ustaw słowo wybudzające i czułość, potem jawnie rozpocznij nasłuch. Potrzebne jest działające strumieniowe wejście głosu. Zapis słowa nie rozpoczyna nagrywania; transkrypcja HTTP po zakończeniu nie wybudza na żywo.",
+          "Na stronie głównej mikrofon rozpoczyna rozmowę głosową, a głośnik steruje odczytem tej strony. Aby zatrzymać nagrywanie, wyłącz mikrofon; wyciszenie głośnika go nie wyłącza. Ukrycie, odświeżenie lub opuszczenie strony zatrzymuje nasłuch."
+        ],
+        "tips": [
+          "Mikrofon, kamera i odtwarzanie wymagają osobnych zgód systemu/witryny. Usługi zdalne otrzymują odpowiedni dźwięk. Rzeczywisty dźwięk telefonu i komputera wymaga nadal testu urządzeń.",
+          "Odczytywane są tylko nowe odpowiedzi. Otwarcie pełnego panelu rozmowy wstrzymuje automatyczny odczyt; po zamknięciu stare treści nie są nadrabiane. Nie zakładaj nasłuchu przy zablokowanym ekranie lub zamkniętej aplikacji."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Tryby wyjścia głosu, odsłuch i jawne sterowanie nasłuchem",
+          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+        }
+      },
+      {
+        "title": "Dodawanie znajomych i rozpoznawanie kamerą",
+        "steps": [
+          "W «Cyfrowa osoba → Wzrok → Rozpoznawanie twarzy» skonfiguruj model, potem otwórz «Znajomi → Dodaj twarz», wpisz nazwę i relację oraz potwierdź zgodę tej osoby.",
+          "Włącz kamerę i pobierz trzy wyraźne próbki jednej osoby: z przodu oraz lekko z lewej i prawej. Sprawdź i zapisz. W teście rozpoznawania sprawdź imię; możesz dodawać, wyłączać i usuwać próbki.",
+          "Wybierz wyświetlanie nazwy oraz dołączanie osoby i relacji do wiadomości, a potem jawnie wyślij obraz. Przy błędzie sprawdź model, zgodę kamery i kadr, zamiast zgadywać tożsamość."
+        ],
+        "tips": [
+          "Zdjęcia nie są przechowywane długoterminowo, ale cechy osoby nadal są wrażliwe. Obecność w kadrze nie oznacza mówiącego i nie zmienia autora, uprawnień ani tożsamości logowania. Obrazy i dane osób przesłane modelowi nie muszą zawsze pozostawać lokalnie."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Zgoda znajomego, pobieranie w trzech krokach i rozpoznawanie osób",
+          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
         }
       }
     ]

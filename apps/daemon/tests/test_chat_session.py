@@ -163,7 +163,7 @@ async def test_chat_api_codex_service_tier_follows_shared_config(chat_module, mo
     captured = []
 
     async def fake_invoke(*args, **kwargs):
-        captured.append(kwargs.get("config_overrides"))
+        captured.append(kwargs.get("service_tier"))
         return "ok", [], "native-thread"
 
     monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke)
@@ -184,7 +184,7 @@ async def test_chat_api_codex_service_tier_follows_shared_config(chat_module, mo
             )
             assert response.status_code == 200, response.text
             assert await _wait_turn(module, response.json()["turn_id"]) == "completed"
-    assert captured == [{"service_tier": tier} if tier else None, None]
+    assert captured == [tier, None]
 
 
 @pytest.fixture
@@ -257,10 +257,76 @@ async def test_session_crud_round_trip(chat_module):
 
 
 @pytest.mark.anyio
+async def test_archive_empty_session_api_deletes_without_blocking_health(chat_module, monkeypatch):
+    import main
+
+    module, _bus, manager, project, _ = chat_module
+    session = module.create_session(project.id)
+    sibling = module.create_session(project.id)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    entered, release = threading.Event(), threading.Event()
+    original_delete = module.delete_session
+
+    def slow_delete(project_id, session_id):
+        entered.set()
+        assert release.wait(3)
+        return original_delete(project_id, session_id)
+
+    monkeypatch.setattr(module, "delete_session", slow_delete)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        archive = asyncio.create_task(client.patch(
+            f"/api/chat-sessions/{session['id']}/archive",
+            json={"project_id": project.id, "archived": True},
+        ))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get("/api/health"), 0.5)).status_code == 200
+            assert not archive.done()
+        finally:
+            release.set()
+            response = await archive
+    assert response.status_code == 200, response.text
+    assert response.json()["id"] == session["id"]
+    assert module.get_session(project.id, session["id"]) is None
+    assert module.list_sessions(project.id, archived=True) == []
+    assert [row["id"] for row in module.list_sessions(project.id)] == [sibling["id"]]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("status", ["queued", "running", "stopping"])
+async def test_archive_empty_active_session_is_rejected(chat_module, status):
+    module, _bus, _manager, project, _ = chat_module
+    session = module.create_session(project.id)
+    module._turn_states["empty-active"] = {"session_id": session["id"], "status": status}
+    try:
+        with pytest.raises(ValueError, match="running"):
+            module.set_archived(project.id, session["id"], True)
+        assert module.get_session(project.id, session["id"]) is not None
+    finally:
+        module._turn_states.pop("empty-active", None)
+
+
+@pytest.mark.anyio
+async def test_archive_empty_fork_preserves_parent_context(chat_module):
+    module, _bus, _manager, project, _ = chat_module
+    parent = module.create_session(project.id)
+    fork = module.create_session(project.id)
+    with module._project_ctx(project.id):
+        ChatSession.update(parent_session_id=parent["id"]).where(ChatSession.id == fork["id"]).execute()
+    module.set_archived(project.id, fork["id"], True)
+    assert module.get_session(project.id, fork["id"])["archived"] is True
+    module.set_archived(project.id, fork["id"], False)
+    assert module.get_session(project.id, fork["id"])["archived"] is False
+
+
+@pytest.mark.anyio
 async def test_session_archive_round_trip(chat_module):
     module, _bus, _manager, project, _ = chat_module
     first = module.create_session(project.id)
     second = module.create_session(project.id)
+    with module._project_ctx(project.id):
+        ChatMessage.create(id="archive-round-trip-message", session=first["id"], role="user", content="保留对话", created_at=utc_now())
 
     archived = module.set_archived(project.id, first["id"], True)
     assert archived["archived"] is True
@@ -2988,6 +3054,8 @@ async def test_delete_session_api_removes_logs_and_indexes_without_blocking_heal
     other = project.workstep_dir / "event_logs" / sibling["id"]
     other.mkdir()
     (other / "keep.jsonl").write_text("keep")
+    with module._project_ctx(project.id):
+        ChatMessage.create(id="archive-delete-message", session=session["id"], role="user", content="保留对话", created_at=utc_now())
     module.set_archived(project.id, session["id"], True)
     assert target.exists()
     monkeypatch.setattr(main, "project_manager", manager)
@@ -3715,6 +3783,9 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
 
             # Archiving is persisted through the project DB executor and does
             # not hold up the event loop when SQLite is slow.
+            def seed_archive_message(_project):
+                ChatMessage.create(id="http-archive-message", session=session_id, role="user", content="保留对话", created_at=utc_now())
+            await manager.run_db(project.id, seed_archive_message)
             original_archive_execute_sql = project.db.execute_sql
             archive_write_started = threading.Event()
 
@@ -3744,6 +3815,7 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             assert [item["id"] for item in resp.json()["sessions"]] == [session_id]
             resp = await client.patch(f"/api/chat-sessions/{session_id}/archive", json={"project_id": project.id, "archived": False})
             assert resp.status_code == 200
+            await manager.run_db(project.id, lambda _project: ChatMessage.delete().where(ChatMessage.id == "http-archive-message").execute())
 
             # Permission persistence stays on the project DB executor, so a
             # slow SQLite write cannot stall unrelated event-loop traffic.
@@ -4023,10 +4095,12 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
 async def test_invoke_engine_plan_mode_injects_instruction(monkeypatch):
     """Plan mode appends the plan instruction and engine read-only overrides."""
     import agent_assistants.base as base
+    from engines.codex import CodexEngine
 
     captured: dict = {}
 
     class PlanEngine:
+        plan_config_overrides = CodexEngine.plan_config_overrides
         capabilities = SimpleNamespace(supports_thinking_effort=False)
         supports_resume = False
         supports_message_history = False
@@ -4067,10 +4141,12 @@ async def test_invoke_engine_plan_mode_injects_instruction(monkeypatch):
 async def test_invoke_engine_uses_native_plan_mode_without_prompt_injection(monkeypatch):
     """原生计划模式由引擎参数承载，不再重复污染用户提示词。"""
     import agent_assistants.base as base
+    from engines.codex_sdk import CodexSDKEngine
 
     captured: dict = {}
 
     class NativePlanEngine:
+        plan_config_overrides = CodexSDKEngine.plan_config_overrides
         capabilities = SimpleNamespace(
             supports_thinking_effort=False,
             supports_plan_mode=True,
@@ -4680,6 +4756,7 @@ async def test_archive_list_orders_by_archive_time(chat_module, monkeypatch):
         ids = [module.create_session(project.id, title=str(i))["id"] for i in range(3)]
         with module._project_ctx(project.id):
             for i, sid in enumerate(ids):
+                ChatMessage.create(id=f"archive-order-{i}", session=sid, role="user", content="保留对话", created_at=utc_now())
                 ChatSession.update(sort_order=i, updated_at=datetime(2020, 1, 1)).where(ChatSession.id == sid).execute()
             ChatSession.update(archived=True).where(ChatSession.id == ids[2]).execute()
         return ids
@@ -4738,7 +4815,7 @@ async def test_restart_continues_only_interrupted_latest_chat(chat_module, monke
     await module.resume_interrupted_chats()
     assert len(calls) == (2 if enabled else 0)
     if enabled:
-        assert calls[0][0][0:3] == (project.id, session["id"], "继续")
+        assert calls[0][0][0:3] == (project.id, session["id"], "Continue")
         assert calls[0][1]["schedule"] is False
 
 
@@ -4802,7 +4879,7 @@ async def test_restart_resume_uses_real_send_persistence_and_keeps_loop_responsi
     assert await _wait_turn(module, turn_id) == "completed"
     assert await module.resume_interrupted_chats() == 0
     detail = module.get_session(project.id, session["id"])
-    assert [m["content"] for m in detail["messages"] if m["role"] == "user"] == ["继续"]
+    assert [m["content"] for m in detail["messages"] if m["role"] == "user"] == ["Continue"]
 
 
 @pytest.mark.anyio

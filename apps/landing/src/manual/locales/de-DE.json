@@ -753,11 +753,11 @@
           "Öffnen Sie eine HTML-Vorschau des Projekts und den Prototyp-Editor. Für KI-Änderungen konfigurieren Sie die Engine unter Einstellungen → Assistenten → Prototyp-Assistent.",
           "Über den Dateinamen oberhalb der Vorschau wählen Sie HTML-Dateien im selben Ordner oder Unterordner. Jede HTML-Datei behält ihren eigenen Chat. Ziehen Sie Fensterkanten und Trennlinien zum Vergrößern oder Verkleinern.",
           "Beim Darüberfahren wird das Element hervorgehoben; klicken Sie zum Auswählen oder rechtsklicken Sie zum Kommentieren. Beispiel: „Diesen Button grün machen, den Nachbarbutton unverändert lassen.“ Senden Sie den Kommentar an den Chat.",
-          "Ändern Sie Text, Farbe oder width (z. B. 180px) in den Eigenschaften und verlassen Sie das Feld zum Speichern. Einfachen Text können Sie doppelklicken, Größen über Griffe ändern. Vor dem bestätigten Löschen das genaue Element auswählen.",
+          "Bei statischen Elementen ändern Sie Text, Farbe oder width, etwa 180px, im Eigenschaftenbereich; Fokusverlust speichert. Verschieben geht nur über den Griff des Auswahlrahmens. Alt deaktiviert Einrasten, Esc bricht ab. Prüfen Sie vor Löschen den Knoten. Ctrl+Z／⌘Z oder „Rückgängig“ oben setzen gespeicherte Aktionen zurück.",
           "Im Änderungsverlauf prüfen Sie Unterschiede, machen Änderungen rückgängig oder leeren den Verlauf. Nach einer Unterbrechung die erhaltene Kopie prüfen und Speichern fortsetzen oder verwerfen. Originale mit Konflikten werden nicht überschrieben."
         ],
         "tips": [
-          "Direkte Bearbeitung gilt für statisches HTML. Der Auswahlmodus pausiert Seitenskripte, der Ansichtsmodus führt Interaktionen aus. Veröffentlicht werden nur Änderungen vorhandener HTML/CSS/JS-Dateien; ganze Dateien können nicht hinzugefügt oder gelöscht werden."
+          "Direkte Bearbeitung gilt für statisches HTML und veröffentlicht Änderungen vorhandener HTML/CSS/JS-Dateien, nicht das Hinzufügen oder Löschen ganzer Dateien. Dynamische Seiten verwenden die schreibgeschützte Prüfung und Kommentare im nächsten Abschnitt. Alte Aufnahmen zeigen den neuen Griff und die dynamische Prüfung noch nicht."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Gedächtniseditor mit Demo-Projektregeln",
           "caption": "Bearbeiten und speichern Sie Regeln in .workstep/MEMORY.md. Der Erfahrungsbestätigungsablauf ist nicht abgebildet."
         }
+      },
+      {
+        "title": "Dynamische HTML／React-Prototypen prüfen",
+        "steps": [
+          "Öffnen Sie „Prototyp bearbeiten“ in der HTML-Vorschau. Dynamische Seiten behalten ihre Skriptdarstellung. Wählen Sie Elemente oder kommentieren per Rechtsklick, beschreiben Änderungen und klicken auf „An Chat senden“; der Prototypassistent ändert die Erzeugungslogik.",
+          "Eigenschaften dynamischer Knoten sind schreibgeschützt, ohne Ziehgriffe. Größe und Löschen lassen sich nicht wie bei statischem HTML direkt ändern. Canvas-Inhalte sind nur bis zur Zeichenfläche auswählbar; eingebettete Seiten dynamischer Eltern öffnen Sie separat im Verzeichnis.",
+          "Im Browsingmodus wechseln Sie über interne Arbeitsbereichslinks die Seite und wählen dann zur Prüfung. Statische Unterframes lassen sich direkt bearbeiten. Senden oder leeren Sie ungesendete Kommentare und warten auf das Speichern, bevor Sie wechseln. Im Verlauf gibt es je Datei nebeneinanderstehende oder vereinheitlichte Unterschiede."
+        ],
+        "tips": [
+          "Kommentare senden ruft den konfigurierten Prototypassistenten auf; Auswahl und manuelle Eigenschaftenänderung rufen kein Modell auf. Prüfen Sie die zurückgeschriebenen Ergebnisse und lesen bei Versionskonflikten zuerst neu ein."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Schreibgeschützte Eigenschaften, Elementkommentare und Dateiwechsel dynamischer Prototypen",
+          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+        }
+      },
+      {
+        "title": "Ausgabeformatvorlagen für Ergebnisse ausfüllen",
+        "steps": [
+          "Klicken Sie in der Ergebniszeile eines Workflow-Schritts auf „Vorlage“ und beschreiben Struktur und Abnahmekriterien in Markdown. Verwenden Sie etwa {{任务名称}} als Titel und listen darunter Fazit und Prüfergebnisse. Nach Speichern des Workflows gelten die Vorgaben für neue Ausführungen.",
+          "In den Aufgabendetails öffnet das Vorlagensymbol am Ergebnis eine Anpassung nur dieser Aufgabe; leeren oder auf Workflow-Vorgabe zurücksetzen ist möglich. Während der Ausführung schreibgeschützt, auf Freigabeseiten nur lesbar.",
+          "Prüfen Sie die erzeugte Datei gegen die Vorlage. Diese bleibt beim Kopieren sowie Import und Export des Workflows erhalten, ist selbst aber kein bereits erzeugtes Ergebnis."
+        ],
+        "tips": [
+          "Nur {{任务名称}} wird ersetzt; weitere Formatvorgaben gehen unverändert an das Modell. Die Vorlage garantiert keine strikte Befolgung, eine Prüfung bleibt nötig."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Editor für Ergebnisformatvorlagen in Workflows und Aufgaben",
+          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Nachrichtenentwurf per Sprache ausfüllen",
         "steps": [
-          "Öffnen Sie Einstellungen → Spracheingabe, aktivieren Sie sie, laden Sie Modell und Laufzeit herunter, wählen Sie die Sprache und testen Sie das Mikrofon. Installiert wird auf dem verbundenen WorkStep-Host, nicht auf dem Telefon. Unterstützt werden Mandarin, Kantonesisch und Englisch.",
-          "Am PC klicken Sie das Mikrofon. Am Telefon halten Sie das Texteingabefeld 500 ms; ein Mikrofonsymbol gibt es dort nicht. Loslassen beendet die Aufnahme; prüfen Sie den Text und senden Sie selbst. Maximal zwei Minuten; Abbrechen sendet nichts."
+          "Öffnen Sie „Einstellungen → Spracheinstellungen → Eingabe“ und wählen Sie lokales Modell, Cloud-Anbieter oder eigenen Remotedienst. Laden Sie lokal zuerst Laufzeit und Modell und klicken auf „Dieses Modell verwenden“. Paraformer unterstützt Mandarin, Kantonesisch und Englisch, Zipformer Mandarin und Englisch. Speichern und mit „Mikrofon testen“ prüfen. Das Modell liegt auf dem WorkStep-Host.",
+          "Am Computer verwenden Sie den Mikrofoneinstieg. Am Smartphone startet bei leerem Entwurf der kleine Lautsprecher unten rechts die Aufnahme; bei Text erscheint Senden. Langes Drücken erlaubt weiterhin die Systemtextauswahl. Prüfen Sie danach den Transkriptentwurf und senden manuell. Eine Aufnahme dauert höchstens zwei Minuten; Abbrechen sendet nichts."
         ],
         "tips": [
-          "Die Erkennung erfolgt auf dem verbundenen Host, Audio wird nicht gespeichert. Erlauben Sie das Mikrofon über HTTPS oder eine lokale Adresse. Prüfen Sie bei Fehlern Website- und Systemrechte; starten Sie ein veraltetes Backend neu. Erkannter Text kann ausdrücklich behalten werden."
+          "Das Mikrofon benötigt System- und Websitefreigaben; im Browser sind HTTPS oder eine lokale Adresse nötig. Cloud-/Remotemodus überträgt Audio über den Host an den gewählten Dienst. HTTP liefert Text erst nach Abschluss und erlaubt keine Echtzeitaktivierung. Modelle sind einzeln löschbar; prüfen Sie vorher das verwendete. Sprachausgabe und -eingabe werden getrennt eingestellt."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Konnektoren einrichten und verwenden",
         "steps": [
-          "Einstellungen → Konnektoren → Hinzufügen öffnen. Für lokales MCP Befehl und Argumente getrennt, für entferntes MCP eine URL oder für CLI die Programmdatei angeben. Erlaubte Projekte auswählen.",
+          "Öffnen Sie „Einstellungen → Konnektoren → Konnektor hinzufügen“ oder den Desktop-Stecker. Bei lokalem MCP sind Befehl und Argumente getrennt; Argumente lassen sich einzeln oder als JSON bearbeiten. Remote-MCP benötigt eine URL, CLI eine ausführbare Datei. Leere Projektauswahl bedeutet alle Projekte.",
           "Unter Test → Verbindung erkennen Werkzeuge ermitteln. Werkzeugaufrufe werden tatsächlich ausgeführt: Argumente vorher prüfen. Der Test ruft kein LLM auf; anschließend speichern.",
-          "Im Gespräch über + → Konnektoren für die nächste Nachricht aktivieren. MCP benötigt eine kompatible Engine; CLI-Anmeldung erfolgt mit dem offiziellen Befehl im Host-Terminal. Bei 401 unterstütztes Bearer-Token oder Authentifizierungsheader konfigurieren. Browser-OAuth fehlt noch."
+          "Normale Projektchats und Aufgabenausführung wählen über „＋ → Konnektoren“, /连接器 oder /apps; aktiviert gelten sie für die nächste Nachricht. Aufgabenkoordination bindet sie nicht automatisch ein. MCP benötigt Engine-Unterstützung, CLI die offizielle Anmeldeanweisung. Bei 401 konfigurieren Sie Bearer Token oder Authentifizierungsheader; Web-OAuth fehlt derzeit. Lokale Erkennung kopiert keine Zugangsdaten."
         ],
         "tips": [
           "Beispiel: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Konnektoren einrichten und verwenden",
           "caption": "Echte Bildschirmaufnahme ausstehend: Einrichtung, Test und Gesprächsauswahl."
+        }
+      },
+      {
+        "title": "Unterhaltungen gruppieren und Archive ansehen",
+        "steps": [
+          "Erstellen Sie Gruppen per Rechtsklick auf Unterhaltungstitel, Liste oder einzelne Unterhaltung in der Projektseitenleiste. Ziehen Sie Sitzungen hinein oder zurück zu Ungruppiert; normale Gruppen erlauben im Menü neue Unterhaltungen. Normale und Kanalgruppen werden getrennt verwaltet.",
+          "Archivieren oder löschen Sie im Gruppenmenü. Löschen löst standardmäßig nur die Gruppe auf; erst „Unterhaltungen ebenfalls löschen“ entfernt deren Nachrichten. Prüfen Sie den Umfang. Laufende oder fehlgeschlagene Einträge werden übersprungen und behalten.",
+          "Öffnen Sie die Archivliste und klicken auf einen Titel, um den letzten Frage-Antwort-Wechsel schreibgeschützt aufzuklappen. Ansehen stellt die Sitzung nicht wieder her und lädt keine vollständigen Ausführungsdetails. Zum Weiterschreiben ausdrücklich wiederherstellen."
+        ],
+        "tips": [
+          "Archivieren bewahrt Inhalte; Unterhaltungen und Nachrichten löschen greift weiter. Verwechseln Sie Gruppenauflösung nicht mit gleichzeitigem Löschen der Inhalte."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Gruppenmenü der Projektseitenleiste und schreibgeschützte Archivvorschau",
+          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Demoaufgabe mit ungültigem Modell fehlgeschlagen",
           "caption": "Die Meldung nennt ein nicht unterstütztes Modell. Prüfen Sie den Schritt vor erneutem Start; der Fehler wurde hier noch nicht behoben."
+        }
+      },
+      {
+        "title": "Optionales Entscheidungsmodell konfigurieren",
+        "steps": [
+          "Öffnen Sie „Einstellungen → Modelle und Fähigkeiten → Entscheidungsmodell“ und wählen lokale Verwaltung, lokalen oder entfernten Dienst. Lokale Verwaltung wird anhand des Hosts erkannt; Komponenten und Modelle laden Sie getrennt manuell. Fehlen Voraussetzungen, verwenden Sie einen vorhandenen Dienst.",
+          "Im Dienstmodus geben Sie Adresse und Authentifizierung ein. „Modellliste lesen“ erlaubt Suchen und Auswählen, alternativ manuell eingeben. Testen prüft den Entwurf ohne Speichern. Nach Prüfung „Konfiguration speichern“ wählen.",
+          "Aktivieren Sie „Anderen Geräten Aufruf des lokalen Modells erlauben“ nur bei externem Bedarf. Setzen oder übernehmen Sie den Fernzugriffsschlüssel, speichern und nutzen die angezeigte Adresse. Fehlende Ressourcen werden nicht automatisch geladen; bei Auslastung erneut versuchen."
+        ],
+        "tips": [
+          "Dies ist eine optionale Jev-Entscheidungsschnittstelle, keine allgemeine Chat-API. Aufgaben und Gespräche werden nicht automatisch übernommen. Download und Proxyfreigabe sind unabhängig.",
+          "Das Modell läuft auf dem Host und belegt CPU und Speicher. Ein erfolgreicher Test bestätigt keine fachliche Genauigkeit. Der Proxy-Inferenztoken gewährt keine Ressourcenverwaltung; Schlüssel gehören nicht in Screenshots."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Betriebsmodus, Ressourcen, Test, Speichern und optionaler Proxy des Entscheidungsmodells",
+          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+        }
+      },
+      {
+        "title": "Handbuch über das Fragezeichen in Einstellungen lesen",
+        "steps": [
+          "Klicken Sie neben dem Abschnittstitel auf das Fragezeichen, um das passende Kapitel in der App zu lesen. Nutzen Sie Verzeichnis und Suche. Die Sprache folgt der Oberfläche, am Desktop ist das Lesefenster skalierbar.",
+          "Bei Ladefehlern erneut versuchen. „Im Browser öffnen“ zeigt die vollständige Seite und behält Kapitel und Sprache. Abschnitte ohne passende Anleitung zeigen kein Fragezeichen."
+        ],
+        "tips": [
+          "Das eingebettete Handbuch benötigt die Website-Ressourcen im Backend. Prüfen Sie bei Fehlern Installation und Ressourcen; ersetzen Sie es nicht durch unpassende Kapitel."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Einstellungsfragezeichen und eingebettetes mehrsprachiges Handbuch",
+          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Digitale Person und globales Gedächtnis",
+    "summary": "Konfigurieren Sie Kommunikationsstil, Hauptchat, proaktives Nachdenken und Kanalbetreuung. Prüfen Sie belegte Erinnerungen und aktivieren bei Bedarf Sprache und Personenerkennung.",
+    "sections": [
+      {
+        "title": "Persönlichkeit, Aufgaben und Hauptgespräch einrichten",
+        "steps": [
+          "Öffnen Sie „Einstellungen → Digitale Figur → Ersteinrichtung“, geben den Namen ein und bearbeiten Persönlichkeit, Aufgaben und dauerhafte Erinnerungen unter „Persönlichkeit und Aufgaben“. Nutzen Sie Vorgaben oder das Rollenzentrum, konfigurieren eine verfügbare Engine und wählen „Abschließen und aktivieren“.",
+          "Öffnen Sie nach Profilspeicherung „Mit digitaler Person sprechen“ in der Seitenleiste. Die Tastaturtaste erlaubt Texteingabe; „Unterhaltung ansehen“ zeigt den Verlauf derselben Hauptsitzung. Rückkehr zum normalen Arbeitsbereich ist möglich.",
+          "Persönlichkeit, Aufgaben und dauerhafte Erinnerungen verwenden Markdown. Vorgaben ändern nur ihren Abschnitt. Speicherfehler bewahren den Entwurf zum Wiederholen. Bearbeiten Sie ungespeicherte Änderungen vor Wechsel oder Schließen."
+        ],
+        "tips": [
+          "Dauerhafte Erinnerungen sind manuelle Vereinbarungen, keine historische Wissensbibliothek. Sprachwechsel übersetzt gespeicherte Texte nicht. Die digitale Person kommuniziert und verfolgt Fortschritt; tatsächliche Arbeit geht an Ausführungssitzungen im Zielprojekt."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Einrichtung der digitalen Figur, Persönlichkeitsdokumente und Hauptchat",
+          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+        }
+      },
+      {
+        "title": "Erinnerungen suchen und Quellen prüfen",
+        "steps": [
+          "Suchen Sie unter „Digitale Figur → Gedächtnis“ nach Inhalten, Entitäten oder Projektnamen. Filtern Sie Präferenzen, Erfahrungen, Fakten oder Ereignisse und wechseln zwischen Mindmap und Zeitrückblick.",
+          "Öffnen Sie einen Datensatz für Wissensdetails, dann die Quellen zur paginierten Originallektüre. Prüfen Sie Unklarheiten am Original; Zusammenfassungen sind weder Nutzerzitate noch Nachweise erledigter Aufgaben.",
+          "Erst nach vollständiger Assistentenantwort wird dieser Austausch erfasst. Normale Chats und Aufgaben nutzen Gedächtniswerkzeuge bei Bedarf, ohne jede Anfrage mit der gesamten Historie zu füllen oder automatisch alle alten Projekte nachzuerfassen."
+        ],
+        "tips": [
+          "Die gemeinsame Bibliothek sucht projekt- und sitzungsübergreifend unter Identitäts- und Projektrechten. Kategorienzählungen, Bibliotheksstatistik und aktuelle Trefferzahl sind verschieden.",
+          "Dauerhafte Vereinbarungen, Projekt-MEMORY.md und historisches Wissen haben unterschiedliche Aufgaben. Ungeordnete Nachrichten sind kein extrahiertes Wissen; die Oberfläche hat derzeit keine Vergessen-Schaltfläche."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Globale Gedächtnissuche, Kategorien und paginierte Originalquellen",
+          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+        }
+      },
+      {
+        "title": "Proaktives Nachdenken und Ausführungsverlauf",
+        "steps": [
+          "Speichern Sie unter „Digitale Figur → Proaktives Nachdenken“ Automatik, Denkintervall, Kontaktfreigabe, Mindestkontaktintervall und Ruhezeit. In Gedächtniseinstellungen steht die Chargengröße: standardmäßig 100, Bereich 1–1000 Nachrichten.",
+          "„Jetzt nachdenken“ startet eine sofortige Prüfung. Im „Ausführungsverlauf“ sehen Sie Delegationsmeldungen und Denkprotokolle getrennt, können aktualisieren, blättern und Zusammenfassungen oder Fehler öffnen. Delegationen führen zur echten Ausführungssitzung.",
+          "Bei Zustellfehlern Nachricht erneut senden. Prüfen Sie abgeschlossene Reflexion und Zustellung getrennt. Abschalten der Automatik pausiert geplante Prüfungen; normaler Chat und manuelles Nachdenken bleiben nutzbar."
+        ],
+        "tips": [
+          "Standardintervall: 5 Minuten. Proaktiver Kontakt bedeutet nicht jede Runde eine Nachricht; ohne ausstehende Ereignisse kann sie still enden. Modellaufrufe können kosten; das Protokoll ist keine vollständige Gedankenkette."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Einstellungen des Nachdenkens und getrennt paginierter Verlauf",
+          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+        }
+      },
+      {
+        "title": "Kanalbetreuung und Benachrichtigungen verknüpfen",
+        "steps": [
+          "Konfigurieren Sie einen Bot unter „Einstellungen → Kanal-Bots“ und senden ihm zur Zielerkennung eine Nachricht. Fügen Sie unter „Digitale Figur → Kanal-Bots“ eine Bindung hinzu und wählen Bot sowie Gruppe oder Kontakt.",
+          "Aktivieren Sie bei Bedarf „Proaktive Meldungen empfangen“. Empfangsbetreuung allein erlaubt keine proaktiven Sendungen. Prüfen Sie nach Bestätigung das Ziel. Bereits aufgabenbezogene Gruppen behalten ihre Aufgabenbindung.",
+          "Prüfen und bestätigen Sie das Ziel vor „Testsenden“. Bei Nichtgebrauch Bindung lösen. Erfolg heißt nur Plattformannahme, nicht Lesen durch den Empfänger."
+        ],
+        "tips": [
+          "Der Test sendet eine echte Nachricht. Nutzen Sie Demo-Ziele und behandeln Sie unklare Kontakte nicht als autorisierte Empfänger."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Kanalbindung, proaktive Meldungen und Zustellstatus",
+          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+        }
+      },
+      {
+        "title": "Sprache, Aktivierung und Mikrofon konfigurieren",
+        "steps": [
+          "Wählen Sie global unter „Spracheinstellungen → Ausgabe“ Systemstimme, lokales Modell, Cloud-Anbieter oder eigenen Remotedienst. Lokale Ressourcen laden Sie manuell; Cloud/Remote erfordern Dienst und Anmeldung, dann probehören und speichern. Auf der Klangseite der digitalen Figur ändern Sie Stimme, Tempo und weitere Parameter.",
+          "Stellen Sie unter „Gehör“ Aktivierungswort und Empfindlichkeit ein und starten das Zuhören ausdrücklich. Nutzbare Streaming-Spracherkennung ist nötig. Wortspeicherung ist keine Aufnahme; HTTP-Transkription nach Abschluss kann nicht in Echtzeit aktivieren.",
+          "Am Hauptbildschirm startet das Mikrofon Sprachdialoge, der Lautsprecher steuert die lokale Sprachausgabe. Zum Aufnahmeende Mikrofon ausschalten; Lautsprecherstummschaltung tut dies nicht. Verbergen, Neuladen oder Verlassen beendet das Zuhören."
+        ],
+        "tips": [
+          "Mikrofon, Kamera und Wiedergabe benötigen getrennte System-/Websitefreigaben. Remotedienste empfangen entsprechende Audiodaten. Tatsächliche Tonausgabe ist auf Smartphone und Desktop zu prüfen.",
+          "Nur neue Antworten werden vorgelesen. Öffnen des vollständigen Gesprächsbereichs pausiert automatische Ausgabe; Schließen spielt nichts nach. Erwarten Sie kein dauerhaftes Zuhören bei gesperrtem Bildschirm oder geschlossener App."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Sprachausgabemodi, Hörprobe und ausdrückliche Zuhörsteuerung",
+          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+        }
+      },
+      {
+        "title": "Bekannte Personen erfassen und per Kamera erkennen",
+        "steps": [
+          "Konfigurieren Sie unter „Digitale Figur → Sehen → Gesichtserkennung“ das Modell. Öffnen Sie „Bekannte verwalten → Gesicht erfassen“, geben Name und Beziehung ein und bestätigen die Einwilligung der Person.",
+          "Öffnen Sie die Kamera und erfassen drei klare Einzelpersonaufnahmen: frontal und leicht nach links beziehungsweise rechts. Prüfen und speichern; kontrollieren Sie im Erkennungstest den Namen. Beispiele lassen sich ergänzen, deaktivieren oder löschen.",
+          "Wählen Sie bei Bedarf Namensanzeige sowie Personen und Beziehungen im Nachrichtenkontext und senden das Bild ausdrücklich. Bei Erkennungsfehlern Modell, Kamerafreigabe und Bild prüfen, keine Identität erraten."
+        ],
+        "tips": [
+          "Aufnahmefotos werden nicht langfristig gespeichert; Personenmerkmale bleiben dennoch sensible Daten. Im Bild zu sein identifiziert keinen Sprecher und ändert weder Autor, Rechte noch Anmeldung. Bilder und Personendaten, die ans Modell gehen, bleiben nicht garantiert lokal."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Einwilligung, dreistufige Aufnahme und Personenerkennungseinstellungen",
+          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
         }
       }
     ]

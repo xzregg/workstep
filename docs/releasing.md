@@ -146,7 +146,7 @@ moving the tag or relaxing the application's directory restrictions.
 
 2026-11-17 的依赖更新同步 daemon / gateway 锁文件、桌面生产依赖导出与容器 gateway 清单；源码安装最低 Python 为 3.11.5。不能仅凭锁文件更新或普通单元测试通过就宣称所有告警已关闭，桌面安装验收仍须在对应平台执行。
 
-- `pydantic-ai-harness` 暂保留 0.27：安全修复版 0.59 的 `LocalWorkspaceBackend` 明确只支持 POSIX，直接替换会破坏 Windows 本地引擎；已有适配层的文件、Shell 和规划接口也不兼容。GHSA-3589-pxp7-3gj8 针对 CodeMode 的 `run_code` 嵌套工具调用；当前组合未启用 CodeMode，回归测试守护此条件。该说明不是依赖告警已消除的声明；未来接入 CodeMode 前必须先升级并验证工作区迁移。
+- `pydantic-ai-harness` 升至 0.69，配套 `pydantic-ai-slim` 2.69：SQLite 快照按消息正文去重，原生工作区按平台选择 `LocalWorkspace` / `WindowsWorkspace`，文件、Shell 和规划适配已迁移。当前组合仍不启用 CodeMode。旧内联 JSON 快照继续可读但不会自动去重；新版写入后旧 SDK 不能读取新格式，回滚前须考虑数据库兼容性。macOS 离线引擎回归不代表 Windows 原生或桌面安装验收通过。
 - A2UI 上游最新 0.15 仍依赖 Zod 3；GHSA-mrhx-c7xc-m3w5 的修复版为 Zod 4.6.6。不能通过强制替换 Zod 主版本、屏蔽告警或类型强转宣称修复。WorkStep 不再直接依赖仅供 A2UI 类型使用的 Zod，但 A2UI 的传递依赖告警仍待上游兼容升级或独立迁移。
 
 A2UI 的当前应用级缓解位于 `apps/web/src/utils/a2uiInputBudget.ts`：事件消息与 Markdown 围栏在进入 schema 校验前共用总量、宽度及深度预算；围栏还限制文本长度，并以单次平衡扫描代替反复解析未闭合 JSON。相关行为与组件入口回归覆盖正常内容保留、超限拒绝及两种入口。该措施限制 WorkStep 当前入口的资源放大风险，不改写上游包版本或宣称 Zod 依赖告警已经关闭；独立修复前后运行时证据仅针对入站预算和解析次数，不是完整浏览器内存耗尽或所有调用方的验收。

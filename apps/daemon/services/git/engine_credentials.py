@@ -11,6 +11,22 @@ import shlex
 import sys
 from pathlib import Path
 
+
+def engine_git_environment() -> dict[str, str]:
+    """Forward Git helper configuration when a runtime sanitizes inherited env.
+
+    Credentials remain in the helper's file; never copy tokens into tool env.
+    """
+    return {
+        name: os.environ[name]
+        for name in (
+            "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_GLOBAL",
+            "GIT_CONFIG_NOSYSTEM", "GIT_TERMINAL_PROMPT",
+        )
+        if name in os.environ
+    }
+
+
 def install_engine_credentials(credential_file: Path):
     """Install inherited Git configuration without changing the user's gitconfig.
 

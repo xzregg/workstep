@@ -254,6 +254,8 @@ export interface ActionProposal {
 }
 
 export interface CoordinatorEngineSummary {
+  permission_modes?: string[]
+  supports_service_tier?: boolean
   config?: EngineConfigPayload | null
   name?: string
   description?: string

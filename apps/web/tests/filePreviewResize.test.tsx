@@ -125,7 +125,7 @@ for (const entry of ['file', 'task']) test(`${entry} preview hands its modal to 
     const before = reads
     await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', {key:'Escape', bubbles:true})))
     assert.equal(closed, 0, 'Escape returns to preview without closing its owner')
-    assert.equal(document.querySelector('.prototype-backdrop'), null)
+    assert.equal(document.querySelector('.prototype-backdrop') === null, true, 'Escape removes the prototype editor backdrop')
     assert.ok(document.querySelector('.artifact-html-preview iframe'))
     assert.ok(reads > before, 'returning reloads the edited source')
     if (entry === 'file') {

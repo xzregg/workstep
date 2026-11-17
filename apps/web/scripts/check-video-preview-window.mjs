@@ -10,14 +10,17 @@ await build({root,logLevel:'error',publicDir:false,build:{outDir:out,emptyOutDir
 const html=await fs.readFile(path.join(out,'tests/fixtures/digital-person-home/index.html'))
 const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--enable-unsafe-swiftshader']})
 const results=[]
+const clipAudit=await fs.readFile(path.resolve(root,'../../.agents/skills/desktop-agent-ui/scripts/clip-audit.js'),'utf8')
 try{
- for(const [width,height]of [[320,700],[390,844],[844,390],[1023,900],[1440,1024]]){
+ for(const [width,height]of [[320,700],[390,844],[844,390],[1023,900],[1024,900],[1440,1024]]){
   const page=await browser.newPage({viewport:{width,height},screen:{width,height},reducedMotion:'reduce'}),errors=[]
   page.on('pageerror',e=>errors.push(e.message))
   await page.route('**/*',async route=>{
    const url=new URL(route.request().url())
    if(url.hostname!=='preview.invalid')return route.abort()
    if(url.pathname.endsWith('/faces/catalog'))return route.fulfill({json:{revision:'fixture',settings:{enabled:false,include_people:false,show_names:false},people:[]}})
+   if(url.pathname.endsWith('/faces/settings'))return route.fulfill({json:{settings:{enabled:false,show_names:true,include_people:true,include_relationship:true,preset:'balanced',threshold:.65},revision:0}})
+   if(url.pathname.endsWith('/faces/people'))return route.fulfill({json:{items:[]}})
    if(url.pathname.startsWith('/api/'))return route.fulfill({json:{}})
    if(url.pathname==='/')return route.fulfill({body:html,contentType:'text/html'})
    const filename=path.resolve(out,decodeURIComponent(url.pathname).replace(/^\//,''))
@@ -49,6 +52,16 @@ try{
   await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.videoWidth>0)
   if(width>1023){
    assert.equal(await panel.getAttribute('data-video-docked'),'true','desktop uses the fixed camera panel')
+   const camera=page.locator('.digital-person-camera--panel'),cameraBox=await camera.boundingBox(),footer=await page.locator('.digital-home-footer').boundingBox(),info=await page.locator('.digital-home-presence-info').boundingBox()
+   assert.ok(cameraBox.width>=320,'desktop camera is enlarged')
+   assert.ok(cameraBox.y+cameraBox.height<=footer.y-8,'camera stays above bottom controls')
+   assert.ok(Math.abs(cameraBox.y-info.y-info.height-16)<2,'camera sits directly below reflection metrics with a 16px gap')
+   const caption=await page.locator('.digital-home-caption-frame').boundingBox();assert.ok(caption.x+caption.width<=cameraBox.x-8,'camera does not cover captions')
+   const audit=await page.evaluate('('+clipAudit+')({root:".digital-home-footer"})');assert.equal(audit.cut,0,JSON.stringify(audit))
+   await panel.locator('[data-video-close]').hover();const hoverAudit=await page.evaluate('('+clipAudit+')({root:".digital-home-footer"})');assert.equal(hoverAudit.cut,0,JSON.stringify(hoverAudit))
+   assert.equal(await page.locator('.digital-home-camera-title').count(),0,'one shared header only')
+   assert.equal(await header.locator('.video-preview-header-title').count(),1)
+   assert.ok((await header.boundingBox()).height<=32,'compact shared header')
    const perception=page.locator('.digital-home-camera-perception')
    assert.equal(await perception.getByRole('button').count(),1)
    assert.match(await perception.innerText(),/人脸识别/)
@@ -67,10 +80,22 @@ try{
    await page.evaluate(()=>window.videoFixture.resize(1280,720));await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.videoWidth===1280);await page.waitForTimeout(80)
   }
   await page.evaluate(()=>{window.keptCameraElement=document.querySelector('.video-preview-media');window.keptCameraStream=window.keptCameraElement.srcObject})
-  const dockedBox=await panel.boundingBox()
+  if(width>1023){
+   const camera=page.locator('.digital-person-camera--panel'),before=await camera.boundingBox(),title=panel.locator('.video-preview-header-title'),titleBox=await title.boundingBox()
+   await page.mouse.move(titleBox.x+40,titleBox.y+titleBox.height/2);await page.mouse.down();await page.mouse.move(titleBox.x-80,titleBox.y+titleBox.height/2-40,{steps:8});await page.mouse.up()
+   const moved=await camera.boundingBox();assert.ok(Math.abs(moved.x-before.x+120)<2&&Math.abs(moved.y-before.y+40)<2,'whole white panel moves by title drag')
+   const faceEntry=await page.locator('.digital-home-camera-perception').boundingBox();assert.ok(faceEntry.y>moved.y&&faceEntry.y+faceEntry.height<=moved.y+moved.height,'face entry moves with the white panel')
+   await header.focus();await page.keyboard.press('ArrowLeft');assert.ok(Math.abs((await camera.boundingBox()).x-moved.x+8)<2,'keyboard moves the whole panel')
+   assert.equal(await page.evaluate(()=>window.keptCameraElement===document.querySelector('.video-preview-media')&&window.keptCameraStream===document.querySelector('.video-preview-media').srcObject),true,'panel dragging preserves video and stream')
+   const audit=await page.evaluate('('+clipAudit+')({root:”.digital-home-footer”})'.replaceAll('”','"'));assert.equal(audit.cut,0,JSON.stringify(audit))
+   await page.screenshot({path:path.join(artifacts,`panel-dragged-${width}.png`)})
+  }
+  const sourceRatio=await video.evaluate(v=>v.videoWidth/v.videoHeight)
+  assert.equal(await panel.locator('[data-video-pin]').count(),0,'no fixed/floating toggle')
+  if(width<=1023){
+  const dockedBox=await video.boundingBox()
   const pinned=await panel.evaluate(el=>{const video=el.querySelector('video'),box=video.getBoundingClientRect();return {width:box.width,height:box.height,ratio:video.videoWidth/video.videoHeight}})
   assert.ok(Math.abs(pinned.width/pinned.height-pinned.ratio)<.02,'fixed preview follows the actual frame without extra bars '+JSON.stringify({width,height,pinned}))
-  if(width>1023){await panel.locator('[data-video-pin]').click();assert.equal(await panel.getAttribute('data-video-docked'),'false')}
   assert.equal(await page.evaluate(()=>window.keptCameraElement===document.querySelector('.video-preview-media')&&window.keptCameraStream===document.querySelector('.video-preview-media').srcObject),true,'detaching keeps the actual camera session')
   const check=async()=>{
    const measured=await panel.evaluate(el=>{
@@ -163,14 +188,24 @@ try{
    await page.locator('.digital-home-voice-dock [data-camera-toggle]').click()
    await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.videoWidth===1280)
    await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.videoWidth===1280)
-   if(width>1023)await panel.locator('[data-video-pin]').click()
    assert.equal(await video.evaluate(v=>v.videoWidth/v.videoHeight),16/9,'fixture keeps ignoring portrait hints')
    await check()
    await check()
    assert.equal(await page.evaluate(()=>window.videoFixture.constraints.video.aspectRatio.ideal),9/16)
    await panel.locator('[data-video-close]').click()
   }
-  assert.deepEqual(errors,[]);results.push({width,height,ratio:measured.ratio,toolbar:24,eyes:true});await page.close()
+  }else await panel.locator('[data-video-close]').click()
+  await page.setViewportSize({width,height})
+  if(width>1023){await page.locator('.digital-home-voice-dock [data-camera-toggle]').click();await page.locator('.video-preview-window[data-video-ready="true"]').waitFor();const camera=await page.locator('.digital-person-camera--panel').boundingBox(),info=await page.locator('.digital-home-presence-info').boundingBox();assert.ok(Math.abs(camera.y-info.y-info.height-16)<2,'reopening restores default position below reflection');assert.equal(await page.locator('.digital-person-camera--panel').getAttribute('data-camera-moved'),'false');await page.locator('.digital-home-camera-perception button').click()}
+  else await page.locator('.digital-home-face-entry').click()
+  const faceDialog=page.locator('.face-home-panel');await faceDialog.waitFor();await faceDialog.locator('.face-panel-tabs').waitFor()
+  const faceBox=await faceDialog.boundingBox();assert.ok(Math.abs(faceBox.x+faceBox.width/2-width/2)<2&&Math.abs(faceBox.y+faceBox.height/2-height/2)<2,'face recognition opens a centered dialog')
+  assert.ok(faceBox.x>=8&&faceBox.y>=8&&faceBox.x+faceBox.width<=width-8&&faceBox.y+faceBox.height<=height-8,'face dialog fits viewport')
+  await page.screenshot({path:path.join(artifacts,`face-dialog-${width}.png`)})
+  if(width>1023){const before=await faceDialog.boundingBox(),handle=await faceDialog.locator('.resizable-panel-e').boundingBox();await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);await page.mouse.down();await page.mouse.move(handle.x-80,handle.y+handle.height/2);await page.mouse.up();assert.ok((await faceDialog.boundingBox()).width<before.width,'dialog supports resizing')}
+  const faceAudit=await page.evaluate('('+clipAudit+')({root:”.face-home-backdrop”})'.replaceAll('”','"'));assert.equal(faceAudit.cut,0,JSON.stringify(faceAudit))
+  await page.locator('.face-home-close').click();await faceDialog.waitFor({state:'detached'})
+  assert.deepEqual(errors,[]);results.push({width,height,ratio:sourceRatio,toolbar:24,defaultBelowReflection:width>1023,panelDraggable:width>1023});await page.close()
  }
 }finally{await browser.close()}
 await fs.writeFile(path.join(artifacts,'results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results))

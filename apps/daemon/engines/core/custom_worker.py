@@ -20,6 +20,7 @@ from engines.core.acp_base import AcpEngineBase, ACP_EVENTS
 from engines.core.events import InternalEvent
 from engines.core.custom_package import load_manifest, package_root, EXTENSION_EVENTS, declared_events
 from engines.core.schema import EngineImage
+from engines.core.permissions import EnginePermissionPolicy
 from services.config import config_store
 
 ALLOWED_METHODS = frozenset({
@@ -31,7 +32,8 @@ ALLOWED_METHODS = frozenset({
 })
 EXTRA_PROPERTIES = ("supports_message_history", "supports_interactive", "supports_resume",
                     "supports_sessions", "supports_tool_approval", "supports_live_stage_message",
-                    "supports_process_reuse")
+                    "supports_process_reuse", "supports_manual_compaction",
+                    "supports_service_tier", "supports_host_session_ids")
 
 
 def plain(value):
@@ -67,6 +69,9 @@ def load_adapter(root, manifest):
 
 
 def describe(engine, manifest):
+    if not isinstance(engine.PERMISSION_POLICY, EnginePermissionPolicy):
+        raise ValueError("PERMISSION_POLICY 必须为 EnginePermissionPolicy")
+    policy = EnginePermissionPolicy(**asdict(engine.PERMISSION_POLICY))
     schema = [asdict(field) for field in engine.config_schema()]
     keys = [field["key"] for field in schema]
     if len(keys) != len(set(keys)) or any(not key for key in keys):
@@ -122,6 +127,8 @@ def describe(engine, manifest):
         "provider_required": engine.provider_required(), "system_prompt_mode": engine.SYSTEM_PROMPT_MODE,
         "config": {"fields": schema}, "installable": True,
         "skill_policy": engine.skill_policy.value,
+        "permission_policy": asdict(policy),
+        "permission_modes": list(engine.permission_modes()),
         "supports_controlled_skills": engine.supports_controlled_skills,
     }
 

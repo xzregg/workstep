@@ -554,22 +554,6 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                   <span className="engine-settings-status" data-state={engine.verified ? 'verified' : engine.installed ? 'needs-test' : 'not-installed'}>
                     {engine.verified ? t('settings.verified') : engine.installed ? t('engine.needsTest') : t('engine.notInstalled')}
                   </span>
-                  {engine.config && (
-                    <Button
-                      variant="primary"
-                      className="engine-settings-save-button"
-                      disabled={!engineFormState[engine.id]?.canSave}
-                      loading={engineFormState[engine.id]?.saving}
-                      onClick={() => {
-                        if (!isExpanded) {
-                          setExpandedConfigs((current) => ({ ...current, [engine.id]: true }))
-                        }
-                        engineFormRefs.current[engine.id]?.save()
-                      }}
-                    >
-                      {t('engineForm.saveConfig')}
-                    </Button>
-                  )}
                   </div>
                   </div>
                   <div className="engine-settings-card-details" hidden={!isExpanded}>
@@ -690,6 +674,19 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                       </div>
                     </div>
                   )}
+                  <div className="engine-settings-config-actions">
+                  {engine.config && (
+                    <Button
+                      variant="primary"
+                      className="engine-settings-save-button"
+                      disabled={!engineFormState[engine.id]?.canSave}
+                      loading={engineFormState[engine.id]?.saving}
+                      onClick={() => engineFormRefs.current[engine.id]?.save()}
+                    >
+                      {t('engineForm.saveConfig')}
+                    </Button>
+                  )}
+                  </div>
                   </div>
                 </div>
                 )

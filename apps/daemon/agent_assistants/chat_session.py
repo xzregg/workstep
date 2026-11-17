@@ -244,7 +244,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                     return None
                 config = self.get_execution_config(project_id, session_id)
                 return self.submit_message(
-                    project_id, session_id, "继续", f"restart-resume:{message_id}",
+                    project_id, session_id, "Continue", f"restart-resume:{message_id}",
                     **{key: config[key] for key in ("engine", "model", "fast_model", "vision_model",
                                                    "provider_id", "thinking_effort", "service_tier")},
                     schedule=False,
@@ -373,7 +373,15 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 row.save()
                 if archived:
                     clear_session_schedules(session_id)
-            return self._session_summary(row, project_id)
+                summary = self._session_summary(row, project_id)
+                if (
+                    archived
+                    and summary["message_count"] == 0
+                    and summary.get("source") != "channel"
+                    and not row.parent_session_id
+                ):
+                    self.delete_session(project_id, session_id)
+            return summary
 
     def create_session(
         self,

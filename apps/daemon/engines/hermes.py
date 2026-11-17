@@ -10,7 +10,9 @@ from typing import AsyncIterator
 
 from acp import schema
 
+from engines.core.base import EngineSkillPolicy
 from engines.core.acp_base import AcpEngineBase
+from engines.core.permissions import EnginePermissionPolicy
 from engines.core.base import EngineModel, ProviderRuntimeConfig
 from engines.core.plans import plan_event
 from engines.core.events import (
@@ -27,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 class HermesEngine(AcpEngineBase):
     ENGINE_ID = "hermes"
+    PERMISSION_POLICY = EnginePermissionPolicy()
+    SKILL_POLICY = EngineSkillPolicy.HERMES_PROFILE
     supports_mcp = True
 
     # Hermes 按 ACP 规范在 session/load 内重播整段历史，不丢弃会被当成

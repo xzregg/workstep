@@ -1,7 +1,7 @@
 import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { act, useRef } from 'react'
+import { act, useLayoutEffect, useRef, useState } from 'react'
 import { useOverlay } from '../src/hooks/useOverlay'
 import { createRoot } from 'react-dom/client'
 import Select from '../src/components/Select'
@@ -9,6 +9,42 @@ import EngineSelect from '../src/components/EngineSelect'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { defaultSkin } from '../src/skins/contract'
 import { saveSkin, restoreDefaultSkin } from '../src/skins/runtime'
+
+test('popup measures its anchor before the opening commit can paint and focuses without scrolling', async () => {
+  const { window } = installDomEnvironment()
+  const measurements: number[] = []
+  const focusOptions: (FocusOptions | undefined)[] = []
+  let measured = false
+  const originalRect = window.HTMLElement.prototype.getBoundingClientRect
+  const originalFocus = window.HTMLElement.prototype.focus
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
+    if (this.classList.contains('skin-select-trigger')) measured = true
+    return originalRect.call(this)
+  }
+  window.HTMLElement.prototype.focus = function (options?: FocusOptions) {
+    if (this.classList.contains('skin-select-search')) focusOptions.push(options)
+    originalFocus.call(this, options)
+  }
+  function Surface() {
+    const [clicks, setClicks] = useState(0)
+    useLayoutEffect(() => {
+      if (clicks) measurements.push(Number(measured))
+    }, [clicks])
+    return <div onClickCapture={() => setClicks(value => value + 1)}><Select defaultValue="a"><option value="a">A</option><option value="b">B</option></Select></div>
+  }
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider><Surface /></I18nProvider>))
+    await act(async () => document.querySelector<HTMLButtonElement>('.skin-select-trigger')!.click())
+    assert.deepEqual(measurements, [1], 'measure in the layout phase, before passive effects and paint')
+    assert.deepEqual(focusOptions, [{ preventScroll: true }])
+  } finally {
+    await act(async () => root.unmount())
+    window.HTMLElement.prototype.getBoundingClientRect = originalRect
+    window.HTMLElement.prototype.focus = originalFocus
+    await window.happyDOM.close()
+  }
+})
 
 test('skin select opens a themed list, respects disabled and forwards a real change once', async () => {
   const { window } = installDomEnvironment()

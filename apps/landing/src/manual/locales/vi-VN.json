@@ -753,11 +753,11 @@
           "Mở bản xem trước HTML của dự án rồi chọn trình sửa nguyên mẫu. Để sửa bằng AI, cấu hình bộ máy tại Cài đặt → Trợ lý → Trợ lý nguyên mẫu.",
           "Nhấn tên tệp phía trên bản xem trước để chọn HTML cùng thư mục hoặc trong thư mục con. Mỗi HTML giữ cuộc trò chuyện riêng. Kéo cạnh cửa sổ và thanh phân cách để đổi kích thước.",
           "Di chuột để tô sáng, nhấn để chọn hoặc nhấn chuột phải để bình luận. Ví dụ: “Đổi nút này thành màu xanh lá, giữ nguyên nút bên cạnh.” Gửi vào trò chuyện.",
-          "Sửa chữ, màu hoặc width (ví dụ 180px) trong thuộc tính rồi rời ô để lưu. Có thể nhấn đúp vào văn bản đơn giản hoặc kéo tay nắm kích thước. Chọn đúng phần tử trước khi xác nhận xóa.",
+          "Với phần tử tĩnh, sửa chữ, màu hoặc width (ví dụ 180px) trong bảng thuộc tính; rời ô sẽ lưu. Chỉ di chuyển bằng tay nắm của khung chọn. Alt tắt bắt dính, Esc hủy di chuyển. Kiểm tra nút đã chọn trước khi xóa; dùng Ctrl+Z/⌘Z hoặc Hoàn tác ở thanh trên để quay lại thao tác đã lưu.",
           "Trong lịch sử thay đổi, xem khác biệt, hoàn tác hoặc dọn lịch sử. Sau gián đoạn, kiểm tra bản sao được giữ lại rồi tiếp tục lưu hoặc bỏ bản sao. Không ghi đè bản gốc khi có xung đột."
         ],
         "tips": [
-          "Sửa trực tiếp áp dụng cho HTML tĩnh. Chế độ chọn tạm dừng mã lệnh trang; chế độ duyệt chạy tương tác. Chỉ xuất bản thay đổi của HTML/CSS/JS hiện có; không hỗ trợ thêm hoặc xóa cả tệp."
+          "Chỉnh sửa trực tiếp dành cho HTML tĩnh và xuất bản thay đổi các tệp HTML/CSS/JS hiện có, không hỗ trợ thêm hoặc xóa toàn bộ tệp. Trang động dùng kiểm tra chỉ đọc và bình luận ở mục tiếp theo. Ảnh cũ chưa có tay nắm di chuyển và kiểm tra động mới."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Trình soạn thảo bộ nhớ dự án chứa các quy ước trình diễn",
           "caption": "Chỉnh sửa và lưu các quy ước trong .workstep/MEMORY.md. Không có xác nhận bài học lưu trữ nào được hiển thị."
         }
+      },
+      {
+        "title": "Kiểm tra nguyên mẫu HTML/React động",
+        "steps": [
+          "Mở Trình sửa nguyên mẫu từ bản xem trước HTML. Trang động vẫn chạy mã kết xuất; chọn phần tử hoặc nhấp phải để bình luận, ghi yêu cầu rồi Gửi vào trò chuyện để trợ lý nguyên mẫu sửa logic tạo giao diện.",
+          "Thuộc tính của nút động chỉ đọc, không có tay nắm kéo và không thể đổi kích thước hay xóa trực tiếp như HTML tĩnh. Nội dung Canvas chỉ chọn được ở mức khung vẽ. Trang lồng trong trang cha động có thể mở riêng từ thư mục để kiểm tra.",
+          "Trong chế độ duyệt, dùng liên kết trong không gian làm việc để chuyển trang rồi chọn kiểm tra; khung con tĩnh có thể chọn và sửa tại chỗ. Gửi hoặc xóa bình luận chưa gửi, chờ lưu xong rồi mới chuyển trang. Xem khác biệt song song hoặc hợp nhất theo từng tệp trong lịch sử."
+        ],
+        "tips": [
+          "Gửi bình luận sẽ gọi trợ lý nguyên mẫu đã cấu hình; chọn phần tử và chỉnh thuộc tính thủ công không gọi mô hình. Kiểm tra kết quả ghi lại; nếu xung đột phiên bản, hãy đọc lại trước."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Thuộc tính chỉ đọc, bình luận phần tử và chuyển tệp của nguyên mẫu động",
+          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+        }
+      },
+      {
+        "title": "Đặt mẫu định dạng đầu ra cho sản phẩm",
+        "steps": [
+          "Nhấn Mẫu ở hàng sản phẩm của bước quy trình, dùng Markdown mô tả cấu trúc và tiêu chí nghiệm thu. Ví dụ dùng {{任务名称}} trong tiêu đề, bên dưới liệt kê kết luận và kết quả kiểm chứng. Lưu quy trình để các lần chạy mới dùng yêu cầu này.",
+          "Trong chi tiết tác vụ, nhấn biểu tượng mẫu cạnh tên sản phẩm để chỉ sửa cho tác vụ hiện tại, xóa nội dung hoặc khôi phục mặc định quy trình. Khi đang chạy chỉ được đọc; trang chia sẻ chỉ cho xem.",
+          "Kiểm tra tệp tạo ra có đáp ứng mẫu hay không. Mẫu được giữ khi sao chép, nhập và xuất quy trình, nhưng bản thân mẫu không phải sản phẩm đã tạo."
+        ],
+        "tips": [
+          "Chỉ thay thế {{任务名称}}; các yêu cầu định dạng khác được chuyển nguyên văn cho mô hình. Mẫu không bảo đảm mô hình tuân thủ chính xác, vẫn cần duyệt kết quả."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Trình sửa mẫu định dạng sản phẩm của quy trình và tác vụ",
+          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Nhập bản nháp bằng giọng nói",
         "steps": [
-          "Mở Cài đặt → Nhập giọng nói, bật, tải mô hình và môi trường chạy, chọn ngôn ngữ rồi thử micrô. Cài đặt nằm trên máy chủ WorkStep đang kết nối; điện thoại không cần tải mô hình. Hỗ trợ tiếng Quan thoại, Quảng Đông và Anh.",
-          "Trên máy tính bấm micrô. Trên điện thoại giữ vùng nhập chữ 500 ms; không hiện biểu tượng micrô. Thả tay, kiểm tra chữ được chèn rồi gửi thủ công. Tối đa hai phút; hủy không gửi gì."
+          "Mở Cài đặt → Cài đặt giọng nói → Đầu vào, chọn mô hình cục bộ, nhà cung cấp đám mây hoặc dịch vụ tự triển khai từ xa. Với chế độ cục bộ, tải bộ chạy và mô hình rồi nhấn Dùng mô hình này. Paraformer hỗ trợ tiếng Quan Thoại, Quảng Đông và Anh; Zipformer hỗ trợ tiếng Quan Thoại và Anh. Lưu rồi Kiểm tra micrô. Mô hình được cài trên máy chủ WorkStep.",
+          "Trên máy tính, dùng nút micrô. Trên điện thoại, khi bản nháp trống hãy chạm loa nhỏ góc dưới bên phải để ghi âm; khi có chữ sẽ hiện nút gửi, còn nhấn giữ vẫn dùng để chọn chữ bằng hệ thống. Kiểm tra bản nháp phiên âm rồi tự gửi. Mỗi lần tối đa hai phút; hủy sẽ không gửi."
         ],
         "tips": [
-          "Âm thanh được nhận dạng trên máy chủ kết nối và không lưu lại. Cho phép micrô qua HTTPS hoặc địa chỉ cục bộ. Khi lỗi, kiểm tra quyền hệ thống và trang; khởi động lại backend cũ. Có thể chủ động giữ văn bản đã nhận dạng."
+          "Micrô cần quyền hệ thống và trang web; trình duyệt cần HTTPS hoặc địa chỉ cục bộ. Chế độ đám mây/từ xa chuyển âm thanh qua máy chủ đến dịch vụ đã chọn. Phiên âm HTTP chỉ trả chữ sau khi ghi xong nên không dùng để đánh thức thời gian thực. Có thể xóa riêng từng mô hình, hãy kiểm tra mô hình đang dùng trước. Đầu vào và đầu ra giọng nói được cấu hình riêng."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Cấu hình và sử dụng trình kết nối",
         "steps": [
-          "Mở Cài đặt → Trình kết nối → Thêm. Với MCP cục bộ nhập riêng lệnh và đối số, MCP từ xa nhập URL, CLI nhập tệp thực thi. Chọn dự án được phép.",
+          "Mở Cài đặt → Trình kết nối → Thêm trình kết nối, hoặc dùng lối tắt hình phích cắm trên máy tính. MCP cục bộ nhập riêng lệnh và tham số; sửa từng tham số hoặc bằng JSON. MCP từ xa nhập URL, CLI nhập tệp thực thi. Để trống dự án được dùng nghĩa là tất cả dự án.",
           "Trong Kiểm tra → Phát hiện kết nối, tìm các công cụ. Chạy công cụ là gọi thực: hãy kiểm tra đối số. Kiểm tra không gọi LLM; lưu cấu hình sau đó.",
-          "Trong hội thoại bật ＋ → Trình kết nối cho tin nhắn tiếp theo. MCP cần bộ máy tương thích; đăng nhập CLI bằng lệnh chính thức trong terminal máy chủ. Với 401, cấu hình Bearer token hoặc tiêu đề xác thực được hỗ trợ. Chưa có OAuth trên trình duyệt."
+          "Trong ô soạn hội thoại dự án thông thường và thực thi tác vụ, chọn qua ＋ → Trình kết nối, /连接器 hoặc /apps để dùng cho tin nhắn tiếp theo. Điều phối tác vụ không tự gắn chúng. MCP cần công cụ thực thi hỗ trợ; CLI dùng lệnh đăng nhập chính thức. Lỗi 401 cần Bearer Token hoặc tiêu đề xác thực; chưa hỗ trợ OAuth qua trình duyệt. Phát hiện cục bộ không sao chép thông tin xác thực."
         ],
         "tips": [
           "Ví dụ: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Cấu hình và sử dụng trình kết nối",
           "caption": "Chưa có ảnh chụp thực: cấu hình, kiểm tra và chọn trong hội thoại."
+        }
+      },
+      {
+        "title": "Nhóm hội thoại và xem lại lưu trữ",
+        "steps": [
+          "Nhấp phải tiêu đề, danh sách hoặc một hội thoại ở thanh bên dự án để tạo nhóm. Kéo phiên vào nhóm hoặc về vùng chưa phân nhóm; trình đơn nhóm thường có thể tạo hội thoại mới. Nhóm thường và nhóm kênh được quản lý riêng.",
+          "Dùng trình đơn nhóm để lưu trữ hoặc xóa. Mặc định xóa chỉ giải tán nhóm. Chỉ khi chọn xóa cả hội thoại mới xóa tin nhắn bên trong, nên kiểm tra phạm vi trước. Thành viên đang chạy hoặc thao tác thất bại được bỏ qua và giữ lại.",
+          "Trong danh sách lưu trữ, nhấn tiêu đề để mở chỉ đọc lượt hỏi đáp cuối. Xem không khôi phục phiên và không tải toàn bộ chi tiết thực thi. Muốn tiếp tục trò chuyện phải chủ động khôi phục."
+        ],
+        "tips": [
+          "Lưu trữ giữ nội dung. Xóa hội thoại và tin nhắn có ảnh hưởng lớn hơn; cần phân biệt giải tán nhóm với xóa cả nội dung."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Trình đơn nhóm hội thoại ở thanh bên và bản xem lưu trữ chỉ đọc",
+          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Lỗi trình diễn do mô hình không tồn tại",
           "caption": "Lỗi cho biết mô hình đã chọn không được hỗ trợ. Sửa cấu hình mô hình của bước trước khi chạy lại; nó không được sửa chữa trong hình ảnh này."
+        }
+      },
+      {
+        "title": "Cấu hình mô hình quyết định tùy chọn",
+        "steps": [
+          "Mở Cài đặt → Mô hình và khả năng → Mô hình quyết định, chọn quản lý cục bộ, dịch vụ cục bộ hoặc dịch vụ từ xa. Chế độ quản lý cục bộ kiểm tra môi trường máy chủ; thành phần và mô hình được tải thủ công riêng. Nếu không đủ điều kiện, dùng dịch vụ hiện có.",
+          "Với dịch vụ, nhập địa chỉ và xác thực. Dùng Đọc danh sách mô hình để tìm và chọn, hoặc tự nhập. Kiểm tra chỉ thử bản nháp, không lưu; xem kết quả rồi Lưu cấu hình.",
+          "Chỉ bật Cho phép thiết bị khác gọi mô hình cục bộ khi cần truy cập bên ngoài. Đặt hoặc dùng lại khóa truy cập từ xa, lưu rồi kết nối theo địa chỉ hiển thị. Tài nguyên chưa sẵn sàng không tự tải; thử lại khi bận."
+        ],
+        "tips": [
+          "Đây là giao diện quyết định Jev tùy chọn, không phải giao diện trò chuyện chung và không tự tiếp quản tác vụ hay hội thoại. Tải xuống và bật proxy là hai thao tác riêng.",
+          "Mô hình dùng CPU và bộ nhớ của máy chủ. Kiểm tra kết nối thành công không chứng minh độ chính xác nghiệp vụ. Mã thông báo suy luận proxy không cấp quyền quản lý tài nguyên; không đưa khóa vào ảnh chụp."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Chế độ mô hình quyết định, tài nguyên, kiểm tra/lưu và proxy tùy chọn",
+          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+        }
+      },
+      {
+        "title": "Đọc hướng dẫn từ dấu hỏi trong cài đặt",
+        "steps": [
+          "Nhấn dấu hỏi cạnh tiêu đề mục cài đặt để đọc chương tương ứng ngay trong ứng dụng. Dùng mục lục và tìm kiếm để tra cứu. Hướng dẫn theo ngôn ngữ giao diện hiện tại; trên máy tính có thể đổi kích thước cửa sổ đọc.",
+          "Nếu tải lỗi, thử lại trước. Cần trang đầy đủ thì nhấn Mở trong trình duyệt để giữ chương và ngôn ngữ hiện tại. Mục cài đặt chưa có chỉ dẫn tương ứng sẽ không hiện dấu hỏi."
+        ],
+        "tips": [
+          "Hướng dẫn nhúng cần tài nguyên website đi kèm bản cài máy chủ. Nếu không tải được, kiểm tra phiên bản và tài nguyên thay vì thay bằng chương không liên quan."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Dấu hỏi tiêu đề cài đặt và hướng dẫn đa ngôn ngữ trong ứng dụng",
+          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Nhân vật số và bộ nhớ toàn cục",
+    "summary": "Cấu hình phong cách giao tiếp, hội thoại chính, suy nghĩ chủ động và tiếp nhận qua kênh. Xem ký ức có nguồn và tùy chọn bật giọng nói, nhận diện người.",
+    "sections": [
+      {
+        "title": "Cấu hình nhân cách, nhiệm vụ và hội thoại chính",
+        "steps": [
+          "Mở Cài đặt → Hình tượng số → Hướng dẫn ban đầu, nhập tên. Trong Nhân cách và nhiệm vụ, sửa nhân cách, nhiệm vụ và ghi nhớ thường trực bằng mẫu sẵn hoặc nhập từ trung tâm vai trò. Cấu hình công cụ thực thi khả dụng rồi Hoàn tất và bật.",
+          "Sau khi lưu hồ sơ, chọn Trò chuyện với nhân vật số ở thanh bên để vào trang chính. Dùng nút bàn phím để nhập chữ; Xem hội thoại mở lịch sử của cùng phiên chính. Có thể quay về bàn làm việc thông thường.",
+          "Nhân cách, nhiệm vụ và ghi nhớ thường trực dùng Markdown. Mẫu sẵn chỉ cập nhật phần tương ứng. Lỗi lưu vẫn giữ bản nháp; làm theo thông báo rồi thử lại. Xử lý thay đổi chưa lưu trước khi chuyển trang hoặc đóng."
+        ],
+        "tips": [
+          "Ghi nhớ thường trực là thỏa thuận nhập tay, khác với thư viện ký ức lịch sử. Đổi ngôn ngữ giao diện không dịch văn bản đã lưu. Nhân vật số phụ trách giao tiếp và theo dõi; công việc thực tế được giao cho phiên thực thi trong dự án đích."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Thiết lập hình tượng số, tài liệu nhân cách và hội thoại chính",
+          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+        }
+      },
+      {
+        "title": "Tìm ký ức và đối chiếu nguồn",
+        "steps": [
+          "Trong Hình tượng số → Bộ nhớ, tìm nội dung, thực thể hoặc tên dự án. Lọc theo sở thích, kinh nghiệm, sự thật hoặc sự kiện; đổi giữa sơ đồ tư duy và dòng thời gian.",
+          "Mở chi tiết tri thức của bản ghi rồi xem các trang nguồn để đọc tin nhắn gốc. Khi nghi ngờ, đối chiếu nguyên văn; không coi tóm tắt là lời trích chính xác của người dùng hay bằng chứng tác vụ hoàn thành.",
+          "Chỉ đăng ký lượt tương tác sau khi trợ lý trả lời đầy đủ. Hội thoại thường và tác vụ tra cứu bằng công cụ bộ nhớ khi cần; không tự chèn toàn bộ lịch sử vào mỗi yêu cầu, cũng không tự bổ sung toàn bộ lịch sử dự án cũ."
+        ],
+        "tips": [
+          "Thư viện bộ nhớ thống nhất tìm được qua nhiều dự án và phiên nhưng vẫn chịu giới hạn danh tính và quyền dự án. Số lượng theo loại, thống kê toàn thư viện và số kết quả tìm kiếm hiện tại khác nhau.",
+          "Thỏa thuận thường trực, MEMORY.md của dự án và kho tri thức lịch sử có mục đích khác nhau. Tin nhắn chưa xử lý không phải tri thức đã chắt lọc; giao diện hiện chưa có nút quên."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Tìm kiếm bộ nhớ toàn cục, phân loại và phân trang nguồn gốc",
+          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+        }
+      },
+      {
+        "title": "Suy nghĩ chủ động và nhật ký hoạt động",
+        "steps": [
+          "Trong Hình tượng số → Suy nghĩ chủ động, lưu công tắc tự động, khoảng suy nghĩ, liên hệ chủ động, khoảng liên hệ tối thiểu và không làm phiền. Cài đặt bộ nhớ quy định số tin mỗi đợt xử lý: mặc định 100, phạm vi 1–1000.",
+          "Nhấn Suy nghĩ ngay để kiểm tra tức thì. Trong Nhật ký hoạt động, xem riêng thông báo ủy nhiệm và bản ghi suy nghĩ, làm mới, chuyển trang và mở tóm tắt hoặc lỗi. Mục ủy nhiệm mở được phiên thực thi thực tế.",
+          "Có thể thử gửi lại thông báo thất bại. Kiểm tra riêng suy nghĩ hoàn tất và tin nhắn đã được chuyển. Tắt tự động suy nghĩ sẽ dừng kiểm tra định kỳ; trò chuyện thường và suy nghĩ thủ công vẫn dùng được."
+        ],
+        "tips": [
+          "Khoảng mặc định là 5 phút. Cho phép liên hệ chủ động không có nghĩa mỗi lần đều gửi tin; nếu không có sự kiện cần xử lý có thể kết thúc im lặng. Gọi mô hình có thể tính phí; tóm tắt hoạt động không phải toàn bộ chuỗi suy nghĩ."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Cài đặt suy nghĩ chủ động và nhật ký phân trang riêng",
+          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+        }
+      },
+      {
+        "title": "Liên kết tiếp nhận qua kênh và thông báo",
+        "steps": [
+          "Trước tiên cấu hình bot trong Cài đặt → Bot kênh rồi gửi tin cho bot để nhận biết đích. Thêm liên kết trong Hình tượng số → Bot kênh, chọn bot và nhóm hoặc liên hệ.",
+          "Bật Nhận thông báo chủ động khi cần. Chỉ tiếp nhận tin đến không tự cấp phép gửi chủ động. Sau khi liên kết, kiểm tra đích tiếp nhận; nhóm tác vụ hiện có vẫn theo liên kết tác vụ.",
+          "Kiểm tra và xác nhận đích trước khi Gửi thử. Bỏ liên kết khi không dùng nữa. Thành công chỉ nghĩa nền tảng đã chấp nhận, không phải người nhận đã đọc."
+        ],
+        "tips": [
+          "Thử nghiệm sẽ gửi tin thật. Dùng đích minh họa; không coi liên hệ phỏng đoán là người nhận đã được cho phép."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Liên kết kênh của nhân vật số, thông báo chủ động và trạng thái chuyển tin",
+          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+        }
+      },
+      {
+        "title": "Cấu hình giọng nói, đánh thức và micrô",
+        "steps": [
+          "Trong Cài đặt giọng nói → Đầu ra toàn cục, chọn giọng hệ thống, mô hình cục bộ, nhà cung cấp đám mây hoặc dịch vụ tự triển khai từ xa. Tải thủ công tài nguyên cục bộ; với đám mây/từ xa nhập dịch vụ và xác thực, nghe thử rồi lưu. Trang giọng nói của hình tượng số chỉnh âm sắc, tốc độ và các tham số khác.",
+          "Trong Thính giác, đặt từ đánh thức và độ nhạy rồi chủ động bắt đầu nghe. Cần đầu vào giọng nói trực tuyến dạng luồng khả dụng. Lưu từ đánh thức không có nghĩa đang ghi âm; phiên âm HTTP sau khi ghi xong không đánh thức thời gian thực được.",
+          "Nhấn micrô ở trang chính để bắt đầu hội thoại giọng nói; loa điều khiển phát trên trang này. Muốn ngừng thu âm phải tắt micrô; tắt tiếng loa không tắt thu âm. Ẩn, tải lại hoặc rời trang sẽ dừng nghe."
+        ],
+        "tips": [
+          "Micrô, camera và phát âm thanh cần quyền hệ thống/trang web tương ứng riêng. Dịch vụ từ xa nhận âm thanh liên quan. Âm thanh thực tế trên điện thoại và máy tính vẫn cần kiểm tra thiết bị.",
+          "Chỉ đọc phản hồi mới. Mở bảng hội thoại đầy đủ sẽ tạm dừng đọc tự động; đóng lại không đọc bù nội dung cũ. Không giả định vẫn nghe khi khóa màn hình hoặc đóng ứng dụng."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Phương thức đầu ra giọng nói, nghe thử và điều khiển nghe rõ ràng",
+          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+        }
+      },
+      {
+        "title": "Đăng ký người quen và nhận diện bằng camera",
+        "steps": [
+          "Cấu hình mô hình tại Hình tượng số → Thị giác → Nhận diện khuôn mặt. Vào Quản lý người quen → Đăng ký khuôn mặt, nhập tên gọi và quan hệ, xác nhận đã có sự đồng ý của chính người đó.",
+          "Mở camera, lần lượt chụp ba mẫu rõ nét chỉ có một người: chính diện, hơi sang trái và hơi sang phải. Kiểm tra rồi lưu. Kiểm tra tên trong bài thử nhận diện; có thể thêm, vô hiệu hóa hoặc xóa mẫu.",
+          "Tùy chọn hiển thị tên, đính kèm người và quan hệ cùng tin nhắn rồi chủ động gửi ảnh. Nếu nhận diện lỗi, kiểm tra mô hình, quyền camera và hình ảnh; không thay bằng danh tính đoán mò."
+        ],
+        "tips": [
+          "Không lưu lâu dài ảnh chụp đăng ký nhưng đặc trưng khuôn mặt vẫn là dữ liệu nhạy cảm. Xuất hiện trong hình không có nghĩa là người phát ngôn và không thay đổi tác giả, quyền hay danh tính đăng nhập. Không thể khẳng định hình ảnh và thông tin người đã gửi cho mô hình luôn ở lại máy cục bộ."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Đăng ký người quen có đồng ý, chụp ba hướng và cài đặt nhận diện",
+          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
         }
       }
     ]

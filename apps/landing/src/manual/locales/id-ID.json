@@ -753,11 +753,11 @@
           "Buka pratinjau HTML proyek lalu editor prototipe. Untuk perubahan AI, atur mesin di Pengaturan → Asisten → Asisten prototipe.",
           "Klik nama berkas di atas pratinjau untuk memilih HTML pada folder yang sama atau subfolder. Setiap HTML menyimpan percakapan sendiri. Seret tepi jendela dan pembatas untuk mengubah ukuran.",
           "Arahkan penunjuk untuk menyorot, klik untuk memilih, atau klik kanan untuk berkomentar. Contoh: “Ubah tombol ini menjadi hijau, jangan ubah tombol di sebelahnya.” Kirim ke obrolan.",
-          "Ubah teks, warna, atau width (misalnya 180px) pada properti lalu tinggalkan kolom untuk menyimpan. Anda juga dapat mengeklik ganda teks sederhana atau menyeret pegangan ukuran. Pilih elemen yang tepat sebelum mengonfirmasi penghapusan.",
+          "Untuk elemen statis, ubah teks, warna, atau width (misalnya 180px) di panel properti; berpindah fokus akan menyimpan. Pindahkan hanya melalui gagang pemindah pada kotak pilihan. Alt menonaktifkan penempelan; Esc membatalkan pemindahan. Pastikan simpul terpilih sebelum menghapus. Gunakan Ctrl+Z/⌘Z atau Urungkan di atas untuk membalikkan perubahan tersimpan.",
           "Dalam riwayat perubahan, periksa perbedaan, batalkan perubahan, atau bersihkan riwayat. Setelah terputus, periksa salinan yang disimpan lalu lanjutkan penyimpanan atau buang salinan. Berkas asli yang berkonflik tidak ditimpa."
         ],
         "tips": [
-          "Pengeditan langsung mendukung HTML statis. Mode pilih menjeda skrip halaman; mode jelajah menjalankan interaksi. Hanya perubahan HTML/CSS/JS yang sudah ada yang diterbitkan, tanpa menambah atau menghapus seluruh berkas."
+          "Penyuntingan langsung mendukung HTML statis dan publikasi perubahan HTML/CSS/JS yang sudah ada, tanpa menambah atau menghapus seluruh berkas. Untuk halaman dinamis, gunakan pemeriksaan baca-saja dan komentar pada bagian berikut. Gambar lama belum menunjukkan gagang pemindah dan pemeriksaan dinamis baru."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -832,6 +832,38 @@
           "alt": "Editor memori proyek yang berisi konvensi demonstrasi",
           "caption": "Edit dan simpan konvensi di .workstep/MEMORY.md. Tidak ada konfirmasi arsip-pelajaran yang ditampilkan."
         }
+      },
+      {
+        "title": "Memeriksa prototipe HTML/React dinamis",
+        "steps": [
+          "Buka Editor prototipe dari pratinjau HTML. Halaman dinamis tetap menjalankan skrip perenderan. Pilih elemen atau klik kanan untuk berkomentar, tulis permintaan perubahan lalu Kirim ke obrolan agar asisten prototipe mengubah logika pembentuknya.",
+          "Properti simpul dinamis bersifat baca-saja, tanpa gagang pemindah, sehingga tidak dapat langsung diubah ukurannya atau dihapus seperti HTML statis. Isi Canvas hanya dapat dipilih sebagai kanvas. Halaman bersarang dalam induk dinamis dapat dibuka tersendiri dari direktori untuk diperiksa.",
+          "Dalam mode jelajah, ikuti tautan ruang kerja untuk berpindah halaman lalu pilih elemen. Bingkai anak statis dapat dipilih dan disunting di tempat. Kirim atau hapus komentar yang belum terkirim, lalu tunggu penyimpanan sebelum berpindah. Riwayat menampilkan perbedaan berdampingan atau terpadu per berkas."
+        ],
+        "tips": [
+          "Mengirim komentar memanggil asisten prototipe yang dikonfigurasi; pemilihan dan perubahan properti manual tidak memanggil model. Periksa hasil penulisan; muat ulang dahulu jika terjadi konflik versi."
+        ],
+        "screenshot": {
+          "id": "prototype-runtime-inspection",
+          "alt": "Properti baca-saja, komentar elemen, dan perpindahan berkas prototipe dinamis",
+          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+        }
+      },
+      {
+        "title": "Mengatur templat format keluaran artefak",
+        "steps": [
+          "Klik Templat pada baris artefak langkah alur. Gunakan Markdown untuk struktur dan kriteria penerimaan, misalnya {{任务名称}} pada judul lalu kesimpulan dan hasil verifikasi di bawahnya. Simpan alur agar eksekusi baru memakai persyaratan tersebut.",
+          "Di detail tugas, klik ikon templat di samping nama artefak untuk mengubah hanya tugas itu, mengosongkan, atau memulihkan bawaan alur. Saat berjalan hanya bisa dibaca; halaman berbagi hanya mengizinkan melihat.",
+          "Periksa apakah berkas hasil memenuhi templat. Templat tetap ada saat alur disalin, diimpor, atau diekspor, tetapi templat sendiri bukan artefak yang telah dihasilkan."
+        ],
+        "tips": [
+          "Hanya {{任务名称}} yang diganti. Persyaratan format lainnya diteruskan apa adanya kepada model. Templat tidak menjamin kepatuhan persis; hasil tetap perlu ditinjau."
+        ],
+        "screenshot": {
+          "id": "artifact-output-template",
+          "alt": "Editor templat format artefak untuk alur dan tugas",
+          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+        }
       }
     ]
   },
@@ -843,11 +875,11 @@
       {
         "title": "Mengisi draf pesan dengan suara",
         "steps": [
-          "Buka Pengaturan → Input suara, aktifkan, unduh model dan runtime, pilih bahasa, lalu uji mikrofon. Instalasi berada di host WorkStep yang terhubung, bukan ponsel. Mendukung Mandarin, Kanton, dan Inggris.",
-          "Di komputer klik mikrofon. Di ponsel tahan area teks selama 500 ms; ikon mikrofon tidak ditampilkan. Lepaskan, periksa teks yang disisipkan dan kirim manual. Maksimal dua menit; batal tidak mengirim apa pun."
+          "Buka Pengaturan → Pengaturan suara → Input, lalu pilih model lokal, penyedia cloud, atau layanan jarak jauh yang dikelola sendiri. Untuk lokal, unduh runtime dan model, lalu klik Gunakan model ini. Paraformer mendukung Mandarin, Kanton, dan Inggris; Zipformer mendukung Mandarin dan Inggris. Simpan lalu Uji mikrofon. Model dipasang di host WorkStep.",
+          "Di komputer, gunakan tombol mikrofon. Di ponsel, ketuk speaker kecil di kanan bawah saat draf kosong untuk merekam; jika ada teks, tombol Kirim muncul. Tekan lama tetap memilih teks melalui sistem. Periksa draf transkripsi lalu kirim secara manual. Maksimal dua menit per rekaman; membatalkan tidak mengirim."
         ],
         "tips": [
-          "Audio dikenali di host terhubung dan tidak disimpan. Izinkan mikrofon melalui HTTPS atau alamat lokal. Jika gagal, periksa izin situs dan sistem; mulai ulang backend lama. Teks yang sudah dikenali dapat dipertahankan secara eksplisit."
+          "Mikrofon memerlukan izin sistem dan situs; browser memerlukan HTTPS atau alamat lokal. Mode cloud/jarak jauh mengirim audio melalui host ke layanan pilihan. Transkripsi HTTP mengembalikan teks setelah rekaman selesai, sehingga tidak mendukung pendeteksian kata pemicu langsung. Model dapat dihapus satu per satu; periksa model aktif dahulu. Input dan output suara dikonfigurasi terpisah."
         ],
         "screenshot": {
           "id": "voice-input",
@@ -945,9 +977,9 @@
       {
         "title": "Mengatur dan menggunakan konektor",
         "steps": [
-          "Buka Pengaturan → Konektor → Tambah. Untuk MCP lokal isi perintah dan argumen terpisah, MCP jarak jauh isi URL, atau CLI isi berkas eksekusi. Pilih proyek yang diizinkan.",
+          "Buka Pengaturan → Konektor → Tambah konektor, atau pintasan steker di desktop. Untuk MCP lokal, masukkan perintah dan argumen secara terpisah; sunting argumen satu per satu atau sebagai JSON. MCP jarak jauh memerlukan URL; CLI memerlukan berkas yang dapat dijalankan. Proyek tersedia yang kosong berarti semua proyek.",
           "Pada Uji → Deteksi koneksi, temukan alat. Menjalankan alat melakukan panggilan nyata: periksa argumennya. Uji tidak memanggil LLM; simpan setelahnya.",
-          "Dalam percakapan aktifkan + → Konektor untuk pesan berikutnya. MCP memerlukan mesin kompatibel; login CLI memakai perintah resmi di terminal host. Untuk 401 atur token Bearer atau header autentikasi yang didukung. OAuth browser belum tersedia."
+          "Di percakapan proyek biasa dan input eksekusi tugas, pilih melalui ＋ → Konektor, /连接器, atau /apps untuk pesan berikutnya. Koordinasi tugas tidak memasangnya otomatis. MCP memerlukan dukungan mesin; CLI memakai perintah login resmi. Untuk 401, atur Bearer Token atau header autentikasi; OAuth melalui browser belum didukung. Penemuan lokal tidak menyalin kredensial."
         ],
         "tips": [
           "Contoh: HTTP URL: https://mcp.example.com/mcp; stdio command: python3; args: [\"/path/to/server.py\"]"
@@ -956,6 +988,22 @@
           "id": "connector-settings",
           "alt": "Mengatur dan menggunakan konektor",
           "caption": "Tangkapan layar nyata belum tersedia: pengaturan, pengujian, dan pilihan percakapan."
+        }
+      },
+      {
+        "title": "Mengelompokkan percakapan dan melihat arsip",
+        "steps": [
+          "Klik kanan judul, daftar, atau satu percakapan di bilah samping proyek untuk membuat grup. Seret sesi ke grup atau kembali ke tanpa grup; menu grup biasa dapat membuat percakapan baru. Grup biasa dan grup kanal dikelola terpisah.",
+          "Arsipkan atau hapus melalui menu grup. Secara bawaan, penghapusan hanya membubarkan grup. Pesan dihapus hanya bila Anda juga memilih menghapus percakapannya; periksa cakupannya. Anggota yang berjalan atau gagal dioperasikan dilewati dan dipertahankan.",
+          "Dalam daftar arsip, klik judul untuk membuka tanya-jawab terakhir secara baca-saja. Melihat tidak memulihkan sesi atau memuat seluruh detail eksekusi. Pulihkan secara eksplisit untuk melanjutkan obrolan."
+        ],
+        "tips": [
+          "Pengarsipan mempertahankan isi. Menghapus percakapan dan pesan berdampak lebih besar; bedakan membubarkan grup dengan menghapus isinya juga."
+        ],
+        "screenshot": {
+          "id": "conversation-groups",
+          "alt": "Menu grup percakapan di bilah samping dan pratinjau arsip baca-saja",
+          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
         }
       }
     ]
@@ -1500,6 +1548,143 @@
           "id": "task-error",
           "alt": "Kegagalan demonstrasi disebabkan oleh tidak adanya model",
           "caption": "Kesalahannya mengatakan model yang dipilih tidak didukung. Perbaiki konfigurasi model langkah sebelum dijalankan kembali; itu tidak diperbaiki pada gambar ini."
+        }
+      },
+      {
+        "title": "Mengonfigurasi model keputusan opsional",
+        "steps": [
+          "Buka Pengaturan → Model dan kemampuan → Model keputusan, lalu pilih kelola lokal, layanan lokal, atau layanan jarak jauh. Kelola lokal memeriksa lingkungan host; unduh komponen dan model secara manual dan terpisah. Gunakan layanan yang sudah ada jika persyaratan host tidak terpenuhi.",
+          "Untuk layanan, isi alamat dan autentikasi. Baca daftar model untuk mencari dan memilih, atau masukkan manual. Uji memeriksa draf tanpa menyimpan; tinjau hasil lalu Simpan konfigurasi.",
+          "Aktifkan Izinkan perangkat lain memanggil model lokal hanya jika akses luar diperlukan. Atur atau gunakan kembali kunci akses jarak jauh, simpan, lalu sambungkan melalui alamat yang ditampilkan. Sumber daya yang belum siap tidak diunduh otomatis; coba lagi saat sibuk."
+        ],
+        "tips": [
+          "Ini antarmuka keputusan Jev opsional, bukan antarmuka obrolan umum, dan tidak otomatis mengambil alih tugas atau percakapan. Unduhan dan pengaktifan proksi adalah tindakan terpisah.",
+          "Model memakai CPU dan memori host. Uji koneksi berhasil tidak membuktikan akurasi bisnis. Token inferensi proksi tidak memberi izin pengelolaan sumber daya; jangan tampilkan kunci pada gambar."
+        ],
+        "screenshot": {
+          "id": "decision-model-settings",
+          "alt": "Mode model keputusan, sumber daya, uji/simpan, dan proksi opsional",
+          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+        }
+      },
+      {
+        "title": "Membaca panduan dari bantuan pengaturan",
+        "steps": [
+          "Klik tanda tanya di samping judul bagian pengaturan untuk membaca bab terkait dalam aplikasi. Gunakan daftar isi dan pencarian. Panduan mengikuti bahasa antarmuka saat ini; di desktop ukuran jendela baca dapat diubah.",
+          "Coba lagi jika pemuatan gagal. Untuk halaman lengkap, klik Buka di browser dengan mempertahankan bab dan bahasa saat ini. Bagian pengaturan tanpa petunjuk yang cocok tidak menampilkan tanda tanya."
+        ],
+        "tips": [
+          "Panduan tertanam memerlukan sumber daya situs dalam instalasi backend. Jika gagal dimuat, periksa versi dan sumber daya, bukan menggantinya dengan bab yang tidak terkait."
+        ],
+        "screenshot": {
+          "id": "settings-help",
+          "alt": "Tanda tanya judul pengaturan dan panduan multibahasa dalam aplikasi",
+          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+        }
+      }
+    ]
+  },
+  {
+    "id": "digital-person",
+    "title": "Persona digital dan memori global",
+    "summary": "Atur gaya komunikasi, percakapan utama, pemikiran proaktif, dan penerimaan kanal. Tinjau memori beserta sumbernya, serta aktifkan suara dan pengenalan orang bila diperlukan.",
+    "sections": [
+      {
+        "title": "Mengatur persona, tanggung jawab, dan percakapan utama",
+        "steps": [
+          "Buka Pengaturan → Avatar digital → Panduan awal dan masukkan nama. Di Persona dan tanggung jawab, sunting persona, tanggung jawab, dan memori tetap menggunakan prasetel atau impor dari pusat peran. Atur mesin yang tersedia, lalu Selesai dan aktifkan.",
+          "Setelah profil disimpan, pilih Bicara dengan persona digital di bilah samping untuk membuka beranda. Gunakan tombol papan ketik untuk teks; Lihat percakapan membuka riwayat sesi utama yang sama. Anda dapat kembali ke meja kerja biasa.",
+          "Persona, tanggung jawab, dan memori tetap memakai Markdown. Prasetel hanya memperbarui bagian terkait. Kegagalan menyimpan mempertahankan draf; ikuti petunjuk dan coba lagi. Tangani perubahan belum tersimpan sebelum berpindah atau menutup halaman."
+        ],
+        "tips": [
+          "Memori tetap adalah kesepakatan manual, terpisah dari pustaka riwayat memori. Mengubah bahasa antarmuka tidak menerjemahkan dokumen tersimpan. Persona digital berkomunikasi dan menindaklanjuti; pekerjaan nyata didelegasikan ke sesi eksekusi proyek tujuan."
+        ],
+        "screenshot": {
+          "id": "digital-person-workspace",
+          "alt": "Panduan avatar digital, dokumen persona, dan percakapan utama",
+          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+        }
+      },
+      {
+        "title": "Mencari memori dan memeriksa sumber",
+        "steps": [
+          "Di Avatar digital → Memori, cari isi, entitas, atau nama proyek. Saring preferensi, pengalaman, fakta, atau peristiwa, lalu beralih antara peta pikiran dan tinjauan waktu.",
+          "Buka detail pengetahuan suatu catatan, lalu telusuri halaman sumber untuk membaca pesan asli. Cocokkan dengan sumber saat ragu; ringkasan bukan kutipan persis pengguna atau bukti tugas selesai.",
+          "Giliran baru didaftarkan setelah asisten menyelesaikan balasan. Obrolan biasa dan tugas mencari memori melalui alat bila perlu; seluruh riwayat tidak otomatis dimasukkan ke setiap permintaan, dan seluruh riwayat proyek lama tidak otomatis diisi ulang."
+        ],
+        "tips": [
+          "Pustaka memori terpadu mendukung pencarian lintas proyek dan sesi, tetap tunduk pada identitas dan izin proyek. Jumlah kategori, statistik seluruh pustaka, dan jumlah hasil pencarian saat ini berbeda.",
+          "Kesepakatan tetap, MEMORY.md proyek, dan pengetahuan historis memiliki fungsi berbeda. Pesan belum diolah bukan pengetahuan yang telah disarikan; antarmuka belum menyediakan tombol melupakan."
+        ],
+        "screenshot": {
+          "id": "memory-knowledge-search",
+          "alt": "Pencarian memori global, kategori, dan halaman sumber asli",
+          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+        }
+      },
+      {
+        "title": "Pemikiran proaktif dan catatan aktivitas",
+        "steps": [
+          "Di Avatar digital → Pemikiran proaktif, simpan sakelar otomatis, interval berpikir, kontak proaktif, interval kontak minimum, dan jangan ganggu. Pengaturan memori menentukan pesan per kelompok pengolahan: bawaan 100, rentang 1–1000.",
+          "Klik Pikirkan sekarang untuk pemeriksaan segera. Di Catatan aktivitas, lihat pemberitahuan delegasi dan catatan pemikiran secara terpisah; segarkan, pindah halaman, dan buka ringkasan atau kesalahan. Item delegasi dapat membuka sesi eksekusi sebenarnya.",
+          "Coba ulang pemberitahuan yang gagal dikirim. Periksa penyelesaian pemikiran dan pengiriman pesan secara terpisah. Menonaktifkan pemikiran otomatis menghentikan pemeriksaan terjadwal; obrolan biasa dan pemikiran manual tetap tersedia."
+        ],
+        "tips": [
+          "Interval bawaan 5 menit. Mengizinkan kontak proaktif tidak berarti setiap pemeriksaan mengirim pesan; tanpa peristiwa tertunda, pemeriksaan dapat selesai diam-diam. Panggilan model bisa berbayar; ringkasan aktivitas bukan seluruh rangkaian pemikiran."
+        ],
+        "screenshot": {
+          "id": "digital-person-activity",
+          "alt": "Pengaturan pemikiran proaktif dan catatan aktivitas dengan halaman terpisah",
+          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+        }
+      },
+      {
+        "title": "Mengikat penerimaan kanal dan pemberitahuan",
+        "steps": [
+          "Atur bot dahulu di Pengaturan → Bot kanal, lalu kirim pesan agar target dikenali. Tambahkan ikatan di Avatar digital → Bot kanal dan pilih bot serta grup atau kontak.",
+          "Aktifkan Terima pemberitahuan proaktif sesuai kebutuhan. Menerima pesan masuk saja tidak memberi izin pengiriman proaktif. Periksa target penerimaan setelah mengikat; grup tugas yang ada tetap mengikuti ikatan tugasnya.",
+          "Periksa dan konfirmasikan target sebelum Uji kirim. Lepaskan ikatan saat tidak diperlukan. Berhasil berarti platform menerima pesan, bukan penerima telah membacanya."
+        ],
+        "tips": [
+          "Pengujian benar-benar mengirim pesan. Gunakan target demo; jangan menganggap kontak tebakan sebagai penerima berizin."
+        ],
+        "screenshot": {
+          "id": "digital-person-channels",
+          "alt": "Ikatan kanal persona digital, pemberitahuan proaktif, dan status pengiriman",
+          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+        }
+      },
+      {
+        "title": "Mengatur suara, kata pemicu, dan mikrofon",
+        "steps": [
+          "Di Pengaturan suara → Output global, pilih suara sistem, model lokal, penyedia cloud, atau layanan jarak jauh mandiri. Unduh sumber daya lokal secara manual; untuk cloud/jarak jauh, isi layanan dan autentikasi lalu dengarkan pratinjau dan simpan. Halaman suara avatar digital mengatur jenis suara, kecepatan, dan parameter lain.",
+          "Di Pendengaran, atur kata pemicu dan sensitivitas, lalu mulai mendengarkan secara eksplisit. Dibutuhkan input suara streaming yang berfungsi. Menyimpan kata pemicu tidak memulai rekaman; transkripsi HTTP setelah rekaman tidak mendukung pemicu langsung.",
+          "Klik mikrofon di beranda untuk memulai percakapan suara. Speaker mengendalikan pemutaran pada halaman ini. Matikan mikrofon untuk menghentikan perekaman; membisukan speaker tidak mematikannya. Menyembunyikan, memuat ulang, atau meninggalkan halaman menghentikan pendengaran."
+        ],
+        "tips": [
+          "Mikrofon, kamera, dan pemutaran memerlukan izin sistem/situs masing-masing yang sesuai. Layanan jarak jauh menerima audio terkait. Pemutaran nyata pada ponsel dan desktop masih memerlukan pengujian perangkat.",
+          "Hanya balasan baru yang dibacakan. Membuka panel percakapan lengkap menjeda suara otomatis; menutupnya tidak memutar isi lama. Jangan menganggap pendengaran berlanjut setelah layar dikunci atau aplikasi ditutup."
+        ],
+        "screenshot": {
+          "id": "speech-output",
+          "alt": "Pilihan output suara, pratinjau, dan kendali mendengarkan eksplisit",
+          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+        }
+      },
+      {
+        "title": "Mendaftarkan kenalan dan pengenalan kamera",
+        "steps": [
+          "Atur model di Avatar digital → Penglihatan → Pengenalan wajah. Buka Kelola kenalan → Daftarkan wajah, isi nama panggilan dan hubungan, lalu pastikan persetujuan orang tersebut telah diperoleh.",
+          "Aktifkan kamera dan ambil tiga sampel satu orang yang jelas: depan, sedikit kiri, dan sedikit kanan. Periksa lalu simpan. Cek nama dalam uji pengenalan; tambahkan, nonaktifkan, atau hapus sampel bila perlu.",
+          "Pilih tampilan nama dan penyertaan orang serta hubungan pada pesan bila perlu, lalu kirim gambar secara eksplisit. Jika gagal mengenali, periksa model, izin kamera, dan gambar; jangan mengganti dengan identitas tebakan."
+        ],
+        "tips": [
+          "Foto pendaftaran tidak disimpan jangka panjang, tetapi fitur wajah tetap data sensitif. Orang dalam gambar belum tentu pembicara dan tidak mengubah penulis, izin, atau identitas login. Gambar dan informasi orang yang dikirim ke model tidak dapat diklaim selalu tinggal di mesin lokal."
+        ],
+        "screenshot": {
+          "id": "face-recognition",
+          "alt": "Pendaftaran kenalan dengan persetujuan, pengambilan tiga arah, dan pengaturan pengenalan",
+          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
         }
       }
     ]

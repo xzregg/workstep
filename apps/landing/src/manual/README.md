@@ -1,5 +1,27 @@
 # 操作手册维护与截图记录
 
+2026-11-17 local dev-to-main delivery: commit the current engine-permission, Harness 0.69 compatibility, digital-person UI and multilingual-manual changes without pushing or creating a release tag. Serial validation passes 746 targeted daemon tests, 82 affected Web tests, 10 runtime/packaged-dependency tests and 322 website tests; Web and website production builds pass. Node tests explicitly use two-file concurrency and website tests use two workers; no full application test suites overlap. Repository health and high-confidence worktree secret checks pass. The manual check remains 27 chapters and 68/100 screenshots, with 32 missing images already recorded below. This delivery does not claim a full-repository regression, new real-UI rendering, native Windows/package acceptance, camera/audio device acceptance or completion of the documented screenshot and translation-review gaps. Existing public v1.0.23 installers and image tags are not replaced by this local merge.
+
+2026-11-17 近期功能手册同步（基于本地 main/dev 共有的 `1992617c` 用户可见行为）：新增「数字人与全局记忆」独立章节，归入「对话与个性化」；说明人设／职责／常驻记忆、持久主会话、带原文来源的记忆搜索、主动思考与活动记录、渠道接待、语音输出与显式唤醒、人脸同意录入。补充动态 HTML／React 只读检查与评论、产物格式模板、对话分组及归档只读预览、可选决策模型和设置帮助；修正手机小喇叭录音、静态原型移动柄和连接器当前入口。数字形象问号指向新章，决策模型问号指向设置说明，不再借用无关章节。保留 SDK 优先入门、自定义引擎和星空皮肤等既有内容。同步全部 25 份译文（连同简中共 26 语言），保留实际占位符 `{{任务名称}}`，不翻译命令与路径；本轮未使用公共翻译服务返回值，正文直接译写并检查结构、技术字面量和本轮范围外内容不变，不宣称母语人工全面验收。
+
+本批新增 11 个真实截图槽位，合计 27 章、68/100 张，缺 32 张。已检查截图入口：浏览器访问主机不可用，没有启动应用服务、发送渠道消息、启用模型或采集私人项目；不绕过此前的整窗 Chrome 访问限制。正文的待补说明与下表保留，官网／内嵌手册的桌面及手机实际渲染、声音和摄像头真实设备验证仍未完成。既有 `prototype-editor.jpg` 仍只展示旧静态编辑能力，需更新移动柄和动态检查画面；不计为缺文件。此前登记的手机版标题、临时预览、桌面伴随窗口等未在本批完整验收的缺口继续保留，不将本轮正文同步视为历次全部文档与截图完成。
+
+| 本次新增截图 ID | 需要采集的实际界面 |
+| --- | --- |
+| `prototype-runtime-inspection` | 动态原型只读属性、评论与切页 |
+| `artifact-output-template` | 流程及任务的产物模板 |
+| `conversation-groups` | 对话分组菜单与归档只读问答 |
+| `decision-model-settings` | 模式、资源、测试保存与可选代理 |
+| `settings-help` | 设置问号与内嵌多语言手册 |
+| `digital-person-workspace` | 引导、人设文档及主对话 |
+| `memory-knowledge-search` | 记忆搜索、知识详情与来源分页 |
+| `digital-person-activity` | 主动思考与独立分页的活动记录 |
+| `digital-person-channels` | 渠道绑定与通知状态，不向真实联系人测试 |
+| `speech-output` | 语音输出试听与显式监听控件 |
+| `face-recognition` | 同意录入、三向采集与识别设置 |
+
+本轮验证：官网 322 项测试、生产构建和 lint 通过；25 份译文的章节／步骤／截图 ID 结构、技术字面量及本轮范围外正文不变检查通过，源文指纹已更新。Web 相关行为分两批 59 项、15 项检查通过（部分设置帮助测试重叠），工作台生产构建通过；未将其表述为全仓回归。构建保留既有大包及动态导入提示。`manual:check` 返回非零，原因是上述 32 项真实截图缺失，不宣称截图或实际渲染通过。本轮未提交、合并、推送或发布。
+
 2026-11-17 follow-up delivery (commit and push only, no tag): verify Codex shutdown, approval routing and native-reader cleanup with 82 strict-warning tests; full daemon regression passes 5,345 tests (six real-model evaluations skipped). Web regression after the A2UI input-budget and linear fence-parser changes passes 2,238 tests; Web and website builds pass. Gateway/protocol passes 712 tests (one PostgreSQL integration skipped), Gateway Web 313, website 320, desktop Node 206 (one skipped) and desktop Python 72 (two skipped). The A2UI entry-point checks pass 54 tests; eight pinned before/after checks validate admission limits and parser call counts, not exhaustive browser memory exhaustion. These changes do not add a new configuration field or navigation step. The existing screenshot count remains 68/89 across 26 chapters, with all 21 missing screenshots and previous instruction/translation gaps still recorded. Existing isolated streaming-component captures are not manual screenshots or physical-device acceptance. No service was started for new screenshots; no native installer, real-model or Docker runtime acceptance is claimed. The upstream Harness and Zod dependency advisories remain explicitly documented, and no release is authorized in this batch.
 
 2026-11-17 v1.0.23 release delivery: integrate the current development batch and service-layer remediation without changing host/project authorization. Local full regression passed 5,317 daemon tests (six explicit real-model evaluations skipped), 2,212 Web tests, 712 Gateway/protocol tests (one PostgreSQL integration skipped), 313 Gateway Web tests, 320 website tests, 204 desktop Node tests and 72 desktop Python tests. Full-history secret scanning and the built Web/website payload checks passed. Subsequent profile-document, camera and translation edits are rechecked before committing, and the committed SHA must pass GitHub CI before tagging. The saved-model overlay passed isolated production-component rendering at 320/390/1023/1024/1440px; these synthetic-data captures are not manual screenshots. The existing 26-chapter manual still has 68/89 screenshots and the previously recorded instruction/translation gaps; original-message CLI guidance is maintained in its built-in skill reference, not presented as a completed all-language manual chapter. No real-model, physical-device or native installer acceptance is claimed here. This entry records preparation and outstanding documentation gaps, not a claim that the release or sandbox image has already been published.

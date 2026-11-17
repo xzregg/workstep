@@ -42,7 +42,7 @@ Use `context get --json` for the current project/conversation IDs
 | Reminders, recurring/one-time schedules and scheduled task instructions | [Schedules](references/schedules.md) |
 | Bots, sessions, notifications, bindings and files | [Channels](references/channels.md) |
 | Engines, skill drafts and skins | [Extensions](references/extensions.md) |
-| Creating/importing execution engines, including MCP declarations and validation | [Engine contract](references/custom-engine-contract.md) |
+| Creating/importing execution engines | [Engine guides](references/custom-engine.md) |
 | Custom languages | [Languages](references/custom-language.md) |
 
 ## Execution rules

@@ -28,6 +28,20 @@ describe('operation manual', () => {
     for (const phrase of ['连接器', '可用项目', '真实调用', '不调用 LLM', '下一条消息', 'Bearer Token', '暂不支持网页 OAuth']) expect(prose).toContain(phrase)
     expect(getManualGroups('连接器').flatMap(group => group.chapters).map(chapter => chapter.id)).toContain('chat-skills')
   })
+  it('documents the digital person workspace, memories and explicit media controls', () => {
+    const chapter = manualChapters.find(chapter => chapter.id === 'digital-person')!
+    expect(chapter).toBeDefined()
+    const text = JSON.stringify(chapter)
+    for (const phrase of ['数字形象', '常驻记忆', '来源', '立即思考', '渠道机器人', '唤醒', '本人同意']) expect(text).toContain(phrase)
+    expect(getManualGroups('数字人').flatMap(group => group.chapters).map(chapter => chapter.id)).toContain('digital-person')
+  })
+  it('keeps recent settings and editing instructions aligned with current entry points', () => {
+    const sections = manualChapters.flatMap(chapter => chapter.sections)
+    for (const id of ['conversation-groups', 'artifact-output-template', 'decision-model-settings', 'settings-help', 'prototype-runtime-inspection']) expect(sections.some(section => section.screenshot?.id === id), id).toBe(true)
+    const voice = sections.find(section => section.screenshot?.id === 'voice-input')!
+    expect(voice.steps.join(' ')).toContain('小喇叭')
+    expect(voice.steps.join(' ')).not.toContain('500')
+  })
   it('categorizes every chapter exactly once, keeping SDK setup in quick start', () => {
     const ids = manualGroups.flatMap(group => group.chapterIds)
     expect([...ids].sort()).toEqual(manualChapters.map(chapter => chapter.id).sort())

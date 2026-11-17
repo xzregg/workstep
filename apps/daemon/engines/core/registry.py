@@ -237,6 +237,8 @@ def get_available_engines() -> list[dict]:
                 "supports_live_step_message": caps.supports_live_step_message,
                 "supports_sessions": caps.supports_sessions,
                 "supports_tool_approval": caps.supports_tool_approval,
+                "permission_modes": list(instance.permission_modes()),
+                "supports_service_tier": instance.supports_service_tier,
                 "supports_workstep_tools": caps.supports_workstep_tools,
                 "supports_mcp": caps.supports_mcp,
                 "skill_policy": instance.skill_policy.value,
@@ -258,6 +260,8 @@ def get_available_engines() -> list[dict]:
                 "built_in": backend == "pydantic_ai",
                 "version": None,
                 "mode": None,
+                "permission_modes": list(target.permission_modes()) if target else [],
+                "supports_service_tier": bool(target and target().supports_service_tier),
                 "config": _engine_config_payload(target) if target else None,
                 "supports_provider": bool(
                     target and target.supported_provider_protocols()

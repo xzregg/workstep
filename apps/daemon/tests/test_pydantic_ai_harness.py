@@ -22,20 +22,26 @@ async def test_coder_file_reads_do_not_block_the_event_loop(tmp_path, monkeypatc
     target = tmp_path / "large.txt"
     target.write_text("content", encoding="utf-8")
     toolset = WorkStepFileSystem(root_dir=tmp_path).get_toolset()
-    original_read_bytes = type(target).read_bytes
+    import threading
+    from pydantic_ai.workspaces import LocalWorkspaceBackend
+    entered = threading.Event()
+    original_open = LocalWorkspaceBackend._open_for_read
 
-    def slow_read(path):
+    def slow_read(backend, path):
+        entered.set()
         time.sleep(0.25)
-        return original_read_bytes(path)
+        return original_open(backend, path)
 
-    monkeypatch.setattr(type(target), "read_bytes", slow_read)
+    monkeypatch.setattr(LocalWorkspaceBackend, "_open_for_read", slow_read)
     started = time.perf_counter()
-    read_task = asyncio.create_task(toolset.read_file("large.txt"))
+    from pydantic_ai.workspaces import LocalWorkspaceBackend
+    read_task = asyncio.create_task(toolset.read_file("large.txt", workspace=LocalWorkspaceBackend(tmp_path)))
     await asyncio.sleep(0.02)
     elapsed = time.perf_counter() - started
     result = await read_task
 
     assert "content" in result
+    assert entered.is_set()
     assert elapsed < 0.15
 
 
@@ -43,25 +49,42 @@ async def test_coder_file_reads_do_not_block_the_event_loop(tmp_path, monkeypatc
 async def test_background_command_output_read_does_not_block_event_loop(
     tmp_path, monkeypatch
 ):
-    toolset = WorkStepShell(cwd=tmp_path).get_toolset()
-    toolset._background["probe"] = SimpleNamespace(
-        proc=SimpleNamespace(returncode=None),
-        finished=False,
-        exit_code=None,
-    )
+    from pydantic_ai import RunContext, RunUsage
+    from pydantic_ai.models.test import TestModel
+    from pydantic_ai.workspaces import LocalWorkspaceBackend, Workspace
+    toolset = WorkStepShell().get_toolset()
+    workspace = Workspace(LocalWorkspaceBackend(tmp_path))
+    context = RunContext(deps=None, model=TestModel(), usage=RunUsage(), workspace=workspace)
 
-    def slow_output(_background):
+    async def status():
+        return False, 0
+
+    import threading
+    entered = threading.Event()
+    original_open = LocalWorkspaceBackend._open_for_read
+    output = tmp_path / "output.txt"
+    output.write_text("stdout")
+    def slow_open(backend, path):
+        entered.set()
         time.sleep(0.25)
-        return "stdout", ""
+        return original_open(backend, path)
+    monkeypatch.setattr(LocalWorkspaceBackend, "_open_for_read", slow_open)
 
-    monkeypatch.setattr(toolset, "_read_bg_output", slow_output)
+    async def tail(path, limit):
+        return await workspace.read_bytes(path)
+
+    async def job(_ctx, _command_id):
+        return SimpleNamespace(status=status, tail=tail, output_path=str(output), stderr_path=str(output))
+
+    monkeypatch.setattr(toolset, "_job", job)
     started = time.perf_counter()
-    output_task = asyncio.create_task(toolset.check_command("probe"))
+    output_task = asyncio.create_task(toolset.check_command(context, "probe"))
     await asyncio.sleep(0.02)
     elapsed = time.perf_counter() - started
     result = await output_task
 
     assert "stdout" in result
+    assert entered.is_set()
     assert elapsed < 0.15
 
 
@@ -269,7 +292,7 @@ async def test_tiered_compaction_triggers_once_when_history_crosses_small_window
         model_settings=None,
         model_request_parameters=ModelRequestParameters(),
     )
-    context = RunContext(deps=None, model=model, usage=RunUsage())
+    context = RunContext(deps=None, model=model, usage=RunUsage(), messages=request.messages)
     capability = TieredCompaction(
         tiers=[KeepLatest()], target_tokens=10, tokenizer=lambda text: len(text)
     )
@@ -370,23 +393,15 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
 
     capabilities = captured["capabilities"]
     capability_names = [type(capability).__name__ for capability in capabilities]
-    assert capability_names[2:12] == [
-        "WorkStepFileSystem",
-        "WorkStepShell",
-        "RepoContext",
-        "Planning",
-        "SubAgents",
-        "ClearToolResults",
-        "WarnNearLimits",
-        "ToolOutputLimits",
-        "Skills",
-        "Thinking",
-    ]
+    assert set(capability_names) >= {
+        "WorkStepFileSystem", "WorkStepShell", "RepoContext", "Planning",
+        "SubAgents", "ClearToolResults", "Skills", "Thinking",
+    }
+    assert {"LocalWorkspace", "WindowsWorkspace"} & set(capability_names)
     assert "WebSearch" in capability_names
     assert "WebFetch" in capability_names
     assert "Memory" not in capability_names
-    # GHSA-3589-pxp7-3gj8 affects nested CodeMode calls. That capability must
-    # not be enabled while the Windows-compatible harness version is retained.
+    # CodeMode remains outside the built-in engine composition.
     assert "CodeMode" not in capability_names
     # WebSearch / WebFetch 强制本地模式：不调用供应商原生工具
     for capability in capabilities:
@@ -405,14 +420,16 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
     )
     assert conversation_search.scope == "conversation"
     assert conversation_search.source._store is step_persistence.store
-    assert capabilities[2].root_dir == tmp_path
+    files = next(c for c in capabilities if isinstance(c, WorkStepFileSystem))
+    shell = next(c for c in capabilities if isinstance(c, WorkStepShell))
+    assert files.root_dir == tmp_path
     # 项目记忆对模型只读：写入会被 FileSystem 拒绝
-    assert ".workstep/MEMORY.md" in capabilities[2].protected_patterns
+    assert ".workstep/MEMORY.md" in files.read_only_patterns
     assert {"yarn", "npm", "npx", "node"}.issubset(
-        set(capabilities[3].allowed_commands)
+        set(shell.allowed_commands)
     )
-    assert capabilities[10].directories == (tmp_path / ".workstep" / "skills",)
-    assert capabilities[11].effort == "high"
+    assert next(c for c in capabilities if type(c).__name__ == "Skills").directories == (tmp_path / ".workstep" / "skills",)
+    assert next(c for c in capabilities if type(c).__name__ == "Thinking").effort == "high"
     assert captured["agent"]._max_tool_retries == 3
     assert captured["agent"]._max_output_retries == 1
     assert captured["model_settings"] is None
@@ -496,7 +513,7 @@ def test_instructions_deferred_to_harness():
 
     assert any(
         type(capability).__name__ == "RepoContext"
-        for capability in Coder(".").capabilities
+        for capability in Coder().capabilities
     )
 
 
@@ -617,7 +634,8 @@ async def test_pydantic_agent_delivers_message_queued_during_active_run(
 @pytest.mark.anyio
 async def test_coder_rejected_commands_do_not_exhaust_tool_retries(tmp_path):
     from pydantic_ai import Agent
-    from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+    import json
+    from pydantic_ai.models.function import DeltaToolCall
     from pydantic_ai.models.function import FunctionModel
 
     from engines.pydantic_ai.coder import WorkStepCoder
@@ -628,15 +646,16 @@ async def test_coder_rejected_commands_do_not_exhaust_tool_retries(tmp_path):
         nonlocal requests
         requests += 1
         if requests <= 4:
-            return ModelResponse(parts=[ToolCallPart(
-                "run_command",
-                {"command": "bash -c 'echo blocked'"},
+            yield {0: DeltaToolCall(
+                name="run_command",
+                json_args=json.dumps({"command": "bash -c 'echo blocked'"}),
                 tool_call_id=f"blocked-{requests}",
-            )])
-        return ModelResponse(parts=[TextPart("recovered")])
+            )}
+        else:
+            yield "recovered"
 
     agent = Agent(
-        FunctionModel(function=model),
+        FunctionModel(stream_function=model),
         capabilities=[WorkStepCoder(tmp_path, allowed_commands=("echo",))],
         retries={"tools": 3, "output": 1},
     )
@@ -760,7 +779,7 @@ async def test_harness_store_bounded_snapshots(tmp_path):
 
 def test_coder_injects_subagent_progress_capability():
     """WorkStepCoder 将整个运行的观察器注入所有子代理。"""
-    from pydantic_ai_harness.subagents import SubAgents
+    from pydantic_ai_harness.sub_agents import SubAgents
 
     from engines.pydantic_ai.coder import WorkStepCoder
 
@@ -777,15 +796,15 @@ def test_coder_injects_subagent_progress_capability():
     subagents = [c for c in coder.capabilities if isinstance(c, SubAgents)]
     assert subagents, "WorkStepCoder should include a SubAgents capability"
     assert progress in subagents[0].shared_capabilities
-    # 保留原有子 agent（explorer）
-    assert "explorer" in subagents[0]._by_name
+    # The upgraded Coder delegates a copy of itself with the same policies.
+    assert subagents[0].include_self is True
     # _instruction_sources 同步替换为新实例，避免 CombinedCapability._rebound 断言失败
     assert subagents[0] in coder._instruction_sources
 
 
 def test_coder_without_handler_keeps_default():
     """不传 handler 时 SubAgents 保持原样。"""
-    from pydantic_ai_harness.subagents import SubAgents
+    from pydantic_ai_harness.sub_agents import SubAgents
 
     from engines.pydantic_ai.coder import WorkStepCoder
 
@@ -1073,7 +1092,7 @@ async def test_compaction_pins_saved_workstep_system_rules(tier_name, tmp_path):
     else:
         tier = SummarizingCompaction(max_messages=2, keep_messages=1, model=model)
     capability = TieredCompaction(tiers=[tier], target_tokens=10, tokenizer=lambda text: len(text))
-    compacted = await capability.before_model_request(RunContext(deps=None, model=model, usage=RunUsage()), request)
+    compacted = await capability.before_model_request(RunContext(deps=None, model=model, usage=RunUsage(), messages=history), request)
     assert [p.content for m in compacted.messages if isinstance(m, ModelRequest) for p in m.parts if isinstance(p, SystemPromptPart) and p.dynamic_ref == "workstep.session.instructions"] == ["fixed session rules"]
 
 

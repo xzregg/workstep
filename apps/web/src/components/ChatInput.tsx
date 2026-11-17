@@ -438,7 +438,9 @@ function ChatInput({
       }）`
       : t('coord.thinkingEffortDefault')
 
-  const permissionOptions = [
+  const effectiveEngine = skillEngine || config?.engine || config?.defaultEngine || ''
+  const declaredPermissionModes = config?.engines.find(engine => engine.id === effectiveEngine)?.permission_modes
+  const allPermissionOptions = [
     { value: '', label: t('chatSession.permissionDefault') },
     { value: 'read-only', label: t('chatSession.permissionReadOnly') },
     { value: 'workspace-write', label: t('chatSession.permissionWorkspaceWrite') },
@@ -446,11 +448,13 @@ function ChatInput({
     { value: 'auto', label: t('chatSession.permissionAuto') },
     { value: 'ask', label: t('chatSession.permissionAsk') },
   ]
+  const permissionOptions = allPermissionOptions.filter(option =>
+    !option.value || declaredPermissionModes === undefined || declaredPermissionModes.includes(option.value),
+  )
   const permissionLabel =
-    permissionOptions.find((option) => option.value === permission?.value)?.label
+    allPermissionOptions.find((option) => option.value === permission?.value)?.label
     ?? t('chatSession.permissionDefault')
   const planActive = plan?.active ?? false
-  const effectiveEngine = skillEngine || config?.engine || config?.defaultEngine || ''
   const inputItems = availableCommands === undefined
     ? inspectedItems
     : [

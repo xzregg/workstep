@@ -21,6 +21,6 @@ yarn lint
 yarn build
 ```
 
-`yarn test` 关闭 Node 内置的只读 `navigator`，由测试的浏览器模拟环境提供该对象。
+`yarn test` 最多并发运行 2 个测试文件，并关闭 Node 内置的只读 `navigator`，由测试的浏览器模拟环境提供该对象。直接运行 `node --test` 时也须显式指定 `--test-concurrency=2`；本机不要同时启动多组全量测试。
 
 新增界面前请先阅读仓库根目录的 `AGENTS.md` 和 [`DESIGN.md`](../../DESIGN.md)。优先复用 `src/components/` 中的聊天、Markdown、确认框与引擎选择组件；移动端覆盖集中在 `src/mobile.css`。

@@ -99,14 +99,20 @@ async def test_provider_child_environment_can_use_saved_credentials(credential_e
 @pytest.mark.parametrize('filtered', [False, True])
 async def test_harness_shell_git_uses_common_helper(credential_env, tmp_path, filtered):
     from engines.pydantic_ai.coder import WorkStepShell
+    from pydantic_ai import RunContext, RunUsage
+    from pydantic_ai.models.test import TestModel
+    from pydantic_ai.workspaces import LocalWorkspaceBackend, Workspace
 
     request = tmp_path / 'request.txt'
     request.write_text('url=https://git.example.test/repo.git\n\n')
     toolset = WorkStepShell(
-        cwd=tmp_path,
         denied_env_patterns=['*KEY*', '*TOKEN*', '*SECRET*'] if filtered else (),
     ).get_toolset()
-    output = await toolset.run_command('git credential fill < request.txt')
+    context = RunContext(
+        deps=None, model=TestModel(), usage=RunUsage(),
+        workspace=Workspace(LocalWorkspaceBackend(tmp_path)),
+    )
+    output = await toolset.run_command(context, 'git credential fill < request.txt')
     assert 'username=alice' in output
     assert 'password=test-secret' in output
 
