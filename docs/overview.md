@@ -18,7 +18,7 @@ WorkStep 是一个本地优先（local-first）的工作流编排工具，将多
 
 | 子应用 | 职责 | 技术栈 |
 | --- | --- | --- |
-| `apps/daemon` | 核心后端：REST API（8765 端口）、WebSocket 事件、引擎适配、任务调度 | Python 3.11+、FastAPI、Peewee/SQLite、uvicorn、pydantic-ai |
+| `apps/daemon` | 核心后端：REST API（8765 端口）、WebSocket 事件、引擎适配、任务调度 | Python 3.11.5+、FastAPI、Peewee/SQLite、uvicorn、pydantic-ai |
 | `apps/web` | 主界面：项目、工作流画布、任务、设置 | React 19、TypeScript、Vite、Zustand、Antd、@xyflow/react |
 | `apps/desktop` | 桌面壳：窗口、安装包、自动更新；内嵌独立 Python runtime 运行 daemon sidecar | Electron、electron-builder |
 | `apps/landing` | 产品介绍页，构建后由 daemon 托管在 `/landing` | Vite、React |
@@ -41,7 +41,7 @@ WorkStep 是一个本地优先（local-first）的工作流编排工具，将多
 
 ## 快速开始
 
-要求：Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 24 LTS（含 Corepack）。
+要求：Python 3.11.5+、[uv](https://docs.astral.sh/uv/)、Node.js 24 LTS（含 Corepack）。
 
 方式一，仓库根目录一键启动（daemon + 前端 dev server）：
 

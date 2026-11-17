@@ -24,6 +24,7 @@ function PendingHarness({ onSendContent, status = 'running', prepared }: {
   })
   return <>
     <button type="button" data-queue onClick={() => { void pending.queueCurrentInput(prepared) }}>排队</button>
+    <button type="button" data-new-draft onClick={() => setInput('下一条消息')}>新草稿</button>
     <span data-enabled>{String(pending.queueEnabled)}</span>
     <span data-input>{input}</span>
     <span data-error>{pending.error}</span>
@@ -104,6 +105,88 @@ test('stopped assistant reply reloads its persisted pending inserts after refres
     assert.equal(container.querySelector('[data-enabled]')?.textContent, 'false')
   } finally {
     pendingMessageInsertApi.list = originalList
+    await act(async () => root.unmount())
+    usePendingMessageInsertStore.setState({ queues: {}, loaded: {}, loading: {} })
+    await window.happyDOM.close()
+  }
+})
+
+
+test('rapid repeated queue and send actions submit each message only once', async () => {
+  const { window, document } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originals = { ...pendingMessageInsertApi }
+  let finishCreate!: () => void
+  let finishSend!: (sent: boolean) => void
+  let creates = 0
+  let sends = 0
+  pendingMessageInsertApi.list = async () => ({ items: [] })
+  pendingMessageInsertApi.create = async (_project, target, content) => {
+    creates++
+    await new Promise<void>(resolve => { finishCreate = resolve })
+    return { id: 'insert-1', target_message_id: target, content } as never
+  }
+  pendingMessageInsertApi.remove = async () => ({ deleted: true })
+  usePendingMessageInsertStore.setState({ queues: {}, loaded: {}, loading: {} })
+  try {
+    await act(async () => root.render(<I18nProvider><PendingHarness onSendContent={async () => {
+      sends++
+      return new Promise<boolean>(resolve => { finishSend = resolve })
+    }} /></I18nProvider>))
+    await act(async () => {
+      const queue = container.querySelector('[data-queue]') as HTMLButtonElement
+      queue.click(); queue.click(); queue.click()
+    })
+    assert.equal(creates, 1, 'slow create must not enqueue the same draft three times')
+    await act(async () => finishCreate())
+    assert.equal(container.querySelector('[data-input]')?.textContent, '')
+    await act(async () => {
+      const send = container.querySelector('.pending-insert-button--send') as HTMLButtonElement
+      send.click(); send.click(); send.click()
+    })
+    assert.equal(sends, 1, 'queued sends must be guarded before React commits disabled state')
+    await act(async () => finishSend(false))
+    await act(async () => (container.querySelector('.pending-insert-button--send') as HTMLButtonElement).click())
+    assert.equal(sends, 2, 'failed sends remain retryable')
+    await act(async () => finishSend(true))
+  } finally {
+    Object.assign(pendingMessageInsertApi, originals)
+    await act(async () => root.unmount())
+    usePendingMessageInsertStore.setState({ queues: {}, loaded: {}, loading: {} })
+    await window.happyDOM.close()
+  }
+})
+
+
+test('slow queue acknowledgement preserves a newly edited draft and failed creates can retry', async () => {
+  const { window, document } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originals = { ...pendingMessageInsertApi }
+  let finish!: () => void
+  let fail = true
+  pendingMessageInsertApi.list = async () => ({ items: [] })
+  pendingMessageInsertApi.create = async (_project, target, content) => {
+    if (fail) throw new Error('queue unavailable')
+    await new Promise<void>(resolve => { finish = resolve })
+    return { id: 'insert-1', target_message_id: target, content } as never
+  }
+  usePendingMessageInsertStore.setState({ queues: {}, loaded: {}, loading: {} })
+  try {
+    await act(async () => root.render(<I18nProvider><PendingHarness onSendContent={async () => true} /></I18nProvider>))
+    const queue = () => (container.querySelector('[data-queue]') as HTMLButtonElement).click()
+    await act(async () => queue())
+    assert.match(container.querySelector('[data-error]')?.textContent || '', /queue unavailable/)
+    assert.equal(container.querySelector('[data-input]')?.textContent, '  稍后执行  ')
+    fail = false
+    await act(async () => queue())
+    await act(async () => (container.querySelector('[data-new-draft]') as HTMLButtonElement).click())
+    await act(async () => finish())
+    assert.equal(container.querySelector('[data-input]')?.textContent, '下一条消息')
+    assert.equal(container.querySelector('[data-error]')?.textContent, '')
+  } finally {
+    Object.assign(pendingMessageInsertApi, originals)
     await act(async () => root.unmount())
     usePendingMessageInsertStore.setState({ queues: {}, loaded: {}, loading: {} })
     await window.happyDOM.close()

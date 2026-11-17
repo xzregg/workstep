@@ -385,6 +385,9 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
     assert "WebSearch" in capability_names
     assert "WebFetch" in capability_names
     assert "Memory" not in capability_names
+    # GHSA-3589-pxp7-3gj8 affects nested CodeMode calls. That capability must
+    # not be enabled while the Windows-compatible harness version is retained.
+    assert "CodeMode" not in capability_names
     # WebSearch / WebFetch 强制本地模式：不调用供应商原生工具
     for capability in capabilities:
         if type(capability).__name__ in ("WebSearch", "WebFetch"):

@@ -2,7 +2,7 @@
 name = "workstep-daemon"
 version = "1.0.23"
 description = "WorkStep local-first workflow orchestration daemon"
-requires-python = ">=3.11"
+requires-python = ">=3.11.5"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
@@ -16,9 +16,11 @@ dependencies = [
     "websockets>=15.0",
     "python-socks>=2.0.0",
     "logfire[fastapi]>=4.0",
-    "pydantic-ai-slim[anthropic,logfire,openai,duckduckgo,web-fetch]>=2.33.0",
+    "pydantic-ai-slim[anthropic,logfire,openai,duckduckgo,web-fetch]>=2.53.0,<3",
     "croniter>=6.0",
     "tzdata>=2025.2",
+    # 0.59 requires a POSIX-only local workspace. CodeMode is not enabled here;
+    # retain Windows support until its workspace migration is validated.
     "pydantic-ai-harness[skills]==0.27.0",
     "wecom-aibot-python-sdk>=1.0.2",
     "dingtalk-stream>=0.24.3",
@@ -27,11 +29,19 @@ dependencies = [
     "pywebpush>=2.5.0",
     "tinycss2>=1.4,<2",
     "lark-oapi>=1.7.5,<1.8",
-    "pillow>=11.3,<13",
+    "pillow>=13.0,<14",
 ]
 
 [tool.uv.sources]
 workstep-gateway-protocol = { path = "../../packages/gateway-protocol", editable = true }
+
+[tool.uv]
+constraint-dependencies = [
+    "aiohttp>=3.14.4", "anyio>=4.14.2", "certifi>=2026.10.18",
+    "pyjwt>=2.15.0", "httpcore2>=2.10.0", "httpx2>=2.12.0",
+    "opentelemetry-api>=1.45.2", "soupsieve>=4.0.0", "urllib3>=2.8.0",
+    "mcp>=1.30.0",
+]
 
 [dependency-groups]
 dev = [

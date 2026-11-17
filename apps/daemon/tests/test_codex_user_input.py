@@ -121,6 +121,7 @@ async def test_spawn_installs_effective_permission_policy(tmp_path, monkeypatch,
         async def turn(self, prompt, model=None):
             responses.append(await asyncio.to_thread(
                 self._client._sync._approval_handler, "mcpServer/elicitation/request", {
+                    "threadId": "thread",
                     "message": 'Allow Computer Use to use "Google Chrome"?',
                     "requestedSchema": {"type": "object", "properties": {}},
                 },

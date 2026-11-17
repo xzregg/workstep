@@ -35,7 +35,7 @@ scripts/      引擎和工作流冒烟脚本
 
 ## 开发
 
-要求 Python 3.11+ 和 [uv](https://docs.astral.sh/uv/)。
+要求 Python 3.11.5+ 和 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
 cd apps/daemon

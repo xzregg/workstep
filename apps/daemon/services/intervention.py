@@ -191,3 +191,31 @@ class InterventionManager:
 
 # Global singleton
 intervention_manager = InterventionManager()
+
+
+async def wait_for_interaction_response(waiter, engine, request):
+    """Stop presenting a question when its engine-side request disappears.
+
+    Engines with an in-process ACP response future can fail while the outer
+    stream consumer is awaiting UI input. Observe that future without resolving
+    or cancelling it on a normal user response. Native ACP peers without one
+    retain their existing broker wait behavior.
+    """
+    interaction_id = str(request.get('interaction_id') or '')
+    native = getattr(engine, '_pending_interaction_responses', {}).get(interaction_id)
+    if native is None:
+        return await waiter
+    observer = asyncio.ensure_future(asyncio.shield(native))
+    try:
+        await asyncio.wait({waiter, observer}, return_when=asyncio.FIRST_COMPLETED)
+        if observer.done():
+            intervention_manager.cancel(interaction_id)
+            return {'error': 'cancelled'}
+        return waiter.result()
+    finally:
+        observer.cancel()
+        await asyncio.gather(observer, return_exceptions=True)
+        if not waiter.done():
+            intervention_manager.cancel(interaction_id)
+            waiter.cancel()
+        await asyncio.gather(waiter, return_exceptions=True)

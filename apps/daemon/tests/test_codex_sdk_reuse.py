@@ -62,10 +62,11 @@ async def test_sessions_and_projects_are_isolated_and_busy_entries_never_evicted
     c = await pool.acquire('/two', 'a', 'same', Client)
     for entry in (a, b, c):
         pool.bind(entry, entry.key[1], SimpleNamespace(id=entry.key[1]))
-    assert len({id(e.client) for e in (a, b, c)}) == 3
+    assert a.client is b.client and c.client is not a.client
     await pool.release(b, reusable=True)
     await pool.release(c, reusable=True)
-    assert b.client.closed == 1 and a.client.closed == 0
+    assert b.client.closed == 0 and a.client.closed == 0
+    assert ('/one', 'b') not in pool._entries
     await pool.close()
     assert all(e.client.closed == 1 for e in (a, b, c))
     # Late completion after shutdown cannot put a client back into the pool.
@@ -119,7 +120,8 @@ async def test_shutdown_during_process_probe_cannot_return_a_closed_lease():
 
 @pytest.mark.anyio
 async def test_idle_eviction_rechecks_lease_ownership_after_awaiting_close():
-    pool = CodexClientPool(max_idle=3)
+    from engines.core.session_pool import SessionClientPool
+    pool = SessionClientPool(max_idle=3)
     entered, unblock = asyncio.Event(), asyncio.Event()
     entries = []
     for sid in ('a', 'b', 'c'):
@@ -173,6 +175,9 @@ def fake_sdk(monkeypatch):
             self.client = client
             self.thread_id = thread_id
 
+        async def interrupt(self):
+            pass
+
         async def stream(self):
             if self.prompt == 'wait':
                 await gate.wait()
@@ -216,7 +221,7 @@ def fake_sdk(monkeypatch):
 
         async def thread_start(self, **kwargs):
             self.starts += 1
-            return Thread(f'session-{len(clients)}', self)
+            return Thread(f'session-{len(clients)}-{self.starts}', self)
 
         async def thread_resume(self, session_id, **kwargs):
             self.resumes += 1
@@ -252,11 +257,11 @@ async def test_adapter_reuses_across_engine_instances_and_rebinds_approval_handl
         assert idle_handler('item/commandExecution/requestApproval', {}) == {'decision': 'deny'}
         second = CodexSDKEngine()
         bindings = []
-        original = second._install_approval_handler
+        original = fake_sdk.pool.set_handler
         def install(c, handler):
             bindings.append(handler)
             original(c, handler)
-        second._install_approval_handler = install
+        fake_sdk.pool.set_handler = install
         await collect(second, tmp_path, session_id=sid)
         assert len(fake_sdk.clients) == 1
         assert (client.starts, client.resumes, client.closed) == (1, 0, 0)
@@ -295,17 +300,17 @@ async def test_adapter_rebinds_questions_and_waiting_approval_does_not_block_oth
         assert await current.respond_interaction(event.data, {'action': 'accept', 'content': {'choice': 'A'}})
         await asyncio.wait_for(task, 1)
         assert fake_sdk.clients[0].answers == [{'answers': {'choice': {'answers': ['A']}}}]
-        assert len(fake_sdk.clients) == 2
+        assert len(fake_sdk.clients) == 1
 
         # Stopping while the SDK reader waits on a response must unblock it,
-        # retire just this process and leave the other session reusable.
+        # retire just this session and leave the shared process reusable.
         task = asyncio.create_task(consume(current))
         await asyncio.wait_for(question(), 1)
         await current.stop()
         await asyncio.wait_for(task, 1)
         assert not current._pending_interaction_responses
-        assert fake_sdk.clients[0].closed == 1
-        assert fake_sdk.clients[1].closed == 0
+        assert fake_sdk.clients[0].closed == 0
+        assert ('%s' % tmp_path, 'a') not in fake_sdk.pool._entries
     finally:
         await fake_sdk.pool.close()
 
@@ -427,12 +432,12 @@ async def test_adapter_failure_stop_and_different_sessions_are_isolated(fake_sdk
         assert fake_sdk.clients[0].closed == 0
         await a.stop()
         await asyncio.wait_for(running, 1)
-        assert fake_sdk.clients[0].closed == 1
-        assert fake_sdk.clients[1].closed == 0
+        assert fake_sdk.clients[0].closed == 0
+        assert ('%s' % tmp_path, 'a') not in fake_sdk.pool._entries
         await collect(CodexSDKEngine(), tmp_path, 'fail', 'b')
-        assert fake_sdk.clients[1].closed == 1
+        assert fake_sdk.clients[0].closed == 1
         await collect(CodexSDKEngine(), tmp_path, session_id='b')
-        assert len(fake_sdk.clients) == 3 and fake_sdk.clients[2].resumes == 1
+        assert len(fake_sdk.clients) == 2 and fake_sdk.clients[1].resumes == 1
     finally:
         await fake_sdk.pool.close()
 

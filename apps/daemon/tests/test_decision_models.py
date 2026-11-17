@@ -302,7 +302,13 @@ async def test_models_api_denies_project_identity_before_network(service):
 
 
 @pytest.mark.asyncio
-async def test_catalog_search_only_lists_executable_models_without_network_or_config_changes(service):
+async def test_catalog_search_only_lists_executable_models_without_network_or_config_changes(service,monkeypatch):
+    # CI runners have less free RAM/disk than developer machines. Catalog
+    # behavior is tested against explicit capacity, not whichever host runs it.
+    facts=dict(os='Linux',arch='x86_64',python=(3,12),bits=64,libc=('glibc','2.39'),
+               mac_version='',installer=True,writable=True,cpus=8,
+               memory_total=64*1024**3,memory_available=64*1024**3,disk_free=1024**4)
+    monkeypatch.setattr('services.decision_models.read_facts',lambda _:facts)
     def forbidden(request): pytest.fail('reviewed catalog search must work offline')
     service.transport=httpx.MockTransport(forbidden)
     await service.configure({'mode':'remote','base_url':'https://example.com','model':'saved','api_key':'service-secret'})
@@ -315,4 +321,17 @@ async def test_catalog_search_only_lists_executable_models_without_network_or_co
         chinese=(await c.get('/api/decision-models/catalog/search',params={'q':'中文'})).json()['models']
         assert any(row['managed_model']=='laya-multilingual' for row in chinese)
         assert (await service.snapshot())['settings']['model']=='saved'
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_catalog_filters_models_when_host_capacity_is_insufficient(service,monkeypatch):
+    facts=dict(os='Linux',arch='x86_64',python=(3,12),bits=64,libc=('glibc','2.39'),
+               mac_version='',installer=True,writable=True,cpus=1,
+               memory_total=64*1024**3,memory_available=64*1024**3,disk_free=1024**4)
+    monkeypatch.setattr('services.decision_models.read_facts',lambda _:facts)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app()),base_url='http://host') as client:
+        result=await client.get('/api/decision-models/catalog/search')
+        assert result.status_code==200
+        assert result.json()['models']==[]
     await service.close()

@@ -12,10 +12,8 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
 /**
  * 两次揭示帧之间的最小间隔。
  *
- * 性能红线：流式期间 MarkdownContent 本来就会"每个 token 到达"重解析一次
- * markdown（频率 5–15fps，取决于 token 间隔）。揭示层的帧率绝不能超过它，
- * 否则会制造出原本不存在的重渲染，拖慢消息组件。90ms ≈ 11fps，
- * 低于 token 到达的实际频率上限。
+ * Markdown只在已揭示前缀改变时解析，90ms间隔限制全文重解析频率。
+ * 字符之间的平滑过渡由CSS完成，不把Markdown解析提高到绘制帧率。
  */
 export const MIN_REVEAL_FRAME_MS = 90
 
@@ -24,10 +22,12 @@ export const MIN_REVEAL_FRAME_MS = 90
  * token 平稳到达时按这个速度逐帧浮现。
  */
 export const REVEAL_CHARS_PER_SECOND = 65
+const MAX_SMOOTH_STEP_CHARS = 32
+const SMOOTH_BACKLOG_LIMIT = 2048
 
 /**
- * 积压排空上限（毫秒）。队列里剩得再多，也会动态提速，
- * 默认约 450ms 追平本批积压，避免大段内容到达后仍拖着长尾。
+ * 超大积压的追平预算（毫秒）。普通实时回复每次最多推进32字，
+ * 超过2048字的批量恢复才允许更大的步长，避免长时间追字。
  */
 export const MAX_REVEAL_DURATION_MS = 450
 
@@ -47,12 +47,12 @@ export const MAX_CATCH_UP_FRAMES = Math.max(
  * 计算本帧应推进的字符数。
  *
  * - 积压少：维持常规节奏（REVEAL_STEP_CHARS），保持平稳吐字观感
- * - 积压多：按 ceil(remaining / MAX_CATCH_UP_FRAMES) 提速
+ * - 普通积压：自适应提速，但每次不超过32字；超大批量积压使用快速追平
  * - 只增不减：调用方把结果存回 currentStep，使一批积压在排空前保持速度，
  *   否则步长会随 remaining 缩小而变小，尾巴被无限拉长
  *
- * 由于步长单调不减，剩余 R 个字符至多 ceil(R / step) ≤ MAX_CATCH_UP_FRAMES
- * 帧吐完，即不超过 MAX_REVEAL_DURATION_MS。
+ * 超大批量积压按预算追平；普通实时千字回复允许约3秒连续展开，
+ * 而不是为了追平预算一次跳出整段。
  */
 export function revealStepFor(
   remaining: number,
@@ -62,11 +62,16 @@ export function revealStepFor(
   const base = Math.max(1, Math.ceil(((options.charsPerSecond ?? REVEAL_CHARS_PER_SECOND) * MIN_REVEAL_FRAME_MS) / 1000))
   const frames = Math.max(1, Math.ceil((options.maxDurationMs ?? MAX_REVEAL_DURATION_MS) / MIN_REVEAL_FRAME_MS))
   if (remaining <= 0) return base
-  return Math.max(
+  const step = Math.max(
     currentStep,
     base,
     Math.ceil(remaining / frames),
   )
+  // Do not turn a normal live reply into paragraph-sized jumps just to meet
+  // the bulk catch-up budget. Preserve explicit fast skins and bulk drains.
+  return remaining <= SMOOTH_BACKLOG_LIMIT && currentStep <= MAX_SMOOTH_STEP_CHARS && base <= MAX_SMOOTH_STEP_CHARS
+    ? Math.min(step, MAX_SMOOTH_STEP_CHARS)
+    : step
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -97,17 +102,17 @@ export default function useStreamReveal(
   streaming: boolean,
   frozen: boolean,
   enabled: boolean,
+  revealInitial = false,
 ): string {
   const effects = useActiveSkin().effects
   const reduce = useSyncExternalStore(subscribeReducedMotion, reducedMotion, () => false)
   enabled = enabled && effects?.reveal !== false && !reduce
   const settings = useRef(effects); settings.current = effects
   const baseStep = revealStepFor(0, 0, effects)
-  // 只有“空气泡挂载后再收到 token”才是本次页面中的新流。
-  // 首屏已带正文表示它来自历史恢复；即使后端仍标记 running，
-  // 也必须直接显示，避免刷新页面后重新“打一遍字”。
+  // 空气泡后到达的正文，以及时间线明确标记的新实时块均逐步展开。
+  // 其余首屏已有正文直接显示，包括仍标记 running 的恢复历史。
   const [shown, setShown] = useState(() => (
-    enabled && streaming && content.length === 0 ? '' : content
+    enabled && streaming && (content.length === 0 || revealInitial) ? '' : content
   ))
   const shownRef = useRef(shown)
   // tick 在 setTimeout 里异步执行，闭包里的 content 是"排程那一刻"的快照。
@@ -174,7 +179,7 @@ export default function useStreamReveal(
           stepRef.current = revealStepFor(0, 0, settings.current)
           return
         }
-        // 动态调速：积压多 → 升速，保证默认约 450ms 排空；积压少 → 常规节奏。
+        // 普通实时积压按小步推进，超大批量恢复才使用快速追平。
         stepRef.current = revealStepFor(remaining, stepRef.current, settings.current)
         const step = Math.min(remaining, stepRef.current)
         resetTo(target.slice(0, revealBoundary(target, shownRef.current.length, step)))

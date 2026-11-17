@@ -6,7 +6,7 @@ from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent
 from models import Message
-from services.intervention import intervention_manager
+from services.intervention import intervention_manager, wait_for_interaction_response
 
 
 class StepInteractionMessages:
@@ -54,14 +54,20 @@ class StepInteractionMessages:
         engine_id: str,
     ) -> None:
         """Write the response before publishing it to the UI."""
-        response = await waiter
+        response = await wait_for_interaction_response(waiter, engine, event.data)
         if response.get("error"):
             response = (
                 {"outcome": {"outcome": "cancelled"}}
                 if event.data.get("method") == "session/request_permission"
                 else {"action": "cancel"}
             )
-        await engine.respond_interaction(event.data, response)
+        delivered = await engine.respond_interaction(event.data, response)
+        if delivered is False:
+            response = (
+                {"outcome": {"outcome": "cancelled"}}
+                if event.data.get("method") == "session/request_permission"
+                else {"action": "cancel"}
+            )
         response_event = InternalEvent(
             type="interaction_response",
             data={

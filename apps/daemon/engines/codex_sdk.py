@@ -78,8 +78,8 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     """Codex driven by the official ``openai-codex`` Python SDK.
 
     The SDK launches ``codex app-server`` as a subprocess over stdio, without
-    a shell wrapper or ACP bridge. Successful turns retain an exclusive
-    session-scoped client lease. The bundled ``openai-codex-cli-bin`` runtime
+    a shell wrapper or ACP bridge. Each active session retains its own lease
+    on a shared app-server worker. The bundled ``openai-codex-cli-bin`` runtime
     is used unless an explicit binary override is configured; this adapter
     drives the async client and maps its notifications to internal events.
     """
@@ -569,7 +569,8 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         client_config = CodexConfig(
             codex_bin=override or None,
             cwd=cwd or None,
-            config_overrides=provider_runtime.engine_config + (skill_override,) + tuple(codex_settings(config_overrides)),
+            config_overrides=provider_runtime.engine_config + (skill_override,) + tuple(codex_settings(config_overrides))
+            + ("thread_unload_delay_secs=0",),
             env=(provider_runtime.child_env() if provider_runtime.provider_id or provider_runtime.has_execution_context else None),
         )
 
@@ -600,7 +601,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             )
             self._client_lease = lease
             client = lease.client
-            self._install_approval_handler(client, approval_handler)
+            pool.set_handler(lease, approval_handler)
             lease.on_close = self._cancel_sdk_interactions
             self._client = client
             if self._stop_requested:
@@ -763,6 +764,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                         )
                         state["reuse_ok"] = True
                         return
+                    lease.starting_turn = True
                     if plan_mode is None:
                         turn = await thread.turn(codex_sdk_input(prompt, images), model=model or None)
                     else:
@@ -776,7 +778,10 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                             turn_handle_type=AsyncTurnHandle,
                             images=images,
                         )
+                    lease.turn = turn
+                    lease.starting_turn = False
                     await stream_turn(turn)
+                    lease.turn = None
                     if (
                         state.get("notification_error")
                         and not state.get("turn_completed")
@@ -833,7 +838,6 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             self._client_lease = None
             if lease is not None:
                 if reusable:
-                    self._install_approval_handler(client, deny_idle_request)
                     lease.on_close = None
                 else:
                     self._cancel_sdk_interactions()
@@ -1054,24 +1058,6 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         started = await start_turn(thread.id, codex_wire_input(prompt, images), params=params)
         return turn_handle_type(client, thread.id, str(started.turn.id))
 
-    @staticmethod
-    def _install_approval_handler(client: Any, handler: Any) -> None:
-        """Install WorkStep's approval bridge on openai-codex 0.144.x.
-
-        The public ``AsyncCodex`` wrapper does not expose the
-        ``approval_handler`` accepted by its wrapped synchronous
-        ``CodexClient``.  Validate that compatibility seam before assigning it
-        so an SDK layout change fails closed instead of silently auto-accepting
-        tool approvals.
-        """
-        async_client = getattr(client, "_client", None)
-        sync_client = getattr(async_client, "_sync", None)
-        if sync_client is None or not hasattr(sync_client, "_approval_handler"):
-            raise RuntimeError(
-                "当前 openai-codex SDK 不支持 WorkStep 异步审批桥接"
-            )
-        sync_client._approval_handler = handler
-
     def _build_approval_handler(
         self,
         event_queue: asyncio.Queue[InternalEvent | None],
@@ -1080,13 +1066,10 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         *,
         approval_mode: str = "",
     ) -> Any:
-        """Build the synchronous approval callback handed to ``AsyncCodex``.
+        """Expose ACP interactions as async and synchronous SDK callbacks.
 
-        The SDK invokes it from its stdout reader thread when Codex requests
-        approval or user input. We bridge it to the ACP-shaped
-        ``interaction_request`` flow: submit the prompt to the main loop,
-        block the reader thread until the user answers, then return the
-        ``decision`` the SDK expects.
+        Shared workers use async_handler without blocking their SDK reader.
+        The callable wrapper also supports direct synchronous SDK consumers.
         """
         approval_methods = {
             "item/commandExecution/requestApproval",
@@ -1094,30 +1077,39 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         }
         self.configure_interaction_policy({"approval_mode": approval_mode})
 
-        def handler(method: str, params: Any) -> dict:
+        async def async_handler(method: str, params: Any) -> dict:
             user_input = method in {
                 "item/tool/requestUserInput", "mcpServer/elicitation/request",
             }
             if method not in approval_methods and not user_input:
                 return {}
-            future = asyncio.run_coroutine_threadsafe(
-                self._ask_user_input(event_queue, session_id, method, params or {})
-                if user_input else self._ask_approval(event_queue, session_id, method, params or {}),
-                loop,
-            )
-            try:
-                result = future.result(timeout=300)
-            except Exception:
-                future.cancel()
-                if method == "item/tool/requestUserInput":
-                    return {"answers": {}}
-                if user_input:
-                    return {"action": "cancel", "content": None, "_meta": None}
-                return {}
             if user_input:
-                return result
+                return await self._ask_user_input(event_queue, session_id, method, params or {})
+            result = await self._ask_approval(event_queue, session_id, method, params or {})
             return {"decision": "accept" if result else "deny"}
 
+        def handler(method: str, params: Any) -> dict:
+            if method not in approval_methods and method not in {
+                "item/tool/requestUserInput", "mcpServer/elicitation/request",
+            }:
+                return {}
+            if loop.is_closed() or not loop.is_running():
+                return deny_idle_request(method, params)
+            response = async_handler(method, params)
+            try:
+                future = asyncio.run_coroutine_threadsafe(response, loop)
+            except RuntimeError:
+                response.close()
+                if loop.is_closed():
+                    return deny_idle_request(method, params)
+                raise
+            try:
+                return future.result(timeout=300)
+            except Exception:
+                future.cancel()
+                return deny_idle_request(method, params)
+
+        handler.async_handler = async_handler
         return handler
 
     async def _ask_user_input(
@@ -1208,7 +1200,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             return False
         event = permission_request(
             interaction_id=str(uuid.uuid4()),
-            session_id=session_id or "codex-sdk",
+            session_id=str(raw.get("threadId") or session_id or "codex-sdk"),
             tool_call={
                 "tool_call_id": str(raw.get("approval_id") or uuid.uuid4()),
                 "title": title,
@@ -1233,6 +1225,9 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
 
     async def stop(self) -> None:
         self._stop_requested = True
+        # Keep ownership before awaiting the pump: the outer stream may clear
+        # its fields while still waiting for this lease's cleanup to finish.
+        lease = self._client_lease
         if self._retry_wait_task is not None:
             self._retry_wait_task.cancel()
         # Goal cancellation sends pause/interrupt RPCs. Unblock the SDK reader
@@ -1242,7 +1237,6 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             self._stream_task.cancel()
             await asyncio.gather(self._stream_task, return_exceptions=True)
             self._stream_task = None
-        lease = self._client_lease
         self._client_lease = None
         self._client = None
         self._cancel_sdk_interactions()
@@ -1254,6 +1248,13 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         for future in list(getattr(self, "_pending_interaction_responses", {}).values()):
             if not future.done():
                 future.cancel()
+
+    async def respond_interaction(self, request: dict, response: dict) -> bool:
+        interaction_id = str(request.get("interaction_id") or "")
+        pending = getattr(self, "_pending_interaction_responses", {})
+        if interaction_id not in pending:
+            return False
+        return await super().respond_interaction(request, response)
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         logger.warning("inject_response is not supported by CodexSDKEngine")

@@ -7,7 +7,6 @@ import {
   type A2uiMessage as A2uiMessagePayload,
 } from '@a2ui/web_core/v0_9'
 import { A2uiSurface, MarkdownContext, basicCatalog } from '@a2ui/react/v0_9'
-import type { z } from 'zod'
 import { renderMarkdown } from '@a2ui/markdown-it'
 import {
   bindStaticInteractiveValues,
@@ -45,7 +44,7 @@ const TOLERANT_CATALOG = new Catalog(
   basicCatalog.id,
   Array.from(basicCatalog.components.values()).map((api) => ({
     ...api,
-    schema: (api.schema as z.ZodObject<z.ZodRawShape>).strip(),
+    schema: (api.schema as typeof api.schema & { strip(): typeof api.schema }).strip(),
   })),
   Array.from(basicCatalog.functions.values()),
   basicCatalog.themeSchema,

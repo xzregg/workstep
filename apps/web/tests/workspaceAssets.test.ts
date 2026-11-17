@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, writeFile, rm, realpath } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises'
+import { join, dirname } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'vite'
 import config from '../vite.config'
 
 for (const mode of ['production', 'gateway-share']) test(`built lazy assets follow their source module (${mode})`, async () => {
-  const root = await mkdtemp(join(await realpath(tmpdir()), 'workstep-assets-'))
+  const taskRoot = fileURLToPath(new URL('../../../tmp/workspace-assets/', import.meta.url))
+  await mkdir(taskRoot, { recursive: true })
+  const root = await mkdtemp(join(taskRoot, 'build-'))
   try {
     await writeFile(join(root, 'index.html'), '<head></head><script type="module" src="/main.js"></script>')
     await writeFile(join(root, 'main.js'), 'window.loadDiagram = () => import("./diagram.js")')
@@ -39,8 +41,17 @@ for (const mode of ['production', 'gateway-share']) test(`built lazy assets foll
         configurable: true, value: key === 'window' ? window : window[key],
       }))
       try {
-        // The generated entry is an ES module and may legitimately export helpers.
-        await import('data:text/javascript,' + encodeURIComponent(source))
+        // Execute the full emitted module graph: Vite may extract its runtime
+        // into another chunk. A data URL cannot resolve relative imports.
+        const executionRoot = await mkdtemp(join(root, 'execute-'))
+        await writeFile(join(executionRoot, 'package.json'), '{"type":"module"}')
+        for (const chunk of output) {
+          if (chunk.type !== 'chunk') continue
+          const target = join(executionRoot, chunk.fileName)
+          await mkdir(dirname(target), { recursive: true })
+          await writeFile(target, chunk === entry ? source : chunk.code)
+        }
+        await import(pathToFileURL(join(executionRoot, entry.fileName)).href)
       // CSS preloads wait for load, so the dynamic import does not run here.
       void (window as any).loadDiagram()
       const link = window.document.querySelector('link[rel="stylesheet"]')!

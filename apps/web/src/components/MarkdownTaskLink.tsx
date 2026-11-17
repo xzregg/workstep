@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useContext, useRef, useState, type ReactNode } from 'react'
 import { useInRouterContext, useNavigate } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useTaskStore } from '../stores/taskStore'
@@ -6,6 +6,7 @@ import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissi
 import { useI18n } from '../i18n'
 import type { TaskDetailLink } from '../utils/taskDetailLink'
 import Button from './Button'
+import { MarkdownStreamingContext } from './MermaidBlock'
 import './MarkdownTaskLink.css'
 
 interface Props { target: TaskDetailLink; children: ReactNode; disabled?: boolean }
@@ -47,5 +48,6 @@ function TaskButton({ target, children, disabled }: Props) {
 
 export default function MarkdownTaskLink(props: Props) {
   const inRouter = useInRouterContext()
-  return inRouter ? <TaskButton {...props} /> : <span>{props.children}</span>
+  const streaming = useContext(MarkdownStreamingContext)
+  return inRouter ? <TaskButton {...props} disabled={props.disabled || streaming} /> : <span>{props.children}</span>
 }

@@ -1,4 +1,5 @@
 import { gatewayResourceUrl } from './gatewayWorkspacePath'
+import { A2UI_INPUT_LIMITS, isWithinA2uiInputBudget } from './a2uiInputBudget'
 import type {
   A2uiClientAction,
   A2uiMessage,
@@ -45,10 +46,27 @@ function parseFenceBody(body: string): A2uiMessage[] {
   // Accumulate lines so both single-line JSONL and pretty-printed multi-line
   // JSON objects inside the fence are parsed; non-JSON lines are dropped.
   let buffer = ''
+  let depth = 0
+  let quoted = false
+  let escaped = false
   for (const rawLine of body.split(/\r?\n/)) {
     const trimmed = rawLine.trim()
     if (!trimmed && !buffer) continue
+    if (!buffer && !trimmed.startsWith('{')) continue
     buffer += (buffer ? '\n' : '') + rawLine
+    // Scan each character once. Repeatedly JSON.parse-ing an incomplete,
+    // pretty-printed object makes parsing quadratic before schema admission.
+    for (const character of rawLine) {
+      if (quoted) {
+        if (escaped) escaped = false
+        else if (character === '\\') escaped = true
+        else if (character === '"') quoted = false
+      } else if (character === '"') quoted = true
+      else if (character === '{' || character === '[') depth++
+      else if (character === '}' || character === ']') depth--
+      if (depth > A2UI_INPUT_LIMITS.depth) return []
+    }
+    if (depth > 0 || quoted) continue
     try {
       let parsed = JSON.parse(buffer) as unknown
       // Model-authored v0.9 envelopes sometimes omit version. Recover only
@@ -57,12 +75,16 @@ function parseFenceBody(body: string): A2uiMessage[] {
         const record = parsed as Record<string, unknown>
         if (record.version === undefined) parsed = { ...record, version: 'v0.9.1' }
       }
-      if (isA2uiMessage(parsed)) messages.push(parsed)
-      buffer = ''
+      if (isA2uiMessage(parsed) && isWithinA2uiInputBudget(parsed)) messages.push(parsed)
+      if (messages.length > A2UI_INPUT_LIMITS.messages) return []
     } catch {
-      // Incomplete JSON object — keep accumulating; drop stray non-JSON text.
-      if (!buffer.trim().startsWith('{')) buffer = ''
+      // A balanced but invalid object is not an incomplete message. Discard it
+      // so a later valid JSONL message remains readable.
     }
+    buffer = ''
+    depth = 0
+    quoted = false
+    escaped = false
   }
   return messages
 }
@@ -71,9 +93,11 @@ function parseFenceBody(body: string): A2uiMessage[] {
 export function extractA2uiMessages(content: string): A2uiMessage[] {
   const messages: A2uiMessage[] = []
   for (const match of content.matchAll(A2UI_FENCE)) {
+    if ((match[1]?.length ?? 0) > A2UI_INPUT_LIMITS.text) continue
     messages.push(...parseFenceBody(match[1] ?? ''))
+    if (messages.length > A2UI_INPUT_LIMITS.messages) return []
   }
-  return messages
+  return isWithinA2uiInputBudget(messages) ? messages : []
 }
 
 /** Remove complete ```a2ui fences from text used for markdown/copy. */
@@ -232,6 +256,8 @@ export function normalizeA2uiMessages(
   messages: A2uiMessage[],
   projectId?: string,
 ): A2uiMessage[] {
+  if (!Array.isArray(messages) || messages.length > A2UI_INPUT_LIMITS.messages
+    || !isWithinA2uiInputBudget(messages)) return []
   if (!projectId) return messages
   return messages.map((message) => {
     if (!('updateComponents' in message)) return message
@@ -537,13 +563,12 @@ export function splitA2uiUpdateComponents(messages: A2uiMessage[]): A2uiMessage[
 
 import { scrapeSchemaBehavior } from '@a2ui/web_core/v0_9'
 import type { SurfaceModel } from '@a2ui/web_core/v0_9'
-import type { z } from 'zod'
 
 export function bindStaticInteractiveValues(surface: SurfaceModel) {
   for (const [id, model] of Array.from(surface.componentsModel.entries)) {
     const api = surface.catalog.components.get(model.type)
     if (!api) continue
-    const behavior = scrapeSchemaBehavior(api.schema as z.ZodTypeAny)
+    const behavior = scrapeSchemaBehavior(api.schema)
     if (behavior.type !== 'OBJECT') continue
     const props = model.properties as Record<string, unknown>
     for (const [field, fieldBehavior] of Object.entries(behavior.shape ?? {})) {

@@ -1,4 +1,4 @@
-import { isValidElement, useCallback, useMemo, type ReactNode, type RefObject } from 'react'
+import { createContext, isValidElement, memo, useCallback, useContext, useLayoutEffect, useMemo, useRef, type ReactNode, type RefObject } from 'react'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { isLocalMarkdownImage, resolveMarkdownImageSrc } from '../utils/markdownImages'
@@ -9,7 +9,7 @@ import { useI18n } from '../i18n'
 import MermaidBlock, { MarkdownStreamingContext } from './MermaidBlock'
 import { useMarkdownUrlResolver, useTaskFilePreview } from '../contexts/MarkdownAssetUrlContext'
 import StreamRevealText from './StreamRevealText'
-import rehypeStreamReveal from '../utils/rehypeStreamReveal'
+import rehypeStreamReveal, { REVEAL_WINDOW_CHARS } from '../utils/rehypeStreamReveal'
 import { parseTaskDetailLink } from '../utils/taskDetailLink'
 import MarkdownTaskLink from './MarkdownTaskLink'
 
@@ -26,6 +26,21 @@ interface MarkdownContentProps {
   onFileClick?: (file: ProjectFileLink) => void
   rootRef?: RefObject<HTMLDivElement | null>
   animateReveal?: boolean
+  animateInitialReveal?: boolean
+}
+
+const RevealContext = createContext({ enabled: false, animateInitial: true, from: 0 })
+
+// Keep this component type stable as reveal settings change, so already
+// displayed text keeps its state instead of replaying the whole paragraph.
+function RevealText({ node }: { node?: { properties?: Record<string, unknown> } }) {
+  const { enabled, animateInitial, from } = useContext(RevealContext)
+  const text = String(node?.properties?.text ?? '')
+  const end = Number(node?.properties?.endOffset ?? 0)
+  // Markdown may remount a text node when a closing **, link or list marker
+  // arrives. Its source position still tells us which text was already shown.
+  const animateFrom = Math.max(0, text.length - Math.max(0, end - from))
+  return <StreamRevealText text={text} enabled={enabled} animateInitial={animateInitial && node?.properties?.animate !== false} animateFrom={animateFrom} />
 }
 
 // Inline Markdown image / link tokens: `![alt](url)` and `[label](url)`.
@@ -77,7 +92,7 @@ function closeStreamingFence(markdown: string): string {
   return openFence ? `${markdown}\n${openFence}` : markdown
 }
 
-export default function MarkdownContent({
+function MarkdownContent({
   content,
   streaming = false,
   projectId,
@@ -89,11 +104,18 @@ export default function MarkdownContent({
   onFileClick,
   rootRef,
   animateReveal = false,
+  animateInitialReveal = true,
 }: MarkdownContentProps) {
   const { t } = useI18n()
   const markdownUrlResolver = useMarkdownUrlResolver()
   const taskFilePreview = useTaskFilePreview()
   const normalizedContent = convertFileCitations(convertVisualizeMarkers(content))
+  const previousContent = useRef(animateInitialReveal ? '' : normalizedContent)
+  const revealFrom = Math.max(
+    normalizedContent.length - REVEAL_WINDOW_CHARS,
+    normalizedContent.startsWith(previousContent.current) ? previousContent.current.length : normalizedContent.length,
+  )
+  useLayoutEffect(() => { previousContent.current = normalizedContent }, [normalizedContent])
   const markdown = streaming ? closeStreamingFence(normalizedContent) : normalizedContent
   const plainSegments = plainText ? splitPlainText(normalizedContent) : []
 
@@ -123,7 +145,7 @@ export default function MarkdownContent({
     const task = parseTaskDetailLink(href)
     if (task) {
       return task.projectId === projectId
-        ? <MarkdownTaskLink key={href} target={task} disabled={streaming}>{label}</MarkdownTaskLink>
+        ? <MarkdownTaskLink key={href} target={task}>{label}</MarkdownTaskLink>
         : <span>{label}</span>
     }
     const resolvedHref = href && (markdownUrlResolver?.(href) ?? href)
@@ -146,11 +168,10 @@ export default function MarkdownContent({
         {label}
       </a>
     )
-  }, [markdownUrlResolver, onFileClick, projectId, taskFilePreview, streaming, t])
+  }, [markdownUrlResolver, onFileClick, projectId, taskFilePreview, t])
 
   const components = useMemo(() => ({
-    'stream-reveal-text': ({ node }: { node?: { properties?: Record<string, unknown> } }) =>
-      <StreamRevealText text={String(node?.properties?.text ?? '')} enabled={animateReveal} />,
+    'stream-reveal-text': RevealText,
     p: ({ children }: { children?: React.ReactNode }) => compactParagraphs
       ? <div className="markdown-compact-paragraph">{children}</div>
       : <p>{children}</p>,
@@ -165,10 +186,15 @@ export default function MarkdownContent({
       }
       return <pre>{children}</pre>
     },
-  }), [animateReveal, compactParagraphs, mermaidRenderDelayMs, renderImage, renderLink])
+  }), [compactParagraphs, mermaidRenderDelayMs, renderImage, renderLink])
+
+  const revealSettings = useMemo(() => ({
+    enabled: animateReveal, animateInitial: animateInitialReveal, from: revealFrom,
+  }), [animateReveal, animateInitialReveal, revealFrom])
 
   return (
     <MarkdownStreamingContext.Provider value={streaming}>
+      <RevealContext.Provider value={revealSettings}>
       <div
         ref={rootRef}
         className={`markdown-message${streaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
@@ -194,6 +220,11 @@ export default function MarkdownContent({
           <span className="markdown-stream-cursor" aria-hidden="true" />
         )}
       </div>
+      </RevealContext.Provider>
     </MarkdownStreamingContext.Provider>
   )
 }
+
+// Token arrivals can rerender the parent before the reveal timer advances.
+// Parse only when the visible content or its rendering options change.
+export default memo(MarkdownContent)

@@ -13,6 +13,17 @@ const selection = {node_id:'n2',tag:'button',text:'Second',version:'v1',styles:{
 
 test('prototype editor selects exact nodes, posts versioned edits, switches documents and sends comments', async () => {
   const {window} = installDomEnvironment()
+  // This protocol test supplies isolated iframe peers, not network documents.
+  // Happy DOM 21 clears contentWindow when React moves a frame in the tree.
+  const peers = new WeakMap<object, {postMessage:(message:Record<string,unknown>)=>void}>()
+  Object.defineProperty(window.HTMLIFrameElement.prototype, 'contentWindow', {
+    configurable:true,
+    get() {
+      let peer=peers.get(this)
+      if(!peer){peer={postMessage:()=>{}};peers.set(this,peer)}
+      return peer
+    },
+  })
   useLocaleStore.setState({locale:'zh-CN'})
   const previousFetch = globalThis.fetch
   const calls: {path:string;body:Record<string,unknown>;query:string|null}[] = []

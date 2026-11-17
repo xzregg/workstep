@@ -11,13 +11,19 @@ from engines.codex_sdk import CodexSDKEngine
 from engines.codex_sdk_clients import CodexClientPool
 from engines.core.base import ProviderRuntimeConfig
 
+pytestmark = [
+    pytest.mark.filterwarnings('error::pytest.PytestUnhandledThreadExceptionWarning'),
+    pytest.mark.filterwarnings('error::pytest.PytestUnraisableExceptionWarning'),
+    pytest.mark.filterwarnings('error::RuntimeWarning'),
+]
+
 
 @pytest.fixture
 async def transport(monkeypatch, tmp_path):
     monkeypatch.setenv('CODEX_HOME', str(tmp_path / 'codex-home'))
     sdk = pytest.importorskip('openai_codex')
     original = sdk.AsyncCodex
-    clients, processes = [], []
+    clients, processes, routers = [], [], []
     pool = CodexClientPool(idle_seconds=60)
     def client(*, config):
         config.launch_args_override = (sys.executable, str(Path(__file__).parent / 'fixtures/codex_app_server_stub.py'), str(tmp_path))
@@ -41,6 +47,9 @@ async def transport(monkeypatch, tmp_path):
         'sandbox': 'read-only', 'approval_mode': '', 'model_reasoning_effort': '',
     })
     def track():
+        for worker in pool._workers:
+            if worker.router and worker.router not in routers:
+                routers.append(worker.router)
         for c in clients:
             p = c._client._sync._proc
             if p is not None and p not in processes:
@@ -52,6 +61,9 @@ async def transport(monkeypatch, tmp_path):
         track()
         await pool.close()
         assert all(p.poll() is not None for p in processes)
+        assert not [thread for client in clients for name in ('_reader_thread','_stderr_thread')
+                    if (thread := getattr(client._client._sync, name, None)) is not None and thread.is_alive()]
+        assert not [thread for router in routers for thread in router.background_threads() if thread.is_alive()]
 
 
 async def collect(transport, prompt, *, sid=None, engine=None, **kwargs):
@@ -72,6 +84,238 @@ def text(events):
 
 
 @pytest.mark.anyio
+async def test_six_active_turns_use_two_processes_and_stopping_one_keeps_neighbors(transport):
+    engines = [CodexSDKEngine() for _ in range(6)]
+    queues = [asyncio.Queue() for _ in engines]
+    ready = asyncio.Queue()
+
+    async def run(i):
+        output = []
+        async for event in engines[i].spawn(prompt='wait', cwd=str(transport.root), live_message_queue=queues[i]):
+            output.append(event)
+            transport.track()
+            if event.type == 'session_started':
+                await ready.put((i, event.data['session_id']))
+        return output
+
+    tasks = [asyncio.create_task(run(i)) for i in range(6)]
+    try:
+        ids = dict([await asyncio.wait_for(ready.get(), 5) for _ in engines])
+        entries = [transport.pool._entries[(str(transport.root), ids[i])] for i in range(6)]
+        clients = [e.client for e in entries]
+        assert len({id(c) for c in clients}) == 2
+        assert sorted(sum(c is x for c in clients) for x in set(clients)) == [1, 5]
+        assert len(transport.processes) == 2
+        shared = next(c for c in set(clients) if clients.count(c) == 5)
+        stopped = clients.index(shared)
+        await asyncio.wait_for(engines[stopped].stop(), 5)
+        await asyncio.wait_for(tasks[stopped], 5)
+        assert shared._client._sync._proc.poll() is None
+        for i in range(6):
+            if i != stopped:
+                queues[i].put_nowait((f'insert-{i}', f'only-{i}'))
+        results = await asyncio.wait_for(asyncio.gather(*tasks), 5)
+        assert all(text(output) == 'steered' for i,output in enumerate(results) if i != stopped)
+        assert all(p.poll() is None for p in transport.processes)
+    finally:
+        await asyncio.gather(*(e.stop() for e in engines))
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_two_pending_approvals_are_routed_independently_and_stop_is_local(transport, monkeypatch):
+    engines = [CodexSDKEngine(), CodexSDKEngine()]
+    ready = asyncio.Queue()
+    for engine in engines:
+        monkeypatch.setattr(engine, 'runtime_permission_decision', lambda: None)
+
+    async def run(i):
+        output = []
+        async for event in engines[i].spawn(prompt='approve', cwd=str(transport.root)):
+            output.append(event)
+            transport.track()
+            if event.type == 'interaction_request':
+                await ready.put((i,event))
+        return output
+
+    tasks = [asyncio.create_task(run(i)) for i in range(2)]
+    try:
+        requests = dict([await asyncio.wait_for(ready.get(), 5) for _ in engines])
+        assert len(transport.clients) == 1
+        # Wrong engine cannot consume the other thread's approval response.
+        assert not await engines[1].respond_interaction(requests[0].data, {'outcome': {'option_id':'allow_once'}})
+        await asyncio.wait_for(engines[0].stop(), 5)
+        await asyncio.wait_for(tasks[0], 5)
+        assert not tasks[1].done()
+        assert transport.processes[0].poll() is None
+        assert await engines[1].respond_interaction(requests[1].data, {'outcome': {'option_id':'reject_once'}})
+        output = await asyncio.wait_for(tasks[1], 5)
+        assert text(output) == 'denied'
+        assert not any(e._pending_interaction_responses for e in engines)
+    finally:
+        await asyncio.gather(*(e.stop() for e in engines))
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_shared_native_crash_fails_active_neighbor_and_resumes_both(transport):
+    seed_a = await collect(transport, 'seed-a')
+    seed_b = await collect(transport, 'seed-b')
+    sid_a, sid_b = session(seed_a), session(seed_b)
+    assert len(transport.clients) == 1
+    engine = CodexSDKEngine()
+    ready = asyncio.Event()
+
+    async def run():
+        output = []
+        async for event in engine.spawn(prompt='wait', cwd=str(transport.root), session_id=sid_b):
+            output.append(event)
+            if event.type == 'session_started':
+                ready.set()
+        return output
+
+    task = asyncio.create_task(run())
+    try:
+        await asyncio.wait_for(ready.wait(), 5)
+        crashed = await asyncio.wait_for(collect(transport, 'crash', sid=sid_a), 5)
+        neighbor = await asyncio.wait_for(task, 5)
+        assert any(e.type == 'error' for e in crashed)
+        assert any(e.type == 'error' for e in neighbor)
+        assert transport.processes[0].poll() is not None
+        assert not getattr(engine, '_pending_interaction_responses', {})
+        for sid in [sid_a, sid_b]:
+            resumed = await asyncio.wait_for(collect(transport, 'recovered', sid=sid), 5)
+            assert session(resumed) == sid and text(resumed) == 'recovered'
+        assert len(transport.clients) == 2
+    finally:
+        if not task.done():
+            await engine.stop()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_stop_during_turn_start_response_recovers_turn_id_without_stopping_neighbor(transport, monkeypatch):
+    import openai_codex
+    a = session(await collect(transport, 'seed-a'))
+    b = session(await collect(transport, 'seed-b'))
+    original = openai_codex.AsyncThread.turn
+    entered = asyncio.Event()
+    async def delayed(thread, *args, **kwargs):
+        handle = await original(thread, *args, **kwargs)
+        if thread.id == a:
+            entered.set()
+            await asyncio.Event().wait()
+        return handle
+    monkeypatch.setattr(openai_codex.AsyncThread, 'turn', delayed)
+    engine = CodexSDKEngine()
+    task = asyncio.create_task(collect(transport, 'wait', sid=a, engine=engine))
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        await asyncio.wait_for(engine.stop(), 5)
+        await asyncio.wait_for(task, 5)
+        assert any(row['params']['threadId'] == a for row in wire(transport, 'turn/interrupt'))
+        assert text(await collect(transport, 'neighbor-alive', sid=b)) == 'neighbor-alive'
+        assert len(transport.clients) == 1 and transport.processes[0].poll() is None
+    finally:
+        if not task.done():
+            await engine.stop()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_process_death_invalidates_visible_approval_and_old_click_cannot_authorize_restart(transport, monkeypatch):
+    from agent_assistants.engine_invocation import run_engine_turn
+    from services.intervention import intervention_manager
+    engine = CodexSDKEngine()
+    monkeypatch.setattr(engine, 'runtime_permission_decision', lambda: None)
+    ready = asyncio.Queue()
+    output = []
+    async def on_event(event):
+        output.append(event)
+        transport.track()
+        if event.type == 'interaction_request':
+            await ready.put(event)
+    async def invoke(sid=None):
+        return await run_engine_turn('codex_sdk', None, str(transport.root), 'approve', sid,
+            on_event=on_event, engine_factory=lambda _: engine, settings_store=SimpleNamespace(),
+            run_key='crash-approval',
+            spawner=lambda e, **kwargs: e.spawn(prompt='approve', cwd=str(transport.root), session_id=sid, **kwargs))
+    task = asyncio.create_task(invoke())
+    try:
+        request = await asyncio.wait_for(ready.get(), 5)
+        old_id = request.data['interaction_id']
+        sid = next(e.data['session_id'] for e in output if e.type == 'session_started')
+        transport.processes[0].kill()
+        with pytest.raises(RuntimeError):
+            await asyncio.wait_for(task, 2)
+        assert not intervention_manager.deliver_response(old_id, {'outcome':{'option_id':'allow_once'}})
+        assert any(e.type=='interaction_response' and e.data['interaction_id']==old_id
+                   and e.data['response']['outcome']['outcome']=='cancelled' for e in output)
+        assert not getattr(engine, '_pending_interaction_responses', {})
+        task = asyncio.create_task(invoke(sid))
+        fresh = await asyncio.wait_for(ready.get(), 5)
+        assert fresh.data['interaction_id'] != old_id
+        assert not intervention_manager.deliver_response(old_id, {'outcome':{'option_id':'allow_once'}})
+        assert not task.done()
+        assert intervention_manager.deliver_response(fresh.data['interaction_id'], {'outcome':{'option_id':'reject_once'}})
+        reply,_,actual_sid = await asyncio.wait_for(task, 5)
+        assert reply == 'denied' and actual_sid == sid
+    finally:
+        intervention_manager.cancel_for_task('crash-approval')
+        if not task.done():
+            await engine.stop()
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_stop_while_process_is_starting_does_not_leave_late_process(transport, monkeypatch):
+    import subprocess
+    import threading
+    entered,unblock,spawned = threading.Event(),threading.Event(),threading.Event()
+    original = subprocess.Popen
+    created = []
+    def delayed(args,*pos,**kwargs):
+        if any('codex_app_server_stub.py' in str(arg) for arg in args):
+            entered.set()
+            assert unblock.wait(3)
+            process = original(args,*pos,**kwargs)
+            created.append(process)
+            spawned.set()
+            return process
+        return original(args,*pos,**kwargs)
+    monkeypatch.setattr(subprocess,'Popen',delayed)
+    engine = CodexSDKEngine()
+    task = asyncio.create_task(collect(transport,'hello',engine=engine))
+    stopping = None
+    try:
+        assert await asyncio.to_thread(entered.wait,1)
+        assert engine._client_lease is not None
+        assert engine._client_lease.worker.router.start_lock.locked()
+        stopping = asyncio.create_task(engine.stop())
+        await asyncio.sleep(.03)
+        waited_for_start = not stopping.done()
+        unblock.set()
+        await asyncio.wait_for(stopping,5)
+        await asyncio.wait_for(task,5)
+        assert waited_for_start
+        assert all(p.poll() is not None for p in created)
+    finally:
+        unblock.set()
+        if stopping:
+            await asyncio.gather(stopping,return_exceptions=True)
+        await asyncio.gather(task,return_exceptions=True)
+        if entered.is_set():
+            await asyncio.to_thread(spawned.wait,1)
+        for process in created:
+            if process.poll() is None:
+                process.terminate()
+                await asyncio.to_thread(process.wait,timeout=3)
+        for client in transport.clients:
+            await client.close()
+
+
+@pytest.mark.anyio
 async def test_real_sdk_reuse_streaming_and_native_crash_recovery(transport):
     first = await asyncio.wait_for(collect(transport, 'hello'), 5)
     assert text(first) == 'hello'
@@ -83,6 +327,7 @@ async def test_real_sdk_reuse_streaming_and_native_crash_recovery(transport):
     failed = await asyncio.wait_for(collect(transport, 'crash', sid=sid), 5)
     assert any(e.type == 'error' for e in failed)
     assert transport.processes[0].poll() is not None
+    assert all(getattr(transport.processes[0], name).closed for name in ('stdin','stdout','stderr'))
     resumed = await asyncio.wait_for(collect(transport, 'recovered', sid=sid), 5)
     assert session(resumed) == sid and text(resumed) == 'recovered'
     assert len(transport.clients) == 2
@@ -106,7 +351,7 @@ async def test_real_sdk_parallel_approval_isolation_and_stop(transport, monkeypa
             event = await asyncio.wait_for(events.get(), 5)
             if event.type == 'interaction_request':
                 break
-        # A's SDK reader is blocked in its synchronous approval callback.
+        # A's approval is pending; the SAME SDK reader still dispatches B.
         response_b = await asyncio.wait_for(collect(transport, 'other', engine=b), 5)
         assert text(response_b) == 'other' and not waiting.done()
         assert await a.respond_interaction(event.data, {'outcome': {'option_id': decision}})
@@ -115,7 +360,7 @@ async def test_real_sdk_parallel_approval_isolation_and_stop(transport, monkeypa
         while not events.empty():
             output.append(events.get_nowait())
         assert text(output) == ('accepted' if decision == 'allow_once' else 'denied')
-        assert len(transport.processes) == 2
+        assert len(transport.processes) == 1
         assert all(p.poll() is None for p in transport.processes)
 
         stream = a.spawn(prompt='wait', cwd=str(transport.root), session_id=sid)
@@ -124,8 +369,9 @@ async def test_real_sdk_parallel_approval_isolation_and_stop(transport, monkeypa
                 break
         await a.stop()
         await stream.aclose()
-        assert transport.processes[0].poll() is not None
-        assert transport.processes[1].poll() is None
+        assert transport.processes[0].poll() is None
+        assert (str(transport.root), sid) not in transport.pool._entries
+        assert text(await collect(transport, 'still-alive', sid=session(response_b))) == 'still-alive'
     finally:
         if not waiting.done():
             await a.stop()
@@ -245,7 +491,7 @@ async def test_real_sdk_plan_default_switching_and_other_session_isolation(trans
     assert len(transport.clients) == 1
     other = await collect(transport, 'effective-mode', plan_mode=False)
     assert session(other) != sid and text(other) == 'default'
-    assert len(transport.clients) == 2
+    assert len(transport.clients) == 1
 
 
 @pytest.mark.anyio
@@ -267,7 +513,8 @@ async def test_real_sdk_goal_after_plan_and_resume_after_reclamation(transport, 
     elif recovery == 'lru':
         transport.pool.max_idle = 1
         await collect(transport, 'other-session')
-        assert original.poll() is not None
+        assert original.poll() is None
+        assert (str(transport.root), sid) not in transport.pool._entries
     elif recovery == 'config':
         monkeypatch.setattr('engines.codex_sdk.config_store.get_codex_sdk_config', lambda: {
             'sandbox': 'read-only', 'approval_mode': '', 'model_reasoning_effort': 'high',
@@ -280,7 +527,7 @@ async def test_real_sdk_goal_after_plan_and_resume_after_reclamation(transport, 
     if recovery == 'warm':
         assert len(transport.clients) == 1 and original.poll() is None
     else:
-        assert original.poll() is not None
+        assert (original.poll() is None) == (recovery == 'lru')
         assert any(row['params']['threadId'] == sid for row in wire(transport, 'thread/resume'))
     latest = await collect(transport, '', sid=sid, goal_action='status')
     assert goal_status(latest) == ['paused']
@@ -330,7 +577,8 @@ async def test_real_sdk_active_goal_never_expires_and_cleans_up_on_stop(transpor
         else:
             await transport.pool.close()
         await asyncio.wait_for(task, 5)
-        assert process.poll() is not None
+        assert (process.poll() is not None) == (stop_kind == 'pool_close')
+        assert (str(transport.root), sid) not in transport.pool._entries
         assert engine._goal_state is None
         if stop_kind != 'pool_close':
             assert other_process.poll() is None
@@ -386,7 +634,7 @@ async def test_real_sdk_goal_approval_parallel_normal_turn(transport, monkeypatc
         await asyncio.wait_for(task, 5)
         assert goal_status(outputs)[-1] == ('complete' if decision == 'allow_once' else 'blocked')
         assert text(outputs) == ('accepted' if decision == 'allow_once' else 'denied')
-        assert len(transport.clients) == 2
+        assert len(transport.clients) == 1
         assert text(await collect(transport, 'effective-mode', sid=sid, plan_mode=False)) == 'default'
     finally:
         if not task.done():

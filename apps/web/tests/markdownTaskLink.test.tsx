@@ -78,3 +78,26 @@ test('task links reject cross-project targets and report deleted tasks without n
     await window.happyDOM.close()
   }
 })
+
+
+test('streaming task links stay disabled and completion preserves the existing text DOM', async () => {
+  const { window }=installDomEnvironment()
+  const host=document.body.appendChild(document.createElement('div'))
+  const root=createRoot(host)
+  const render=(streaming:boolean)=>act(async()=>root.render(<I18nProvider><MemoryRouter>
+    <MarkdownContent projectId="p1" content="稳定正文 [打开任务详情](workstep-task://open?project_id=p1&task_id=t1)" streaming={streaming}/>
+  </MemoryRouter></I18nProvider>))
+  try {
+    await render(true)
+    const paragraph=host.querySelector('p')
+    const button=host.querySelector('.markdown-task-link') as HTMLButtonElement
+    assert.ok(button.disabled)
+    await render(false)
+    assert.equal(host.querySelector('p'),paragraph)
+    assert.equal(host.querySelector('.markdown-task-link'),button)
+    assert.equal(button.disabled,false)
+  } finally {
+    await act(async()=>root.unmount())
+    await window.happyDOM.close()
+  }
+})

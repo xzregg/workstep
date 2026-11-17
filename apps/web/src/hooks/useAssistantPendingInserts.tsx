@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import PendingMessageInserts from '../components/PendingMessageInserts'
 import { useI18n } from '../i18n'
@@ -48,6 +48,10 @@ export function useAssistantPendingInserts({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const [sendingIds, setSendingIds] = useState<string[]>([])
+  const addingRef = useRef(new Set<string>())
+  const sendingRef = useRef(new Set<string>())
+  const latest = useRef({ pendingKey, input })
+  latest.current = { pendingKey, input }
 
   useEffect(() => {
     if (!activeMessageId) return
@@ -59,29 +63,38 @@ export function useAssistantPendingInserts({
   const queueCurrentInput = useCallback(async (override?: string) => {
     const content = (override ?? input).trim()
     if (!content || !activeMessageId) return
+    if (addingRef.current.has(pendingKey)) return
+    addingRef.current.add(pendingKey)
     setError('')
     try {
       await actions.add(projectId, activeMessageId, content)
-      onInputChange('')
+      if (latest.current.pendingKey === pendingKey && latest.current.input === input) onInputChange('')
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
+      if (latest.current.pendingKey === pendingKey) {
+        setError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
+      }
+    } finally {
+      addingRef.current.delete(pendingKey)
     }
-  }, [activeMessageId, actions, input, onInputChange, projectId, t])
+  }, [activeMessageId, actions, input, onInputChange, pendingKey, projectId, t])
 
   const send = useCallback(async (selected: Array<{ id: string; content: string }>) => {
     if (!activeMessageId || selected.length === 0) return
-    const content = selected.map((item) => item.content.trim()).filter(Boolean).join('\n\n')
+    const eligible = selected.filter((item) => !sendingRef.current.has(item.id))
+    const content = eligible.map((item) => item.content.trim()).filter(Boolean).join('\n\n')
     if (!content) return
-    const ids = selected.map((item) => item.id)
+    const ids = eligible.map((item) => item.id)
+    ids.forEach((id) => sendingRef.current.add(id))
     setError('')
     setSendingIds((current) => [...new Set([...current, ...ids])])
     try {
       const sent = await onSendContent(content, ids)
       if (!sent) return
-      await Promise.all(selected.map((item) => actions.remove(projectId, activeMessageId, item.id)))
+      await Promise.all(eligible.map((item) => actions.remove(projectId, activeMessageId, item.id)))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
     } finally {
+      ids.forEach((id) => sendingRef.current.delete(id))
       setSendingIds((current) => current.filter((id) => !ids.includes(id)))
     }
   }, [activeMessageId, actions, onSendContent, projectId, t])

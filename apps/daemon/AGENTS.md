@@ -4,7 +4,7 @@
 
 ## 运行与开发
 
-WorkStep 本地后台服务，最低支持 Python 3.11，使用 FastAPI、Peewee 构建，负责 REST API、WebSocket 实时事件、项目管理、工作流编排、LLM 引擎调用与 SQLite 持久化。默认开发环境、CI 与桌面打包使用 Python 3.12，Docker 运行时使用 Python 3.14；调整版本时须同时核对 `pyproject.toml`、`.python-version`、CI、Dockerfile 与桌面打包脚本。
+WorkStep 本地后台服务，最低支持 Python 3.11.5（安全修复后的 SoupSieve 要求），使用 FastAPI、Peewee 构建，负责 REST API、WebSocket 实时事件、项目管理、工作流编排、LLM 引擎调用与 SQLite 持久化。默认开发环境、CI 与桌面打包使用 Python 3.12，Docker 运行时使用 Python 3.14；调整版本时须同时核对 `pyproject.toml`、`.python-version`、CI、Dockerfile 与桌面打包脚本。
 
 主要目录：
 - `api/` — API 路由与接口

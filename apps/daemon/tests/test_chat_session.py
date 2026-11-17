@@ -1878,10 +1878,9 @@ async def test_chat_history_converts_legacy_visualize_markers(chat_module, monke
         "stage-progress-card-prototypes.html"
     )
     marker = '\ue200visualize{"path":"<path>","mode":"wide"}\ue201'.replace("<path>", path)
-    row = ChatMessage.select().where(ChatMessage.role == "assistant").get()
-    ChatMessage.update(content=f"旧回复\n\n{marker}").where(
-        ChatMessage.id == row.id
-    ).execute()
+    assert await manager.run_db(project.id, lambda _: ChatMessage.update(
+        content=f"旧回复\n\n{marker}"
+    ).where(ChatMessage.id == accepted.assistant_message_id).execute()) == 1
 
     history = module.history(project.id, session["id"])
     assert history is not None
@@ -1913,10 +1912,9 @@ async def test_chat_history_converts_bare_visualize_marker(chat_module, monkeypa
         "stage-progress-card-prototypes.html"
     )
     bare = f'visualize{{"path":"{path}","mode":"wide"}}'
-    row = ChatMessage.select().where(ChatMessage.role == "assistant").get()
-    ChatMessage.update(content=f"旧回复\n\n{bare}").where(
-        ChatMessage.id == row.id
-    ).execute()
+    assert await manager.run_db(project.id, lambda _: ChatMessage.update(
+        content=f"旧回复\n\n{bare}"
+    ).where(ChatMessage.id == accepted.assistant_message_id).execute()) == 1
 
     history = module.history(project.id, session["id"])
     assert history is not None
@@ -1948,16 +1946,16 @@ async def test_chat_history_converts_visualize_marker_in_events(chat_module, mon
         "stage-progress-card-prototypes.html"
     )
     bare = f'visualize{{"path":"{path}","mode":"wide"}}'
-    row = ChatMessage.select().where(ChatMessage.role == "assistant").get()
-    with module._project_ctx(project.id):
-        ChatMessage.update(
+    def inject_legacy_events(_project):
+        return ChatMessage.update(
             engine="codex_sdk",
             content=f"旧回复\n\n{bare}",
             events_json=json.dumps([{
                 "type": "agent_message_chunk",
                 "data": {"content": {"text": f"旧回复\n\n{bare}"}},
             }], ensure_ascii=False),
-        ).where(ChatMessage.id == row.id).execute()
+        ).where(ChatMessage.id == accepted.assistant_message_id).execute()
+    assert await manager.run_db(project.id, inject_legacy_events) == 1
 
     history = module.history(project.id, session["id"])
     assert history is not None
@@ -3548,12 +3546,11 @@ async def test_quick_buttons_defaults_and_validation(chat_module):
     with pytest.raises(ValueError):
         module.set_quick_buttons(project.id, [{"label": "x", "prompt": "y"}, {"label": "x2", "prompt": "y2", "id": "dup"}, {"label": "x3", "prompt": "y3", "id": "dup"}])
 
-    stored = ProjectSetting.get_or_none(
+    stored = await manager.run_db(project.id, lambda _: ProjectSetting.get(
         ProjectSetting.project_id == project.id,
         ProjectSetting.key == "chat_quick_buttons",
-    )
-    assert stored is not None
-    assert len(json.loads(stored.value_json)) == 2
+    ).value_json)
+    assert len(json.loads(stored)) == 2
 
 
 @pytest.mark.anyio
@@ -3594,23 +3591,19 @@ async def test_system_prompt_persistence_validation_and_clear(chat_module):
     assert saved == custom
     assert module.get_system_prompt(project.id) == custom
 
-    stored = ProjectSetting.get_or_none(
+    stored = await manager.run_db(project.id, lambda _: ProjectSetting.get(
         ProjectSetting.project_id == project.id,
         ProjectSetting.key == "chat_system_prompt",
-    )
-    assert stored is not None
-    assert json.loads(stored.value_json) == custom
+    ).value_json)
+    assert json.loads(stored) == custom
 
     # Empty input clears the custom prompt; the assistant then has no system prompt.
     assert module.set_system_prompt(project.id, "   ") == ""
     assert module.get_system_prompt(project.id) == ""
-    assert (
-        ProjectSetting.get_or_none(
+    assert await manager.run_db(project.id, lambda _: ProjectSetting.select().where(
             ProjectSetting.project_id == project.id,
             ProjectSetting.key == "chat_system_prompt",
-        )
-        is None
-    )
+        ).count()) == 0
 
     # Over-length is rejected.
     with pytest.raises(ValueError):

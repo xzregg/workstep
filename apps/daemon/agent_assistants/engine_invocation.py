@@ -14,7 +14,7 @@ from services.chat_permissions import (
     GOAL_MODE_INSTRUCTION,
     PLAN_MODE_INSTRUCTION,
 )
-from services.intervention import intervention_manager
+from services.intervention import intervention_manager, wait_for_interaction_response
 
 
 async def run_engine_turn(
@@ -225,14 +225,20 @@ async def run_engine_turn(
             elif event.type == "error" and error is None:
                 error = str(event.data.get("message") or f"{error_prefix} failed")
             if interaction_waiter is not None:
-                response = await interaction_waiter
+                response = await wait_for_interaction_response(interaction_waiter, engine, event.data)
                 if response.get("error"):
                     response = (
                         {"outcome": {"outcome": "cancelled"}}
                         if event.data.get("method") == "session/request_permission"
                         else {"action": "cancel"}
                     )
-                await engine.respond_interaction(event.data, response)
+                delivered = await engine.respond_interaction(event.data, response)
+                if delivered is False:
+                    response = (
+                        {"outcome": {"outcome": "cancelled"}}
+                        if event.data.get("method") == "session/request_permission"
+                        else {"action": "cancel"}
+                    )
                 response_event = InternalEvent(
                     type="interaction_response",
                     data={

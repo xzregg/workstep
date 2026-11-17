@@ -296,8 +296,8 @@ export default function ChatMessageBubble({
               {header}
             </div>
           )}
-          {(visibleContent || hasToolActivity) ? (
-            <div className={isUser ? 'chat-bubble chat-bubble--user' : 'chat-bubble chat-bubble--assistant'} style={{
+          {(visibleContent || hasToolActivity || (!isUser && streaming)) && (
+            <div hidden={!visibleContent && !hasToolActivity} className={isUser ? 'chat-bubble chat-bubble--user' : 'chat-bubble chat-bubble--assistant'} style={{
               fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6,
               color: isUser ? 'var(--fg)' : 'var(--fg-2)',
               background: isUser ? 'var(--surface)' : 'var(--bg)',
@@ -335,13 +335,13 @@ export default function ChatMessageBubble({
                 </>
               )}
             </div>
-          ) : (
+          )}
+          {!visibleContent && !hasToolActivity &&
             !isUser && showLoading && streaming && interactions.length === 0 && !plan && !markdownPlan && (
               loading ?? (
                 <StreamingStatusText label={t('bubble.thinking')} />
               )
-            )
-          )}
+            )}
           {role === 'assistant' && !streaming && (
             <MessageFileChanges events={events} projectId={projectId}
               eventDetail={eventDetail} onLoadEventDetails={onLoadEventDetails} />

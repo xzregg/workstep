@@ -24,15 +24,39 @@
 
 ### 会话传输复用
 
-`supports_process_reuse` 声明原生连接能否在一轮结束后继续接收下一轮。它不等同于 `supports_resume`：一次性 `codex exec resume` 能恢复历史，但已退出的进程不能复用。支持复用的传输必须按 `(engine, cwd, native session ID)` 独占绑定；同会话拒绝重叠执行，不同会话独立并发。任务的每个任务／步骤分别保存原生 ID，不能按模型或工作流模板把会话混用。
+`supports_process_reuse` 声明原生连接能否在一轮结束后继续接收下一轮。它不等同于 `supports_resume`：一次性 `codex exec resume` 能恢复历史，但已退出的进程不能复用。会话状态及消费者必须按 `(engine, cwd, native session ID)` 独立绑定；同会话拒绝重叠执行，不同会话独立并发。除下述 Codex SDK 多路复用外，其他持久传输仍独占客户端。任务的每个任务／步骤分别保存原生 ID，不能按模型或工作流模板把会话混用。
 
 `engines/core/session_pool.py` 提供共享缓存和 `ManagedConnection` 常驻所有者协程。默认成功完整收流后空闲 600 秒、每个引擎最多缓存 8 个空闲客户端；正在执行、等待审批不计空闲。启动参数、供应商、认证、权限、连接器、技能或来源身份变化时重建；取消、错误、提前关闭不得返回可用缓存。新请求必须绑定自己的回调和队列，空闲客户端不得保留上一轮的审批授权。进程树回收走 `core/process_cleanup.py`，daemon 在消息生产者／任务停止后关闭全部池。
 
-Codex SDK 保留官方 AsyncThread；Claude Agent SDK／Qoder SDK 由 `core/sdk_reuse.py` 保留双向客户端，轮次收尾只结束本轮消费者；Hermes／OpenCode／自定义 ACP 通过 `core/acp_reuse.py` 保留连接与原生 session，不重复 initialize/load；Claude CLI 通过 `core/cli_reuse.py` 固定 JSONL stdin/stdout，普通轮次结束后归还客户端；Cursor 保留 bridge 和 agent，通过同一 agent.send 发起下一轮。DeepSeek Harness 已按项目与配置共享原生运行时；其不具备持久化恢复的旧 SDK 仍须保留运行时，不能通过空闲淘汰丢失历史。Pydantic AI 是进程内运行，没有对应的主引擎子进程缓存。Codex CLI／OpenClaw 当前一次性命令不复用。
+Codex SDK 的 `codex_sdk_clients.py` 在同项目目录及兼容启动指纹内共享 app-server，每个进程最多承载 5 个活动会话，第 6 个另开进程；审批／提问等待仍占活动名额。每会话保留独立 `AsyncThread`、轮次消费者、审批和授权缓存；空闲槽可释放给新会话，被淘汰的会话稍后通过原生 ID 恢复。默认保留最多 8 个空闲会话槽，各槽空闲 600 秒后卸载，最后一个槽释放才关闭进程。供应商、来源身份、凭据、权限或其他启动指纹不兼容时不共享；普通停止和错误只中断、卸载本会话，整个进程崩溃会影响同进程活动会话，其历史仍可按原生 ID 恢复。`codex_sdk_approvals.py` 按原生 thread ID 路由服务器请求，异步完成后写回对应 RPC ID；等待用户不能阻塞 SDK 唯一 stdout 读取线程。取消旧轮次后的迟到审批不得进入新轮次；无法路由的请求默认拒绝。辅助工具子进程仍可能按会话独立创建。验收入口为 `tests/test_codex_sdk_multiplex.py`、`tests/test_codex_sdk_transport_lifecycle.py`。
+
+Codex SDK 读取线程报告传输失败时，池立即撤销该进程所有会话租约及待回答请求，不能依赖上层继续消费事件才发现断连。助手和任务的审批等待通过 `services/intervention.py::wait_for_interaction_response` 同时观察引擎侧请求结束，记录取消终态并移除待办；迟到确认返回失效，恢复会话产生新的审批 ID，不能继承旧 RPC 的确认。测试：`test_codex_sdk_transport_lifecycle.py::test_process_death_invalidates_visible_approval_and_old_click_cannot_authorize_restart`、`test_intervention_lifecycle.py`。
+
+Codex 关闭必须等待 SDK 启动工作线程结束后再回收进程，禁止 Popen 尚未返回就宣告停止完成；`stop()` 在等待 pump 前保存租约，避免外层流提前清空引用而漏等清理。`codex_sdk_clients.py::_close_worker` 在进程回收后等待 stdout／stderr 与审批回写线程退出，SDK close 报 BrokenPipeError 也不能跳过 join，管道在线程退出后关闭。`codex_sdk_approvals.py` 的迟到 EOF 仍唤醒原生等待者，但路由已关闭、循环已停止／关闭时不再派发任务；检查与调度间关闭的竞态也必须处理，调度失败要关闭未提交的 coroutine。审批回写使用独立有界执行器，不能与 SDK notification waiters 竞争默认线程池导致相互等待。`test_codex_sdk_shutdown.py` 覆盖关闭／已排队回调、迟到审批、调度竞态、同步回调、SDK close 失败及执行器耗尽 canary。它和真实 SDK 生命周期模块永久将 PytestUnhandledThreadExceptionWarning、PytestUnraisableExceptionWarning 和 RuntimeWarning 视为错误，不能只按业务断言判定验收通过。
+
+Claude Agent SDK／Qoder SDK 由 `core/sdk_reuse.py` 保留双向客户端，轮次收尾只结束本轮消费者；Hermes／OpenCode／自定义 ACP 通过 `core/acp_reuse.py` 保留连接与原生 session，不重复 initialize/load；Claude CLI 通过 `core/cli_reuse.py` 固定 JSONL stdin/stdout，普通轮次结束后归还客户端；Cursor 保留 bridge 和 agent，通过同一 agent.send 发起下一轮。DeepSeek Harness 已按项目与配置共享原生运行时；其不具备持久化恢复的旧 SDK 仍须保留运行时，不能通过空闲淘汰丢失历史。Pydantic AI 是进程内运行，没有对应的主引擎子进程缓存。Codex CLI／OpenClaw 当前一次性命令不复用。
 
 Claude Agent SDK／Qoder SDK／Claude CLI 若本轮有运行中插入消息，原生传输可能合并或排队输入，不能按输入数量推算结果数量；此时关闭输入、消费到 EOF 后回收，下一轮按原生 session ID 恢复，防止旧回复串入下一请求。
 
 自定义引擎声明、宿主隔离 worker 的复用和必测项见 [接口规范](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md#进程复用声明与验收)。导入、安装、验证及注册遵守同一约定；公共 `session_transport_reuse` 之外，专属测试必须核对内层原生客户端 PID／连接，不能只证明外层 worker 常驻。
+
+### 跨会话共享支持边界
+
+以下为 2026-11-17 按本仓库接入、已安装原生 SDK 源码及官方协议核对的边界。连续复用连接和同进程并发托管会话分别判断；不能因为输出含 `session_id` 就共用客户端。
+
+| 引擎 | 原生接口／限制 | WorkStep 当前状态 |
+| --- | --- | --- |
+| Codex SDK | app-server 按 thread/turn 分流，支持定向 steer、interrupt 和取消订阅 | 同项目、兼容指纹内五个活动会话一个进程；已做真实模型与离线故障验收 |
+| DeepSeek Harness | `run(session_id, on_notification)` 及会话树通知过滤可共享 server；当前接入未提供单会话原生取消 | 已按项目和配置共享运行时；停止时有其他在途调用就只摘除本轮结果，不能宣称原生计算立即停止，也不是 Codex 五槽池 |
+| Hermes／OpenCode ACP | ACP 为 session/new、prompt、update、cancel 提供会话 ID；具体发行版是否真正并发、独立停止仍须验证 | `core/acp_reuse.py` 仍独占会话连接；handler 的队列、权限和生命周期尚未改成共享路由，不自动启用多会话共享 |
+| Cursor SDK | 当前 SDK 的同一 AsyncClient 提供多个 agent，发送／停止和关闭均有 agent/run ID | 接口有共享 bridge 的基础，当前仍一会话一租约；未做共享 bridge 的真实隔离、审批和回收验收 |
+| Claude Agent SDK／Claude CLI／Qoder Python SDK | 当前流式客户端维持会话状态，interrupt 针对客户端当前执行，不能仅凭 query 的 session_id 推断独立控制 | 仅保留同会话连续复用，不套用 Codex 五槽并发共享 |
+| Codex CLI／OpenClaw | 当前接入为一次性命令 | 每轮启动；如需共享，须先更换为有多会话路由的持久原生入口 |
+| Pydantic AI | 主引擎在 Python 进程内运行；工具可另起子进程 | 不存在需要套用该池的主引擎子进程 |
+
+ACP 多会话上下文的依据是[官方 v1 Session Setup](https://agentclientprotocol.com/protocol/v1/session-setup)，它不能代替具体 Agent 的并发验收。[Claude Python SDK](https://code.claude.com/docs/en/agent-sdk/python) 与 [Qoder Python SDK](https://docs.qoder.com/cli/sdk/references-python) 分别说明其流式客户端、响应消费及 interrupt 行为；这里对当前接入不启用共享是依据控制粒度作出的保守判断，不是断言供应商所有版本都不可能支持。
+
+自定义引擎的创建和导入提示由 `services/custom_engine_onboarding.py::SESSION_TRANSPORT_GUIDANCE` 共用。它要求区分同会话复用与跨会话共享，保留当前外层 worker 独占边界，并要求共享前验证内层原生 PID／连接、实际并发上下文、审批互不阻塞、局部停止、进程崩溃后旧审批失效与恢复后的新审批。`session_transport_reuse` 只证明当前宿主 worker 的连续复用，不能升级成原生共享认证。详细要求见[自定义引擎契约](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md#同会话复用与跨会话共享)。
 
 ### 会话系统指令追加
 

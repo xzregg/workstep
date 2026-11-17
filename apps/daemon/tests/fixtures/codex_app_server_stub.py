@@ -145,6 +145,19 @@ for raw in sys.stdin:
         notify('thread/compacted', {'threadId': params['threadId'], 'turnId': str(uuid.uuid4())})
     elif method == 'thread/inject_items':
         result(message, {})
+    elif method == 'thread/read':
+        tid = params['threadId']
+        value = thread(tid)
+        if tid in waiting:
+            value['turns'] = [turn(waiting[tid])]
+        result(message, {'thread': value})
+    elif method == 'thread/unsubscribe':
+        tid = params['threadId']
+        waiting.pop(tid, None)
+        for key, value in list(pending.items()):
+            if value[0] == tid:
+                pending.pop(key)
+        result(message, {'status': 'unsubscribed'})
     elif method == 'thread/goal/get':
         result(message, {'goal': state[params['threadId']]['goal']})
     elif method == 'thread/goal/clear':

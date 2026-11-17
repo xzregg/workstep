@@ -7,6 +7,25 @@ from services.skill_center import skill_center
 from services.customization_workspace import workspace_root, runtime_project
 
 
+SESSION_TRANSPORT_GUIDANCE = (
+    'Distinguish same-session reuse from cross-session multiplexing: supports_process_reuse only declares '
+    'same-session reuse and requires supports_resume. Reuse supported SDK/ACP/bidirectional CLI transports '
+    'through the shared 600-second idle session pool; keep one-shot CLI commands per-turn. '
+    'The custom host currently isolates one worker per native session; it does not enable the built-in '
+    'Codex five-session worker pool for arbitrary custom engines. '
+    'If upstream supports cross-session multiplexing, document its exact version and native session/run IDs, '
+    'independent context, event and approval routing, per-session interrupt/unload, and compatible '
+    'provider/credential/identity boundaries. Do not enable sharing until the host ownership/routing '
+    'implementation and native tests pass; do not invent a capability flag or a hidden shared daemon. '
+    'Test A waiting for approval while B streams and stops independently; kill the approval-owning process '
+    'and verify the old approval is invalidated, late clicks cannot authorize a restarted process, and '
+    'resumed sessions require fresh approval IDs. Test config changes, idle eviction, cancellation, '
+    'crash recovery and process-tree cleanup. Pass session_transport_reuse and dedicated lifecycle tests. '
+    'Evidence must include inner native PID/connection IDs and overlapping sessions; an outer worker PID '
+    'alone does not prove native reuse or multiplexing. '
+)
+
+
 def chat_module():
     from main import chat_session_module
     if chat_session_module is None:
@@ -39,10 +58,7 @@ async def create_onboarding(package_path: Path | None = None, title: str | None 
         'Declare supports_mcp honestly; if true, implement async configure_mcp_servers(servers, config_overrides=None), '
         'pass its returned configuration into native SDK/CLI execution and resume without dropping existing MCP servers. '
         'Never put connector credentials in prompts. Pass the real MCP tool-call and resumed-session acceptance checks. '
-        'Reuse native bidirectional SDK/ACP transports when supported: declare supports_process_reuse and supports_resume, '
-        'bind one native session to one transport, and use the shared 600-second idle session pool. '
-        'Do not claim reuse for one-shot CLI commands. Test cross-instance reuse, parallel session isolation, '
-        'approval, stop/cancel, failures, config changes, idle eviction and process-tree cleanup. '
+        + SESSION_TRANSPORT_GUIDANCE +
         'Complete real connection, method, and event contract tests; pass engine validate before register. '
         'Only after successful registration and a passed report, ask me to click Rescan on the Settings engine page; no restart is needed. '
         'Start by helping me complete the onboarding requirements.'
@@ -58,8 +74,7 @@ async def create_onboarding(package_path: Path | None = None, title: str | None 
             'Check supports_mcp and async configure_mcp_servers(servers, config_overrides=None); declared support must '
             'consume MCP configuration in execution and resume, preserve native servers, and pass real MCP tool-call acceptance. '
             'Never put connector credentials in prompts. '
-            'Check supports_process_reuse: retain supported SDK/ACP session transports through the shared 600-second idle pool, '
-            'keep one-shot CLI commands per-turn, and pass session_transport_reuse plus lifecycle/isolation tests. '
+            + SESSION_TRANSPORT_GUIDANCE +
             'Complete real connection, method, and event tests; pass engine validate before register. '
             'After registration, ask me to click Rescan on the Settings engine page; no restart is needed.'
         )

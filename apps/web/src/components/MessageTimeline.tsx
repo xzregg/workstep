@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useRef } from 'react'
 import MarkdownMessage from './MarkdownMessage'
 import {
   buildMessageTimeline,
@@ -24,15 +24,21 @@ function MessageTimeline({
   streaming = false,
   projectId,
 }: MessageTimelineProps) {
-  if (!content) return null
   const timeline = buildMessageTimeline(events)
+  const initialTextIds = useRef(new Set(timeline.filter(item => item.type === 'text').map(item => item.id)))
   const streamedText = timelineText(timeline)
   const canInterleaveText = Boolean(streamedText) && (
     content.startsWith(streamedText) || streamedText.startsWith(content)
   )
+  const initialTrailing = useRef(canInterleaveText && content.startsWith(streamedText)
+    ? content.slice(streamedText.length) : '')
 
   if (!canInterleaveText) {
-    return <MarkdownMessage content={content} streaming={streaming} projectId={projectId} />
+    // Keep the same shell and first child before/after the first text event.
+    // A live paragraph must update the empty renderer, not mount as history.
+    return <div className="llm-message-timeline">
+      <MarkdownMessage key="body" content={content} streaming={streaming} projectId={projectId} />
+    </div>
   }
 
   const textItems = timeline.filter(
@@ -43,16 +49,17 @@ function MessageTimeline({
     : ''
   return (
     <div className="llm-message-timeline">
-      {textItems.map((item) => (
+      {textItems.map((item, index) => (
         <MarkdownMessage
-          key={item.id}
+          key={index === 0 ? 'body' : item.id}
           content={item.content}
+          revealInitial={!initialTextIds.current.has(item.id)}
           streaming={streaming && item === textItems[textItems.length - 1] && !trailingContent}
           projectId={projectId}
         />
       ))}
       {trailingContent && (
-        <MarkdownMessage content={trailingContent} streaming={streaming} projectId={projectId} />
+        <MarkdownMessage key="trailing" content={trailingContent} revealInitial={!initialTrailing.current} streaming={streaming} projectId={projectId} />
       )}
     </div>
   )

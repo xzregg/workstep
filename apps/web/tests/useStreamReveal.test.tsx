@@ -302,3 +302,17 @@ test('catch-up never splits a complete emoji grapheme', async () => {
     for (const out of outputs) assert.equal(out, emoji.repeat(out.length / emoji.length))
   } finally { await h.unmount() }
 })
+
+
+test('a thousand-character live burst progresses in small slices rather than paragraph-sized jumps', () => {
+  let remaining=1000
+  let step=REVEAL_STEP_CHARS
+  let frames=0
+  while(remaining>0){
+    step=revealStepFor(remaining,step)
+    assert.ok(step<=32, `paragraph-sized jump: ${step}`)
+    remaining-=Math.min(remaining,step)
+    frames++
+  }
+  assert.ok(frames>=32 && frames*MIN_REVEAL_FRAME_MS<=3200)
+})

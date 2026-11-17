@@ -4,6 +4,10 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+- Refresh security-affected Python, web and Electron dependencies, synchronize desktop and container exports, and verify packaging glob compatibility. Raise the source-install Python minimum to 3.11.5.
+- Fix Codex shutdown callbacks, reader cleanup and approval isolation across shared sessions; keep stale approvals invalid after transport failure.
+- Bound model-authored A2UI message counts, collections, nesting, text and total nodes before schema validation; parse pretty-printed JSON once while preserving ordinary interactive content.
+
 ## 1.0.23
 
 - Add an optional digital-person workspace with profile documents, voice output, animated presence and workspace insights.

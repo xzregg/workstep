@@ -201,7 +201,7 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
 
     class Client:
         def __init__(self, **kwargs):
-            self._client=SimpleNamespace(request=self.request)
+            self._client=SimpleNamespace(request=self.request, _sync=SimpleNamespace(_approval_handler=None))
 
         async def request(self, method, params, **kwargs):
             captured.setdefault("history_updates",[]).append((method,params))
@@ -246,7 +246,6 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
     monkeypatch.setitem(sys.modules,"openai_codex.generated.v2_all",generated)
     engine = CodexSDKEngine()
     monkeypatch.setattr(engine, "_sdk_available", lambda: True)
-    monkeypatch.setattr(engine, "_install_approval_handler", lambda *args: None)
     monkeypatch.setattr(engine, "project_skills", lambda _cwd: [])
     monkeypatch.setattr(engine, "resolve_provider_runtime", lambda **kwargs: ProviderRuntimeConfig())
     monkeypatch.setattr("services.skill_runtime.prepare_codex_skills", lambda _skills: ([], "skills=[]"))
