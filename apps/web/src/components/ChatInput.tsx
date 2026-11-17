@@ -1,3 +1,4 @@
+import { PERMISSION_FIELD, PERMISSION_BACK, nativePermissionMenu } from '../utils/enginePermissions'
 import { useChatConnectors } from './connectors/useChatConnectors'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import ChatInputCamera from './ChatInputCamera'
@@ -354,6 +355,7 @@ function ChatInput({
   const [statusOpen, setStatusOpen] = useState(false)
   const isCompact = useCompactLayout()
   const permissionMenu = useFloatingMenu()
+  const [permissionField, setPermissionField] = useState<string | null>(null)
   const permissionButtonRef = useRef<HTMLButtonElement>(null)
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [previewImage, setPreviewImage] = useState<MarkdownImageSegment | null>(null)
@@ -439,6 +441,7 @@ function ChatInput({
       : t('coord.thinkingEffortDefault')
 
   const effectiveEngine = skillEngine || config?.engine || config?.defaultEngine || ''
+  useEffect(() => { setPermissionField(null) }, [effectiveEngine])
   const declaredPermissionModes = config?.engines.find(engine => engine.id === effectiveEngine)?.permission_modes
   const allPermissionOptions = [
     { value: '', label: t('chatSession.permissionDefault') },
@@ -448,12 +451,21 @@ function ChatInput({
     { value: 'auto', label: t('chatSession.permissionAuto') },
     { value: 'ask', label: t('chatSession.permissionAsk') },
   ]
-  const permissionOptions = allPermissionOptions.filter(option =>
+  const legacyPermissionOptions = allPermissionOptions.filter(option =>
     !option.value || declaredPermissionModes === undefined || declaredPermissionModes.includes(option.value),
   )
-  const permissionLabel =
-    allPermissionOptions.find((option) => option.value === permission?.value)?.label
+  const nativeFields = config?.engines.find(engine => engine.id === effectiveEngine)?.permission_config_options
+  const nativeMenu = nativeFields === undefined ? null : nativePermissionMenu(
+    effectiveEngine, nativeFields, permission?.value ?? '', t('enginePermission.inherit'), permissionField, t,
+  )
+  const permissionOptions = nativeMenu?.options ?? legacyPermissionOptions
+  const permissionLabel = (nativeMenu && permission?.value && !permission.value.startsWith('native-permissions:v1:')
+    ? allPermissionOptions.find(option => option.value === permission.value)?.label
+    : nativeMenu?.label) ?? (
+    allPermissionOptions.find(option => option.value === permission?.value)?.label
     ?? t('chatSession.permissionDefault')
+  )
+  const showPermissions = nativeFields === undefined || nativeFields.length > 0 || Boolean(permission?.value)
   const planActive = plan?.active ?? false
   const inputItems = availableCommands === undefined
     ? inspectedItems
@@ -1329,7 +1341,11 @@ function ChatInput({
                       onStepFieldChange={config.onStepFieldChange}
                       requireCoordinator={config.requireCoordinator}
                       allowDefault={config.allowDefault}
-                      onEngineChange={(id) => { setConfigOpen(config.onEngineChange(id) !== false) }}
+                      onEngineChange={(id) => {
+                        const accepted = config.onEngineChange(id) !== false
+                        if (accepted && id !== effectiveEngine) permission?.onChange('')
+                        setConfigOpen(accepted)
+                      }}
                       onProviderChange={(id) => { setConfigOpen((config.onProviderChange?.(id) ?? true) !== false) }}
                       onModelChange={config.onModelChange}
                       onFastModelChange={config.onFastModelChange}
@@ -1340,7 +1356,7 @@ function ChatInput({
               )}
             </div>
           )}
-          {permission && (
+          {permission && showPermissions && (
             <>
               <button
                 ref={permissionButtonRef}
@@ -1350,7 +1366,7 @@ function ChatInput({
                 data-open={permissionMenu.anchor != null}
                 data-selected={Boolean(permission.value)}
                 disabled={permission.disabled}
-                onClick={() => (permissionMenu.anchor ? permissionMenu.close() : permissionMenu.openFrom(permissionButtonRef.current))}
+                onClick={() => { setPermissionField(null); permissionMenu.anchor ? permissionMenu.close() : permissionMenu.openFrom(permissionButtonRef.current) }}
                 aria-expanded={permissionMenu.anchor != null}
                 title={t('chatSession.permissionLabel')}
               >
@@ -1364,13 +1380,18 @@ function ChatInput({
                 <FloatingMenu
                   anchor={permissionMenu.anchor}
                   triggerRef={permissionButtonRef}
-                  options={permissionOptions.map((option) => ({ value: option.value, label: option.label }))}
+                  options={permissionOptions}
                   value={permission.value}
                   icon="shield"
                   side="top"
                   width={216}
-                  title={t('chatSession.permissionTitle')}
-                  onSelect={(mode) => { permission.onChange(mode) }}
+                  title={permissionField ? nativeMenu?.title : t('chatSession.permissionTitle')}
+                  searchable={false}
+                  onSelect={(mode) => {
+                    if (mode.startsWith(PERMISSION_FIELD)) setPermissionField(mode.slice(PERMISSION_FIELD.length))
+                    else if (mode === PERMISSION_BACK) setPermissionField(null)
+                    else permission.onChange(mode)
+                  }}
                   onClose={permissionMenu.close}
                 />
               )}

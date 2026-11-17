@@ -238,6 +238,7 @@ def get_available_engines() -> list[dict]:
                 "supports_sessions": caps.supports_sessions,
                 "supports_tool_approval": caps.supports_tool_approval,
                 "permission_modes": list(instance.permission_modes()),
+                "permission_config_options": instance.permission_config_options(),
                 "supports_service_tier": instance.supports_service_tier,
                 "supports_workstep_tools": caps.supports_workstep_tools,
                 "supports_mcp": caps.supports_mcp,
@@ -261,6 +262,7 @@ def get_available_engines() -> list[dict]:
                 "version": None,
                 "mode": None,
                 "permission_modes": list(target.permission_modes()) if target else [],
+                "permission_config_options": target().permission_config_options() if target else [],
                 "supports_service_tier": bool(target and target().supports_service_tier),
                 "config": _engine_config_payload(target) if target else None,
                 "supports_provider": bool(

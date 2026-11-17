@@ -86,7 +86,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         },
         plan_overrides={'permission_mode': 'plan'},
         consent_key='permission_mode',
-        consent_values={'plan': False, 'auto': True, 'bypassPermissions': True, 'deny': False, 'deny_all': False, 'read-only': False},
+        consent_values={'plan': False, 'auto': None, 'bypassPermissions': True, 'deny': False, 'deny_all': False, 'read-only': False},
     )
     supports_mcp = True
     SYSTEM_PROMPT_MODE = "system"
@@ -210,6 +210,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
             ),
             EngineConfigField(
                 key="permission_mode",
+                category="mode",
                 label="权限模式",
                 type="select",
                 options=tuple(

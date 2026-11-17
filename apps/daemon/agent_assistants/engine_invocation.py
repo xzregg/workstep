@@ -64,9 +64,10 @@ async def run_engine_turn(
     engine = await asyncio.to_thread(engine_factory, engine_id)
     if engine is None:
         raise RuntimeError(f"{error_prefix} is unavailable: {engine_id}")
-    permission_overrides = engine.permission_config_overrides(permission_mode) if permission_mode else {}
-    if permission_mode:
-        await engine.set_permission_mode(permission_mode)
+    permission_overrides = await asyncio.to_thread(engine.permission_config_overrides, permission_mode) if permission_mode else {}
+    setter = getattr(engine, "set_permission_mode", None)
+    if callable(setter):
+        await setter(permission_mode or "")
     supports_native_plan_mode = bool(
         getattr(getattr(engine, "capabilities", None), "supports_plan_mode", False)
     )

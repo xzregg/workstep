@@ -32,13 +32,13 @@ CODEX_APPROVAL_LABELS = {
     "never": "从不请求审批",
     "on-failure": "执行失败时审批",
     "on-request": "按需审批",
-    "full-auto": "全自动",
+    "full-auto": "自动审查（兼容旧配置）",
 }
 
 CODEX_SDK_APPROVAL_MODES = {"auto_review", "deny_all"}
 CODEX_SDK_APPROVAL_LABELS = {
-    "auto_review": "自动审批",
-    "deny_all": "拒绝所有工具调用",
+    "auto_review": "自动审查（需要时请求批准）",
+    "deny_all": "禁止提权审批（never）",
 }
 
 

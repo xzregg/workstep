@@ -13,7 +13,7 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
  * 两次揭示帧之间的最小间隔。
  *
  * Markdown只在已揭示前缀改变时解析，90ms间隔限制全文重解析频率。
- * 字符之间的平滑过渡由CSS完成，不把Markdown解析提高到绘制帧率。
+ * 字符由叶节点按绘制帧追加，不把Markdown解析提高到绘制帧率。
  */
 export const MIN_REVEAL_FRAME_MS = 90
 
@@ -21,8 +21,9 @@ export const MIN_REVEAL_FRAME_MS = 90
  * 常规吐字速度（字符/秒）。正文与思考块共用同一个 hook，节奏完全一致：
  * token 平稳到达时按这个速度逐帧浮现。
  */
-export const REVEAL_CHARS_PER_SECOND = 65
+export const REVEAL_CHARS_PER_SECOND = 90
 const MAX_SMOOTH_STEP_CHARS = 32
+const LIVE_CATCH_UP_DURATION_MS = 900
 const SMOOTH_BACKLOG_LIMIT = 2048
 
 /**
@@ -34,7 +35,7 @@ export const MAX_REVEAL_DURATION_MS = 450
 /** 常规节奏下每帧推进的字符数。 */
 export const REVEAL_STEP_CHARS = Math.max(
   1,
-  Math.ceil((REVEAL_CHARS_PER_SECOND * MIN_REVEAL_FRAME_MS) / 1000),
+  Math.round((REVEAL_CHARS_PER_SECOND * MIN_REVEAL_FRAME_MS) / 1000),
 )
 
 /** 上限时长内可用的帧数；积压量按它摊平，得到动态步长。 */
@@ -43,23 +44,15 @@ export const MAX_CATCH_UP_FRAMES = Math.max(
   Math.ceil(MAX_REVEAL_DURATION_MS / MIN_REVEAL_FRAME_MS),
 )
 
-/**
- * 计算本帧应推进的字符数。
- *
- * - 积压少：维持常规节奏（REVEAL_STEP_CHARS），保持平稳吐字观感
- * - 普通积压：自适应提速，但每次不超过32字；超大批量积压使用快速追平
- * - 只增不减：调用方把结果存回 currentStep，使一批积压在排空前保持速度，
- *   否则步长会随 remaining 缩小而变小，尾巴被无限拉长
- *
- * 超大批量积压按预算追平；普通实时千字回复允许约3秒连续展开，
- * 而不是为了追平预算一次跳出整段。
- */
+/** Keep ordinary output slow, accelerate live backlogs in bounded slices,
+ * and drain promptly once the engine has finished. */
 export function revealStepFor(
   remaining: number,
   currentStep: number = REVEAL_STEP_CHARS,
   options: SkinEffects = {},
+  streaming = true,
 ): number {
-  const base = Math.max(1, Math.ceil(((options.charsPerSecond ?? REVEAL_CHARS_PER_SECOND) * MIN_REVEAL_FRAME_MS) / 1000))
+  const base = Math.max(1, Math.round(((options.charsPerSecond ?? REVEAL_CHARS_PER_SECOND) * MIN_REVEAL_FRAME_MS) / 1000))
   const frames = Math.max(1, Math.ceil((options.maxDurationMs ?? MAX_REVEAL_DURATION_MS) / MIN_REVEAL_FRAME_MS))
   if (remaining <= 0) return base
   const step = Math.max(
@@ -67,11 +60,11 @@ export function revealStepFor(
     base,
     Math.ceil(remaining / frames),
   )
-  // Do not turn a normal live reply into paragraph-sized jumps just to meet
-  // the bulk catch-up budget. Preserve explicit fast skins and bulk drains.
-  return remaining <= SMOOTH_BACKLOG_LIMIT && currentStep <= MAX_SMOOTH_STEP_CHARS && base <= MAX_SMOOTH_STEP_CHARS
-    ? Math.min(step, MAX_SMOOTH_STEP_CHARS)
-    : step
+  if (streaming && remaining <= SMOOTH_BACKLOG_LIMIT && currentStep <= MAX_SMOOTH_STEP_CHARS && base <= MAX_SMOOTH_STEP_CHARS) {
+    const liveFrames = Math.ceil(Math.max(LIVE_CATCH_UP_DURATION_MS, options.maxDurationMs ?? 0) / MIN_REVEAL_FRAME_MS)
+    return Math.min(MAX_SMOOTH_STEP_CHARS, Math.max(currentStep, base, Math.ceil(remaining / liveFrames)))
+  }
+  return step
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -94,7 +87,7 @@ function revealBoundary(text: string, start: number, step: number): number {
  * - 首次挂载时已有正文（包括仍标记 running 的恢复消息）：恒等直通，不复现动画
  * - frozen（选区冻结）结束：立即全量直通
  * - content 不是已揭示前缀的延伸（内容被替换而非追加）：重置并全额直通
- * - 一旦开始揭示就按固定速度排空，streaming 结束也不跳满；
+ * - 实时积压自适应加速；引擎结束后在追平预算内收尾，不瞬间跳满；
  *   揭示只前进不回放，收敛后停表
  */
 export default function useStreamReveal(
@@ -119,6 +112,8 @@ export default function useStreamReveal(
   // 流式期间新内容不断追加，必须读最新值，否则揭示会停在旧长度上不再前进。
   const contentRef = useRef(content)
   contentRef.current = content
+  const streamingRef = useRef(streaming)
+  streamingRef.current = streaming
   const prevFrozenRef = useRef(frozen)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 当前每帧步长。常规时等于 REVEAL_STEP_CHARS；积压过多时动态升速，
@@ -168,8 +163,7 @@ export default function useStreamReveal(
     }
 
     // 还有未揭示内容：按动态速度推进（常规节奏，积压时自动提速）。
-    // 这里刻意不看 streaming —— 消息结束后仍把剩余内容排空，
-    // 否则一次性到达的长正文会"瞬间铺满"，失去吐字感。
+    // 结束后仍平滑排空，但使用快速收尾预算，避免引擎完成后长时间追字。
     if (shownRef.current.length < content.length && timerRef.current == null) {
       const tick = () => {
         timerRef.current = null
@@ -180,7 +174,7 @@ export default function useStreamReveal(
           return
         }
         // 普通实时积压按小步推进，超大批量恢复才使用快速追平。
-        stepRef.current = revealStepFor(remaining, stepRef.current, settings.current)
+        stepRef.current = revealStepFor(remaining, stepRef.current, settings.current, streamingRef.current)
         const step = Math.min(remaining, stepRef.current)
         resetTo(target.slice(0, revealBoundary(target, shownRef.current.length, step)))
         if (contentRef.current.length - shownRef.current.length > 0) {
@@ -189,7 +183,10 @@ export default function useStreamReveal(
           stepRef.current = revealStepFor(0, 0, settings.current)
         }
       }
-      timerRef.current = setTimeout(tick, MIN_REVEAL_FRAME_MS)
+      // The first received text should reach the leaf immediately; later
+      // Markdown parses retain the 90ms throttle. No character-count gate.
+      if (shownRef.current.length === 0) tick()
+      else timerRef.current = setTimeout(tick, MIN_REVEAL_FRAME_MS)
     }
   }, [content, streaming, frozen, enabled])
 

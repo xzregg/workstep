@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Draf tugas batch dan waktu yang dijadwalkan masing-masing",
-          "caption": "Tangkapan layar sebenarnya tertunda: draf batch dan waktu individual. Draf tugas tunggal yang lama tidak boleh menggantikannya."
+          "alt": "Siapkan banyak tugas dengan asisten tugas",
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap. Permintaan belum dikirim; belum ada hasil AI yang dihasilkan."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Daftar langkah setelah mengetik @ dalam detail tugas dan penerima terpilih",
-          "caption": "Tangkapan layar daftar @langkah dan draf setelah pemilihan di proyek demo tetap masih diperlukan. Memilih bukan berarti pesan telah dikirim atau langkah telah dijalankan."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "Pesan tertunda selama balasan koordinator",
-          "caption": "Tangkapan layar sebenarnya tertunda: Koordinator penerima, pesan tambahan selama eksekusi, dan antrean lanjutan."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap. Antrean tambahan memakai mesin simulasi luring dengan balasan tetap, bukan hasil model nyata."
         }
       },
       {
@@ -757,7 +757,7 @@
           "Dalam riwayat perubahan, periksa perbedaan, batalkan perubahan, atau bersihkan riwayat. Setelah terputus, periksa salinan yang disimpan lalu lanjutkan penyimpanan atau buang salinan. Berkas asli yang berkonflik tidak ditimpa."
         ],
         "tips": [
-          "Penyuntingan langsung mendukung HTML statis dan publikasi perubahan HTML/CSS/JS yang sudah ada, tanpa menambah atau menghapus seluruh berkas. Untuk halaman dinamis, gunakan pemeriksaan baca-saja dan komentar pada bagian berikut. Gambar lama belum menunjukkan gagang pemindah dan pemeriksaan dinamis baru."
+          "Penyuntingan langsung mendukung HTML statis dan publikasi perubahan HTML/CSS/JS yang sudah ada, tanpa menambah atau menghapus seluruh berkas. Untuk halaman dinamis, gunakan pemeriksaan baca-saja dan komentar pada bagian berikut."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Properti baca-saja, komentar elemen, dan perpindahan berkas prototipe dinamis",
-          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap. Node dinamis dipilih hanya untuk pemeriksaan baca-saja; komentar belum dikirim."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Editor templat format artefak untuk alur dan tugas",
-          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Mengisi draf pesan dengan suara",
-          "caption": "Audio dikenali di host terhubung dan tidak disimpan. Izinkan mikrofon melalui HTTPS atau alamat lokal. Jika gagal, periksa izin situs dan sistem; mulai ulang backend lama. Teks yang sudah dikenali dapat dipertahankan secara eksplisit."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Panel percakapan desktop di seluruh proyek dan menu pengaturan",
-          "caption": "Tangkapan layar sebenarnya dari proyek demo tetap tertunda: menu jendela percakapan, beberapa panel, dan pemisah yang dapat diseret."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Mengatur dan menggunakan konektor",
-          "caption": "Tangkapan layar nyata belum tersedia: pengaturan, pengujian, dan pilihan percakapan."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Menu grup percakapan di bilah samping dan pratinjau arsip baca-saja",
-          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Jadwalkan pesan di percakapan yang ada",
-          "caption": "Backend harus aktif. Percakapan sibuk menunggu; balasan kanal kembali ke kanal asal. Menghapus atau mengarsipkan percakapan menghapus aturannya; memulihkan tidak mengembalikannya. Grup terkait tugas memakai koordinasi tugas."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Jalankan sekarang dan periksa hasil",
-          "caption": "Buka JSON tugas yang dihasilkan dalam riwayat dan bandingkan draf dengan tugas yang dibuat. Riwayat lama atau kegagalan sebelum pembuatan mungkin tidak memiliki JSON. Periksa tugas yang sudah dibuat sebelum mencoba ulang kegagalan sebagian."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Pratinjau pembuatan batch terjadwal dan catatan pelaksanaan beberapa tugas",
-          "caption": "Tangkapan layar sebenarnya tertunda: draf batch dan tugas yang sudah dibuat setelah kegagalan sebagian."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap. Permintaan belum dikirim; belum ada hasil AI yang dihasilkan."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Sumber identitas Feishu atau Lark dan pengaturan sinkronisasi direktori",
-          "caption": "Tangkapan layar konfigurasi bebas kredensial dari Gateway yang terisolasi masih tertunda."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Daftar panggilan balik pihak ketiga yang diizinkan di pengaturan Gateway",
-          "caption": "Tangkapan layar Gateway demonstrasi nyata yang terisolasi tertunda; jangan gunakan akun sehari-hari atau pengaturan panggilan balik yang sebenarnya."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Ganti perangkat dan periksa notifikasi agregat",
+        "title": "Beralih perangkat dan memulihkan halaman",
         "steps": [
           "Masuk ke ruang kerja perangkat resmi di platform, lalu gunakan tab perangkat atas untuk beralih ke perangkat online lainnya.",
           "Setiap akun dan perangkat mengingat halaman proyek, tugas, atau sesi terakhir di browser ini. Pengembalian tetap memeriksa otorisasi dan tidak melewati target yang tidak dapat diakses.",
           "Proyek jarak jauh hanya dimuat jika dipilih. Setelah pemuatan gagal atau terputus, klik lagi proyek saat ini untuk menyegarkan secara manual; perangkat tidak terus-menerus disurvei di latar belakang.",
-          "Buka Pusat pemberitahuan untuk ringkasan penyelesaian atau kegagalan dari perangkat resmi. Klik untuk membuka tugas atau sesi. Pesan langsung ruang kerja masih menjadi milik perangkat saat ini.",
+          "Setelah beralih, periksa nama perangkat dan halaman proyek, tugas atau percakapan. Pesan hanya milik perangkat saat ini; pastikan perangkat tujuan sebelum mengirim.",
           "Gunakan platform Return to Gateway untuk memilih perangkat lain. Panggilan balik otorisasi browser yang kedaluwarsa akan memulai ulang login; setelah membatalkan otorisasi desktop, coba lagi secara manual atau kembali ke ruang kerja lokal."
         ],
         "tips": [
           "Ruang kerja gateway mencoba ulang koneksi secara otomatis hingga 3 kali setelah terputus. Jika tetap gagal, dialog muncul dan koneksi waktu nyata, pemeriksaan sesi serta penyegaran daftar perangkat dijeda. Periksa jaringan, gateway dan perangkat, lalu pilih sambungkan kembali. Menutup atau menunda dialog, kembali ke jendela atau pulihnya jaringan tidak melanjutkan percobaan; tombol tetap tersedia di halaman. Penghitung direset setelah koneksi stabil selama 30 detik. Otorisasi kedaluwarsa mengharuskan masuk kembali melalui gateway. Koneksi lokal tanpa gateway tidak terpengaruh.",
           "Memori halaman bersifat lokal browser, tidak disinkronkan antar browser. Akses berfungsi tanpa penyimpanan browser namun lokasi tidak dipertahankan.",
           "Sambungkan kembali seperti yang diminta untuk perangkat offline, otorisasi dicabut, atau kegagalan jaringan. Lokasi yang disimpan tidak menggantikan izin.",
-          "Tangkapan layar tab perangkat dan pemberitahuan agregat yang sebenarnya dari proyek demonstrasi tetap masih menunggu keputusan."
+          "Tab perangkat hanya mengubah tujuan akses; tidak menyalin pesan percakapan atau tugas ke perangkat lain."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Tab perangkat dan pusat notifikasi agregat",
-          "caption": "Tangkapan layar sebenarnya tertunda: peralihan perangkat, pemulihan lokasi, dan navigasi notifikasi; belum tertangkap."
+          "alt": "Tab perangkat gateway dan pemulihan halaman ruang kerja",
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap. Dua perangkat simulasi melalui protokol nyata berbagi backend demo; bukan dua mesin fisik. Menampilkan perpindahan perangkat dan pemulihan halaman."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Gunakan direktori bot",
         "steps": [
           "Simpan bot DingTalk, WeCom atau Feishu, lalu aktifkan pembacaan di Edit → Direktori. Berikan izin membaca anggota; WeCom juga memerlukan ID perusahaan, Agent ID dan Secret. Simpan, cari cache, dan segarkan setelah perubahan staf.",
-          "Direktori hanya di memori dan dimuat ulang saat mulai ulang. Dengan CLI atau asisten, kirim melalui nama persis yang unik atau ID kontak; pilih nama ganda secara eksplisit. Penerima WeCom harus sudah berinteraksi dengan bot yang sama dan ID pengguna cocok; jika tidak, gunakan percakapan kanal yang ada."
+          "Direktori disimpan dalam cache pada host WorkStep saat ini dan dapat langsung digunakan setelah dimulai ulang; perbarui secara manual saat ada perubahan personel. Kirim melalui CLI atau asisten menggunakan nama yang tepat dan unik atau ID kontak; pilih orang secara tegas jika ada nama yang sama. Anggota WeCom harus terlebih dahulu berinteraksi dengan bot yang sama dan ID penggunanya harus cocok; jika tidak, gunakan percakapan kanal yang sudah ada."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Gunakan direktori bot",
-          "caption": "Direktori hanya di memori dan dimuat ulang saat mulai ulang. Dengan CLI atau asisten, kirim melalui nama persis yang unik atau ID kontak; pilih nama ganda secara eksplisit. Penerima WeCom harus sudah berinteraksi dengan bot yang sama dan ID pengguna cocok; jika tidak, gunakan percakapan kanal yang ada."
+          "alt": "Pengaturan direktori bot dan informasi cache lokal",
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Pemilih saluran dan editor bot terpisah",
-          "caption": "Tangkapan layar nyata tanpa kredensial dari tata letak multisaluran baru sedang menunggu keputusan. Bentuk lama tidak mewakilinya."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Notifikasi Feishu atau Lark URL, tanda tangan dan template",
-          "caption": "Konfigurasi bebas kredensial dan tangkapan layar pratinjau kartu masih tertunda; pengiriman sebenarnya tidak diklaim."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Pemilihan dan konfirmasi proyek dalam panduan sandbox lima langkah",
-          "caption": "Periksa penyimpanan, asosiasi proyek, dan migrasi konfigurasi."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap. Hanya langkah pertama sandbox ditampilkan; penyiapan lima langkah belum selesai."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Versi desktop saat ini dan entri pemeriksaan pembaruan di pengaturan sistem",
-          "caption": "Tangkapan layar nyata pembaruan otomatis, kemajuan unduhan dan unduhan manual GitHub masih diperlukan."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap. Antarmuka shell pengembangan nyata, bukan uji penerimaan peningkatan paket resmi terpasang."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Mode model keputusan, sumber daya, uji/simpan, dan proksi opsional",
-          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Tanda tanya judul pengaturan dan panduan multibahasa dalam aplikasi",
-          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Panduan avatar digital, dokumen persona, dan percakapan utama",
-          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Pencarian memori global, kategori, dan halaman sumber asli",
-          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Pengaturan pemikiran proaktif dan catatan aktivitas dengan halaman terpisah",
-          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Ikatan kanal persona digital, pemberitahuan proaktif, dan status pengiriman",
-          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Pilihan output suara, pratinjau, dan kendali mendengarkan eksplisit",
-          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Pendaftaran kenalan dengan persetujuan, pengambilan tiga arah, dan pengaturan pengenalan",
-          "caption": "Tangkapan layar nyata dari lingkungan demo tetap di port 8777 masih diperlukan; contoh komponen bukan penggantinya."
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Akses integrasi kustom dan impor mesin dalam pengaturan mesin eksekusi",
-          "caption": "Tangkapan layar akses integrasi dan draf yang belum dikirim dari lingkungan demo tetap masih perlu ditambahkan."
+          "alt": "Membuat mesin melalui percakapan",
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap. Percakapan integrasi baru yang benar-benar dibuat; draf panduan belum dikirim."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Percakapan integrasi dan draf yang dibuat setelah impor paket mesin",
-          "caption": "Tangkapan layar impor ZIP dan draf yang menunggu konfigurasi dari lingkungan demo tetap masih diperlukan. Impor tidak digambarkan sebagai registrasi yang berhasil."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap. Memakai paket contoh luring nyata; ini bukan uji penerimaan integrasi model nyata."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Kontrol ekspor, penonaktifan, dan pemulihan versi mesin kustom terdaftar",
-          "caption": "Tangkapan layar kartu mesin terdaftar dari lingkungan demo tetap masih perlu ditambahkan; kartu mesin bawaan tidak digunakan sebagai pengganti."
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap. Memakai paket contoh luring nyata; ini bukan uji penerimaan integrasi model nyata."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Pemilih bahasa bawaan di aplikasi dan situs web",
-          "caption": "Tangkapan layar sebenarnya dari pilihan bahasa yang ditambahkan masih menunggu keputusan."
+          "alt": "Pilih bahasa bawaan",
+          "caption": "Pengaturan atau pintu operasi berbahasa Tionghoa yang nyata di lingkungan demo tetap."
         }
       },
       {

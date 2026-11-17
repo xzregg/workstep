@@ -3637,22 +3637,9 @@ details[open] > summary > .process-trace-chevron {
   background: var(--border);
 }
 
-.stream-reveal-word { white-space: nowrap; }
-.stream-reveal-char {
-  animation: stream-reveal-bloom 320ms linear both;
-}
-
-@keyframes stream-reveal-bloom {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .stream-reveal-char { animation: none; }
-}
-
-/* 流式光标：原来的脉冲闪烁样式 */
-.markdown-stream-cursor {
+/* Keep the caret inside the final text block without changing its layout. */
+.markdown-stream-cursor,
+.markdown-message.is-streaming > :is(p, h1, h2, h3, h4):nth-last-child(2)::after {
   display: inline-block;
   width: 3px;
   height: 1.18em;
@@ -3662,15 +3649,12 @@ details[open] > summary > .process-trace-chevron {
   animation: markdown-cursor-pulse 620ms ease-in-out infinite;
 }
 
-/* Streaming: keep the caret attached to the last text block (paragraph/heading)
-   so it sits right after the last character instead of on a new line.
-   nth-last-child(2) = the block directly before the caret span. */
-.markdown-message.is-streaming > p:nth-last-child(2),
-.markdown-message.is-streaming > h1:nth-last-child(2),
-.markdown-message.is-streaming > h2:nth-last-child(2),
-.markdown-message.is-streaming > h3:nth-last-child(2),
-.markdown-message.is-streaming > h4:nth-last-child(2) {
-  display: inline;
+.markdown-message.is-streaming > :is(p, h1, h2, h3, h4):nth-last-child(2)::after {
+  content: '';
+}
+
+.markdown-message.is-streaming:has(> :is(p, h1, h2, h3, h4):nth-last-child(2)) > .markdown-stream-cursor {
+  display: none;
 }
 
 @keyframes markdown-cursor-pulse {
@@ -3720,7 +3704,8 @@ details[open] > summary > .process-trace-chevron {
     background: none;
   }
 
-  .markdown-stream-cursor {
+  .markdown-stream-cursor,
+  .markdown-message.is-streaming > :is(p, h1, h2, h3, h4):nth-last-child(2)::after {
     animation: none;
     opacity: 1;
   }
@@ -6421,3 +6406,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   overflow-wrap: anywhere;
   max-width: 100%;
 }
+
+/* Streaming height follows the selected tight-follow prototype (45ms). */
+.smooth-message-height { min-width: 0; overflow-anchor: none; }
+.smooth-message-height.is-live { overflow: clip; }
+.smooth-message-height-content { display: flow-root; min-width: 0; }

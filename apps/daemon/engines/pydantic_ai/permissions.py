@@ -28,6 +28,15 @@ class ToolPermissions(AbstractCapability):
             return await handler(args)
         if self.engine.tools_read_only():
             return "[Permission denied] read-only mode does not permit this tool."
+        native = self.engine.native_permission_mode()
+        if native is not None and name != "workstep_call":
+            return await handler(args)
+        if native is not None and native != "full":
+            allowed = await self.engine._request_permission(
+                self.on_event, tool_name=name, title=name, kind="other",
+                tool_input=call.args_as_dict(),
+            )
+            return await handler(args) if allowed else "[Permission denied] The user denied this tool call."
         if self.engine.runtime_permission_mode() == "ask":
             allowed = await self.engine._request_permission(
                 self.on_event, tool_name=name, title=name,

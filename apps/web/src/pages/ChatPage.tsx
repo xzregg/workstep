@@ -136,7 +136,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const {
-    config: engineConfig, pendingHandoff, loadedEndpoint, saving: engineConfigSaving, error: engineConfigError,
+    config: engineConfig, permissionMode, setPermissionMode, pendingHandoff, loadedEndpoint, saving: engineConfigSaving, error: engineConfigError,
     setDefaults, restoreSession, applyHandoff,
     chooseEngine, chooseProvider, setModel: setSelectedModel,
     setFastModel: setSelectedFastModel, setVisionModel: setSelectedVisionModel,
@@ -152,7 +152,6 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   const selectedFastModel = engineConfig.fastModel
   const selectedVisionModel = engineConfig.visionModel
   const selectedThinkingEffort = engineConfig.thinkingEffort
-  const [permissionMode, setPermissionMode] = useState('')
   const [planMode, setPlanMode] = useState(false)
   const [goalMode, setGoalMode] = useState(false)
   const [configReopenSignal, setConfigReopenSignal] = useState(0)
@@ -351,7 +350,6 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
         })
       }
       setSessionTitle(detail.title || '')
-      setPermissionMode(detail.permission_mode || '')
       restoreSession(detail)
     },
     onMissing: () => {
@@ -375,7 +373,8 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     if (!sessionId || !activeProject?.id) return
     setSendError('')
     try {
-      await chatSessionApi.updatePermissionMode(sessionId, activeProject.id, mode)
+      const updated = await chatSessionApi.updatePermissionMode(sessionId, activeProject.id, mode)
+      restoreSession(updated)
     } catch (reason) {
       setPermissionMode(previousMode)
       setSendError(
@@ -384,7 +383,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
           : t('chatSession.permissionUpdateFailed'),
       )
     }
-  }, [activeProject?.id, permissionMode, sessionId, t])
+  }, [activeProject?.id, permissionMode, sessionId, t, restoreSession])
 
   const send = useCallback(async (contentOverride?: string, prepared = false, facePersonIds?:string[]) => {
     if (workflowSkill.loading || handingOff || engineConfigSaving || (sessionParam && !historyReady)) return false
@@ -635,9 +634,8 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
             const targetEngine = engineId || defaultEngine
             if (targetEngine === effectiveEngine) return
             if (requestEngineHandoff(targetEngine)) {
-              // 移动端：交接确认弹层弹出时收起配置菜单，避免双层叠放互相遮挡。
-              if (compact) return false
-              return
+              // The transition response owns engine and permission together; opening a dialog must not reset either.
+              return false
             }
             chooseEngine(engineId)
           },

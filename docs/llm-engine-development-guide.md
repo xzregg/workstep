@@ -459,9 +459,13 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 
 ### 4.8 引擎自行声明的权限与输入策略
 
-`engines/core/permissions.py::EnginePermissionPolicy` 只定义统一模式和可序列化声明，不维护引擎 ID 分支。各适配器在自己的模块声明 `PERMISSION_POLICY`：权限模式对应的原生配置 `overrides`、计划限制 `plan_overrides`、默认审批字段 `consent_key/consent_values/consent_default`。`BaseLLMEngine.permission_config_overrides/plan_config_overrides/configured_permission_decision` 读取该声明；助手 `run_engine_turn` 依次合并调用配置、显式权限、计划限制，并仍通过 `set_permission_mode` 传递运行态控制。未知显式模式在启动 worker 前失败，不静默沿用默认权限。
+权限选择由引擎拥有。`EngineConfigField(category="mode")` 声明原生权限配置，支持 select/checkbox 及多个字段（例如沙箱与审批策略分开）。`BaseLLMEngine.permission_config_options()` 输出 ACP configOptions 形状的 `id/name/description/type/currentValue/options`，目录 API 的 `permission_config_options` 仅公开非敏感权限字段；Web 依据声明展示，不按引擎 ID 或固定五档推断。没有声明时只使用引擎默认，不补造模式。
 
-`CustomEngineBase` 使用相同声明；`custom_worker.describe` 验证并序列化策略，`CustomEngineProxy` 从安装元数据重建。新接入引擎不修改中央映射表；旧元数据未声明原生模式时，仅保留公共审批桥的 auto/ask，更新策略后须重新验收注册。`get_available_engines` 输出 `permission_modes`，聊天输入框按实际选中或默认引擎筛选选项，保存过的未支持值仍显示原标签，不能伪装成默认。声明只是 SDK 参数契约，适配器必须实现实际权限限制及运行中切换；不能把声明本身当作操作系统沙箱或已验证的只读保证。
+空选择表示跟随已保存的引擎配置，没有保存时用引擎原生默认；新步骤／审核配置不预填权限快照，已有明确覆盖继续保留；明确的原生 `default` 值仍是覆盖。会话选择复用权限文本字段，使用 `native-permissions:v1:` 加 `{"engine":"引擎ID","values":{"权限字段":"原生值"}}`，绑定引擎、校验字段与枚举，不能注入认证、供应商等其他配置。`run_engine_turn` 合并配置、明确覆盖、计划限制；每轮也传递空选择以清除复用实例的旧策略。切换引擎、跨引擎接力／分叉清除旧覆盖；同引擎可继承。运行中的原生命令不能追溯撤销；不支持热切换的适配器在下一轮应用配置。
+
+`EnginePermissionPolicy` 保留旧五档的适配器映射和计划／审批声明，只用于历史读取兼容；新菜单不生成旧五档。旧 Pydantic `read-only` 仍硬拒绝写入与 Shell，不能解释成官方可批准写入。原生 `auto` 表示引擎自行判断；引擎升级为人工审批的请求不能被公共 ACP 层再次按名称自动批准。明确拒绝保持优先，提问表单始终由用户回答。
+
+自定义引擎的 schema/category 经 `custom_worker.describe` 和安装元数据传递，proxy 重建同一声明。旧元数据没有 category 时继续可发现、选择和运行；新选项在重新 inspect/validate/register 后出现。新进程不得因未安装可选 SDK 而无法读取目录；SDK 仅执行时延迟导入。回归入口为 `test_native_permission_config.py`（全部引擎冷加载、原生覆盖、Pydantic 真实工具审批）、`test_custom_engines.py::test_native_permissions_survive_custom_worker_and_daemon_restart`（注册后新进程执行）、`test_engine_interactions.py`，Web `enginePermissions.test.ts` 与 `chatInputPermissions.test.tsx`。
 
 技能策略改由适配器 `SKILL_POLICY` / `skill_policy` 声明，默认 unsupported；手动压缩由 `SUPPORTS_MANUAL_COMPACTION` / `supports_manual_compaction` 同时控制菜单和执行入口。默认沿用 ACP 命令入口，不具备能力的适配器必须关闭。自定义引擎均通过元数据传递上述声明。公共事件翻译、审批交互注册表、配置 schema、消息历史、图片、实时插入、会话恢复／分叉和 MCP 协议继续复用，不复制成每个引擎各一份。
 
@@ -469,20 +473,21 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 
 服务档位改由 `SUPPORTS_SERVICE_TIER` / `supports_service_tier` 声明；助手统一入口只向支持的引擎注入本轮 `service_tier`，目录与 Web 配置菜单使用同一能力。首轮持久化前接受宿主分配会话 ID 的引擎声明 `SUPPORTS_HOST_SESSION_IDS` / `supports_host_session_ids`，任务消息层按此能力预分配并写入恢复日志。两者默认关闭，均通过自定义 worker 元数据传递，不按引擎名称判断。历史回放中的 Codex 格式转换继续仅兼容既有数据。
 
-当前内置权限接入边界（11 个适配器均显式声明）：
+当前内置权限接入边界：
 
-| 引擎 | 可选权限模式 | 执行边界 |
+| 引擎 | 原生权限配置 | 执行边界 |
 | --- | --- | --- |
-| Codex CLI／Codex SDK | 只读、工作区写入、完全权限、自动、询问 | 原生 sandbox 与审批参数 |
-| Claude CLI／Claude Agent SDK／Qoder SDK | 同上 | 原生 plan／acceptEdits／bypassPermissions／auto／manual 或 default；plan 的拒绝不能被自动审批覆盖 |
-| OpenCode | 同上 | deny／ask／allow 控制 edit、bash、webfetch；没有原生目录沙箱，工作区写入与完全权限均映射 allow |
-| Pydantic AI | 同上 | 工具执行入口拦截只读写入及全部 Shell；ask 在非只读工具前审批；连接器保留自己的审批入口；子代理共享同一策略 |
-| Hermes | 自动、询问 | ACP 工具审批桥，不宣称原生只读或目录沙箱 |
-| Cursor／OpenClaw／DeepSeek Harness | 无额外模式，仅引擎默认 | 当前接入没有工具审批控制，不能显示自动／询问或声称实现原生限制 |
+| Codex CLI | sandbox_mode、approval_policy | 原生沙箱与审批独立配置；空值沿用 Codex 配置 |
+| Codex SDK | sandbox、approval_mode | auto_review 由原生审查决定，deny_all 禁止提权审批，不表示禁止所有工具 |
+| Claude CLI／Claude Agent SDK | permission_mode | manual（SDK 转 default）、acceptEdits、plan、auto、dontAsk、bypassPermissions，按适配器 schema 展示 |
+| Qoder SDK | permission_mode | 使用其 SDK 自身枚举 |
+| OpenCode | permission_mode | allow／ask／deny，控制已接入的工具审批，不提供宿主目录沙箱 |
+| Pydantic AI | permission_mode | 仅官方 full／auto／read-only，不展示兼容模式 |
+| Hermes／Cursor／OpenClaw／DeepSeek Harness | 当前没有可静态声明的原生权限字段 | 继续原生默认和既有审批通道，不生成虚构的模式 |
 
-Pydantic 的只读允许文件读取及运行内计划更新，拒绝命令、文件修改、WorkStep 操作和委托；外置项目数据文件同样受工具入口控制。运行中切换权限会改变后续工具检查及 Shell 命令策略，不能撤销已执行或已启动的命令；计划模式在本轮保持只读。工作区写入模式的文件工具仍限根目录，Shell 只有命令策略，不是操作系统沙箱（Python、构建工具等仍能访问宿主）；完全权限解除命令白名单，仍保留 SDK 的危险命令／操作符保护。此限制不能仅靠模式标签消除。
+Pydantic 使用官方 Harness `Permissions` 与 deferred handler：full 直接执行、auto 对风险命令请求批准、read-only 对写入和命令请求批准。官方审批通过 ACP 请求交给用户。WorkStep 业务工具与连接器继续走自身审批；计划模式硬只读优先，子代理共享策略。文件工具根目录限制独立于审批；命令没有新增操作系统沙箱。旧会话保存的五档覆盖继续按旧读法执行；旧全局 sandbox 配置和此前保存的 legacy 选择内部转换为三种原生模式（只读→read-only、工作区→auto、完全访问→full），不再展示旧字段。聊天菜单中 Codex CLI／SDK 只发布沙箱权限这一个单选字段（只读／工作区写入／完全访问），另有跟随引擎的空覆盖；审批保持引擎设置，不在聊天权限菜单里同时选择。旧保存的审批覆盖仍可读取，新选择只保存当前可见字段，避免留下旧的隐藏覆盖。名称与短说明由前端 enginePermission 词典呈现，底层原生值保持不变。权限展示不请求单独接口；模型列表按引擎／供应商／项目缓存并合并并发读取，配置失效后旧请求不能回填缓存。
 
-上述检查与回归为本仓库的离线接入验收，不等同于每家服务商、每个平台的真实模型端到端验收。
+上述检查为本仓库的离线接入验收，不等同于每家服务商、每个平台的真实模型端到端验收。
 
 ## 5. `InternalEvent` 协议（ACP 词汇）
 

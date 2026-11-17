@@ -324,3 +324,54 @@ test('403 retains selected session, exposes the error and permits retry; only 40
   useChatSessionStore.setState({ sessions: {} }); await window.happyDOM.close()
  }
 })
+
+
+for (const expandDuringPreview of [false, true]) test(`running history bounds its preview and loads full details when expanded (preview in flight=${expandDuringPreview})`, async () => {
+  const { window } = installDomEnvironment()
+  const originalGet = chatSessionApi.get, originalEvents = chatSessionApi.messageEvents
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const requests: { cursor: number; preview: boolean | undefined }[] = []
+  let releasePreview!: () => void
+  const pendingPreview = new Promise<void>(resolve => { releasePreview = resolve })
+  function Harness() {
+    const history = useChatSessionHistory({ sessionId: 'large-preview', projectId: 'p', onLoaded() {}, onMissing() {} })
+    const message = useChatSessionStore(state => state.sessions['large-preview']?.messages[0])
+    return message ? <ProcessTrace events={message.events || []} running
+      eventSummary={message.event_summary} detailsAvailable={message.event_detail?.available}
+      detailsLoaded={message.event_detail?.loaded} detailsPreviewLoaded={message.event_detail?.preview_loaded}
+      detailsLoading={message.event_detail?.loading} detailsError={message.event_detail?.error}
+      onLoadDetails={preview => void history.loadMessageEvents(message.id, undefined, preview)} /> : null
+  }
+  try {
+    useChatSessionStore.setState({ sessions: {} })
+    chatSessionApi.get = (async () => ({ id: 'large-preview', running: true, messages: [{
+      id: 'long-run', role: 'assistant', content: '正文', status: 'running', events: [],
+      event_summary: { tool_count: 800, last_event_seq: 100000 },
+      event_detail: { available: true, loaded: false },
+    }] })) as never
+    chatSessionApi.messageEvents = (async (_session, _message, _project, cursor, _limit, _query, preview) => {
+      requests.push({ cursor, preview })
+      if (expandDuringPreview && preview) await pendingPreview
+      return { events: [{ type: 'TEXT_MESSAGE_CHUNK', delta: '正文', seq: cursor + 1 }],
+        complete: !preview && cursor > 0,
+        next_cursor: preview ? null : cursor > 0 ? null : 30000 }
+    }) as never
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    assert.deepEqual(requests, [{ cursor: 0, preview: true }])
+    const message = useChatSessionStore.getState().sessions['large-preview'].messages[0]
+    assert.equal(message.event_detail?.loaded, false, 'a tail preview is not a full timeline')
+    assert.equal(Boolean(message.event_detail?.preview_loaded), !expandDuringPreview, 'text-only tails must not trigger an automatic retry loop')
+    await act(async () => document.querySelector<HTMLElement>('.process-trace-session-summary')!.click())
+    if (expandDuringPreview) {
+      assert.equal(requests.length, 1, 'expanding must wait for the in-flight preview')
+      await act(async () => releasePreview())
+    }
+    assert.deepEqual(requests.slice(1).map(request => request.cursor), [0, 30000])
+    assert.equal(useChatSessionStore.getState().sessions['large-preview'].messages[0].event_detail?.loaded, true)
+  } finally {
+    await act(async () => root.unmount())
+    chatSessionApi.get = originalGet; chatSessionApi.messageEvents = originalEvents
+    useChatSessionStore.setState({ sessions: {} })
+    await window.happyDOM.close()
+  }
+})

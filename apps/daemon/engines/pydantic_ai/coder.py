@@ -149,6 +149,7 @@ class WorkStepCoder(Coder):
         allowed_commands: Sequence[str] | None = None,
         subagent_capability: Any = None,
         permission_capability: Any = None,
+        native_permission_capabilities: Sequence[Any] = (),
         command_policy: Any = None,
         **kwargs,
     ) -> None:
@@ -166,6 +167,7 @@ class WorkStepCoder(Coder):
                     shared_capabilities=(
                         *capability.shared_capabilities,
                         *(item for item in (subagent_capability, permission_capability) if item is not None),
+                        *native_permission_capabilities,
                     ),
                 )
             elif isinstance(capability, Shell):

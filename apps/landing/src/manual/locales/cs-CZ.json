@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Dávkové koncepty úkolů a jejich jednotlivé naplánované časy",
-          "caption": "Čeká se na skutečný snímek obrazovky: dávkové návrhy a jednotlivé časy. Nesmí jej nahradit starý jednoúkolový návrh."
+          "alt": "Připravte si více úkolů s asistentem úkolů",
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí. Požadavek nebyl odeslán; nebyl vytvořen výsledek AI."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Seznam kroků po zadání @ v podrobnostech úkolu a vybraný příjemce",
-          "caption": "Čeká se na snímky nabídky @krok a konceptu po výběru ve stálém demonstračním projektu. Výběr neznamená odeslání ani provedení."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "Nevyřízené zprávy během odpovědi koordinátora",
-          "caption": "Čeká se na skutečný snímek obrazovky: Příjemce koordinátora, doplňkové zprávy během provádění a fronta pokračování."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí. Fronta doplnění používá simulovaný offline modul s pevnými odpověďmi, ne výsledky skutečného modelu."
         }
       },
       {
@@ -757,7 +757,7 @@
           "V historii změn zkontrolujte rozdíly, vraťte změny nebo historii vyčistěte. Po přerušení ověřte zachovanou kopii a obnovte ukládání nebo ji zahoďte. Konfliktní originály se nepřepisují."
         ],
         "tips": [
-          "Přímá úprava je pro statické HTML a nyní publikuje změny existujících HTML/CSS/JS, nepodporuje přidání či odstranění celých souborů. Dynamické stránky používají kontrolu pouze pro čtení a komentáře v další části. Staré snímky neukazují nový přesouvací úchyt ani dynamickou kontrolu."
+          "Přímá úprava je pro statické HTML a nyní publikuje změny existujících HTML/CSS/JS, nepodporuje přidání či odstranění celých souborů. Dynamické stránky používají kontrolu pouze pro čtení a komentáře v další části."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Vlastnosti jen ke čtení, komentáře prvků a přepínání souborů dynamického prototypu",
-          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí. Dynamické uzly jsou vybrány jen pro čtení a kontrolu; komentář nebyl odeslán."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Editor šablon formátu výstupů postupů a úkolů",
-          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Vyplnění konceptu zprávy hlasem",
-          "caption": "Zvuk se rozpoznává na připojeném hostiteli a neukládá se. Povolte mikrofon přes HTTPS nebo místní adresu. Při chybě zkontrolujte oprávnění webu a systému a restartujte starý backend. Rozpoznaný text lze výslovně zachovat."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Panely konverzací na ploše napříč projekty a nabídka uspořádání",
-          "caption": "Čeká se na skutečný snímek obrazovky z opraveného demo projektu: nabídka okna konverzace, více panelů a přetahovatelné oddělovače."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Nastavení a použití konektorů",
-          "caption": "Skutečný snímek chybí: nastavení, test a výběr v konverzaci."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Nabídka skupin v postranním panelu a archivní náhled jen ke čtení",
-          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Plánování zpráv v existující konverzaci",
-          "caption": "Backend musí běžet. Obsazená konverzace čeká; odpovědi kanálu se vracejí do původního kanálu. Smazání nebo archivace odstraní pravidla, obnovení je nevrátí. Skupiny spojené s úkolem používají koordinaci úkolu."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Spustit nyní a ověřit výsledek",
-          "caption": "Rozbalte JSON vygenerovaných úkolů v historii a porovnejte návrhy s vytvořenými úkoly. Starší běhy nebo chyby před generováním nemusí mít JSON. Před opakováním částečného selhání ověřte již vytvořené úkoly."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Náhled plánovaného dávkového generování a záznamy spouštění více úkolů",
-          "caption": "Čeká se na skutečný snímek obrazovky: dávkové návrhy a již vytvořené úlohy po částečném selhání."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí. Požadavek nebyl odeslán; nebyl vytvořen výsledek AI."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Nastavení zdroje identity a synchronizace adresářů Feishu nebo Lark",
-          "caption": "Snímek obrazovky konfigurace bez přihlašovacích údajů z izolované brány čeká na vyřízení."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Seznam povolených zpětných volání třetích stran v nastavení brány",
-          "caption": "Čeká se na skutečný izolovaný snímek obrazovky brány; nepoužívejte každodenní účty ani skutečná nastavení zpětného volání."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Přepínejte zařízení a kontrolujte souhrnná oznámení",
+        "title": "Přepínání zařízení a obnovení stránky",
         "steps": [
           "Zadejte autorizovaný pracovní prostor zařízení na platformě a poté pomocí horních karet zařízení přepněte na jiné online zařízení.",
           "Každý účet a zařízení si pamatuje poslední stránku projektu, úkolu nebo relace v tomto prohlížeči. Návrat stále kontroluje autorizaci a neobchází nepřístupné cíle.",
           "Vzdálené projekty se načítají, pouze když jsou vybrány. Po selhání nebo odpojení načítání klikněte znovu na aktuální projekt a obnovte jej ručně; zařízení nejsou nepřetržitě dotazována na pozadí.",
-          "Otevřete Notifikační centrum pro shrnutí dokončení nebo selhání z autorizovaných zařízení. Klepnutím otevřete úlohu nebo relaci. Živé zprávy pracovního prostoru stále patří aktuálnímu zařízení.",
+          "Po přepnutí zkontrolujte název zařízení a stránku projektu, úkolu či konverzace. Zprávy patří jen aktuálnímu zařízení; před odesláním ověřte cíl.",
           "Pomocí platformy Return to Gateway vyberte jiné zařízení. Zpětné autorizační volání prohlížeče, jehož platnost vypršela, restartuje přihlášení; po zrušení autorizace plochy to zkuste znovu ručně nebo se vraťte do místního pracovního prostoru."
         ],
         "tips": [
           "Pracovní prostor brány po odpojení provede nejvýše 3 automatické opakované pokusy. Poté zobrazí dialog a pozastaví spojení v reálném čase, kontroly relace a obnovování seznamu zařízení. Zkontrolujte síť, bránu a zařízení a zvolte opětovné připojení. Zavření dialogu, odložení, návrat do okna ani obnovení sítě pokusy neobnoví; tlačítko zůstane na stránce. Po 30 sekundách stabilního spojení se počítadlo vynuluje. Po vypršení oprávnění vstupte znovu přes bránu. Místní spojení bez brány nejsou ovlivněna.",
           "Paměť stránek je lokální v prohlížeči, není synchronizována mezi prohlížeči. Přístup funguje bez úložiště prohlížeče, ale umístění se neuchová.",
           "Znovu se připojte podle výzvy v případě offline zařízení, zrušené autorizace nebo selhání sítě. Uložená umístění nenahrazují oprávnění.",
-          "Skutečné snímky karet zařízení a souhrnných oznámení z pevného demonstračního projektu zůstávají nevyřízené."
+          "Karty mění pouze cílové zařízení přístupu; nekopírují zprávy konverzací ani úkolů na jiná zařízení."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Karty zařízení a centrum souhrnných oznámení",
-          "caption": "Čeká se na skutečný snímek obrazovky: přepínání zařízení, obnovení polohy a navigace oznámení; dosud nezachyceno."
+          "alt": "Karty zařízení brány a obnovení stránky pracovního prostoru",
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí. Dvě zařízení simulovaná skutečným protokolem sdílejí demonstrační backend; nejde o dva fyzické počítače. Ukázka přepínání a obnovy stránky."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Použití adresáře bota",
         "steps": [
           "Uložte bota DingTalk, WeCom nebo Feishu a zapněte čtení v Upravit → Adresář. Udělte práva čtení členů; WeCom potřebuje také ID firmy, Agent ID a Secret. Uložte, hledejte v mezipaměti a aktualizujte po personálních změnách.",
-          "Adresář je pouze v paměti a znovu se načte po restartu. Z CLI nebo asistenta posílejte podle přesného jedinečného jména či ID kontaktu; shodná jména vybírejte výslovně. Příjemce WeCom musí nejprve komunikovat se stejným botem a mít stejné ID uživatele; jinak použijte existující konverzaci kanálu."
+          "Adresář se ukládá do mezipaměti aktuálního hostitele WorkStep a je dostupný ihned po restartu; při změnách personálu jej aktualizujte ručně. Odesílejte přes CLI nebo asistenta pomocí přesného a jedinečného jména nebo ID kontaktu; při shodných jménech osobu výslovně vyberte. Členové WeCom musí nejprve komunikovat se stejným botem a jejich uživatelské ID se musí shodovat; jinak použijte existující konverzaci kanálu."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Použití adresáře bota",
-          "caption": "Adresář je pouze v paměti a znovu se načte po restartu. Z CLI nebo asistenta posílejte podle přesného jedinečného jména či ID kontaktu; shodná jména vybírejte výslovně. Příjemce WeCom musí nejprve komunikovat se stejným botem a mít stejné ID uživatele; jinak použijte existující konverzaci kanálu."
+          "alt": "Nastavení adresáře bota a informace o místní mezipaměti",
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Volič kanálů a samostatný editor botů",
-          "caption": "Čeká se na skutečný snímek obrazovky nového vícekanálového rozvržení bez přihlašovacích údajů. Stará forma to nepředstavuje."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Oznámení Feishu nebo Lark URL, podpis a šablona",
-          "caption": "Konfigurace bez přihlašovacích údajů a snímky obrazovky s náhledem karty čekají na vyřízení; skutečné dodání není reklamováno."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Výběr a potvrzení projektu v průvodci sandboxem v pěti krocích",
-          "caption": "Zkontrolujte úložiště, přidružení projektu a migraci konfigurace."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí. Zobrazen je pouze první krok sandboxu; pětikrokové nastavení není dokončeno."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Aktuální verze pro stolní počítače a záznam kontroly aktualizací v nastavení systému",
-          "caption": "Stále chybí skutečný snímek automatické aktualizace, průběhu stahování a ručního stažení z GitHub."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí. Skutečné vývojové prostředí, nikoli přejímka aktualizace nainstalovaného oficiálního balíčku."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Režimy, zdroje, test, uložení a volitelná proxy rozhodovacího modelu",
-          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Otazník v nadpisu nastavení a vícejazyčná příručka v aplikaci",
-          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Průvodce digitální postavou, dokumenty osobnosti a hlavní chat",
-          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Globální hledání paměti, kategorie a stránkované původní zdroje",
-          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Nastavení přemýšlení a samostatně stránkovaná historie",
-          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Vazby kanálů digitální osoby, proaktivní oznámení a stav doručení",
-          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Režimy hlasového výstupu, poslech testu a výslovné ovládání naslouchání",
-          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Souhlas známé osoby, tři kroky snímání a nastavení rozpoznávání",
-          "caption": "Čeká se na skutečné snímky ze stálého demonstračního prostředí 8777; ukázky komponent je nenahrazují."
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Vlastní integrace a import enginu v nastavení vykonávacích enginů",
-          "caption": "Čeká se na snímky vstupu integrace a neodeslaného konceptu ze stálého demonstračního prostředí."
+          "alt": "Vytvoření enginu prostřednictvím konverzace",
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí. Skutečně nově vytvořená integrační konverzace; návrh nastavení nebyl odeslán."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Integrační konverzace a koncept vytvořené po importu balíčku enginu",
-          "caption": "Čeká se na snímky importu ZIP a konceptu čekajícího na konfiguraci ze stálého demonstračního prostředí. Import se nevydává za úspěšnou registraci."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí. Používá se skutečný offline ukázkový balíček; nejde o přejímku integrace skutečného modelu."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Ovládání exportu, deaktivace a návratu verze registrovaného vlastního enginu",
-          "caption": "Čeká se na snímek karty registrovaného enginu ze stálého demonstračního prostředí; karta vestavěného enginu ji nenahrazuje."
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí. Používá se skutečný offline ukázkový balíček; nejde o přejímku integrace skutečného modelu."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Vestavěné voliče jazyků v aplikaci a na webu",
-          "caption": "Skutečné snímky obrazovky s přidanými jazyky čekají na vyřízení."
+          "alt": "Vyberte vestavěný jazyk",
+          "caption": "Skutečná čínská nastavení nebo vstupy ve stálém demonstračním prostředí."
         }
       },
       {

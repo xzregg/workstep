@@ -1,7 +1,7 @@
 import React, { Children, forwardRef, isValidElement, useEffect, useLayoutEffect, useId, useRef, useState, type ReactNode, type SelectHTMLAttributes, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 
-type Option = { value: string; label: string; disabled: boolean; group: string; hidden: boolean }
+type Option = { value: string; label: string; disabled: boolean; group: string; hidden: boolean; description?: string }
 export type SearchableSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
   loading?: boolean
   loadingLabel?: string
@@ -22,12 +22,12 @@ function text(children: ReactNode): string {
 }
 function optionsOf(children: ReactNode, group = '', disabled = false): Option[] {
   return Children.toArray(children).flatMap(child => {
-    if (!isValidElement<{ children?: ReactNode; value?: string; label?: string; disabled?: boolean; hidden?: boolean }>(child)) return []
+    if (!isValidElement<{ children?: ReactNode; value?: string; label?: string; disabled?: boolean; hidden?: boolean; 'data-description'?: string }>(child)) return []
     if (child.type === React.Fragment) return optionsOf(child.props.children, group, disabled)
     if (child.type === 'optgroup') return optionsOf(child.props.children, child.props.label ?? '', disabled || !!child.props.disabled)
     if (child.type !== 'option') return []
     const label = child.props.label ?? text(child.props.children)
-    return [{ value: String(child.props.value ?? label), label, disabled: disabled || !!child.props.disabled, group, hidden: !!child.props.hidden }]
+    return [{ value: String(child.props.value ?? label), label, disabled: disabled || !!child.props.disabled, group, hidden: !!child.props.hidden, description: child.props['data-description'] }]
   })
 }
 
@@ -47,7 +47,7 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, SearchableSelectPr
     ? Array.from(native.current?.selectedOptions ?? [], option => option.value)
     : [String(rest.value ?? native.current?.value ?? rest.defaultValue ?? options[0]?.value ?? '')]
   const values = rest.multiple && Array.isArray(rest.value) ? rest.value.map(String) : selected
-  const visible = options.filter(option => !option.hidden && (!!onSearchChange || option.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))
+  const visible = options.filter(option => !option.hidden && (!!onSearchChange || [option.label, option.description].filter(Boolean).join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))
   const active = visible[cursor]
   const close = (focus = true) => { setOpen(false); setQuery(''); if (focus) trigger.current?.focus() }
   const closeRef = useRef(close)
@@ -142,7 +142,9 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, SearchableSelectPr
         {option.group && (index === 0 || visible[index - 1].group !== option.group) && <div className="skin-select-group">{option.group}</div>}
         <button type="button" id={listId + '-' + index} role="option" aria-selected={values.includes(option.value)} tabIndex={-1}
           disabled={option.disabled} data-value={option.value} data-focused={index === cursor} className="skin-select-option"
-          onMouseEnter={() => setCursor(index)} onClick={() => choose(option)}>{option.label}</button>
+          onMouseEnter={() => setCursor(index)} onClick={() => choose(option)}>{option.description
+            ? <span className="skin-select-option-content"><span>{option.label}</span><span className="skin-select-option-description">{option.description}</span></span>
+            : option.label}</button>
       </React.Fragment>)}
       {loading && <p role="status" className="skin-select-empty">{loadingLabel}</p>}
       {!loading && !visible.length && <p className="skin-select-empty">{emptyLabel}</p>}

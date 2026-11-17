@@ -82,3 +82,12 @@ test('normalizeStepConfig round-trips stored config and coerces scalar values', 
   assert.deepEqual(normalizeStepConfig('nope'), {})
   assert.deepEqual(normalizeStepConfig(['a', 'b']), {})
 })
+
+
+test('new step permission defaults inherit engine settings instead of freezing a snapshot', () => {
+  const native = { ...payload, step_fields: payload.step_fields.map(field =>
+    field.key === 'permission_mode' ? { ...field, category: 'mode' } : field) }
+  assert.deepEqual(initialStepConfig(native), { model_reasoning_effort: 'high' })
+  // Existing explicit choices remain explicit when loading a stored step.
+  assert.deepEqual(normalizeStepConfig({ permission_mode: 'acceptEdits' }), { permission_mode: 'acceptEdits' })
+})

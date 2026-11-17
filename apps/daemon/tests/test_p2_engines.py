@@ -4594,7 +4594,7 @@ def test_engine_config_schemas_are_declared():
     pydantic_fields = {
         field.key for field in PydanticAIEngine.config_schema()
     }
-    assert pydantic_fields == {"provider_id", "sandbox"}
+    assert pydantic_fields == {"provider_id", "permission_mode"}
     assert PydanticAIEngine.config_schema()[0].type == "select"
 
     claude_fields = {field.key: field for field in ClaudeCodeEngine.config_schema()}

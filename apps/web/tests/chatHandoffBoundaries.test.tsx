@@ -7,6 +7,7 @@ import { chatSessionApi, type ChatSessionDetail, type ChatSessionHandoffInput } 
 import { useChatSessionTransitions } from '../src/hooks/useChatSessionTransitions'
 import { useChatSessionEngineSelection } from '../src/hooks/useChatSessionEngineSelection'
 import { I18nProvider } from '../src/i18n'
+import { encodePermissionSelection } from '../src/utils/enginePermissions'
 import { useChatListStore } from '../src/stores/chatSessionStore'
 
 for (const scenario of ['return', 'older-history', 'reload', 'provider-cycle', 'cancel', 'silent-failure', 'silent-none-failure', 'busy', 'double-submit', 'reset']) {
@@ -14,7 +15,7 @@ for (const scenario of ['return', 'older-history', 'reload', 'provider-cycle', '
     const { window } = installDomEnvironment()
     const originalApi = chatSessionApi.handoff
     const originalFetch = useChatListStore.getState().fetchSessions
-    const originalDetail = { id: 's', engine: 'claude', provider_id: 'provider-a', model: 'original-model', pending_handoff: null } as ChatSessionDetail
+    const originalDetail = { id: 's', engine: 'claude', provider_id: 'provider-a', model: 'original-model', permission_mode: encodePermissionSelection('claude', {permission_mode:'acceptEdits'}), pending_handoff: null } as ChatSessionDetail
     let stored = originalDetail
     let controls!: ReturnType<typeof useChatSessionTransitions>
     let selection!: ReturnType<typeof useChatSessionEngineSelection>
@@ -31,7 +32,7 @@ for (const scenario of ['return', 'older-history', 'reload', 'provider-cycle', '
       controls = useChatSessionTransitions({
         project: { id: 'p', routeName: 'P' }, sessionId: 's', sessionTitle: 'S', messageIds,
         running, current: selection.config, pendingHandoff: selection.pendingHandoff, loadedEndpoint: selection.loadedEndpoint,
-        defaultEngine: 'claude', engines: [], providers: [], permissionMode: '',
+        defaultEngine: 'claude', engines: [], providers: [], permissionMode: selection.permissionMode,
         onHandoffApplied: selection.applyHandoff, navigate: () => {},
       })
       return controls.dialogs
@@ -43,8 +44,8 @@ for (const scenario of ['return', 'older-history', 'reload', 'provider-cycle', '
         requests.push(input)
         if (fail) throw new Error('network failure')
         stored = input.engine === 'claude' && input.provider_id === 'provider-a'
-          ? originalDetail
-          : { ...stored, engine: input.engine, provider_id: input.provider_id || '', model: null,
+          ? { ...originalDetail, permission_mode: '' }
+          : { ...stored, engine: input.engine, provider_id: input.provider_id || '', model: null, permission_mode: input.engine === stored.engine ? stored.permission_mode : null,
               pending_handoff: { source_engine: 'claude', source_provider_id: 'provider-a', target_engine: input.engine,
                 context_mode: input.context_mode, message_id: 'last' } }
         return stored
@@ -57,6 +58,7 @@ for (const scenario of ['return', 'older-history', 'reload', 'provider-cycle', '
         await act(async () => { (window.document.querySelector('.btn-ghost') as HTMLButtonElement).click() })
         assert.equal(selection.config.engine, 'claude')
         assert.equal(requests.length, 0)
+        assert.equal(selection.permissionMode, originalDetail.permission_mode)
         return
       }
       if (scenario === 'double-submit') {
@@ -73,6 +75,8 @@ for (const scenario of ['return', 'older-history', 'reload', 'provider-cycle', '
         await act(async () => { (window.document.querySelector('input[value="none"]') as HTMLInputElement).click() })
       }
       await confirm()
+      assert.equal(selection.permissionMode, '')
+      assert.equal(requests[0].permission_mode, undefined)
       if (scenario === 'reset') {
         await act(async () => { assert.equal(controls.requestResetHandoff(), true) })
         assert.ok(window.document.querySelector('[role="dialog"]'))
@@ -117,6 +121,7 @@ for (const scenario of ['return', 'older-history', 'reload', 'provider-cycle', '
         assert.equal(stored.engine, 'claude')
         assert.equal(selection.config.providerId, 'provider-a')
         assert.equal(selection.config.model, 'original-model')
+        assert.equal(selection.permissionMode, '')
         await act(async () => selection.restoreSession(stored))
         assert.equal(selection.config.engine, 'claude')
       } else {

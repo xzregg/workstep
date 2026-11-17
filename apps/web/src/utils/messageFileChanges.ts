@@ -4,7 +4,7 @@ import { extractToolTarget, toolKind } from './toolInput'
 
 export interface FileChangesQuery { fileChanges: true; path?: string }
 export interface FileChangesPage { files: (MessageFileChange & { has_patch: boolean })[]; patch?: string | null }
-export type MessageEventsLoader = (messageId: string, query?: FileChangesQuery) => void | Promise<unknown>
+export type MessageEventsLoader = (messageId: string, query?: FileChangesQuery, preview?: boolean) => void | Promise<unknown>
 export function fileChangesQuery(query?: FileChangesQuery): string {
   return query ? `&file_changes=true${query.path === undefined ? '' : `&file_path=${encodeURIComponent(query.path)}`}` : ''
 }

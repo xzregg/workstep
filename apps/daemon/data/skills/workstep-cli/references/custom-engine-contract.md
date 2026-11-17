@@ -39,29 +39,26 @@
 
 ## 权限与输入策略
 
-适配器在自己的模块声明映射，宿主将其序列化到安装元数据并传过 worker 边界。例如：
+在引擎自己的 schema 声明原生权限字段，宿主不强制统一五档：
 
 ```python
-from engines.core.permissions import EnginePermissionPolicy
+from engines.core.schema import EngineConfigField, EngineConfigOption
 
-class MyEngine(CustomEngineBase):
-    PERMISSION_POLICY = EnginePermissionPolicy(
-        overrides={
-            "read-only": {"access": "read"},
-            "workspace-write": {"access": "workspace"},
-            "danger-full-access": {"access": "full"},
-            "auto": {"approval": "auto"},
-            "ask": {"approval": "manual"},
-        },
-        plan_overrides={"access": "read", "planning": True},
-        consent_key="approval",
-        consent_values={"auto": True, "manual": None, "deny": False},
-    )
+@classmethod
+def config_schema(cls):
+    return [EngineConfigField(
+        key="approval", label="原生审批", category="mode", type="select",
+        default="review", required=True,
+        options=(EngineConfigOption("review", "需要审核"),
+                 EngineConfigOption("trust", "信任执行")),
+    )]
 ```
 
-示例字段不是通用 SDK 参数。`spawn` 合并本次 `config_overrides`，将实际原生字段交给 SDK/CLI，并以最终配置调用 `configure_interaction_policy`。计划配置在权限之后合并；无原生计划能力时仍有公共提示词兜底。映射声明不等于文件／命令沙箱。
+只支持非敏感 select/checkbox，可声明多个字段。worker describe 自动导出 ACP configOptions 形状的 `permission_config_options`；宿主绑定引擎并校验字段和值。空选择跟随保存的引擎配置，原生 default 是明确枚举，两者不能混用。没有权限声明就只显示引擎默认；无需硬映射其他引擎的模式。
 
-缺省只支持审批桥的 auto/ask，不推断原生限制；未声明的显式模式在启动执行前报错，前端读取 `permission_modes`。`request_interaction` 按有效策略处理确认；有效配置的明确拒绝优先，ask 覆盖默认自动批准，用户提问表单不能代答。`set_permission_mode(mode)` 原样传到 worker，需要运行中切换的适配器必须同步更新原生客户端，不能只记录模式。
+`spawn` 合并本次 config_overrides 并实际传给原生 SDK/CLI，以最终配置调用 configure_interaction_policy。`PERMISSION_POLICY` 继续声明计划上限和配置对应的审批决定；overrides 只用于旧权限值兼容。原生 auto 应保留引擎上报的审批，不等于宿主无条件批准。用户问题不能代答。计划配置最后合并，声明不等于宿主沙箱。
+
+set_permission_mode 原样跨 worker；继承空值时也必须重新读取已保存设置。支持热切换才更新正在运行的原生客户端，否则下一轮应用；不能仅改变菜单而保留旧策略。旧元数据仍可运行，声明更新后重新 inspect/validate/register。
 
 技能通过 `SKILL_POLICY: EngineSkillPolicy` 或 `skill_policy` 声明，默认 unsupported；实际落实白名单后才能启用。`SUPPORTS_MANUAL_COMPACTION=False` 同时禁用 `/compact` 菜单和入口，默认沿用 ACP 命令入口。服务档位声明 `SUPPORTS_SERVICE_TIER=True`，才会接收助手的本轮 `service_tier` 并显示档位选择。需要宿主在执行前分配恢复会话 ID 时声明 `SUPPORTS_HOST_SESSION_IDS=True`；仅可用于真实接受该 ID 并按它恢复的引擎。两者默认关闭，worker 自动导出。
 

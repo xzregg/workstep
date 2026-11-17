@@ -1,5 +1,27 @@
 # 操作手册维护与截图记录
 
+2026-11-17 follow-up local dev-to-main delivery: preserve and commit the current native-permission, collapsed-process-preview, conversation-history/scrolling and manual-screenshot changes; no push or release is requested. Serial checks pass 653 affected daemon tests and 322 website tests; Web and website production builds pass. The scoped Web run records 159 passed and 11 failed tests (permission-option count and conversation-history/preview behavior); rerunning the history file with i18n still records 10 failures. These failures remain unresolved and are not described as a green regression or attributed solely to stale tests. No implementation or test cases were changed to hide them during this delivery. The manual checker passes 27 chapters with 100/100 declared screenshots, while the capture and real-device limitations below still apply. New screenshot contact sheets were reviewed, with full-size spot checks of connector, enterprise-identity and bot-directory forms; this is not proof that arbitrary personal information can never be present. Repository health and high-confidence worktree secret checks pass. Existing published installers and image tags remain unchanged.
+
+2026-11-17 剩余截图续补：继续使用固定 8777 演示后台，BSK 操作独立 Agent Window；桌面专属入口使用隔离 userData 的真实 Electron 开发壳与 Playwright。网关单独启动 18778 隔离实例，以两台经真实签名协议连接的模拟设备只读转发固定演示项目，未使用日常账号、项目或企业凭据；两台模拟设备共用同一后台，不代表两台实体主机。保留星空皮肤，截图均为实际中文界面，仅 PNG 转 JPEG，未合成页面或通知。
+
+本批补入 18 个原缺图槽位：`conversation-schedule`、`schedule-batch`、`schedule-run-now`、`bot-channels`、`notification-feishu-lark`、`desktop-update`、`sandbox-wizard`、`custom-engine-onboarding`、`custom-engine-import`、`custom-engine-management`、`prototype-runtime-inspection`、`gateway-third-party-auth`、`gateway-enterprise-feishu`、`bot-directory`、`builtin-languages`、`task-ai-batch`、`task-coordinator-queue`、`gateway-workspace-notifications`；另更新 `prototype-editor`，展示实际移动柄与属性滑条。同步 26 语言图片说明，纠正通讯录持久缓存说明，以及已退役的网关通知中心前端指引；保留稳定截图 ID。
+
+采集边界：AI 批量任务和定时生成展示未发送草稿，不冒充生成结果；自定义引擎使用明确标注的离线固定回复示例包，导入、验收、注册和队列操作走实际应用；不代表真实供应商模型验收。立即执行定时任务实际创建了待手动运行任务，演示定时规则保持暂停；渠道与身份表单未连接真实平台，通讯录演示机器人保持停用，未读取真实联系人。桌面更新为开发壳界面，不代表正式安装包在线下载、安装与重启验收；沙箱只展示五步引导的第一步，未下载软件或建立容器。语言图展示工作台实际可选语言，不把官网 26 语言误称为工作台语言数。动态原型属性仅只读检查，静态及动态评论截图均未发送。
+
+协调续接另通过真实任务验证：后台先记录首轮 running、第二轮 queued，随后两轮均 succeeded，各约 30 秒，第二轮在首轮结束后启动。固定回复明确标为非真实模型，任务仍为预备中，active_workflow_run_id 为空；正式图片使用干净会话。当前界面将待续接消息也显示为处理中，不将其描述为排队状态标签。
+
+验证完成：27 章、100/100 张声明截图，manual:check 通过；官网 322 项测试（最多 2 workers）、构建、lint 和差异格式检查通过。实际浏览器核对 1440px 中文自定义引擎图片、390px 日文自定义引擎及网关页面恢复正文／图片。新增 BSK、Electron 窗口和 18778 网关／模拟设备进程已关闭，8777 演示后台保留。
+
+本条仅消除声明图片文件缺口；此前记录的真实租户、真实模型、摄像头／麦克风、成功委派、记忆来源详情及其他结果状态的验收缺口继续保留。截图、辅助脚本与验证产物在 `tmp/manual-screenshots-complete/`，不纳入发布。未提交、合并、推送或发布。
+
+2026-11-17 BSK 实机补图：本机 `browser-skill` 技能及 BSK 扩展可用，先前不可用的是 CUA 浏览器主机，不能据此认定所有浏览器通道均不可用。固定演示项目及隔离配置仍在，8777 当时未监听；本批仅启动这套演示后台，使用 BSK 独立 Agent Window 操作，不读取用户标签页或日常项目，不启用皮肤脚本、数字人、麦克风或摄像头，不调用模型、下载资源或发送渠道消息。沿用星空皮肤，界面切为简体中文。
+
+新增 14 张正式真实截图：`decision-model-settings`、`digital-person-workspace`、`memory-knowledge-search`、`digital-person-activity`、`digital-person-channels`、`face-recognition`、`settings-help`、`voice-input`、`speech-output`、`connector-settings`、`chat-workspace`、`conversation-groups`、`artifact-output-template`、`task-step-mention`。逐张查看原始 PNG 后仅转成 JPEG，未拼接、伪造数据或改写页面。图片说明同步 26 语言并复核源文指纹。实际新增一个空的「手册分组演示」；产物模板内容与任务 @ 草稿均未保存／发送，查看完成后已取消或清空，未重跑既有模拟任务。
+
+图片展示范围：记忆和运行记录是真实空列表，来源详情／分页、成功委派与思考结果仍待采集；渠道是未绑定表单，人脸是未勾选本人同意的录入第一步，语音是未启用／未试听配置，决策模型是未保存的远程表单。对话窗口仅展示入口菜单，分组菜单为空组，没有归档内容预览；这些结果状态缺口继续保留，不因文件存在就宣称整个功能已实机验收。动态原型、原型移动柄、其余渠道／网关／桌面及模型接入结果仍按既有记录待补。下面较早记录的浏览器不可用与上述 14 项缺文件状态由本条更新，历史验证边界保留。
+
+本批 `manual:check` 为 27 章、82/100 张，仍因 18 项缺文件返回非零。官网 322 项测试（Vitest `--maxWorkers=2`）、构建与 lint 通过。真实浏览器检查包括 1440×1000 中文手册正文与图片、应用内手册，以及 390×844 手机仿真下的日文语言切换、分类折叠和图片显示；不代表全部语言、手机真机或原生桌面验收。检查产物在 `tmp/manual-screenshots-2026-11-17/`，BSK 会话已关闭；固定演示后台保留供本地预览。本批不提交、合并、推送或发布。
+
 2026-11-17 local dev-to-main delivery: commit the current engine-permission, Harness 0.69 compatibility, digital-person UI and multilingual-manual changes without pushing or creating a release tag. Serial validation passes 746 targeted daemon tests, 82 affected Web tests, 10 runtime/packaged-dependency tests and 322 website tests; Web and website production builds pass. Node tests explicitly use two-file concurrency and website tests use two workers; no full application test suites overlap. Repository health and high-confidence worktree secret checks pass. The manual check remains 27 chapters and 68/100 screenshots, with 32 missing images already recorded below. This delivery does not claim a full-repository regression, new real-UI rendering, native Windows/package acceptance, camera/audio device acceptance or completion of the documented screenshot and translation-review gaps. Existing public v1.0.23 installers and image tags are not replaced by this local merge.
 
 2026-11-17 近期功能手册同步（基于本地 main/dev 共有的 `1992617c` 用户可见行为）：新增「数字人与全局记忆」独立章节，归入「对话与个性化」；说明人设／职责／常驻记忆、持久主会话、带原文来源的记忆搜索、主动思考与活动记录、渠道接待、语音输出与显式唤醒、人脸同意录入。补充动态 HTML／React 只读检查与评论、产物格式模板、对话分组及归档只读预览、可选决策模型和设置帮助；修正手机小喇叭录音、静态原型移动柄和连接器当前入口。数字形象问号指向新章，决策模型问号指向设置说明，不再借用无关章节。保留 SDK 优先入门、自定义引擎和星空皮肤等既有内容。同步全部 25 份译文（连同简中共 26 语言），保留实际占位符 `{{任务名称}}`，不翻译命令与路径；本轮未使用公共翻译服务返回值，正文直接译写并检查结构、技术字面量和本轮范围外内容不变，不宣称母语人工全面验收。

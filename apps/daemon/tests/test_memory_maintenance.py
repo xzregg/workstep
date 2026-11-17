@@ -6,6 +6,18 @@ from tests.test_digital_person_unified import runtime, chat_module, seed
 from services import memory_query, memory_knowledge as knowledge, digital_person_memory_index as index
 
 
+def test_compact_memory_policy_reaches_assessment_extractor_and_repair():
+    from services.memory_policy import COMPACT_RULES, RULES, repair_instruction
+    from services.digital_person_assessment import instruction
+    from services.digital_person import DigitalPersonProfile
+    for prompt in (RULES, instruction(DigitalPersonProfile()), knowledge.EXTRACTION_PROMPT,
+                   repair_instruction('invalid', {})):
+        assert COMPACT_RULES in prompt
+    for boundary in ('1-2 short sentences', 'not an activity log',
+                     'test counts', 'independent facts', 'Preserve complete facts'):
+        assert boundary in COMPACT_RULES
+
+
 def test_assessment_accepts_one_explicit_json_block_with_surrounding_prose():
     from services.digital_person_runtime import parse_check_result
     value={'decision':'silent','summary':'整理完成','source_ids':[]}

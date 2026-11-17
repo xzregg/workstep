@@ -137,7 +137,7 @@ export default function ChatSessionForkDialog({
         model: model || undefined,
         fast_model: fastModel || undefined,
         vision_model: visionModel || undefined,
-        permission_mode: permissionMode || undefined,
+        permission_mode: effectiveEngine === sourceEngine ? permissionMode || undefined : undefined,
         fork_message_id: forkMessageId || undefined,
       })}
     >

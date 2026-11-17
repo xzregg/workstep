@@ -190,3 +190,48 @@ async def test_a_b_unsent_return_a_send_b_send_then_change_provider_via_api(chat
         await send("codex_sdk", "provider-b", "B new provider")
         assert calls[-1][:2] == ("codex_sdk", None)
         assert "provider-b" in calls[-1][2]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("source_engine,mode,target_engine", [("claude", "manual", "codex_sdk"), ("codex", "read-only", "claude"), ("codex_sdk", "read-only", "claude")])
+async def test_cross_engine_handoff_and_return_inherit_target_permissions(chat_module, source_engine, mode, target_engine):
+    from engines.core.permissions import encode_permission_selection
+    module, _, manager, project, _ = chat_module
+    field = {"codex": "sandbox_mode", "codex_sdk": "sandbox"}.get(source_engine, "permission_mode")
+    selected = encode_permission_selection(source_engine, {field: mode})
+    source = module.create_session(project.id, engine=source_engine, permission_mode=selected)
+    def check(_):
+        switched = module.handoff_session(project.id, source["id"], engine=target_engine, context_mode="none")
+        assert switched["permission_mode"] == ""
+        assert not module.get_execution_config(project.id, source["id"])["permission_mode"]
+        module._sessions.clear()
+        restored = module.handoff_session(project.id, source["id"], engine=source_engine, context_mode="none")
+        assert restored["permission_mode"] == ""
+        assert not module.get_execution_config(project.id, source["id"])["permission_mode"]
+    await manager.run_db(project.id, check)
+
+
+@pytest.mark.anyio
+async def test_saved_native_permission_is_reused_when_next_request_omits_it(chat_module):
+    from engines.core.permissions import encode_permission_selection
+    module, _, manager, project, _ = chat_module
+    selected = encode_permission_selection("claude", {"permission_mode": "manual"})
+    source = module.create_session(project.id, engine="claude", permission_mode=selected)
+    module._sessions.clear()
+    def check(_):
+        module.submit_message(project.id, source["id"], "continue", "native-resume", schedule=False)
+        assert ChatSession.get_by_id(source["id"]).permission_mode == selected
+        module.submit_message(project.id, source["id"], "clear", "native-clear", permission_mode="", schedule=False)
+        assert ChatSession.get_by_id(source["id"]).permission_mode is None
+    await manager.run_db(project.id, check)
+
+
+@pytest.mark.anyio
+async def test_permission_change_advances_shared_config_revision(chat_module):
+    module, _, manager, project, _ = chat_module
+    source = module.create_session(project.id, engine="claude")
+    updated = await module.update_permission_mode(project.id, source["id"], "ask")
+    assert updated["execution_config_revision"] > source["execution_config_revision"]
+    snapshot = await manager.run_db(project.id, lambda _: module.get_execution_config(project.id, source["id"]))
+    assert snapshot["permission_mode"] == "ask"
+    assert snapshot["execution_config_revision"] == updated["execution_config_revision"]

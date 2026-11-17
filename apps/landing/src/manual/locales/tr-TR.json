@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Toplu görev taslakları ve bunların bireysel zamanlanmış saatleri",
-          "caption": "Gerçek ekran görüntüsü beklemede: toplu taslaklar ve bireysel zamanlar. Eski bir tek görev taslağı onun yerine geçmemelidir."
+          "alt": "Görev asistanıyla birden fazla görevi hazırlayın",
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri. İstek gönderilmedi; AI sonucu üretilmedi."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Görev ayrıntılarında @ yazıldıktan sonraki adım adayları ve seçili alıcı",
-          "caption": "Sabit demo projesinde @adım adayları ve seçim sonrası taslağın ekran görüntüleri eksik. Seçim, gönderme veya yürütme anlamına gelmez."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "Koordinatör yanıtı sırasında bekleyen mesajlar",
-          "caption": "Gerçek ekran görüntüsü beklemede: Koordinatör alıcısı, yürütme sırasındaki ek mesajlar ve devam kuyruğu."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri. Ek mesaj kuyruğu sabit yanıtlı çevrimdışı simülasyon motorunu kullanır; gerçek model sonuçları değildir."
         }
       },
       {
@@ -757,7 +757,7 @@
           "Değişiklik geçmişinde farkları inceleyin, geri alın veya geçmişi temizleyin. Kesinti sonrası korunan kopyayı kontrol edip kaydetmeye devam edin ya da kopyayı atın. Çakışan asıl dosyaların üzerine yazılmaz."
         ],
         "tips": [
-          "Doğrudan düzenleme statik HTML içindir. Mevcut HTML/CSS/JS değişiklikleri yayımlanır; tüm dosyaları ekleme veya silme desteklenmez. Dinamik sayfalarda sonraki bölümün salt okunur inceleme ve yorum akışını kullanın. Eski görüntü yeni taşıma tutamacını ve dinamik incelemeyi henüz göstermez."
+          "Doğrudan düzenleme statik HTML içindir. Mevcut HTML/CSS/JS değişiklikleri yayımlanır; tüm dosyaları ekleme veya silme desteklenmez. Dinamik sayfalarda sonraki bölümün salt okunur inceleme ve yorum akışını kullanın."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Dinamik prototipin salt okunur özellikleri, öğe yorumları ve dosya değiştirme",
-          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri. Dinamik düğümler yalnızca salt okunur inceleme için seçilmiştir; yorum gönderilmedi."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Akış ve görevlerin çıktı biçimi şablon düzenleyicisi",
-          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Mesaj taslağını sesle doldurma",
-          "caption": "Ses bağlı sunucuda tanınır ve kaydedilmez. HTTPS veya yerel adres üzerinden mikrofona izin verin. Hatalarda site ve sistem izinlerini kontrol edin; eski arka ucu yeniden başlatın. Tanınan metni açıkça koruyabilirsiniz."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Projeler ve düzenleme menüsündeki masaüstü konuşma bölmeleri",
-          "caption": "Sabit demo projesinin gerçek ekran görüntüsü beklemede: konuşma penceresi menüsü, çoklu bölmeler ve sürüklenebilir ayırıcılar."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Bağlayıcıları yapılandırma ve kullanma",
-          "caption": "Gerçek ekran görüntüsü bekleniyor: yapılandırma, test ve sohbet seçimi."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Kenar çubuğu grup menüsü ve arşivin salt okunur önizlemesi",
-          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Mevcut konuşmaya zamanlanmış mesaj",
-          "caption": "Arka uç açık olmalıdır. Meşgul konuşmalar bekler; kanal yanıtları özgün kanala döner. Konuşmayı silmek veya arşivlemek kuralları kaldırır; geri yüklemek geri getirmez. Göreve bağlı gruplar görev koordinasyonunu kullanır."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Hemen çalıştırma ve sonucu inceleme",
-          "caption": "Çalışma kaydında üretilen görev JSON’unu açıp taslakları oluşturulan görevlerle karşılaştırın. Eski kayıtlarda veya üretim öncesi hatalarda JSON olmayabilir. Kısmi hatayı yeniden denemeden önce oluşturulan görevleri kontrol edin."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Zamanlanmış toplu oluşturma önizlemesi ve çok görevli çalıştırma kayıtları",
-          "caption": "Gerçek ekran görüntüsü beklemede: kısmi başarısızlıktan sonra toplu taslaklar ve önceden oluşturulmuş görevler."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri. İstek gönderilmedi; AI sonucu üretilmedi."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Feishu veya Lark kimlik kaynağı ve dizin senkronizasyonu ayarları",
-          "caption": "Yalıtılmış bir Ağ Geçidinden kimlik bilgisi gerektirmeyen yapılandırma ekran görüntüsü beklemede."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Ağ Geçidi ayarlarında üçüncü taraf geri arama izin verilenler listesi",
-          "caption": "Gerçek izole gösteri Ağ Geçidi ekran görüntüsü beklemede; günlük hesapları veya gerçek geri arama ayarlarını kullanmayın."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Cihazları değiştirin ve toplu bildirimleri inceleyin",
+        "title": "Cihaz değiştirme ve sayfayı geri yükleme",
         "steps": [
           "Platformda yetkili bir cihaz çalışma alanına girin, ardından başka bir çevrimiçi cihaza geçmek için üstteki cihaz sekmelerini kullanın.",
           "Her hesap ve cihaz, bu tarayıcıdaki son projeyi, görevi veya oturum sayfasını hatırlar. Geri dönmek yine de yetkilendirmeyi kontrol eder ve erişilemeyen hedefleri atlamaz.",
           "Uzak projeler yalnızca seçildiğinde yüklenir. Yükleme hatası veya bağlantı kesilmesinden sonra, manuel olarak yenilemek için mevcut projeye tekrar tıklayın; cihazlar arka planda sürekli olarak yoklanmaz.",
-          "Yetkili cihazlardan tamamlanma veya arıza özetleri için Bildirim merkezini açın. Görevi veya oturumu açmak için tıklayın. Çalışma alanı canlı mesajları hâlâ geçerli cihaza ait.",
+          "Geçişten sonra cihaz adını ve proje, görev veya sohbet sayfasını kontrol edin. Mesajlar yalnızca geçerli cihaza aittir; göndermeden önce hedef cihazı doğrulayın.",
           "Başka bir cihaz seçmek için Ağ Geçidi platformuna dön'ü kullanın. Süresi dolmuş bir tarayıcı yetkilendirme geri araması oturum açmayı yeniden başlatır; masaüstü yetkilendirmesini iptal ettikten sonra manuel olarak yeniden deneyin veya yerel çalışma alanına dönün."
         ],
         "tips": [
           "Ağ geçidi çalışma alanı bağlantı kesildikten sonra en fazla 3 kez otomatik yeniden dener. Ardından bir iletişim kutusu gösterir ve gerçek zamanlı bağlantıyı, oturum denetimlerini ve cihaz listesi yenilemeyi duraklatır. Ağı, ağ geçidini ve cihazı denetleyip yeniden bağlanmayı seçin. Kutuyu kapatmak veya ertelemek, pencereye dönmek ya da ağın düzelmesi denemeleri sürdürmez; düğme sayfada kalır. Sayaç 30 saniyelik kararlı bağlantıdan sonra sıfırlanır. Süresi dolan yetki için ağ geçidinden yeniden girin. Ağ geçidi kullanmayan yerel bağlantılar etkilenmez.",
           "Sayfa belleği tarayıcıda yereldir, tarayıcılar arasında senkronize edilmez. Erişim, tarayıcı depolama alanı olmadan çalışır ancak konumlar korunmaz.",
           "Çevrimdışı cihazlar, iptal edilen yetkilendirme veya ağ arızaları için istendiğinde yeniden bağlanın. Kaydedilen konumlar izinlerin yerine geçmez.",
-          "Sabit tanıtım projesinin gerçek cihaz sekmesi ve toplu bildirim ekran görüntüleri beklemededir."
+          "Cihaz sekmeleri yalnızca erişim hedefini değiştirir; sohbet veya görev mesajlarını başka cihazlara kopyalamaz."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Cihaz sekmeleri ve toplu bildirim merkezi",
-          "caption": "Gerçek ekran görüntüsü beklemede: cihaz değiştirme, konumu geri yükleme ve bildirimde gezinme; henüz yakalanmadı."
+          "alt": "Ağ geçidi cihaz sekmeleri ve çalışma alanı sayfasını geri yükleme",
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri. Gerçek protokolle simüle edilen iki cihaz demo arka ucunu paylaşır; iki fiziksel makine değildir. Cihaz değiştirme ve sayfa geri yüklemeyi gösterir."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Bot kişi dizinini kullanma",
         "steps": [
           "DingTalk, WeCom veya Feishu botunu kaydedip Düzenle → Dizin altında okumayı açın. Üye okuma izinlerini verin; WeCom ayrıca şirket ID, Agent ID ve Secret ister. Kaydedip önbellekte arayın, personel değişince yenileyin.",
-          "Dizin bellekte kalır ve yeniden başlatmada yüklenir. CLI veya asistanla tam ve benzersiz ad ya da kişi ID kullanın; aynı adları açıkça seçin. WeCom alıcısı önceden aynı botla iletişim kurmuş ve kullanıcı ID eşleşmiş olmalıdır; yoksa mevcut kanal konuşmasını kullanın."
+          "Dizin, geçerli WorkStep ana bilgisayarında önbelleğe alınır ve yeniden başlatmadan sonra doğrudan kullanılabilir; personel değiştiğinde elle güncelleyin. CLI veya asistan üzerinden tam ve benzersiz bir ad ya da kişi ID değeriyle gönderin; aynı ad varsa kişiyi açıkça seçin. WeCom üyeleri önce aynı botla etkileşime girmeli ve kullanıcı ID değeri eşleşmelidir; aksi takdirde mevcut bir kanal görüşmesini kullanın."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Bot kişi dizinini kullanma",
-          "caption": "Dizin bellekte kalır ve yeniden başlatmada yüklenir. CLI veya asistanla tam ve benzersiz ad ya da kişi ID kullanın; aynı adları açıkça seçin. WeCom alıcısı önceden aynı botla iletişim kurmuş ve kullanıcı ID eşleşmiş olmalıdır; yoksa mevcut kanal konuşmasını kullanın."
+          "alt": "Bot dizin ayarları ve yerel önbellek bilgileri",
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Kanal seçici ve ayrı bot düzenleyici",
-          "caption": "Yeni çok kanallı düzenin kimlik bilgisi içermeyen gerçek ekran görüntüsü beklemede. Eski form onu ​​temsil etmiyor."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Feishu veya Lark bildirimi URL, imza ve şablon",
-          "caption": "Kimlik bilgisi içermeyen yapılandırma ve kart önizleme ekran görüntüleri beklemede; fiili teslimat talep edilmez."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Beş adımlı korumalı alan kılavuzunda proje seçimi ve onayı",
-          "caption": "Depolamayı, proje ilişkilendirmesini ve yapılandırma geçişini inceleyin."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri. Yalnızca ilk korumalı alan adımı gösterilir; beş adımlı kurulum tamamlanmadı."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Güncel masaüstü sürümü ve sistem ayarlarında güncelleme-kontrol girişi",
-          "caption": "Otomatik güncelleme, indirme ilerlemesi ve GitHub üzerinden elle indirme için gerçek ekran görüntüsü henüz gereklidir."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri. Gerçek geliştirme kabuğu arayüzü; kurulu resmî paketin yükseltme kabul testi değildir."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Karar modeli modları, kaynaklar, test, kayıt ve isteğe bağlı vekil",
-          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Ayar başlığındaki soru işareti ve uygulama içi çok dilli kılavuz",
-          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Dijital kişi kurulumu, kişilik belgeleri ve ana sohbet",
-          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Genel bellek araması, kategoriler ve sayfalı asıl kaynaklar",
-          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Proaktif düşünme ayarları ve ayrı sayfalı çalışma kayıtları",
-          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Dijital kişi kanal bağları, proaktif bildirimler ve teslim durumu",
-          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Ses çıkış modları, örnek dinleme ve açık dinleme denetimi",
-          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Tanıdık onayı, üç aşamalı örnek toplama ve kişi tanıma ayarları",
-          "caption": "Sabit 8777 demo ortamının gerçek ekran görüntüsü eksik; bileşen örnekleri onun yerine geçmez."
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Motor ayarlarındaki özel entegrasyon ve motor içe aktarma girişleri",
-          "caption": "Sabit demo ortamındaki entegrasyon girişi ve gönderilmemiş taslağın ekran görüntüleri eksik."
+          "alt": "Sohbetle motor oluşturma",
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri. Gerçekten oluşturulan yeni entegrasyon sohbeti; kurulum taslağı gönderilmedi."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Motor paketi içe aktarıldıktan sonra oluşturulan entegrasyon sohbeti ve taslak",
-          "caption": "Sabit demo ortamındaki ZIP içe aktarma ve yapılandırılmayı bekleyen taslak görüntüleri eksik. İçe aktarma başarılı kayıt olarak sunulmamalıdır."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri. Gerçek çevrimdışı örnek paketi kullanılır; gerçek model entegrasyonu kabul testi değildir."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Kayıtlı özel motorun dışa aktarma, devre dışı bırakma ve geri alma kontrolleri",
-          "caption": "Sabit demo ortamında kayıtlı özel motorun gerçek kartı eksik; yerleşik bir motor kartı onun yerine kullanılmamalıdır."
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri. Gerçek çevrimdışı örnek paketi kullanılır; gerçek model entegrasyonu kabul testi değildir."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Uygulamada ve web sitesinde yerleşik dil seçiciler",
-          "caption": "Eklenen dil seçeneklerinin gerçek ekran görüntüleri beklemede."
+          "alt": "Yerleşik bir dil seçin",
+          "caption": "Sabit demo ortamındaki gerçek Çince ayarlar veya işlem girişleri."
         }
       },
       {

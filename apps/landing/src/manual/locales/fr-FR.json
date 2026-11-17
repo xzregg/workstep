@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Brouillons multiples et horaires individuels de l’assistant",
-          "caption": "Capture réelle à fournir : lot et heures individuelles, sans remplacer par un ancien brouillon unique."
+          "alt": "Préparer plusieurs tâches avec l’assistant",
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe. La demande n’a pas été envoyée ; aucun résultat d’IA n’a été généré."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Liste des étapes après saisie de @ dans les détails de la tâche et destinataire choisi",
-          "caption": "Captures de la liste @étape et du brouillon après sélection à ajouter dans le projet de démonstration fixe. Sélectionner ne signifie ni envoyer ni exécuter."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "File des compléments pendant une réponse du coordinateur",
-          "caption": "Capture réelle à fournir : destinataire Coordinateur, compléments en cours et file de continuation."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe. La file de compléments utilise un moteur simulé hors ligne à réponses fixes, pas les résultats d’un véritable modèle."
         }
       },
       {
@@ -757,7 +757,7 @@
           "Dans l’historique des modifications, comparez, annulez ou effacez l’historique. Après une interruption, inspectez la copie conservée puis reprenez l’enregistrement ou abandonnez. Les originaux en conflit ne sont pas écrasés."
         ],
         "tips": [
-          "L’édition directe concerne le HTML statique et publie les modifications de fichiers HTML/CSS/JS existants, sans ajout ni suppression de fichiers entiers. Pour les pages dynamiques, utilisez l’inspection en lecture seule et les commentaires de la section suivante. Les anciennes captures ne montrent pas la nouvelle poignée ni l’inspection dynamique."
+          "L’édition directe concerne le HTML statique et publie les modifications de fichiers HTML/CSS/JS existants, sans ajout ni suppression de fichiers entiers. Pour les pages dynamiques, utilisez l’inspection en lecture seule et les commentaires de la section suivante."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Propriétés en lecture seule, commentaires d’éléments et changement de fichiers du prototype dynamique",
-          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe. Les nœuds dynamiques sont sélectionnés pour inspection en lecture seule ; le commentaire n’a pas été envoyé."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Éditeur de modèles de format de livrables pour flux et tâches",
-          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Dicter un brouillon de message",
-          "caption": "L’hôte connecté reconnaît le son sans le conserver. Autorisez le microphone via HTTPS ou une adresse locale. En cas d’échec, vérifiez les permissions du site et du système ; redémarrez un serveur obsolète. Vous pouvez conserver explicitement le texte déjà reconnu."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Panneaux de conversation de plusieurs projets et menu de disposition",
-          "caption": "Capture réelle du projet de démonstration fixe à fournir : menu des fenêtres, panneaux multiples et séparateurs déplaçables."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Configurer et utiliser les connecteurs",
-          "caption": "Capture réelle à fournir : configuration, test et sélection en conversation."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Menu des groupes dans la barre latérale et aperçu en lecture seule des archives",
-          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Programmer un message dans une conversation",
-          "caption": "Le serveur doit rester actif. Une conversation occupée attend ; les réponses de canal reviennent au canal d’origine. Supprimer ou archiver la conversation supprime ses règles, sans restauration automatique. Un groupe lié à une tâche utilise la coordination de tâche."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Exécuter maintenant et vérifier les tâches",
-          "caption": "Dépliez le JSON des tâches générées dans l’historique et comparez les brouillons aux tâches créées. Les anciennes exécutions ou les échecs avant génération peuvent ne pas avoir de JSON. Vérifiez les tâches déjà créées avant de relancer un échec partiel."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Aperçu du lot planifié et traces multitâches",
-          "caption": "Capture réelle à fournir : brouillons et liste déjà créée après échec partiel."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe. La demande n’a pas été envoyée ; aucun résultat d’IA n’a été généré."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Identité Feishu/Lark et synchronisation d’organisation",
-          "caption": "Capture sans identifiants réels sur Gateway isolé à fournir."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Liste des rappels tiers dans les paramètres Gateway",
-          "caption": "Capture réelle d’un Gateway d’essai isolé à fournir, sans compte quotidien ni rappel réel."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Changer d’appareil et voir les notifications",
+        "title": "Changer d’appareil et restaurer la page",
         "steps": [
           "Ouvrez un espace autorisé sur la plateforme, puis changez d’appareil en ligne avec les onglets supérieurs.",
           "Chaque compte et appareil mémorise sa dernière page de projet, tâche ou session dans ce navigateur. Le retour vérifie encore les droits sans les contourner.",
           "Un projet distant ne charge qu’à sa sélection. Après erreur ou coupure, recliquez pour actualiser ; aucune interrogation continue en arrière-plan.",
-          "Ouvrez le centre de notifications pour les résumés de fin/échec des appareils autorisés, puis cliquez vers tâche ou session. Les événements en direct restent ceux de l’appareil courant.",
+          "Après le changement, vérifiez le nom de l’appareil et la page du projet, de la tâche ou de la conversation. Les messages appartiennent uniquement à l’appareil actuel ; vérifiez la destination avant l’envoi.",
           "Retour à Gateway permet de rechoisir un appareil. Un rappel d’autorisation expiré relance la connexion ; après annulation du bureau, réessayez ou revenez au local."
         ],
         "tips": [
           "L’espace de travail de la passerelle effectue au maximum 3 nouvelles tentatives après une déconnexion, puis affiche un dialogue et suspend la connexion temps réel, les contrôles de session et l’actualisation des appareils. Vérifiez le réseau, la passerelle et l’appareil, puis choisissez « Reconnecter ». « Plus tard », le retour à la fenêtre ou le rétablissement du réseau ne relancent pas les tentatives ; le bouton reste accessible après fermeture du dialogue. Le compteur se réinitialise après 30 secondes de connexion stable. Une autorisation expirée impose de revenir par la passerelle. Les connexions locales sans passerelle ne sont pas concernées.",
           "La page mémorisée reste propre au navigateur. Sans stockage, l’accès fonctionne sans mémoriser la position.",
           "Appareil hors ligne, droit retiré ou réseau défaillant : reconnectez selon l’interface. Une page enregistrée ne remplace pas une autorisation.",
-          "Captures réelles des onglets d’appareil et notifications agrégées de démonstration encore à fournir."
+          "Les onglets changent la cible d’accès ; ils ne copient pas les messages des conversations ou tâches vers d’autres appareils."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Onglets d’appareil et centre agrégé",
-          "caption": "Capture à fournir : changement d’appareil, restauration de page et navigation depuis les notifications."
+          "alt": "Onglets des appareils de la passerelle et restauration de la page de travail",
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe. Deux appareils simulés par le protocole réel partagent le serveur de démonstration ; ce ne sont pas deux machines physiques. Changement d’appareil et restauration de page."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Utiliser l’annuaire d’un bot",
         "steps": [
           "Enregistrez un bot DingTalk, WeCom ou Feishu, puis activez la lecture dans Modifier → Annuaire. Accordez les droits de lecture des membres ; WeCom demande aussi l’ID d’entreprise, l’Agent ID et le Secret. Enregistrez, recherchez le cache et actualisez après les changements de personnel.",
-          "L’annuaire reste en mémoire et se recharge au redémarrage. Avec le CLI ou l’assistant, utilisez un nom exact unique ou un ID de contact ; choisissez explicitement les homonymes. Sur WeCom, le destinataire doit avoir déjà parlé au même bot avec un ID utilisateur identique ; sinon, utilisez une conversation existante."
+          "L’annuaire est mis en cache sur l’hôte WorkStep actuel et reste utilisable après un redémarrage ; actualisez-le manuellement lorsque les membres changent. Envoyez via le CLI ou l’assistant avec un nom exact et unique ou un ID de contact ; choisissez explicitement la personne en cas d’homonymie. Les membres WeCom doivent d’abord interagir avec le même robot et leur ID utilisateur doit correspondre ; sinon, utilisez une conversation de canal existante."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Utiliser l’annuaire d’un bot",
-          "caption": "L’annuaire reste en mémoire et se recharge au redémarrage. Avec le CLI ou l’assistant, utilisez un nom exact unique ou un ID de contact ; choisissez explicitement les homonymes. Sur WeCom, le destinataire doit avoir déjà parlé au même bot avec un ID utilisateur identique ; sinon, utilisez une conversation existante."
+          "alt": "Réglages de l’annuaire du bot et informations sur le cache local",
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Sélecteur de canal et éditeur indépendant",
-          "caption": "Nouvelle capture réelle multicanal sans identifiants à fournir ; l’ancien formulaire ne représente pas cette disposition."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Adresse, signature et modèle Feishu/Lark",
-          "caption": "Captures de configuration et aperçu sans identifiants à fournir ; aucune livraison réelle prétendue."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Sélection et résumé du guide de bac à sable",
-          "caption": "Vérifiez stockage, associations et migration des réglages."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe. Seule la première étape du bac à sable est montrée ; les cinq étapes ne sont pas terminées."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Version courante et contrôle de mise à jour",
-          "caption": "Une capture réelle de la mise à jour automatique, de sa progression et du téléchargement manuel GitHub reste à fournir."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe. Interface réelle du shell de développement, sans validation de la mise à niveau d’une version installée officielle."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Modes, ressources, test, enregistrement et proxy facultatif du modèle de décision",
-          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Point d’interrogation des paramètres et manuel multilingue intégré",
-          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Guide de figure numérique, documents de personnalité et conversation principale",
-          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Recherche globale, catégories et pagination des sources originales",
-          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Configuration de réflexion et historique à pagination indépendante",
-          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Liaisons de canaux, notifications proactives et état de livraison",
-          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Modes de sortie vocale, écoute de test et commande explicite d’écoute",
-          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Consentement, capture en trois étapes et paramètres de reconnaissance",
-          "caption": "Captures réelles à ajouter depuis l’environnement de démonstration fixe 8777 ; aucun exemple de composant ne les remplace."
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Accès à l’intégration personnalisée et à l’import de moteurs dans les paramètres des moteurs",
-          "caption": "Captures de l’accès à l’intégration et du brouillon non envoyé à ajouter depuis l’environnement de démonstration fixe."
+          "alt": "Créer un moteur par conversation",
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe. Véritable nouvelle conversation d’intégration ; le brouillon de configuration n’a pas été envoyé."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Conversation d’intégration et brouillon créés après l’import d’un paquet de moteur",
-          "caption": "Captures de l’import ZIP et du brouillon à configurer à ajouter depuis l’environnement fixe. L’import n’est pas présenté comme un enregistrement réussi."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe. Un vrai paquet d’exemple hors ligne est utilisé ; cela ne valide pas l’intégration d’un véritable modèle."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Commandes d’export, de désactivation et de retour de version d’un moteur personnalisé enregistré",
-          "caption": "Capture d’une carte de moteur enregistré à ajouter depuis l’environnement fixe ; aucune carte de moteur intégré ne la remplace."
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe. Un vrai paquet d’exemple hors ligne est utilisé ; cela ne valide pas l’intégration d’un véritable modèle."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Sélecteurs de langues intégrées de l’application et du site",
-          "caption": "Capture réelle des nouvelles options à fournir."
+          "alt": "Choisir une langue intégrée",
+          "caption": "Réglages ou accès réels en chinois dans l’environnement de démonstration fixe."
         }
       },
       {

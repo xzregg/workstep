@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Bản thảo nhiệm vụ hàng loạt và thời gian dự kiến của từng cá nhân",
-          "caption": "Ảnh chụp màn hình thực đang chờ xử lý: bản nháp hàng loạt và thời gian riêng lẻ. Bản dự thảo một nhiệm vụ cũ không được thay thế cho nó."
+          "alt": "Chuẩn bị nhiều nhiệm vụ với trợ lý nhiệm vụ",
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định. Yêu cầu chưa được gửi; chưa tạo kết quả AI."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Danh sách bước sau khi nhập @ trong chi tiết tác vụ và người nhận đã chọn",
-          "caption": "Chưa có ảnh các ứng viên @bước và bản nháp sau khi chọn trong dự án minh họa cố định; chọn không có nghĩa đã gửi hoặc thực thi."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "Tin nhắn đang chờ xử lý trong khi trả lời điều phối viên",
-          "caption": "Ảnh chụp màn hình thực đang chờ xử lý: Người nhận điều phối, tin nhắn bổ sung trong quá trình thực hiện và hàng đợi tiếp tục."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định. Hàng đợi bổ sung dùng bộ máy mô phỏng ngoại tuyến với phản hồi cố định, không phải kết quả mô hình thật."
         }
       },
       {
@@ -757,7 +757,7 @@
           "Trong lịch sử thay đổi, xem khác biệt, hoàn tác hoặc dọn lịch sử. Sau gián đoạn, kiểm tra bản sao được giữ lại rồi tiếp tục lưu hoặc bỏ bản sao. Không ghi đè bản gốc khi có xung đột."
         ],
         "tips": [
-          "Chỉnh sửa trực tiếp dành cho HTML tĩnh và xuất bản thay đổi các tệp HTML/CSS/JS hiện có, không hỗ trợ thêm hoặc xóa toàn bộ tệp. Trang động dùng kiểm tra chỉ đọc và bình luận ở mục tiếp theo. Ảnh cũ chưa có tay nắm di chuyển và kiểm tra động mới."
+          "Chỉnh sửa trực tiếp dành cho HTML tĩnh và xuất bản thay đổi các tệp HTML/CSS/JS hiện có, không hỗ trợ thêm hoặc xóa toàn bộ tệp. Trang động dùng kiểm tra chỉ đọc và bình luận ở mục tiếp theo."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Thuộc tính chỉ đọc, bình luận phần tử và chuyển tệp của nguyên mẫu động",
-          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định. Nút động chỉ được chọn để kiểm tra chỉ đọc; bình luận chưa gửi."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Trình sửa mẫu định dạng sản phẩm của quy trình và tác vụ",
-          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Nhập bản nháp bằng giọng nói",
-          "caption": "Âm thanh được nhận dạng trên máy chủ kết nối và không lưu lại. Cho phép micrô qua HTTPS hoặc địa chỉ cục bộ. Khi lỗi, kiểm tra quyền hệ thống và trang; khởi động lại backend cũ. Có thể chủ động giữ văn bản đã nhận dạng."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Ngăn hội thoại trên máy tính để bàn trên các dự án và menu sắp xếp",
-          "caption": "Ảnh chụp màn hình thực từ dự án demo cố định đang chờ xử lý: menu cửa sổ hội thoại, nhiều ngăn và dấu phân cách có thể kéo được."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Cấu hình và sử dụng trình kết nối",
-          "caption": "Chưa có ảnh chụp thực: cấu hình, kiểm tra và chọn trong hội thoại."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Trình đơn nhóm hội thoại ở thanh bên và bản xem lưu trữ chỉ đọc",
-          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Hẹn gửi tin trong cuộc trò chuyện có sẵn",
-          "caption": "Backend phải hoạt động. Cuộc trò chuyện bận sẽ chờ; câu trả lời kênh trở về kênh gốc. Xóa hoặc lưu trữ cuộc trò chuyện sẽ xóa quy tắc, khôi phục không lấy lại quy tắc. Nhóm gắn tác vụ dùng điều phối tác vụ."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Chạy ngay và kiểm tra kết quả",
-          "caption": "Mở JSON tác vụ đã tạo trong lịch sử và so sánh bản nháp với tác vụ thực tế. Lượt cũ hoặc lỗi trước khi sinh có thể không có JSON. Kiểm tra tác vụ đã tạo trước khi thử lại lỗi một phần."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Bản xem trước tạo hàng loạt theo lịch trình và bản ghi chạy đa tác vụ",
-          "caption": "Ảnh chụp màn hình thực đang chờ xử lý: bản nháp hàng loạt và các tác vụ đã được tạo sau khi bị lỗi một phần."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định. Yêu cầu chưa được gửi; chưa tạo kết quả AI."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Cài đặt đồng bộ hóa thư mục và nguồn nhận dạng Feishu hoặc Lark",
-          "caption": "Ảnh chụp màn hình cấu hình không có thông tin xác thực từ một Cổng bị cô lập đang chờ xử lý."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Danh sách cho phép gọi lại của bên thứ ba trong cài đặt Cổng",
-          "caption": "Ảnh chụp màn hình Cổng trình diễn bị cô lập thực sự đang chờ xử lý; không sử dụng tài khoản hàng ngày hoặc cài đặt gọi lại thực tế."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Chuyển đổi thiết bị và kiểm tra thông báo tổng hợp",
+        "title": "Chuyển thiết bị và khôi phục trang",
         "steps": [
           "Nhập không gian làm việc của thiết bị được ủy quyền trên nền tảng, sau đó sử dụng các tab thiết bị trên cùng để chuyển sang thiết bị trực tuyến khác.",
           "Mỗi tài khoản và thiết bị đều ghi nhớ trang dự án, nhiệm vụ hoặc phiên cuối cùng trong trình duyệt này. Việc quay lại vẫn kiểm tra ủy quyền và không bỏ qua các mục tiêu không thể truy cập.",
           "Các dự án từ xa chỉ tải khi được chọn. Sau khi tải không thành công hoặc ngắt kết nối, hãy nhấp lại vào dự án hiện tại để làm mới theo cách thủ công; các thiết bị không được thăm dò liên tục ở chế độ nền.",
-          "Mở Trung tâm thông báo để xem bản tóm tắt hoàn thành hoặc lỗi từ các thiết bị được ủy quyền. Bấm để mở nhiệm vụ hoặc phiên. Tin nhắn trực tiếp trên Workspace vẫn thuộc về thiết bị hiện tại.",
+          "Sau khi chuyển, kiểm tra tên thiết bị và trang dự án, tác vụ hoặc trò chuyện. Tin nhắn chỉ thuộc thiết bị hiện tại; xác nhận thiết bị đích trước khi gửi.",
           "Sử dụng nền tảng Return to Gateway để chọn thiết bị khác. Lệnh gọi lại ủy quyền trình duyệt đã hết hạn khởi động lại đăng nhập; sau khi hủy ủy quyền máy tính để bàn, hãy thử lại theo cách thủ công hoặc quay lại không gian làm việc cục bộ."
         ],
         "tips": [
           "Không gian làm việc cổng kết nối tự động thử lại tối đa 3 lần sau khi mất kết nối. Nếu vẫn thất bại, hộp thoại xuất hiện và tạm dừng kết nối thời gian thực, kiểm tra phiên và làm mới danh sách thiết bị. Kiểm tra mạng, cổng và thiết bị rồi chọn kết nối lại. Đóng hoặc hoãn hộp thoại, quay lại cửa sổ hay mạng phục hồi đều không tiếp tục thử; nút kết nối lại vẫn có trên trang. Bộ đếm chỉ đặt lại sau 30 giây kết nối ổn định. Quyền hết hạn yêu cầu vào lại qua cổng. Kết nối cục bộ không qua cổng không bị ảnh hưởng.",
           "Bộ nhớ trang là cục bộ của trình duyệt, không được đồng bộ hóa giữa các trình duyệt. Access hoạt động mà không cần bộ nhớ trình duyệt nhưng vị trí không được giữ lại.",
           "Kết nối lại theo lời nhắc đối với các thiết bị ngoại tuyến, ủy quyền bị thu hồi hoặc lỗi mạng. Vị trí đã lưu không thay thế quyền.",
-          "Ảnh chụp màn hình tab thiết bị thực và thông báo tổng hợp từ dự án trình diễn cố định vẫn đang chờ xử lý."
+          "Thẻ thiết bị chỉ đổi đích truy cập, không sao chép tin nhắn trò chuyện hay tác vụ sang thiết bị khác."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Tab thiết bị và trung tâm thông báo tổng hợp",
-          "caption": "Ảnh chụp màn hình thực đang chờ xử lý: chuyển đổi thiết bị, khôi phục vị trí và điều hướng thông báo; vẫn chưa bị bắt."
+          "alt": "Thẻ thiết bị cổng kết nối và khôi phục trang làm việc",
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định. Hai thiết bị mô phỏng bằng giao thức thật dùng chung máy chủ minh họa; không phải hai máy vật lý. Hiển thị chuyển thiết bị và khôi phục trang."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Dùng danh bạ bot",
         "steps": [
           "Lưu bot DingTalk, WeCom hoặc Feishu rồi bật đọc trong Chỉnh sửa → Danh bạ. Cấp quyền đọc thành viên; WeCom cần thêm ID doanh nghiệp, Agent ID và Secret. Lưu, tìm trong bộ nhớ đệm và làm mới khi nhân sự thay đổi.",
-          "Danh bạ chỉ nằm trong bộ nhớ, tải lại khi khởi động. Qua CLI hoặc trợ lý, gửi bằng tên chính xác duy nhất hoặc ID liên hệ; tên trùng phải chọn rõ. Người nhận WeCom phải từng nhắn với cùng bot và ID người dùng khớp; nếu không hãy dùng cuộc trò chuyện kênh có sẵn."
+          "Danh bạ được lưu vào bộ nhớ đệm trên máy chủ WorkStep hiện tại và có thể dùng ngay sau khi khởi động lại; hãy cập nhật thủ công khi nhân sự thay đổi. Gửi qua CLI hoặc trợ lý bằng tên chính xác, duy nhất hoặc ID liên hệ; nếu trùng tên, phải chọn rõ người nhận. Thành viên WeCom phải tương tác trước với cùng bot và ID người dùng phải khớp; nếu không, hãy dùng cuộc trò chuyện kênh hiện có."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Dùng danh bạ bot",
-          "caption": "Danh bạ chỉ nằm trong bộ nhớ, tải lại khi khởi động. Qua CLI hoặc trợ lý, gửi bằng tên chính xác duy nhất hoặc ID liên hệ; tên trùng phải chọn rõ. Người nhận WeCom phải từng nhắn với cùng bot và ID người dùng khớp; nếu không hãy dùng cuộc trò chuyện kênh có sẵn."
+          "alt": "Cài đặt danh bạ bot và thông tin bộ nhớ đệm cục bộ",
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Bộ chọn kênh và trình chỉnh sửa bot riêng biệt",
-          "caption": "Ảnh chụp màn hình thực tế không có thông tin xác thực của bố cục đa kênh mới đang chờ xử lý. Hình thức cũ không đại diện cho nó."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Thông báo Feishu hoặc Lark URL, chữ ký và mẫu",
-          "caption": "Cấu hình không có thông tin xác thực và ảnh chụp màn hình xem trước thẻ đang chờ xử lý; giao hàng thực tế không được yêu cầu."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Lựa chọn và xác nhận dự án trong hướng dẫn sandbox năm bước",
-          "caption": "Kiểm tra lưu trữ, liên kết dự án và di chuyển cấu hình."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định. Chỉ hiển thị bước đầu của môi trường cách ly; chưa hoàn tất năm bước thiết lập."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Phiên bản máy tính để bàn hiện tại và mục kiểm tra cập nhật trong cài đặt hệ thống",
-          "caption": "Còn thiếu ảnh chụp thật của cập nhật tự động, tiến độ tải và tải thủ công từ GitHub."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định. Giao diện vỏ phát triển thực tế, không phải nghiệm thu nâng cấp gói chính thức đã cài."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Chế độ mô hình quyết định, tài nguyên, kiểm tra/lưu và proxy tùy chọn",
-          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Dấu hỏi tiêu đề cài đặt và hướng dẫn đa ngôn ngữ trong ứng dụng",
-          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Thiết lập hình tượng số, tài liệu nhân cách và hội thoại chính",
-          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Tìm kiếm bộ nhớ toàn cục, phân loại và phân trang nguồn gốc",
-          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Cài đặt suy nghĩ chủ động và nhật ký phân trang riêng",
-          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Liên kết kênh của nhân vật số, thông báo chủ động và trạng thái chuyển tin",
-          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Phương thức đầu ra giọng nói, nghe thử và điều khiển nghe rõ ràng",
-          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Đăng ký người quen có đồng ý, chụp ba hướng và cài đặt nhận diện",
-          "caption": "Còn thiếu ảnh giao diện thật từ môi trường minh họa cố định cổng 8777; không thay bằng mẫu thành phần."
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Lối vào tích hợp tùy chỉnh và nhập bộ máy trong phần cài đặt bộ máy",
-          "caption": "Chưa có ảnh lối vào tích hợp và bản nháp chưa gửi trong môi trường minh họa cố định."
+          "alt": "Tạo bộ máy qua trò chuyện",
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định. Cuộc trò chuyện tích hợp mới được tạo thật; bản nháp hướng dẫn chưa gửi."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Cuộc trò chuyện tích hợp và bản nháp được tạo sau khi nhập gói bộ máy",
-          "caption": "Chưa có ảnh nhập ZIP và bản nháp chờ cấu hình trong môi trường minh họa cố định; không xem nhập gói là đăng ký thành công."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định. Dùng gói ví dụ ngoại tuyến thực tế; không phải nghiệm thu tích hợp mô hình thật."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Các nút xuất, vô hiệu hóa và quay lại phiên bản trước của bộ máy tùy chỉnh đã đăng ký",
-          "caption": "Chưa có ảnh thẻ bộ máy đã đăng ký trong môi trường minh họa cố định; không dùng thẻ bộ máy tích hợp sẵn để thay thế."
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định. Dùng gói ví dụ ngoại tuyến thực tế; không phải nghiệm thu tích hợp mô hình thật."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Bộ chọn ngôn ngữ tích hợp trong ứng dụng và trang web",
-          "caption": "Ảnh chụp màn hình thực sự của các lựa chọn ngôn ngữ được thêm đang chờ xử lý."
+          "alt": "Chọn ngôn ngữ tích hợp",
+          "caption": "Cài đặt hoặc lối thao tác tiếng Trung thực tế trong môi trường minh họa cố định."
         }
       },
       {

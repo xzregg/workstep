@@ -236,6 +236,7 @@ class OpencodeEngine(AcpEngineBase):
         return [
             EngineConfigField(
                 key="permission_mode",
+                category="mode",
                 label="权限模式",
                 type="select",
                 options=tuple(
@@ -467,7 +468,7 @@ class OpencodeEngine(AcpEngineBase):
         logger.info("ACP spawn: %s (cwd=%s)", " ".join(cmd), cwd)
         yield InternalEvent(type="status", data={"status": "initializing"})
 
-        handler = _StreamingClient(self.runtime_permission_mode() or permission_mode)
+        handler = _StreamingClient(self.runtime_permission_mode() or permission_mode, permission_decision=self.runtime_permission_decision)
         self._handler = handler
         self._last_cwd = cwd
         try:

@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Bozze di attività batch e relativi orari pianificati individuali",
-          "caption": "Screenshot reali in attesa: bozze batch e tempi individuali. Una vecchia bozza a compito singolo non deve sostituirla."
+          "alt": "Prepara più attività con l'assistente attività",
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso. La richiesta non è stata inviata; non è stato generato alcun risultato AI."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Elenco dei passaggi dopo aver digitato @ nei dettagli dell’attività e destinatario selezionato",
-          "caption": "Mancano screenshot del progetto dimostrativo fisso con i candidati @passaggio e la bozza dopo la selezione; selezionare non equivale a inviare o eseguire."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "Messaggi in sospeso durante la risposta del coordinatore",
-          "caption": "Screenshot reale in attesa: destinatario del coordinatore, messaggi supplementari durante l'esecuzione e coda di continuazione."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso. La coda supplementare usa un motore simulato offline con risposte fisse, non risultati di un modello reale."
         }
       },
       {
@@ -757,7 +757,7 @@
           "Nella cronologia confronta le differenze, annulla le modifiche o cancella la cronologia. Dopo un’interruzione controlla la copia conservata e riprendi il salvataggio oppure scartala. Gli originali in conflitto non vengono sovrascritti."
         ],
         "tips": [
-          "La modifica diretta riguarda HTML statico. Si pubblicano modifiche a file HTML/CSS/JS esistenti, non creazione o eliminazione di file interi. Per pagine dinamiche usa l’ispezione in sola lettura e i commenti della sezione seguente. Lo screenshot precedente non mostra la nuova maniglia né l’ispezione dinamica."
+          "La modifica diretta riguarda HTML statico. Si pubblicano modifiche a file HTML/CSS/JS esistenti, non creazione o eliminazione di file interi. Per pagine dinamiche usa l’ispezione in sola lettura e i commenti della sezione seguente."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Proprietà di sola lettura, commenti agli elementi e cambio file di un prototipo dinamico",
-          "caption": "Manca uno screenshot reale dell’ambiente dimostrativo fisso 8777; gli esempi di componenti non lo sostituiscono."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso. I nodi dinamici sono selezionati solo per ispezione in lettura; il commento non è stato inviato."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Editor del modello di formato dei risultati per flussi e attività",
-          "caption": "Manca uno screenshot reale dell’ambiente dimostrativo fisso 8777; gli esempi di componenti non lo sostituiscono."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Dettare una bozza di messaggio",
-          "caption": "L’audio viene riconosciuto sull’host collegato e non salvato. Consenti il microfono tramite HTTPS o indirizzo locale. In caso di errore controlla permessi del sito e del sistema e riavvia un backend obsoleto. Puoi conservare esplicitamente il testo già riconosciuto."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Riquadri di conversazione sul desktop tra progetti e menu di disposizione",
-          "caption": "È in sospeso lo screenshot reale del progetto demo corretto: menu della finestra di conversazione, riquadri multipli e separatori trascinabili."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Configurare e usare i connettori",
-          "caption": "Schermata reale da acquisire: configurazione, test e scelta nella conversazione."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Menu dei gruppi nella barra laterale e anteprima di sola lettura dell’archivio",
-          "caption": "Manca uno screenshot reale dell’ambiente dimostrativo fisso 8777; gli esempi di componenti non lo sostituiscono."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Programmare messaggi in una conversazione",
-          "caption": "Il backend deve restare attivo. Le conversazioni occupate attendono; le risposte di canale tornano al canale originale. Eliminare o archiviare rimuove le regole, che non tornano ripristinando la conversazione. I gruppi legati a un’attività usano il coordinamento attività."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Eseguire subito e controllare i risultati",
-          "caption": "Espandi il JSON delle attività generate nel registro e confronta bozze e attività create. Esecuzioni vecchie o errori prima della generazione possono non avere JSON. Controlla le attività già create prima di ripetere un’esecuzione parziale."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Anteprima della generazione batch pianificata e record di esecuzione di più attività",
-          "caption": "Screenshot reali in attesa: bozze batch e attività già create dopo un fallimento parziale."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso. La richiesta non è stata inviata; non è stato generato alcun risultato AI."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Origine identità Feishu o Lark e impostazioni di sincronizzazione della directory",
-          "caption": "È in sospeso lo screenshot della configurazione senza credenziali di un gateway isolato."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Elenco consentito di richiamate di terze parti nelle impostazioni del gateway",
-          "caption": "Dimostrazione reale isolata Screenshot del gateway in attesa; non utilizzare account giornalieri o impostazioni di richiamata effettive."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Cambia dispositivo e controlla le notifiche aggregate",
+        "title": "Cambiare dispositivo e ripristinare la pagina",
         "steps": [
           "Accedi a un'area di lavoro del dispositivo autorizzata sulla piattaforma, quindi utilizza le schede del dispositivo superiore per passare a un altro dispositivo online.",
           "Ogni account e dispositivo ricorda l'ultima pagina di progetto, attività o sessione in questo browser. Il ritorno controlla comunque l'autorizzazione e non aggira gli obiettivi inaccessibili.",
           "I progetti remoti vengono caricati solo quando selezionati. Dopo un errore di caricamento o una disconnessione, fare nuovamente clic sul progetto corrente per aggiornarlo manualmente; i dispositivi non vengono interrogati continuamente in background.",
-          "Centro notifiche aperto per riepiloghi di completamento o errori da dispositivi autorizzati. Fare clic per aprire l'attività o la sessione. I messaggi live di Workspace appartengono ancora al dispositivo corrente.",
+          "Dopo il cambio controlla il nome del dispositivo e la pagina del progetto, dell’attività o della conversazione. I messaggi appartengono solo al dispositivo corrente; verifica la destinazione prima di inviare.",
           "Utilizza la piattaforma Return to Gateway per scegliere un altro dispositivo. Una richiamata di autorizzazione del browser scaduta riavvia l'accesso; dopo aver annullato l'autorizzazione del desktop, riprovare manualmente o tornare all'area di lavoro locale."
         ],
         "tips": [
           "L’area di lavoro del gateway ritenta automaticamente la connessione fino a 3 volte dopo una disconnessione. Se continua a fallire, mostra un dialogo e sospende la connessione in tempo reale, i controlli di sessione e l’aggiornamento dei dispositivi. Controllare rete, gateway e dispositivo, quindi scegliere di riconnettersi. Chiudere o rinviare il dialogo, tornare alla finestra o ripristinare la rete non riavvia i tentativi; il pulsante resta nella pagina. Il contatore si azzera dopo 30 secondi di connessione stabile. Un’autorizzazione scaduta richiede un nuovo ingresso dal gateway. Le connessioni locali senza gateway non cambiano.",
           "La memoria della pagina è locale del browser e non è sincronizzata tra i browser. L'accesso funziona senza la memorizzazione nel browser, ma le posizioni non vengono conservate.",
           "Riconnettiti come richiesto per dispositivi offline, autorizzazione revocata o errori di rete. Le posizioni salvate non sostituiscono le autorizzazioni.",
-          "Gli screenshot reali della scheda del dispositivo e delle notifiche aggregate del progetto dimostrativo corretto rimangono in sospeso."
+          "Le schede cambiano solo il dispositivo a cui accedi; non copiano messaggi di conversazioni o attività su altri dispositivi."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Schede del dispositivo e centro notifiche aggregato",
-          "caption": "Screenshot reale in attesa: cambio dispositivo, ripristino della posizione e navigazione delle notifiche; non ancora catturato."
+          "alt": "Schede dei dispositivi del gateway e ripristino della pagina di lavoro",
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso. Due dispositivi simulati tramite il protocollo reale condividono il backend dimostrativo; non sono due computer fisici. Mostra cambio dispositivo e ripristino della pagina."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Usare la rubrica di un bot",
         "steps": [
           "Salva un bot DingTalk, WeCom o Feishu, poi abilita l’accesso in Modifica → Rubrica. Concedi i permessi di lettura membri; WeCom richiede anche ID azienda, Agent ID e Secret. Salva, cerca nella cache e aggiorna dopo cambi di personale.",
-          "La rubrica resta in memoria e si ricarica al riavvio. Con CLI o assistente invia usando un nome esatto univoco o ID contatto; scegli esplicitamente gli omonimi. In WeCom il destinatario deve aver già parlato con lo stesso bot e avere lo stesso ID utente; altrimenti usa una conversazione di canale esistente."
+          "La rubrica viene memorizzata nella cache dell’host WorkStep corrente ed è disponibile dopo il riavvio; aggiornarla manualmente quando cambia il personale. Inviare tramite CLI o assistente usando un nome esatto e univoco oppure un ID contatto; in caso di omonimi, selezionare esplicitamente la persona. I membri WeCom devono prima interagire con lo stesso bot e il loro ID utente deve corrispondere; altrimenti usare una conversazione di canale esistente."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Usare la rubrica di un bot",
-          "caption": "La rubrica resta in memoria e si ricarica al riavvio. Con CLI o assistente invia usando un nome esatto univoco o ID contatto; scegli esplicitamente gli omonimi. In WeCom il destinatario deve aver già parlato con lo stesso bot e avere lo stesso ID utente; altrimenti usa una conversazione di canale esistente."
+          "alt": "Impostazioni della rubrica del bot e informazioni sulla cache locale",
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Selettore di canali ed editor bot separato",
-          "caption": "Si attende lo screenshot reale senza credenziali del nuovo layout multicanale. La vecchia forma non lo rappresenta."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Notifica Feishu o Lark URL, firma e modello",
-          "caption": "La configurazione senza credenziali e gli screenshot di anteprima della carta sono in sospeso; la consegna effettiva non viene rivendicata."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Selezione e conferma del progetto nella guida sandbox in cinque passaggi",
-          "caption": "Esamina l'archiviazione, l'associazione del progetto e la migrazione della configurazione."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso. È mostrato solo il primo passaggio della sandbox; la configurazione in cinque passaggi non è completa."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Versione desktop corrente e voce di controllo degli aggiornamenti nelle impostazioni di sistema",
-          "caption": "Manca ancora una schermata reale di aggiornamento automatico, avanzamento e download manuale da GitHub."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso. Interfaccia reale della shell di sviluppo, non verifica dell’aggiornamento di un pacchetto ufficiale installato."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Modalità, risorse, test, salvataggio e proxy opzionale dei modelli decisionali",
-          "caption": "Manca uno screenshot reale dell’ambiente dimostrativo fisso 8777; gli esempi di componenti non lo sostituiscono."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Punto interrogativo delle impostazioni e manuale multilingue nell’app",
-          "caption": "Manca uno screenshot reale dell’ambiente dimostrativo fisso 8777; gli esempi di componenti non lo sostituiscono."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Guida della persona digitale, documenti della personalità e conversazione principale",
-          "caption": "Manca uno screenshot reale dell’ambiente dimostrativo fisso 8777; gli esempi di componenti non lo sostituiscono."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Ricerca globale della memoria, categorie e fonti originali paginate",
-          "caption": "Manca uno screenshot reale dell’ambiente dimostrativo fisso 8777; gli esempi di componenti non lo sostituiscono."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Impostazioni di riflessione proattiva e registri con paginazione separata",
-          "caption": "Manca uno screenshot reale dell’ambiente dimostrativo fisso 8777; gli esempi di componenti non lo sostituiscono."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Collegamenti dei canali, notifiche proattive e stato della consegna",
-          "caption": "Manca uno screenshot reale dell’ambiente dimostrativo fisso 8777; gli esempi di componenti non lo sostituiscono."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Modalità di output vocale, ascolto di prova e avvio esplicito dell’ascolto",
-          "caption": "Manca uno screenshot reale dell’ambiente dimostrativo fisso 8777; gli esempi di componenti non lo sostituiscono."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Consenso del conoscente, acquisizione in tre passaggi e impostazioni del riconoscimento",
-          "caption": "Manca uno screenshot reale dell’ambiente dimostrativo fisso 8777; gli esempi di componenti non lo sostituiscono."
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Accessi all’integrazione personalizzata e all’importazione nelle impostazioni dei motori",
-          "caption": "Mancano screenshot dell’ambiente dimostrativo fisso con l’accesso all’integrazione e la bozza non inviata."
+          "alt": "Creare un motore tramite conversazione",
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso. Conversazione d’integrazione realmente creata; la bozza guidata non è stata inviata."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Conversazione d’integrazione e bozza create dopo l’importazione di un pacchetto motore",
-          "caption": "Mancano screenshot dell’ambiente dimostrativo fisso con importazione ZIP e bozza da configurare. L’importazione non va presentata come registrazione riuscita."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso. Usa un vero pacchetto di esempio offline; non certifica l’integrazione di un modello reale."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Controlli di esportazione, disattivazione e ripristino di un motore personalizzato registrato",
-          "caption": "Manca una scheda reale di un motore registrato nell’ambiente dimostrativo fisso; una scheda di un motore integrato non può sostituirla."
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso. Usa un vero pacchetto di esempio offline; non certifica l’integrazione di un modello reale."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Selettori della lingua integrati nell'app e nel sito web",
-          "caption": "Sono in sospeso gli screenshot reali delle scelte linguistiche aggiunte."
+          "alt": "Scegli una lingua integrata",
+          "caption": "Impostazioni o accessi reali in cinese nell’ambiente dimostrativo fisso."
         }
       },
       {

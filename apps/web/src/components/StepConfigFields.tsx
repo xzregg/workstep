@@ -3,7 +3,9 @@ import Input from './Input'
 import Select from './Select'
 import Textarea from './Textarea'
 import { useI18n } from '../i18n'
-import { engineConfigOptionLabel } from '../utils/thinkingEffort'
+import { visiblePermissionFields } from '../utils/permissionLabels'
+import { engineConfigOptionLabel, engineConfigOptionDescription } from '../utils/thinkingEffort'
+import './StepConfigFields.css'
 
 export interface StepConfigFieldsProps {
   engineId: string
@@ -34,7 +36,7 @@ const StepConfigFields = ({
         gap: 12,
       }}
     >
-      {fields.map((field) => {
+      {visiblePermissionFields(engineId, fields).map((field) => {
         const value = values[field.key] ?? ''
         const isSelect = field.type === 'select'
         const isCheckbox = field.type === 'checkbox'
@@ -43,6 +45,7 @@ const StepConfigFields = ({
         return (
           <div
             key={field.key}
+            className={field.category === 'mode' ? 'step-permission-field' : undefined}
             style={{ minWidth: 0, gridColumn: isTextarea ? '1 / -1' : undefined }}
           >
             <label
@@ -50,7 +53,7 @@ const StepConfigFields = ({
               style={{ display: 'block', marginBottom: 4, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600 }}
             >
               {field.label}
-              {field.required && <span style={{ color: 'var(--danger)', marginLeft: 2 }}>*</span>}
+              {field.required && field.category !== 'mode' && <span style={{ color: 'var(--danger)', marginLeft: 2 }}>*</span>}
             </label>
             {isSelect ? (
               <Select
@@ -59,11 +62,12 @@ const StepConfigFields = ({
                 onChange={(event) => onChange(field.key, event.target.value)}
               >
                 <option value="">
-                  {field.placeholder || (field.required ? t('engineForm.selectPlaceholder') : '')}
+                  {field.category === 'mode' ? t('chatSession.permissionDefault') : field.placeholder || (field.required ? t('engineForm.selectPlaceholder') : '')}
                 </option>
                 {options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {engineConfigOptionLabel(field, option, t)}
+                  <option key={option.value} value={option.value}
+                    data-description={engineConfigOptionDescription(field, option, t, engineId)}>
+                    {engineConfigOptionLabel(field, option, t, engineId)}
                   </option>
                 ))}
               </Select>

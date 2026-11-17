@@ -567,3 +567,53 @@ async def test_custom_mcp_acceptance_requires_real_worker_tool_call(custom_envir
         assert not report['ok']
         with pytest.raises(ValueError, match='验收'):
             await manager.register(str(custom_environment))
+
+
+@pytest.mark.asyncio
+async def test_native_permissions_survive_custom_worker_and_daemon_restart(custom_environment):
+    import os
+    import subprocess
+    import sys
+    from services.custom_engines import custom_engine_manager as manager
+    from engines.core.custom_proxy import make_custom_engine
+    from engines.core.permissions import encode_permission_selection
+    adapter = custom_environment / "engine.py"
+    adapter.write_text(ADAPTER.replace(
+        "from engines.core.schema import EngineConfigField",
+        "from engines.core.schema import EngineConfigField, EngineConfigOption",
+    ).replace(
+        'return [EngineConfigField(key="token", label="Token", sensitive=True, type="password")]',
+        'return [EngineConfigField(key="native_guard", category="mode", label="原生权限", type="select", '
+        'default="review", options=(EngineConfigOption("review", "审核"), EngineConfigOption("trust", "信任")))]',
+    ).replace('yield agent_message_chunk("WORKSTEP_ENGINE_OK")',
+        'yield agent_message_chunk(str(kwargs.get("config_overrides", {}).get("native_guard", self.get_config_values()["native_guard"])))'))
+    info = (await manager.inspect(str(custom_environment)))["engine"]
+    assert info["permission_config_options"][0]["currentValue"] == "review"
+    engine = make_custom_engine(custom_environment, info)()
+    await engine.save_config_values({"native_guard": "trust"})
+    await engine.stop()
+    await manager.run_operation("install", str(custom_environment))
+    report = await manager.run_operation("validate", str(custom_environment))
+    assert report["ok"], report
+    await manager.register(str(custom_environment))
+    script = """
+import asyncio, json
+from engines.core.registry import list_all_engines
+from engines.core.permissions import encode_permission_selection
+async def main():
+    cls = list_all_engines()['example_custom']
+    engine = cls()
+    assert engine.permission_config_options()[0]['currentValue'] == 'trust'
+    for selected, expected in [('', 'trust'), (encode_permission_selection('example_custom', {'native_guard':'review'}), 'review')]:
+        await engine.set_permission_mode(selected)
+        values = cls.permission_config_overrides(selected)
+        events = [event async for event in engine.spawn('hello', '.', config_overrides=values)]
+        assert any(event.type == 'agent_message_chunk' and event.data['content']['text'] == expected for event in events)
+        await engine.stop()
+    print('RESTORED_AND_EXECUTED')
+asyncio.run(main())
+"""
+    result = await asyncio.to_thread(subprocess.run, [sys.executable, "-c", script],
+        capture_output=True, text=True, timeout=30, env=dict(os.environ))
+    assert result.returncode == 0, result.stderr
+    assert "RESTORED_AND_EXECUTED" in result.stdout

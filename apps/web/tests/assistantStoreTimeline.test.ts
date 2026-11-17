@@ -547,3 +547,20 @@ test('history backfills a saved prompt into a cached message without replacing l
   store.getState().hydrateSession('old-session', [{ ...base, prompt: '数据库保存的当轮完整输入' }])
   assert.equal(store.getState().sessions['old-session'].messages[0].prompt, '较新的实传输入')
 })
+
+
+test('full details replace compact preview events and keep new realtime events', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  store.getState().hydrateSession('preview-session', [{ id: 'preview-message', role: 'assistant', content: '', status: 'running' }])
+  store.getState().setMessageEventDetails('preview-session', 'preview-message', [{
+    type: 'REASONING_MESSAGE_CHUNK', delta: 'short tail', previewOnly: true,
+  }], { complete: false, next_cursor: null, preview: true })
+  store.getState().handleWsEvent({ type: 'REASONING_MESSAGE_CHUNK', delta: 'live thought',
+    channel: 'session_chat', session_id: 'preview-session', messageId: 'preview-message', sequence: 10 })
+  store.getState().setMessageEventDetails('preview-session', 'preview-message', [{
+    type: 'REASONING_MESSAGE_CHUNK', delta: 'full thought', sequence: 1,
+  }], { complete: true, next_cursor: null })
+  const events = store.getState().sessions['preview-session'].messages[0].events!
+  assert.deepEqual(events.map(event => event.delta), ['full thought', 'live thought'])
+  assert.ok(events.every(event => !event.previewOnly))
+})

@@ -1,3 +1,4 @@
+import './FloatingMenu.css'
 import { SKIN_EVENT } from '../skins/runtime'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import MobileSheet from './MobileSheet'
@@ -23,6 +24,9 @@ export interface FloatingMenuOption {
   disabled?: boolean
   /** Allow a menu entry to reveal another level without dismissing the menu. */
   keepOpen?: boolean
+  /** Multiple independent engine configuration fields can be selected. */
+  selected?: boolean
+  hasChildren?: boolean
 }
 
 export interface AnchorRect {
@@ -169,7 +173,7 @@ export default function FloatingMenu({
       onMouseEnter={() => onHoverChange?.(true)}
       onMouseLeave={() => onHoverChange?.(false)}
     >
-      {title && <div className="chat-input-menu-label">{title}</div>}
+      {title && !compact && <div className="chat-input-menu-label">{title}</div>}
       {showSearch && (
         <label className="chat-input-menu-search" onMouseDown={(event) => event.stopPropagation()}>
           <Icon name="search" size={13} strokeWidth={2} />
@@ -185,7 +189,7 @@ export default function FloatingMenu({
       )}
       <div className="chat-input-menu-list" role="listbox">
       {visibleOptions.map((option) => {
-        const selected = option.value === value
+        const selected = (option.selected ?? (option.value === value))
         return (
           <button
             key={option.value}
@@ -213,11 +217,12 @@ export default function FloatingMenu({
                 {option.label}
               </span>
               {option.description && (
-                <span style={{ display: 'block', fontSize: 'calc(10px * var(--font-scale))', color: 'var(--meta)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span className="chat-input-menu-description">
                   {option.description}
                 </span>
               )}
             </span>
+            {option.hasChildren && <Icon name="chevron-right" size={12} strokeWidth={1.8} />}
             {selected && (
               <span className="chat-input-menu-check">
                 <Icon name="check" size={13} strokeWidth={2.2} />

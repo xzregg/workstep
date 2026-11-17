@@ -1,23 +1,31 @@
-"""Unified permission modes for the session chat composer.
+"""Engine-bound native permission selections and legacy five-mode readers.
 
-The chat input exposes one permission selector with cross-engine meanings:
-
-- ``""`` — follow the global engine config (no override).
-- ``read-only`` — model cannot modify the workspace.
-- ``workspace-write`` — model can modify the workspace.
-- ``danger-full-access`` — model can run anything (full access).
-- ``auto`` — auto-approve tool/interaction requests.
-- ``ask`` — require user approval for tool/interaction requests.
-
-Native config translation belongs to each adapter's PERMISSION_POLICY,
-not a central engine-id dispatch table.
+Empty selections inherit saved engine settings. Adapters own allowed fields,
+values, defaults and approval behavior; the shared layer validates the envelope.
 """
 
 from engines.core.permissions import CHAT_PERMISSION_MODES
+from engines.core.permissions import decode_permission_selection
 
 
 def is_valid_permission_mode(mode: str) -> bool:
-    return mode in CHAT_PERMISSION_MODES
+    if mode in CHAT_PERMISSION_MODES:
+        return True
+    try:
+        return decode_permission_selection(mode) is not None
+    except ValueError:
+        return False
+
+
+def validate_permission_selection(engine_id: str, mode: str) -> None:
+    """Validate versioned native selections before persistence; legacy values keep their reader."""
+    if decode_permission_selection(mode or "") is None:
+        return
+    from engines.core.registry import list_all_engines
+    engine = list_all_engines().get(engine_id)
+    if engine is None:
+        raise ValueError("权限配置对应的引擎不可用")
+    engine.permission_config_overrides(mode)
 
 
 # ── Plan mode (Codex-style lightbulb) ──────────────────────────────────

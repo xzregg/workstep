@@ -526,7 +526,7 @@ class DigitalPersonRuntime:
             checker.start_queued_turn(accepted.turn_id)
             retried_empty = False
             repair_errors = set()
-            async with asyncio.timeout(180):
+            async with asyncio.timeout(600):
                 while True:
                     def result(_):
                         m = ChatMessage.get_by_id(accepted.assistant_message_id)

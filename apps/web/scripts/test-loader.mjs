@@ -6,6 +6,12 @@ import ts from 'typescript'
 const extensions = new Set(['.ts', '.tsx'])
 
 export async function resolve(specifier, context, nextResolve) {
+  // Match Vite's workspace alias and React deduplication instead of testing an installed file: copy.
+  const sharedSelect = new URL('../../../packages/gateway-ui/src/SearchableSelect.tsx', import.meta.url).href
+  if (specifier === '@workstep/gateway-ui/SearchableSelect') return { url: sharedSelect, shortCircuit: true }
+  if (context.parentURL === sharedSelect && /^(react|react-dom)(\/|$)/.test(specifier)) {
+    return nextResolve(specifier, { ...context, parentURL: new URL('../package.json', import.meta.url).href })
+  }
   try {
     return await nextResolve(specifier, context)
   } catch (error) {

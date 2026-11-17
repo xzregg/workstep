@@ -22,6 +22,10 @@ export type MessageTimelineEvent = {
   kind?: string
   timestamp?: unknown
   created_at?: string
+  previewCount?: number
+  previewHasResult?: boolean
+  previewIsError?: boolean
+  previewEndedAt?: number
 }
 
 export type ToolActivity = {
@@ -56,7 +60,7 @@ export type MessageTimelineItem =
   | { type: 'commentary'; id: string; content: string; sourceItemId?: string }
   | { type: 'thinking'; id: string; content: string; startedAt?: number; endedAt?: number }
   | { type: 'tool'; id: string; activity: ToolActivity }
-  | { type: 'tool-group'; id: string; activities: ToolActivity[] }
+  | { type: 'tool-group'; id: string; activities: ToolActivity[]; count?: number }
   | { type: 'subagent'; id: string; activity: SubagentActivity }
 
 function eventText(value: unknown): string {
@@ -105,6 +109,7 @@ export function buildMessageTimeline(
     const previous = timeline[timeline.length - 1]
     if (previous?.type === 'tool-group') {
       previous.activities.push(activity)
+      if (previous.count !== undefined) previous.count += 1
     } else if (previous?.type === 'tool') {
       timeline[timeline.length - 1] = {
         type: 'tool-group',
@@ -216,12 +221,17 @@ export function buildMessageTimeline(
         id,
         name: toolName(event),
         ...(typeof event.kind === 'string' ? { kind: event.kind } : {}),
-        hasResult: false,
-        isError: false,
+        hasResult: Boolean(event.previewHasResult),
+        isError: Boolean(event.previewIsError),
+        ...(event.previewEndedAt !== undefined ? { endedAt: event.previewEndedAt } : {}),
         ...(timestamp !== null ? { startedAt: timestamp } : {}),
       }
       toolsById.set(id, activity)
-      appendTool(activity)
+      if ((event.previewCount ?? 0) > 1) {
+        timeline.push({ type: 'tool-group', id: `tool-group-${id}`, activities: [activity], count: event.previewCount })
+      } else if (event.previewCount !== undefined) {
+        timeline.push({ type: 'tool', id: `tool-${id}`, activity })
+      } else appendTool(activity)
       return
     }
 

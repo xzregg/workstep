@@ -49,12 +49,15 @@ export function toCoordinatorEngines(
       supports_mcp: engine.supports_mcp,
       supports_provider: engine.supports_provider,
       provider_protocols: engine.provider_protocols,
+      permission_modes: engine.permission_modes,
+      permission_config_options: engine.permission_config_options,
+      supports_service_tier: engine.supports_service_tier,
     }))
 }
 
-/** 只比较决定「能否选中」的字段，无关字段变化不触发重渲染与重拉。 */
+/** Compare picker availability and the native controls consumed by composers. */
 function availabilityKey(engines: readonly Partial<CoordinatorEngineSummary>[]) {
-  return engines.map((engine) => [
+  return JSON.stringify(engines.map((engine) => [
     engine.id,
     engine.name,
     engine.description,
@@ -64,14 +67,22 @@ function availabilityKey(engines: readonly Partial<CoordinatorEngineSummary>[]) 
     engine.verified,
     engine.supports_coordinator,
     engine.built_in,
-  ].join(':')).join('|')
+    engine.mode,
+    engine.supports_session_fork,
+    engine.supports_mcp,
+    engine.supports_provider,
+    engine.provider_protocols,
+    engine.permission_modes,
+    engine.permission_config_options,
+    engine.supports_service_tier,
+  ]))
 }
 
 interface EngineAvailabilityState {
   catalogKey: string
   /** 助手 / 协调聊天引擎下拉共用的可用性摘要。 */
   engines: CoordinatorEngineSummary[]
-  /** 可用性每次真实变化 +1；步骤引擎下拉用它作为重新拉取的触发信号。 */
+  /** 可用性或原生配置选项变化 +1；步骤引擎下拉据此重新拉取。 */
   revision: number
   /** 用一份引擎目录覆盖摘要；内容未变时保持引用不变，避免无谓重渲染。 */
   publish: (engines: readonly (EngineInfo | CoordinatorEngineSummary)[]) => void

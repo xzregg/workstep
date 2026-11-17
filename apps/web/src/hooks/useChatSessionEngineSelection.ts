@@ -15,6 +15,7 @@ interface Options {
 /** All viewers follow the same versioned execution config; local cache is never authoritative. */
 export function useChatSessionEngineSelection({ projectId, sessionId }: Options) {
   const [config, setConfig] = useState<ChatEngineConfigState>({ ...EMPTY_ENGINE_CONFIG })
+  const [permissionMode, setPermissionMode] = useState('')
   const [pendingHandoff, setPendingHandoff] = useState<ChatSessionDetail['pending_handoff']>(null)
   const [loadedEndpoint, setLoadedEndpoint] = useState<{ engine: string; providerId: string } | null>(null)
   const [pendingWrites, setPendingWrites] = useState(0)
@@ -31,6 +32,7 @@ export function useChatSessionEngineSelection({ projectId, sessionId }: Options)
       thinkingEffort: snapshot.thinking_effort || '', serviceTier: snapshot.service_tier || '', providerCleared: false,
     }
     setConfig(next)
+    setPermissionMode(snapshot.permission_mode || '')
     setPendingHandoff(snapshot.pending_handoff ?? null)
     setLoadedEndpoint({ engine: next.engine, providerId: next.providerId })
     saveChatEngineConfig(projectId, snapshot.id, next)
@@ -69,7 +71,10 @@ export function useChatSessionEngineSelection({ projectId, sessionId }: Options)
   }, [])
 
   // These local fallbacks are for an empty/new composer. Existing endpoints are saved by transitions.
-  const chooseEngine = useCallback((engine: string) => { setConfig({ ...EMPTY_ENGINE_CONFIG, engine }) }, [])
+  const chooseEngine = useCallback((engine: string) => {
+    setConfig({ ...EMPTY_ENGINE_CONFIG, engine })
+    setPermissionMode('')
+  }, [])
   const chooseProvider = useCallback((providerId: string) => {
     setConfig(current => ({ ...EMPTY_ENGINE_CONFIG, engine: current.engine, providerId, providerCleared: !providerId }))
   }, [])
@@ -92,7 +97,7 @@ export function useChatSessionEngineSelection({ projectId, sessionId }: Options)
     saveOptions({ model: '', fast_model: '', vision_model: '', thinking_effort: '', service_tier: '' })
   }, [saveOptions])
 
-  return { config, pendingHandoff, loadedEndpoint, saving: pendingWrites > 0, error,
+  return { config, permissionMode, setPermissionMode, pendingHandoff, loadedEndpoint, saving: pendingWrites > 0, error,
     setDefaults, restoreSession: applyAuthoritative, applyHandoff: applyAuthoritative, chooseEngine, chooseProvider,
     setModel, setFastModel, setVisionModel, setThinkingEffort, setServiceTier, reset }
 }

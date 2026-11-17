@@ -28,6 +28,11 @@ import {
 
 /** A session-scoped WS event — AG-UI 标准事件（无 task_id，按 session_id 分流）。 */
 export interface AssistantChatEvent {
+  previewOnly?: boolean
+  previewCount?: number
+  previewHasResult?: boolean
+  previewIsError?: boolean
+  previewEndedAt?: number
   proactive?: boolean
   type: string
   /** Persisted JSONL sequence number (distinct from AG-UI live sequence). */
@@ -101,6 +106,7 @@ export interface AssistantChatMessage {
   event_detail?: {
     available?: boolean
     loaded?: boolean
+    preview_loaded?: boolean
     loading?: boolean
     complete?: boolean
     next_cursor?: number | null
@@ -176,7 +182,7 @@ export interface AssistantStore {
     sessionId: string,
     messageId: string,
     events: AssistantChatEvent[],
-    detail: { complete: boolean; next_cursor: number | null },
+    detail: { complete: boolean; next_cursor: number | null; preview?: boolean },
   ) => void
   markStopped: (sessionId: string) => void
   resetSession: (sessionId: string) => void
@@ -914,11 +920,12 @@ export function createAssistantStore(
             messages: session.messages.map((message) => message.id === messageId
               ? {
                   ...message,
-                  events: mergeMessageEvents(events, message.events ?? []),
+                  events: mergeMessageEvents(events, (message.events ?? []).filter(event => !event.previewOnly)),
                   event_detail: {
                     ...message.event_detail,
                     available: true,
-                    loaded: true,
+                    loaded: !detail.preview,
+                    preview_loaded: true,
                     loading: false,
                     complete: detail.complete,
                     next_cursor: detail.next_cursor,

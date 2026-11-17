@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Mehrere Aufgabenentwürfe und ihre geplanten Zeiten",
-          "caption": "Echte Aufnahme noch ausstehend: mehrere Entwürfe mit individuellen Zeiten, kein Ersatz durch einen alten Einzelentwurf."
+          "alt": "Mehrere Aufgaben mit dem Assistenten vorbereiten",
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung. Die Anfrage wurde nicht gesendet; es wurde kein KI-Ergebnis erzeugt."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Schrittauswahl nach Eingabe von @ in den Aufgabendetails und ausgewählter Empfänger",
-          "caption": "Aufnahmen der @Schritt-Auswahl und des Entwurfs danach im festen Demoprojekt fehlen noch. Auswahl bedeutet weder Versand noch Ausführung."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "Einfügewarteschlange einer Koordinatorantwort",
-          "caption": "Echte Aufnahme noch ausstehend: Koordinationsempfänger, Ergänzungen während der Ausführung und Fortsetzungswarteschlange."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung. Die Ergänzungswarteschlange nutzt eine simulierte Offline-Engine mit festen Antworten, keine echten Modellergebnisse."
         }
       },
       {
@@ -757,7 +757,7 @@
           "Im Änderungsverlauf prüfen Sie Unterschiede, machen Änderungen rückgängig oder leeren den Verlauf. Nach einer Unterbrechung die erhaltene Kopie prüfen und Speichern fortsetzen oder verwerfen. Originale mit Konflikten werden nicht überschrieben."
         ],
         "tips": [
-          "Direkte Bearbeitung gilt für statisches HTML und veröffentlicht Änderungen vorhandener HTML/CSS/JS-Dateien, nicht das Hinzufügen oder Löschen ganzer Dateien. Dynamische Seiten verwenden die schreibgeschützte Prüfung und Kommentare im nächsten Abschnitt. Alte Aufnahmen zeigen den neuen Griff und die dynamische Prüfung noch nicht."
+          "Direkte Bearbeitung gilt für statisches HTML und veröffentlicht Änderungen vorhandener HTML/CSS/JS-Dateien, nicht das Hinzufügen oder Löschen ganzer Dateien. Dynamische Seiten verwenden die schreibgeschützte Prüfung und Kommentare im nächsten Abschnitt."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Schreibgeschützte Eigenschaften, Elementkommentare und Dateiwechsel dynamischer Prototypen",
-          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung. Dynamische Knoten werden nur lesend ausgewählt und geprüft; der Kommentar wurde nicht gesendet."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Editor für Ergebnisformatvorlagen in Workflows und Aufgaben",
-          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Nachrichtenentwurf per Sprache ausfüllen",
-          "caption": "Die Erkennung erfolgt auf dem verbundenen Host, Audio wird nicht gespeichert. Erlauben Sie das Mikrofon über HTTPS oder eine lokale Adresse. Prüfen Sie bei Fehlern Website- und Systemrechte; starten Sie ein veraltetes Backend neu. Erkannter Text kann ausdrücklich behalten werden."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Projektübergreifende Gesprächsbereiche und Anordnungsmenü",
-          "caption": "Echter Screenshot des festen Demoprojekts ausstehend: Fenstermenü, mehrere Bereiche und ziehbare Trennlinien."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Konnektoren einrichten und verwenden",
-          "caption": "Echte Bildschirmaufnahme ausstehend: Einrichtung, Test und Gesprächsauswahl."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Gruppenmenü der Projektseitenleiste und schreibgeschützte Archivvorschau",
-          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Nachrichten in einer bestehenden Unterhaltung planen",
-          "caption": "Das Backend muss laufen. Belegte Unterhaltungen warten; Kanalantworten gehen in den Ursprungskanal. Löschen oder Archivieren entfernt die Zeitpläne, Wiederherstellen bringt sie nicht zurück. Aufgabenverknüpfte Gruppen verwenden die Aufgabenkoordination."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Sofort ausführen und erzeugte Aufgaben prüfen",
-          "caption": "Klappen Sie das JSON erzeugter Aufgaben im Verlauf auf und vergleichen Sie Entwürfe mit erstellten Aufgaben. Alte Läufe oder Fehler vor der Erzeugung können ohne JSON sein. Prüfen Sie vor einem erneuten Versuch bereits erstellte Aufgaben."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Vorschau mehrerer Aufgaben und Laufprotokoll",
-          "caption": "Echte Aufnahme noch ausstehend: mehrere Entwürfe und bereits erstellte Aufgaben bei Teilerfolg."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung. Die Anfrage wurde nicht gesendet; es wurde kein KI-Ergebnis erzeugt."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Gateway-Identitätsquelle Feishu/Lark und Organisationssynchronisation",
-          "caption": "Echte Aufnahme der isolierten Gateway-Konfiguration ohne echte Zugangsdaten noch ausstehend."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Rückruf-Whitelist in den Gateway-Plattformeinstellungen",
-          "caption": "Echte Aufnahme am isolierten Demogateway noch ausstehend; keine Alltagskonten oder echten Rückrufkonfigurationen verwenden."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Geräte wechseln und Benachrichtigungen bündeln",
+        "title": "Gerät wechseln und Seite wiederherstellen",
         "steps": [
           "Öffnen Sie einen berechtigten Gerätearbeitsbereich auf der Plattform und wechseln Sie über die oberen Gerätereiter zu einem anderen Onlinegerät.",
           "Pro Konto und Gerät merkt sich dieser Browser das letzte Projekt und Task-/Chatseiten. Bei Rückkehr werden Rechte neu geprüft; ein gespeichertes Ziel umgeht keine Autorisierung.",
           "Fernprojekte laden erst bei Auswahl. Klicken Sie nach Fehler oder Abbruch erneut auf das aktuelle Projekt zum Aktualisieren; kein dauerhaftes Geräte-Polling im Hintergrund.",
-          "Das Benachrichtigungszentrum zeigt Abschluss-/Fehlerzusammenfassungen berechtigter Geräte. Ein Klick öffnet Aufgabe oder Chat; Echtzeitmeldungen des Arbeitsbereichs gehören weiterhin zum aktuellen Gerät.",
+          "Prüfen Sie nach dem Wechsel Gerätenamen und Projekt-, Aufgaben- oder Gesprächsseite. Nachrichten gehören nur zum aktuellen Gerät; prüfen Sie vor dem Senden das Zielgerät.",
           "Zurück zur Gateway-Plattform ermöglicht neue Gerätewahl. Abgelaufene Browser-Rückrufe starten die Anmeldung erneut; nach abgebrochener Desktop-Autorisierung können Sie erneut versuchen oder lokal zurückkehren."
         ],
         "tips": [
           "Der Gateway-Arbeitsbereich versucht eine unterbrochene Verbindung höchstens dreimal erneut. Danach zeigt er einen Verbindungsdialog und pausiert Echtzeitverbindung, Sitzungsprüfung und Gerätelistenaktualisierung. Prüfen Sie Netzwerk, Gateway und Gerät und wählen Sie „Neu verbinden“. „Nicht jetzt“, Fensterfokus oder Netzwerkwiederkehr setzen die Versuche nicht fort; die Seite behält eine Schaltfläche zum Neuverbinden. Erst nach 30 Sekunden stabiler Verbindung wird der Zähler zurückgesetzt. Bei abgelaufener Berechtigung müssen Sie erneut über das Gateway eintreten. Lokale Verbindungen ohne Gateway sind nicht betroffen.",
           "Seitenpositionen werden nur im aktuellen Browser gespeichert, nicht browserübergreifend synchronisiert. Ohne Browserspeicher funktioniert Zugriff, aber keine Positionswiederherstellung.",
           "Verbinden Sie bei Offlinezustand, Widerruf oder Netzfehler gemäß Hinweis erneut. Gespeicherte Positionen ersetzen keine Rechte.",
-          "Echte Aufnahme der Gerätereiter und Sammelbenachrichtigungen im festen Demoprojekt noch ausstehend."
+          "Gerätetabs wechseln nur das Zugriffsziel und kopieren keine Gesprächs- oder Aufgabennachrichten auf andere Geräte."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Gerätereiter und Benachrichtigungszentrum",
-          "caption": "Noch keine echte Aufnahme: Gerätewechsel, Seitenwiederherstellung und Benachrichtigungssprung müssen ergänzt werden."
+          "alt": "Gateway-Gerätetabs und Wiederherstellung der Arbeitsbereichsseite",
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung. Zwei über das echte Protokoll simulierte Geräte teilen das Demo-Backend; es sind keine zwei physischen Rechner. Gezeigt werden Gerätewechsel und Seitenwiederherstellung."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Bot-Verzeichnis verwenden",
         "steps": [
           "Speichern Sie einen DingTalk-, WeCom- oder Feishu-Bot und aktivieren Sie unter Bearbeiten → Verzeichnis den Zugriff. Erteilen Sie Leserechte für Mitglieder; WeCom benötigt außerdem Unternehmens-ID, Agent ID und Secret. Speichern Sie, durchsuchen Sie den Cache und aktualisieren Sie bei Personaländerungen.",
-          "Das Verzeichnis bleibt im Arbeitsspeicher und wird nach Neustart neu geladen. CLI oder Assistent senden an einen exakten eindeutigen Namen oder eine Kontakt-ID; Namensgleichheiten müssen Sie auflösen. WeCom-Empfänger müssen zuvor mit demselben Bot und identischer Benutzer-ID kommuniziert haben; sonst nutzen Sie eine bestehende Kanalunterhaltung."
+          "Das Verzeichnis wird auf dem aktuellen WorkStep-Host zwischengespeichert und ist nach einem Neustart sofort nutzbar; aktualisieren Sie es bei personellen Änderungen manuell. Senden Sie über CLI oder Assistent mit einem exakten, eindeutigen Namen oder einer Kontakt-ID; wählen Sie bei gleichen Namen die Person ausdrücklich aus. WeCom-Mitglieder müssen zuerst mit demselben Bot interagieren und ihre Benutzer-ID muss übereinstimmen; andernfalls verwenden Sie eine bestehende Kanalunterhaltung."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Bot-Verzeichnis verwenden",
-          "caption": "Das Verzeichnis bleibt im Arbeitsspeicher und wird nach Neustart neu geladen. CLI oder Assistent senden an einen exakten eindeutigen Namen oder eine Kontakt-ID; Namensgleichheiten müssen Sie auflösen. WeCom-Empfänger müssen zuvor mit demselben Bot und identischer Benutzer-ID kommuniziert haben; sonst nutzen Sie eine bestehende Kanalunterhaltung."
+          "alt": "Bot-Verzeichniseinstellungen und Hinweise zum lokalen Cache",
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Plattformliste und eigener Bot-Editor",
-          "caption": "Echte neue Mehrkanalansicht ohne Zugangsdaten noch ausstehend; das alte Formular zeigt nicht das neue Layout."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Adresse, Signatur und Vorlage für Feishu-/Lark-Gruppenmeldungen",
-          "caption": "Konfiguration ohne Zugangsdaten und Kartenvorschau noch ausstehend; reale Zustellung ist nicht bestätigt."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Projektwahl und Zusammenfassung des fünfstufigen Assistenten",
-          "caption": "Prüfen Sie Speicherort, Projektbindung und Konfigurationsmigration."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung. Nur der erste Sandbox-Schritt ist sichtbar; die fünf Schritte sind nicht abgeschlossen."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Aktuelle Version und Updateprüfung in den Desktop-Systemeinstellungen",
-          "caption": "Ein echter Screenshot von automatischem Update, Download-Fortschritt und manuellem GitHub-Download fehlt noch."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung. Echte Oberfläche der Entwicklungshülle, keine Abnahme eines Upgrades des installierten Release-Pakets."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Betriebsmodus, Ressourcen, Test, Speichern und optionaler Proxy des Entscheidungsmodells",
-          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Einstellungsfragezeichen und eingebettetes mehrsprachiges Handbuch",
-          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Einrichtung der digitalen Figur, Persönlichkeitsdokumente und Hauptchat",
-          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Globale Gedächtnissuche, Kategorien und paginierte Originalquellen",
-          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Einstellungen des Nachdenkens und getrennt paginierter Verlauf",
-          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Kanalbindung, proaktive Meldungen und Zustellstatus",
-          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Sprachausgabemodi, Hörprobe und ausdrückliche Zuhörsteuerung",
-          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Einwilligung, dreistufige Aufnahme und Personenerkennungseinstellungen",
-          "caption": "Echte Aufnahmen aus der festen Demoumgebung 8777 fehlen noch; Komponentenbeispiele ersetzen sie nicht."
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Einstiege zur benutzerdefinierten Anbindung und zum Engine-Import in den Engine-Einstellungen",
-          "caption": "Aufnahmen des Anbindungseinstiegs und des ungesendeten Entwurfs aus der festen Demoumgebung fehlen noch."
+          "alt": "Eine Engine im Gespräch erstellen",
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung. Echt neu erstelltes Integrationsgespräch; der Einrichtungsentwurf wurde nicht gesendet."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Nach dem Engine-Paketimport erstellte Anbindungsunterhaltung mit Entwurf",
-          "caption": "Aufnahmen von ZIP-Import und noch zu konfigurierendem Entwurf aus der festen Demoumgebung fehlen noch. Import wird nicht als erfolgreiche Registrierung dargestellt."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung. Verwendet ein echtes Offline-Beispielpaket; keine Abnahme einer echten Modellintegration."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Export-, Deaktivierungs- und Rücksetzfunktionen einer registrierten benutzerdefinierten Engine",
-          "caption": "Die Aufnahme einer registrierten Engine-Karte aus der festen Demoumgebung fehlt noch; eine integrierte Engine-Karte wird nicht als Ersatz verwendet."
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung. Verwendet ein echtes Offline-Beispielpaket; keine Abnahme einer echten Modellintegration."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Integrierte Sprachwahl in App und Website",
-          "caption": "Echte Aufnahme der neuen Sprachoptionen noch ausstehend."
+          "alt": "Integrierte Sprache wählen",
+          "caption": "Echte chinesische Einstellungen oder Bedienzugänge in der festen Demoumgebung."
         }
       },
       {

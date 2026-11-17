@@ -79,7 +79,7 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
         },
         plan_overrides={'sandbox_mode': 'read-only'},
         consent_key='approval_policy',
-        consent_values={'full-auto': True, 'never': True},
+        consent_values={'full-auto': None, 'never': False},
     )
     supports_mcp = True
     RUNTIME_PACKAGE = RuntimePackage('@openai/codex', 'npm')
@@ -222,6 +222,7 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
         return [
             EngineConfigField(
                 key="sandbox_mode",
+                category="mode",
                 label="沙箱模式",
                 type="select",
                 options=tuple(
@@ -245,6 +246,7 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
             ),
             EngineConfigField(
                 key="approval_policy",
+                category="mode",
                 label="审批策略",
                 type="select",
                 options=tuple(
@@ -266,6 +268,11 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                 ),
             ),
         ]
+
+    def permission_config_options(self) -> list[dict]:
+        """Chat selects access only; approvals inherit the engine settings."""
+        return [{**item, "options": [option for option in item["options"] if option["value"]]}
+                for item in super().permission_config_options() if item["id"] == "sandbox_mode"]
 
     def get_config_values(self) -> dict:
         return config_store.get_codex_config()
@@ -419,7 +426,12 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
             ])
             cmd.extend(compaction_args)
             if codex_config["approval_policy"]:
-                cmd.extend(["-c", f"approval_policy={codex_config['approval_policy']}"])
+                policy = codex_config["approval_policy"]
+                if policy == "full-auto":
+                    # Historical WorkStep alias, not a native approval_policy value.
+                    policy = "on-request"
+                    cmd.extend(["-c", "approvals_reviewer=auto_review"])
+                cmd.extend(["-c", f"approval_policy={policy}"])
             for item in provider_runtime.engine_config:
                 cmd.extend(["-c", item])
             cmd.extend(["-c", skill_override])

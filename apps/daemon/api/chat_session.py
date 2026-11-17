@@ -371,6 +371,7 @@ async def get_message_events(
     cursor: int = Query(0, ge=0),
     limit: int = Query(30000, ge=1, le=30000),
     file_changes: bool = Query(False),
+    preview: bool = Query(False),
     file_path: str | None = Query(None),
 ):
     """Return a bounded detail page from the host-side JSONL journal."""
@@ -384,6 +385,7 @@ async def get_message_events(
                 cursor=cursor,
                 limit=limit,
                 file_changes=file_changes,
+                preview=preview,
                 file_path=file_path,
             ),
         )

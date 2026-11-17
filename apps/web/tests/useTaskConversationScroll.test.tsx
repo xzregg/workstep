@@ -4,6 +4,8 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useTaskConversationScroll } from '../src/hooks/useTaskConversationScroll'
+const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 600)) })
+
 import type { ActionRunLike } from '../src/utils/actionConversation'
 
 for (const unmountWhenHidden of [true, false]) {
@@ -41,6 +43,7 @@ for (const unmountWhenHidden of [true, false]) {
       assert.equal(container.querySelector('output')?.textContent, 'read')
       height = 1200
       await act(async () => restored.dispatchEvent(new window.Event('load')))
+      await settle()
       assert.equal(restored.scrollTop, 1100)
     } finally {
       await act(async () => root.unmount())
@@ -72,9 +75,11 @@ test('task shortcut output triggers follow without treating unchanged polling as
     let height = 500
     Object.defineProperties(viewport, { scrollHeight: { get: () => height }, clientHeight: { value: 100 } })
     await render([run])
+    await settle()
     assert.equal(viewport.scrollTop, 400)
     height = 800
     await render([{ ...run, output: '输出' }])
+    await settle()
     assert.equal(viewport.scrollTop, 700)
     await act(async () => viewport.dispatchEvent(new window.WheelEvent('wheel', { bubbles: true, deltaY: -10 })))
     viewport.scrollTop = 200
@@ -117,6 +122,7 @@ test('task transcript follows new messages until the user scrolls away', async (
     Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 100 })
     viewport.scrollTo = ({ top }: ScrollToOptions) => { viewport.scrollTop = top ?? 0 }
     await act(async () => root.render(<Transcript messages={[{ id: 'one' }]} />))
+    await settle()
     assert.equal(viewport.scrollTop, 400)
     assert.equal(container.querySelector('output')?.textContent, 'read')
 
@@ -124,11 +130,13 @@ test('task transcript follows new messages until the user scrolls away', async (
       bubbles: true, deltaY: -10,
     })))
     await act(async () => root.render(<Transcript messages={[{ id: 'one' }, { id: 'two' }]} />))
+    await settle()
     assert.equal(viewport.scrollTop, 400)
     assert.equal(container.querySelector('output')?.textContent, 'unread')
 
     viewport.scrollTop = 200
     await act(async () => container.querySelector('button')!.click())
+    await settle()
     assert.equal(viewport.scrollTop, 400)
     assert.equal(container.querySelector('output')?.textContent, 'read')
   } finally {

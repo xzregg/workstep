@@ -76,10 +76,11 @@ export interface MessageMetaBarProps {
   eventDetail?: {
     available?: boolean
     loaded?: boolean
+    preview_loaded?: boolean
     loading?: boolean
     error?: string
   }
-  onLoadEventDetails?: () => void
+  onLoadEventDetails?: (preview?: boolean) => void
   /** 项目 id：把 read/edit 工具目标解析为可预览的项目文件链接。 */
   projectId?: string
 }
@@ -204,6 +205,7 @@ export default function MessageMetaBar({
         eventSummary={eventSummary}
         detailsAvailable={eventDetail?.available}
         detailsLoaded={eventDetail?.loaded}
+        detailsPreviewLoaded={eventDetail?.preview_loaded}
         detailsLoading={eventDetail?.loading}
         detailsError={eventDetail?.error}
         onLoadDetails={onLoadEventDetails}

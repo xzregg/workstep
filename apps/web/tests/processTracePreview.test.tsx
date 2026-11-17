@@ -243,3 +243,25 @@ test('collapsed tools reuse expanded icons, command count and duration without s
     await window.happyDOM.close()
   }
 })
+
+
+test('compact server preview renders two rows and a large tool group has no hidden child calls', async () => {
+  const window = new Window({ width: 1280 })
+  Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><ProcessTrace running events={[
+      { type: 'TOOL_CALL_START', toolCallId: 'group', previewCount: 1000, previewHasResult: true,
+        previewEndedAt: 2000, timestamp: 1000, previewOnly: true },
+      { type: 'TEXT_MESSAGE_CHUNK', phase: 'commentary', delta: '最新进度', previewOnly: true },
+    ] as never} /></I18nProvider>))
+    assert.equal(container.querySelectorAll('.process-trace-preview-item').length, 2)
+    assert.match(container.querySelector('.llm-tool-group summary')!.textContent!, /1000/)
+    assert.equal(container.querySelectorAll('.llm-tool-group-items, .llm-tool-call').length, 0)
+    assert.match(container.querySelector('.process-trace-preview')!.textContent!, /最新进度/)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

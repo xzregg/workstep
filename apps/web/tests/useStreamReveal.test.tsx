@@ -304,15 +304,39 @@ test('catch-up never splits a complete emoji grapheme', async () => {
 })
 
 
-test('a thousand-character live burst progresses in small slices rather than paragraph-sized jumps', () => {
-  let remaining=1000
-  let step=REVEAL_STEP_CHARS
-  let frames=0
+test('a thousand-character live burst accelerates without paragraph-sized parse jumps', () => {
+  let remaining=1000, step=REVEAL_STEP_CHARS, frames=0
   while(remaining>0){
     step=revealStepFor(remaining,step)
     assert.ok(step<=32, `paragraph-sized jump: ${step}`)
     remaining-=Math.min(remaining,step)
     frames++
   }
-  assert.ok(frames>=32 && frames*MIN_REVEAL_FRAME_MS<=3200)
+  assert.ok(frames*MIN_REVEAL_FRAME_MS<=3000,'live backlog must not take eleven seconds to drain')
+})
+
+test('the first small chunk enters Markdown immediately without waiting to fill a batch', async () => {
+  outputs=[]
+  const h=await renderHarness({content:'',streaming:true})
+  try {
+    await h.set({content:'你好'})
+    assert.equal(outputs.at(-1),'你好','first chunk must not wait for the parse interval')
+  } finally {await h.unmount()}
+})
+
+test('engine completion drains a thousand-character backlog within the catch-up budget', async () => {
+  outputs=[]
+  const h=await renderHarness({content:'',streaming:true})
+  const text='文'.repeat(1000)
+  try {
+    await h.set({content:text})
+    await h.set({streaming:false})
+    assert.ok(outputs.at(-1)!.length<text.length,'completion should preserve a brief smooth drain')
+    await act(async()=>{await sleep(650)})
+    assert.equal(outputs.at(-1),text,'completion must not leave an eleven-second visual backlog')
+  } finally {await h.unmount()}
+})
+
+test('selected slow rate stays near 90 characters per second after frame rounding', () => {
+  assert.ok(Math.abs(REVEAL_STEP_CHARS / MIN_REVEAL_FRAME_MS * 1000 - 90) < 2)
 })

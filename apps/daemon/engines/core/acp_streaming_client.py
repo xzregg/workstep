@@ -14,9 +14,10 @@ from engines.core.interaction_policy import automatic_response, mode_decision
 class ACPStreamingClient:
     """Receive ACP notifications and apply the configured permission policy."""
 
-    def __init__(self, permission_mode: str | None = None):
+    def __init__(self, permission_mode: str | None = None, *, permission_decision=None):
         self.updates: asyncio.Queue = asyncio.Queue()
         self.permission_mode = permission_mode
+        self.permission_decision = permission_decision
         # tool_call_id → Future[option_id | None], parked until the UI responds.
         self._approval_futures: dict[str, asyncio.Future[str | None]] = {}
         self._default_allow_options: dict[str, str | None] = {}
@@ -26,6 +27,8 @@ class ACPStreamingClient:
     @property
     def needs_approval(self) -> bool:
         """Human-in-the-loop mode: every tool call waits for an explicit decision."""
+        if self.permission_decision is not None:
+            return self.permission_decision() is None
         return self.permission_mode == "ask"
 
     def resolve_approval(self, tool_call_id: str, approved: bool) -> bool:
@@ -68,7 +71,7 @@ class ACPStreamingClient:
             schema_data = dump(by_alias=True, exclude_none=True) if callable(dump) else requested_schema
             response = automatic_response({
                 "method": "elicitation/create", "requested_schema": schema_data,
-            }, mode_decision(self.permission_mode))
+            }, self.permission_decision() if self.permission_decision is not None else mode_decision(self.permission_mode))
             if response is not None:
                 if response["action"] == "accept":
                     return schema.AcceptElicitationResponse(action="accept", content={})
@@ -187,7 +190,7 @@ class ACPStreamingClient:
             )
 
         tool_kind = getattr(tool_call, "kind", None)
-        should_allow = (
+        should_allow = self.permission_decision() is True if self.permission_decision is not None else (
             self.permission_mode is None
             or self.permission_mode in {
                 "auto",

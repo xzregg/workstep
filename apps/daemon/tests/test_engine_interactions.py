@@ -57,11 +57,7 @@ class InteractionEngine(AcpEngineBase):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("engine_id,config", [
-    ("codex_sdk", {"approval_mode": "auto_review"}),
-    ("codex_sdk", {"approval_mode": ""}),
-    ("codex", {"approval_policy": "full-auto"}),
     ("claude", {"permission_mode": "bypassPermissions"}),
-    ("claude_agent_sdk", {"permission_mode": "auto"}),
     ("qoder_sdk", {"permission_mode": "bypassPermissions"}),
     ("opencode", {"permission_mode": "allow"}),
 ])
@@ -362,3 +358,27 @@ async def test_builtin_agent_multi_select_uses_standard_schema_and_returns_array
     assert field["type"] == "array"
     assert [choice["const"] for choice in field["items"]["anyOf"]] == ["前端", "后端"]
     assert result == {"answer": ["前端", "后端"]}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine_id,config", [
+    ("codex", {"approval_policy": "full-auto"}),
+    ("codex_sdk", {"approval_mode": "auto_review"}),
+    ("codex_sdk", {"approval_mode": ""}),
+    ("claude_agent_sdk", {"permission_mode": "auto"}),
+])
+async def test_native_auto_keeps_requests_escalated_by_engine(engine_id, config):
+    from engines.core.registry import _ALL_ENGINES
+    from engines.core.permissions import encode_permission_selection
+    engine = InteractionEngine()
+    engine.PERMISSION_POLICY = _ALL_ENGINES[engine_id].PERMISSION_POLICY
+    engine._runtime_permission_mode = encode_permission_selection(engine_id, config)
+    engine.configure_interaction_policy(config)
+    queue = asyncio.Queue()
+    event = permission_request(interaction_id="native-auto", session_id="s", tool_call={},
+        options=[{"option_id": "deny", "kind": "reject_once", "name": "拒绝"}])
+    pending = asyncio.create_task(engine.request_interaction(event, queue.put))
+    await asyncio.wait_for(queue.get(), 1)
+    assert not pending.done()
+    await engine.respond_interaction(event.data, {"outcome": {"option_id": "deny"}})
+    await asyncio.wait_for(pending, 1)

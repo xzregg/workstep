@@ -98,6 +98,13 @@ def describe(engine, manifest):
     extensions = set(getattr(engine, "workstep_events", ()))
     if not extensions <= EXTENSION_EVENTS:
         raise ValueError("WorkStep 扩展事件声明无效")
+    for field in engine.config_schema():
+        if field.category != "mode":
+            continue
+        if field.sensitive or field.type not in {"select", "checkbox"}:
+            raise ValueError("权限字段必须是非敏感的 select/checkbox")
+        if field.type == "select" and (not field.options or len({item.value for item in field.options}) != len(field.options)):
+            raise ValueError("权限字段选项必须非空且不能重复")
     caps = asdict(engine.capabilities)
     if bool(caps.get('supports_mcp')) != bool(engine.supports_mcp):
         raise ValueError('supports_mcp 能力与属性声明不一致')
@@ -129,6 +136,7 @@ def describe(engine, manifest):
         "skill_policy": engine.skill_policy.value,
         "permission_policy": asdict(policy),
         "permission_modes": list(engine.permission_modes()),
+        "permission_config_options": engine.permission_config_options(),
         "supports_controlled_skills": engine.supports_controlled_skills,
     }
 

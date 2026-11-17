@@ -1706,7 +1706,7 @@ async def test_enhance_prompt_falls_back_to_default_engine(chat_module, monkeypa
     assert calls[0][1] == "fast-model"
     assert "帮我写个函数" in calls[0][2]
     assert kwargs_of(calls[0])["thinking_effort"] == "minimal"
-    assert kwargs_of(calls[0])["permission_mode"] == "auto"
+    assert kwargs_of(calls[0])["permission_mode"] is None  # inherit the selected engine policy
     assert recorded_usage == [{
         "project_id": project.id, "model": "fast-model", "provider": None,
         "usage": {"input_tokens": 15, "output_tokens": 4},
@@ -4917,3 +4917,58 @@ async def test_restart_resumed_chats_obey_chat_concurrency(chat_module, monkeypa
         release.set()
         await module.shutdown()
         concurrency_gate.reset()
+
+
+@pytest.mark.anyio
+async def test_collapsed_chat_preview_returns_two_rows_and_keeps_health_responsive(chat_module, monkeypatch):
+    import main
+
+    module, _bus, manager, project, _ = chat_module
+    def seed(_project):
+        session = module.create_session(project.id)
+        other = module.create_session(project.id)
+        ref = module._event_journal.start(project.workstep_dir, session['id'], 'preview-chat')
+        for index in range(300):
+            module._event_journal.record(ref, {'type': 'agent_thought_chunk', 'data': {'content': {'text': 'old thought'}}})
+            module._event_journal.record(ref, {'type': 'tool_call', 'data': {'tool_call_id': str(index), 'title': 'exec'}})
+            module._event_journal.record(ref, {'type': 'tool_call_update', 'data': {
+                'tool_call_id': str(index), 'status': 'completed', 'raw_output': 'large output' * 1000}})
+        module._event_journal.finish(ref)
+        ChatMessage.create(id='preview-chat', session=session['id'], role='assistant', content='body',
+                           created_at=utc_now(), event_log_path=ref.relative_path)
+        ChatMessage.create(id='legacy-preview', session=session['id'], role='assistant', content='body',
+                           created_at=utc_now(), events_json=json.dumps([
+                               {'type': 'agent_thought_chunk', 'data': {'content': {'text': 'legacy thought'}}}]))
+        return session['id'], other['id']
+    session_id, other_id = await manager.run_db(project.id, seed)
+    monkeypatch.setattr(main, 'project_manager', manager)
+    monkeypatch.setattr(main, 'chat_session_module', module)
+    monkeypatch.setattr(module._event_journal, 'timeline', lambda *_args, **_kwargs: pytest.fail('preview must not load full timeline'))
+    monkeypatch.setattr(module._event_journal, '_read', lambda *_args: pytest.fail('preview must stream rather than retain the journal'))
+    original = module._event_journal.preview
+    entered = threading.Event()
+    def slow_preview(*args, **kwargs):
+        entered.set()
+        time.sleep(0.25)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(module._event_journal, 'preview', slow_preview)
+    params = {'project_id': project.id, 'preview': 'true'}
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+        url = f'/api/chat-sessions/{session_id}/messages/preview-chat/events'
+        pending = asyncio.create_task(client.get(url, params=params))
+        assert await asyncio.to_thread(entered.wait, 2)
+        assert (await asyncio.wait_for(client.get('/api/health'), 0.2)).status_code == 200
+        response = await pending
+        assert response.status_code == 200
+        page = response.json()
+        assert len(page['events']) == 2
+        assert page['events'][0]['delta'] == 'old thought'
+        assert page['events'][1]['toolCallName'] == 'exec'
+        assert page['events'][1]['previewHasResult'] is True
+        assert page['complete'] is False
+        assert len(response.content) < 2000
+        assert b'large output' not in response.content
+        assert (await client.get(f'/api/chat-sessions/{other_id}/messages/preview-chat/events', params=params)).status_code == 404
+        legacy = await client.get(f'/api/chat-sessions/{session_id}/messages/legacy-preview/events', params=params)
+        assert legacy.status_code == 200
+        assert legacy.json()['events'][0]['delta'] == 'legacy thought'

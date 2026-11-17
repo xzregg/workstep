@@ -54,7 +54,7 @@ from agent_assistants.context_handoff import (
 )
 from agent_assistants.chat_session_transitions import ChatSessionTransitions
 from agent_assistants.chat_roles import ChatRoleBindings
-from services.chat_permissions import is_valid_permission_mode
+from services.chat_permissions import is_valid_permission_mode, validate_permission_selection
 from services.channels.session_source import channel_session_source
 from services.config import config_store, resolve_execution_engine
 
@@ -420,6 +420,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             else ""
         )
         provider_id = provider_id or default_provider
+        validate_permission_selection(engine_id, permission_mode)
         normalized_provider = validate_provider_override(provider_id, engine_id)
         model = model or default_model
         fast_model = fast_model or default_fast_model
@@ -530,6 +531,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         cursor: int = 0,
         limit: int = 30000,
         file_changes: bool = False,
+        preview: bool = False,
         file_path: str | None = None,
     ) -> dict:
         """Read one message's detailed timeline without loading it in history."""
@@ -545,6 +547,16 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             )
             if row is None:
                 raise ValueError("Chat message not found")
+            if preview and not file_changes:
+                context = dict(project_id=project_id, session_id=session_id, message_id=message_id, engine=row.engine)
+                if row.event_log_path:
+                    ref = self._event_journal.reopen(project.workstep_dir, row.event_log_path)
+                    page = self._event_journal.preview(ref, **context)
+                else:
+                    from agent_assistants.process_preview import process_preview, preview_agui_events
+                    page = {"events": process_preview(preview_agui_events(_load_json(row.events_json, []), **context)),
+                            "complete": False, "next_cursor": None}
+                return {"message_id": message_id, **page}
             if file_changes:
                 from agent_assistants.file_change_index import legacy_changes
                 if row.event_log_path:
@@ -773,10 +785,10 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
 
         def ensure_session_exists() -> None:
             with self._project_ctx(project_id):
-                if ChatSession.get_or_none(
-                    ChatSession.id == session_id,
-                ) is None:
+                row = ChatSession.get_or_none(ChatSession.id == session_id)
+                if row is None:
                     raise ValueError("Chat session not found")
+                validate_permission_selection(row.engine, permission_mode)
 
         await self._project_manager.run_db(
             project_id, lambda _project: ensure_session_exists()
@@ -786,6 +798,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             with self._project_ctx(project_id):
                 ChatSession.update(
                     permission_mode=permission_mode or None,
+                    execution_config_revision=ChatSession.execution_config_revision + 1,
                 ).where(
                     ChatSession.id == session_id,
                 ).execute()
@@ -831,6 +844,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
     ) -> ChatAccepted:
         if not session_id:
             raise ValueError("Chat session id is required")
+        requested_permission_mode = permission_mode
         permission_mode = (permission_mode or "").strip()
         if permission_mode and not is_valid_permission_mode(permission_mode):
             raise ValueError(f"Unsupported permission mode: {permission_mode}")
@@ -890,8 +904,11 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                     or not target_engine.supports_provider(stored_provider)
                 ):
                     provider_id = None
-            if permission_mode:
-                ChatSession.update(permission_mode=permission_mode).where(
+            if requested_permission_mode is None:
+                permission_mode = "" if engine_switched else (row.permission_mode or "")
+            validate_permission_selection(engine, permission_mode)
+            if permission_mode or engine_switched or requested_permission_mode == "":
+                ChatSession.update(permission_mode=permission_mode or None).where(
                     ChatSession.id == session_id
                 ).execute()
             if requested_provider_id is not None and engine == (row.engine or ""):
@@ -1370,7 +1387,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 None,
                 error_prefix="Enhance engine",
                 thinking_effort="minimal",
-                permission_mode="auto",
+                permission_mode=None,
             )
             usage_json = extract_usage_json(events)
             usage_details = {

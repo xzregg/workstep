@@ -15,7 +15,8 @@ import ModelMapEditor from './ModelMapEditor'
 import Select from './Select'
 import Textarea from './Textarea'
 import { useI18n } from '../i18n'
-import { engineConfigOptionLabel } from '../utils/thinkingEffort'
+import { visiblePermissionFields, permissionFormValues } from '../utils/permissionLabels'
+import { engineConfigOptionLabel, engineConfigOptionDescription } from '../utils/thinkingEffort'
 
 export interface EngineConfigFormHandle {
   save: () => void
@@ -80,8 +81,8 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
   ref,
 ) {
   const { t } = useI18n()
-  const fields = config?.fields ?? []
-  const [values, setValues] = useState<Record<string, string>>(() => config?.values ?? {})
+  const fields = visiblePermissionFields(engineId, config?.fields ?? [])
+  const [values, setValues] = useState<Record<string, string>>(() => permissionFormValues(engineId, config?.values ?? {}))
   const [secrets, setSecrets] = useState<Record<string, boolean>>({})
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [clearKeys, setClearKeys] = useState<Record<string, boolean>>({})
@@ -94,11 +95,11 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
 
   // Sync form state whenever the embedded payload changes (mount or after save).
   useEffect(() => {
-    setValues(config?.values ?? {})
+    setValues(permissionFormValues(engineId, config?.values ?? {}))
     setSecrets(config?.secrets ?? {})
     setRevealed({})
     setClearKeys({})
-  }, [config])
+  }, [config, engineId])
 
   // Bubble draft values so the panel can follow supplier selection live.
   const valuesChangeRef = useRef(onValuesChange)
@@ -260,8 +261,9 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
               {field.placeholder || (field.required ? t('engineForm.selectPlaceholder') : '')}
             </option>
             {options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {engineConfigOptionLabel(field, option, t)}
+              <option key={option.value} value={option.value}
+                data-description={engineConfigOptionDescription(field, option, t, engineId)}>
+                {engineConfigOptionLabel(field, option, t, engineId)}
               </option>
             ))}
           </Select>

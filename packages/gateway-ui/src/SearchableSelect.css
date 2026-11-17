@@ -22,3 +22,6 @@
   .skin-select-trigger, .skin-select-panel input.skin-select-search { min-height: var(--mobile-control-regular, 32px); }
   .skin-select-panel--sheet { position: static; width: 100%; max-height: 60dvh; box-shadow: none; }
 }
+
+.skin-select-option-content { display: flex; flex-direction: column; min-width: 0; gap: 4px; }
+.skin-select-option-description { color: var(--muted, var(--gateway-admin-muted, #6e6e73)); font-size: var(--text-caption, 11px); line-height: 1.4; }

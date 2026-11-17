@@ -126,26 +126,30 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
     }
   }, [sessionId, messageSessionId, projectId])
 
-  const loadMessageEvents = useCallback(async (messageId: string, query?: FileChangesQuery) => {
+  const loadMessageEvents = useCallback(async (messageId: string, query?: FileChangesQuery, preview = false) => {
     const currentSessionId = messageSessionId || sessionId
     if (!currentSessionId || !projectId) return
     if (query) return chatSessionApi.messageEvents(currentSessionId, messageId, projectId, 0, undefined, query)
     const store = useChatSessionStore.getState()
     const message = store.sessions[currentSessionId]?.messages.find((item) => item.id === messageId)
     if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading) return
+    if (preview && message.event_detail.preview_loaded) return
     store.setMessageEventLoading(currentSessionId, messageId, true)
     try {
+      // Opening a running conversation only needs a recent preview. Never
+      // drain its entire journal just to populate a collapsed process header.
       let cursor = 0
       let complete = false
       const events = [] as NonNullable<typeof message.events>
       while (!complete) {
-        const page = await chatSessionApi.messageEvents(currentSessionId, messageId, projectId, cursor)
+        const page = await chatSessionApi.messageEvents(currentSessionId, messageId, projectId, cursor, preview ? 2 : undefined, undefined, preview)
         events.push(...page.events.map((event) => ({
           ...event,
           type: event.type || '',
           data: event.data || {},
         })))
         complete = page.complete || page.next_cursor === null
+        if (preview) break
         if (!complete) {
           const nextCursor = page.next_cursor
           if (nextCursor === null || nextCursor === cursor) {
@@ -155,8 +159,9 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
         }
       }
       store.setMessageEventDetails(currentSessionId, messageId, events, {
-        complete: true,
+        complete: !preview,
         next_cursor: null,
+        preview,
       })
     } catch (reason) {
       store.setMessageEventLoading(

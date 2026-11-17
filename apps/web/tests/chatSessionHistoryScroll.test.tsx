@@ -17,7 +17,7 @@ test('shortcut messages and output follow the conversation and respect upward sc
   } as ActionRun
   function Harness({ runs }: { runs: ActionRun[] }) {
     return <AssistantChatPanel projectId="" sessionId="s" title="Chat" messages={messages}
-      actionRuns={runs} running={false} stopping={false} input="" locale="zh-CN" config={{} as never}
+      actionRuns={runs} running={false} stopping={false} input="" locale="zh-CN" config={{ engines: [] } as never}
       copy={{ emptyIntro: '', thinking: '', me: '用户', meInitials: 'U', agent: '助手', agentInitials: 'AI', placeholder: '', fullPrompt: '', closePrompt: '' }}
       attachmentPrefix="test" onInputChange={() => {}} onSend={() => {}}
       onSendContent={async () => true} onStop={() => {}} />
@@ -29,9 +29,11 @@ test('shortcut messages and output follow the conversation and respect upward sc
     const list = window.document.querySelector<HTMLDivElement>('.chat-history-scroll')!
     Object.defineProperties(list, { scrollHeight: { get: () => height }, clientHeight: { value: 400 } })
     await render([run])
+    await act(async () => { await new Promise(resolve => setTimeout(resolve,600)) })
     assert.equal(list.scrollTop, 600)
     height = 1400
     await render([{ ...run, output: '构建输出' }])
+    await act(async () => { await new Promise(resolve => setTimeout(resolve,600)) })
     assert.equal(list.scrollTop, 1000)
     await act(async () => list.dispatchEvent(new window.WheelEvent('wheel', { bubbles: true, deltaY: -10 })))
     list.scrollTop = 200
@@ -56,7 +58,7 @@ test(`upward history paging at width ${width} preloads and preserves viewport`, 
   function Harness() {
     const [messages, setMessages] = useState([message('latest')])
     return <AssistantChatPanel projectId="" sessionId="s" title="Chat" messages={messages}
-      running={false} stopping={false} input="" locale="zh-CN" config={{} as never}
+      running={false} stopping={false} input="" locale="zh-CN" config={{ engines: [] } as never}
       copy={{ emptyIntro: '', thinking: '', me: '用户', meInitials: 'U', agent: '助手', agentInitials: 'AI', placeholder: '', fullPrompt: '', closePrompt: '' }}
       attachmentPrefix="test" onInputChange={() => {}} onSend={() => {}}
       onSendContent={async () => true} onStop={() => {}}
@@ -96,7 +98,7 @@ test('welcome hides while running or after the first message', async () => {
   const render = (hasMessage = false, running = false) => act(async () => root.render(
     <I18nProvider><AssistantChatPanel projectId="" title="Chat"
       messages={hasMessage ? [{ id: 'first', role: 'user', content: '你好', timestamp: '' }] : []}
-      welcome running={running} stopping={false} input="" locale="zh-CN" config={{} as never}
+      welcome running={running} stopping={false} input="" locale="zh-CN" config={{ engines: [] } as never}
       copy={{ emptyIntro: '你想在 minidoc 中完成什么？', thinking: '', me: '用户', meInitials: 'U', agent: '助手', agentInitials: 'AI', placeholder: '', fullPrompt: '', closePrompt: '' }}
       attachmentPrefix="test" onInputChange={() => {}} onSend={() => {}}
       onSendContent={async () => true} onStop={() => {}} /></I18nProvider>

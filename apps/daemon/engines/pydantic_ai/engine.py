@@ -11,6 +11,7 @@ from pathlib import Path
 import uuid
 from typing import Any, AsyncIterator, Awaitable, Callable
 
+from engines._config.pydantic_ai import resolve_native_permission_mode
 from engines.core.base import EngineSkillPolicy
 from engines.core.permissions import EnginePermissionPolicy
 from engines.core.image_input import render_image_prompt
@@ -253,23 +254,35 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
                 help="在设置 → 供应商中管理 API 地址与密钥；本引擎复用所选供应商的凭据。",
             ),
             EngineConfigField(
-                key="sandbox",
-                label="沙箱模式",
-                type="select",
-                options=tuple(
-                    EngineConfigOption(mode, mode)
-                    for mode in ("read-only", "workspace-write", "danger-full-access")
+                key="permission_mode", category="mode", label="权限审批", type="select", required=True,
+                options=(
+                    EngineConfigOption("full", "直接执行（full）"),
+                    EngineConfigOption("auto", "风险命令需批准（auto）"),
+                    EngineConfigOption("read-only", "写入和命令需批准（read-only）"),
                 ),
-                default="workspace-write",
-                help="工具执行沙箱；workspace-write 及以上权限允许 cd 等导航命令。",
+                default="full",
+                help="使用官方 Permissions；这是审批策略，不提供操作系统沙箱。",
             ),
+
         ]
+
+    @classmethod
+    def permission_config_overrides(cls, mode: str) -> dict:
+        from engines.core.permissions import decode_permission_selection, encode_permission_selection
+        selection = decode_permission_selection(mode)
+        if (selection and selection["engine"] == cls.ENGINE_ID
+                and selection["values"].get("permission_mode") == "legacy"):
+            values = {**selection["values"], "permission_mode": resolve_native_permission_mode(
+                config_store.get_pydantic_ai_engine_config())}
+            mode = encode_permission_selection(cls.ENGINE_ID, values)
+        return super().permission_config_overrides(mode)
 
     def get_config_values(self) -> dict:
         config = config_store.get_pydantic_ai_engine_config()
         return {
             "provider_id": config["provider_id"],
             "sandbox": config["sandbox"],
+            "permission_mode": resolve_native_permission_mode(config),
         }
 
     def get_config_secrets(self) -> dict[str, bool]:
@@ -283,6 +296,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
             mcp_servers=current["mcp_servers"],
             harness="auto",
             sandbox=current["sandbox"],
+            permission_mode=current.get("permission_mode"),
         )
 
     async def save_config_values(
@@ -307,6 +321,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
                 # 压缩与会话持久化，否则回退 message_history，不由用户选择。
                 harness="auto",
                 sandbox=str(values.get("sandbox") or current["sandbox"]),
+                permission_mode=str(values.get("permission_mode") or self.get_config_values()["permission_mode"]),
             )
 
         await asyncio.to_thread(save)
@@ -770,7 +785,35 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         return bool(selected and str(selected["kind"]).startswith("allow"))
 
     def tools_read_only(self) -> bool:
-        return self._tool_sandbox() == "read-only"
+        return bool(getattr(self, "_active_plan_mode", False)) or (
+            self.native_permission_mode() is None and self._tool_sandbox() == "read-only"
+        )
+
+    def native_permission_mode(self) -> str | None:
+        from engines.core.permissions import decode_permission_selection, CHAT_PERMISSION_MODES
+        mode = self.runtime_permission_mode()
+        if mode in CHAT_PERMISSION_MODES:
+            return None
+        selection = decode_permission_selection(mode or "")
+        if selection and "permission_mode" in selection["values"]:
+            value = selection["values"]["permission_mode"]
+            return value if value in {"full", "auto", "read-only"} else getattr(self, "_active_native_mode", None)
+        return getattr(self, "_active_native_mode", None)
+
+    async def set_permission_mode(self, mode: str) -> None:
+        await super().set_permission_mode(mode)
+        config = getattr(self, "_interaction_effective_config", {})
+        self._active_sandbox = config.get("sandbox") or "workspace-write"
+        native = config.get("permission_mode")
+        self._active_native_mode = native if native in {"full", "auto", "read-only"} else None
+
+    def runtime_permission_decision(self) -> bool | None:
+        if self.tools_read_only():
+            return False
+        native = self.native_permission_mode()
+        if native is not None:
+            return True if native == "full" else None
+        return super().runtime_permission_decision()
 
     def _tool_sandbox(self) -> str:
         if getattr(self, "_active_plan_mode", False):
@@ -781,6 +824,8 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         return getattr(self, "_active_sandbox", "workspace-write")
 
     def _command_policy(self) -> list[str]:
+        if self.native_permission_mode() is not None:
+            return []
         sandbox = self._tool_sandbox()
         if sandbox == "danger-full-access":
             return []
@@ -803,6 +848,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         system_prompt: str | None = None,
         connectors_enabled: bool = False,
         plan_mode: bool = False,
+        permission_mode: str | None = None,
     ) -> tuple[Any, Any]:
         """Run the agent, injecting queued live messages between rounds."""
         from pydantic_ai import Agent
@@ -812,6 +858,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
 
         self._active_sandbox = sandbox
         self._active_plan_mode = plan_mode
+        self._active_native_mode = permission_mode if permission_mode in {"full", "auto", "read-only"} else None
 
         root = await asyncio.to_thread(Path(cwd).resolve)
 
@@ -828,11 +875,28 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         allowed = self._command_policy()
         subagent_capability = self._make_subagent_capability(on_event)
         tool_permissions = ToolPermissions(self, on_event)
+        from pydantic_ai.capabilities import HandleDeferredToolCalls
+        from pydantic_ai_harness.permissions import Permissions, PermissionDecision, ask_permissions
+
+        async def approve(request):
+            allowed = await self._request_permission(
+                on_event, tool_name=request.call.tool_name + ":" + request.subject,
+                title=request.reason + ": " + request.subject,
+                kind="execute" if request.action == "command" else "edit",
+                tool_input=request.call.args_as_dict(),
+            )
+            return PermissionDecision(approved=allowed)
+
+        native_permissions = Permissions(lambda ctx: self.native_permission_mode() or "full")
+        native_handler = HandleDeferredToolCalls(
+            handler=lambda ctx, requests: ask_permissions(requests, approve),
+        )
         coder = WorkStepCoder(
             root,
             allowed_commands=allowed,
             subagent_capability=subagent_capability,
             permission_capability=tool_permissions,
+            native_permission_capabilities=(native_permissions, native_handler),
             command_policy=self._command_policy,
         )
         # The pinned Planning store is the authoritative source for the
@@ -840,7 +904,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         # reset the dedupe cache because the store is fresh per spawn.
         self._active_plan_store = getattr(coder, "plan_store", None)
         self._last_plan_snapshot = None
-        capabilities = [tool_permissions, coder]
+        capabilities = [tool_permissions, native_permissions, native_handler, coder]
         storage_root = await asyncio.to_thread(data_directory, root)
         if not storage_root.is_relative_to(root):
             from engines.pydantic_ai.coder import ProjectDataFileSystem
@@ -1248,6 +1312,12 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
                 "session_id": session_uuid,
                 "sandbox": str(config.get("sandbox") or "workspace-write"),
             }
+            legacy_mode = self.runtime_permission_mode() in {"read-only", "workspace-write", "danger-full-access", "auto", "ask"}
+            if not legacy_mode and ("permission_mode" in (config_overrides or {})
+                                    or not (config_overrides or {}).get("sandbox")):
+                native = config.get("permission_mode")
+                if native in {"full", "auto", "read-only"}:
+                    run_kwargs["permission_mode"] = native
             if plan_mode:
                 run_kwargs["plan_mode"] = True
             if any(isinstance(server, dict) and str(server.get("name", "")).startswith("workstep_")

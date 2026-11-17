@@ -12,7 +12,7 @@ from agent_assistants.context_handoff import append_handoff_log, compile_handoff
 from engines.core.registry import create_engine
 from models.chat_session import ChatMessage, ChatSession
 from models.fields import utc_now
-from services.chat_permissions import is_valid_permission_mode
+from services.chat_permissions import is_valid_permission_mode, validate_permission_selection
 from services.engine_efforts import is_supported_effort
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class ChatSessionTransitions:
                 "id": row.id, "project_id": project_id,
                 **{key: getattr(row, key) for key in (
                     "engine", "provider_id", "model", "fast_model", "vision_model",
-                    "thinking_effort", "service_tier", "execution_config_revision",
+                    "thinking_effort", "service_tier", "execution_config_revision", "permission_mode",
                 )},
                 "pending_handoff": self._pending_handoff_view(row),
             }
@@ -104,13 +104,18 @@ class ChatSessionTransitions:
 
     def _restore_handoff_endpoint(
         self, project_id: str, row: ChatSession, engine: str, provider_id: str,
+        permission_mode: str | None = None,
     ) -> bool:
         state = self._handoff_return_state(row)
         if state is None or (state["engine"], state["provider_id"] or "") != (engine, provider_id):
             return False
+        engine_changed = row.engine != engine
         for field, value in state.items():
             if field != "message_count":
                 setattr(row, field, value)
+        # Restore native context, but a cross-engine switch inherits target permissions.
+        if engine_changed or permission_mode is not None:
+            row.permission_mode = permission_mode or None
         row.execution_config_revision += 1
         row.updated_at = utc_now()
         row.save()
@@ -147,10 +152,11 @@ class ChatSessionTransitions:
         ):
             raise ValueError("Chat session is running")
         self._validate_engine(engine)
-        permission_mode = (permission_mode or "").strip()
+        permission_mode = permission_mode.strip() if permission_mode is not None else None
         if permission_mode and not is_valid_permission_mode(permission_mode):
             raise ValueError(f"Unsupported permission mode: {permission_mode}")
 
+        validate_permission_selection(engine, permission_mode or "")
         normalized_provider = validate_provider_override(
             provider_id,
             engine,
@@ -174,7 +180,7 @@ class ChatSessionTransitions:
                 pending = _load_json(row.fork_context_json, {})
                 if self._handoff_return_state(row) is None or pending.get("mode") == context_mode:
                     return self.get_session(project_id, session_id)
-            if self._restore_handoff_endpoint(project_id, row, engine, normalized_provider):
+            if self._restore_handoff_endpoint(project_id, row, engine, normalized_provider, permission_mode):
                 return self.get_session(project_id, session_id)
             return_state = self._handoff_return_state(row)
             if return_state is None:
@@ -182,7 +188,7 @@ class ChatSessionTransitions:
                     field: getattr(row, field)
                     for field in (
                         "engine", "provider_id", "model", "fast_model", "vision_model",
-                        "thinking_effort", "service_tier",
+                        "thinking_effort", "service_tier", "permission_mode",
                         "engine_session_id", "engine_state_json", "fork_context_mode", "fork_context_json",
                     )
                 }
@@ -209,8 +215,8 @@ class ChatSessionTransitions:
             row.thinking_effort = None
             row.service_tier = None
             row.execution_config_revision += 1
-            if permission_mode:
-                row.permission_mode = permission_mode
+            if permission_mode is not None or source_engine != engine:
+                row.permission_mode = permission_mode or None
             row.engine_session_id = None
             row.engine_state_json = None
             row.fork_context_mode = context_mode
@@ -378,7 +384,8 @@ class ChatSessionTransitions:
                 fast_model=fast_model,
                 vision_model=vision_model,
                 provider_id=provider_id,
-                permission_mode=permission_mode or source_permission_mode,
+                permission_mode=(permission_mode if permission_mode is not None
+                                 else source_permission_mode if engine == source_engine else None),
             ),
         )
         new_session_id = created["id"]

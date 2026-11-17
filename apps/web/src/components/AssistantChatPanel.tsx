@@ -1,3 +1,4 @@
+import { followConversationBottom, disposeConversationFollow } from '../utils/smoothConversationFollow'
 import Icon from './Icon'
 import ConversationLayout from './ConversationLayout'
 import { SkinExtensionSlot } from './SkinExtensions'
@@ -262,7 +263,7 @@ const MessageItem = memo(function MessageItem({
           eventSummary={message.event_summary}
           eventDetail={message.event_detail}
           onLoadEventDetails={onLoadMessageEvents
-            ? () => onLoadMessageEvents(message.id)
+            ? preview => onLoadMessageEvents(message.id, undefined, preview)
             : undefined}
           prompt={message.prompt}
           onViewPrompt={onViewPrompt}
@@ -406,7 +407,7 @@ export default function AssistantChatPanel({
     const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
     lastProgrammaticScrollTopRef.current = target
     lastScrollHeightRef.current = list.scrollHeight
-    list.scrollTop = target
+    followConversationBottom(list, lastProgrammaticScrollTopRef, followRef)
     setScrolledToBottom(isNearConversationBottom(list.scrollHeight, target, list.clientHeight))
     setHasUnreadMessages(false)
   }, [messages.length, lastContent, lastEventsCount, scrollKey, a2uiMessages, actionScrollKey])
@@ -421,7 +422,7 @@ export default function AssistantChatPanel({
       const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
       lastProgrammaticScrollTopRef.current = target
       lastScrollHeightRef.current = list.scrollHeight
-      list.scrollTop = target
+      followConversationBottom(list, lastProgrammaticScrollTopRef, followRef)
       setScrolledToBottom(isNearConversationBottom(list.scrollHeight, target, list.clientHeight))
     }
     const t1 = setTimeout(scrollToEnd, 50)
@@ -450,10 +451,10 @@ export default function AssistantChatPanel({
       const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
       lastProgrammaticScrollTopRef.current = target
       lastScrollHeightRef.current = list.scrollHeight
-      list.scrollTop = target
+      followConversationBottom(list, lastProgrammaticScrollTopRef, followRef)
     }
     list.addEventListener('load', onMediaLoad, true)
-    return () => list.removeEventListener('load', onMediaLoad, true)
+    return () => { list.removeEventListener('load', onMediaLoad, true); disposeConversationFollow(list) }
   }, [])
 
   // 展开、折叠思考块 / 过程追踪等只改变内容高度，不会触发上面的消息数据
@@ -469,7 +470,7 @@ export default function AssistantChatPanel({
         lastScrollHeightRef.current = height
         const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
         lastProgrammaticScrollTopRef.current = target
-        list.scrollTop = target
+        followConversationBottom(list, lastProgrammaticScrollTopRef, followRef)
         setScrolledToBottom(isNearConversationBottom(list.scrollHeight, target, list.clientHeight))
       },
     })
@@ -680,7 +681,7 @@ export default function AssistantChatPanel({
             if (!list) return
             const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
             lastProgrammaticScrollTopRef.current = target
-            list.scrollTo({ top: target, behavior: 'smooth' })
+            followConversationBottom(list, lastProgrammaticScrollTopRef, followRef)
           }}
         />
       </div>

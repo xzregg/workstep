@@ -189,3 +189,14 @@ async def test_sdk_plan_mode_keeps_native_local_and_url_images(monkeypatch, publ
             {"type": "localImage", "path": images[0].path},
             {"type": "image", "url": images[1].url},
         ]
+
+
+@pytest.mark.anyio
+async def test_cli_legacy_full_auto_uses_valid_native_config(cli_transport, tmp_path):
+    commands, _ = cli_transport
+    events = [event async for event in CodexEngine().spawn(
+        "hi", cwd=str(tmp_path), config_overrides={"approval_policy": "full-auto"})]
+    assert not [event for event in events if event.type == "error"]
+    assert "approval_policy=full-auto" not in commands[0]
+    assert "approval_policy=on-request" in commands[0]
+    assert "approvals_reviewer=auto_review" in commands[0]

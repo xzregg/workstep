@@ -5,6 +5,15 @@ from typing import Any
 
 SANDBOX_MODES = {"read-only", "workspace-write", "danger-full-access"}
 
+def resolve_native_permission_mode(config: dict) -> str:
+    mode = config.get("permission_mode")
+    if mode in {"full", "auto", "read-only"}:
+        return mode
+    # Only old stored settings are translated; no compatibility mode is exposed.
+    return {"read-only": "read-only", "workspace-write": "auto",
+            "danger-full-access": "full"}.get(config.get("sandbox"), "full")
+
+
 def get_pydantic_ai_engine_config(store) -> dict[str, Any]:
     raw = store.get("pydantic_ai_engine", {})
     if not isinstance(raw, dict):
@@ -23,6 +32,7 @@ def get_pydantic_ai_engine_config(store) -> dict[str, Any]:
         "mcp_servers": raw.get("mcp_servers") or [],
         "harness": raw.get("harness") or "auto",
         "sandbox": sandbox,
+        "permission_mode": resolve_native_permission_mode(raw),
     }
 
 
@@ -35,10 +45,13 @@ def set_pydantic_ai_engine_config(
     harness: str = "auto",
     sandbox: str = "",
     fast_model: str = "",
+    permission_mode: str | None = None,
 ) -> None:
     sandbox = str(sandbox or "").strip() or "workspace-write"
     if sandbox not in SANDBOX_MODES:
         sandbox = "workspace-write"
+    if permission_mode not in {None, "full", "auto", "read-only"}:
+        raise ValueError("无效的 Pydantic 原生权限模式")
     store.set(
         "pydantic_ai_engine",
         {
@@ -48,6 +61,7 @@ def set_pydantic_ai_engine_config(
             "mcp_servers": list(mcp_servers or []),
             "harness": harness,
             "sandbox": sandbox,
+            "permission_mode": permission_mode or resolve_native_permission_mode({"sandbox": sandbox}),
         },
     )
     store.set_engine_default_model("pydantic_ai", model)

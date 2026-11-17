@@ -57,10 +57,11 @@ interface ProcessTraceProps {
     tool_count?: number
   }
   detailsAvailable?: boolean
+  detailsPreviewLoaded?: boolean
   detailsLoaded?: boolean
   detailsLoading?: boolean
   detailsError?: string
-  onLoadDetails?: () => void
+  onLoadDetails?: (preview?: boolean) => void
   /** 项目 id：把 read/edit 工具目标解析为可预览的项目文件链接。 */
   projectId?: string
 }
@@ -262,7 +263,7 @@ function ProcessTracePreview({ items, now, projectId }: { items: ProcessPreviewI
         if (item.type === 'tool' || item.type === 'tool-group') {
           return (
             <div className="process-trace-preview-item" key={item.id} inert>
-              <ToolTimelineItem item={item} streaming now={now} projectId={projectId} />
+              <ToolTimelineItem item={item} streaming now={now} projectId={projectId} preview />
             </div>
           )
         }
@@ -293,6 +294,7 @@ export default function ProcessTrace({
   eventSummary,
   detailsAvailable = false,
   detailsLoaded = false,
+  detailsPreviewLoaded = false,
   detailsLoading = false,
   detailsError,
   onLoadDetails,
@@ -324,10 +326,17 @@ export default function ProcessTrace({
     // A restored running message can contain counts but no timeline events.
     // Catch up once without requiring the user to open the disclosure first.
     if (running && hasProcessSummary && processItems.length === 0
-      && detailsAvailable && !detailsLoaded && !detailsLoading && !detailsError) {
+      && detailsAvailable && !detailsLoaded && !detailsPreviewLoaded && !detailsLoading && !detailsError) {
+      onLoadDetails?.(true)
+    }
+  }, [running, hasProcessSummary, processItems.length, detailsAvailable, detailsLoaded, detailsPreviewLoaded, detailsLoading, detailsError, onLoadDetails])
+  // Expanding while the bounded preview is in flight must still request the
+  // complete timeline once that request releases the shared loading lock.
+  useEffect(() => {
+    if (open && detailsAvailable && !detailsLoaded && !detailsLoading && !detailsError) {
       onLoadDetails?.()
     }
-  }, [running, hasProcessSummary, processItems.length, detailsAvailable, detailsLoaded, detailsLoading, detailsError, onLoadDetails])
+  }, [open, detailsAvailable, detailsLoaded, detailsLoading, detailsError, onLoadDetails])
   const lastProcessItem = timeline[timeline.length - 1]
   const thinkingItems = useMemo(
     () => processItems.filter(
@@ -407,9 +416,6 @@ export default function ProcessTrace({
   const toggleSession = () => {
     const nextOpen = !open
     setOpen(nextOpen)
-    if (nextOpen && detailsAvailable && !detailsLoaded && !detailsLoading) {
-      onLoadDetails?.()
-    }
   }
 
   // 渲染封顶：默认只挂载最近 MAX_RENDERED_PROCESS_ITEMS 条，避免巨型 trace

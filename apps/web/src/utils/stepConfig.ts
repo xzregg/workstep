@@ -2,7 +2,8 @@ import type { EngineConfigField, EngineConfigPayload } from '../api/client'
 
 /**
  * Build the initial step-level config for an engine, prefilled from that
- * engine's global config values. Sensitive fields never appear at step level.
+ * engine's global config values. Native permission fields keep an empty
+ * override so later engine settings still apply. Sensitive fields are excluded.
  */
 export function initialStepConfig(
   engineConfig: EngineConfigPayload | null | undefined,
@@ -10,6 +11,7 @@ export function initialStepConfig(
   if (!engineConfig) return {}
   const out: Record<string, string> = {}
   for (const field of engineConfig.step_fields || []) {
+    if (field.category === 'mode') continue
     const value = engineConfig.values?.[field.key]
     if (typeof value === 'string' && value !== '') {
       out[field.key] = value

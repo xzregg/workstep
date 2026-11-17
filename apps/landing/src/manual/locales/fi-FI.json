@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Erätehtäväluonnokset ja niiden yksittäiset ajoitetut ajat",
-          "caption": "Todellinen kuvakaappaus odottaa: eräluonnokset ja yksittäiset ajat. Vanha yhden tehtävän luonnos ei saa korvata sitä."
+          "alt": "Valmistele useita tehtäviä tehtäväavustajan kanssa",
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat. Pyyntöä ei ole lähetetty eikä tekoälytulosta luotu."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Vaihelista @-merkin kirjoittamisen jälkeen tehtävän tiedoissa ja valittu vastaanottaja",
-          "caption": "Kiinteän esittelyprojektin @vaihe-luettelon ja valinnan jälkeisen luonnoksen kuvat puuttuvat vielä. Valinta ei tarkoita lähetystä tai suoritusta."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "Odottavat viestit koordinaattorin vastauksen aikana",
-          "caption": "Todellinen kuvakaappaus odottaa: Koordinaattorin vastaanottaja, lisäviestit suorituksen aikana ja jatkojono."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat. Täydennysjono käyttää offline-simulaatiomoottoria ja kiinteitä vastauksia, ei todellisen mallin tuloksia."
         }
       },
       {
@@ -757,7 +757,7 @@
           "Muutoshistoriassa voit tarkistaa erot, kumota muutoksia tai tyhjentää historian. Keskeytyksen jälkeen tarkista säilytetty kopio ja jatka tallennusta tai hylkää se. Ristiriitaisia alkuperäistiedostoja ei korvata."
         ],
         "tips": [
-          "Suora muokkaus koskee staattista HTML-sisältöä ja julkaisee olemassa olevien HTML/CSS/JS-tiedostojen muutokset, ei kokonaisten tiedostojen luontia tai poistoa. Dynaamisille sivuille käytä seuraavan osan lukutilaista tarkistusta ja kommentteja. Vanhoissa kuvissa eivät näy uusi siirtokahva tai dynaaminen tarkistus."
+          "Suora muokkaus koskee staattista HTML-sisältöä ja julkaisee olemassa olevien HTML/CSS/JS-tiedostojen muutokset, ei kokonaisten tiedostojen luontia tai poistoa. Dynaamisille sivuille käytä seuraavan osan lukutilaista tarkistusta ja kommentteja."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Dynaamisen prototyypin vain luettavat ominaisuudet, kommentit ja tiedostonvaihto",
-          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat. Dynaamisia solmuja valitaan vain luku -tarkasteluun; kommenttia ei ole lähetetty."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Työnkulun ja tehtävän tuotosten muotopohjaeditori",
-          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Täytä viestiluonnos puheella",
-          "caption": "Ääni tunnistetaan yhdistetyllä palvelimella eikä sitä tallenneta. Salli mikrofoni HTTPS- tai paikallisosoitteessa. Tarkista virheissä sivuston ja järjestelmän oikeudet ja käynnistä vanha taustapalvelu uudelleen. Tunnistetun tekstin voi erikseen säilyttää."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Työpöydän keskusteluruudut projektien ja järjestelyvalikon välillä",
-          "caption": "Todellinen kuvakaappaus kiinteästä esittelyprojektista odottaa: keskusteluikkunan valikko, useita ruutuja ja vedettävä erottimet."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Yhdistimien määritys ja käyttö",
-          "caption": "Oikea kuvakaappaus puuttuu: määritys, testi ja keskusteluvalinta."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Projektisivupalkin ryhmävalikko ja arkistojen lukuesikatselu",
-          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Ajasta viestejä olemassa olevaan keskusteluun",
-          "caption": "Taustapalvelun pitää toimia. Varattu keskustelu odottaa; kanavavastaukset palaavat alkuperäiseen kanavaan. Keskustelun poistaminen tai arkistointi poistaa säännöt eikä palautus tuo niitä takaisin. Tehtäväryhmät käyttävät tehtävän koordinointia."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Suorita nyt ja tarkista tulokset",
-          "caption": "Avaa luotujen tehtävien JSON historiassa ja vertaa luonnoksia tehtäviin. Vanhoilta suorituksilta tai ennen luontia tapahtuneilta virheiltä voi puuttua JSON. Tarkista jo luodut tehtävät ennen osittaisen virheen uusintaa."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Ajoitettu erän sukupolven esikatselu ja useiden tehtävien ajotietueet",
-          "caption": "Todellinen kuvakaappaus odottaa: eräluonnokset ja jo luodut tehtävät osittaisen epäonnistumisen jälkeen."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat. Pyyntöä ei ole lähetetty eikä tekoälytulosta luotu."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Feishu- tai Lark-identiteettilähde- ja hakemistosynkronointiasetukset",
-          "caption": "Tunnukseton määrityskuvakaappaus eristetystä yhdyskäytävästä odottaa."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Kolmannen osapuolen takaisinsoittojen sallittu luettelo yhdyskäytävän asetuksissa",
-          "caption": "Todellinen eristetty esittely Gateway-kuvakaappaus odottaa; älä käytä jokapäiväisiä tilejä tai todellisia takaisinsoittoasetuksia."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Vaihda laitetta ja tarkista koosteilmoitukset",
+        "title": "Vaihda laitetta ja palauta sivu",
         "steps": [
           "Syötä valtuutettu laitetyötila alustalle ja käytä sitten laitteen ylimpiä välilehtiä vaihtaaksesi toiseen online-laitteeseen.",
           "Jokainen tili ja laite muistaa viimeisimmän projektin, tehtävän tai istuntosivun tässä selaimessa. Palautus tarkistaa edelleen valtuutuksen eikä ohita saavuttamattomia kohteita.",
           "Etäprojektit latautuvat vain, kun ne on valittu. Kun lataus epäonnistui tai yhteys katkeaa, napsauta nykyistä projektia uudelleen päivittääksesi manuaalisesti. laitteille ei pollata jatkuvasti taustalla.",
-          "Avaa ilmoituskeskus saadaksesi yhteenvetoja valtuutettujen laitteiden valmistumisesta tai epäonnistumisesta. Napsauta avataksesi tehtävän tai istunnon. Workspacen live-viestit kuuluvat edelleen nykyiselle laitteelle.",
+          "Tarkista vaihdon jälkeen laitteen nimi sekä projekti-, tehtävä- tai keskustelusivu. Viestit kuuluvat vain nykyiselle laitteelle; tarkista kohdelaite ennen lähettämistä.",
           "Käytä Return to Gateway -alustaa valitaksesi toinen laite. Vanhentunut selaimen valtuutus käynnistää kirjautumisen uudelleen; Kun olet peruuttanut työpöydän valtuutuksen, yritä uudelleen manuaalisesti tai palaa paikalliseen työtilaan."
         ],
         "tips": [
           "Yhdyskäytävän työtila yrittää katkennutta yhteyttä automaattisesti uudelleen enintään 3 kertaa. Sen jälkeen se näyttää ilmoitusikkunan ja keskeyttää reaaliaikayhteyden, istuntotarkistukset ja laitelistan päivitykset. Tarkista verkko, yhdyskäytävä ja laite ja valitse uudelleenyhdistäminen. Ikkunan sulkeminen, lykkääminen, ikkunaan palaaminen tai verkon palautuminen ei jatka yrityksiä; painike jää sivulle. Laskuri nollautuu 30 sekunnin vakaan yhteyden jälkeen. Vanhentunut valtuutus edellyttää uutta siirtymistä yhdyskäytävän kautta. Paikalliset yhteydet ilman yhdyskäytävää eivät muutu.",
           "Sivumuisti on selaimen paikallinen, eikä sitä synkronoida eri selainten välillä. Pääsy toimii ilman selaimen tallennustilaa, mutta sijainteja ei säilytetä.",
           "Muodosta yhteys uudelleen pyydettäessä offline-laitteiden, peruutetun valtuutuksen tai verkkovirheiden vuoksi. Tallennetut sijainnit eivät korvaa käyttöoikeuksia.",
-          "Todelliset laitevälilehden ja koosteilmoitusten kuvakaappaukset kiinteästä demonstraatioprojektista jäävät odottamaan."
+          "Laitevälilehdet vaihtavat vain käytettävää laitetta; ne eivät kopioi keskustelu- tai tehtäväviestejä muille laitteille."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Laitevälilehdet ja yhdistetty ilmoituskeskus",
-          "caption": "Todellinen kuvakaappaus odottaa: laitteen vaihto, sijainnin palautus ja ilmoitusnavigointi; ei ole vielä vangittu."
+          "alt": "Yhdyskäytävän laitevälilehdet ja työtilasivun palautus",
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat. Kaksi aidolla protokollalla simuloitua laitetta käyttää samaa demotaustapalvelua; ne eivät ole kaksi fyysistä konetta. Näyttää laitevaihdon ja sivun palautuksen."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Käytä botin hakemistoa",
         "steps": [
           "Tallenna DingTalk-, WeCom- tai Feishu-botti ja ota luku käyttöön kohdassa Muokkaa → Hakemisto. Anna jäsenten lukuoikeus; WeCom tarvitsee myös yritystunnuksen, Agent ID:n ja Secretin. Tallenna, hae välimuistista ja päivitä henkilöstömuutoksissa.",
-          "Hakemisto on vain muistissa ja ladataan uudelleenkäynnistyksessä. Lähetä CLI:n tai avustajan kautta täsmällisellä yksilöllisellä nimellä tai yhteystunnuksella; valitse kaimat erikseen. WeCom-vastaanottajan on ensin keskusteltava saman botin kanssa samalla käyttäjätunnuksella; muuten käytä olemassa olevaa kanavakeskustelua."
+          "Hakemisto tallennetaan nykyisen WorkStep-isännän välimuistiin ja on käytettävissä heti uudelleenkäynnistyksen jälkeen; päivitä se käsin henkilöstön muuttuessa. Lähetä CLI:n tai avustajan kautta käyttäen täsmällistä, yksilöllistä nimeä tai yhteyshenkilön ID-tunnusta; valitse henkilö erikseen samannimisten joukosta. WeCom-jäsenten on ensin oltava yhteydessä samaan bottiin ja käyttäjän ID-tunnuksen on täsmättävä; käytä muuten olemassa olevaa kanavakeskustelua."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Käytä botin hakemistoa",
-          "caption": "Hakemisto on vain muistissa ja ladataan uudelleenkäynnistyksessä. Lähetä CLI:n tai avustajan kautta täsmällisellä yksilöllisellä nimellä tai yhteystunnuksella; valitse kaimat erikseen. WeCom-vastaanottajan on ensin keskusteltava saman botin kanssa samalla käyttäjätunnuksella; muuten käytä olemassa olevaa kanavakeskustelua."
+          "alt": "Botin hakemistoasetukset ja paikallisen välimuistin tiedot",
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Kanavan valitsin ja erillinen bot-editori",
-          "caption": "Tunnukseton todellinen kuvakaappaus uudesta monikanavaasettelusta odottaa. Vanha muoto ei edusta sitä."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Feishu tai Lark ilmoitus URL, allekirjoitus ja malli",
-          "caption": "Tunnukseton määritys ja korttien esikatselukuvakaappaukset odottavat; todellista toimitusta ei vaadita."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Projektin valinta ja vahvistus viisivaiheisessa hiekkalaatikkooppaassa",
-          "caption": "Tarkista tallennustila, projektiliitos ja kokoonpanon siirto."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat. Vain hiekkalaatikon ensimmäinen vaihe näkyy; viiden vaiheen määritys on kesken."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Nykyinen työpöytäversio ja päivitystarkistusmerkintä järjestelmäasetuksissa",
-          "caption": "Aito kuvakaappaus automaattisesta päivityksestä, latauksen edistymisestä ja GitHub-käsinlatauksesta puuttuu vielä."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat. Todellinen kehityskuori, ei asennetun virallisen paketin päivityksen hyväksyntätesti."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Päätösmallin käyttötila, resurssit, testi, tallennus ja valinnainen välitys",
-          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Asetusotsikon kysymysmerkki ja sovelluksen monikielinen ohje",
-          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Digitaalisen hahmon opastus, persoonadokumentit ja pääkeskustelu",
-          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Yleinen muistihaku, luokat ja sivutetut alkuperäislähteet",
-          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Pohdinta-asetukset ja erikseen sivutettu suoritushistoria",
-          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Kanavasidonnat, oma-aloitteiset ilmoitukset ja toimitustila",
-          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Puhetulosteen tavat, kuuntelutesti ja nimenomainen kuuntelun hallinta",
-          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Suostumus, kolmivaiheinen näytteenotto ja henkilöntunnistusasetukset",
-          "caption": "Todelliset kuvat kiinteästä esittely-ympäristöstä 8777 puuttuvat; komponenttiesimerkit eivät korvaa niitä."
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Mukautetun liitännän ja moottorin tuonnin avauskohdat suoritusmoottorien asetuksissa",
-          "caption": "Liitännän avauskohdan ja lähettämättömän luonnoksen kuvat kiinteästä esittely-ympäristöstä puuttuvat vielä."
+          "alt": "Moottorin luominen keskustelussa",
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat. Todellinen uusi integraatiokeskustelu; määritysluonnosta ei ole lähetetty."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Moottoripaketin tuonnin luoma liitäntäkeskustelu ja luonnos",
-          "caption": "Kiinteän esittely-ympäristön ZIP-tuonnin ja määrittämistä odottavan luonnoksen kuvat puuttuvat vielä. Tuontia ei esitetä onnistuneena rekisteröintinä."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat. Käytössä on todellinen offline-esimerkkipaketti; tämä ei vahvista todellisen mallin integraatiota."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Rekisteröidyn mukautetun moottorin vienti-, käytöstäpoisto- ja palautussäätimet",
-          "caption": "Rekisteröidyn moottorin kortin kuva kiinteästä esittely-ympäristöstä puuttuu vielä; sisäisen moottorin korttia ei käytetä sen korvikkeena."
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat. Käytössä on todellinen offline-esimerkkipaketti; tämä ei vahvista todellisen mallin integraatiota."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Sisäänrakennetut kielenvalitsimet sovelluksessa ja verkkosivustossa",
-          "caption": "Todelliset kuvakaappaukset lisätyistä kielivaihtoehdoista odottavat."
+          "alt": "Valitse sisäänrakennettu kieli",
+          "caption": "Kiinteän demoympäristön todelliset kiinankieliset asetukset tai toimintojen avauskohdat."
         }
       },
       {

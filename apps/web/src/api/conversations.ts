@@ -236,7 +236,7 @@ export interface ChatSessionDetail extends ChatSessionSummary {
 
 export type ChatSessionExecutionConfig = Pick<ChatSessionDetail,
   'id' | 'project_id' | 'engine' | 'provider_id' | 'model' | 'fast_model' | 'vision_model'
-  | 'thinking_effort' | 'service_tier' | 'execution_config_revision' | 'pending_handoff'>
+  | 'thinking_effort' | 'service_tier' | 'execution_config_revision' | 'pending_handoff' | 'permission_mode'>
 
 export type ChatExecutionConfigPatch = Partial<Pick<ChatSessionExecutionConfig,
   'model' | 'fast_model' | 'vision_model' | 'thinking_effort' | 'service_tier'>>
@@ -484,9 +484,10 @@ export const chatSessionApi = {
     cursor = 0,
     limit = FULL_PAGE_LIMIT,
     query?: FileChangesQuery,
+    preview = false,
   ) => request<ChatMessageEventsPage>(
     `/chat-sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}/events`
-    + `?project_id=${encodeURIComponent(projectId)}&cursor=${cursor}&limit=${limit}${fileChangesQuery(query)}`,
+    + `?project_id=${encodeURIComponent(projectId)}&cursor=${cursor}&limit=${limit}${fileChangesQuery(query)}${preview ? '&preview=true' : ''}`,
   ),
   rename: (sessionId: string, projectId: string, title: string) =>
     request<ChatSessionSummary>(

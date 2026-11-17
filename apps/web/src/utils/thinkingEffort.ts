@@ -1,3 +1,4 @@
+import { permissionChoice } from './permissionLabels'
 import type { EngineConfigField, EngineConfigOption } from '../api/engine'
 import type { TFunction, TKey } from '../i18n'
 
@@ -20,7 +21,8 @@ function isThinkingEffortField(field: EngineConfigField) {
     || ['thinking_effort', 'model_reasoning_effort', 'reasoning_effort'].includes(field.key)
 }
 
-export function engineConfigOptionLabel(field: EngineConfigField, option: EngineConfigOption, t: TFunction) {
+export function engineConfigOptionLabel(field: EngineConfigField, option: EngineConfigOption, t: TFunction, engineId = '') {
+  if (field.category === 'mode' && engineId) return permissionChoice(engineId, { id: field.key }, { value: option.value, name: option.label }, t).name
   // Legacy schemas have no model_capability. Translate their raw effort
   // values while retaining explicit labels supplied by custom engines.
   return isThinkingEffortField(field)
@@ -36,4 +38,10 @@ export function engineEffortOptions(
   const field = fields.find(isThinkingEffortField)
   return field ? field.options || []
     : THINKING_EFFORT_LEVELS.map(value => ({ value, label: value }))
+}
+
+
+export function engineConfigOptionDescription(field: EngineConfigField, option: EngineConfigOption, t: TFunction, engineId: string) {
+  if (!['claude', 'claude_agent_sdk'].includes(engineId) || field.key !== 'permission_mode') return undefined
+  return permissionChoice(engineId, {id: field.key}, {value: option.value, name: option.label}, t).description
 }

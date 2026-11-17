@@ -1,3 +1,4 @@
+import type { PermissionConfigOption } from '../utils/enginePermissions'
 import { getMessageHistoryPageSize } from '../stores/userSettingsStore'
 import { contentLocale } from '../utils/contentLocale'
 import { fileChangesQuery, type FileChangesQuery } from '../utils/messageFileChanges'
@@ -255,6 +256,7 @@ export interface ActionProposal {
 
 export interface CoordinatorEngineSummary {
   permission_modes?: string[]
+  permission_config_options?: PermissionConfigOption[]
   supports_service_tier?: boolean
   config?: EngineConfigPayload | null
   name?: string

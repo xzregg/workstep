@@ -127,12 +127,16 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         if configured is False:
             return False
         mode = self.runtime_permission_mode()
+        from engines.core.permissions import decode_permission_selection
+        if decode_permission_selection(mode or "") is not None:
+            return configured
         if mode:
             return mode_decision(mode)
         return configured
 
     def configure_interaction_policy(self, effective_config: dict) -> None:
         """Receive the same merged config passed to this engine invocation."""
+        self._interaction_effective_config = dict(effective_config)
         self._interaction_policy_decision = self.configured_permission_decision(effective_config)
 
     def _execution_retry_delays(self, message: str) -> tuple[float, ...]:
@@ -386,7 +390,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
 
         commands: list[dict[str, str]] = []
         session_id: str | None = None
-        handler = _StreamingClient(self.get_permission_mode())
+        handler = _StreamingClient(self.get_permission_mode(), permission_decision=self.runtime_permission_decision)
         skill_env = await asyncio.to_thread(self.project_skill_env, cwd)
         cmd = self.get_command()
         try:
@@ -635,7 +639,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         cmd = self.get_command()
         if not cmd:
             raise RuntimeError(f"{self.ENGINE_ID}: no command configured")
-        handler = _StreamingClient(self.get_permission_mode())
+        handler = _StreamingClient(self.get_permission_mode(), permission_decision=self.runtime_permission_decision)
         async with acp.spawn_agent_process(
             handler,
             cmd[0],
@@ -839,7 +843,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         logger.info("ACP spawn: %s (cwd=%s)", " ".join(cmd), cwd)
         yield InternalEvent(type="status", data={"status": "initializing"})
 
-        handler = _StreamingClient(self.runtime_permission_mode() or permission_mode)
+        handler = _StreamingClient(self.runtime_permission_mode() or permission_mode, permission_decision=self.runtime_permission_decision)
         self._handler = handler
         self._last_cwd = cwd
         try:

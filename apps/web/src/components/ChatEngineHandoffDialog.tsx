@@ -85,7 +85,7 @@ export default function ChatEngineHandoffDialog({
         engine: target.engine,
         context_mode: mode as ChatSessionHandoffInput['context_mode'],
         provider_id: target.providerId,
-        permission_mode: permissionMode || undefined,
+        permission_mode: source.engine === target.engine ? permissionMode || undefined : undefined,
       })}
     >
       <div style={{ paddingTop: 18, paddingRight: 2 }}>

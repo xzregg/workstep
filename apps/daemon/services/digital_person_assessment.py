@@ -192,7 +192,7 @@ def instruction(profile):
             'origin_session_id identifies the source conversation. Preserve the chronological meaning of repeated messages. '
             'For historical_batch or memory_only, return decision=silent and limit the result to memory processing. '
             'Result contract: {"decision":"silent|notify","kind":"work|social","summary":"brief internal outcome when silent; actual message text when notifying","source_ids":["source ID from this batch"]}. '
-            'For top-level source_ids use conversation message IDs; exact memory_ids/read_ids from this batch are also accepted and resolved to their messages. Never invent or reuse IDs from another batch. '
+            'For top-level source_ids use conversation message IDs; exact memory_ids/read_ids from this batch are also accepted and resolved to their messages. Use only IDs supplied in this batch. '
             'Optional memories: [{summary,kind:event|preference|experience|fact,outcome:stated|planned|reported|observed|failed|unknown,source_ids:[IDs from conversation.memory_ids],'
             'entities:[{kind:person|event|object|place|time,name:canonical name,aliases:[]}],relations:[{from:entity name,relation:supported relationship,to:entity name}],'
             'event_time:timezone-aware ISO8601 or null,valid_until:timezone-aware ISO8601 or null,supersedes:[],conflict:false}]. '

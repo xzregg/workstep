@@ -213,15 +213,18 @@ class MemoryEngineConfigStore:
             config["model"] = self.get_engine_default_model("pydantic_ai") or ""
         config.setdefault("harness", "auto")
         config.setdefault("sandbox", "workspace-write")
+        from engines._config.pydantic_ai import resolve_native_permission_mode
+        config["permission_mode"] = resolve_native_permission_mode(self.pydantic_ai_config)
         return config
 
-    def set_pydantic_ai_engine_config(self, *, provider_id, model, mcp_servers=None, harness="auto", sandbox="workspace-write"):
+    def set_pydantic_ai_engine_config(self, *, provider_id, model, mcp_servers=None, harness="auto", sandbox="workspace-write", permission_mode=None):
         self.pydantic_ai_config = {
             "provider_id": provider_id,
             "model": model,
             "mcp_servers": list(mcp_servers or []),
             "harness": harness,
             "sandbox": sandbox,
+            **({"permission_mode": permission_mode} if permission_mode is not None else {}),
         }
         self.default_models["pydantic_ai"] = model
 
@@ -1423,12 +1426,13 @@ async def test_engine_list_drops_api_engine_and_embeds_provider_select(engine_cl
     config = pydantic["config"]
     assert config is not None
     fields = {field["key"]: field for field in config["fields"]}
-    assert list(fields) == ["provider_id", "sandbox"]
+    assert list(fields) == ["provider_id", "permission_mode"]
     assert fields["provider_id"]["type"] == "select"
     option_values = [option["value"] for option in fields["provider_id"]["options"]]
     assert option_values == ["prov_1"]
     assert config["values"] == {
         "provider_id": "",
+        "permission_mode": "auto",
         "sandbox": "workspace-write",
     }
     assert config["secrets"] == {}
@@ -1469,6 +1473,7 @@ async def test_pydantic_ai_engine_config_saves_provider_id(engine_client):
     assert store.pydantic_ai_config["provider_id"] == provider["id"]
     assert body["values"] == {
         "provider_id": provider["id"],
+        "permission_mode": "auto",
         "sandbox": "workspace-write",
     }
     assert body["secrets"] == {}
@@ -1989,7 +1994,7 @@ async def test_pydantic_ai_spawn_uses_provider_config(monkeypatch):
         usage = FakeUsage()
 
     async def fake_run_agent(
-        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None, sandbox=None
+        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None, sandbox=None, permission_mode=None
     ):
         assert prompt == "do work"
         assert cwd == "/tmp/project"
@@ -2263,7 +2268,7 @@ async def test_pydantic_ai_spawn_forwards_live_message_queue(monkeypatch):
         usage = None
 
     async def fake_run_agent(
-        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None, sandbox=None
+        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None, sandbox=None, permission_mode=None
     ):
         captured["live_message_queue"] = live_message_queue
         return FakeResult(), None
@@ -2308,7 +2313,7 @@ async def test_pydantic_ai_spawn_does_not_roundtrip_engine_state(monkeypatch, tm
     async def fake_run_agent(
         self, *, prompt, cwd, add_dirs, model, on_event,
         live_message_queue=None, images=None, session_id=None,
-        sandbox=None,
+        sandbox=None, permission_mode=None,
     ):
         # 无 message_history 形参：若 spawn 仍回灌外部历史，此处将抛 TypeError。
         calls.append(prompt)
@@ -2401,6 +2406,7 @@ def test_provider_storage_and_legacy_migration(tmp_path, monkeypatch):
         "mcp_servers": [],
         "harness": "auto",
         "sandbox": "workspace-write",
+        "permission_mode": "auto",
     }
 
     # 引擎未显式配置 fast_model 时，回退 coordinator 快速模型
@@ -2794,3 +2800,16 @@ async def test_provider_delete_allowed_without_references(engine_client, monkeyp
     assert deleted.status_code == 200
     assert deleted.json() == {"deleted": True}
     assert store.get_provider(provider["id"]) is None
+
+
+@pytest.mark.anyio
+async def test_native_permission_setting_refreshes_selectable_catalog_after_save(engine_client):
+    client, store = engine_client
+    provider = _add_provider(store, name="权限测试")
+    saved = await client.put("/api/engine/pydantic_ai/config", json={"values": {
+        "provider_id": provider["id"], "permission_mode": "read-only"}})
+    assert saved.json()["saved"] is True
+    engines = (await client.get("/api/engine/list")).json()["engines"]
+    engine = next(item for item in engines if item["id"] == "pydantic_ai")
+    assert engine["permission_config_options"][0]["currentValue"] == "read-only"
+    assert engine["config"]["values"]["permission_mode"] == "read-only"

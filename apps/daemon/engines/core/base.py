@@ -369,6 +369,7 @@ class BaseLLMEngine(ABC):
     ``AcpEngineBase`` 提供；上层调用方只按 ACP 风格接口使用引擎。
     """
 
+    _binary_override: ClassVar[str | None] = None
     PERMISSION_POLICY: ClassVar[EnginePermissionPolicy] = EnginePermissionPolicy()
     SKILL_POLICY: ClassVar[EngineSkillPolicy] = EngineSkillPolicy.UNSUPPORTED
     SUPPORTS_MANUAL_COMPACTION: ClassVar[bool] = True
@@ -381,7 +382,45 @@ class BaseLLMEngine(ABC):
 
     @classmethod
     def permission_config_overrides(cls, mode: str) -> dict:
+        from engines.core.permissions import decode_permission_selection
+        selection = decode_permission_selection(mode)
+        if selection is not None:
+            if selection["engine"] != cls.ENGINE_ID:
+                raise ValueError("权限配置不属于当前引擎")
+            fields = {field.key: field for field in cls.config_schema() if field.category == "mode"}
+            values = selection["values"]
+            for key, value in values.items():
+                field = fields.get(key)
+                if field is None or field.sensitive or field.type == "password":
+                    raise ValueError("引擎未声明该权限配置字段")
+                if field.type == "checkbox":
+                    if type(value) is not bool:
+                        raise ValueError("权限配置需要布尔值")
+                elif (not isinstance(value, str) or value not in {
+                    option.value for option in field.options or ()
+                } and not (value == "" and not field.required)):
+                    raise ValueError("引擎未声明该权限选项")
+            return dict(values)
         return cls.PERMISSION_POLICY.permission_overrides(mode)
+
+    def permission_config_options(self) -> list[dict]:
+        """Expose native controls in ACP configOptions form, without secrets."""
+        values = self.get_config_values()
+        result = []
+        for field in self.config_schema():
+            if field.category != "mode" or field.sensitive or field.type not in {"select", "checkbox"}:
+                continue
+            current = values.get(field.key, field.default)
+            item = {"id": field.key, "name": field.label, "description": field.help,
+                    "category": "mode", "type": "boolean" if field.type == "checkbox" else "select",
+                    "currentValue": (bool(current) if field.type == "checkbox" else current or "")}
+            if field.type == "select":
+                options = [{"value": option.value, "name": option.label} for option in field.options or ()]
+                if not field.required and not any(option["value"] == "" for option in options):
+                    options.insert(0, {"value": "", "name": "引擎默认"})
+                item["options"] = options
+            result.append(item)
+        return result
 
     @classmethod
     def plan_config_overrides(cls) -> dict:
@@ -396,10 +435,15 @@ class BaseLLMEngine(ABC):
         cls._binary_override = path or None
 
     async def set_permission_mode(self, mode: str) -> None:
-        """Apply a unified permission mode to the current engine run."""
-        if mode:
-            self.permission_config_overrides(mode)
+        """Apply engine-native configuration or a legacy override to this run."""
+        def resolve():
+            overrides = self.permission_config_overrides(mode)
+            return {**self.get_config_values(), **overrides}
+        config = await asyncio.to_thread(resolve)
         self._runtime_permission_mode = mode or None
+        configure = getattr(self, "configure_interaction_policy", None)
+        if callable(configure):
+            configure(config)
 
     def runtime_permission_mode(self) -> str | None:
         """Return the live per-run permission override, when one is active."""

@@ -99,7 +99,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         },
         plan_overrides={'sandbox': 'read-only'},
         consent_key='approval_mode',
-        consent_values={'': True, 'auto_review': True, 'deny_all': False},
+        consent_values={'': None, 'auto_review': None, 'deny_all': False},
         consent_default='',
     )
     supports_mcp = True
@@ -243,6 +243,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             ),
             EngineConfigField(
                 key="approval_mode",
+                category="mode",
                 label="审批模式",
                 type="select",
                 options=tuple(
@@ -250,10 +251,11 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                     for mode, label in CODEX_SDK_APPROVAL_LABELS.items()
                 ),
                 placeholder="默认自动审批",
-                help="自动审批：自动放行；拒绝所有工具调用：拒绝执行工具。",
+                help="auto_review 由引擎自动审查；deny_all 禁止申请提权，仍可执行沙箱允许的工具。",
             ),
             EngineConfigField(
                 key="sandbox",
+                category="mode",
                 label="沙箱模式",
                 type="select",
                 options=tuple(
@@ -275,6 +277,11 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 ),
             ),
         ]
+
+    def permission_config_options(self) -> list[dict]:
+        """Chat selects access only; approvals inherit the engine settings."""
+        return [{**item, "options": [option for option in item["options"] if option["value"]]}
+                for item in super().permission_config_options() if item["id"] == "sandbox"]
 
     def get_config_values(self) -> dict:
         return config_store.get_codex_sdk_config()

@@ -43,6 +43,8 @@ class EngineConfigField:
     step_hidden: bool = False
     # Optional capability metadata; does not restrict engine-wide choices.
     model_capability: str = ""
+    # ACP session config category. Permission controls belong to the adapter.
+    category: str = ""
 
 
 @dataclass(frozen=True, slots=True)

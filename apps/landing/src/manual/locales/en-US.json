@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Batch task drafts and their individual scheduled times",
-          "caption": "Real screenshot pending: batch drafts and individual times. An old single-task draft must not substitute for it."
+          "alt": "Prepare multiple tasks with the task assistant",
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment. The request has not been sent; no AI result has been generated."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Step candidates after typing @ in task details, with the selected recipient",
-          "caption": "A real screenshot of @step candidates and the draft after selection in the fixed demonstration project is still needed. Selection does not mean a message was sent or execution started."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "Pending messages during a coordinator reply",
-          "caption": "Real screenshot pending: Coordinator recipient, supplementary messages during execution and the continuation queue."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment. The supplement queue uses an offline simulated engine with fixed replies, not real model results."
         }
       },
       {
@@ -757,7 +757,7 @@
           "Use Change history to inspect differences, undo or clear history. After interruption, inspect the retained copy and choose Resume saving or discard. Conflicting original files are not overwritten."
         ],
         "tips": [
-          "Direct editing supports static HTML and updates to existing HTML/CSS/JS files, without adding or deleting whole files. For dynamic pages, use the read-only inspection and comments described next. The existing screenshot does not show the new move handle or dynamic inspection."
+          "Direct editing supports static HTML and updates to existing HTML/CSS/JS files, without adding or deleting whole files. For dynamic pages, use the read-only inspection and comments described next."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Read-only dynamic prototype properties, element comments and file switching",
-          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment. Dynamic nodes are selected for read-only inspection; the comment has not been sent."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Artifact format template editors for workflows and tasks",
-          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Fill a message draft by voice",
-          "caption": "Audio is recognized on the connected host and is not saved. Allow microphone access over HTTPS or a local address. Check site and system permissions on failure; restart an outdated backend. Recognized text can be kept explicitly after an error."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Desktop conversation panes across projects and arrangement menu",
-          "caption": "Real screenshot from the fixed demo project is pending: conversation window menu, multiple panes and draggable separators."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Configure and use connectors",
-          "caption": "Real screenshot pending: connector configuration, testing and conversation selection."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Sidebar conversation group menu and read-only archive preview",
-          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Schedule messages in an existing conversation",
-          "caption": "The backend must be online. Busy conversations wait; channel replies return to the original channel. Deleting or archiving the conversation removes its schedules; restoring it does not restore them. A group bound to a task must use task coordination instead."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Run now and inspect generated tasks",
-          "caption": "Expand Generated task JSON in the run record and compare drafts with created tasks. Older runs or failures before generation may have no JSON. Check already-created tasks before retrying a partial failure."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Scheduled batch-generation preview and multiple-task run records",
-          "caption": "Real screenshot pending: batch drafts and already-created tasks after partial failure."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment. The request has not been sent; no AI result has been generated."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Feishu or Lark identity source and directory-sync settings",
-          "caption": "Credential-free configuration screenshot from an isolated Gateway is pending."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Third-party callback allowlist in Gateway settings",
-          "caption": "Real isolated demonstration Gateway screenshot pending; do not use everyday accounts or actual callback settings."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Switch devices and inspect aggregate notifications",
+        "title": "Switch devices and restore pages",
         "steps": [
           "Enter an authorized device workspace on the platform, then use top device tabs to switch to another online device.",
           "Each account and device remembers the last project, task or session page in this browser. Returning still checks authorization and does not bypass inaccessible targets.",
           "Remote projects load only when selected. After loading failure or disconnection, click the current project again to refresh manually; devices are not continuously polled in the background.",
-          "Open Notification center for completion or failure summaries from authorized devices. Click to open the task or session. Workspace live messages still belong to the current device.",
+          "After switching, check the device name and the project, task or conversation page. Workspace messages belong only to the current device; confirm the target device before sending.",
           "Use Return to Gateway platform to choose another device. An expired browser authorization callback restarts login; after cancelling desktop authorization, retry manually or return to the local workspace."
         ],
         "tips": [
           "The Gateway workspace retries a failed connection up to 3 times, then shows “Gateway connection problem” and pauses the event connection, session checks and device-list refresh. Check your network, gateway and device status, then select “Reconnect”. “Not now”, focusing the window or network recovery does not resume retries; the page keeps a reconnect button after dismissal. The event connection must remain stable for 30 seconds to reset the retry count. Expired authorization still requires re-entering through the Gateway. Local non-Gateway connections are unaffected.",
           "Page memory is browser-local, not synchronized across browsers. Access works without browser storage but locations are not retained.",
           "Reconnect as prompted for offline devices, revoked authorization or network failures. Saved locations do not replace permissions.",
-          "Real device-tab and aggregate-notification screenshots from the fixed demonstration project remain pending."
+          "Device tabs change the access target; they do not copy conversation or task messages to other devices."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Device tabs and aggregate notification center",
-          "caption": "Real screenshot pending: device switching, location restoration and notification navigation; not yet captured."
+          "alt": "Gateway device tabs and workspace page restoration",
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment. Two devices simulated through the real protocol share the demo backend; they are not two physical machines. Shows device switching and page restoration."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Use a bot directory",
         "steps": [
           "Save a DingTalk, WeCom or Feishu bot, then open Edit → Directory and enable directory access. Grant the provider’s member-reading permissions; WeCom also needs the enterprise ID, application Agent ID and Secret. Save, then search cached contacts or refresh after personnel changes.",
-          "The directory stays in memory and reloads after restart. Through the CLI or assistant, send using an exact unique name or contact ID; resolve duplicate names explicitly. WeCom recipients must first interact with this bot and have matching user IDs. Otherwise use an existing channel conversation."
+          "The directory is cached on the current WorkStep host and remains available after restart; update it manually when personnel change. Send through the CLI or assistant using an exact, unique name or contact ID; explicitly select the intended person when names match. WeCom members must first interact with the same bot and have a matching user ID; otherwise use an existing channel conversation."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Use a bot directory",
-          "caption": "The directory stays in memory and reloads after restart. Through the CLI or assistant, send using an exact unique name or contact ID; resolve duplicate names explicitly. WeCom recipients must first interact with this bot and have matching user IDs. Otherwise use an existing channel conversation."
+          "alt": "Bot directory settings and local cache information",
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Channel selector and separate bot editor",
-          "caption": "Credential-free real screenshot of the new multichannel layout is pending. The old form does not represent it."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Feishu or Lark notification URL, signature and template",
-          "caption": "Credential-free configuration and card-preview screenshots are pending; actual delivery is not claimed."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Project selection and confirmation in the five-step sandbox guide",
-          "caption": "Inspect storage, project association and configuration migration."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment. Only the first sandbox setup step is shown; the five-step setup is incomplete."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Current desktop version and update-check entry in system settings",
-          "caption": "A real screenshot of automatic updates, download progress and the manual GitHub download action is still needed."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment. Real development-shell interface, not acceptance testing of an installed release upgrade."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Decision model modes, resources, test/save and optional proxy",
-          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Settings question mark and embedded multilingual manual",
-          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Digital avatar setup, persona documents and main conversation",
-          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Global memory search, categories and paginated original sources",
-          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Proactive thinking settings and separately paginated activity records",
-          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Digital person channel bindings, proactive notifications and delivery status",
-          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Speech output options, preview and explicit digital person listening controls",
-          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Consent-based enrollment, three-view capture and person recognition settings",
-          "caption": "A real screenshot from the fixed 8777 demo environment is still needed; component samples are not substitutes."
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Custom integration and Import engine entries in execution engine settings",
-          "caption": "A real screenshot of the integration entry and unsent draft in the fixed demonstration environment is still needed."
+          "alt": "Create an engine through chat",
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment. A real newly created integration conversation; the setup draft has not been sent."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Integration conversation and draft created after importing an engine package",
-          "caption": "Real screenshots of ZIP import and the draft awaiting configuration in the fixed demonstration environment are still needed; import is not successful registration."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment. Uses a real offline sample engine package; this is not acceptance testing of a real model integration."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Export, disable and rollback controls for a registered custom engine",
-          "caption": "A screenshot of a registered custom engine card in the fixed demonstration environment is still needed. A built-in engine card is not a substitute."
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment. Uses a real offline sample engine package; this is not acceptance testing of a real model integration."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Built-in language selectors in the app and website",
-          "caption": "Real screenshots of the added language choices are pending."
+          "alt": "Choose a built-in language",
+          "caption": "Real Chinese settings or operation entry points in the fixed demo environment."
         }
       },
       {

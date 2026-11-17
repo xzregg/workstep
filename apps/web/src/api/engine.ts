@@ -1,3 +1,4 @@
+import type { PermissionConfigOption } from '../utils/enginePermissions'
 import { zhCNT } from '../i18n'
 import { gatewayFetch } from '../utils/gatewayWorkspacePath'
 import { request, singleFlight } from './transport'
@@ -9,6 +10,7 @@ import type { CoordinatorEngineSummary, EngineQuota } from './task'
 
 export interface EngineInfo {
   permission_modes?: string[]
+  permission_config_options?: PermissionConfigOption[]
   supports_service_tier?: boolean
   custom?: boolean
   name?: string
@@ -190,6 +192,7 @@ export interface EngineConfigField {
   confirm_values: string[]
   step_hidden?: boolean
   model_capability?: string
+  category?: string
 }
 
 export interface EngineConfigSchema {
@@ -399,6 +402,7 @@ export const providerApi = {
 // or binary path changes.
 
 const engineModelsCache = new Map<string, EngineModelsResult>()
+const engineModelRequests = new Map<string, Promise<EngineModelsResult>>()
 
 function modelsCacheKey(engineId: string, providerId: string, projectId: string): string {
   return `${engineId}::${providerId}::${projectId}`
@@ -421,12 +425,22 @@ export async function fetchEngineModels(
   const cacheKey = modelsCacheKey(engineId, providerId, projectId)
   const cached = engineModelsCache.get(cacheKey)
   if (cached && !force) return cached
-  const result = await engineApi.models(engineId, providerId, force, projectId)
-  engineModelsCache.set(cacheKey, result)
-  return result
+  const pending = engineModelRequests.get(cacheKey)
+  if (pending) return pending
+  const request = engineApi.models(engineId, providerId, force, projectId).then(result => {
+    if (engineModelRequests.get(cacheKey) === request) engineModelsCache.set(cacheKey, result)
+    return result
+  }).finally(() => {
+    if (engineModelRequests.get(cacheKey) === request) engineModelRequests.delete(cacheKey)
+  })
+  engineModelRequests.set(cacheKey, request)
+  return request
 }
 
 export function invalidateEngineModels(engineId: string): void {
+  for (const key of engineModelRequests.keys()) {
+    if (key.startsWith(`${engineId}::`)) engineModelRequests.delete(key)
+  }
   for (const key of Array.from(engineModelsCache.keys())) {
     if (key.startsWith(`${engineId}::`)) {
       engineModelsCache.delete(key)

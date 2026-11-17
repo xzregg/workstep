@@ -3,6 +3,34 @@
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
+import json
+
+NATIVE_PERMISSION_PREFIX = "native-permissions:v1:"
+
+
+def encode_permission_selection(engine_id: str, values: dict) -> str:
+    return NATIVE_PERMISSION_PREFIX + json.dumps(
+        {"engine": engine_id, "values": values}, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def decode_permission_selection(value: str) -> dict | None:
+    if not value.startswith(NATIVE_PERMISSION_PREFIX):
+        return None
+    if len(value) > 16384:
+        raise ValueError("权限配置过长")
+    try:
+        selection = json.loads(value[len(NATIVE_PERMISSION_PREFIX):])
+    except (ValueError, TypeError) as exc:
+        raise ValueError("权限配置格式无效") from exc
+    if (not isinstance(selection, dict) or set(selection) != {"engine", "values"}
+            or not isinstance(selection["engine"], str) or not selection["engine"]
+            or not isinstance(selection["values"], dict)
+            or any(not isinstance(key, str) or type(item) not in (str, bool)
+                   for key, item in selection["values"].items())):
+        raise ValueError("权限配置格式无效")
+    return selection
 
 
 CHAT_PERMISSION_MODES = (
@@ -26,8 +54,8 @@ class EnginePermissionPolicy:
     consent_default: str | None = None
 
     def __post_init__(self):
-        if not isinstance(self.overrides, dict) or set(self.overrides) - set(CHAT_PERMISSION_MODES):
-            raise ValueError("权限映射包含未知模式")
+        if not isinstance(self.overrides, dict) or any(not isinstance(key, str) or not key for key in self.overrides):
+            raise ValueError("权限映射必须使用非空模式名")
         if any(not isinstance(value, dict) for value in self.overrides.values()):
             raise ValueError("权限映射必须返回配置对象")
         if not isinstance(self.plan_overrides, dict):

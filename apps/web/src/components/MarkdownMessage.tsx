@@ -1,3 +1,4 @@
+import SmoothMessageHeight from './SmoothMessageHeight'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import type { ProjectFileLink } from '../utils/markdownFilePreview'
 import FilePreviewDialog from './FilePreviewDialog'
@@ -16,7 +17,7 @@ interface MarkdownMessageProps {
   /**
    * 流式文字揭示动画模式。
    * - 'a'（默认）：跟随 token 到达快速揭示（帧率 ≤ token 频率，无额外重渲染开销），
-   *   新字以 320ms 透明度渐入，批内错峰不超过 90ms，保持正文清晰稳定
+   *   新字按批内90ms错峰依次清晰显示，保持正文稳定
    * - 'off'：关闭揭示层，渲染结果与历史版本完全一致（回退开关）
    * compactParagraphs（嵌套时间线）场景由调用方决定是否传入。
    */
@@ -127,6 +128,7 @@ function MarkdownMessage({
 
   return (
     <>
+      <SmoothMessageHeight active={revealing || settling}>
       <MarkdownContent
         content={revealedContent}
         animateReveal={reveal === 'a' && !plainText && effects?.reveal !== false && (revealing || settling)}
@@ -141,6 +143,7 @@ function MarkdownMessage({
         onFileClick={handleFileClick}
         rootRef={rootRef}
       />
+      </SmoothMessageHeight>
       {previewFile && (projectId || taskFilePreview) && (
         <FilePreviewDialog
           path={previewFile.path}

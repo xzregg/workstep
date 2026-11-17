@@ -1,3 +1,4 @@
+import { followConversationBottom, disposeConversationFollow } from '../utils/smoothConversationFollow'
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MutableRefObject, type RefObject, type UIEvent, type WheelEvent } from 'react'
 import type { LiveMessage } from '../stores/taskStore'
 import { actionConversationScrollKey, type ActionRunLike } from '../utils/actionConversation'
@@ -88,7 +89,7 @@ export function useTaskConversationScroll({
         const target = conversationBottomScrollTop(container.scrollHeight, container.clientHeight)
         programmaticRef.current = target
         lastScrollHeightRef.current = container.scrollHeight
-        container.scrollTop = target
+        followConversationBottom(container, programmaticRef, followRef, returningToConversation)
         lastScrollTopRef.current = target
         setScrolledToBottom(isNearConversationBottom(container.scrollHeight, target, container.clientHeight))
       }
@@ -141,11 +142,11 @@ export function useTaskConversationScroll({
       const target = conversationBottomScrollTop(container.scrollHeight, container.clientHeight)
       programmaticRef.current = target
       lastScrollHeightRef.current = container.scrollHeight
-      container.scrollTop = target
+      followConversationBottom(container, programmaticRef, followRef)
       setScrolledToBottom(isNearConversationBottom(container.scrollHeight, target, container.clientHeight))
     }
     container.addEventListener('load', onMediaLoad, true)
-    return () => container.removeEventListener('load', onMediaLoad, true)
+    return () => { container.removeEventListener('load', onMediaLoad, true); disposeConversationFollow(container) }
   }, [active, scrollRef, followRef, programmaticRef])
 
   useEffect(() => active ? observeContentResize({
@@ -157,7 +158,7 @@ export function useTaskConversationScroll({
       lastScrollHeightRef.current = height
       const target = conversationBottomScrollTop(container.scrollHeight, container.clientHeight)
       programmaticRef.current = target
-      container.scrollTop = target
+      followConversationBottom(container, programmaticRef, followRef)
       setScrolledToBottom(isNearConversationBottom(container.scrollHeight, target, container.clientHeight))
     },
   }) : undefined, [active, scrollRef, followRef, programmaticRef])
@@ -214,7 +215,7 @@ export function useTaskConversationScroll({
     if (container) {
       const target = conversationBottomScrollTop(container.scrollHeight, container.clientHeight)
       programmaticRef.current = target
-      container.scrollTo({ top: target, behavior: 'smooth' })
+      followConversationBottom(container, programmaticRef, followRef)
     }
   }
 

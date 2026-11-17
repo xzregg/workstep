@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Batch-opgavekladder og deres individuelle planlagte tidspunkter",
-          "caption": "Ægte skærmbillede afventer: batch-udkast og individuelle tidspunkter. Et gammelt enkeltopgaveudkast må ikke erstatte det."
+          "alt": "Forbered flere opgaver med opgaveassistenten",
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø. Anmodningen er ikke sendt; intet AI-resultat er genereret."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Trinliste efter indtastning af @ i opgavedetaljer og den valgte modtager",
-          "caption": "Afventer skærmbilleder i det faste demoprojekt af @trin-listen og kladden efter valg. Valg er ikke det samme som afsendelse eller udførelse."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "Afventende beskeder under et koordinatorsvar",
-          "caption": "Ægte skærmbillede afventer: Koordinatormodtager, supplerende beskeder under udførelse og fortsættelseskøen."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø. Suppleringskøen bruger en simuleret offlinemotor med faste svar, ikke resultater fra en rigtig model."
         }
       },
       {
@@ -757,7 +757,7 @@
           "I ændringshistorikken kan du se forskelle, fortryde eller rydde historikken. Efter en afbrydelse kontrolleres den bevarede kopi; genoptag lagring eller kassér den. Originaler med konflikter overskrives ikke."
         ],
         "tips": [
-          "Direkte redigering gælder statisk HTML og udgiver ændringer af eksisterende HTML/CSS/JS, ikke oprettelse eller sletning af hele filer. Dynamiske sider bruger næste afsnits skrivebeskyttede inspektion og kommentarer. Gamle billeder viser endnu ikke det nye flyttegreb eller dynamisk inspektion."
+          "Direkte redigering gælder statisk HTML og udgiver ændringer af eksisterende HTML/CSS/JS, ikke oprettelse eller sletning af hele filer. Dynamiske sider bruger næste afsnits skrivebeskyttede inspektion og kommentarer."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Skrivebeskyttede egenskaber, elementkommentarer og filskift i en dynamisk prototype",
-          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø. Dynamiske noder vælges kun til skrivebeskyttet inspektion; kommentaren er ikke sendt."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Editor for leveranceformatskabeloner i arbejdsgange og opgaver",
-          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Udfyld en beskedkladde med stemmen",
-          "caption": "Lyd genkendes på den tilsluttede vært og gemmes ikke. Tillad mikrofon via HTTPS eller lokal adresse. Kontrollér webstedets og systemets tilladelser ved fejl; genstart en gammel backend. Genkendt tekst kan udtrykkeligt beholdes."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Skrivebordssamtaleruder på tværs af projekter og arrangementsmenu",
-          "caption": "Et ægte skærmbillede fra det faste demoprojekt afventer: samtalevinduesmenu, flere ruder og trækbare separatorer."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Opsæt og brug forbindelser",
-          "caption": "Ægte skærmbillede mangler: opsætning, test og samtalevalg."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Gruppemenu i projektets sidebjælke og skrivebeskyttet arkivvisning",
-          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Planlæg beskeder i en samtale",
-          "caption": "Backend skal køre. Optagede samtaler venter; kanalsvar returneres til oprindelsen. Sletning eller arkivering fjerner reglerne; gendannelse bringer dem ikke tilbage. Grupper knyttet til opgaver bruger opgavekoordinering."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Kør nu og kontrollér resultatet",
-          "caption": "Udvid JSON for genererede opgaver i historikken, og sammenlign kladder med oprettede opgaver. Ældre kørsler eller fejl før generering kan mangle JSON. Kontrollér oprettede opgaver før gentagelse af en delvis fejl."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Planlagt batchgenerering af forhåndsvisning og registrering af flere opgaver",
-          "caption": "Ægte skærmbillede afventer: batch-udkast og allerede oprettede opgaver efter delvis fejl."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø. Anmodningen er ikke sendt; intet AI-resultat er genereret."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Feishu eller Lark identitetskilde og bibliotekssynkroniseringsindstillinger",
-          "caption": "Skærmbillede til konfiguration uden legitimationsoplysninger fra en isoleret gateway afventer."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Tilladelsesliste for tredjeparts tilbagekald i Gateway-indstillinger",
-          "caption": "Ægte isoleret demonstration Gateway screenshot afventer; Brug ikke daglige konti eller faktiske tilbagekaldsindstillinger."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Skift enheder, og undersøg samlede meddelelser",
+        "title": "Skift enhed og gendan siden",
         "steps": [
           "Gå ind i et autoriseret enhedsarbejdsområde på platformen, og brug derefter de øverste enhedsfaner til at skifte til en anden onlineenhed.",
           "Hver konto og enhed husker det sidste projekt, opgave eller sessionsside i denne browser. At returnere kontrollerer stadig autorisation og omgår ikke utilgængelige mål.",
           "Fjernprojekter indlæses kun, når de er valgt. Efter indlæsningsfejl eller afbrydelse skal du klikke på det aktuelle projekt igen for at opdatere manuelt; enheder polles ikke kontinuerligt i baggrunden.",
-          "Åbn meddelelsescenter for færdiggørelses- eller fejloversigter fra autoriserede enheder. Klik for at åbne opgaven eller sessionen. Livebeskeder på arbejdsområdet tilhører stadig den aktuelle enhed.",
+          "Kontrollér enhedsnavnet og projekt-, opgave- eller samtalesiden efter skift. Beskeder tilhører kun den aktuelle enhed; kontrollér målenheden før afsendelse.",
           "Brug Return to Gateway platform til at vælge en anden enhed. Et udløbet browsergodkendelsestilbagekald genstarter login; efter annullering af desktop-autorisation, prøv igen manuelt eller vend tilbage til det lokale arbejdsområde."
         ],
         "tips": [
           "Gateway-arbejdsområdet prøver automatisk igen højst 3 gange efter en afbrydelse. Derefter vises en dialog, og realtidsforbindelsen, sessionskontrol og opdatering af enhedslisten sættes på pause. Kontrollér netværk, gateway og enhed, og vælg at oprette forbindelse igen. Lukning, udsættelse, vinduesfokus eller genetableret netværk genoptager ikke forsøgene; knappen bliver på siden. Tælleren nulstilles efter 30 sekunders stabil forbindelse. Udløbet adgang kræver ny indgang via gatewayen. Lokale forbindelser uden gateway påvirkes ikke.",
           "Sidehukommelsen er browserlokal, ikke synkroniseret på tværs af browsere. Adgang fungerer uden browserlagring, men placeringer bevares ikke.",
           "Genopret forbindelse som bedt om offline-enheder, tilbagekaldt godkendelse eller netværksfejl. Gemte placeringer erstatter ikke tilladelser.",
-          "Skærmbilleder af rigtige enhedsfaner og samlede notifikationer fra det faste demonstrationsprojekt forbliver afventende."
+          "Enhedsfaner skifter kun adgangsmål; de kopierer ikke samtale- eller opgavebeskeder til andre enheder."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Enhedsfaner og samlet notifikationscenter",
-          "caption": "Ægte skærmbillede afventer: enhedsskift, placeringsgendannelse og meddelelsesnavigation; endnu ikke fanget."
+          "alt": "Gatewayens enhedsfaner og gendannelse af arbejdsområdets side",
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø. To enheder simuleret via den rigtige protokol deler demoens backend; det er ikke to fysiske maskiner. Viser enhedsskift og sidegendannelse."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Brug bottens kontaktregister",
         "steps": [
           "Gem en DingTalk-, WeCom- eller Feishu-bot og aktivér læsning under Rediger → Register. Giv medlemslæserettigheder; WeCom kræver også virksomheds-ID, Agent ID og Secret. Gem, søg i cachen og opdatér ved personaleændringer.",
-          "Registret ligger kun i hukommelsen og indlæses efter genstart. Send via CLI eller assistent med præcist entydigt navn eller kontakt-ID; vælg navnesammenfald udtrykkeligt. WeCom-modtageren skal først have kontaktet samme bot med matchende bruger-ID; brug ellers en eksisterende kanalsamtale."
+          "Adressebogen caches på den aktuelle WorkStep-vært og kan bruges direkte efter genstart; opdater den manuelt ved personaleændringer. Send via CLI eller assistenten med et præcist, entydigt navn eller kontakt-ID; vælg udtrykkeligt den rette person ved ens navne. WeCom-medlemmer skal først interagere med den samme bot, og deres bruger-ID skal stemme overens; brug ellers en eksisterende kanalsamtale."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Brug bottens kontaktregister",
-          "caption": "Registret ligger kun i hukommelsen og indlæses efter genstart. Send via CLI eller assistent med præcist entydigt navn eller kontakt-ID; vælg navnesammenfald udtrykkeligt. WeCom-modtageren skal først have kontaktet samme bot med matchende bruger-ID; brug ellers en eksisterende kanalsamtale."
+          "alt": "Bottens katalogindstillinger og oplysninger om lokal cache",
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Kanalvælger og separat bot-editor",
-          "caption": "Reelt skærmbillede uden legitimationsoplysninger af det nye multikanallayout afventer. Den gamle form repræsenterer det ikke."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Feishu eller Lark notifikation URL, signatur og skabelon",
-          "caption": "Credential-fri konfiguration og kort-preview screenshots afventer; faktisk levering er ikke påberåbt."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Projektvalg og bekræftelse i fem-trins sandkasseguide",
-          "caption": "Inspicer lager, projekttilknytning og konfigurationsmigrering."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø. Kun første sandkassetrin vises; opsætningen i fem trin er ikke fuldført."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Aktuel desktopversion og opdaterings-tjek indtastning i systemindstillinger",
-          "caption": "Et ægte skærmbillede af automatisk opdatering, downloadfremdrift og manuel GitHub-download mangler stadig."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø. Faktisk udviklingsskal, ikke godkendelsestest af en opgradering af en installeret officiel pakke."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Beslutningsmodellens driftstilstand, ressourcer, test, lagring og valgfrie proxy",
-          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Spørgsmålstegn ved indstillingstitlen og flersproget manual i appen",
-          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Vejledning til digital figur, personlighedsdokumenter og hovedsamtale",
-          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Global hukommelsessøgning, kategorier og sideinddelte originalkilder",
-          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Refleksionsindstillinger og separat sideinddelt kørselshistorik",
-          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Digitale personers kanalbinding, proaktive notifikationer og leveringsstatus",
-          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Taleoutput, prøvelytning og udtrykkelig lyttekontrol",
-          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Samtykke, optagelse i tre trin og persongenkendelsesindstillinger",
-          "caption": "Afventer faktiske skærmbilleder fra det faste demomiljø 8777; komponenteksempler erstatter dem ikke."
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Brugerdefineret integration og motorimport i indstillingerne for udførelsesmotorer",
-          "caption": "Afventer skærmbilleder fra det faste demomiljø af integrationsindgangen og en usendt kladde."
+          "alt": "Opret en motor gennem en samtale",
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø. En faktisk ny integrationssamtale; opsætningsudkastet er ikke sendt."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Integrationssamtale og kladde oprettet efter import af en motorpakke",
-          "caption": "Afventer skærmbilleder fra det faste demomiljø af ZIP-import og en kladde, der mangler konfiguration. Import vises ikke som vellykket registrering."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø. En rigtig offline-eksempelpakke bruges; dette validerer ikke integration af en rigtig model."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Eksport-, deaktiverings- og tilbagerulningskontroller for en registreret brugerdefineret motor",
-          "caption": "Afventer et skærmbillede af et registreret motorkort fra det faste demomiljø; et indbygget motorkort bruges ikke som erstatning."
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø. En rigtig offline-eksempelpakke bruges; dette validerer ikke integration af en rigtig model."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Indbyggede sprogvælgere i app og hjemmeside",
-          "caption": "Ægte skærmbilleder af de tilføjede sprogvalg afventer."
+          "alt": "Vælg et indbygget sprog",
+          "caption": "Faktiske kinesiske indstillinger eller indgange i det faste demomiljø."
         }
       },
       {

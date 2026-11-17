@@ -22,6 +22,8 @@ export const useChatExecutionConfigStore = create<State>((set, get) => ({
       id: config.id, project_id: projectId, engine: config.engine, provider_id: config.provider_id,
       model: config.model, fast_model: config.fast_model, vision_model: config.vision_model,
       thinking_effort: config.thinking_effort, service_tier: config.service_tier,
+      permission_mode: config.permission_mode !== undefined ? config.permission_mode
+        : current?.engine === config.engine ? current.permission_mode : undefined,
       execution_config_revision: config.execution_config_revision ?? 0, pending_handoff: config.pending_handoff ?? null,
     }
     set(state => ({ configs: { ...state.configs, [key]: next } }))

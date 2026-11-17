@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Wsadowe wersje robocze zadań i ich indywidualne harmonogramy",
-          "caption": "Oczekiwanie na prawdziwy zrzut ekranu: wersje robocze wsadowe i czasy indywidualne. Nie może go zastępować stary, jednozadaniowy projekt."
+          "alt": "Przygotuj wiele zadań za pomocą asystenta zadań",
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym. Żądanie nie zostało wysłane; nie wygenerowano wyniku AI."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Lista kroków po wpisaniu @ w szczegółach zadania i wybrany odbiorca",
-          "caption": "Brakuje zrzutów ze stałego projektu demonstracyjnego z kandydatami @krok i szkicem po wyborze. Wybór nie oznacza wysłania ani wykonania."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "Oczekujące wiadomości podczas odpowiedzi koordynatora",
-          "caption": "Oczekuje prawdziwy zrzut ekranu: odbiorca koordynatora, dodatkowe komunikaty podczas wykonywania i kolejka kontynuacji."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym. Kolejka uzupełnień korzysta z symulowanego silnika offline ze stałymi odpowiedziami, nie z wyników rzeczywistego modelu."
         }
       },
       {
@@ -757,7 +757,7 @@
           "W historii zmian sprawdź różnice, cofnij zmiany lub wyczyść historię. Po przerwaniu sprawdź zachowaną kopię i wznów zapis albo ją odrzuć. Oryginały z konfliktem nie są nadpisywane."
         ],
         "tips": [
-          "Bezpośrednia edycja dotyczy statycznego HTML. Publikowane są zmiany istniejących HTML/CSS/JS, bez tworzenia i usuwania całych plików. Strony dynamiczne korzystają z opisanej dalej inspekcji tylko do odczytu i komentarzy. Stary zrzut nie pokazuje nowego uchwytu ani inspekcji dynamicznej."
+          "Bezpośrednia edycja dotyczy statycznego HTML. Publikowane są zmiany istniejących HTML/CSS/JS, bez tworzenia i usuwania całych plików. Strony dynamiczne korzystają z opisanej dalej inspekcji tylko do odczytu i komentarzy."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Właściwości tylko do odczytu, komentarze i zmiana plików dynamicznego prototypu",
-          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym. Dynamiczne węzły wybrano do inspekcji tylko do odczytu; komentarza nie wysłano."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Edytor formatu artefaktów przepływu i zadania",
-          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Wprowadzanie szkicu głosem",
-          "caption": "Dźwięk jest rozpoznawany na połączonym hoście i nie jest zapisywany. Zezwól na mikrofon przez HTTPS lub adres lokalny. Przy błędach sprawdź uprawnienia witryny i systemu, uruchom ponownie stary backend. Rozpoznany tekst można jawnie zachować."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Panele rozmów na pulpicie w obrębie projektów i menu aranżacji",
-          "caption": "Oczekuje prawdziwy zrzut ekranu z poprawionego projektu demonstracyjnego: menu okna konwersacji, wiele okienek i przeciągane separatory."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Konfigurowanie i używanie łączników",
-          "caption": "Brakuje rzeczywistego zrzutu: konfiguracja, test i wybór w rozmowie."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Menu grup rozmów w pasku projektu i podgląd archiwum tylko do odczytu",
-          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Planowanie wiadomości w istniejącej rozmowie",
-          "caption": "Backend musi działać. Zajęta rozmowa czeka; odpowiedzi kanałowe wracają do źródła. Usunięcie lub archiwizacja rozmowy usuwa reguły, a przywrócenie ich nie odtwarza. Grupy powiązane z zadaniem używają koordynacji zadania."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Uruchamianie teraz i kontrola wyniku",
-          "caption": "Rozwiń JSON wygenerowanych zadań w historii i porównaj szkice z utworzonymi zadaniami. Starsze wykonania lub błędy przed generowaniem mogą nie mieć JSON. Przed ponowieniem częściowego błędu sprawdź istniejące zadania."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Zaplanowany podgląd generowania partii i zapisy uruchamiania wielu zadań",
-          "caption": "Oczekujący prawdziwy zrzut ekranu: wersje robocze wsadowe i już utworzone zadania po częściowej awarii."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym. Żądanie nie zostało wysłane; nie wygenerowano wyniku AI."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Ustawienia źródła tożsamości i synchronizacji katalogów Feishu lub Lark",
-          "caption": "Oczekuje zrzut ekranu konfiguracji bez poświadczeń z izolowanej bramy."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Lista dozwolonych wywołań zwrotnych innych firm w ustawieniach bramy",
-          "caption": "Oczekiwanie na zrzut ekranu z prawdziwej izolowanej bramy demonstracyjnej; nie używaj codziennych kont ani rzeczywistych ustawień wywołania zwrotnego."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Przełączaj urządzenia i sprawdzaj zbiorcze powiadomienia",
+        "title": "Zmiana urządzenia i przywracanie strony",
         "steps": [
           "Wejdź do obszaru roboczego autoryzowanego urządzenia na platformie, a następnie użyj górnych zakładek urządzenia, aby przełączyć się na inne urządzenie online.",
           "Każde konto i urządzenie zapamiętuje ostatnią stronę projektu, zadania lub sesji w tej przeglądarce. Powrót nadal sprawdza autoryzację i nie omija niedostępnych celów.",
           "Zdalne projekty ładują się tylko wtedy, gdy są wybrane. Po niepowodzeniu ładowania lub rozłączeniu kliknij ponownie bieżący projekt, aby odświeżyć ręcznie; urządzenia nie są stale odpytywane w tle.",
-          "Otwórz centrum powiadomień, aby uzyskać podsumowania ukończenia lub awarii z autoryzowanych urządzeń. Kliknij, aby otworzyć zadanie lub sesję. Wiadomości na żywo w Workspace nadal należą do bieżącego urządzenia.",
+          "Po zmianie sprawdź nazwę urządzenia i stronę projektu, zadania lub rozmowy. Wiadomości należą tylko do bieżącego urządzenia; przed wysłaniem sprawdź urządzenie docelowe.",
           "Skorzystaj z platformy Return to Gateway, aby wybrać inne urządzenie. Wygasłe wywołanie zwrotne autoryzacji przeglądarki powoduje ponowne uruchomienie logowania; po anulowaniu autoryzacji pulpitu spróbuj ponownie ręcznie lub wróć do lokalnego obszaru roboczego."
         ],
         "tips": [
           "Obszar roboczy bramy ponawia zerwane połączenie automatycznie najwyżej 3 razy. Następnie wyświetla okno i wstrzymuje połączenie w czasie rzeczywistym, kontrolę sesji oraz odświeżanie urządzeń. Sprawdź sieć, bramę i urządzenie, a następnie wybierz ponowne połączenie. Zamknięcie lub odłożenie okna, powrót do niego ani przywrócenie sieci nie wznawia prób; przycisk pozostaje na stronie. Licznik zeruje się po 30 sekundach stabilnego połączenia. Wygasłe uprawnienia wymagają ponownego wejścia przez bramę. Lokalne połączenia bez bramy pozostają bez zmian.",
           "Pamięć strony jest lokalna w przeglądarce i nie jest synchronizowana między przeglądarkami. Dostęp działa bez pamięci przeglądarki, ale lokalizacje nie są zachowywane.",
           "Połącz się ponownie, gdy pojawi się monit dotyczący urządzeń offline, cofniętej autoryzacji lub awarii sieci. Zapisane lokalizacje nie zastępują uprawnień.",
-          "Zrzuty ekranu rzeczywistych kart urządzeń i powiadomień zbiorczych z ustalonego projektu demonstracyjnego pozostają w toku."
+          "Karty zmieniają tylko urządzenie dostępu; nie kopiują wiadomości rozmów ani zadań na inne urządzenia."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Karty urządzeń i zbiorcze centrum powiadomień",
-          "caption": "Oczekuje prawdziwy zrzut ekranu: przełączanie urządzeń, przywracanie lokalizacji i nawigacja w powiadomieniach; jeszcze nie schwytany."
+          "alt": "Karty urządzeń bramy i przywracanie strony obszaru roboczego",
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym. Dwa urządzenia symulowane prawdziwym protokołem współdzielą demonstracyjne zaplecze; nie są to dwa fizyczne komputery. Pokazano przełączanie i przywracanie strony."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Korzystanie z katalogu bota",
         "steps": [
           "Zapisz bota DingTalk, WeCom lub Feishu, potem włącz odczyt w Edytuj → Katalog. Nadaj prawa odczytu członków; WeCom wymaga też ID firmy, Agent ID i Secret. Zapisz, przeszukuj pamięć podręczną i odświeżaj po zmianach personelu.",
-          "Katalog pozostaje w pamięci i ładuje się po restarcie. Przez CLI lub asystenta wysyłaj według dokładnej unikalnej nazwy lub ID kontaktu; osoby o tych samych nazwach wybierz jawnie. Odbiorca WeCom musi wcześniej rozmawiać z tym botem i mieć zgodne ID użytkownika; inaczej użyj istniejącej rozmowy kanałowej."
+          "Katalog jest buforowany na bieżącym hoście WorkStep i pozostaje dostępny po ponownym uruchomieniu; aktualizuj go ręcznie przy zmianach kadrowych. Wysyłaj przez CLI lub asystenta, podając dokładną, unikalną nazwę albo ID kontaktu; przy jednakowych nazwach jednoznacznie wybierz osobę. Członkowie WeCom muszą najpierw wejść w interakcję z tym samym botem, a ich ID użytkownika musi się zgadzać; w przeciwnym razie użyj istniejącej rozmowy w kanale."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Korzystanie z katalogu bota",
-          "caption": "Katalog pozostaje w pamięci i ładuje się po restarcie. Przez CLI lub asystenta wysyłaj według dokładnej unikalnej nazwy lub ID kontaktu; osoby o tych samych nazwach wybierz jawnie. Odbiorca WeCom musi wcześniej rozmawiać z tym botem i mieć zgodne ID użytkownika; inaczej użyj istniejącej rozmowy kanałowej."
+          "alt": "Ustawienia katalogu bota i informacje o lokalnej pamięci podręcznej",
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Selektor kanałów i oddzielny edytor botów",
-          "caption": "Oczekuje się na prawdziwy zrzut ekranu nowego układu wielokanałowego, niewymagający poświadczeń. Stara forma tego nie reprezentuje."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Powiadomienie Feishu lub Lark URL, podpis i szablon",
-          "caption": "Oczekuje na konfigurację bez poświadczeń i zrzuty ekranu z podglądem karty; rzeczywista dostawa nie jest przedmiotem reklamacji."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Wybór i potwierdzenie projektu w pięcioetapowym przewodniku po piaskownicy",
-          "caption": "Sprawdź pamięć masową, powiązanie projektu i migrację konfiguracji."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym. Pokazano tylko pierwszy krok piaskownicy; pięcioetapowa konfiguracja nie jest ukończona."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Aktualna wersja na komputery stacjonarne i wpis dotyczący sprawdzania aktualizacji w ustawieniach systemu",
-          "caption": "Nadal brakuje rzeczywistego zrzutu automatycznej aktualizacji, postępu i ręcznego pobierania z GitHub."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym. Rzeczywisty interfejs powłoki deweloperskiej, nie odbiór aktualizacji oficjalnego zainstalowanego pakietu."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Tryby, zasoby, test, zapis i opcjonalne proxy modelu decyzyjnego",
-          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Znak zapytania przy ustawieniach i wielojęzyczna instrukcja w aplikacji",
-          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Wprowadzenie do cyfrowej osoby, dokumenty osobowości i główna rozmowa",
-          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Globalne wyszukiwanie pamięci, kategorie i stronicowane oryginalne źródła",
-          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Konfiguracja samodzielnej refleksji i oddzielnie stronicowane rejestry",
-          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Powiązania kanałów cyfrowej osoby, aktywne powiadomienia i stan dostarczenia",
-          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Tryby wyjścia głosu, odsłuch i jawne sterowanie nasłuchem",
-          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Zgoda znajomego, pobieranie w trzech krokach i rozpoznawanie osób",
-          "caption": "Brakuje rzeczywistego zrzutu ze stałego środowiska demonstracyjnego 8777; przykłady komponentów go nie zastępują."
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Wejścia do własnej integracji i importu silników w ustawieniach",
-          "caption": "Brakuje zrzutów ze stałego środowiska demonstracyjnego przedstawiających wejście do integracji i niewysłany szkic."
+          "alt": "Tworzenie silnika przez rozmowę",
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym. Rzeczywista nowa rozmowa integracyjna; szkic instrukcji nie został wysłany."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Rozmowa integracyjna i szkic utworzone po imporcie pakietu silnika",
-          "caption": "Brakuje zrzutów importu ZIP i szkicu oczekującego na konfigurację ze stałego środowiska demonstracyjnego. Importu nie należy przedstawiać jako udanej rejestracji."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym. Użyto rzeczywistego przykładowego pakietu offline; nie jest to odbiór integracji prawdziwego modelu."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Kontrolki eksportu, wyłączenia i przywracania wersji zarejestrowanego własnego silnika",
-          "caption": "Brakuje rzeczywistej karty zarejestrowanego silnika ze stałego środowiska demonstracyjnego; karta wbudowanego silnika nie może jej zastępować."
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym. Użyto rzeczywistego przykładowego pakietu offline; nie jest to odbiór integracji prawdziwego modelu."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Wbudowane selektory języków w aplikacji i na stronie internetowej",
-          "caption": "Oczekujemy prawdziwych zrzutów ekranu z dodanymi opcjami językowymi."
+          "alt": "Wybierz wbudowany język",
+          "caption": "Rzeczywiste chińskie ustawienia lub wejścia obsługi w stałym środowisku demonstracyjnym."
         }
       },
       {

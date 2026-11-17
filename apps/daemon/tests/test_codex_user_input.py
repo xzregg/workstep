@@ -16,13 +16,18 @@ async def test_codex_empty_permission_form_obeys_approval_mode(approval_mode, ac
     handler = engine._build_approval_handler(
         queue, asyncio.get_running_loop(), "session", approval_mode=approval_mode,
     )
-    result = await asyncio.wait_for(asyncio.to_thread(
+    pending = asyncio.create_task(asyncio.to_thread(
         handler, "mcpServer/elicitation/request", {
             "threadId": "session", "serverName": "computer-use",
             "message": 'Allow Computer Use to use "Google Chrome"?',
             "requestedSchema": {"type": "object", "properties": {}},
         },
-    ), 2)
+    ))
+    if approval_mode != "deny_all":
+        event = await asyncio.wait_for(queue.get(), 2)
+        assert not pending.done()
+        await engine.respond_interaction(event.data, {"action": action, "content": {}})
+    result = await asyncio.wait_for(pending, 2)
     assert result == {
         "action": action, "content": {} if action == "accept" else None, "_meta": None,
     }
@@ -139,13 +144,19 @@ async def test_spawn_installs_effective_permission_policy(tmp_path, monkeypatch,
     engine = CodexSDKEngine()
 
     async def collect():
-        return [event async for event in engine.spawn(
+        events = []
+        async for event in engine.spawn(
             prompt="hi", cwd=str(tmp_path),
             config_overrides={"approval_mode": override} if override else None,
-        )]
+        ):
+            events.append(event)
+            if event.type == "interaction_request":
+                await engine.respond_interaction(event.data, {"action": action, "content": {}})
+        return events
 
     events = await asyncio.wait_for(collect(), 5)
     assert responses == [{
         "action": action, "content": {} if action == "accept" else None, "_meta": None,
     }]
-    assert not any(event.type in {"interaction_request", "error"} for event in events)
+    assert not any(event.type == "error" for event in events)
+    assert any(event.type == "interaction_request" for event in events) is (action == "accept")

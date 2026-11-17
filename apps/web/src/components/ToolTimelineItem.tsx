@@ -10,6 +10,7 @@ interface ToolTimelineItemProps {
   streaming: boolean
   now?: number
   projectId?: string
+  preview?: boolean
 }
 
 function groupDuration(
@@ -38,6 +39,7 @@ export default function ToolTimelineItem({
   streaming,
   now = Date.now(),
   projectId,
+  preview = false,
 }: ToolTimelineItemProps) {
   const { t } = useI18n()
   if (item.type === 'tool') {
@@ -63,13 +65,13 @@ export default function ToolTimelineItem({
           <Icon name="terminal" size={13} strokeWidth={1.7} />
         </span>
         <span className={`llm-tool-call-summary${running ? ' is-shimmer' : ''}`}>
-          {memorySearch ? t('trace.searchMemory') : t('trace.commandGroup', { count: item.activities.length })}
+          {memorySearch ? t('trace.searchMemory') : t('trace.commandGroup', { count: item.count ?? item.activities.length })}
           {duration && t('trace.commandDuration', { duration })}
         </span>
         {failed && <span className="process-trace-error">{t('trace.failed')}</span>}
         <Icon name="chevron-down" size={12} strokeWidth={1.8} className="llm-tool-call-chevron" />
       </summary>
-      <div className="llm-tool-group-items">
+      {!preview && <div className="llm-tool-group-items">
         {item.activities.map((activity) => (
           <ToolCallRow
             key={activity.id}
@@ -79,7 +81,7 @@ export default function ToolTimelineItem({
             projectId={projectId}
           />
         ))}
-      </div>
+      </div>}
     </details>
   )
 }

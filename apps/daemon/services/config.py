@@ -619,6 +619,7 @@ class ConfigStore:
         harness: str = "auto",
         sandbox: str = "",
         fast_model: str = "",
+        permission_mode: str | None = None,
     ) -> None:
         from engines._config.pydantic_ai import set_pydantic_ai_engine_config
         return set_pydantic_ai_engine_config(
@@ -629,6 +630,7 @@ class ConfigStore:
             harness=harness,
             sandbox=sandbox,
             fast_model=fast_model,
+            permission_mode=permission_mode,
         )
 
     def get_deepseek_harness_config(self) -> dict[str, Any]:

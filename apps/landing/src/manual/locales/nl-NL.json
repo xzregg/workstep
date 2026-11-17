@@ -514,8 +514,8 @@
         ],
         "screenshot": {
           "id": "task-ai-batch",
-          "alt": "Batchtaakconcepten en hun individuele geplande tijden",
-          "caption": "Echte screenshot in behandeling: batchconcepten en individuele tijden. Een oud concept met één taak mag dit niet vervangen."
+          "alt": "Bereid meerdere taken voor met de taakassistent",
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving. Het verzoek is niet verzonden; er is geen AI-resultaat gegenereerd."
         }
       },
       {
@@ -552,7 +552,7 @@
         "screenshot": {
           "id": "task-step-mention",
           "alt": "Stapkandidaten na het typen van @ in de taakdetails en de geselecteerde ontvanger",
-          "caption": "Schermafbeeldingen uit het vaste demoproject van @stapkandidaten en het concept na selectie ontbreken nog. Selecteren betekent niet dat er is verzonden of uitgevoerd."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       },
       {
@@ -719,7 +719,7 @@
         "screenshot": {
           "id": "task-coordinator-queue",
           "alt": "Berichten die in behandeling zijn tijdens een antwoord van een coördinator",
-          "caption": "Echte screenshot in behandeling: ontvanger van de coördinator, aanvullende berichten tijdens de uitvoering en de vervolgwachtrij."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving. De aanvullingswachtrij gebruikt een offline gesimuleerde engine met vaste antwoorden, geen echte modelresultaten."
         }
       },
       {
@@ -757,7 +757,7 @@
           "Bekijk verschillen, draai wijzigingen terug of wis de wijzigingsgeschiedenis. Controleer na een onderbreking de bewaarde kopie en hervat het opslaan of verwerp deze. Conflicterende originelen worden niet overschreven."
         ],
         "tips": [
-          "Direct bewerken geldt voor statische HTML. Publicatie ondersteunt wijzigingen in bestaande HTML/CSS/JS, geen nieuwe of verwijderde volledige bestanden. Gebruik voor dynamische pagina’s de alleen-lezeninspectie en opmerkingen in de volgende sectie. De oude afbeelding toont de nieuwe verplaatsgreep en dynamische inspectie nog niet."
+          "Direct bewerken geldt voor statische HTML. Publicatie ondersteunt wijzigingen in bestaande HTML/CSS/JS, geen nieuwe of verwijderde volledige bestanden. Gebruik voor dynamische pagina’s de alleen-lezeninspectie en opmerkingen in de volgende sectie."
         ],
         "screenshot": {
           "id": "prototype-editor",
@@ -846,7 +846,7 @@
         "screenshot": {
           "id": "prototype-runtime-inspection",
           "alt": "Alleen-lezeneigenschappen, elementopmerkingen en bestandswisseling bij dynamische prototypes",
-          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving. Dynamische nodes worden alleen-lezen geselecteerd en geïnspecteerd; de opmerking is niet verzonden."
         }
       },
       {
@@ -862,7 +862,7 @@
         "screenshot": {
           "id": "artifact-output-template",
           "alt": "Formaatsjablooneditor voor workflow- en taakresultaten",
-          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       }
     ]
@@ -884,7 +884,7 @@
         "screenshot": {
           "id": "voice-input",
           "alt": "Een berichtconcept inspreken",
-          "caption": "Herkenning gebeurt op de verbonden host; audio wordt niet opgeslagen. Sta de microfoon toe via HTTPS of een lokaal adres. Controleer bij fouten site- en systeemrechten en herstart een verouderde backend. Herkende tekst kan expliciet worden behouden."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       },
       {
@@ -904,7 +904,7 @@
         "screenshot": {
           "id": "chat-workspace",
           "alt": "Bureaubladgespreksvensters voor projecten en arrangementmenu's",
-          "caption": "Een echt screenshot van het vaste demoproject is in behandeling: gespreksvenstermenu, meerdere deelvensters en versleepbare scheidingstekens."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       },
       {
@@ -987,7 +987,7 @@
         "screenshot": {
           "id": "connector-settings",
           "alt": "Connectoren instellen en gebruiken",
-          "caption": "Echte schermafbeelding ontbreekt: configuratie, test en gespreksselectie."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       },
       {
@@ -1003,7 +1003,7 @@
         "screenshot": {
           "id": "conversation-groups",
           "alt": "Groepsmenu in de projectzijbalk en alleen-lezenarchiefvoorbeeld",
-          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       }
     ]
@@ -1060,7 +1060,7 @@
         "screenshot": {
           "id": "conversation-schedule",
           "alt": "Berichten in een bestaande conversatie plannen",
-          "caption": "De backend moet actief blijven. Bezette gesprekken wachten; kanaalreacties gaan naar het oorspronkelijke kanaal. Verwijderen of archiveren verwijdert de regels; herstellen brengt ze niet terug. Groepen gekoppeld aan taken gebruiken taakcoördinatie."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving."
         }
       },
       {
@@ -1072,7 +1072,7 @@
         "screenshot": {
           "id": "schedule-run-now",
           "alt": "Nu uitvoeren en gegenereerde taken controleren",
-          "caption": "Klap de JSON met gegenereerde taken in de historie open en vergelijk concepten met aangemaakte taken. Oude uitvoeringen of fouten vóór generatie hebben mogelijk geen JSON. Controleer bestaande taken voordat u een gedeeltelijke fout opnieuw probeert."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving."
         }
       },
       {
@@ -1088,7 +1088,7 @@
         "screenshot": {
           "id": "schedule-batch",
           "alt": "Geplande preview van batchgeneratie en uitvoeringsrecords voor meerdere taken",
-          "caption": "Echte screenshot in behandeling: batchconcepten en reeds gemaakte taken na gedeeltelijke mislukking."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving. Het verzoek is niet verzonden; er is geen AI-resultaat gegenereerd."
         }
       },
       {
@@ -1300,7 +1300,7 @@
         "screenshot": {
           "id": "gateway-enterprise-feishu",
           "alt": "Feishu- of Lark-identiteitsbron en instellingen voor directorysynchronisatie",
-          "caption": "Er is een screenshot van de configuratie zonder referenties van een geïsoleerde gateway in behandeling."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving."
         }
       },
       {
@@ -1318,7 +1318,7 @@
         "screenshot": {
           "id": "gateway-third-party-auth",
           "alt": "Toelatingslijst voor terugbellen van derden in Gateway-instellingen",
-          "caption": "Echte geïsoleerde demonstratie Gateway-screenshot in behandeling; gebruik geen alledaagse accounts of daadwerkelijke terugbelinstellingen."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving."
         }
       },
       {
@@ -1341,24 +1341,24 @@
         }
       },
       {
-        "title": "Schakel tussen apparaten en bekijk de verzamelde meldingen",
+        "title": "Apparaat wisselen en pagina herstellen",
         "steps": [
           "Voer een geautoriseerde apparaatwerkruimte op het platform in en gebruik vervolgens de bovenste apparaattabbladen om naar een ander online apparaat te schakelen.",
           "Elk account en apparaat onthoudt de laatste project-, taak- of sessiepagina in deze browser. Bij het retourneren wordt nog steeds de autorisatie gecontroleerd en worden ontoegankelijke doelen niet omzeild.",
           "Externe projecten worden alleen geladen als ze zijn geselecteerd. Nadat het laden is mislukt of de verbinding is verbroken, klikt u opnieuw op het huidige project om handmatig te vernieuwen; apparaten worden niet continu op de achtergrond ondervraagd.",
-          "Open het meldingscentrum voor voltooiings- of foutoverzichten van geautoriseerde apparaten. Klik om de taak of sessie te openen. Live-berichten in de Workspace horen nog steeds bij het huidige apparaat.",
+          "Controleer na het wisselen de apparaatnaam en de project-, taak- of gesprekspagina. Berichten horen alleen bij het huidige apparaat; controleer het doelapparaat vóór verzending.",
           "Gebruik Return to Gateway-platform om een ​​ander apparaat te kiezen. Een verlopen browserautorisatie-callback start het inloggen opnieuw; Nadat u de bureaubladautorisatie hebt geannuleerd, probeert u het handmatig opnieuw of keert u terug naar de lokale werkruimte."
         ],
         "tips": [
           "De gatewaywerkruimte probeert een verbroken verbinding maximaal 3 keer automatisch opnieuw. Daarna verschijnt een dialoog en worden de realtimeverbinding, sessiecontroles en apparaatlijstverversing gepauzeerd. Controleer netwerk, gateway en apparaat en kies opnieuw verbinden. Sluiten of uitstellen, terugkeren naar het venster of netwerkherstel hervat de pogingen niet; de knop blijft op de pagina staan. De teller wordt na 30 seconden stabiele verbinding gereset. Verlopen autorisatie vereist opnieuw binnengaan via de gateway. Lokale verbindingen zonder gateway blijven ongewijzigd.",
           "Paginageheugen is browserlokaal en niet gesynchroniseerd tussen browsers. Toegang werkt zonder browseropslag, maar locaties worden niet behouden.",
           "Maak opnieuw verbinding als daarom wordt gevraagd voor offline apparaten, ingetrokken autorisatie of netwerkfouten. Opgeslagen locaties vervangen de machtigingen niet.",
-          "Schermafbeeldingen van echte apparaattabbladen en geaggregeerde meldingen van het vaste demonstratieproject blijven in behandeling."
+          "Apparaattabbladen veranderen alleen het toegangsdoel; ze kopiëren geen gespreks- of taakberichten naar andere apparaten."
         ],
         "screenshot": {
           "id": "gateway-workspace-notifications",
-          "alt": "Apparaattabbladen en geaggregeerd meldingscentrum",
-          "caption": "Echte screenshot in behandeling: apparaat wisselen, locatieherstel en meldingsnavigatie; nog niet gevangen."
+          "alt": "Gateway-apparaattabbladen en herstel van de werkruimtepagina",
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving. Twee via het echte protocol gesimuleerde apparaten delen de demo-backend; het zijn geen twee fysieke computers. Toont apparaatwisseling en paginaherstel."
         }
       }
     ]
@@ -1372,12 +1372,12 @@
         "title": "Een botadresboek gebruiken",
         "steps": [
           "Sla een DingTalk-, WeCom- of Feishu-bot op en schakel lezen in via Bewerken → Adresboek. Geef leesrechten voor leden; WeCom vraagt ook bedrijfs-ID, Agent ID en Secret. Sla op, zoek in de cache en vernieuw na personeelswijzigingen.",
-          "Het adresboek blijft in het geheugen en wordt na herstart opnieuw geladen. Gebruik via CLI of assistent een exacte unieke naam of contact-ID; kies naamgenoten expliciet. WeCom-ontvangers moeten eerder met dezelfde bot en hetzelfde gebruikers-ID hebben gecommuniceerd; gebruik anders een bestaande kanaalconversatie."
+          "Het adresboek wordt op de huidige WorkStep-host gecachet en is na een herstart direct beschikbaar; werk het handmatig bij wanneer het personeelsbestand verandert. Verstuur via CLI of assistent met een exacte, unieke naam of contact-ID; selecteer bij gelijke namen uitdrukkelijk de juiste persoon. WeCom-leden moeten eerst met dezelfde bot communiceren en hun gebruikers-ID moet overeenkomen; gebruik anders een bestaand kanaalgesprek."
         ],
         "screenshot": {
           "id": "bot-directory",
-          "alt": "Een botadresboek gebruiken",
-          "caption": "Het adresboek blijft in het geheugen en wordt na herstart opnieuw geladen. Gebruik via CLI of assistent een exacte unieke naam of contact-ID; kies naamgenoten expliciet. WeCom-ontvangers moeten eerder met dezelfde bot en hetzelfde gebruikers-ID hebben gecommuniceerd; gebruik anders een bestaande kanaalconversatie."
+          "alt": "Botadresboekinstellingen en informatie over lokale cache",
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving."
         }
       },
       {
@@ -1398,7 +1398,7 @@
         "screenshot": {
           "id": "bot-channels",
           "alt": "Kanaalkiezer en aparte bot-editor",
-          "caption": "Een echte screenshot zonder referenties van de nieuwe meerkanaalsindeling is in behandeling. De oude vorm vertegenwoordigt het niet."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving."
         }
       },
       {
@@ -1414,7 +1414,7 @@
         "screenshot": {
           "id": "notification-feishu-lark",
           "alt": "Feishu- of Lark-melding URL, handtekening en sjabloon",
-          "caption": "Configuratie zonder referenties en screenshots van kaartvoorbeelden zijn in behandeling; daadwerkelijke levering wordt niet geclaimd."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving."
         }
       },
       {
@@ -1475,7 +1475,7 @@
         "screenshot": {
           "id": "sandbox-wizard",
           "alt": "Projectselectie en bevestiging in de sandboxgids in vijf stappen",
-          "caption": "Inspecteer opslag, projectkoppeling en configuratiemigratie."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving. Alleen de eerste sandboxstap is zichtbaar; de vijf stappen zijn niet voltooid."
         }
       },
       {
@@ -1512,7 +1512,7 @@
         "screenshot": {
           "id": "desktop-update",
           "alt": "Huidige desktopversie en updatecontrole in systeeminstellingen",
-          "caption": "Een echte schermafbeelding van automatisch bijwerken, voortgang en handmatig downloaden via GitHub ontbreekt nog."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving. Echte ontwikkelshell, geen acceptatietest van een upgrade van het officieel geïnstalleerde pakket."
         }
       },
       {
@@ -1564,7 +1564,7 @@
         "screenshot": {
           "id": "decision-model-settings",
           "alt": "Beslismodelmodi, bronnen, testen, opslaan en optionele proxy",
-          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       },
       {
@@ -1579,7 +1579,7 @@
         "screenshot": {
           "id": "settings-help",
           "alt": "Vraagteken naast instellingstitels en meertalige handleiding in de app",
-          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       }
     ]
@@ -1602,7 +1602,7 @@
         "screenshot": {
           "id": "digital-person-workspace",
           "alt": "Begeleiding voor de digitale persoon, persoonlijkheidsdocumenten en hoofdgesprek",
-          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       },
       {
@@ -1619,7 +1619,7 @@
         "screenshot": {
           "id": "memory-knowledge-search",
           "alt": "Globaal geheugenzoeken, categorieën en gepagineerde oorspronkelijke bronnen",
-          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       },
       {
@@ -1635,7 +1635,7 @@
         "screenshot": {
           "id": "digital-person-activity",
           "alt": "Proactieve-reflectieconfiguratie en afzonderlijk gepagineerde uitvoeringsgeschiedenis",
-          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       },
       {
@@ -1651,7 +1651,7 @@
         "screenshot": {
           "id": "digital-person-channels",
           "alt": "Kanaalkoppelingen van de digitale persoon, proactieve meldingen en bezorgstatus",
-          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       },
       {
@@ -1668,7 +1668,7 @@
         "screenshot": {
           "id": "speech-output",
           "alt": "Spraakuitvoermodi, proefluisteren en expliciete luisterbediening",
-          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       },
       {
@@ -1684,7 +1684,7 @@
         "screenshot": {
           "id": "face-recognition",
           "alt": "Toestemming voor bekende personen, opname in drie stappen en herkenningsinstellingen",
-          "caption": "Een echte schermafbeelding uit de vaste demo-omgeving op 8777 ontbreekt; componentvoorbeelden vervangen die niet."
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
         }
       }
     ]
@@ -1707,8 +1707,8 @@
         ],
         "screenshot": {
           "id": "custom-engine-onboarding",
-          "alt": "Ingangen voor aangepaste integratie en engine-import in de engine-instellingen",
-          "caption": "Schermafbeeldingen uit de vaste demo-omgeving van de integratie-ingang en een niet-verzonden concept ontbreken nog."
+          "alt": "Een engine maken via een conversatie",
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving. Een echt nieuw integratiegesprek; het installatieconcept is niet verzonden."
         }
       },
       {
@@ -1724,7 +1724,7 @@
         "screenshot": {
           "id": "custom-engine-import",
           "alt": "Integratiechat en concept na het importeren van een enginepakket",
-          "caption": "Schermafbeeldingen uit de vaste demo-omgeving van ZIP-import en een nog te configureren concept ontbreken. Import mag niet worden voorgesteld als geslaagde registratie."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving. Gebruikt een echt offline voorbeeldpakket; dit is geen acceptatietest van een echte modelintegratie."
         }
       },
       {
@@ -1741,7 +1741,7 @@
         "screenshot": {
           "id": "custom-engine-management",
           "alt": "Export-, uitschakel- en terugdraaiknoppen van een geregistreerde aangepaste engine",
-          "caption": "Een echte geregistreerde enginekaart uit de vaste demo-omgeving ontbreekt nog; een ingebouwde enginekaart mag die niet vervangen."
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving. Gebruikt een echt offline voorbeeldpakket; dit is geen acceptatietest van een echte modelintegratie."
         }
       }
     ]
@@ -1816,8 +1816,8 @@
         ],
         "screenshot": {
           "id": "builtin-languages",
-          "alt": "Ingebouwde taalkiezers in de app en website",
-          "caption": "Echte screenshots van de toegevoegde taalkeuzes zijn in behandeling."
+          "alt": "Kies een ingebouwde taal",
+          "caption": "Echte Chinese instellingen of bedieningsingangen in de vaste demo-omgeving."
         }
       },
       {

@@ -1,0 +1,9 @@
+.chat-input-menu-description {
+  display: block;
+  margin-top: 1px;
+  font-size: calc(12px * var(--font-scale));
+  color: var(--meta);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

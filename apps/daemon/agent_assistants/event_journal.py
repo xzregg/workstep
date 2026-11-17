@@ -463,6 +463,13 @@ class TurnEventJournal:
         }
 
     @_storage_operation
+    def preview(self, ref: JournalRef, **context) -> dict[str, Any]:
+        from agent_assistants.process_preview import process_preview, preview_agui_events
+        self.sync(ref)
+        return {"events": process_preview(preview_agui_events(self._iter_events(ref), **context)),
+                "complete": False, "next_cursor": None}
+
+    @_storage_operation
     def file_changes(self, ref: JournalRef, *, file_path: str | None = None,
                      project_root: str | Path | None = None) -> dict:
         self.sync(ref)
@@ -502,10 +509,12 @@ class TurnEventJournal:
 
     @_storage_operation
     def _read(self, ref: JournalRef) -> list[dict[str, Any]]:
+        return list(self._iter_events(ref))
+
+    def _iter_events(self, ref: JournalRef):
         path = self.resolve(ref.root, ref)
         if not path.exists():
-            return []
-        events: list[dict[str, Any]] = []
+            return
         with path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 try:
@@ -513,5 +522,4 @@ class TurnEventJournal:
                 except json.JSONDecodeError:
                     continue
                 if isinstance(item, dict) and item.get("type"):
-                    events.append(item)
-        return events
+                    yield item

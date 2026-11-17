@@ -116,7 +116,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
         },
         plan_overrides={'permission_mode': 'plan'},
         consent_key='permission_mode',
-        consent_values={'plan': False, 'auto': True, 'bypassPermissions': True, 'deny': False, 'deny_all': False, 'read-only': False},
+        consent_values={'plan': False, 'auto': None, 'bypassPermissions': True, 'deny': False, 'deny_all': False, 'read-only': False},
     )
     supports_mcp = True
     RUNTIME_PACKAGE = RuntimePackage('@anthropic-ai/claude-code', 'npm')
@@ -229,6 +229,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
         return [
             EngineConfigField(
                 key="permission_mode",
+                category="mode",
                 label="权限模式",
                 type="select",
                 options=tuple(
