@@ -207,11 +207,9 @@ class ExistingDelegateRequest(DelegateRequest):
 
 
 @router.get('/delegations')
-async def list_delegations(origin_session_id: str = Query(min_length=1),
+async def list_delegations(origin_session_id: str | None = Query(default=None, min_length=1),
                            project_id: str | None = Query(default=None, min_length=1),
                            delegation_id: str | None = Query(default=None, min_length=1)):
-    if not project_id and not delegation_id:
-        raise HTTPException(422, 'Provide a project ID or a delegation ID')
     return await runtime().list_delegations(project_id, origin_session_id, delegation_id or '')
 
 

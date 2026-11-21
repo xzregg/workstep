@@ -43,7 +43,8 @@ test('session chat queues drafts against the running assistant message', () => {
   assert.match(panelSource, /useAssistantPendingInserts\(\{/)
   assert.match(panelSource, /running && queueEnabled/)
   assert.match(actionsSource, /chatSessionApi\.sendLiveMessage\(/)
-  assert.match(pageSource, /onSendContent=\{[\s\S]{0,160}sendPendingContent\(content, ids\)/)
+  assert.match(pageSource, /onSendContent=\{sendPending\}/)
+  assert.match(pageSource, /const sendPending = [^\n]*composerDisabled[^\n]*sendPendingContent\(content, ids\)/)
   assert.doesNotMatch(pageSource, /chatInsertQueue|loadInsertQueue|saveInsertQueue/)
 })
 

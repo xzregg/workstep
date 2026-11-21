@@ -278,7 +278,8 @@ test('switching engines refreshes permission options locally without catalog req
       const trigger = document.querySelector<HTMLButtonElement>('[data-kind="permission"]')!
       if (trigger.getAttribute('aria-expanded') !== 'true') await act(async () => trigger.click())
       const labels = [...document.querySelectorAll('.chat-input-menu-item')].map(item => item.textContent)
-      assert.equal(labels.length, 4)
+      assert.equal(labels.length, id === 'claude' ? 3 : 4)
+      assert.ok(labels.every(label => !label?.includes('plan')), 'plan is an independent control, not a permission mode')
       assert.ok(labels.some(label => label?.includes(id === 'pydantic' ? '风险询问' : '标准审批')))
     }
     await act(async () => document.querySelector<HTMLButtonElement>('#switch-codex')!.click())

@@ -21,7 +21,7 @@ test('Codex speed menu selects native tiers and returns to inherited configurati
   function Harness() {
     const [tier, setTier] = useState('')
     return <I18nProvider><CoordinatorConfigBar
-      engines={[]} engine="codex_sdk" defaultEngine="codex_sdk" model="" fastModel=""
+      engines={[{ id: 'codex_sdk', supports_service_tier: true } as never]} engine="codex_sdk" defaultEngine="codex_sdk" model="" fastModel=""
       variant="menu" serviceTier={tier}
       onEngineChange={() => {}} onModelChange={() => {}} onFastModelChange={() => {}}
       onServiceTierChange={value => { chosen = value; setTier(value) }}

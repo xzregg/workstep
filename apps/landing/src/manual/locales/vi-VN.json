@@ -93,7 +93,8 @@
         "tips": [
           "Đăng ký tài khoản, thông tin xác thực API và thanh toán được xác định bởi nhà cung cấp dịch vụ. Việc cài đặt SDK không cung cấp thông tin xác thực.",
           "Khi chỉnh sửa nhà cung cấp, việc để trống khóa vẫn giữ nguyên giá trị cũ. Nhập khóa mới để thay thế và ẩn khóa trước ảnh chụp màn hình hoặc cấu hình chia sẻ.",
-          "Trong chế độ do doanh nghiệp quản lý, các nhà cung cấp có thể được nền tảng chỉ định. Sử dụng nhà cung cấp được ủy quyền thay vì thêm lại."
+          "Trong chế độ do doanh nghiệp quản lý, các nhà cung cấp có thể được nền tảng chỉ định. Sử dụng nhà cung cấp được ủy quyền thay vì thêm lại.",
+          "Lấy mô hình hợp nhất các giao thức cho một lần chọn và lưu sau xác nhận; giao thức lỗi giữ bộ nhớ đệm. Chỉ sửa nhà cung cấp do cổng quản lý tại cổng. Lập kế hoạch trò chuyện tách biệt quyền; đổi nhà cung cấp cần bàn giao rõ ràng. Luồng thu gọn là bản xem trước; mở rộng để tải đầy đủ chi tiết."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Chỉnh sửa quy trình công việc",
     "summary": "Chia công việc thành các bước và định cấu hình các công cụ thực thi, đầu vào, đầu ra và các quy tắc đánh giá.",
     "sections": [
+      {
+        "title": "Gỡ lỗi bản nháp quy trình",
+        "steps": [
+          "Trên bảng vẽ cục bộ của máy chủ chọn Gỡ lỗi hoặc Gỡ lỗi từ bước này, nhập nhiệm vụ và mẫu đầu ra trước rồi bắt đầu. Bản nháp thực sự chạy, có thể sửa tệp hoặc phát sinh phí. Dừng hoặc xóa lịch sử riêng; đây không phải hoàn thành nhiệm vụ chính thức."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Gỡ lỗi bản nháp quy trình",
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
+        }
+      },
       {
         "title": "Thêm và kết nối các bước",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Nhập bản nháp bằng giọng nói",
         "steps": [
-          "Mở Cài đặt → Cài đặt giọng nói → Đầu vào, chọn mô hình cục bộ, nhà cung cấp đám mây hoặc dịch vụ tự triển khai từ xa. Với chế độ cục bộ, tải bộ chạy và mô hình rồi nhấn Dùng mô hình này. Paraformer hỗ trợ tiếng Quan Thoại, Quảng Đông và Anh; Zipformer hỗ trợ tiếng Quan Thoại và Anh. Lưu rồi Kiểm tra micrô. Mô hình được cài trên máy chủ WorkStep.",
+          "Mở Cài đặt → Cài đặt giọng nói → Đầu vào, chọn mô hình cục bộ, nhà cung cấp đám mây hoặc dịch vụ tự triển khai từ xa. Với chế độ cục bộ, tải bộ chạy và mô hình rồi nhấn Dùng mô hình này. Paraformer hỗ trợ tiếng Quan Thoại, Quảng Đông và Anh; SenseVoice hỗ trợ tiếng Quan Thoại và Anh. Lưu rồi Kiểm tra micrô. Mô hình được cài trên máy chủ WorkStep.",
           "Trên máy tính, dùng nút micrô. Trên điện thoại, khi bản nháp trống hãy chạm loa nhỏ góc dưới bên phải để ghi âm; khi có chữ sẽ hiện nút gửi, còn nhấn giữ vẫn dùng để chọn chữ bằng hệ thống. Kiểm tra bản nháp phiên âm rồi tự gửi. Mỗi lần tối đa hai phút; hủy sẽ không gửi."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Cấu hình phong cách giao tiếp, hội thoại chính, suy nghĩ chủ động và tiếp nhận qua kênh. Xem ký ức có nguồn và tùy chọn bật giọng nói, nhận diện người.",
     "sections": [
       {
+        "title": "Khám phá bản đồ ký ức",
+        "steps": [
+          "Mở Cài đặt → Trung tâm dữ liệu (trước đây là Nhân vật số). Ở trang chủ chuyển sang bản đồ ký ức, kéo, thu phóng và chọn sao để xem kiến thức cùng nguồn gốc. Chỉ hiển thị tối đa 500 sao, không phải toàn bộ bộ nhớ."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Khám phá bản đồ ký ức",
+          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
+        }
+      },
+      {
         "title": "Cấu hình nhân cách, nhiệm vụ và hội thoại chính",
         "steps": [
           "Mở Cài đặt → Hình tượng số → Hướng dẫn ban đầu, nhập tên. Trong Nhân cách và nhiệm vụ, sửa nhân cách, nhiệm vụ và ghi nhớ thường trực bằng mẫu sẵn hoặc nhập từ trung tâm vai trò. Cấu hình công cụ thực thi khả dụng rồi Hoàn tất và bật.",
@@ -1630,7 +1653,8 @@
           "Có thể thử gửi lại thông báo thất bại. Kiểm tra riêng suy nghĩ hoàn tất và tin nhắn đã được chuyển. Tắt tự động suy nghĩ sẽ dừng kiểm tra định kỳ; trò chuyện thường và suy nghĩ thủ công vẫn dùng được."
         ],
         "tips": [
-          "Khoảng mặc định là 5 phút. Cho phép liên hệ chủ động không có nghĩa mỗi lần đều gửi tin; nếu không có sự kiện cần xử lý có thể kết thúc im lặng. Gọi mô hình có thể tính phí; tóm tắt hoạt động không phải toàn bộ chuỗi suy nghĩ."
+          "Khoảng mặc định là 5 phút. Cho phép liên hệ chủ động không có nghĩa mỗi lần đều gửi tin; nếu không có sự kiện cần xử lý có thể kết thúc im lặng. Gọi mô hình có thể tính phí; tóm tắt hoạt động không phải toàn bộ chuỗi suy nghĩ.",
+          "Tiêu đề ủy nhiệm tối đa 60 ký tự, không thay hướng dẫn đầy đủ. Lần tiếp tục có thể kế thừa tiêu đề nhưng không đổi tên hội thoại cũ. Số ký ức mới mở tóm tắt, mũi tên phải mở toàn bộ bản ghi. Không có bổ sung thì ẩn số; kết thúc im lặng không phải lỗi gửi."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Micrô, camera và phát âm thanh cần quyền hệ thống/trang web tương ứng riêng. Dịch vụ từ xa nhận âm thanh liên quan. Âm thanh thực tế trên điện thoại và máy tính vẫn cần kiểm tra thiết bị.",
-          "Chỉ đọc phản hồi mới. Mở bảng hội thoại đầy đủ sẽ tạm dừng đọc tự động; đóng lại không đọc bù nội dung cũ. Không giả định vẫn nghe khi khóa màn hình hoặc đóng ứng dụng."
+          "Chỉ đọc phản hồi mới. Mở bảng hội thoại đầy đủ sẽ tạm dừng đọc tự động; đóng lại không đọc bù nội dung cũ. Không giả định vẫn nghe khi khóa màn hình hoặc đóng ứng dụng.",
+          "Đoạn giọng nói đầu được tổng hợp ngay; các câu sau được gom tối đa 350ms, chia theo giới hạn mô hình và xử lý phần còn lại khi kết thúc. Dừng, tắt tiếng hoặc đổi hội thoại sẽ xóa âm thanh chờ. Có thể chọn nguồn tải, tạm dừng, tiếp tục hoặc dọn tài nguyên; kiểm tra trước khi dùng. Micrô không tự bật."
         ],
         "screenshot": {
           "id": "speech-output",

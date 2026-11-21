@@ -3,9 +3,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {act} from 'react'
 import {createRoot} from 'react-dom/client'
-import {I18nProvider} from '../src/i18n'
+import {I18nProvider,useLocaleStore} from '../src/i18n'
 import DigitalPersonRunDetail from '../src/components/digital-person/DigitalPersonRunDetail'
 import {digitalRuntimeApi} from '../src/api/digitalPerson'
+
+useLocaleStore.setState({locale:'zh-CN',language:null})
 
 test('failed thoughts distinguish saved content from the failure reason and display zero affinity',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host),original=digitalRuntimeApi.runDetail

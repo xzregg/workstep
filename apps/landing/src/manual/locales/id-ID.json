@@ -93,7 +93,8 @@
         "tips": [
           "Langganan akun, kredensial API, dan penagihan ditentukan penyedia layanan. Memasang SDK tidak menyediakan kredensial.",
           "Saat mengedit penyedia, membiarkan kunci kosong mempertahankan nilai lama. Masukkan kunci baru untuk menggantinya dan sembunyikan kunci sebelum mengambil gambar atau membagikan konfigurasi.",
-          "Dalam mode terkelola perusahaan, penyedia dapat ditetapkan platform. Pakai penyedia yang diizinkan tanpa menambahkannya lagi."
+          "Dalam mode terkelola perusahaan, penyedia dapat ditetapkan platform. Pakai penyedia yang diizinkan tanpa menambahkannya lagi.",
+          "Ambil model menggabungkan protokol untuk satu pilihan dan menyimpan setelah konfirmasi; protokol gagal mempertahankan cache. Penyedia kelolaan gateway hanya diedit di gateway. Perencanaan percakapan terpisah dari izin; mengganti penyedia memerlukan serah terima eksplisit. Jejak terlipat berupa pratinjau; perluas untuk memuat rincian lengkap."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Edit alur kerja",
     "summary": "Uraikan pekerjaan menjadi langkah serta atur mesin, masukan, keluaran, dan aturan tinjauan.",
     "sections": [
+      {
+        "title": "Debug draf alur kerja",
+        "steps": [
+          "Di kanvas lokal host pilih Debug atau Debug dari langkah ini, isi tugas dan contoh keluaran sebelumnya, lalu mulai. Draf benar-benar dijalankan dan dapat mengubah berkas atau menimbulkan biaya. Hentikan atau bersihkan riwayat terpisahnya; ini bukan penyelesaian tugas produksi."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Debug draf alur kerja",
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
+        }
+      },
       {
         "title": "Tambah dan hubungkan langkah",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Mengisi draf pesan dengan suara",
         "steps": [
-          "Buka Pengaturan → Pengaturan suara → Input, lalu pilih model lokal, penyedia cloud, atau layanan jarak jauh yang dikelola sendiri. Untuk lokal, unduh runtime dan model, lalu klik Gunakan model ini. Paraformer mendukung Mandarin, Kanton, dan Inggris; Zipformer mendukung Mandarin dan Inggris. Simpan lalu Uji mikrofon. Model dipasang di host WorkStep.",
+          "Buka Pengaturan → Pengaturan suara → Input, lalu pilih model lokal, penyedia cloud, atau layanan jarak jauh yang dikelola sendiri. Untuk lokal, unduh runtime dan model, lalu klik Gunakan model ini. Paraformer mendukung Mandarin, Kanton, dan Inggris; SenseVoice mendukung Mandarin dan Inggris. Simpan lalu Uji mikrofon. Model dipasang di host WorkStep.",
           "Di komputer, gunakan tombol mikrofon. Di ponsel, ketuk speaker kecil di kanan bawah saat draf kosong untuk merekam; jika ada teks, tombol Kirim muncul. Tekan lama tetap memilih teks melalui sistem. Periksa draf transkripsi lalu kirim secara manual. Maksimal dua menit per rekaman; membatalkan tidak mengirim."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Atur gaya komunikasi, percakapan utama, pemikiran proaktif, dan penerimaan kanal. Tinjau memori beserta sumbernya, serta aktifkan suara dan pengenalan orang bila diperlukan.",
     "sections": [
       {
+        "title": "Jelajahi peta memori",
+        "steps": [
+          "Buka Pengaturan → Pusat data (sebelumnya Sosok digital). Di beranda beralih ke peta memori, geser, perbesar dan pilih bintang untuk pengetahuan serta sumber asli. Maksimal 500 bintang ditampilkan, bukan seluruh memori."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Jelajahi peta memori",
+          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
+        }
+      },
+      {
         "title": "Mengatur persona, tanggung jawab, dan percakapan utama",
         "steps": [
           "Buka Pengaturan → Avatar digital → Panduan awal dan masukkan nama. Di Persona dan tanggung jawab, sunting persona, tanggung jawab, dan memori tetap menggunakan prasetel atau impor dari pusat peran. Atur mesin yang tersedia, lalu Selesai dan aktifkan.",
@@ -1630,7 +1653,8 @@
           "Coba ulang pemberitahuan yang gagal dikirim. Periksa penyelesaian pemikiran dan pengiriman pesan secara terpisah. Menonaktifkan pemikiran otomatis menghentikan pemeriksaan terjadwal; obrolan biasa dan pemikiran manual tetap tersedia."
         ],
         "tips": [
-          "Interval bawaan 5 menit. Mengizinkan kontak proaktif tidak berarti setiap pemeriksaan mengirim pesan; tanpa peristiwa tertunda, pemeriksaan dapat selesai diam-diam. Panggilan model bisa berbayar; ringkasan aktivitas bukan seluruh rangkaian pemikiran."
+          "Interval bawaan 5 menit. Mengizinkan kontak proaktif tidak berarti setiap pemeriksaan mengirim pesan; tanpa peristiwa tertunda, pemeriksaan dapat selesai diam-diam. Panggilan model bisa berbayar; ringkasan aktivitas bukan seluruh rangkaian pemikiran.",
+          "Judul delegasi maksimal 60 karakter dan tidak menggantikan instruksi lengkap. Kelanjutan dapat mewarisinya tanpa mengubah nama percakapan lama. Jumlah memori baru membuka ringkasan, panah kanan membuka catatan lengkap. Nol disembunyikan; akhir senyap bukan kegagalan pengiriman."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Mikrofon, kamera, dan pemutaran memerlukan izin sistem/situs masing-masing yang sesuai. Layanan jarak jauh menerima audio terkait. Pemutaran nyata pada ponsel dan desktop masih memerlukan pengujian perangkat.",
-          "Hanya balasan baru yang dibacakan. Membuka panel percakapan lengkap menjeda suara otomatis; menutupnya tidak memutar isi lama. Jangan menganggap pendengaran berlanjut setelah layar dikunci atau aplikasi ditutup."
+          "Hanya balasan baru yang dibacakan. Membuka panel percakapan lengkap menjeda suara otomatis; menutupnya tidak memutar isi lama. Jangan menganggap pendengaran berlanjut setelah layar dikunci atau aplikasi ditutup.",
+          "Segmen suara pertama langsung disintesis; kalimat berikutnya dikumpulkan hingga 350ms, dibagi menurut batas model dan sisanya diproses saat selesai. Berhenti, bisukan atau pindah percakapan menghapus audio tertunda. Pilih sumber unduhan, jeda, lanjutkan atau bersihkan sumber daya; verifikasi sebelum digunakan. Mikrofon tidak aktif otomatis."
         ],
         "screenshot": {
           "id": "speech-output",

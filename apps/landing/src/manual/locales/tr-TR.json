@@ -93,7 +93,8 @@
         "tips": [
           "Hesap abonelikleri, API kimlik bilgileri ve faturalandırma, servis sağlayıcı tarafından belirlenir. SDK'nun kurulması kimlik bilgilerini sağlamaz.",
           "Bir sağlayıcıyı düzenlerken anahtarı boş bırakmak eski değeri korur. Değiştirmek için yeni bir anahtar girin ve ekran görüntülerinden veya yapılandırmayı paylaşmadan önce anahtarları gizleyin.",
-          "Kurumsal olarak yönetilen modda, sağlayıcılar platform tarafından atanabilir. Tekrar eklemek yerine yetkili bir sağlayıcı kullanın."
+          "Kurumsal olarak yönetilen modda, sağlayıcılar platform tarafından atanabilir. Tekrar eklemek yerine yetkili bir sağlayıcı kullanın.",
+          "Model alma, protokolleri tek seçimde birleştirip onay sonrası kaydeder; başarısız protokoller önbelleği korur. Ağ geçidinin yönettiği sağlayıcıları yalnız orada düzenleyin. Sohbet planı izinlerden ayrıdır; sağlayıcı değişimi açık devir gerektirir. Daraltılmış izler önizlemedir; tam ayrıntı için genişletin."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "İş akışlarını düzenleyin",
     "summary": "Çalışmayı adımlara ayırın ve yürütme motorlarını, girişleri, çıkışları ve inceleme kurallarını yapılandırın.",
     "sections": [
+      {
+        "title": "İş akışı taslağında hata ayıklama",
+        "steps": [
+          "Ana makinenin yerel tuvalinde Hata ayıkla veya Bu adımdan hata ayıkla seçin, görev ve önceki çıktı örneklerini girip başlatın. Taslak gerçekten çalışır, dosya değiştirebilir veya ücret oluşturabilir. Ayrı geçmişi durdurun ya da temizleyin; bu, üretim görevinin tamamlanması değildir."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "İş akışı taslağında hata ayıklama",
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
+        }
+      },
       {
         "title": "Adımları ekleyin ve bağlayın",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Mesaj taslağını sesle doldurma",
         "steps": [
-          "«Ayarlar → Ses ayarları → Giriş» bölümünde yerel model, bulut sağlayıcısı veya kendi uzak hizmetinizi seçin. Yerelde önce çalışma ortamını ve modeli indirin, sonra «Bu modeli kullan» seçin. Paraformer Mandarin, Kantonca ve İngilizceyi; Zipformer Mandarin ve İngilizceyi destekler. Kaydedip «Mikrofonu test et» ile doğrulayın. Modeller WorkStep ana makinesine kurulur.",
+          "«Ayarlar → Ses ayarları → Giriş» bölümünde yerel model, bulut sağlayıcısı veya kendi uzak hizmetinizi seçin. Yerelde önce çalışma ortamını ve modeli indirin, sonra «Bu modeli kullan» seçin. Paraformer Mandarin, Kantonca ve İngilizceyi; SenseVoice Mandarin ve İngilizceyi destekler. Kaydedip «Mikrofonu test et» ile doğrulayın. Modeller WorkStep ana makinesine kurulur.",
           "Bilgisayarda mikrofon girişini kullanın. Telefonda taslak boşken sağ alttaki küçük hoparlöre dokunun; metin varsa gönder düğmesi görünür. Uzun basma sistemin metin seçimini korur. Kayıt bitince dökümü kontrol edip elle gönderin. Tek kayıt en fazla iki dakikadır; iptal etmek göndermez."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "İletişim tarzını, ana sohbeti, proaktif düşünmeyi ve kanal karşılamasını yapılandırın. Kaynaklı anıları inceleyin; gerekirse ses ve kişi tanımayı açın.",
     "sections": [
       {
+        "title": "Bellek haritasını keşfetme",
+        "steps": [
+          "Ayarlar → Veri merkezi (eski Dijital kişi) yolunu açın. Ana sayfada bellek haritasına geçin, sürükleyip yakınlaştırın ve bilgi ile asıl kaynaklar için yıldız seçin. En fazla 500 yıldız gösterilir; tüm bellek değildir."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Bellek haritasını keşfetme",
+          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
+        }
+      },
+      {
         "title": "Kişilik, sorumluluk ve ana sohbet ayarları",
         "steps": [
           "«Ayarlar → Dijital kişi → İlk kurulum» açın, adı girin ve «Kişilik ve sorumluluklar» içinde kişilik, görevler ve kalıcı belleği düzenleyin. Hazır ayarlar veya rol merkezinden içe aktarma kullanın, kullanılabilir motoru ayarlayıp «Tamamla ve aç» seçin.",
@@ -1630,7 +1653,8 @@
           "Teslim hatasında bildirimi tekrar deneyin. Düşünmenin bitmesini ve mesajın teslimini ayrı doğrulayın. Otomatik düşünmeyi kapatmak zamanlı kontrolleri duraklatır; normal sohbet ve elle düşünme sürer."
         ],
         "tips": [
-          "Varsayılan aralık 5 dakikadır. Proaktif iletişim izni her tur mesaj demek değildir; bekleyen olay yoksa sessiz bitebilir. Model çağrıları ücretli olabilir; özet tam düşünce zinciri değildir."
+          "Varsayılan aralık 5 dakikadır. Proaktif iletişim izni her tur mesaj demek değildir; bekleyen olay yoksa sessiz bitebilir. Model çağrıları ücretli olabilir; özet tam düşünce zinciri değildir.",
+          "Delegasyon başlığı 60 karakter olabilir ve tam talimatın yerine geçmez. Devam işleri başlığı devralabilir; mevcut sohbetler yeniden adlandırılmaz. Eklenen anı sayısı özetleri, sağ ok tam kaydı açar. Sıfır gizlenir; sessizlik teslim hatası değildir."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Mikrofon, kamera ve oynatma için ayrı sistem/site izinleri gerekir. Uzak hizmetler ilgili sesi alır. Telefon ve masaüstünde gerçekten ses çıkması cihazlarda doğrulanmalıdır.",
-          "Yalnızca yeni yanıtlar seslendirilir. Tam sohbet panelini açmak otomatik seslendirmeyi duraklatır; kapatınca eski içerik tamamlanmaz. Ekran kilitliyken veya uygulama kapalıyken dinlemenin süreceğini varsaymayın."
+          "Yalnızca yeni yanıtlar seslendirilir. Tam sohbet panelini açmak otomatik seslendirmeyi duraklatır; kapatınca eski içerik tamamlanmaz. Ekran kilitliyken veya uygulama kapalıyken dinlemenin süreceğini varsaymayın.",
+          "İlk ses parçası hemen sentezlenir; sonraki cümleler en fazla 350ms biriktirilir, model sınırlarına göre bölünür ve kalan metin bitişte işlenir. Durdurma, sessize alma veya sohbet değişimi bekleyen sesi temizler. Kaynak seçimi, duraklatma, sürdürme ve temizleme desteklenir; kullanmadan doğrulayın. Mikrofon otomatik açılmaz."
         ],
         "screenshot": {
           "id": "speech-output",

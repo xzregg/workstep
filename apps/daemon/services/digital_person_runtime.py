@@ -354,11 +354,11 @@ class DigitalPersonRuntime:
         await self.projects.run_db(home.id, operation)
         return await self.overview()
 
-    async def list_delegations(self, project_id, origin_session_id, delegation_id=''):
+    async def list_delegations(self, project_id=None, origin_session_id=None, delegation_id=''):
         state = await self.state()
         items = [item for item in reversed(state['delegations'])
                  if (not project_id or item.get('project_id') == project_id)
-                 and item.get('origin_session_id') == origin_session_id]
+                 and (origin_session_id is None or item.get('origin_session_id') == origin_session_id)]
         if delegation_id:
             item = next((item for item in items if item['id'] == delegation_id), None)
             if item is None:
@@ -369,7 +369,7 @@ class DigitalPersonRuntime:
                 'followup_state', 'question', 'created_at',
             )} | {'goal': snapshot.get('root_instruction') or snapshot['instruction'],
                   'result': snapshot['content']})]}
-        return {'items': [{key: item.get(key) for key in ('id', 'session_id', 'title', 'instruction', 'status', 'followup_state', 'created_at')}
+        return {'items': [{key: item.get(key) for key in ('id', 'project_id', 'session_id', 'title', 'instruction', 'status', 'followup_state', 'created_at')}
                           for item in items[:20]]}
 
     async def delegate(self, project_id, instruction, origin_session_id='', request_id='', continuation_of='',

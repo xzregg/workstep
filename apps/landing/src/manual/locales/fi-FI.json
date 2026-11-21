@@ -93,7 +93,8 @@
         "tips": [
           "Palveluntarjoaja määrittää tilitilaukset, API-tunnukset ja laskutuksen. SDK:n asentaminen ei anna valtuustietoja.",
           "Kun toimittajaa muokataan, avaimen jättäminen tyhjäksi säilyttää vanhan arvon. Kirjoita uusi avain korvataksesi sen ja piilota avaimet ennen kuvakaappauksia tai jakamista.",
-          "Yrityksen hallinnoimassa tilassa alusta voi määrittää palveluntarjoajat. Käytä valtuutettua palveluntarjoajaa sen sijaan, että lisäät sen uudelleen."
+          "Yrityksen hallinnoimassa tilassa alusta voi määrittää palveluntarjoajat. Käytä valtuutettua palveluntarjoajaa sen sijaan, että lisäät sen uudelleen.",
+          "Mallien haku yhdistää protokollat yhteen valintaan ja tallentaa vahvistuksen jälkeen; epäonnistuneet protokollat säilyttävät välimuistinsa. Muokkaa yhdyskäytävän hallitsemia tarjoajia vain siellä. Suunnittelu ja oikeudet ovat erilliset; tarjoajan vaihto vaatii nimenomaisen siirron. Suljetut jäljet ovat esikatseluja; avaus lataa kaikki tiedot."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Muokkaa työnkulkuja",
     "summary": "Jaa työ vaiheisiin ja määritä suorituskoneet, tulot, lähdöt ja tarkistussäännöt.",
     "sections": [
+      {
+        "title": "Työnkulun luonnoksen virheenkorjaus",
+        "steps": [
+          "Valitse isännän paikallisella piirtoalueella virheenkorjaus tai aloitus tästä vaiheesta, täytä tehtävä ja aiempien vaiheiden näytteet ja käynnistä. Luonnos suoritetaan oikeasti ja voi muuttaa tiedostoja tai aiheuttaa maksuja. Pysäytä tai tyhjennä erillinen historia; tämä ei päätä tuotantotehtävää."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Työnkulun luonnoksen virheenkorjaus",
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
+        }
+      },
       {
         "title": "Lisää ja yhdistä vaiheet",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Täytä viestiluonnos puheella",
         "steps": [
-          "Avaa ”Asetukset → Puheasetukset → Syöte” ja valitse paikallinen malli, pilvipalveluntarjoaja tai oma etäpalvelu. Lataa paikallisesti ensin suoritusympäristö ja malli ja valitse ”Käytä tätä mallia”. Paraformer tukee mandariinia, kantoninkiinaa ja englantia, Zipformer mandariinia ja englantia. Tallenna ja tarkista ”Testaa mikrofoni”. Malli asennetaan WorkStep-isäntälaitteelle.",
+          "Avaa ”Asetukset → Puheasetukset → Syöte” ja valitse paikallinen malli, pilvipalveluntarjoaja tai oma etäpalvelu. Lataa paikallisesti ensin suoritusympäristö ja malli ja valitse ”Käytä tätä mallia”. Paraformer tukee mandariinia, kantoninkiinaa ja englantia, SenseVoice mandariinia ja englantia. Tallenna ja tarkista ”Testaa mikrofoni”. Malli asennetaan WorkStep-isäntälaitteelle.",
           "Tietokoneella käytä mikrofonipainiketta. Puhelimella tyhjän luonnoksen oikean alakulman pieni kaiutin aloittaa tallennuksen; tekstin kanssa näkyy lähetyspainike. Pitkä painallus säilyttää järjestelmän tekstinvalinnan. Tarkista litterointiluonnos ja lähetä käsin. Tallennus kestää enintään kaksi minuuttia; peruminen ei lähetä."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Määritä viestintätyyli, pääkeskustelu, oma-aloitteinen pohdinta ja kanavapalvelu. Tarkastele lähteistettyjä muistoja ja ota ääni sekä henkilöntunnistus tarvittaessa käyttöön.",
     "sections": [
       {
+        "title": "Tutki muistikarttaa",
+        "steps": [
+          "Avaa Asetukset → Tietokeskus (aiemmin Digitaalinen henkilö). Vaihda etusivulla muistikarttaan, siirrä, suurenna ja valitse tähti tarkistaaksesi tiedot ja alkuperäislähteet. Enintään 500 tähteä näkyy, ei koko muisti."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Tutki muistikarttaa",
+          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
+        }
+      },
+      {
         "title": "Persoonan, vastuiden ja pääkeskustelun määrittäminen",
         "steps": [
           "Avaa ”Asetukset → Digitaalinen hahmo → Aloitusopastus”. Anna nimi ja muokkaa persoonaa, vastuita ja pysyviä muistoja kohdassa ”Persoona ja vastuut”. Käytä esiasetuksia tai tuo roolikeskuksesta, määritä käytettävä moottori ja valitse ”Valmis ja käyttöön”.",
@@ -1630,7 +1653,8 @@
           "Epäonnistunutta ilmoitustoimitusta voi yrittää uudelleen. Tarkista pohdinnan valmistuminen ja viestin toimitus erikseen. Automaattisen pohdinnan sulkeminen keskeyttää ajastetut tarkistukset, ei keskustelua tai käsin käynnistettyä pohdintaa."
         ],
         "tips": [
-          "Oletusväli on 5 minuuttia. Oma-aloitteisen yhteydenoton salliminen ei tarkoita viestiä joka kierroksella; ilman odottavia tapahtumia kierros voi päättyä hiljaa. Mallikutsuista voi tulla maksu, eikä tiivistelmä ole koko ajatusketju."
+          "Oletusväli on 5 minuuttia. Oma-aloitteisen yhteydenoton salliminen ei tarkoita viestiä joka kierroksella; ilman odottavia tapahtumia kierros voi päättyä hiljaa. Mallikutsuista voi tulla maksu, eikä tiivistelmä ole koko ajatusketju.",
+          "Delegoinnin otsikko saa olla 60 merkkiä eikä korvaa koko ohjetta. Jatko voi periä otsikon, mutta nykyisiä keskusteluja ei nimetä uudelleen. Uusien muistojen määrä avaa yhteenvedot, oikea nuoli koko merkinnän. Nolla piilotetaan; hiljaisuus ei ole toimitusvirhe."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Mikrofoni, kamera ja toisto tarvitsevat erilliset järjestelmä-/sivustoluvat. Etäpalvelut saavat kyseisen äänen. Todellinen äänen kuuluminen on tarkistettava puhelimessa ja tietokoneella.",
-          "Vain uudet vastaukset luetaan. Koko keskustelupaneelin avaaminen keskeyttää automaattisen luvun; sulkeminen ei toista vanhaa sisältöä. Älä oleta jatkuvaa kuuntelua lukitusnäytöllä tai suljetussa sovelluksessa."
+          "Vain uudet vastaukset luetaan. Koko keskustelupaneelin avaaminen keskeyttää automaattisen luvun; sulkeminen ei toista vanhaa sisältöä. Älä oleta jatkuvaa kuuntelua lukitusnäytöllä tai suljetussa sovelluksessa.",
+          "Ensimmäinen puhejakso muodostetaan heti; myöhempiä lauseita yhdistetään enintään 350ms, jaetaan mallirajojen mukaan ja loput käsitellään päättyessä. Pysäytys, mykistys tai keskustelun vaihto tyhjentää odottavan äänen. Resursseille voi valita lähteen, keskeyttää, jatkaa tai siivota; tarkista ennen käyttöä. Mikrofoni ei käynnisty itsestään."
         ],
         "screenshot": {
           "id": "speech-output",

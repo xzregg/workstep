@@ -93,7 +93,8 @@
         "tips": [
           "Account subscriptions, API credentials and billing are determined by the service provider. Installing an SDK does not supply credentials.",
           "When editing a provider, leaving the key blank retains the old value. Enter a new key to replace it, and hide keys before screenshots or sharing configuration.",
-          "In enterprise-managed mode, providers may be assigned by the platform. Use an authorized provider rather than adding it again."
+          "In enterprise-managed mode, providers may be assigned by the platform. Use an authorized provider rather than adding it again.",
+          "Fetch models merges protocol results for one selection and saves after confirmation; failed protocols retain their cache. Edit Gateway-managed providers in Gateway only. Chat planning is separate from permissions; provider changes require explicit handoff. Collapsed traces show previews; expand to load full details."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Edit workflows",
     "summary": "Break work into steps and configure execution engines, inputs, outputs and review rules.",
     "sections": [
+      {
+        "title": "Debug a workflow draft",
+        "steps": [
+          "On a host-local canvas, choose Debug or Debug from this step, enter task details and upstream samples, then start. Debugging runs the current draft and can modify files or incur charges. Stop or clear its separate history; this is not completion of a production task."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Debug a workflow draft",
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
+        }
+      },
       {
         "title": "Add and connect steps",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Fill a message draft by voice",
         "steps": [
-          "Open Settings → Speech settings → Input and choose a local model, cloud provider or self-hosted remote service. For local input, download the runtime and model, then click Use this model. Paraformer supports Mandarin, Cantonese and English; Zipformer supports Mandarin and English. Save and use Test microphone to check recognition. Models are installed on the WorkStep host.",
+          "Open Settings → Speech settings → Input and choose a local model, cloud provider or self-hosted remote service. For local input, download the runtime and model, then click Use this model. Paraformer supports Mandarin, Cantonese and English; SenseVoice supports Mandarin and English. Save and use Test microphone to check recognition. Models are installed on the WorkStep host.",
           "On desktop, use the microphone control. On mobile, tap the small speaker at the bottom right when the draft is empty; text replaces it with Send, and long press still selects text using system controls. Review the transcription draft and send it manually. A recording lasts at most two minutes; cancelling does not send it."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Configure communication style, the main conversation, proactive thinking and channel reception. Review memories with sources and optionally enable speech and person recognition.",
     "sections": [
       {
+        "title": "Explore the memory atlas",
+        "steps": [
+          "Open Settings → Data hub (formerly Digital person). On the home page, switch to the memory atlas; pan, zoom and select a star to inspect knowledge and original sources. At most 500 stars are shown, not the entire memory store."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Explore the memory atlas",
+          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
+        }
+      },
+      {
         "title": "Set persona, duties and the main conversation",
         "steps": [
           "Open Settings → Digital avatar → Initial setup and enter a name. In Persona and duties, edit persona, duties and standing memory using presets or imports from the role center. Configure an available engine, then Finish and enable.",
@@ -1630,7 +1653,8 @@
           "Retry failed notification delivery. Check thinking completion and delivery separately. Disabling automatic thinking pauses scheduled checks; ordinary chat and manual thinking remain available."
         ],
         "tips": [
-          "The default interval is 5 minutes. Allowing proactive contact does not mean every check sends a message; a check with no pending event may finish silently. Model calls may cost money; activity summaries are not full chains of thought."
+          "The default interval is 5 minutes. Allowing proactive contact does not mean every check sends a message; a check with no pending event may finish silently. Model calls may cost money; activity summaries are not full chains of thought.",
+          "Delegation titles allow 60 characters and never replace the full instruction. Continuations may inherit a title; existing chats are not renamed. Click the added-memory count for inline summaries, or the right arrow for the full record. Zero additions are omitted; silence is not delivery failure."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Microphone, camera and playback each require their applicable system/site permissions. Remote services receive relevant audio. Actual playback on phones and desktops still needs device verification.",
-          "Only new replies are spoken. Opening the full conversation panel pauses automatic speech; closing it does not replay old content. Do not assume listening continues after screen lock or app closure."
+          "Only new replies are spoken. Opening the full conversation panel pauses automatic speech; closing it does not replay old content. Do not assume listening continues after screen lock or app closure.",
+          "Speech synthesizes the first segment immediately, batches later sentences for up to 350ms and splits at model limits, flushing the remainder on completion. Stop, mute or switching chats clears pending audio. Resource controls select a download source, pause, resume or clean up; verify before use. The microphone stays opt-in."
         ],
         "screenshot": {
           "id": "speech-output",

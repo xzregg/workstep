@@ -12,6 +12,7 @@ from models.message import Message
 from models.task import Task
 from models import ReviewRun
 from services.channels.base import ChannelAdapter, IncomingMessage, OutgoingMessage
+from services.channels.reply_failure import AssistantReplyError, failure_notice, send_failure_notice
 from services.workflow_definition import WorkflowDefinition
 
 logger = logging.getLogger(__name__)
@@ -350,12 +351,16 @@ class ChannelTaskForwarder:
                 if state.status:
                     if state.previous_delivery is not None:
                         await asyncio.shield(state.previous_delivery)
+                    if state.status not in {'succeeded', 'completed', 'stopped', 'cancelled'}:
+                        notice = prefix + failure_notice(AssistantReplyError(state.error), 'execution', task=True)
+                        delivered = await send_failure_notice(adapter, recipient, notice)
+                        if not delivered:
+                            await self._report_failure(state, bot_id, group_id, 'execution', notice, delivered)
+                        return
                     text = await self._final_text(state)
                     if not text and state.status in {'stopped', 'cancelled'}:
                         text = '已中止'
-                    suffix = {'succeeded':'', 'completed':'', 'stopped':'', 'cancelled':''}.get(state.status, '执行失败' + ('：' + state.error if state.error else ''))
-                    final = prefix + text + ('\n\n' + suffix if text and suffix else suffix)
-                    await asyncio.wait_for(self._send(adapter, recipient, state.key[0], final, full_text=text, file_links=file_links), 30)
+                    await asyncio.wait_for(self._send(adapter, recipient, state.key[0], prefix + text, full_text=text, file_links=file_links), 30)
                     return
                 text = state.text
                 revision = state.revision
@@ -370,18 +375,26 @@ class ChannelTaskForwarder:
 
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.exception('Failed to forward task message %s to %s/%s', state.key, bot_id, group_id)
-            await self._bus.publish({'type':'CUSTOM', 'name':'channel_bots.reply_error',
-                                     'project_id':state.key[0], 'task_id':state.key[1],
-                                     'value':{'message_id':state.key[2], 'bot_id':bot_id, 'group_id':group_id,
-                                              'error':'Task message push failed. Please check the bot connection and send permissions.'}})
+            stage = 'delivery' if state.status else 'processing'
+            notice = prefix + failure_notice(exc, stage, task=True)
+            delivered = await send_failure_notice(adapter, recipient, notice) if recipient is not None else False
+            await self._report_failure(state, bot_id, group_id, stage, notice, delivered)
         finally:
             if scope:
                 await self._controls.finish(scope)
             if isinstance(adapter, ChannelAdapter) and recipient is not None:
                 adapter.release_reply(recipient)
             state.wakes.remove(wake)
+
+    async def _report_failure(self, state, bot_id, group_id, stage, notice, delivered):
+        await self._bus.publish({
+            'type': 'CUSTOM', 'name': 'channel_bots.reply_error', 'channel': 'channel_bots',
+            'project_id': state.key[0], 'task_id': state.key[1],
+            'value': {'message_id': state.key[2], 'bot_id': bot_id, 'group_id': group_id,
+                      'stage': stage, 'error': notice, 'notice_delivered': delivered},
+        })
 
     def _reply_status(self, adapter, recipient, state, title):
         prepare = getattr(adapter, 'set_reply_metadata', None)
@@ -392,4 +405,4 @@ class ChannelTaskForwarder:
             if state.usage_event:
                 observe(recipient, state.usage_event)
             if state.status:
-                observe(recipient, {'type': 'TEXT_MESSAGE_END'})
+                observe(recipient, {'type': 'TEXT_MESSAGE_END', 'status': state.status})

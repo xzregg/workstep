@@ -93,7 +93,8 @@
         "tips": [
           "Gli abbonamenti agli account, le credenziali API e la fatturazione sono determinati dal fornitore di servizi. L'installazione di un SDK non fornisce credenziali.",
           "Quando si modifica un provider, lasciando la chiave vuota si mantiene il vecchio valore. Inserisci una nuova chiave per sostituirla e nascondi le chiavi prima degli screenshot o della condivisione della configurazione.",
-          "Nella modalità gestita dall'azienda, i fornitori possono essere assegnati dalla piattaforma. Utilizza un fornitore autorizzato anziché aggiungerlo nuovamente."
+          "Nella modalità gestita dall'azienda, i fornitori possono essere assegnati dalla piattaforma. Utilizza un fornitore autorizzato anziché aggiungerlo nuovamente.",
+          "Il recupero dei modelli unisce i protocolli in una sola selezione e salva dopo conferma; quelli falliti mantengono la cache. Modificare i fornitori gestiti dal gateway solo nel gateway. Pianificazione e permessi sono separati; cambiare fornitore richiede un passaggio esplicito. Le tracce chiuse mostrano anteprime; espanderle per caricare tutti i dettagli."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Modifica flussi di lavoro",
     "summary": "Suddividi il lavoro in passaggi e configura motori di esecuzione, input, output e regole di revisione.",
     "sections": [
+      {
+        "title": "Eseguire il debug di una bozza",
+        "steps": [
+          "Nel canvas locale dell’host scegliere Debug o Debug da questo passaggio, inserire attività e campioni a monte, quindi avviare. La bozza viene eseguita realmente e può modificare file o generare costi. Fermare o cancellare la cronologia separata; non equivale al completamento di un’attività ordinaria."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Eseguire il debug di una bozza",
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
+        }
+      },
       {
         "title": "Aggiungi e collega i passaggi",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Dettare una bozza di messaggio",
         "steps": [
-          "Apri «Impostazioni → Impostazioni vocali → Input» e scegli modello locale, fornitore cloud o servizio remoto autogestito. Per il modello locale scarica runtime e modello, poi scegli «Usa questo modello». Paraformer supporta mandarino, cantonese e inglese; Zipformer mandarino e inglese. Salva e verifica con «Prova microfono». I modelli sono installati sull’host WorkStep.",
+          "Apri «Impostazioni → Impostazioni vocali → Input» e scegli modello locale, fornitore cloud o servizio remoto autogestito. Per il modello locale scarica runtime e modello, poi scegli «Usa questo modello». Paraformer supporta mandarino, cantonese e inglese; SenseVoice mandarino e inglese. Salva e verifica con «Prova microfono». I modelli sono installati sull’host WorkStep.",
           "Sul computer usa il microfono; sul telefono tocca il piccolo altoparlante in basso a destra quando la bozza è vuota. Con testo appare il pulsante di invio; la pressione prolungata mantiene la selezione di testo del sistema. Dopo la registrazione controlla la trascrizione e inviala manualmente. Massimo due minuti per registrazione; annullare non invia nulla."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Configura stile comunicativo, conversazione principale, riflessione proattiva e accoglienza sui canali. Consulta memorie con fonti e attiva voce e riconoscimento delle persone quando necessario.",
     "sections": [
       {
+        "title": "Esplorare la mappa dei ricordi",
+        "steps": [
+          "Aprire Impostazioni → Centro dati (prima Persona digitale). Dalla home passare alla mappa dei ricordi, spostarla, ingrandirla e scegliere una stella per conoscenze e fonti originali. Sono visibili al massimo 500 stelle, non l’intera memoria."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Esplorare la mappa dei ricordi",
+          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
+        }
+      },
+      {
         "title": "Configurare personalità, compiti e conversazione principale",
         "steps": [
           "Apri «Impostazioni → Persona digitale → Guida iniziale», inserisci il nome e modifica personalità, compiti e memoria permanente in «Personalità e compiti». Usa preimpostazioni o importa dal centro ruoli, configura un motore disponibile e scegli «Completa e attiva».",
@@ -1630,7 +1653,8 @@
           "Se la consegna fallisce, riprova la notifica. Verifica separatamente riflessione completata e messaggio consegnato. Disattivare la riflessione automatica sospende i controlli periodici; chat normale e riflessione manuale restano disponibili."
         ],
         "tips": [
-          "L’intervallo predefinito è 5 minuti. Consentire contatti proattivi non comporta un messaggio a ogni ciclo; senza eventi da trattare il ciclo può terminare in silenzio. Le chiamate possono costare; il riepilogo non è l’intera catena di pensiero."
+          "L’intervallo predefinito è 5 minuti. Consentire contatti proattivi non comporta un messaggio a ogni ciclo; senza eventi da trattare il ciclo può terminare in silenzio. Le chiamate possono costare; il riepilogo non è l’intera catena di pensiero.",
+          "Il titolo di delega ammette 60 caratteri e non sostituisce l’istruzione completa. Le continuazioni possono ereditarlo senza rinominare le chat esistenti. Il conteggio dei ricordi aggiunti apre i riepiloghi, la freccia destra il registro completo. Zero è nascosto; il silenzio non è un errore di consegna."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Microfono, fotocamera e riproduzione richiedono permessi di sistema/sito separati. I servizi remoti ricevono l’audio pertinente. L’effettiva emissione audio su telefono e desktop richiede ancora verifica sui dispositivi.",
-          "Vengono lette solo nuove risposte. Aprire il pannello completo della conversazione sospende la lettura automatica; chiuderlo non recupera contenuti vecchi. Non presumere ascolto continuo con schermo bloccato o app chiusa."
+          "Vengono lette solo nuove risposte. Aprire il pannello completo della conversazione sospende la lettura automatica; chiuderlo non recupera contenuti vecchi. Non presumere ascolto continuo con schermo bloccato o app chiusa.",
+          "Il primo segmento vocale viene sintetizzato subito; i successivi raggruppano frasi per massimo 350ms, rispettano i limiti del modello e completano il testo residuo alla fine. Stop, silenziamento o cambio chat cancellano l’audio in attesa. Le risorse consentono scelta origine, pausa, ripresa e pulizia; verificarle prima dell’uso. Il microfono resta facoltativo."
         ],
         "screenshot": {
           "id": "speech-output",

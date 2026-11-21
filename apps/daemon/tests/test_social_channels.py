@@ -289,7 +289,7 @@ async def test_social_platform_frames_use_shared_project_whitelist_and_task_rout
         await adapter._drain_messages()
     await receive(1)
     assert len(chats) == 1
-    assert platform in chats[0][2]
+    assert chats[0][2] == '你好'
     adapter._api.assert_awaited()
     await manager.save_private_whitelist(bot['id'], True, [])
     await receive(2)

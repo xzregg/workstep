@@ -7,6 +7,18 @@ import { useChatSessionEngineSelection } from '../src/hooks/useChatSessionEngine
 import { chatSessionApi, type ChatSessionDetail } from '../src/api/client'
 import { useChatExecutionConfigStore } from '../src/stores/chatExecutionConfigStore'
 
+test('a first legacy history response without execution fields cannot dereference a missing cache entry', () => {
+  const previous = useChatExecutionConfigStore.getState().configs
+  useChatExecutionConfigStore.setState({ configs: {} })
+  try {
+    const received = useChatExecutionConfigStore.getState().receive('legacy-project', {
+      id: 'legacy-session', project_id: 'legacy-project',
+    } as ChatSessionDetail)
+    assert.equal(received.id, 'legacy-session')
+    assert.equal(received.permission_mode, undefined)
+  } finally { useChatExecutionConfigStore.setState({ configs: previous }) }
+})
+
 test('two viewers follow the latest provider/model and reject stale events and history', async () => {
   const { window } = installDomEnvironment()
   useChatExecutionConfigStore.setState({ configs: {} })

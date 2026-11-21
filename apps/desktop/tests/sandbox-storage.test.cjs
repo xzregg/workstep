@@ -35,10 +35,10 @@ test('guest resize failures and ineffective repairs stop preparation without del
       if (args.includes('df')) return `Size\n${20 * 2 ** 30}`
       if (failure) throw failure
       return ''
-    }, 'owned'), /文件系统.*扩容.*原有数据已保留/)
+    }, 'owned'), /Failed to expand .*file system; original data has been preserved/)
     assert.ok(!calls.some(args => args.includes('rm') || args.includes('init')))
   }
-  await assert.rejects(ensureMachineFilesystem(async () => 'invalid', 'owned'), /无法读取.*文件系统/)
+  await assert.rejects(ensureMachineFilesystem(async () => 'invalid', 'owned'), /Unable to read .*file system capacity/)
 })
 
 test('existing dedicated macOS VM grows without deleting its containers or images', async () => {
@@ -69,15 +69,15 @@ test('failed disk resize preserves the VM and reports an actionable error', asyn
     calls.push(args)
     if (args.includes('set')) throw new Error('resize failed')
     return JSON.stringify([{ Resources: { DiskSize: 20 } }])
-  }, 'owned', false), /扩容.*64.*resize failed/)
+  }, 'owned', false), /Failed to expand .*64.*resize failed/)
   assert.ok(!calls.some(args => args.includes('rm') || args.includes('init')))
 })
 
 test('ENOSPC explains the Podman disk rather than claiming an unsupported archive', () => {
   const original = new Error('payload does not match any supported image formats: writing blob: no space left on device')
   const error = storageError(original, 'darwin')
-  assert.match(error.message, /Podman.*空间不足/)
-  assert.match(error.message, /Docker.*不会/)
+  assert.match(error.message, /Podman.*Insufficient space/)
+  assert.match(error.message, /cleaning Docker images will not free up Podman storage space/)
   assert.equal(error.cause, original)
   assert.match(storageError(original, 'linux').message, /所在磁盘/)
   const unrelated = new Error('invalid manifest')
@@ -116,7 +116,7 @@ for (const initialDiskSize of [20, 64]) test(`setup repairs the guest inside a $
   ])
   assert.equal(guestSize, 63)
   assert.ok(!calls.some(a => a.includes('unrelated') || a.includes('rm') || a.includes('prune')))
-  await assert.rejects(session.command(['load', '--input', '/image.tar']), /Podman.*空间不足/)
+  await assert.rejects(session.command(['load', '--input', '/image.tar']), /Podman.*Insufficient space/)
   calls.length = 0
   await manager.setup(config)
   assert.ok(!calls.some(a => a.includes('stop') || a.includes('set') || a.includes('start') || a.includes('sudo')), 'subsequent setup leaves an adequate running VM alone')

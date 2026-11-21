@@ -15,6 +15,28 @@ from services.project import ProjectManager
 from streaming.bus import EventBus
 
 
+async def test_local_channel_reply_delivery_failure_attempts_same_route_notice():
+    bus = EventBus()
+    forwarder = ChannelReplyForwarder(bus, None, None, {})
+    forwarder._load = AsyncMock(return_value={'sessions': {'bot:single:user': 'session'}})
+    forwarder._projects = SimpleNamespace(run_db=AsyncMock(return_value='生成正文'))
+    forwarder._sender.send = AsyncMock(side_effect=[TimeoutError('private token'), {}])
+    queue = bus.subscribe(lambda event: event.get('name') == 'channel_bots.reply_error')
+    event = {'project_id': 'project', 'session_id': 'session', 'messageId': 'reply'}
+    try:
+        await forwarder._forward(event)
+        await forwarder._forward(event)
+        outcome = queue.get_nowait()['value']
+        calls = forwarder._sender.send.await_args_list
+        assert len(calls) == 2 and calls[0].args == ('project', '生成正文')
+        assert all(call.kwargs == {'session_id': 'session'} for call in calls)
+        assert calls[1].args == ('project', outcome['error'])
+        assert outcome['notice_delivered'] and outcome['stage'] == 'delivery'
+        assert '超时' in outcome['error'] and 'private' not in outcome['error']
+    finally:
+        bus.unsubscribe(queue)
+
+
 @pytest.mark.parametrize('conversation_type', ['single', 'group'])
 async def test_reply_forwarding_isolated_deduplicated_and_async(tmp_path, monkeypatch, conversation_type):
     projects = ProjectManager()

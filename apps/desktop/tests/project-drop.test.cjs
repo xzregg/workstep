@@ -12,8 +12,8 @@ test('drop resolves directory aliases and rejects ordinary files', async () => {
     await fs.symlink(path.join(root, 'project'), path.join(root, 'alias'))
     await fs.writeFile(path.join(root, 'file.txt'), 'test')
     assert.equal(await resolveDroppedDirectory(path.join(root, 'alias')), await fs.realpath(path.join(root, 'project')))
-    await assert.rejects(resolveDroppedDirectory(path.join(root, 'file.txt')), /文件夹/)
-    await assert.rejects(resolveDroppedDirectory('relative'), /绝对路径/)
+    await assert.rejects(resolveDroppedDirectory(path.join(root, 'file.txt')), /Please drag and drop a folder/)
+    await assert.rejects(resolveDroppedDirectory('relative'), /absolute path/)
     await assert.rejects(resolveDroppedDirectory(path.join(root, 'missing')))
   } finally { await fs.rm(root, { recursive: true, force: true }) }
 })
@@ -25,7 +25,7 @@ test('sandbox maps host folder into the active mount and rejects unmounted folde
     const manager = { running: true, activeConfig: { project: root, mounts: [{ source: path.join(root, 'nested'), target: '/data/projects/extra' }] } }
     assert.equal(await resolveDroppedDirectory(path.join(root, 'nested'), manager), '/data/projects/extra')
     assert.equal(await resolveDroppedDirectory(root, manager), '/data/projects')
-    await assert.rejects(resolveDroppedDirectory(os.tmpdir(), manager), /挂载/)
+    await assert.rejects(resolveDroppedDirectory(os.tmpdir(), manager), /not mounted to the sandbox/)
   } finally { await fs.rm(root, { recursive: true, force: true }) }
 })
 
@@ -52,7 +52,7 @@ test('directory IPC accepts only the trusted local workspace', async () => {
   registerSandboxIpc({ ipcMain: { removeHandler() {}, handle: (channel, handler) => handlers.set(channel, handler) },
     manager: { running: false }, window: () => ({ webContents }), rootUrl: () => 'http://127.0.0.1:8765' })
   const invoke = handlers.get('workstep:sandbox:droppedDirectory')
-  await assert.rejects(invoke({ sender: webContents, senderFrame: { url: 'https://external.test' } }, os.tmpdir()), /来源/)
-  await assert.rejects(invoke({ sender: {}, senderFrame: { url: 'http://127.0.0.1:8765/' } }, os.tmpdir()), /来源/)
+  await assert.rejects(invoke({ sender: webContents, senderFrame: { url: 'https://external.test' } }, os.tmpdir()), /Invalid sandbox operation source/)
+  await assert.rejects(invoke({ sender: {}, senderFrame: { url: 'http://127.0.0.1:8765/' } }, os.tmpdir()), /Invalid sandbox operation source/)
   assert.equal(await invoke({ sender: webContents, senderFrame: { url: 'http://127.0.0.1:8765/' } }, os.tmpdir()), await fs.realpath(os.tmpdir()))
 })

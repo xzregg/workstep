@@ -348,6 +348,40 @@ async def test_weixin_api_timeout_redaction_and_qr_redirect():
     await api.close()
 
 
+@pytest.mark.parametrize('failure,reason', [
+    ('connection', '连接中断'),
+    ('timeout', '超时'),
+    ('forbidden', '认证或发送权限'),
+    ('invalid', '无法确认的响应'),
+    ('rejected', '拒绝了发送请求'),
+])
+async def test_weixin_send_request_keeps_only_safe_failure_evidence(failure, reason):
+    from services.channels.reply_failure import ChannelTransportError, failure_notice
+    from services.channels.weixin_api import ILinkClient
+
+    def respond(request):
+        if failure == 'connection':
+            raise httpx.ReadError('private URL and token', request=request)
+        if failure == 'timeout':
+            raise httpx.ReadTimeout('private URL and token', request=request)
+        if failure == 'forbidden':
+            return httpx.Response(403, text='private URL and token')
+        if failure == 'invalid':
+            return httpx.Response(200, text='private URL and token')
+        return httpx.Response(200, json={'errcode': 'private URL and token'})
+
+    api = ILinkClient('private-token')
+    api.http = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    try:
+        with pytest.raises(ChannelTransportError) as raised:
+            await api.request('sendmessage', payload={'msg': {}})
+        notice = failure_notice(raised.value, 'delivery')
+        assert reason in notice
+        assert 'private' not in str(raised.value) + notice
+    finally:
+        await api.close()
+
+
 async def test_weixin_http_logs_redact_qr_and_media_query_tokens(caplog):
     import logging
     from services.channels.weixin_api import ILinkClient
@@ -496,10 +530,12 @@ async def test_weixin_short_blocks_wait_until_finish_and_failed_blocks_retry(tmp
     await channel.stop()
 
 
-async def test_weixin_manager_routes_live_blocks_and_final_tail(bots):
+@pytest.mark.parametrize('tail_fails', [False, True])
+async def test_weixin_manager_routes_live_blocks_and_final_tail(bots, tail_fails):
     from types import SimpleNamespace
     from services.channels.responder import ChatSessionResponder
     from services.channels.weixin import WeixinAdapter
+    from services.channels.reply_failure import ChannelTransportError
     manager, project, *_ = bots
     manager.weixin_login.api.request = AsyncMock(side_effect=[
         {'qrcode': 'qr', 'qrcode_img_content': 'scan'},
@@ -521,6 +557,8 @@ async def test_weixin_manager_routes_live_blocks_and_final_tail(bots):
         if endpoint == 'sendmessage':
             texts.append(kwargs['payload']['msg']['item_list'][0]['text_item']['text'])
             sent.set()
+            if tail_fails and len(texts) == 2:
+                raise ChannelTransportError('connection')
         return {}
     channel._api.request = request
     first = '实时回复。' * 40
@@ -528,7 +566,7 @@ async def test_weixin_manager_routes_live_blocks_and_final_tail(bots):
         scope = {'project_id': project.id, 'session_id': 'session', 'channel': 'session_chat', 'messageId': 'answer'}
         await manager._event_bus.publish({**scope, 'type': 'TEXT_MESSAGE_CHUNK', 'delta': first})
         await finish.wait()
-        await manager._event_bus.publish({**scope, 'type': 'TEXT_MESSAGE_END', 'content': first + '结束。'})
+        await manager._event_bus.publish({**scope, 'type': 'TEXT_MESSAGE_END', 'status': 'succeeded', 'content': first + '结束。'})
     producers = []
     class Module:
         def create_session(self, *args, **kwargs):
@@ -546,7 +584,11 @@ async def test_weixin_manager_routes_live_blocks_and_final_tail(bots):
         finish.set()
         await asyncio.wait_for(pending, 2)
         await asyncio.gather(*producers)
-    assert texts == [first, '结束。']
+    assert texts[:2] == [first, '结束。']
+    if tail_fails:
+        assert len(texts) == 3 and '回复已生成' in texts[2] and '送达状态未确认' in texts[2]
+    else:
+        assert len(texts) == 2
     assert not channel._sent_text
 
 

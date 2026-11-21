@@ -34,11 +34,13 @@ test('summary includes executed commands only when at least one tool ran', () =>
   assert.match(source, /commandCount > 0 && t\('trace\.commandCount'/)
 })
 
-test('persisted process details load only when their disclosure is opened', () => {
+test('persisted details expand on demand and running previews remain bounded', () => {
   assert.match(source, /detailsAvailable\?:\s*boolean/)
   assert.match(source, /detailsLoaded\?:\s*boolean/)
-  assert.match(source, /onLoadDetails\?:\s*\(\) => void/)
-  assert.match(source, /if \(nextOpen && detailsAvailable && !detailsLoaded && !detailsLoading\)/)
+  assert.match(source, /onLoadDetails\?:\s*\(preview\?: boolean\) => void/)
+  assert.match(source, /if \(open && detailsAvailable && !detailsLoaded && !detailsLoading && !detailsError\)/)
+  assert.match(source, /running && hasProcessSummary && processItems.length === 0/)
+  assert.match(source, /onLoadDetails\?\.\(true\)/)
   assert.match(source, /onLoadDetails\?\.\(\)/)
   assert.match(messageMetaBarSource, /detailsAvailable=\{eventDetail\?\.available\}/)
 })

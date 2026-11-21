@@ -3,11 +3,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { I18nProvider } from '../src/i18n'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 import SidebarSessionGroups, { SessionGroupCreationArea } from '../src/components/SidebarSessionGroups'
 import { chatGroupApi } from '../src/api/chatGroups'
 import { useChatListStore } from '../src/stores/chatSessionStore'
 import { useChatWorkspaceStore } from '../src/stores/chatWorkspaceStore'
+
+useLocaleStore.setState({ locale: 'zh-CN', language: null })
 import { writeChatSessionDrag } from '../src/utils/chatSessionDrag'
 
 test('groups collapse, accept same-project drops, and require confirmation for bulk removal', async () => {

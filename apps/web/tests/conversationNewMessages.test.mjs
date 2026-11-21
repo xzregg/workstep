@@ -34,7 +34,8 @@ test('every streaming conversation offers the shared new-message action', () => 
 
 test('the conversation scroll module owns its scroll position', () => {
   assert.match(taskDetail, /useTaskConversationScroll\(/)
-  assert.match(taskConversationScroll, /container\.scrollTop = target/)
+  assert.match(taskConversationScroll, /followConversationBottom\(/)
+  assert.match(taskConversationScroll, /disposeConversationFollow\(/)
   assert.doesNotMatch(taskDetailPage, /container\.scrollTop = target/)
   assert.doesNotMatch(taskDetailPage, /addEventListener\('load', onMediaLoad/)
 })

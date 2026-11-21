@@ -95,7 +95,7 @@ async def test_http_failures_are_classified_without_following_redirects(status, 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('exception,message', [(httpx.ReadTimeout, 'Connection timed out)'), (httpx.ConnectError, 'Network connection failed)')])
+@pytest.mark.parametrize('exception,message', [(httpx.ReadTimeout, 'Connection timed out'), (httpx.ConnectError, 'Network connection failed')])
 async def test_network_errors_do_not_leak_request_or_exception(exception, message):
     def receiver(request):
         raise exception('credential echoed https://private.example/token', request=request)

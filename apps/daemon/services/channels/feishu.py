@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 import httpx
 import websockets
 from services.channels.card_status import CardStatus
+from services.channels.reply_failure import ChannelTransportError
 
 from services.channels.base import (
     ChannelAction, ChannelAdapter, ChannelAttachment, ChannelCapabilities,
@@ -102,11 +103,13 @@ class FeishuAdapter(ChannelAdapter):
         response.raise_for_status()
         try:
             data = response.json()
-        except ValueError as exc:
-            raise RuntimeError('Feishu API returned invalid data') from exc
-        if not isinstance(data, dict) or data.get('code', 0) != 0:
-            # Do not expose request bodies, access tokens or credential URLs.
-            raise RuntimeError(f'Feishu API failed (error code {data.get("code", "unknown") if isinstance(data, dict) else "unknown"})')
+        except ValueError:
+            raise ChannelTransportError('invalid_response') from None
+        if not isinstance(data, dict):
+            raise ChannelTransportError('invalid_response')
+        if data.get('code', 0) != 0:
+            code = data['code']
+            raise ChannelTransportError('rejected', code=code if type(code) is int else None)
         return data
 
     async def _access_token(self):
@@ -116,7 +119,7 @@ class FeishuAdapter(ChannelAdapter):
             data = self._checked(await self._client().post(self.DOMAIN + '/open-apis/auth/v3/tenant_access_token/internal',
                 json={'app_id': self._bot['app_id'], 'app_secret': self._bot['secret']}))
             if not data.get('tenant_access_token'):
-                raise RuntimeError('Missing Feishu application credentials')
+                raise ChannelTransportError('authentication')
             self._token = data['tenant_access_token']
             self._expires = time.monotonic() + max(0, float(data.get('expire', 0)) - 60)
             return self._token

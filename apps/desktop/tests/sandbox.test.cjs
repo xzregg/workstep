@@ -43,11 +43,11 @@ test('mounts are limited to distinct project paths and never contain sandbox sto
     await fs.mkdir(path.join(base, 'project'))
     const config = { root: path.join(base, 'sandbox'), project: path.join(base, 'project'), mounts: [] }
     assert.equal((await validateSettings(config)).root, path.join(await fs.realpath(base), 'sandbox'))
-    await assert.rejects(validateSettings({ ...config, project: base }), /重叠/)
-    await assert.rejects(validateSettings({ ...config, mounts: [{ source: config.project, target: '/root' }] }), /项目/)
-    await assert.rejects(validateSettings({ ...config, mounts: [{ source: config.project, target: '/data/projects' }] }), /项目|重复/)
+    await assert.rejects(validateSettings({ ...config, project: base }), /cannot overlap/)
+    await assert.rejects(validateSettings({ ...config, mounts: [{ source: config.project, target: '/root' }] }), /project path/)
+    await assert.rejects(validateSettings({ ...config, mounts: [{ source: config.project, target: '/data/projects' }] }), /project path|duplicated/)
     const link = path.join(base, 'link'); await fs.symlink(base, link)
-    await assert.rejects(validateSettings({ ...config, root: path.join(link, 'project/sandbox') }), /重叠/)
+    await assert.rejects(validateSettings({ ...config, root: path.join(link, 'project/sandbox') }), /cannot overlap/)
   } finally { await fs.rm(base, { recursive: true, force: true }) }
 })
 
@@ -179,10 +179,10 @@ test('adoption refuses unrelated contents and external Home links', async () => 
     const config = await validateSettings({ root, project, mounts: [] })
     const manager = new SandboxManager({ stateDir: path.join(base, 'state') })
     await fs.writeFile(path.join(root, 'important'), 'keep')
-    await assert.rejects(manager.claimRoot(config), /空|home/)
+    await assert.rejects(manager.claimRoot(config), /empty directory|home/)
     assert.equal(await fs.readFile(path.join(root, 'important'), 'utf8'), 'keep')
     await fs.rm(path.join(root, 'important')); await fs.symlink(project, path.join(root, 'home'))
-    await assert.rejects(manager.claimRoot(config), /Home|home|外部/)
+    await assert.rejects(manager.claimRoot(config), /Home|home|external location/)
     await assert.rejects(fs.stat(path.join(root, 'desktop')))
   } finally { await fs.rm(base, { recursive: true, force: true }) }
 })
@@ -230,14 +230,14 @@ test('custom configuration directory imports preserve its name, back up targets,
   assert.equal(await fs.readFile(path.join(root, 'desktop/backups', backups[0], '.qoder/config.json'), 'utf8'), 'old')
   assert.equal(manager.running, true)
   await assert.rejects(manager.importConfig({ source: host }), /Home/)
-  await assert.rejects(manager.importConfig({ source: root }), /沙箱/)
-  await assert.rejects(manager.importConfig({ source: path.join(root, 'home/.qoder') }), /沙箱/)
+  await assert.rejects(manager.importConfig({ source: root }), /cannot overlap with the sandbox directory/)
+  await assert.rejects(manager.importConfig({ source: path.join(root, 'home/.qoder') }), /cannot overlap with the sandbox directory/)
   await fs.mkdir(path.join(host, '.workstep'))
   await assert.rejects(manager.importConfig({ source: path.join(host, '.workstep') }), /WorkStep/)
   await fs.symlink(source, path.join(host, '.linked'))
-  await assert.rejects(manager.importConfig({ source: path.join(host, '.linked') }), /符号链接/)
-  await assert.rejects(manager.importConfig({ source: path.join(source, 'config.json') }), /目录/)
-  await assert.rejects(manager.importConfig({ source: '../relative' }), /绝对路径/)
+  await assert.rejects(manager.importConfig({ source: path.join(host, '.linked') }), /cannot be a symbolic link/)
+  await assert.rejects(manager.importConfig({ source: path.join(source, 'config.json') }), /must be a directory/)
+  await assert.rejects(manager.importConfig({ source: '../relative' }), /absolute path/)
 })
 
 test('runtime downloads are checked before committing archives', async () => {
@@ -252,11 +252,11 @@ test('runtime downloads are checked before committing archives', async () => {
     await download(asset, destination, value => { progress = value }, async () => new Response(data))
     assert.equal(await fs.readFile(destination, 'utf8'), String(data))
     assert.equal(progress.received, data.length)
-    await assert.rejects(download({ ...asset, sha256: '0'.repeat(64) }, destination, null, async () => new Response(data)), /校验/)
+    await assert.rejects(download({ ...asset, sha256: '0'.repeat(64) }, destination, null, async () => new Response(data)), /Resource download verification failed/)
     assert.equal(await fs.readFile(destination, 'utf8'), String(data))
     assert.deepEqual(await fs.readdir(base), ['runtime.tar'])
-    assert.throws(() => validateArchiveEntries('bin/podman\n../escape'), /越界/)
-    assert.throws(() => validateArchiveEntries('C:\\escape'), /越界/)
+    assert.throws(() => validateArchiveEntries('bin/podman\n../escape'), { message: 'Runtime archive contains out-of-bounds path' })
+    assert.throws(() => validateArchiveEntries('C:\\escape'), { message: 'Runtime archive contains out-of-bounds path' })
   } finally { await fs.rm(base, { recursive: true, force: true }) }
 })
 
@@ -269,12 +269,12 @@ test('privileged IPC refuses foreign frames, active work, and unchosen host path
     dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: ['/chosen'] }) }, shell: {}, manager,
     window: () => window, rootUrl: () => 'http://127.0.0.1:12345', hasActiveWork: async () => active, restart() {} })
   const event = { sender: webContents, senderFrame: { url: 'http://127.0.0.1:12345/' } }
-  await assert.rejects(handlers.get('workstep:sandbox:status')({ ...event, senderFrame: { url: 'https://evil.test' } }), /来源/)
-  await assert.rejects(handlers.get('workstep:sandbox:prepare')(event, { root: '/unapproved', project: '/chosen' }), /授权/)
+  await assert.rejects(handlers.get('workstep:sandbox:status')({ ...event, senderFrame: { url: 'https://evil.test' } }), /Invalid sandbox operation source/)
+  await assert.rejects(handlers.get('workstep:sandbox:prepare')(event, { root: '/unapproved', project: '/chosen' }), /Please authorize .* via the directory selection button/)
   await handlers.get('workstep:sandbox:chooseDirectory')(event)
   assert.equal(await handlers.get('workstep:sandbox:prepare')(event, { root: '/chosen', project: '/chosen' }), 'prepared')
   active = true
-  await assert.rejects(handlers.get('workstep:sandbox:prepare')(event, { root: '/chosen', project: '/chosen' }), /任务/)
+  await assert.rejects(handlers.get('workstep:sandbox:prepare')(event, { root: '/chosen', project: '/chosen' }), /A task or session is currently running/)
 })
 
 test('running sandbox imports require a trusted idle client and reject busy or unknown work state', async () => {
@@ -287,13 +287,13 @@ test('running sandbox imports require a trusted idle client and reject busy or u
     hasActiveWork: async () => { if (checkFails) throw new Error('状态读取失败'); return active } })
   const event = { sender: webContents, senderFrame: { url: 'http://127.0.0.1:12345/' } }
   const importConfig = (input = event) => handlers.get('workstep:sandbox:importConfig')(input, 'codex')
-  await assert.rejects(importConfig({ ...event, senderFrame: { url: 'https://evil.test' } }), /来源/)
+  await assert.rejects(importConfig({ ...event, senderFrame: { url: 'https://evil.test' } }), /Invalid sandbox operation source/)
   active = true
-  await assert.rejects(importConfig(), /任务/)
+  await assert.rejects(importConfig(), /A task or session is currently running/)
   active = false; checkFails = true
   await assert.rejects(importConfig(), /状态读取失败/)
   checkFails = false; manager.busy = true
-  await assert.rejects(importConfig(), /任务/)
+  await assert.rejects(importConfig(), /A task or session is currently running/)
   assert.equal(imports, 0)
   manager.busy = false
   assert.equal(await importConfig(), 'codex')
@@ -311,12 +311,12 @@ test('custom configuration IPC requires its own native directory grant and suppo
       assert.ok(options.properties.includes('showHiddenFiles'))
       return { canceled, filePaths: canceled ? [] : ['/home/demo/.qoder'] }
     } } })
-  await assert.rejects(handlers.importConfig({ source: '/home/demo/.qoder' }), /授权/)
+  await assert.rejects(handlers.importConfig({ source: '/home/demo/.qoder' }), /Please authorize .* via the directory selection button/)
   assert.equal(await handlers.chooseConfigDirectory(), null)
-  await assert.rejects(handlers.importConfig({ source: '/home/demo/.qoder' }), /授权/)
+  await assert.rejects(handlers.importConfig({ source: '/home/demo/.qoder' }), /Please authorize .* via the directory selection button/)
   canceled = false
   assert.deepEqual(await handlers.chooseConfigDirectory(), { source: '/home/demo/.qoder', name: '.qoder' })
-  await assert.rejects(handlers.importConfig({ source: '/home/demo/.ssh' }), /授权/)
+  await assert.rejects(handlers.importConfig({ source: '/home/demo/.ssh' }), /Please authorize .* via the directory selection button/)
   assert.deepEqual(await handlers.importConfig({ source: '/home/demo/.qoder' }), { source: '/home/demo/.qoder' })
   assert.equal(imports, 1)
 })
@@ -398,7 +398,7 @@ test('Windows cold bootstrap can finish after 90 seconds but startup remains bou
         await manager.waitForHealth('http://127.0.0.1:45678', 'token', manager.startGeneration)
         assert.equal(requests, 2)
       } else {
-        await assert.rejects(manager.waitForHealth('http://127.0.0.1:45678', 'token', manager.startGeneration), /健康检查超时/)
+        await assert.rejects(manager.waitForHealth('http://127.0.0.1:45678', 'token', manager.startGeneration), /Sandbox backend health check timed out/)
         assert.equal(requests, 1)
         assert.equal(manager.running, false)
       }
@@ -454,7 +454,7 @@ test('release manifest refuses floating image tags', () => {
 
 test('desktop packaging rejects a missing sandbox release image', () => {
   const { validateRelease } = require('../scripts/validate-sandbox-release.cjs')
-  assert.throws(() => validateRelease({ image: null }), /沙箱镜像/)
+  assert.throws(() => validateRelease({ image: null }), /Missing sandbox image release manifest/)
   assert.doesNotThrow(() => validateRelease({ image: null, localDocker: true }))
   assert.throws(() => validateRelease({ image: 'ghcr.io/xzregg/workstep:latest' }), /immutable/)
   assert.doesNotThrow(() => validateRelease({ image: 'ghcr.io/xzregg/workstep@sha256:' + 'a'.repeat(64) }))
@@ -505,7 +505,7 @@ test('release image acquisition reuses validated layers and rejects an incompati
   }
   assert.equal(await manager.acquireReleaseImage(command, 'cached', true), 'sha256:' + 'a'.repeat(64))
   assert.deepEqual(calls, ['image'])
-  await assert.rejects(manager.acquireReleaseImage(command, 'incompatible'), /架构不匹配/)
+  await assert.rejects(manager.acquireReleaseImage(command, 'incompatible'), /Image architecture mismatch/)
   assert.deepEqual(calls, ['image', 'pull', 'image'])
 })
 
@@ -546,12 +546,12 @@ test('staging software and images does not require host work to stop but protect
   assert.equal(await handlers.prepareRuntime({ root: '/chosen' }), 'runtime')
   assert.equal(await handlers.prepareImage({ root: '/chosen' }), 'image')
   assert.equal(checks, 0)
-  await assert.rejects(handlers.prepareImage({ root: '/other' }), /授权/)
+  await assert.rejects(handlers.prepareImage({ root: '/other' }), /Please authorize .* via the directory selection button/)
   manager.busy = true
-  await assert.rejects(handlers.prepareImage({ root: '/chosen' }), /正在进行/)
+  await assert.rejects(handlers.prepareImage({ root: '/chosen' }), /Sandbox operation in progress/)
   manager.busy = false
   manager.running = true
-  await assert.rejects(handlers.prepareImage({ root: '/chosen' }), /关闭沙箱/)
+  await assert.rejects(handlers.prepareImage({ root: '/chosen' }), /Please close the sandbox and restart/)
 })
 
 

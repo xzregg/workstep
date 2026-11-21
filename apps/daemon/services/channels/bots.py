@@ -667,116 +667,119 @@ class BotManager:
             await self._report_reply_failure(adapter, message, exc, stage=stage, project_id=project_id, task_id=task_id)
             return
         control_scope = session_id = reply_message_id = None
-        async with lock:
-            try:
-                if message.attachments or message.quote is not None:
-                    from services.channels.media import incoming_content
-                    project = self._project_manager.get_project_by_id(project_id)
-                    if project is None:
-                        raise ValueError("Project not found")
-                    remainder = reset_command(message.text)
-                    media_message = replace(message, text=remainder) if remainder is not None else message
-                    content = await incoming_content(project, adapter, media_message)
-                    # Quote wrappers must not hide a leading host control.
-                    if remainder is not None:
-                        content = f"/clear\n{content}".strip()
-                    message = replace(message, text=content, quote=None)
-                if kind == "task":
-                    await self._validate_target("task", project_id, task_id)
-                    reply = await self._task_reply(
-                        project_id, task_id, message, bot["platform"],
-                        on_progress=stream.update if stream else None,
-                    )
-                else:
-                    session_key = f"{message.bot_id}:{message.conversation_type}:{message.conversation_id}"
-                    async with self._config_lock:
-                        latest = await self._load()
-                    session_id = latest["sessions"].get(session_key)
-                    source_project = latest["session_sources"].get(session_id, {}).get("project_id")
-                    if source_project and source_project != project_id:
-                        session_id = None
-                    reported_group_name = message.conversation_name
-                    if session_id and message.conversation_type == "group" and not reported_group_name:
-                        def existing_title(_project):
-                            return ChatSession.select(ChatSession.title).where(ChatSession.id == session_id).scalar() or ""
-                        title = await self._project_manager.run_db(project_id, existing_title)
-                        message = replace(message, conversation_name=title)
-                    async def on_accepted(accepted_session_id: str) -> None:
-                        nonlocal session_id
-                        session_id = accepted_session_id
-                        async with self._config_lock:
-                            current = await self._load()
-                            current["sessions"][session_key] = accepted_session_id
-                            previous_source = current["session_sources"].get(accepted_session_id, {})
-                            current["session_sources"][accepted_session_id] = {
-                                "project_id": project_id,
-                                "last_reply_failure": previous_source.get("last_reply_failure", ""),
-                                "conversation_type": message.conversation_type,
-                                "conversation_id": message.conversation_id,
-                                "peer_name": (message.sender_name or message.sender_id)
-                                if message.conversation_type == "single" else (message.conversation_name or message.conversation_id),
-                                "group_name": reported_group_name,
-                                "sender_id": message.sender_id,
-                                "sender_name": message.sender_name or message.sender_id,
-                                "initiator_id": previous_source.get("initiator_id", message.sender_id),
-                                "initiator_name": previous_source.get("initiator_name", message.sender_name or message.sender_id),
-                            }
-                            await self._save(current)
-                        await self._event_bus.publish({
-                            "type": "CUSTOM", "name": "channel.session_changed",
-                            "channel": "channel_bots", "project_id": project_id,
-                        })
-                    async def on_started(accepted_session_id, assistant_message_id, turn_id):
-                        nonlocal control_scope, reply_message_id
-                        reply_message_id = assistant_message_id
-                        control_scope = await self._controls.begin(message, project_id,
-                            session_id=accepted_session_id, assistant_message_id=assistant_message_id, turn_id=turn_id)
-                    async def on_event(event):
-                        if control_scope:
-                            await self._controls.event(control_scope, event)
-                    with actor_context(_sender_actor(message, bot["platform"])):
-                        if isinstance(self._responder, ChatSessionResponder):
-                            session_id, reply = await self._responder(
-                                project_id, session_id, message.text, "channel_chat", "",
-                                on_accepted=on_accepted,
-                                on_progress=stream.update if stream else None,
-                                on_started=on_started, on_event=on_event,
-                                title=(message.conversation_name if message.conversation_type == "group"
-                                       else message.sender_name or message.sender_id),
-                            )
-                        else:
-                            session_id, reply = await self._responder(
-                                project_id, session_id, message.text, "channel_chat", "",
-                            )
-                            await on_accepted(session_id)
-                if stream:
-                    await stream.close()
-                if reply or (start_reply is not None and kind != "task"):
-                    stage = "delivery"
-                    text = reply or "处理完成，暂无回复内容。"
-                    if isinstance(adapter, ChannelAdapter):
-                        from services.channels.media import outgoing_content
+        previous_failure = ""
+        try:
+            async with lock:
+                try:
+                    if message.attachments or message.quote is not None:
+                        from services.channels.media import incoming_content
                         project = self._project_manager.get_project_by_id(project_id)
-                        await adapter.send(message, await outgoing_content(project, adapter, text, file_links=file_links))
+                        if project is None:
+                            raise ValueError("Project not found")
+                        remainder = reset_command(message.text)
+                        media_message = replace(message, text=remainder) if remainder is not None else message
+                        content = await incoming_content(project, adapter, media_message)
+                        # Quote wrappers must not hide a leading host control.
+                        if remainder is not None:
+                            content = f"/clear\n{content}".strip()
+                        message = replace(message, text=content, quote=None)
+                    if kind == "task":
+                        await self._validate_target("task", project_id, task_id)
+                        reply = await self._task_reply(
+                            project_id, task_id, message, bot["platform"],
+                            on_progress=stream.update if stream else None,
+                        )
                     else:
-                        await adapter.send_text(message, await file_links.convert(text))
-                if session_id:
-                    await self._remember_reply_failure(session_id, "")
-            except Exception as exc:
-                if stream:
-                    await stream.close()
-                await self._report_reply_failure(
-                    adapter, message, exc, stage=stage, project_id=project_id,
-                    task_id=task_id if kind == "task" else "", session_id=session_id,
-                    reply_message_id=reply_message_id,
-                )
-            finally:
-                if stream:
-                    await stream.close()
-                if control_scope:
-                    await self._controls.finish(control_scope)
-                if isinstance(adapter, ChannelAdapter):
-                    adapter.release_reply(message)
+                        session_key = f"{message.bot_id}:{message.conversation_type}:{message.conversation_id}"
+                        async with self._config_lock:
+                            latest = await self._load()
+                        session_id = latest["sessions"].get(session_key)
+                        source_project = latest["session_sources"].get(session_id, {}).get("project_id")
+                        if source_project and source_project != project_id:
+                            session_id = None
+                        reported_group_name = message.conversation_name
+                        if session_id and message.conversation_type == "group" and not reported_group_name:
+                            def existing_title(_project):
+                                return ChatSession.select(ChatSession.title).where(ChatSession.id == session_id).scalar() or ""
+                            title = await self._project_manager.run_db(project_id, existing_title)
+                            message = replace(message, conversation_name=title)
+                        async def on_accepted(accepted_session_id: str) -> None:
+                            nonlocal session_id, previous_failure
+                            session_id = accepted_session_id
+                            async with self._config_lock:
+                                current = await self._load()
+                                current["sessions"][session_key] = accepted_session_id
+                                previous_source = current["session_sources"].get(accepted_session_id, {})
+                                previous_failure = previous_source.get("last_reply_failure") or ""
+                                current["session_sources"][accepted_session_id] = {
+                                    "project_id": project_id,
+                                    **({"last_reply_failure": previous_failure} if previous_failure else {}),
+                                    "conversation_type": message.conversation_type,
+                                    "conversation_id": message.conversation_id,
+                                    "peer_name": (message.sender_name or message.sender_id)
+                                    if message.conversation_type == "single" else (message.conversation_name or message.conversation_id),
+                                    "group_name": reported_group_name,
+                                    "sender_id": message.sender_id,
+                                    "sender_name": message.sender_name or message.sender_id,
+                                    "initiator_id": previous_source.get("initiator_id", message.sender_id),
+                                    "initiator_name": previous_source.get("initiator_name", message.sender_name or message.sender_id),
+                                }
+                                await self._save(current)
+                            await self._event_bus.publish({
+                                "type": "CUSTOM", "name": "channel.session_changed",
+                                "channel": "channel_bots", "project_id": project_id,
+                            })
+                        async def on_started(accepted_session_id, assistant_message_id, turn_id):
+                            nonlocal control_scope, reply_message_id
+                            reply_message_id = assistant_message_id
+                            control_scope = await self._controls.begin(message, project_id,
+                                session_id=accepted_session_id, assistant_message_id=assistant_message_id, turn_id=turn_id)
+                        async def on_event(event):
+                            if control_scope:
+                                await self._controls.event(control_scope, event)
+                        with actor_context(_sender_actor(message, bot["platform"])):
+                            if isinstance(self._responder, ChatSessionResponder):
+                                session_id, reply = await self._responder(
+                                    project_id, session_id, message.text, "channel_chat", "",
+                                    on_accepted=on_accepted,
+                                    on_progress=stream.update if stream else None,
+                                    on_started=on_started, on_event=on_event,
+                                    title=(message.conversation_name if message.conversation_type == "group"
+                                           else message.sender_name or message.sender_id),
+                                )
+                            else:
+                                session_id, reply = await self._responder(
+                                    project_id, session_id, message.text, "channel_chat", "",
+                                )
+                                await on_accepted(session_id)
+                    if stream:
+                        await stream.close()
+                    if reply or (start_reply is not None and kind != "task"):
+                        stage = "delivery"
+                        text = reply or "处理完成，暂无回复内容。"
+                        if isinstance(adapter, ChannelAdapter):
+                            from services.channels.media import outgoing_content
+                            project = self._project_manager.get_project_by_id(project_id)
+                            await adapter.send(message, await outgoing_content(project, adapter, text, file_links=file_links))
+                        else:
+                            await adapter.send_text(message, await file_links.convert(text))
+                    if session_id and previous_failure:
+                        await self._remember_reply_failure(session_id, "")
+                except Exception as exc:
+                    if stream:
+                        await stream.close()
+                    await self._report_reply_failure(
+                        adapter, message, exc, stage=stage, project_id=project_id,
+                        task_id=task_id if kind == "task" else "", session_id=session_id,
+                        reply_message_id=reply_message_id,
+                    )
+        finally:
+            if stream:
+                await stream.close()
+            if control_scope:
+                await self._controls.finish(control_scope)
+            if isinstance(adapter, ChannelAdapter):
+                adapter.release_reply(message)
 
     async def _remember_reply_failure(self, session_id, text):
         try:
@@ -784,7 +787,10 @@ class BotManager:
                 current = await self._load()
                 source = current["session_sources"].get(session_id)
                 if source is not None and (source.get("last_reply_failure") or "") != text:
-                    source["last_reply_failure"] = text
+                    if text:
+                        source["last_reply_failure"] = text
+                    else:
+                        source.pop("last_reply_failure", None)
                     await self._save(current)
         except Exception:
             logger.exception("Failed to record channel reply outcome for session %s", session_id)

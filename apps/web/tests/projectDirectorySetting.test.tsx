@@ -44,7 +44,7 @@ test('does not report a saved switch when an old daemon ignores the new field', 
   globalThis.fetch = async () => Response.json({ default_project_directory: '/projects' })
   useUserSettingsStore.setState({ restrictFileAccessRoot: true })
   try {
-    await assert.rejects(useUserSettingsStore.getState().saveDefaultProjectDirectory('/projects', false), /后台|保存/)
+    await assert.rejects(useUserSettingsStore.getState().saveDefaultProjectDirectory('/projects', false), /File access restrictions not saved/)
     assert.equal(useUserSettingsStore.getState().restrictFileAccessRoot, true)
   } finally { globalThis.fetch = originalFetch }
 })

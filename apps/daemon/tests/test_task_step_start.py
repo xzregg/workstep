@@ -31,7 +31,7 @@ async def test_step_start_resets_foreign_provider_session_and_restores_running_r
         task=task, step_key="build", status="retrying", started_at=now,
         session_id="old-session", session_provider="provider-a", engine="codex",
         rework_feedback="fix tests", review_feedback="check output",
-        pending_handoff_json='{"source": "old-session"}',
+        pending_handoff_json='{"source": "old-session", "target_provider": "provider-b", "target_engine": "codex"}',
     )
     step = Step(key="build", label="Build", engine="codex", outputs=[{"name": "report"}])
     artifacts_dir = tmp_path / "artifacts"
@@ -67,7 +67,7 @@ async def test_step_start_resets_foreign_provider_session_and_restores_running_r
         assert current.review_feedback is None
         assert started.rework_feedback == "fix tests"
         assert started.manual_review_feedback == "check output"
-        assert started.pending_handoff == {"source": "old-session"}
+        assert started.pending_handoff == {"source": "old-session", "target_provider": "provider-b", "target_engine": "codex"}
         assert started.artifact_round == 1
         assert started.step_run is not None
         assert StepRun.get_by_id(started.step_run.id).model == "model-b"

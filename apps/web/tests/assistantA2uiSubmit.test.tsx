@@ -38,7 +38,7 @@ for (const customHandler of [false, true]) {
     try {
       await act(async () => root.render(<I18nProvider><AssistantChatPanel
         projectId="" title="Chat" messages={[{ id: 'multi-message', role: 'assistant', content: `\`\`\`a2ui\n${messages.map((message) => JSON.stringify(message)).join('\n')}\n\`\`\``, status: 'succeeded' }]}
-        running={false} stopping={false} input="保留草稿" locale="zh-CN" config={{} as never}
+        running={false} stopping={false} input="保留草稿" locale="zh-CN" config={{ engines: [], engine: '', defaultEngine: '', model: '', fastModel: '', onEngineChange() {}, onModelChange() {}, onFastModelChange() {} }}
         copy={{ emptyIntro: '', thinking: '', me: '用户', meInitials: 'U', agent: '助手', agentInitials: 'AI', placeholder: '', fullPrompt: '', closePrompt: '' }}
         attachmentPrefix="test" onInputChange={(value) => drafts.push(value)} onSend={() => {}} onStop={() => {}}
         onSendContent={async (value) => { sent.push(value); return true }}

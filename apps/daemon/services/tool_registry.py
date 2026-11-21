@@ -144,11 +144,11 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
     ),
     WorkstepTool(
         name="workstep_list_digital_person_delegations",
-        description="List recent delegations from the current digital-person conversation by project_id, or use delegation_id to read that delegation's latest status and execution result.",
+        description="List recent delegations across projects, optionally filtered by project. Pass delegation_id for status and result. Filter by origin_session_id when asked for a specific source conversation.",
         method="GET", path="/api/digital-person/delegations",
         parameters={"project_id":{"type":"string"},"origin_session_id":{"type":"string"},
                     "delegation_id":{"type":"string"}},
-        required=("origin_session_id",), query_params=("project_id","origin_session_id","delegation_id"),
+        query_params=("project_id","origin_session_id","delegation_id"),
         read_only=True,
     ),
     WorkstepTool(

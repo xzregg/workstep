@@ -5,6 +5,7 @@ import logging
 import httpx
 
 from services.channels.base import ChannelAdapter
+from services.channels.reply_failure import ChannelTransportError
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +45,14 @@ class SocialAdapter(ChannelAdapter):
             response = await client.request(method, url, **kwargs)
             response.raise_for_status()
             data = response.json()
-            if not isinstance(data, dict) or data.get('ok') is False:
-                raise ValueError('invalid response')
+            if not isinstance(data, dict):
+                raise ChannelTransportError('invalid_response')
+            if data.get('ok') is False:
+                code = data.get('error_code')
+                raise ChannelTransportError('rejected', status=code if type(code) is int else None)
             return data
-        except (httpx.HTTPError, ValueError):
-            raise RuntimeError(f'{self.DISPLAY_NAME} API request failed. Please check credentials, permissions, and network.') from None
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ChannelTransportError.from_http_error(exc) from None
 
     async def start(self):
         if self._task is None:

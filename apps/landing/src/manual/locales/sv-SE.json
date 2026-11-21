@@ -93,7 +93,8 @@
         "tips": [
           "Kontoprenumerationer, API-uppgifter och fakturering bestäms av tjänsteleverantören. Att installera en SDK tillhandahåller inga referenser.",
           "När du redigerar en leverantör behåller du det gamla värdet om nyckeln lämnas tom. Ange en ny nyckel för att ersätta den, och dölj nycklar före skärmdumpar eller delningskonfiguration.",
-          "I företagshanterat läge kan leverantörer tilldelas av plattformen. Använd en auktoriserad leverantör istället för att lägga till den igen."
+          "I företagshanterat läge kan leverantörer tilldelas av plattformen. Använd en auktoriserad leverantör istället för att lägga till den igen.",
+          "Hämta modeller sammanför protokoll till ett val och sparar efter bekräftelse; misslyckade protokoll behåller cachen. Gatewayhanterade leverantörer redigeras endast i gatewayen. Chattplanering och behörigheter är separata; leverantörsbyte kräver uttrycklig överlämning. Hopfällda spår visar förhandsvisning, utveckling laddar alla detaljer."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Redigera arbetsflöden",
     "summary": "Dela upp arbetet i steg och konfigurera exekveringsmotorer, ingångar, utgångar och granskningsregler.",
     "sections": [
+      {
+        "title": "Felsök ett arbetsflödesutkast",
+        "steps": [
+          "Välj Felsök eller Felsök från detta steg på värdens lokala arbetsyta, ange uppgift och tidigare indataexempel och starta. Utkastet körs på riktigt och kan ändra filer eller kosta pengar. Stoppa eller rensa dess separata historik; detta slutför ingen produktionsuppgift."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Felsök ett arbetsflödesutkast",
+          "caption": "Verkligt kinesiskt gränssnitt från den fasta demomiljön. Visar inställningar, ingångar eller tomma listor; ingen modell anropades och inget meddelande skickades under denna fotografering."
+        }
+      },
       {
         "title": "Lägg till och anslut steg",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Fyll ett meddelandeutkast med rösten",
         "steps": [
-          "Öppna «Inställningar → Talinställningar → Inmatning» och välj lokal modell, molnleverantör eller egen fjärrtjänst. Ladda lokalt ner körmiljö och modell och välj «Använd denna modell». Paraformer stöder mandarin, kantonesiska och engelska; Zipformer mandarin och engelska. Spara och kontrollera med «Testa mikrofon». Modellerna installeras på WorkStep-värden.",
+          "Öppna «Inställningar → Talinställningar → Inmatning» och välj lokal modell, molnleverantör eller egen fjärrtjänst. Ladda lokalt ner körmiljö och modell och välj «Använd denna modell». Paraformer stöder mandarin, kantonesiska och engelska; SenseVoice mandarin och engelska. Spara och kontrollera med «Testa mikrofon». Modellerna installeras på WorkStep-värden.",
           "Använd mikrofonen på datorn. På telefon trycker du på den lilla högtalaren nere till höger vid tomt utkast; med text visas skicka-knappen. Långt tryck behåller systemets textmarkering. Kontrollera transkriptionen efter inspelningen och skicka manuellt. Högst två minuter; avbryt skickar inget."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Konfigurera samtalsstil, huvudsamtal, proaktiv reflektion och kanalmottagning. Se källbelagda minnen och aktivera röst och personigenkänning vid behov.",
     "sections": [
       {
+        "title": "Utforska minneskartan",
+        "steps": [
+          "Öppna Inställningar → Datacenter (tidigare Digital person). Byt till minneskartan på startsidan, panorera, zooma och välj en stjärna för kunskap och ursprungliga källor. Högst 500 stjärnor visas, inte hela minnet."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Utforska minneskartan",
+          "caption": "Verkligt kinesiskt gränssnitt från den fasta demomiljön. Visar inställningar, ingångar eller tomma listor; ingen modell anropades och inget meddelande skickades under denna fotografering."
+        }
+      },
+      {
         "title": "Konfigurera personlighet, uppgifter och huvudsamtal",
         "steps": [
           "Öppna «Inställningar → Digital person → Inledande guide», fyll i namn och redigera personlighet, uppgifter och bestående minne under «Personlighet och uppgifter». Använd förval eller importera från rollcentret, konfigurera en tillgänglig motor och välj «Slutför och aktivera».",
@@ -1630,7 +1653,8 @@
           "Försök aviseringen igen vid leveransfel. Kontrollera slutförd reflektion och levererat meddelande separat. Avstängd automatisk reflektion pausar schemalagda kontroller; vanlig chatt och manuell reflektion fungerar fortfarande."
         ],
         "tips": [
-          "Standardintervallet är 5 minuter. Tillåten proaktiv kontakt betyder inte ett meddelande varje omgång; utan väntande händelser kan den avslutas tyst. Modellanrop kan kosta; sammanfattningen är ingen fullständig tankekedja."
+          "Standardintervallet är 5 minuter. Tillåten proaktiv kontakt betyder inte ett meddelande varje omgång; utan väntande händelser kan den avslutas tyst. Modellanrop kan kosta; sammanfattningen är ingen fullständig tankekedja.",
+          "Delegeringstitlar får ha 60 tecken och ersätter inte hela instruktionen. Fortsättningar kan ärva titeln; befintliga chattar döps inte om. Antalet nya minnen öppnar sammanfattningar, högerpilen hela posten. Noll döljs; tyst avslut är inte leveransfel."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Mikrofon, kamera och uppspelning kräver separata system-/webbplatsbehörigheter. Fjärrtjänster tar emot relevant ljud. Faktiskt ljud på telefon och dator behöver fortfarande verifieras på enheterna.",
-          "Bara nya svar läses upp. Hela samtalspanelen pausar automatisk uppläsning när den öppnas; stängning spelar inte upp äldre innehåll. Anta inte fortsatt lyssning med låst skärm eller stängd app."
+          "Bara nya svar läses upp. Hela samtalspanelen pausar automatisk uppläsning när den öppnas; stängning spelar inte upp äldre innehåll. Anta inte fortsatt lyssning med låst skärm eller stängd app.",
+          "Första talsegmentet skapas genast; senare meningar samlas i högst 350ms, delas enligt modellgränser och slutförs vid avslut. Stopp, tyst läge eller chattbyte rensar väntande ljud. Resurser kan välja nedladdningskälla, pausas, återupptas eller rensas; verifiera före användning. Mikrofonen aktiveras inte automatiskt."
         ],
         "screenshot": {
           "id": "speech-output",

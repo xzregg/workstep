@@ -93,7 +93,8 @@
         "tips": [
           "Předplatné účtu, přihlašovací údaje API a fakturaci určuje poskytovatel služeb. Instalace SDK neposkytuje přihlašovací údaje.",
           "Při úpravě poskytovatele ponecháte-li klíč prázdný, zachová se stará hodnota. Zadejte nový klíč, který jej nahradí, a skryjte klíče před snímky obrazovky nebo před konfigurací sdílení.",
-          "V podnikově spravovaném režimu mohou být poskytovatelé přiřazeni platformou. Místo opětovného přidávání použijte autorizovaného poskytovatele."
+          "V podnikově spravovaném režimu mohou být poskytovatelé přiřazeni platformou. Místo opětovného přidávání použijte autorizovaného poskytovatele.",
+          "Načtení modelů spojí protokoly pro jediný výběr a uloží po potvrzení; neúspěšné protokoly si ponechají mezipaměť. Poskytovatele spravované bránou upravujte pouze v bráně. Plánování a oprávnění chatu jsou oddělené; změna poskytovatele vyžaduje výslovné předání. Sbalené průběhy ukazují náhled, rozbalení načte podrobnosti."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Upravit pracovní postupy",
     "summary": "Rozdělte práci na kroky a nakonfigurujte spouštěcí motory, vstupy, výstupy a pravidla kontroly.",
     "sections": [
+      {
+        "title": "Ladění návrhu pracovního postupu",
+        "steps": [
+          "Na místním plátně hostitele vyberte ladění nebo ladění od tohoto kroku, vyplňte úkol a vstupní vzorky a spusťte. Návrh se skutečně provádí a může měnit soubory či účtovat poplatky. Zastavujte nebo mažte samostatnou historii; nejde o dokončení produkčního úkolu."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Ladění návrhu pracovního postupu",
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
+        }
+      },
       {
         "title": "Přidejte a připojte kroky",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Vyplnění konceptu zprávy hlasem",
         "steps": [
-          "Otevřete „Nastavení → Nastavení hlasu → Vstup“ a vyberte místní model, cloudového poskytovatele nebo vlastní vzdálenou službu. Místně nejprve stáhněte běhové prostředí a model a klikněte na „Použít tento model“. Paraformer podporuje mandarínštinu, kantonštinu a angličtinu, Zipformer mandarínštinu a angličtinu. Uložte a ověřte přes „Otestovat mikrofon“. Model se instaluje na hostitele WorkStep.",
+          "Otevřete „Nastavení → Nastavení hlasu → Vstup“ a vyberte místní model, cloudového poskytovatele nebo vlastní vzdálenou službu. Místně nejprve stáhněte běhové prostředí a model a klikněte na „Použít tento model“. Paraformer podporuje mandarínštinu, kantonštinu a angličtinu, SenseVoice mandarínštinu a angličtinu. Uložte a ověřte přes „Otestovat mikrofon“. Model se instaluje na hostitele WorkStep.",
           "Na počítači použijte vstup mikrofonu. Na telefonu při prázdném konceptu klepněte na malý reproduktor vpravo dole pro nahrávání; s textem se zobrazí Odeslat. Dlouhý stisk stále umožňuje systémový výběr textu. Po nahrávání zkontrolujte přepis a odešlete ručně. Nejvýše dvě minuty na nahrávku; zrušení nic neposílá."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Nastavte styl komunikace, hlavní konverzaci, proaktivní přemýšlení a obsluhu kanálů. Prohlížejte paměť se zdroji a podle potřeby zapněte zvuk i rozpoznávání osob.",
     "sections": [
       {
+        "title": "Prozkoumat mapu vzpomínek",
+        "steps": [
+          "Otevřete Nastavení → Datové centrum (dříve Digitální osoba). Na úvodní stránce přepněte mapu vzpomínek, posouvejte ji, přibližujte a vybírejte hvězdy pro znalosti a původní zdroje. Zobrazuje nejvýše 500 hvězd, nikoli celou paměť."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Prozkoumat mapu vzpomínek",
+          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
+        }
+      },
+      {
         "title": "Nastavení osobnosti, povinností a hlavního chatu",
         "steps": [
           "Otevřete „Nastavení → Digitální postava → Úvodní průvodce“, vyplňte jméno a v „Osobnost a povinnosti“ upravte osobnost, povinnosti a trvalou paměť. Použijte předvolby nebo import z centra rolí, nastavte dostupný engine a zvolte „Dokončit a zapnout“.",
@@ -1630,7 +1653,8 @@
           "Při chybě doručení opakujte oznámení; dokončení přemýšlení a doručení zprávy ověřujte zvlášť. Vypnutí automatiky pozastaví plánované kontroly, běžný chat i ruční přemýšlení zůstávají dostupné."
         ],
         "tips": [
-          "Výchozí interval je 5 minut. Povolení proaktivního kontaktu neznamená zprávu při každém kole; bez čekajících událostí může skončit tiše. Volání modelu může být placené a souhrn není úplný myšlenkový řetězec."
+          "Výchozí interval je 5 minut. Povolení proaktivního kontaktu neznamená zprávu při každém kole; bez čekajících událostí může skončit tiše. Volání modelu může být placené a souhrn není úplný myšlenkový řetězec.",
+          "Název delegace má nejvýše 60 znaků a nenahrazuje úplný pokyn. Pokračování jej může převzít, stávající chaty se nepřejmenovávají. Počet přidaných vzpomínek otevře souhrny, pravá šipka úplný záznam. Nula je skrytá; tiché ukončení není chyba doručení."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Mikrofon, kamera i přehrávání vyžadují samostatná systémová či webová oprávnění. Vzdálené služby přijímají příslušný zvuk. Skutečné ozvučení je nutné ověřit na telefonu i počítači.",
-          "Čtou se jen nové odpovědi. Otevření úplného panelu konverzace pozastaví automatické čtení; zavření nedohraje starý obsah. Nepředpokládejte trvalý poslech při zamčené obrazovce či zavřené aplikaci."
+          "Čtou se jen nové odpovědi. Otevření úplného panelu konverzace pozastaví automatické čtení; zavření nedohraje starý obsah. Nepředpokládejte trvalý poslech při zamčené obrazovce či zavřené aplikaci.",
+          "První hlasový úsek vzniká ihned; další věty se slučují nejvýše 350ms, dělí podle limitů modelu a zbytek se dokončí na konci. Zastavení, ztlumení nebo změna chatu smaže čekající zvuk. U zdrojů lze vybrat původ stahování, pozastavit, pokračovat a vyčistit; před použitím ověřte. Mikrofon se sám nezapíná."
         ],
         "screenshot": {
           "id": "speech-output",

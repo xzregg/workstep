@@ -75,6 +75,30 @@ async def test_nonstreaming_stages_send_one_complete_message_per_group(setup):
     assert adapter.send_text.await_count == count
 
 
+async def test_task_delivery_failure_notifies_only_the_affected_group(setup):
+    forwarder, bus, event, adapter, *_ = setup
+    queue = bus.subscribe(lambda record: record.get('name') == 'channel_bots.reply_error')
+
+    async def send(recipient, text):
+        if recipient.conversation_id == 'one' and text.endswith('任务正文'):
+            raise TimeoutError('private token')
+
+    adapter.send_text.side_effect = send
+    try:
+        await bus.publish(event('a', 'TEXT_MESSAGE_END', status='succeeded', content='任务正文'))
+        outcome = (await asyncio.wait_for(queue.get(), 2))['value']
+        await until(lambda: not forwarder._messages)
+        assert outcome['group_id'] == 'one' and outcome['stage'] == 'delivery'
+        assert outcome['notice_delivered']
+        assert '超时' in outcome['error'] and 'private' not in outcome['error']
+        deliveries = [(c.args[0].conversation_id, c.args[1]) for c in adapter.send_text.await_args_list]
+        assert deliveries.count(('one', '@编写\n任务正文')) == 1
+        assert ('one', outcome['error']) in deliveries
+        assert [text for group, text in deliveries if group == 'two'] == ['@编写\n任务正文']
+    finally:
+        bus.unsubscribe(queue)
+
+
 @pytest.mark.parametrize('failure', ['reported', 'reported_partial', 'exception', 'unavailable', 'unavailable_slow', 'success'])
 async def test_runner_terminal_message_reaches_bound_groups_with_failure_reason(setup, monkeypatch, failure):
     from engines.core.acp_base import AcpEngineBase
@@ -133,9 +157,12 @@ async def test_runner_terminal_message_reaches_bound_groups_with_failure_reason(
             release.set()
         await pending
         await until(lambda: adapter.send_text.await_count == 2 and not forwarder._messages)
-        expected = '@编写\n完成' if failure == 'success' else '@编写\n执行失败：' + error
-        if failure == 'reported_partial':
-            expected = '@编写\n部分结果\n\n执行失败：' + error
+        if failure == 'success':
+            expected = '@编写\n完成'
+        elif failure.startswith('unavailable'):
+            expected = '@编写\n助手执行失败，配置的引擎不可用。请在 WorkStep 检查引擎设置。'
+        else:
+            expected = '@编写\n模型执行失败，供应商连接超时。请检查供应商连接后重试。'
         assert [c.args[1] for c in adapter.send_text.await_args_list] == [expected, expected]
         assert {c.args[0].conversation_id for c in adapter.send_text.await_args_list} == {'one', 'two'}
     finally:
@@ -158,7 +185,7 @@ async def test_unbind_and_failure_are_isolated_while_parallel_messages_finish(se
     assert len(finals) == 2
     assert all(c.args[0].conversation_id == 'one' for c in finals)
     assert any(c.args[1] == '@编写\n已生成' for c in finals)
-    assert any('@编写 · 审核\n审核正文\n\n执行失败：引擎失败' == c.args[1] for c in finals)
+    assert any('@编写 · 审核\n助手执行失败，原因未确认。请在 WorkStep 查看会话详情。' == c.args[1] for c in finals)
 
 
 async def test_origin_stream_receives_one_final_and_other_group_receives_broadcast(setup):

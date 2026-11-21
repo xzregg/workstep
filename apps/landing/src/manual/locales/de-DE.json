@@ -93,7 +93,8 @@
         "tips": [
           "Abonnements, API Keys und Modellpreise legt der Dienstanbieter fest. Die SDK-Installation erzeugt keine gültigen Zugangsdaten.",
           "Ein leeres Schlüsselfeld beim Bearbeiten behält den bisherigen Schlüssel; zum Ersetzen geben Sie einen neuen ein. Verbergen Sie Schlüssel vor Screenshots oder Freigaben.",
-          "In verwalteten Unternehmensinstallationen kann die Plattform Anbieter zuweisen. Verwenden Sie einen autorisierten Anbieter statt ihn doppelt anzulegen."
+          "In verwalteten Unternehmensinstallationen kann die Plattform Anbieter zuweisen. Verwenden Sie einen autorisierten Anbieter statt ihn doppelt anzulegen.",
+          "Modellabrufe bündeln Protokollergebnisse zur einmaligen Auswahl und speichern nach Bestätigung; fehlgeschlagene Protokolle behalten ihren Cache. Gateway-verwaltete Anbieter nur im Gateway bearbeiten. Chatplanung und Berechtigungen bleiben getrennt; Anbieterwechsel erfordern eine bestätigte Übergabe. Zugeklappte Abläufe zeigen Vorschauen, Aufklappen lädt vollständige Details."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Pipelines bearbeiten",
     "summary": "Teilen Sie Arbeit in Schritte auf und konfigurieren Sie Engine, Ein-/Ausgaben und Review-Regeln.",
     "sections": [
+      {
+        "title": "Workflow-Entwurf debuggen",
+        "steps": [
+          "Auf der lokalen Host-Leinwand Debuggen oder Ab diesem Schritt debuggen wählen, Aufgabe und vorgelagerte Beispiele eingeben und starten. Der aktuelle Entwurf wird wirklich ausgeführt und kann Dateien ändern oder Kosten verursachen. Im separaten Verlauf stoppen oder löschen; dies beendet keine reguläre Aufgabe."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Workflow-Entwurf debuggen",
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
+        }
+      },
       {
         "title": "Schritte hinzufügen und verbinden",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Nachrichtenentwurf per Sprache ausfüllen",
         "steps": [
-          "Öffnen Sie „Einstellungen → Spracheinstellungen → Eingabe“ und wählen Sie lokales Modell, Cloud-Anbieter oder eigenen Remotedienst. Laden Sie lokal zuerst Laufzeit und Modell und klicken auf „Dieses Modell verwenden“. Paraformer unterstützt Mandarin, Kantonesisch und Englisch, Zipformer Mandarin und Englisch. Speichern und mit „Mikrofon testen“ prüfen. Das Modell liegt auf dem WorkStep-Host.",
+          "Öffnen Sie „Einstellungen → Spracheinstellungen → Eingabe“ und wählen Sie lokales Modell, Cloud-Anbieter oder eigenen Remotedienst. Laden Sie lokal zuerst Laufzeit und Modell und klicken auf „Dieses Modell verwenden“. Paraformer unterstützt Mandarin, Kantonesisch und Englisch, SenseVoice Mandarin und Englisch. Speichern und mit „Mikrofon testen“ prüfen. Das Modell liegt auf dem WorkStep-Host.",
           "Am Computer verwenden Sie den Mikrofoneinstieg. Am Smartphone startet bei leerem Entwurf der kleine Lautsprecher unten rechts die Aufnahme; bei Text erscheint Senden. Langes Drücken erlaubt weiterhin die Systemtextauswahl. Prüfen Sie danach den Transkriptentwurf und senden manuell. Eine Aufnahme dauert höchstens zwei Minuten; Abbrechen sendet nichts."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Konfigurieren Sie Kommunikationsstil, Hauptchat, proaktives Nachdenken und Kanalbetreuung. Prüfen Sie belegte Erinnerungen und aktivieren bei Bedarf Sprache und Personenerkennung.",
     "sections": [
       {
+        "title": "Erinnerungssternkarte erkunden",
+        "steps": [
+          "Öffnen Sie Einstellungen → Datenzentrale (früher Digitale Person). Auf der Startseite zur Erinnerungssternkarte wechseln, verschieben, zoomen und Sterne für Wissen und Originalquellen auswählen. Höchstens 500 Sterne werden angezeigt, nicht der gesamte Speicher."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Erinnerungssternkarte erkunden",
+          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
+        }
+      },
+      {
         "title": "Persönlichkeit, Aufgaben und Hauptgespräch einrichten",
         "steps": [
           "Öffnen Sie „Einstellungen → Digitale Figur → Ersteinrichtung“, geben den Namen ein und bearbeiten Persönlichkeit, Aufgaben und dauerhafte Erinnerungen unter „Persönlichkeit und Aufgaben“. Nutzen Sie Vorgaben oder das Rollenzentrum, konfigurieren eine verfügbare Engine und wählen „Abschließen und aktivieren“.",
@@ -1630,7 +1653,8 @@
           "Bei Zustellfehlern Nachricht erneut senden. Prüfen Sie abgeschlossene Reflexion und Zustellung getrennt. Abschalten der Automatik pausiert geplante Prüfungen; normaler Chat und manuelles Nachdenken bleiben nutzbar."
         ],
         "tips": [
-          "Standardintervall: 5 Minuten. Proaktiver Kontakt bedeutet nicht jede Runde eine Nachricht; ohne ausstehende Ereignisse kann sie still enden. Modellaufrufe können kosten; das Protokoll ist keine vollständige Gedankenkette."
+          "Standardintervall: 5 Minuten. Proaktiver Kontakt bedeutet nicht jede Runde eine Nachricht; ohne ausstehende Ereignisse kann sie still enden. Modellaufrufe können kosten; das Protokoll ist keine vollständige Gedankenkette.",
+          "Delegationstitel haben höchstens 60 Zeichen und ersetzen keine vollständige Anweisung. Fortsetzungen können Titel übernehmen; bestehende Chats werden nicht umbenannt. Die Zahl neuer Erinnerungen öffnet Zusammenfassungen, der rechte Pfeil den vollständigen Eintrag. Null wird ausgeblendet; Stille ist kein Zustellfehler."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Mikrofon, Kamera und Wiedergabe benötigen getrennte System-/Websitefreigaben. Remotedienste empfangen entsprechende Audiodaten. Tatsächliche Tonausgabe ist auf Smartphone und Desktop zu prüfen.",
-          "Nur neue Antworten werden vorgelesen. Öffnen des vollständigen Gesprächsbereichs pausiert automatische Ausgabe; Schließen spielt nichts nach. Erwarten Sie kein dauerhaftes Zuhören bei gesperrtem Bildschirm oder geschlossener App."
+          "Nur neue Antworten werden vorgelesen. Öffnen des vollständigen Gesprächsbereichs pausiert automatische Ausgabe; Schließen spielt nichts nach. Erwarten Sie kein dauerhaftes Zuhören bei gesperrtem Bildschirm oder geschlossener App.",
+          "Das erste Sprachsegment wird sofort erzeugt; weitere Sätze werden bis zu 350ms gesammelt, nach Modellgrenzen geteilt und zum Abschluss vollständig verarbeitet. Stopp, Stummschaltung oder Chatwechsel löschen wartendes Audio. Ressourcen erlauben Quellenauswahl, Pause, Fortsetzen und Bereinigen; vor Nutzung prüfen. Das Mikrofon bleibt ausdrücklich einzuschalten."
         ],
         "screenshot": {
           "id": "speech-output",

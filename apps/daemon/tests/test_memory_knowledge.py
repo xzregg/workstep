@@ -79,9 +79,9 @@ async def test_atlas_exposes_recorded_conflict_link(knowledge, monkeypatch):
     conflict = payload(second, supersedes=['knowledge:1'], conflict=True)
     assert knowledge.store_extraction(conflict, index.candidates('local'), ['knowledge:1']) == 1
     page = await memory_atlas.page(None, 0, 10)
-    assert {row['id']:row['supersedes'] for row in page['items']} == {
-        'knowledge:1': [], 'knowledge:2': ['knowledge:1'],
-    }
+    assert {row['id'] for row in page['items']} == {'knowledge:1', 'knowledge:2'}
+    assert page['links'] == [{'from': 'knowledge:1', 'to': 'knowledge:2'}]
+    assert all('supersedes' not in row for row in page['items']), 'star lists remain lightweight'
 
 
 async def test_consolidation_runs_db_off_loop_and_retries(knowledge, monkeypatch):

@@ -17,6 +17,7 @@ from dingtalk_stream import AckMessage, ChatbotHandler, ChatbotMessage, Credenti
 from services.channels.base import ChannelAdapter, ChannelCapabilities, ChannelAttachment, IncomingMessage, OutgoingMessage, ChannelCard, ChannelAction
 from services.channels.media import fetch_media
 from services.channels.card_status import CardStatus
+from services.channels.reply_failure import ChannelTransportError
 
 
 logger = logging.getLogger(__name__)
@@ -212,7 +213,8 @@ class DingTalkAdapter(ChannelAdapter):
                 except json.JSONDecodeError:
                     result = {}
                 if isinstance(result, dict) and result.get("errcode") not in (None, 0):
-                    raise RuntimeError("Failed to send DingTalk message")
+                    code = result["errcode"]
+                    raise ChannelTransportError("rejected", code=code if type(code) is int else None)
 
     async def _token(self, session) -> str:
         async with self._token_lock:
@@ -225,7 +227,7 @@ class DingTalkAdapter(ChannelAdapter):
                 result = await response.json()
             token = result.get("accessToken")
             if not token:
-                raise RuntimeError("DingTalk proactive authentication failed")
+                raise ChannelTransportError("authentication")
             self._access_token = token
             self._token_expires_at = time.monotonic() + max(0, float(result.get("expireIn", 0)) - 60)
             return token
@@ -251,7 +253,7 @@ class DingTalkAdapter(ChannelAdapter):
                 response.raise_for_status()
                 result = await response.json()
             if result.get("errcode") not in (None, 0) or result.get("code") or result.get("invalidUserIdList"):
-                raise RuntimeError("Failed to send proactive message via DingTalk")
+                raise ChannelTransportError("rejected")
 
 
     def _card_data(self, card: ChannelCard) -> dict:
@@ -443,6 +445,12 @@ class DingTalkAdapter(ChannelAdapter):
             logger.exception('DingTalk card callback failed')
 
     async def send(self, recipient: IncomingMessage, message: OutgoingMessage) -> None:
+        await self._send(recipient, message)
+
+    async def send_failure_notice(self, recipient: IncomingMessage, text: str) -> None:
+        await self._send(recipient, OutgoingMessage(text=text), failure=True)
+
+    async def _send(self, recipient: IncomingMessage, message: OutgoingMessage, *, failure=False) -> None:
         self.validate_outgoing(message)
         prepared = []
         timeout = aiohttp.ClientTimeout(total=30)
@@ -485,7 +493,7 @@ class DingTalkAdapter(ChannelAdapter):
                 await self._send_text(recipient, message.text)
         for msg_key, msg_param in prepared:
             await self._send_active(recipient, '', msg_key=msg_key, msg_param=msg_param)
-        if notify_completion:
+        if notify_completion and not failure:
             try:
                 await self._send_text(recipient, '回复已完成，请查看上方消息。')
             except Exception:

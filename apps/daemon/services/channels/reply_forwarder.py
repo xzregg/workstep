@@ -6,6 +6,7 @@ from collections import deque
 import logging
 
 from models.chat_session import ChatMessage, ChatSession
+from services.channels.reply_failure import failure_notice
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,8 @@ class ChannelReplyForwarder:
                 await self._bus.publish({
                     'type': 'CUSTOM', 'name': 'channel_bots.reply_error',
                     'session_id': event.get('session_id'), 'project_id': event.get('project_id'),
-                    'value': {'message_id': event.get('messageId'), 'error': 'Channel reply push failed. Please check the bot connection and send permissions.'},
+                    'value': {'message_id': event.get('messageId'), 'stage': 'processing',
+                              'error': '渠道回复转发失败，原因未确认。请在 WorkStep 查看会话。'},
                 })
 
     async def _forward(self, event):
@@ -85,5 +87,21 @@ class ChannelReplyForwarder:
         text = reply
         if not text.strip():
             return
-        await self._sender.send(project_id, text, session_id=session_id)
+        try:
+            await self._sender.send(project_id, text, session_id=session_id)
+        except Exception as exc:
+            logger.exception('Failed to send generated reply %s to channel', message_id)
+            notice = failure_notice(exc, 'delivery')
+            delivered = False
+            try:
+                await asyncio.wait_for(self._sender.send(project_id, notice, session_id=session_id), 30)
+                delivered = True
+            except Exception:
+                logger.exception('Failed to send channel failure notice for reply %s', message_id)
+            await self._bus.publish({
+                'type': 'CUSTOM', 'name': 'channel_bots.reply_error', 'channel': 'channel_bots',
+                'session_id': session_id, 'project_id': project_id,
+                'value': {'message_id': message_id, 'stage': 'delivery',
+                          'error': notice, 'notice_delivered': delivered},
+            })
         self._sent.append(key)

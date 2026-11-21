@@ -895,15 +895,24 @@ async def test_existing_delegation_on_old_daemon_does_not_create_a_new_conversat
     assert await dispatch(args, client) == {'ok': False, 'error': 'Not Found'}
 
 
-async def test_digital_person_cli_reads_delegation_by_id():
+@pytest.mark.parametrize(('selector', 'session_args', 'query'), [
+    ([], [], {}),
+    ([], ['--session', 'current'], {'origin_session_id': 'current'}),
+    (['--id', 'prior'], [], {'delegation_id': 'prior'}),
+    (['--project', 'p'], [], {'project_id': 'p'}),
+    (['--id', 'prior'], ['--session', 's'], {'delegation_id': 'prior', 'origin_session_id': 's'}),
+])
+async def test_digital_person_cli_queries_delegations(selector, session_args, query, monkeypatch):
+    monkeypatch.setenv('WORKSTEP_SESSION_ID', 'current')
+
     def handler(request):
         assert request.method == 'GET'
         assert request.url.path == '/api/digital-person/delegations'
-        assert dict(request.url.params) == {'delegation_id': 'prior', 'origin_session_id': 's'}
+        assert dict(request.url.params) == query
         return httpx.Response(200, json={'items': [{'id': 'prior', 'result': '核对通过'}]})
 
     client = WorkstepClient(transport=httpx.MockTransport(handler))
-    args = build_parser().parse_args(['digital-person', 'delegations', '--id', 'prior', '--session', 's'])
+    args = build_parser().parse_args(['digital-person', 'delegations', *selector, *session_args])
     result = await dispatch(args, client)
     assert result['items'][0]['result'] == '核对通过'
 

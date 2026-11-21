@@ -93,7 +93,8 @@
         "tips": [
           "Assinaturas de conta, credenciais API e cobrança são determinadas pelo provedor de serviços. A instalação de um SDK não fornece credenciais.",
           "Ao editar um provedor, deixar a chave em branco mantém o valor antigo. Insira uma nova chave para substituí-la e oculte as chaves antes das capturas de tela ou do compartilhamento de configurações.",
-          "No modo gerenciado pela empresa, os provedores podem ser atribuídos pela plataforma. Use um fornecedor autorizado em vez de adicioná-lo novamente."
+          "No modo gerenciado pela empresa, os provedores podem ser atribuídos pela plataforma. Use um fornecedor autorizado em vez de adicioná-lo novamente.",
+          "Buscar modelos reúne protocolos para uma seleção única e salva após confirmação; protocolos que falham mantêm o cache. Edite fornecedores gerenciados pelo gateway apenas nele. Planejamento e permissões são separados; trocar de fornecedor exige transferência explícita. Registros recolhidos mostram prévias; expanda para carregar todos os detalhes."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Editar fluxos de trabalho",
     "summary": "Divida o trabalho em etapas e configure mecanismos de execução, entradas, saídas e regras de revisão.",
     "sections": [
+      {
+        "title": "Depurar um rascunho de fluxo",
+        "steps": [
+          "Na tela local do host, escolha Depurar ou Depurar a partir desta etapa, informe a tarefa e amostras anteriores e inicie. O rascunho é executado de verdade e pode alterar arquivos ou gerar custos. Pare ou limpe seu histórico separado; isso não conclui uma tarefa de produção."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Depurar um rascunho de fluxo",
+          "caption": "Interface chinesa real do ambiente fixo de demonstração. Mostra configurações, acessos ou listas vazias; nesta captura não houve chamada de modelo nem envio de mensagem."
+        }
+      },
       {
         "title": "Adicionar e conectar etapas",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Preencher um rascunho por voz",
         "steps": [
-          "Abra «Configurações → Configurações de voz → Entrada» e escolha modelo local, fornecedor em nuvem ou serviço remoto próprio. No modo local, baixe runtime e modelo e clique em «Usar este modelo». Paraformer suporta mandarim, cantonês e inglês; Zipformer mandarim e inglês. Salve e confira com «Testar microfone». Os modelos ficam no host WorkStep.",
+          "Abra «Configurações → Configurações de voz → Entrada» e escolha modelo local, fornecedor em nuvem ou serviço remoto próprio. No modo local, baixe runtime e modelo e clique em «Usar este modelo». Paraformer suporta mandarim, cantonês e inglês; SenseVoice mandarim e inglês. Salve e confira com «Testar microfone». Os modelos ficam no host WorkStep.",
           "No computador, use o microfone; no celular, com rascunho vazio, toque no pequeno alto-falante no canto inferior direito. Com texto, aparece enviar; pressionar prolongadamente mantém a seleção de texto do sistema. Ao terminar, confira a transcrição e envie manualmente. Limite de dois minutos por gravação; cancelar não envia."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Configure estilo de comunicação, conversa principal, reflexão proativa e atendimento em canais. Consulte memórias com fontes e ative voz e reconhecimento de pessoas conforme necessário.",
     "sections": [
       {
+        "title": "Explorar o mapa de memórias",
+        "steps": [
+          "Abra Configurações → Central de dados (antes Pessoa digital). Na página inicial, mude para o mapa de memórias, arraste, amplie e selecione uma estrela para consultar conhecimento e fontes originais. São mostradas no máximo 500 estrelas, não toda a memória."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Explorar o mapa de memórias",
+          "caption": "Interface chinesa real do ambiente fixo de demonstração. Mostra configurações, acessos ou listas vazias; nesta captura não houve chamada de modelo nem envio de mensagem."
+        }
+      },
+      {
         "title": "Configurar personalidade, responsabilidades e conversa principal",
         "steps": [
           "Abra «Configurações → Pessoa digital → Guia inicial», preencha o nome e edite personalidade, responsabilidades e memória permanente em «Personalidade e responsabilidades». Use predefinições ou importe da central de papéis, configure um mecanismo disponível e clique em «Concluir e ativar».",
@@ -1630,7 +1653,8 @@
           "Se a entrega falhar, tente reenviar a notificação. Confira separadamente reflexão concluída e mensagem entregue. Desativar reflexão automática pausa verificações periódicas; chat comum e reflexão manual continuam disponíveis."
         ],
         "tips": [
-          "O intervalo padrão é 5 minutos. Permitir contato proativo não significa mensagem a cada rodada; sem eventos pendentes, pode terminar em silêncio. Chamadas de modelo podem gerar custos; o resumo não é a cadeia de pensamento completa."
+          "O intervalo padrão é 5 minutos. Permitir contato proativo não significa mensagem a cada rodada; sem eventos pendentes, pode terminar em silêncio. Chamadas de modelo podem gerar custos; o resumo não é a cadeia de pensamento completa.",
+          "O título da delegação aceita 60 caracteres e não substitui a instrução completa. Continuações podem herdá-lo sem renomear conversas existentes. Clique na quantidade de memórias adicionadas para resumos ou na seta direita para o registro completo. Zero fica oculto; silêncio não é falha de entrega."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Microfone, câmera e reprodução precisam de permissões separadas do sistema/site. Serviços remotos recebem o áudio pertinente. A emissão real de som no celular e computador ainda precisa ser verificada nos dispositivos.",
-          "Só novas respostas são lidas. Abrir o painel completo da conversa pausa a leitura automática; fechá-lo não reproduz conteúdos antigos. Não suponha escuta contínua com tela bloqueada ou aplicativo fechado."
+          "Só novas respostas são lidas. Abrir o painel completo da conversa pausa a leitura automática; fechá-lo não reproduz conteúdos antigos. Não suponha escuta contínua com tela bloqueada ou aplicativo fechado.",
+          "O primeiro trecho de voz é sintetizado imediatamente; os seguintes agrupam frases por até 350ms, respeitam os limites do modelo e processam o restante ao concluir. Parar, silenciar ou trocar de conversa limpa o áudio pendente. Recursos permitem escolher origem, pausar, retomar e limpar; verifique antes de usar. O microfone não liga automaticamente."
         ],
         "screenshot": {
           "id": "speech-output",

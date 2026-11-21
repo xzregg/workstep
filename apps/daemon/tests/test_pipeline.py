@@ -2083,7 +2083,7 @@ async def test_task_runner_step_session_id_isolated_and_reused(tmp_path):
 async def test_task_runner_inherited_global_provider_change_starts_new_session(
     tmp_path,
 ):
-    """沿用引擎配置时，全局供应商变化不得复用旧供应商会话。"""
+    """全局供应商变化须确认交接；确认后不得复用旧供应商会话。"""
     from models import init_db, Task, TaskStep
     from engines.core.registry import ENGINE_REGISTRY
     from services.config import config_store
@@ -2128,6 +2128,14 @@ async def test_task_runner_inherited_global_provider_change_starts_new_session(
             assert step.session_provider == "provider-a"
 
             provider["id"] = "provider-b"
+            step.status = "pending"
+            step.save()
+            await runner.run_pipeline(task, steps_config, artifacts_dir)
+            assert seen == [None], "a provider change cannot silently resume or start a new session"
+            step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "a"))
+            step.pending_handoff_json = json.dumps({
+                "source": step.session_id, "target_provider": "provider-b", "target_engine": "claude", "mode": "none",
+            })
             step.status = "pending"
             step.save()
             await runner.run_pipeline(task, steps_config, artifacts_dir)

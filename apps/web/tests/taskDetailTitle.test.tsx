@@ -3,9 +3,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { I18nProvider } from '../src/i18n'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 import TaskDetailTitle from '../src/components/TaskDetailTitle'
 import { useTaskStore } from '../src/stores/taskStore'
+
+useLocaleStore.setState({ locale: 'zh-CN', language: null })
 
 test('title double click edits, saves, cancels, validates and retains failed drafts', async () => {
   const { window } = installDomEnvironment()

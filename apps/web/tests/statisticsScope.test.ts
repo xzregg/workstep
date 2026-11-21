@@ -24,7 +24,7 @@ test('statistics waits for authenticated scope before sending its first request'
     assert.equal(url.searchParams.get('project_id'), 'shared')
     assert.equal(url.searchParams.get('range'), '30d')
     assert.equal(url.searchParams.get('timezone'), 'Asia/Shanghai')
-    await assert.rejects(statisticsApi.overview({ projectId: 'private' }), /项目范围不匹配/)
+    await assert.rejects(statisticsApi.overview({ projectId: 'private' }), /Project scope mismatch/)
     assert.equal(requests.length, 1)
   } finally {
     globalThis.fetch = previousFetch

@@ -12,6 +12,15 @@ function proseStrings(value: unknown): string[] {
 
 describe('builtin language selection', () => {
   for (const lang of supportedLanguages.map(item => item.locale)) {
+    it(`documents current delegation, atlas and batched speech controls in ${lang}`, () => {
+      const chapter = getManualChapters(lang).find(chapter => chapter.id === 'digital-person')!
+      const text = chapter.sections.flatMap(section => [...section.steps, ...section.tips ?? []]).join(' ')
+      expect(text).toContain('60')
+      expect(text).toContain('500')
+      expect(text).toContain('350')
+    })
+  }
+  for (const lang of supportedLanguages.map(item => item.locale)) {
     it(`documents prototype editing and its screenshot in ${lang}`, () => {
       const section = getManualChapters(lang).find(chapter => chapter.id === 'results')!.sections.find(section => section.screenshot?.id === 'prototype-editor')!
       expect(section).toBeDefined()

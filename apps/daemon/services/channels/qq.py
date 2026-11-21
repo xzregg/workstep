@@ -11,6 +11,7 @@ import websockets
 
 from services.channels.base import IncomingMessage
 from services.channels.social import SocialAdapter, text_chunks
+from services.channels.reply_failure import ChannelTransportError
 
 
 class QQAdapter(SocialAdapter):
@@ -27,11 +28,11 @@ class QQAdapter(SocialAdapter):
 
     @staticmethod
     def _checked(data):
-        if not isinstance(data, dict) or data.get('code', 0) not in (0, None):
-            code = data.get('code') if isinstance(data, dict) else None
-            # Platform error messages may echo credentials or request bodies.
-            code = code if isinstance(code, int) else 'unknown'
-            raise RuntimeError(f'QQ API failed (error code {code}), please check credentials, permissions, and sending limits')
+        if not isinstance(data, dict):
+            raise ChannelTransportError('invalid_response')
+        if data.get('code', 0) not in (0, None):
+            code = data.get('code')
+            raise ChannelTransportError('rejected', code=code if type(code) is int else None)
         return data
 
     async def _access_token(self):
@@ -46,7 +47,7 @@ class QQAdapter(SocialAdapter):
             except (TypeError, ValueError):
                 lifetime = 0
             if not isinstance(token, str) or not token or lifetime <= 0:
-                raise RuntimeError('Invalid QQ access token, please check App ID and App Secret')
+                raise ChannelTransportError('authentication')
             self._token, self._expires = token, time.monotonic() + max(1, lifetime - 60)
             return token
 
@@ -62,12 +63,10 @@ class QQAdapter(SocialAdapter):
                         if self._token == token:
                             self._expires = 0
                     continue
-                # Read business errors even when the HTTP status is successful.
-                data = self._checked(response.json())
                 response.raise_for_status()
-                return data
-            except (httpx.HTTPError, ValueError):
-                raise RuntimeError('QQ API request failed. Please check credentials, permissions, and network.') from None
+                return self._checked(response.json())
+            except (httpx.HTTPError, ValueError) as exc:
+                raise ChannelTransportError.from_http_error(exc) from None
 
     async def _connect(self):
         gateway = await self._api('GET', '/gateway')

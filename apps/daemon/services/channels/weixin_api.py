@@ -106,13 +106,5 @@ class ILinkClient:
             if endpoint == 'get_qrcode_status':
                 return {'status': 'wait'}
             raise ChannelTransportError('timeout') from None
-        except httpx.TimeoutException:
-            raise ChannelTransportError('timeout') from None
-        except httpx.HTTPStatusError as exc:
-            raise ChannelTransportError('http_status', status=exc.response.status_code) from None
-        except (httpx.NetworkError, httpx.RemoteProtocolError):
-            raise ChannelTransportError('connection') from None
-        except (ValueError, httpx.DecodingError):
-            raise ChannelTransportError('invalid_response') from None
-        except httpx.HTTPError:
-            raise ChannelTransportError('unknown') from None
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ChannelTransportError.from_http_error(exc) from None

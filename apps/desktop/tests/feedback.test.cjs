@@ -36,7 +36,7 @@ test('feedback without errors says so and never substitutes ordinary logs', () =
 
 test('text copy precedes explicit screenshot consent; retry and cancel preserve text', async () => {
   const f = fixture()
-  await assert.rejects(f.service.capture(), /先复制/)
+  await assert.rejects(f.service.capture(), { message: 'Please copy the diagnostic text first' })
   f.failText(true)
   await assert.rejects(f.service.copyText(), /clipboard busy/)
   assert.equal(f.captures(), 0)
@@ -44,13 +44,13 @@ test('text copy precedes explicit screenshot consent; retry and cancel preserve 
   await f.service.copyText()
   assert.match(f.writes[0], /\[redacted\]/)
   assert.equal(f.captures(), 0)
-  await assert.rejects(f.service.copyImage(), /截图/)
+  await assert.rejects(f.service.copyImage(), { message: 'Please generate and check the screenshot first' })
   assert.equal(await f.service.capture(), 'data:image/png;base64,cGlj')
   assert.equal(f.writes.length, 1, 'preview does not modify clipboard')
   await f.service.copyImage()
   f.service.clear()
-  await assert.rejects(f.service.copyImage(), /截图/)
-  await assert.rejects(f.service.capture(), /先复制/)
+  await assert.rejects(f.service.copyImage(), { message: 'Please generate and check the screenshot first' })
+  await assert.rejects(f.service.capture(), { message: 'Please copy the diagnostic text first' })
 })
 
 test('screenshot failure does not invalidate copied text; untrusted pages cannot be captured', async () => {
@@ -67,13 +67,13 @@ test('empty captures and page changes fail without overwriting the copied report
   await f.service.copyText()
   const copied = f.writes[0]
   f.source.webContents.capturePage = async () => ({ isEmpty: () => true })
-  await assert.rejects(f.service.capture(), /截图为空/)
-  await assert.rejects(f.service.copyImage(), /截图/)
+  await assert.rejects(f.service.capture(), { message: 'Page screenshot is empty, please try again' })
+  await assert.rejects(f.service.copyImage(), { message: 'Please generate and check the screenshot first' })
   f.source.webContents.capturePage = async () => {
     f.source.webContents.getURL = () => 'https://example.org/login'
     return { isEmpty: () => false }
   }
-  await assert.rejects(f.service.capture(), /页面已切换/)
+  await assert.rejects(f.service.capture(), { message: 'WorkStep page has switched, please take a screenshot again' })
   assert.deepEqual(f.writes, [copied])
 })
 
@@ -86,8 +86,8 @@ test('overlapping collection shares one operation and clear invalidates pending 
   const pending = f.service.capture()
   f.service.clear()
   resolve({ isEmpty: () => false, toDataURL: () => 'image' })
-  await assert.rejects(pending, /关闭/)
-  await assert.rejects(f.service.copyImage(), /截图/)
+  await assert.rejects(pending, { message: 'Feedback window has been closed' })
+  await assert.rejects(f.service.copyImage(), { message: 'Please generate and check the screenshot first' })
 })
 
 test('feedback IPC rejects foreign windows and subframes', async () => {
@@ -98,14 +98,14 @@ test('feedback IPC rejects foreign windows and subframes', async () => {
   registerFeedbackIpc({ ipcMain: { removeHandler() {}, handle: (key, fn) => handlers.set(key, fn) },
     getWindow: () => f.source, getFeedbackWindow: () => preview, rootUrl: () => 'http://127.0.0.1:8766', service: f.service, open: async () => { opened++ } })
   const start = handlers.get('workstep:feedback:open')
-  await assert.rejects(start({ sender: {}, senderFrame: { url: 'http://127.0.0.1:8766' } }), /来源/)
-  await assert.rejects(start({ sender: f.source.webContents, senderFrame: { url: 'http://127.0.0.1:8766' } }), /来源/)
+  await assert.rejects(start({ sender: {}, senderFrame: { url: 'http://127.0.0.1:8766' } }), { message: 'Invalid source for feedback operation' })
+  await assert.rejects(start({ sender: f.source.webContents, senderFrame: { url: 'http://127.0.0.1:8766' } }), { message: 'Invalid source for feedback operation' })
   f.source.webContents.mainFrame.url = 'http://127.0.0.1:8766/chat'
   await start({ sender: f.source.webContents, senderFrame: f.source.webContents.mainFrame })
   assert.equal(opened, 1)
   const action = handlers.get('workstep:feedback:action')
-  await assert.rejects(action({ sender: f.source.webContents }, 'capture'), /来源/)
-  await assert.rejects(action({ sender: preview.webContents, senderFrame: preview.webContents.mainFrame }, 'arbitrary'), /操作/)
+  await assert.rejects(action({ sender: f.source.webContents }, 'capture'), { message: 'Invalid source for feedback operation' })
+  await assert.rejects(action({ sender: preview.webContents, senderFrame: preview.webContents.mainFrame }, 'arbitrary'), { message: 'Feedback operation is invalid' })
 })
 
 test('renderer errors are bounded, deduplicated and restricted to the workspace', () => {

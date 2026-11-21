@@ -13,6 +13,6 @@ test('main entry uses the server binding, deduplicates concurrent opens, and ret
   digitalPersonApi.mainSession=async()=>{throw new Error('offline')}
   await assert.rejects(resolveDigitalPersonChat('home'),/offline/)
   digitalPersonApi.mainSession=async()=>({id:'main',project_id:'other'} as any)
-  await assert.rejects(resolveDigitalPersonChat('home'),/工作区/)
+  await assert.rejects(resolveDigitalPersonChat('home'),/Digital human workspace has changed/)
  } finally {digitalPersonApi.mainSession=original}
 })

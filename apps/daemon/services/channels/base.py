@@ -116,6 +116,9 @@ class ChannelAdapter(ABC):
     async def send_text(self, recipient: IncomingMessage, text: str) -> None:
         await self.send(recipient, OutgoingMessage(text=text))
 
+    async def send_failure_notice(self, recipient: IncomingMessage, text: str) -> None:
+        await self.send_text(recipient, text)
+
     async def start_reply(self, message: IncomingMessage) -> None:
         """Optional waiting indicator; callers inspect CAPABILITIES.waiting."""
 

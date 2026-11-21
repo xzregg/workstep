@@ -58,8 +58,12 @@ async def test_automatic_stage_streams_and_finishes_same_stop_card(setup, messag
         updates = [call.args[1]['cardData']['cardParamMap'] for call in adapter._card_api.await_args_list
                    if call.args[0] == 'PUT' and call.args[1]['outTrackId'] == row['outTrackId']]
         assert updates[-1]['hasAction'] == 'false' and updates[-1]['flowStatus'] == '3'
-        assert '最终正文' in updates[-1]['copy_content']
-        assert ('测试错误' in updates[-1]['copy_content']) == (status == 'failed')
+        body = updates[-1]['copy_content']
+        if status == 'failed':
+            assert '助手执行失败，原因未确认' in body
+            assert '测试错误' not in body
+        else:
+            assert '最终正文' in body
         assert '失效' in await broker.handle(ChannelAction('bot', row['outTrackId'], 'stop', 'member',
                                                           conversation_id=row['openSpaceId'].split('.')[-1]))
     assert not broker._active and not adapter._reply_cards and not adapter._running_reply_cards

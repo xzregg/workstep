@@ -114,6 +114,6 @@ test('avatar SDK exposes scoped events and cleans its renderer and subscriptions
   assert.equal(session.snapshot().avatar,undefined)
   source.update({phase:'speaking',speaking:true,level:.5},100)
   assert.equal(count,1,'disposed skin no longer receives avatar events')
-  assert.throws(()=>api!.avatar.get(),/关闭/)
+  assert.throws(()=>api!.avatar.get(),/The skin component is disabled/)
  }finally{session.dispose();source.dispose()}
 })

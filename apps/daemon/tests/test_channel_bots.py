@@ -550,7 +550,7 @@ async def test_wecom_waiting_reply_precedes_work_and_finishes_on_error_or_empty_
 
 @pytest.mark.parametrize("notice_fails", [False, True])
 async def test_generated_reply_delivery_failure_is_reported_without_retrying_the_turn(bots, caplog, notice_fails):
-    manager, project, *_rest, adapters = bots
+    manager, project, _, _, chats, adapters = bots
     bot = await manager.create_bot({
         "platform": "wecom", "name": "机器人", "app_id": "wx-bot", "secret": "secret",
         "enabled": True, "default_target_type": "project", "default_project_id": project.id,
@@ -559,7 +559,7 @@ async def test_generated_reply_delivery_failure_is_reported_without_retrying_the
 
     async def send(_message, text):
         attempted.append(text)
-        if len(attempted) == 1 or notice_fails:
+        if len(attempted) == 1 or (len(attempted) == 2 and notice_fails):
             raise TimeoutError("private URL and token")
 
     adapters[bot["id"]].send_text = send
@@ -577,6 +577,10 @@ async def test_generated_reply_delivery_failure_is_reported_without_retrying_the
         source = (await manager._load())["session_sources"]["session-1"]
         assert source["last_reply_failure"] == attempted[1]
         assert ("Failed to send channel failure notice" in caplog.text) is notice_fails
+        assert len(chats) == 1
+        await manager.handle_message(IncomingMessage(bot["id"], "follow-up", "single", "user", "user", "why?"))
+        assert attempted[2] == "项目回复：why?"
+        assert "last_reply_failure" not in (await manager._load())["session_sources"]["session-1"]
     finally:
         bus.unsubscribe(queue)
 

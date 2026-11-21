@@ -474,6 +474,9 @@ async def test_runtime_api_host_scope_rejects_project_identity(runtime,monkeypat
             assert (await client.get('/api/digital-person/activity/records')).status_code==403
             assert (await client.get('/api/digital-person/delegations', params={'project_id': 'other', 'origin_session_id': 'source'})).status_code==403
             assert (await client.get('/api/digital-person/delegations', params={'delegation_id': 'prior', 'origin_session_id': 'source'})).status_code==403
+            assert (await client.get('/api/digital-person/delegations', params={'project_id': 'other'})).status_code==403
+            assert (await client.get('/api/digital-person/delegations', params={'delegation_id': 'prior'})).status_code==403
+            assert (await client.get('/api/digital-person/delegations')).status_code==403
             assert (await client.post('/api/digital-person/delegate', json={'project_id': 'other', 'instruction': 'follow up', 'request_id': 'denied', 'continuation_of': 'prior'})).status_code==403
             assert (await client.get('/api/digital-person/runs/private')).status_code==403
             assert (await client.get('/api/digital-person/runs/private/knowledge')).status_code==403
@@ -663,6 +666,15 @@ async def test_delegate_continuation_reuses_session_and_queues_in_order(runtime,
         await current.delegate(target.id, '不能继续', origin, 'archived', first['id'])
     assert await current.projects.run_db(target.id, lambda _: ChatSession.select().count()) == 1
 
+    other_target = await asyncio.to_thread(current.projects.init_project, tmp_path / 'other-delegation-project')
+    other = await current.delegate(other_target.id, '另一会话的任务', other_origin['id'], 'other')
+    await current.chats.await_turn(other['turn_id'], timeout=2)
+    assert [item['id'] for item in (await current.list_delegations())['items']] == [
+        item['id'] for item in (other, fourth, third, second, first)
+    ]
+    assert (await current.list_delegations(origin_session_id=other_origin['id']))['items'][0]['id'] == other['id']
+    assert (await current.list_delegations(target.id, other_origin['id']))['items'] == []
+
 
 async def test_delegate_existing_conversation_registers_and_follows_it(runtime, monkeypatch, tmp_path):
     import threading
@@ -832,6 +844,17 @@ async def test_delegate_continuation_api_does_not_block_health(runtime, monkeypa
         listed = await client.get('/api/digital-person/delegations', params=scope)
         assert listed.json()['items'][0]['id'] == first['id']
         assert listed.json()['items'][0]['title'] == first['title']
+        path = '/api/digital-person/delegations'
+        assert (await client.get(path, params={'project_id': target.id, 'origin_session_id': ''})).status_code == 422
+        for params in ({}, {'project_id': target.id}, {'origin_session_id': origin}):
+            listed = await client.get(path, params=params)
+            assert listed.status_code == 200
+            assert [(item['id'], item['project_id']) for item in listed.json()['items']] == [(first['id'], target.id)]
+        details = await client.get(path, params={'delegation_id': first['id']})
+        assert details.status_code == 200
+        assert details.json()['items'][0]['result'] == '完成'
+        filtered = await client.get(path, params={'delegation_id': first['id'], 'origin_session_id': first['session_id']})
+        assert filtered.json() == {'items': []}
         activity, = (await current.activity_records())['delegations']
         assert activity['title'] == first['title'] and activity['instruction'] == instruction[:120]
         monkeypatch.setattr(current.chats, 'submit_message', slow_submit)

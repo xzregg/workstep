@@ -7,7 +7,7 @@ from services.channels.base import IncomingMessage
 from tests.test_channel_bots import bots
 
 
-@pytest.mark.parametrize('status,expected', [('stopped','已停止。'),('cancelled','已停止。'),('succeeded','最终结果'),('failed','处理失败，请稍后重试。')])
+@pytest.mark.parametrize('status,expected', [('stopped','已停止。'),('cancelled','已停止。'),('succeeded','最终结果'),('failed','助手执行失败，原因未确认。请在 WorkStep 查看会话详情。')])
 async def test_task_reply_waits_for_terminal_message_after_engine_error(bots,status,expected):
     manager,project,_,_,_,adapters=bots
     bot=await manager.create_bot({'platform':'wecom','name':'BOT','app_id':'bot','secret':'secret','enabled':True,

@@ -2,6 +2,9 @@ import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { speechApi } from '../src/api/speech'
+import { useLocaleStore } from '../src/i18n'
+
+useLocaleStore.setState({ locale: 'zh-CN', language: null })
 
 test('release while creation is pending cleans up only that late session', async () => {
   const { window } = installDomEnvironment()

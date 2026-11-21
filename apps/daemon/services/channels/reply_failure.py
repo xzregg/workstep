@@ -1,11 +1,33 @@
 """Public channel diagnostics use fixed text, never exception payloads."""
 
+import asyncio
+import logging
 import re
 
 import aiohttp
 import httpx
 
 from agent_assistants.session_state import PROVIDER_HANDOFF_REQUIRED
+
+logger = logging.getLogger(__name__)
+
+
+async def send_failure_notice(adapter, recipient, text: str) -> bool:
+    observe = getattr(adapter, "observe_reply", None)
+    if observe:
+        try:
+            observe(recipient, {"type": "TEXT_MESSAGE_END", "status": "failed"})
+        except Exception:
+            logger.warning("Failed to mark channel reply as failed", exc_info=True)
+    try:
+        from services.channels.base import ChannelAdapter
+        send = adapter.send_failure_notice if isinstance(adapter, ChannelAdapter) else adapter.send_text
+        await asyncio.wait_for(send(recipient, text), timeout=30)
+    except Exception:
+        logger.exception("Failed to send channel failure notice for %s message %s",
+                         recipient.bot_id, recipient.message_id)
+        return False
+    return True
 
 
 class AssistantReplyError(RuntimeError):
@@ -21,7 +43,19 @@ class ChannelTransportError(RuntimeError):
         self.reason = reason
         self.status = status
         self.code = code
-        super().__init__(reason, status, code)
+        super().__init__(f"Channel API request failed ({reason}, HTTP status={status}, platform code={code})")
+
+    @classmethod
+    def from_http_error(cls, exc):
+        if isinstance(exc, httpx.TimeoutException):
+            return cls("timeout")
+        if isinstance(exc, httpx.HTTPStatusError):
+            return cls("http_status", status=exc.response.status_code)
+        if isinstance(exc, (httpx.NetworkError, httpx.RemoteProtocolError)):
+            return cls("connection")
+        if isinstance(exc, (httpx.DecodingError, ValueError)):
+            return cls("invalid_response")
+        return cls("unknown")
 
 
 def failure_notice(exc: Exception, stage: str, *, task: bool = False) -> str:
@@ -39,9 +73,11 @@ def failure_notice(exc: Exception, stage: str, *, task: bool = False) -> str:
     if stage == "execution":
         if detail == "Quota exceeded. Check your plan and billing details.":
             return "模型执行失败，供应商额度不足。请检查模型供应商的额度和账单，再重试。"
+        if detail == "供应商连接超时":
+            return "模型执行失败，供应商连接超时。请检查供应商连接后重试。"
         if re.fullmatch(r"引擎空闲超时（[0-9]+s 无输出），.*", detail, re.DOTALL):
             return "模型执行超时，长时间没有输出。请在 WorkStep 查看会话状态后重试。"
-        if re.fullmatch(r"Engine unavailable: [\w.-]+", detail):
+        if re.fullmatch(r"Engine unavailable: [\w.-]+|Engine '[\w.-]+' not available", detail):
             return "助手执行失败，配置的引擎不可用。请在 WorkStep 检查引擎设置。"
         return "助手执行失败，原因未确认。请在 WorkStep 查看会话详情。"
     if detail == "Project not found":
@@ -66,14 +102,21 @@ def _delivery_reason(exc: Exception) -> str:
         return "渠道请求超时，送达状态未确认。"
     if reason == "expired":
         return "微信 ClawBot 登录已失效，请重新扫码。"
-    if status in (401, 403):
+    if status in (401, 403) or reason == "authentication":
         return "渠道拒绝了认证或发送权限，请检查机器人连接和权限。"
     if status == 429:
         return "渠道触发发送限流，请稍后再试。"
     if status is not None and 500 <= status <= 599:
         return "渠道服务暂时异常，请稍后再试。"
-    if reason == "connection" or isinstance(exc, (httpx.NetworkError, aiohttp.ClientConnectionError)):
+    if reason == "connection" or isinstance(exc, (httpx.NetworkError, httpx.RemoteProtocolError, aiohttp.ClientConnectionError)):
         return "渠道连接中断或不可达，送达状态未确认。请检查网络和机器人连接。"
+    if str(exc) in {"WeCom bot not connected", "The bot is disabled or disconnected",
+                    "WebSocket not connected, unable to send data"}:
+        return "机器人未连接，请在 WorkStep 检查机器人状态。"
+    if re.fullmatch(r"Reply ack error: errcode=-?[0-9]+, errmsg=.*", str(exc), re.DOTALL):
+        return "渠道拒绝了发送请求，请检查机器人连接和发送权限。"
+    if str(exc) == "QQ passive reply count exhausted, please check results in WorkStep":
+        return "已用完这条 QQ 消息的可回复次数。"
     if reason == "invalid_response":
         return "渠道返回了无法确认的响应，送达状态未确认。"
     if reason == "rejected" or status is not None and 400 <= status <= 499:

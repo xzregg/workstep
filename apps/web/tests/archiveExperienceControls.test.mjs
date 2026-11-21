@@ -10,7 +10,7 @@ test('archive experience dialog offers a direct archive action without Memory', 
   assert.match(confirmDialogSource, /secondaryText\?: string/)
   assert.match(archiveSource, /secondaryText=\{phase/)
   assert.match(archiveSource, /: t\('taskList\.archiveExperienceDirectArchive'\)\}/)
-  assert.match(archiveSource, /await archiveDirectly\(task\.id, projectId\)/)
+  assert.match(archiveSource, /await archiveDirectly\(task\.id, projectId, canCleanWorkspace && deleteWorkspace\)/)
   assert.ok(
     confirmDialogSource.indexOf('{confirmText ??')
       < confirmDialogSource.indexOf('{secondaryText}'),
@@ -33,7 +33,7 @@ test('reopening archive restores the previous draft directly into review', () =>
 
 test('an empty verified result archives without recording an experience', () => {
   assert.match(archiveSource, /phase === 'empty'/)
-  assert.match(archiveSource, /await confirmArchive\(task\.id, projectId, ''\)/)
+  assert.match(archiveSource, /await confirmArchive\(task\.id, projectId, '', canCleanWorkspace && deleteWorkspace\)/)
   assert.match(archiveSource, /fallbackContent=\{t\('taskList\.archiveExperienceEmptyResult'\)\}/)
   assert.match(progressSource, /fallbackContent\?: string/)
 })

@@ -83,19 +83,21 @@ delegation `id` for follow-ups. If this route is unavailable, report the failure
 When asked to archive the execution conversation, use its `project_id` and
 `session_id` with [session archive](messages.md#archive-a-conversation).
 
-For a follow-up on the same task, look up recent delegations in the target project
-from the current digital-person conversation:
+List recent delegations across projects, or filter by a known project:
 
 ```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-person delegations --project <project_id> --session <origin_session_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-person delegations --json
+workstep digital-person delegations --project <project_id> --json
 ```
 
-To inspect one delegation from the current conversation and read its execution
-result, use its listed ID and the origin session:
+Read one delegation's status and result by its ID:
 
 ```bash
-workstep digital-person delegations --id <delegation_id> --session <origin_session_id> --json
+workstep digital-person delegations --id <delegation_id> --json
 ```
+
+For requests scoped to the current conversation, add `--session "$WORKSTEP_SESSION_ID"`.
+For a specific source conversation, pass its ID as `--session`.
 
 Pass the matching item's `id` (not its `session_id`) as `--continue-from` on
 `digital-person delegate`. Native equivalents are
