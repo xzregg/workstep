@@ -1,7 +1,9 @@
 /** Production components with isolated synthetic conversation, input and speech APIs. */
 import {useRef,useState} from 'react'
 import {createRoot} from 'react-dom/client'
-import {MemoryRouter} from 'react-router-dom'
+import {MemoryRouter,useLocation} from 'react-router-dom'
+import ChatWorkspace from '../../../src/pages/ChatWorkspace'
+import {useChatSessionStore} from '../../../src/stores/chatSessionStore'
 import {I18nProvider,useLocaleStore} from '../../../src/i18n'
 import DigitalPersonHome from '../../../src/components/digital-person/DigitalPersonHome'
 import {speechOutputApi} from '../../../src/api/speechOutput'
@@ -86,10 +88,24 @@ function App(){
   inputValue={draft} onDraft={setDraft} onStop={async()=>{log.stops++;cancelTurn();setRunning(false);return true}}><div className="home-fixture-transcript">{messages.map(message=><p key={message.id} data-message-id={message.id} tabIndex={-1}>{message.content}</p>)}</div></DigitalPersonHome>
 }
 const customAvatar=new URLSearchParams(location.search).has('skinAvatar')
+const workbench=new URLSearchParams(location.search).has('workbench')
+if(workbench){
+ const store=useProjectStore.getState()
+ const home={...store.projects[0],is_default_workspace:true}
+ useProjectStore.setState({projects:[home,...store.projects.slice(1)],activeProject:home})
+ ;(window as any).finishWorkbenchTurn=(id:string,action:object)=>useChatSessionStore.getState().handleWsEvent({
+  type:'TEXT_MESSAGE_END',channel:'session_chat',session_id:'main',messageId:id,status:'succeeded',
+  content:['```workstep-ui',JSON.stringify(action),'```'].join('\n'),
+ })
+}
 if(customAvatar){
  const defaults=defaultSkin(),skin={...defaults,manifest:{...defaults.manifest,id:'avatar-fixture',schema_version:2},revision:'avatar-fixture',script:'theme.js',file_base:'/fixture'}
  applySkin(skin);setSkinScriptsEnabled(skin,true)
 }
 const loadAvatar=async()=>avatarSkin
-createRoot(document.getElementById('root')!).render(<MemoryRouter><I18nProvider>{customAvatar?<SkinWorkspaceFrame onOpenSettings={()=>{}} loadModule={loadAvatar}><div className="app-shell"><App/></div></SkinWorkspaceFrame>:<div className="app-shell app-shell--companion"><App/></div>}</I18nProvider></MemoryRouter>)
+function WorkbenchFixture(){
+ const {pathname,search}=useLocation()
+ return <div className="app-shell" data-workbench-route={pathname+search}><ChatWorkspace/></div>
+}
+createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={workbench?['/chat?project='+encodeURIComponent('操作手册演示')+'&session=main']:undefined}><I18nProvider>{workbench?<WorkbenchFixture/>:customAvatar?<SkinWorkspaceFrame onOpenSettings={()=>{}} loadModule={loadAvatar}><div className="app-shell"><App/></div></SkinWorkspaceFrame>:<div className="app-shell app-shell--companion"><App/></div>}</I18nProvider></MemoryRouter>)
 const css=document.createElement('style');css.textContent='html,body,#root{height:100%;margin:0;overflow:hidden}.home-fixture-transcript{padding:16px;overflow:auto;flex:1}';document.head.appendChild(css)

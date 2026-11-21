@@ -1,6 +1,7 @@
 import {createParticleCloud} from './particleCloud'
 import {colors,poses,type OrbPhase} from './particlePalette'
 import {vertex,fragment} from './particleShaders'
+import {advanceOrbSpeechLevel} from './visualState'
 
 const tempo:Partial<Record<OrbPhase,number>>={
  idle:1.16,wake:.48,listening:.66,ready:.7,transcribe:1.9,sending:1.65,
@@ -59,7 +60,7 @@ export function createOrb(canvas:HTMLCanvasElement,lightweight=false){
     gl.enable(gl.BLEND)
     gl.blendFuncSeparate(gl.ONE,gl.ONE_MINUS_SRC_COLOR,gl.ONE,gl.ONE_MINUS_SRC_ALPHA)
     const tint=new Float32Array(4),mood=new Float32Array(3),flights=new Float32Array(16)
-    let clock=0,orbit=0,thought=0,glow=0,slot=0,nextRelease=0
+    let clock=0,orbit=0,thought=0,glow=0,speechLevel=0,slot=0,nextRelease=0
     let breath=0,phaseAge=0,lastPhase:OrbPhase='idle'
     let shellScale=1,shellWave:number=idleShell[1],workStarted=-Infinity,completedAt=-Infinity
     let lastWorkActivity:string|undefined,lastReplyId:string|undefined,lastReplyStatus:string|undefined
@@ -83,13 +84,16 @@ export function createOrb(canvas:HTMLCanvasElement,lightweight=false){
       const toolProgress=state==='work'?(clock-workStarted)/.83:Infinity
       const completionProgress=(clock-completedAt)/1.12
       const listening=state==='listening'&&!still?Math.min(1,Math.max(0,mic)):0
-      const energy=state==='playing'&&!still?Math.min(1,Math.max(0,level)):0
+      const speechActive=state==='playing'&&!still
+      const sample=speechActive&&Number.isFinite(level)?Math.min(1,Math.max(0,level)):0
+      const rise=sample-speechLevel
+      const energy=speechLevel=speechActive?advanceOrbSpeechLevel(speechLevel,sample,dt*1000):0
       if(still)flights.fill(0)
-      if(energy>.055&&clock>=nextRelease){
+      if(sample>.08&&rise>.045&&clock>=nextRelease){
         flights[2*slot]=clock
-        flights[2*slot+1]=Math.min(1,energy*2)
+        flights[2*slot+1]=Math.sqrt(sample)
         slot=(slot+1)%8
-        nextRelease=clock+.38-.04*energy
+        nextRelease=clock+.13
       }
       for(let i=0;i<4;i++)tint[i]+=(colors[state][i]-tint[i])*blend(.32)
       for(let i=0;i<3;i++)mood[i]+=((poses[state]?.[i]??0)-mood[i])*blend(.21)
@@ -100,8 +104,8 @@ export function createOrb(canvas:HTMLCanvasElement,lightweight=false){
       const targetBreath=state==='wake'&&!still?wakeHeartbeat(phaseAge):0
       breath+=(targetBreath-breath)*blend(state==='wake'?.055:.18)
       gl.uniform1f(loc.breath,breath)
-      const targetGlow=Math.min(1,energy*2.4)
-      glow+=(targetGlow-glow)*blend(targetGlow>glow?.17:.5)
+      const targetGlow=Math.sqrt(energy)
+      glow+=(targetGlow-glow)*blend(targetGlow>glow?.045:.13)
       const side=Math.min(width,height)
       const fitScale=Math.min(1,.9+Math.max(0,rect.width/rect.height-1)*.18)
       gl.clear(gl.COLOR_BUFFER_BIT)

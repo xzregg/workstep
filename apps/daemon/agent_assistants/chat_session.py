@@ -350,21 +350,24 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             )
             return [self._session_summary(row, project_id) for row in rows]
 
-    def set_archived(self, project_id: str, session_id: str, archived: bool) -> dict:
-        if archived and any(
-            state.get("session_id") == session_id
-            and state.get("status") in {"queued", "running", "stopping"}
-            for state in self._turn_states.values()
-        ):
-            raise ValueError("Chat session is running")
+    def set_archived(
+        self, project_id: str, session_id: str, archived: bool, *, ordinary_only: bool = False,
+    ) -> dict:
         with self._project_ctx(project_id):
             row = ChatSession.get_or_none(ChatSession.id == session_id)
-            if row is None:
+            if row is None or (ordinary_only and row.project_id != project_id):
                 raise ValueError("Chat session not found")
-            if archived and ChatMessage.select().where(
-                ChatMessage.session == row, ChatMessage.status == "running"
-            ).exists():
-                raise ValueError("Chat session is running")
+            if archived:
+                active = ("queued", "running", "stopping")
+                if any(
+                    state.get("session_id") == session_id and state.get("status") in active
+                    for state in self._turn_states.copy().values()
+                ) or ChatMessage.select().where(
+                    ChatMessage.session == row, ChatMessage.status.in_(active),
+                ).exists():
+                    raise ValueError("Chat session is running")
+            if ordinary_only and channel_session_source(row.id)["source"] != "chat":
+                raise ValueError("The target must be an ordinary project conversation")
             from services.session_schedule_runtime import clear_session_schedules
             with db_proxy.atomic():
                 if archived and not row.archived:
@@ -383,6 +386,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                     and not row.parent_session_id
                 ):
                     self.delete_session(project_id, session_id)
+                    summary.update(archived=False, archived_at=None, deleted=True)
             return summary
 
     def create_session(
@@ -1078,7 +1082,8 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         from services.customization_workspace import is_default_workspace
         if (latest_input.get('role') == 'user'
                 and project is not None
-                and (is_digital or await asyncio.to_thread(is_default_workspace, project))
+                and (self._config.name == 'channel_chat' or is_digital
+                     or await asyncio.to_thread(is_default_workspace, project))
                 and context_content(latest_input.get('content', '')).strip() != '/compact'):
             context = await self._project_manager.run_db(session.project_id, lambda _: self._load_digital_person_context(session))
             if context is not None:
@@ -1146,8 +1151,6 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             }
             notice_filter = ((pw.fn.INSTR(ChatMessage.context_json, '"digital_person_proactive"') > 0)
                              | ChatMessage.id.in_(legacy_ids))
-        elif not config_store.get('digital_person'):
-            return None
         receipt_filter = pw.fn.INSTR(ChatMessage.context_json, '"digital_person_injection"') > 0
         notice_content = pw.Case(None, [(notice_filter, ChatMessage.content)]).alias('notice_content')
         rows = ChatMessage.select(ChatMessage.id, notice_content, ChatMessage.created_at, ChatMessage.context_json).where(
@@ -1181,20 +1184,23 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         return '\n\n'.join(parts.values())
 
     def _digital_person_prompt_parts(self, session) -> dict:
-        from services.digital_person import prompt_for_project
+        from services.digital_person import prompt_parts_for_project
         from services.customization_workspace import is_default_workspace
         if self._project_manager is None:
             return {}
         project = self._project_manager.get_project_by_id(session.project_id)
-        prompt = prompt_for_project(project)
-        if not prompt and project is not None and is_default_workspace(project) and config_store.get('digital_person'):
-            prompt = '[WorkStep digital person] Digital person mode is disabled. The previous digital person identity and duties no longer apply.'
-        return {'identity': prompt} if prompt else {}
+        parts = prompt_parts_for_project(project)
+        if not parts and project is not None and is_default_workspace(project) and config_store.get('digital_person'):
+            parts['identity'] = '[WorkStep digital person] Digital person mode is disabled. The previous digital person identity and duties no longer apply.'
+        return parts
 
     def _engine_system_prompt(self, session) -> str:
         if self._config.name != "chat_session":
             return super()._engine_system_prompt(session)
         return self._chat_system_prompt(session)
+
+    def _turn_source_prompt_parts(self, session) -> dict[str, str]:
+        return {}
 
     def _chat_system_prompt(self, session) -> str:
         """Shared identity and conversation rules regardless of message transport."""
@@ -1215,13 +1221,15 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                     'or workstep digital-person delegations --id ID --session ORIGIN --json.'
                 )
                 if context.get('delegation_candidates'):
+                    from services.digital_person_delegations import DELEGATION_REVIEW_RULES
                     parts['delegation_actions'] = (
                         'If following up, append <delegation_actions> with a JSON array, then </delegation_actions>. '
                         'Each item: id from the list, action, instruction for continue or summary for complete/needs_user. '
-                        'Check results before continue or complete. Keep the original scope. '
+                        + DELEGATION_REVIEW_RULES + ' Use at most 320 characters for evidence. '
                         'WorkStep executes validated actions. Omit when idle.'
                     )
                 parts['delegations'] = context['delegation_list']
+            parts.update(self._turn_source_prompt_parts(session))
             context['parts'] = {key: value for key, value in parts.items() if value}
             context['fingerprints'] = {key: hashlib.sha256(value.encode()).hexdigest() for key, value in context['parts'].items()}
             pending = [notice['content'] for notice in context['pending']]
@@ -1233,7 +1241,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             return '\n\n'.join(filter(None, (*context['parts'].values(), context['notice_prompt'])))
         return "\n\n".join(part for part in (
             self._digital_person_prompt(session), self.get_system_prompt(session.project_id), self._role_system_prompt(session),
-            extra.get('memory_context_prompt'), extra.get('camera_frame_prompt'),
+            extra.get('memory_context_prompt'), extra.get('camera_frame_prompt'), *self._turn_source_prompt_parts(session).values(),
         ) if part)
 
     def _turn_system_prompt_kwargs(self, session, system_prompt, *, rebuilding=False):
@@ -1241,6 +1249,14 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         if context is None:
             return super()._turn_system_prompt_kwargs(session, system_prompt, rebuilding=rebuilding)
         previous = context['previous']
+        if previous is not None and 'identity' in previous and 'project_delegation' not in previous:
+            parts = context['parts']
+            if 'project_delegation' in parts:
+                # Older receipts fingerprinted the two sections as a single string.
+                combined = '\n\n'.join((parts['identity'], parts['project_delegation']))
+                if hashlib.sha256(combined.encode()).hexdigest() == previous['identity']:
+                    previous = {**previous, **{key: context['fingerprints'][key]
+                                               for key in ('identity', 'project_delegation')}}
         changed = rebuilding or previous != context['fingerprints'] or bool(context['pending'])
         if changed and session.engine == 'codex_sdk' and previous is not None and not rebuilding:
             updates = [value for key, value in context['parts'].items() if previous.get(key) != context['fingerprints'][key]]

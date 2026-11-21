@@ -40,12 +40,13 @@ export const voiceWakeApi = {
 
 export interface DigitalPeer { id: string; conversation_type: 'single' | 'group'; conversation_id: string; bot_id: string; bot_name: string; title: string; platform: string; notify?: boolean }
 export interface DigitalActivity {
+  main_session_id?: string
   session_count?: number; reply_count?: number; task_count?: number; completed_task_count?: number
   skills?: Array<{id: string; name: string}>
   feedback: Record<string,number>; suggestions: Array<{id:string;label:string;prompt:string;count:number}>
   experience: number; level: number; next_level_experience: number; checking: boolean
   runs: Array<{ id: string; status: string; summary?: string; error?: string; created_at: string; sources: unknown; deliveries: unknown }>
-  delegations: Array<{ id: string; project_id: string; session_id: string; instruction: string; status: string; created_at?:string; message_id?:string|null }>
+  delegations: Array<{ id: string; project_id: string; session_id: string; title?: string | null; instruction: string; status: string; created_at?:string; message_id?:string|null }>
   answers: Array<{ id: string; content: string; feedback: number }>
 }
 export interface DigitalRunOutcome {delivery_failure_reasons?:string[];sent:number;failed:number;affinity_increased:number;affinity_decreased:number}
@@ -61,17 +62,23 @@ export interface DigitalActivityRecords {
   runs: Array<Pick<DigitalActivity['runs'][number], 'id' | 'status' | 'summary' | 'created_at'> & {outcome?:DigitalRunOutcome|null;processing?:DigitalRunProcessing}>
 }
 export type DigitalRunDetail = DigitalActivityRecords['runs'][number] & {error?:string;draft_summary?:string|null;failure_reason?:string|null;notification_message?:string|null}
+export interface DigitalRunKnowledge {
+  status: 'available' | 'legacy' | 'empty'
+  items: Array<{id:string;summary:string}>
+  unavailable: number
+}
 
 function normalizeLegacyRunSummary<Run extends {status:string;summary?:string;processing?:DigitalRunProcessing;notification_message?:string|null}>(run:Run, detail=false):Run {
   const {summary, status, processing} = run
-  if (!summary || processing) return run
-  const legacy = summary.match(/^整理 (\d+) 条消息（(\d+) 个会话），新增 (\d+) 条记忆(?:[；;][ \t]*好感度[^\r\n]*)?(?:\r?\n|$)/)
+  if (!summary) return run
+  const legacy = summary.match(/^整理 (\d+) 条消息（(\d+) 个会话）(?:[，,](?:[ \t]*新增 (\d+) 条记忆)?)?(?:[；;][ \t]*好感度[^\r\n]*)?[ \t]*(?:\r?\n|$)/)
+  if (processing && !legacy) return run
   const notification = ['notify', 'notifying', 'notified', 'delivery_failed', 'deferred'].includes(status)
   const text = legacy ? summary.slice(legacy[0].length) : summary
   return {
     ...run,
     summary:notification ? '' : text,
-    ...(legacy ? {processing:{messages:Number(legacy[1]),sessions:Number(legacy[2]),memories:Number(legacy[3])}} : {}),
+    ...(legacy && !processing ? {processing:{messages:Number(legacy[1]),sessions:Number(legacy[2]),memories:Number(legacy[3]??0)}} : {}),
     ...(detail && notification && text && !run.notification_message ? {notification_message:text} : {}),
   }
 }
@@ -80,6 +87,7 @@ const json = (body: unknown, method = 'POST') => ({ method, body: JSON.stringify
 export const digitalRuntimeApi = {
   records: (runOffset = 0, delegationOffset = 0, limit = 5) => request<DigitalActivityRecords>(`/digital-person/activity/records?run_offset=${runOffset}&delegation_offset=${delegationOffset}&limit=${limit}`).then(records=>({...records,runs:records.runs.map(run=>normalizeLegacyRunSummary(run))})),
   runDetail: (id: string) => request<DigitalRunDetail>(`/digital-person/runs/${encodeURIComponent(id)}`).then(run=>normalizeLegacyRunSummary(run,true)),
+  runKnowledge: (id: string, signal: AbortSignal) => request<DigitalRunKnowledge>(`/digital-person/runs/${encodeURIComponent(id)}/knowledge`, {signal}),
   retryDelivery: (id: string) => request(`/digital-person/runs/${encodeURIComponent(id)}/retry`,{method:'POST'}),
   stopDelegation: (id: string) => request(`/digital-person/delegations/${encodeURIComponent(id)}/stop`,{method:'POST'}),
   activity: () => request<DigitalActivity>('/digital-person/activity'),

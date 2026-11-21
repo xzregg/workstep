@@ -80,6 +80,15 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         read_only=False, side_effect="Queue a real execution turn in the target conversation",
     ),
     WorkstepTool(
+        name="workstep_archive_chat_session",
+        description="Archive an idle ordinary project conversation using its WorkStep project and session IDs.",
+        method="PATCH", path="/api/chat-sessions/{session_id}/archive",
+        parameters={key: {"type": "string"} for key in ("project_id", "session_id")},
+        required=("project_id", "session_id"), path_params=("session_id",),
+        query_params=("project_id",), body_params=("project_id",),
+        read_only=False, side_effect="Archive the conversation or clear it if it is an empty, non-forked chat",
+    ),
+    WorkstepTool(
         name="workstep_memory_pending",
         description="Step 1 of background assessment: fetch this execution's assigned unprocessed evidence and companion context. Only the active scheduler assessment can provide a batch. Repeated calls return the same batch. Follow read_ids/read_ranges before producing the final structured assessment. This does not mark evidence completed.",
         method="POST", path="/api/memory/pending",
@@ -147,10 +156,11 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         description="Delegate project work. Use target_session_id to send to an existing project chat and track it automatically, or continuation_of to continue a prior delegation. Omit both to create a conversation. Reuse request_id on retry.",
         method="POST", path="/api/digital-person/delegate",
         parameters={"project_id":{"type":"string"},"instruction":{"type":"string"},"origin_session_id":{"type":"string"},"request_id":{"type":"string"},
+                    "title":{"type":"string","description":"Short, accurate task title, one line of up to 60 characters"},
                     "continuation_of":{"type":"string","description":"Prior delegation ID in the same source conversation and project"},
                     "target_session_id":{"type":"string","description":"Existing ordinary project chat to track as a delegation"}},
         required=("project_id","instruction","origin_session_id","request_id"),
-        body_params=("project_id","instruction","origin_session_id","request_id","continuation_of","target_session_id"),
+        body_params=("project_id","title","instruction","origin_session_id","request_id","continuation_of","target_session_id"),
         read_only=False, side_effect="Create an execution conversation or submit another turn to an existing delegation",
     ),
     WorkstepTool(
@@ -1034,7 +1044,7 @@ class WorkstepClient:
             args["background"] = True
 
         request_headers = {}
-        if tool.name == "workstep_send_message":
+        if tool.name in {"workstep_send_message", "workstep_archive_chat_session"}:
             from services.remote_access import has_project_edit_scope
 
             # Native tools can run under a project actor before using local HTTP.
@@ -1042,6 +1052,7 @@ class WorkstepClient:
                 return {"ok": False, "error": "Project scope denied"}
             if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", str(args["session_id"])):
                 return {"ok": False, "error": "Invalid identifier: session_id"}
+        if tool.name == "workstep_send_message":
             key = args.get("idempotency_key")
             if key is None:
                 key = str(uuid4())
@@ -1085,6 +1096,8 @@ class WorkstepClient:
             body["experience"] = ""
         if tool.name == "workstep_run_task":
             body.setdefault("prompt", "")
+        if tool.name == "workstep_archive_chat_session":
+            body.update(archived=True, ordinary_only=True)
         headers = await asyncio.to_thread(local_cli_headers, self.base_url)
         from services.coordinator_source import (
             COORDINATOR_TURN_ENV, COORDINATOR_TURN_HEADER, coordinator_source_env,

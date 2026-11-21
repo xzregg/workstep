@@ -4,6 +4,7 @@ import { chatSessionApi, type ChatSessionDetail } from '../api/client'
 import { useI18n } from '../i18n'
 import { getMessageHistoryPageSize, loadMessageHistoryPageSize } from '../stores/userSettingsStore'
 import { useChatSessionStore } from '../stores/chatSessionStore'
+import type { AssistantChatMessage } from '../stores/assistantStore'
 import { useChatExecutionConfigStore } from '../stores/chatExecutionConfigStore'
 
 function normalizeMessages(messages: ChatSessionDetail['messages']) {
@@ -15,18 +16,34 @@ function normalizeMessages(messages: ChatSessionDetail['messages']) {
   }))
 }
 
+export interface InitialSessionHistory {
+  projectId: string
+  detail: ChatSessionDetail
+  limit: number
+  unchangedMessages: AssistantChatMessage[]
+}
+
+/** Load the first page and retain the live-message snapshot used when merging it. */
+export async function loadInitialSessionHistory(sessionId: string, projectId: string): Promise<InitialSessionHistory> {
+  const limit = await loadMessageHistoryPageSize()
+  const unchangedMessages = useChatSessionStore.getState().sessions[sessionId]?.messages ?? []
+  const detail = await chatSessionApi.get(sessionId, projectId, limit, 0)
+  return { projectId, detail, limit, unchangedMessages }
+}
+
 interface Options {
   /** Session selected by the URL; only this identity triggers history hydration. */
   sessionId: string | null
   /** Current store session can change when the send endpoint migrates its id. */
   messageSessionId?: string | null
   projectId?: string
+  initialHistory?: InitialSessionHistory
   onLoaded: (detail: ChatSessionDetail) => void
   onMissing: () => void
 }
 
 /** Loads a selected session and its paged event details into the shared store. */
-export function useChatSessionHistory({ sessionId, messageSessionId, projectId, onLoaded, onMissing }: Options) {
+export function useChatSessionHistory({ sessionId, messageSessionId, projectId, initialHistory, onLoaded, onMissing }: Options) {
   const [historyError, setHistoryError] = useState('')
   const [historyLoading, setHistoryLoading] = useState(false)
   const [loadedScope, setLoadedScope] = useState('')
@@ -36,6 +53,7 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
   const pageRef = useRef({ key: '', offset: 0, hasOlder: false, loading: false, limit: getMessageHistoryPageSize() })
   const { t } = useI18n()
   const callbacks = useRef({ onLoaded, onMissing })
+  const preparedHistory = useRef(initialHistory)
   callbacks.current = { onLoaded, onMissing }
 
   useEffect(() => {
@@ -56,14 +74,21 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
       setHistoryError('')
       setHistoryLoading(true)
       page.loading = true
-      const unchangedMessages = useChatSessionStore.getState().sessions[sessionId]?.messages || []
-      void loadMessageHistoryPageSize().then(limit => {
+      const prepared = !refresh && preparedHistory.current?.projectId === projectId &&
+        preparedHistory.current.detail.id === sessionId ? preparedHistory.current : undefined
+      const unchangedMessages = prepared?.unchangedMessages ?? useChatSessionStore.getState().sessions[sessionId]?.messages ?? []
+      const firstPage = prepared ? Promise.resolve(prepared.detail) : loadMessageHistoryPageSize().then(limit => {
         page.limit = limit
         if (!active) return null
         return chatSessionApi.get(sessionId, projectId, page.limit, 0)
       })
+      void firstPage
         .then((detail) => {
           if (!active || !detail) return
+          if (prepared) {
+            page.limit = prepared.limit
+            preparedHistory.current = undefined
+          }
           useChatExecutionConfigStore.getState().receive(projectId, detail)
           page.offset = detail.messages?.length || 0
           page.hasOlder = page.offset === page.limit

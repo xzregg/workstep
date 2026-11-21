@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {avatarPose,advanceVoice} from '../src/components/digital-person/avatar/visualState'
+import {avatarPose,advanceVoice,advanceOrbSpeechLevel} from '../src/components/digital-person/avatar/visualState'
 
 test('actual playback lowers the thinking hand; work and thinking use the intact chin pose',()=>{
  assert.equal(avatarPose('thinking',false),'thinking')
@@ -18,4 +18,13 @@ test('voice release converges smoothly without stale amplitude and is independen
  for(let i=0;i<300;i++)release=advanceVoice(release,false,1,20)
  assert.ok(release.level<.001&&release.activity<.002)
  assert.equal(advanceVoice({level:0,activity:0},true,NaN,20).level,0)
+})
+
+test('the orb follows a short syllable and leaves a visible dip before the next one',()=>{
+ const peak=advanceOrbSpeechLevel(0,.5,50)
+ assert.ok(peak>.4)
+ const gap=advanceOrbSpeechLevel(peak,0,100)
+ assert.ok(gap<.16)
+ assert.ok(advanceOrbSpeechLevel(gap,.5,50)>.4)
+ assert.equal(advanceOrbSpeechLevel(0,Number.NaN,50),0)
 })

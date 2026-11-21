@@ -427,14 +427,14 @@ def test_channel_digital_identity_replaces_legacy_assistant_prompt(chat_module, 
         assert "Avoid complex formatting" not in rules
         assert "渠道交互" not in rules
         assert "workstep_bind_channel_group" not in rules
-        assert rules == ordinary._engine_system_prompt(session)
+        assert rules == ordinary._engine_system_prompt(session) + "\n\nCurrent sender: Alice"
         assert module._session_system_prompt_each_turn(session) is True
     assert "WorkStep channel chat assistant" not in rules
-    assert rules == ordinary._engine_system_prompt(session)
+    assert rules == ordinary._engine_system_prompt(session) + "\n\nCurrent sender: Alice"
     assert "项目自定义规则" in rules
     assert module._system_prompt_for_display(session)==rules
     for prompt in (module._build_prompt(session),module._build_rebuild_prompt(session)):
-        assert prompt.count("Current sender: Alice")==1
+        assert "Current sender: Alice" not in prompt
         assert "Name: 小研" not in prompt
 
 

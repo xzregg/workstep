@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable
 from agent_assistants.base import assistant_registry
 from agent_assistants.channel_chat import ChannelChatModule
 from models.chat_session import ChatSession
+from services.channels.reply_failure import AssistantReplyError, ReplyWaitTimeout
 from services.config import config_store
 
 
@@ -137,7 +138,10 @@ class ChatSessionResponder:
             module.start_queued_turn(accepted.turn_id)
             reply = ""
             while True:
-                event = await asyncio.wait_for(queue.get(), timeout=600)
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=600)
+                except TimeoutError as exc:
+                    raise ReplyWaitTimeout from exc
                 if on_event is not None:
                     await on_event(event)
                 if event.get("type") == "TEXT_MESSAGE_CHUNK":
@@ -149,18 +153,16 @@ class ChatSessionResponder:
                     if on_progress is not None:
                         on_progress(reply)
                 elif event.get("type") == "TEXT_MESSAGE_END":
-                    status = event.get("status") or "succeeded"
-                    if status == "stopped":
+                    status = event.get("status")
+                    if status in {"stopped", "cancelled"}:
                         return session_id, "已停止。"
                     if status != "succeeded":
-                        raise RuntimeError(str(event.get("error") or "The channel assistant failed to respond"))
+                        raise AssistantReplyError(str(event.get("error") or ""))
                     if event.get("content") is not None:
                         reply = str(event["content"])
                     return session_id, reply
-                elif event.get("type") == "RUN_FINISHED":
-                    return session_id, reply
-                elif event.get("type") == "RUN_ERROR":
-                    raise RuntimeError(str(event.get("error") or "The channel assistant failed to respond"))
+                # Engine run events can precede response parsing and persistence.
+                # Only the assistant message's terminal status decides delivery.
         finally:
             self._event_bus.unsubscribe(queue)
             await self._event_bus.publish({

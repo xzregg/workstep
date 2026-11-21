@@ -841,12 +841,19 @@ async def test_cli_channel_contacts_uses_cached_search_tool():
     args = build_parser().parse_args(['channel','contacts','--project','p1','--bot','b1','--query','张三'])
     assert await dispatch(args, client) == {'contacts': [], 'total': 0}
 
-async def test_digital_person_delegation_cli_uses_tracked_runtime():
+@pytest.mark.parametrize('title', [None, '修复登录'])
+async def test_digital_person_delegation_cli_uses_tracked_runtime(title):
     async def handler(request):
         assert request.url.path == '/api/digital-person/delegate'
-        assert json.loads(request.content) == {'project_id':'p','instruction':'修复问题','origin_session_id':'s','request_id':'message-1'}
+        expected = {'project_id':'p','instruction':'修复问题','origin_session_id':'s','request_id':'message-1'}
+        if title is not None:
+            expected['title'] = title
+        assert json.loads(request.content) == expected
         return httpx.Response(200,json={'session_id':'worker','status':'running'})
-    args=build_parser().parse_args(['digital-person','delegate','--project','p','--instruction','修复问题','--session','s','--idempotency-key','message-1','--json'])
+    argv = ['digital-person','delegate','--project','p','--instruction','修复问题','--session','s','--idempotency-key','message-1','--json']
+    if title is not None:
+        argv.extend(['--title', title])
+    args = build_parser().parse_args(argv)
     result=await dispatch(args,client=WorkstepClient(transport=httpx.MockTransport(handler)))
     assert result['session_id']=='worker'
 

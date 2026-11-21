@@ -28,3 +28,15 @@ test('buffers streaming marker prefixes and hides malformed or unfinished payloa
   assert.equal(readDigitalPersonUiReply(block('{broken')).text, '')
   assert.equal(readDigitalPersonUiReply('前言\n' + block('{"action":"window.close"}') + '正文').text, '前言\n正文')
 })
+
+test('accepts only a complete project and session ID pair for exact opening', () => {
+  const action = { action: 'conversation.open', project_id: 'project-123', session_id: 'session-456' }
+  assert.deepEqual(readDigitalPersonUiReply(block(JSON.stringify(action))), { text: '', action })
+  for (const value of [
+    { action: action.action, project_id: action.project_id },
+    { action: action.action, session_id: action.session_id, title: '错误的回退目标' },
+    { ...action, session_id: '  ' },
+    { ...action, project_id: 123 },
+    { ...action, title: '混合定位' },
+  ]) assert.deepEqual(readDigitalPersonUiReply(block(JSON.stringify(value))), { text: '' })
+})

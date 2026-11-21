@@ -52,26 +52,36 @@ uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-person
 ```
 
 To delegate actual work into a separate project execution session, resolve the
-target project and origin conversation IDs first, then use:
+target project and origin conversation IDs first. Summarize the work in the
+user's language as a short, specific, single-line `--title` (up to 60 characters).
+Keep the full execution requirements in `--instruction`. Native tools use `title`.
 
 ```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-person delegate --project <project_id> --instruction "Work to perform" --session <session_id> --idempotency-key <request_key> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-person delegate --project <project_id> --title "Verify login flow" --instruction "Run the login tests and report failing cases and reproduction steps." --session <session_id> --idempotency-key <request_key> --json
 ```
 
 Reuse the same request key on retries. A running delegation is not finished work.
+When the user asks to open the execution conversation on the digital-person page,
+use the successful result's `project_id` and `session_id` in the page's
+`conversation.open` action. The result's `id` identifies the delegation.
 
 When sending work to a specified existing ordinary project conversation, use
 tracked delegation with its project and session IDs:
 
 ```bash
-workstep digital-person delegate --project <project_id> --session <origin_session_id> --target-session <target_session_id> --instruction "Work to perform" --idempotency-key <request_key> --json
+workstep digital-person delegate --project <project_id> --session <origin_session_id> --target-session <target_session_id> --title "Verify login flow" --instruction "Run the login tests and report failing cases and reproduction steps." --idempotency-key <request_key> --json
 ```
 
 The native tool takes `target_session_id` plus the usual delegation arguments.
+The title labels the delegation entry. Only newly created conversations take
+their name from the delegation title.
 The daemon registers the new turn as a delegation before execution. It uses the
 target conversation's history and waits behind active work. The digital person
 follows the result from the originating conversation. Keep the returned
 delegation `id` for follow-ups. If this route is unavailable, report the failure.
+
+When asked to archive the execution conversation, use its `project_id` and
+`session_id` with [session archive](messages.md#archive-a-conversation).
 
 For a follow-up on the same task, look up recent delegations in the target project
 from the current digital-person conversation:
@@ -90,8 +100,9 @@ workstep digital-person delegations --id <delegation_id> --session <origin_sessi
 Pass the matching item's `id` (not its `session_id`) as `--continue-from` on
 `digital-person delegate`. Native equivalents are
 `workstep_list_digital_person_delegations` and the `continuation_of` parameter on
-`workstep_delegate_digital_person`. Use a fresh idempotency key for a new
-instruction; reuse it only for a retry of that instruction. A `queued` result
+`workstep_delegate_digital_person`. An omitted title is inherited from the
+prior delegation when available. Use a fresh idempotency key for a new
+instruction and keep the same title and instruction on retries. A `queued` result
 means the follow-up was accepted behind existing work without interrupting it.
 Do not start a new conversation as a fallback when a continuation fails. If it
 is unclear whether the new instruction belongs to a prior task, ask the user.

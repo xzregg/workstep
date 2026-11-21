@@ -36,6 +36,7 @@ class ChatSessionRenameRequest(BaseSchema):
 class ChatSessionArchiveRequest(BaseSchema):
     project_id: str
     archived: bool
+    ordinary_only: bool = False
 
 
 class ChatSessionPermissionRequest(BaseSchema):
@@ -282,11 +283,16 @@ async def list_sessions(
 
 @router.patch("/{session_id}/archive")
 async def archive_session(session_id: str, req: ChatSessionArchiveRequest):
-    _enforce_project_scope(req.project_id)
+    from services.remote_access import has_project_edit_scope
+
+    if not has_project_edit_scope(req.project_id):
+        raise HTTPException(status_code=403, detail="Project scope denied")
     try:
         return await _run_db(
             req.project_id,
-            lambda: _module().set_archived(req.project_id, session_id, req.archived),
+            lambda: _module().set_archived(
+                req.project_id, session_id, req.archived, ordinary_only=req.ordinary_only,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc

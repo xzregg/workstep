@@ -2,13 +2,58 @@ import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import { useUserSettingsStore } from '../src/stores/userSettingsStore'
 import test from 'node:test'
-import { act, useState } from 'react'
+import { act, StrictMode, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { chatSessionApi } from '../src/api/client'
 import { I18nProvider } from '../src/i18n'
-import { useChatSessionHistory } from '../src/hooks/useChatSessionHistory'
+import { loadInitialSessionHistory, useChatSessionHistory } from '../src/hooks/useChatSessionHistory'
 import { useChatSessionStore } from '../src/stores/chatSessionStore'
 import ProcessTrace from '../src/components/ProcessTrace'
+
+test('the authorized first page is reused and cannot overwrite newer live content', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const originalGet = chatSessionApi.get
+  const settings = useUserSettingsStore.getState()
+  const requests: number[] = []
+  const sessionId = 'execution-session'
+  const projectId = 'execution-project'
+  const getMessages = () => useChatSessionStore.getState().sessions[sessionId].messages
+  try {
+    useChatSessionStore.setState({ sessions: {} })
+    useUserSettingsStore.setState({ loaded: true, loading: false, messageHistoryPageSize: 1 })
+    chatSessionApi.get = async (id, p, _limit, offset = 0) => {
+      requests.push(offset)
+      return { id, project_id: p, title: '执行对话', engine: 'pydantic_ai', message_count: 2, running: true, messages: [
+        offset ? { id: 'earlier', role: 'user', content: '开始执行', status: 'succeeded' }
+          : { id: 'worker-reply', role: 'assistant', content: '旧快照', status: 'running' },
+      ] }
+    }
+    const initialHistory = await loadInitialSessionHistory(sessionId, projectId)
+    useChatSessionStore.getState().handleWsEvent({
+      type: 'TEXT_MESSAGE_CHUNK', channel: 'session_chat', session_id: sessionId,
+      messageId: 'worker-reply', delta: '更晚的实时内容',
+    })
+    let history!: ReturnType<typeof useChatSessionHistory>
+    function Harness() {
+      history = useChatSessionHistory({ sessionId, projectId, initialHistory, onLoaded() {}, onMissing() {} })
+      return null
+    }
+    await act(async () => root.render(<StrictMode><I18nProvider><Harness /></I18nProvider></StrictMode>))
+    assert.equal(history.historyReady, true)
+    assert.deepEqual(requests, [0])
+    assert.equal(getMessages()[0].content, '更晚的实时内容')
+    await act(async () => { await history.loadOlderHistory() })
+    assert.deepEqual(requests, [0, 1])
+    assert.equal(getMessages()[0].id, 'earlier')
+  } finally {
+    await act(async () => root.unmount())
+    chatSessionApi.get = originalGet
+    useUserSettingsStore.setState({ loaded: settings.loaded, loading: settings.loading, messageHistoryPageSize: settings.messageHistoryPageSize })
+    useChatSessionStore.setState({ sessions: {} })
+    await window.happyDOM.close()
+  }
+})
 
 for (const running of [true, false]) test(`summary-only messages load the collapsed preview automatically only while running=${running}`, async () => {
   const { window } = installDomEnvironment()

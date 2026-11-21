@@ -54,6 +54,9 @@ async def test_responder_ignores_other_message_completion(tmp_path, status):
                 for event in to_agui_events({**common, "type": "message_completed", "message_id": "other", "data": {"status": "succeeded", "content": "wrong"}}):
                     await bus.publish(event)
                 await bus.publish({**common, "type": "TEXT_MESSAGE_CHUNK", "messageId": "answer-1", "delta": "right"})
+                await bus.publish({**common, "type": "RUN_FINISHED", "messageId": "answer-1", "status": "done"})
+                if status != "succeeded":
+                    await bus.publish({**common, "type": "RUN_ERROR", "messageId": "answer-1", "error": "intermediate error"})
                 for event in to_agui_events({**common, "type": "message_completed", "message_id": "answer-1", "data": {"status": status, "content": "final reply", "error": "response failed" if status == "error" else None}}):
                     await bus.publish(event)
             asyncio.create_task(publish())

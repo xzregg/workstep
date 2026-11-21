@@ -170,6 +170,7 @@ async def test_discard_resets_native_history_even_when_context_is_shared(runtime
     assert len((await current.state())['check_sessions'])==1
 
 async def test_one_configured_engine_call_stores_memory_relationship_and_notice(runtime,monkeypatch):
+    from services.digital_person_runtime import DigitalPersonRuntime
     current,project,_=runtime
     await current.mutate(lambda s:s.update(assessment_live_since=(utc_now()-timedelta(days=1)).isoformat()))
     sid=await seed(current,project)
@@ -193,6 +194,11 @@ async def test_one_configured_engine_call_stores_memory_relationship_and_notice(
     result=await current.check()
     assert result['status']=='notified',result
     assert result['memory_processing']['knowledge']['created']==1
+    # Use a fresh runtime to verify the association survives reopening.
+    fresh = DigitalPersonRuntime(current.projects, current.chats, None, current.bus)
+    preview = await fresh.run_knowledge(result['id'])
+    assert preview['status'] == 'available'
+    assert [item['summary'] for item in preview['items']] == ['发布前先演练数据库迁移']
     assert result['relationship_updates'][0]['affinity']==51
     assert result['deliveries'][0]['session_id']==sid
     await current.check()
@@ -200,6 +206,30 @@ async def test_one_configured_engine_call_stores_memory_relationship_and_notice(
     with index.connect() as db:
         assert db.execute('select count(*) from memory_knowledge').fetchone()[0]==1
         assert db.execute("select count(*) from memory_entities where canonical='数据库迁移演练'").fetchone()[0]==2
+
+    from services import digital_person_assessment as assessment
+    batch = result['sources']['reflection_batch']
+    duplicate = {'summary':'发布前先演练数据库迁移','kind':'preference','outcome':'stated',
+                 'source_ids':[f"memory:{batch[0]['id']}"]}
+    assert (await asyncio.to_thread(assessment.commit, batch, [duplicate], 'duplicate'))['created'] == 0
+    await current.mutate(lambda s: s['runs'].append({
+        'id':'duplicate', 'processing':{'messages':1,'sessions':1,'memories':0},
+    }))
+    assert await current.run_knowledge('duplicate') == {'status':'empty','items':[],'unavailable':0}
+    with index.connect() as db:
+        db.execute('DELETE FROM memory_knowledge_search')
+        db.execute('DELETE FROM memory_knowledge')
+    replacement = {**duplicate, 'summary':'同一来源的另一条知识'}
+    assert (await asyncio.to_thread(assessment.commit, batch, [replacement], 'replacement'))['created'] == 1
+    await current.mutate(lambda s: s['runs'].append({'id':'replacement'}))
+    restored = await current.run_knowledge('replacement')
+    assert restored['items'] == [{'id':preview['items'][0]['id'], 'summary':replacement['summary']}]
+    assert await current.run_knowledge(result['id']) == {'status':'available','items':[],'unavailable':1}
+    with monkeypatch.context() as restricted:
+        restricted.setattr('services.digital_person_memory.allowed_projects', lambda _: [])
+        assert await current.run_knowledge('replacement') == {'status':'available','items':[],'unavailable':1}
+    await asyncio.to_thread(index.forget, duplicate['source_ids'][0])
+    assert await current.run_knowledge('replacement') == {'status':'available','items':[],'unavailable':1}
 
 async def test_initial_history_is_processed_once_without_stale_contact_or_affinity(runtime,monkeypatch):
     current,project,_=runtime
@@ -332,6 +362,7 @@ async def test_invalid_second_candidate_rolls_back_first_candidate_and_progress(
         await asyncio.to_thread(assessment.commit,ctx['reflection_batch'],[good,bad],'invalid-batch')
     with index.connect() as db:
         assert db.execute('select count(*) from memory_knowledge').fetchone()[0]==0
+        assert db.execute('select count(*) from memory_reflection_additions').fetchone()[0]==0
         assert db.execute('select count(*) from digital_reflections').fetchone()[0]==0
 
 

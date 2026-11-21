@@ -24,7 +24,8 @@ async def test_assessment_can_process_delegation_with_empty_memory_queue(runtime
         assert context['delegation_messages'][0]['content'] == '真实执行结果'
         calls.append('assessment')
         return {'decision': 'silent', 'summary': '', 'source_ids': [],
-                'delegation_actions': [{'id': 'work', 'action': 'complete', 'summary': '核对通过'}]}
+                'delegation_actions': [{'id': 'work', 'action': 'complete', 'summary': '核对通过',
+                                        'evidence': '真实执行结果'}]}
 
     monkeypatch.setattr(service, '_decide', decide)
     monkeypatch.setattr('services.digital_person_channels.get_bindings', lambda: [])
@@ -62,7 +63,7 @@ async def test_chat_can_report_delegation_before_background_check(runtime, monke
     async def invoke(_engine, _model, _cwd, prompt, *args, **kwargs):
         prompts.append((prompt, kwargs.get('system_prompt', '')))
         return ('已经核对通过。<delegation_actions>'
-                '[{"id":"work","action":"complete","summary":"核对通过"}]'
+                '[{"id":"work","action":"complete","summary":"核对通过","evidence":"真实执行结果"}]'
                 '</delegation_actions>', [], 'foreground-thread')
 
     monkeypatch.setattr('agent_assistants.base.invoke_engine', invoke)
@@ -204,7 +205,7 @@ async def test_memory_pending_returns_delegation_and_body_only_once(runtime, mon
         assert [m['content'] for m in messages if m['id'] == 'result'] == ['真实执行结果']
         seen.append(True)
         return ('{"decision":"silent","summary":"","source_ids":[],"delegation_actions":'
-                '[{"id":"work","action":"complete","summary":"核对通过"}]}', [], 'assessment-thread')
+                '[{"id":"work","action":"complete","summary":"核对通过","evidence":"真实执行结果"}]}', [], 'assessment-thread')
 
     monkeypatch.setattr('services.digital_person_channels.get_bindings', lambda: [])
     monkeypatch.setattr('agent_assistants.base.invoke_engine', invoke)
@@ -212,6 +213,82 @@ async def test_memory_pending_returns_delegation_and_body_only_once(runtime, mon
     assert result['status'] != 'failed', result
     assert seen == [True]
     assert (await service.state())['delegations'][0]['followup_state'] == 'completed'
+
+
+async def test_assessment_continues_unverified_work_and_closes_with_evidence(runtime, monkeypatch, tmp_path):
+    import json
+    from services import memory_query
+    from tests.memory_turn_fixture import assessment_access
+
+    service, _, store = runtime
+    store.set('digital_person', {'enabled': True, 'quiet_start': 0, 'quiet_end': 0})
+    target = await asyncio.to_thread(service.projects.init_project, tmp_path / 'execution')
+    unverified = '导出功能已完成。\n尚未验证空表场景，结果不确定。'
+    verified = '空表导出回归通过，3 个测试全部通过。'
+    followup = '补跑空表导出回归，修复发现的问题并报告测试结果。'
+    assessments = []
+
+    async def invoke(_engine, _model, _cwd, prompt, *args, **kwargs):
+        if 'Start this background assessment' not in prompt:
+            return (verified if followup in prompt else unverified), [], 'execution-thread'
+        assert 'material gaps' in kwargs['system_prompt']
+        batch = await memory_query.pending(service.projects, await assessment_access(service))
+        delegation, = batch['delegations']
+        messages = [message for group in batch.get('conversations', [batch])
+                    for message in group['conversation']] + batch.get('delegation_messages', [])
+        evidence, = [message['content'] for message in messages if message['id'] == delegation['message_id']]
+        assessments.append(evidence)
+        if len(assessments) == 1:
+            action = {'action': 'complete', 'summary': '全部通过', 'evidence': '3 个测试全部通过'}
+        elif evidence == unverified:
+            action = {'action': 'continue', 'instruction': followup}
+        else:
+            action = {'action': 'complete', 'summary': '空表导出回归通过', 'evidence': '3 个测试全部通过'}
+        return json.dumps({'decision': 'silent', 'summary': '', 'source_ids': [],
+                           'delegation_actions': [{'id': delegation['id'], **action}]}), [], 'assessment-thread'
+
+    monkeypatch.setattr('services.digital_person_channels.get_bindings', lambda: [])
+    monkeypatch.setattr('agent_assistants.base.invoke_engine', invoke)
+    first = await service.delegate(target.id, '实现导出并验证空表场景', request_id='first')
+    await wait_for_status(service, target.id, first['message_id'])
+    entered, release = threading.Event(), threading.Event()
+    original_select = ChatMessage.select
+
+    def slow_evidence_select(*fields):
+        if len(fields) == 2 and fields[0] is ChatMessage.id and fields[1] is ChatMessage.content:
+            entered.set()
+            assert release.wait(3)
+        return original_select(*fields)
+
+    monkeypatch.setattr(ChatMessage, 'select', slow_evidence_select)
+    app = FastAPI()
+
+    @app.get('/health')
+    async def health():
+        return {'ok': True}
+
+    checking = asyncio.create_task(service.check())
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
+            assert (await asyncio.wait_for(client.get('/health'), .3)).status_code == 200
+    finally:
+        release.set()
+        await checking
+    items = (await service.state())['delegations']
+    assert items[0]['followup_state'] == 'pending'
+    assert not items[0].get('notified')
+
+    await service.check()
+    original, continued = (await service.state())['delegations']
+    assert original['followup_state'] == 'continued'
+    assert continued['session_id'] == first['session_id']
+    assert continued['instruction'] == followup
+    assert (await wait_for_status(service, target.id, continued['message_id'])).content == verified
+
+    await service.check()
+    assert (await service.state())['delegations'][-1]['followup_state'] == 'completed'
+    assert assessments == [unverified, unverified, verified]
 
 
 async def test_recovery_deduplicates_continuation_saved_before_delegation_record(runtime, monkeypatch, tmp_path):

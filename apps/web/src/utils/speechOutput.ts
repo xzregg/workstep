@@ -5,6 +5,15 @@ export type SpeechAudioChunk = { audio: string; format: 'pcm' | 'wav'; sampleRat
 
 class TemporarySpeechError extends Error {}
 
+const BATCH_WAIT_MS = 350
+
+export function streamingSpeechLimit(settings: OutputSettings) {
+  if (settings.mode === 'local' && settings.model_id === 'moss-nano') return 60
+  if (settings.mode === 'local' && settings.model_id === 'omnivoice') return 80
+  if (settings.mode !== 'system' && settings.provider === 'tencent') return 120
+  return 160
+}
+
 async function requestAudio<Result>(request: Promise<Result>) {
   try { return await request }
   catch (reason) {
@@ -80,12 +89,23 @@ export function speechText(markdown: string, final = true) {
   return inlineSpeechText(spoken.join('\n'))
 }
 
-export function takeSpeechSentences(text: string, final: boolean, earlyOpening = false) {
+const sentenceEnd = /(?:[。！？!?…]+[。！？!?…"'”’」』）》】\])}]*|\.["'”’」』）》】\])}]*(?=\s|$)|\r?\n)/u
+
+function speechCut(text: string, limit: number) {
+  // Don't cut through a surrogate pair or trim a boundary from the source text.
+  const prefix = text.slice(0, limit).replace(/[\uD800-\uDBFF]$/u, '')
+  const boundary = prefix.match(/[\s，、；：,;:](?![\s\S]*[\s，、；：,;:])/u)
+  const end = (boundary?.index ?? -1) + 1
+  return end >= prefix.length / 2 ? end : prefix.length
+}
+
+export function takeSpeechSentences(text: string, final: boolean, earlyOpening = false, limit = 120) {
   const sentences: string[] = []
   let rest = text
   while (rest.length) {
-    const match = rest.match(/[。！？!?\n]|\.(?=\s|$)/)
-    let end = match?.index === undefined ? -1 : match.index + 1
+    const match = rest.match(sentenceEnd)
+    let end = match?.index === undefined ? -1 : match.index + match[0].length
+    if (!final && match?.[0] === '.' && end === rest.length && (!earlyOpening || /\d\.$/.test(rest))) end = -1
     if (earlyOpening && !sentences.length) {
       // A short first clause lets synthesis start while the rest of the reply streams in.
       const opening = rest.match(/^.{8,47}?(?:[，；：]|[,;:](?=\s))/u)?.[0]
@@ -94,17 +114,27 @@ export function takeSpeechSentences(text: string, final: boolean, earlyOpening =
           : undefined)
       if (opening && (end < 0 || opening.length < end)) end = opening.length
     }
-    if (end > 0 && end <= 120) {
+    if ((end < 0 || end > limit) && rest.length >= limit) end = speechCut(rest, limit)
+    if (end > 0 && end <= limit) {
       const sentence = rest.slice(0, end).trim()
       if (sentence) sentences.push(sentence)
       rest = rest.slice(end)
-    } else if (rest.length >= 120) {
-      sentences.push(rest.slice(0, 120)); rest = rest.slice(120)
     } else break
   }
   if (final && rest.trim()) { sentences.push(rest.trim()); rest = '' }
   return { sentences, rest }
 }
+
+function joinSpeech(left: string, right: string) {
+  // Preserve an audible sentence boundary for languages that use inter-word spaces.
+  const space = /[\p{Script=Latin}\p{N}.!?]["'”’\])]*$/u.test(left) &&
+    /^[("'“‘[¿¡]*[\p{Script=Latin}\p{N}]/u.test(right)
+  return left + (space ? ' ' : '') + right
+}
+
+type QueuedSpeech = { text: string; fixed?: boolean }
+type SpeechBatch = { text: string; atomic: boolean }
+type PreparedSpeech = SpeechBatch & { created: Promise<{ id: string }> }
 
 let activeOutputPlayer: SpeechOutputPlayer | null = null
 // One gesture-unlocked output graph for the page, reused across conversational turns.
@@ -124,9 +154,13 @@ export class SpeechOutputPlayer {
   private controller = new AbortController()
   private context: AudioContext | null = null
   private sources = new Set<AudioBufferSourceNode>()
-  private queue: string[] = []
+  private queue: QueuedSpeech[] = []
   private pumping = false
-  private prepared: {text:string;created:Promise<{id:string}>} | null = null
+  private prepared: PreparedSpeech | null = null
+  private submitted = false
+  private final = false
+  private pendingSince: number | null = null
+  private batchTimer: ReturnType<typeof setTimeout> | undefined
   private until = 0
   private utterance: SpeechSynthesisUtterance | null = null
   private active = false
@@ -135,10 +169,10 @@ export class SpeechOutputPlayer {
   private levelTimer:ReturnType<typeof setInterval>|undefined
   private audioFrames=new Map<AudioBufferSourceNode,{start:number;rate:number;data:Float32Array}>()
 
-  private options: { settings: OutputSettings; projectId?: string; systemVoice?: string; preview?: boolean; previewPrompt?: string; digitalSessionId?: string; coalesce?: boolean;
+  private options: { settings: OutputSettings; projectId?: string; systemVoice?: string; preview?: boolean; previewPrompt?: string; digitalSessionId?: string; coalesce?: boolean; batchStreaming?: boolean;
     cachedAudio?: { text: string; chunks: readonly SpeechAudioChunk[] }; audioGain?: number;
     onInterrupt?: () => void; onState?: (active: boolean) => void; onError?: (error: Error) => void;
-    onRecovery?: (error: Error, remaining: string[]) => void;
+    onRecovery?: (error: Error, remaining: string[], submitted: number) => void;
     onPlayback?: (active:boolean)=>void; onLevel?: (level:number)=>void }
 
   constructor(options: SpeechOutputPlayer['options']) { this.options = options }
@@ -163,23 +197,66 @@ export class SpeechOutputPlayer {
     }
   }
 
-  enqueue(sentences: string[]) {
-    if (this.controller.signal.aborted || !sentences.length) return
+  enqueue(sentences: string[], { final = false, submitted = 0 } = {}) {
+    if (this.controller.signal.aborted || (!sentences.length && (!final || !this.queue.length))) return
+    this.final ||= final
     if (activeOutputPlayer !== this) {
       const previous = activeOutputPlayer
       activeOutputPlayer = this
       previous?.options.onInterrupt?.()
       previous?.stop()
     }
-    const keepOpening = !this.pumping && !this.sources.size && !this.queue.length
-    for(const sentence of sentences){
-      const last=this.queue.length-1
-      if(this.options.coalesce&&last>=0&&!(last===0&&(keepOpening||this.prepared))&&this.queue[last].length+sentence.length<=160)this.queue[last]+=sentence
-      else this.queue.push(sentence)
-    }
+    if (!this.queue.length) this.pendingSince = Date.now()
+    const limit = streamingSpeechLimit(this.options.settings)
+    sentences.forEach((text, index) => {
+      const fixed = index < submitted
+      const parts = this.options.batchStreaming && text.length > limit
+        ? takeSpeechSentences(text, true, false, limit).sentences
+        : [text]
+      for (const part of parts) this.queue.push({ text: part, fixed })
+    })
     this.state(true)
     void this.pump()
     this.prepareNext()
+  }
+
+  private clearBatchTimer() {
+    clearTimeout(this.batchTimer)
+    this.batchTimer = undefined
+  }
+
+  private takeBatch(wait: boolean): SpeechBatch | undefined {
+    const first = this.queue[0]
+    if (!first) return
+    const { batchStreaming, coalesce, settings } = this.options
+    const limit = batchStreaming ? streamingSpeechLimit(settings) : 160
+    const merge = this.submitted && !first.fixed && (batchStreaming || coalesce)
+    let text = first.text, count = 1
+    if (merge) {
+      while (count < this.queue.length && !this.queue[count].fixed) {
+        const combined = joinSpeech(text, this.queue[count].text)
+        if (combined.length > limit) break
+        text = combined
+        count++
+      }
+    }
+    if (wait && batchStreaming && merge && !this.final && count === this.queue.length && text.length < limit && this.pendingSince !== null) {
+      const delay = BATCH_WAIT_MS - (Date.now() - this.pendingSince)
+      if (delay > 0) {
+        this.batchTimer ??= setTimeout(() => {
+          this.batchTimer = undefined
+          void this.pump()
+          this.prepareNext()
+        }, delay)
+        return
+      }
+    }
+    this.clearBatchTimer()
+    this.queue.splice(0, count)
+    if (!this.queue.length) this.pendingSince = null
+    const atomic = !!batchStreaming && (this.submitted || !!first.fixed)
+    this.submitted = true
+    return { text, atomic }
   }
 
   private state(active: boolean) {
@@ -230,23 +307,31 @@ export class SpeechOutputPlayer {
     })
   }
 
-  private async buffer(audio: string, format: 'pcm' | 'wav', sampleRate: number, rateFactor = 1) {
+  private async decode(audio: string, format: 'pcm' | 'wav', sampleRate: number) {
     await this.unlock()
+    this.controller.signal.throwIfAborted()
     const context = this.context!
     const raw = Uint8Array.from(atob(audio), c => c.charCodeAt(0))
-    let buffer: AudioBuffer
-    if (format === 'wav') {
-      buffer = await context.decodeAudioData(raw.buffer)
-    } else {
-      const bytes = this.pcmTail === undefined ? raw : Uint8Array.from([this.pcmTail, ...raw])
-      this.pcmTail = bytes.length % 2 ? bytes[bytes.length - 1] : undefined
-      const length = Math.floor(bytes.length / 2)
-      if (!length) return
-      buffer = context.createBuffer(1, length, sampleRate)
-      const channel = buffer.getChannelData(0)
-      const view = new DataView(bytes.buffer, bytes.byteOffset, length * 2)
-      for (let i = 0; i < length; i++) channel[i] = view.getInt16(i * 2, true) / 32768
-    }
+    if (format === 'wav') return context.decodeAudioData(raw.buffer)
+    const bytes = this.pcmTail === undefined ? raw : Uint8Array.from([this.pcmTail, ...raw])
+    this.pcmTail = bytes.length % 2 ? bytes[bytes.length - 1] : undefined
+    const length = Math.floor(bytes.length / 2)
+    if (!length) return
+    const buffer = context.createBuffer(1, length, sampleRate)
+    const channel = buffer.getChannelData(0)
+    const view = new DataView(bytes.buffer, bytes.byteOffset, length * 2)
+    for (let i = 0; i < length; i++) channel[i] = view.getInt16(i * 2, true) / 32768
+    return buffer
+  }
+
+  private async buffer(audio: string, format: 'pcm' | 'wav', sampleRate: number, rateFactor?: number) {
+    const buffer = await this.decode(audio, format, sampleRate)
+    if (buffer) return this.schedule(buffer, rateFactor)
+  }
+
+  private async schedule(buffer: AudioBuffer, rateFactor = 1) {
+    const context = this.context
+    if (!context || this.controller.signal.aborted) return
     // Bound queued sound to five seconds so a fast generator cannot grow memory indefinitely.
     while (!this.controller.signal.aborted && this.until - context.currentTime > 5) {
       await new Promise(resolve => setTimeout(resolve, 30))
@@ -268,7 +353,10 @@ export class SpeechOutputPlayer {
     const cleanup = () => {
       this.sources.delete(source); this.audioFrames.delete(source); source.disconnect(); gain.disconnect()
       if(!this.audioFrames.size)this.output(false)
-      if (!this.pumping && !this.queue.length && !this.sources.size) this.state(false)
+      if (!this.pumping && !this.sources.size) {
+        if (this.queue.length || this.prepared) void this.pump()
+        else this.state(false)
+      }
     }
     source.onended = cleanup
     const start = Math.max(context.currentTime + .03, this.until)
@@ -291,16 +379,18 @@ export class SpeechOutputPlayer {
   }
 
   private prepareNext(){
-    if(!this.pumping||this.options.settings.mode==='system'||this.prepared||!this.queue.length||this.controller.signal.aborted)return
-    const text=this.queue[0]
-    if (this.options.cachedAudio?.text === text) return
-    const created=this.startSession(text)
-    this.prepared={text,created}
+    if (!this.pumping || this.options.settings.mode === 'system' || this.prepared || this.controller.signal.aborted) return
+    if (this.options.cachedAudio && this.options.cachedAudio.text === this.queue[0]?.text) return
+    const batch = this.takeBatch(true)
+    if (!batch) return
+    const created = this.startSession(batch.text)
+    this.prepared = { ...batch, created }
     // Keep the rejection observable to the pump without an unhandled promise.
     void created.catch(()=>{})
   }
 
-  private async synthesize(text: string, committed: () => void) {
+  private async synthesize(batch: SpeechBatch, committed: () => void, prepared?: Promise<{ id: string }>) {
+    const { text, atomic } = batch
     const { projectId = '', cachedAudio } = this.options
     if (cachedAudio?.text === text) {
       this.pcmTail = undefined
@@ -312,22 +402,44 @@ export class SpeechOutputPlayer {
       return
     }
     // Do not abort session creation: always collect its ID for cleanup.
-    const prepared=this.prepared?.text===text?this.prepared:null
-    if(prepared)this.prepared=null
-    const creating=prepared?.created??this.startSession(text)
+    const creating = prepared ?? this.startSession(text)
     this.prepareNext()
     const { id } = await requestAudio(creating)
     try {
       this.pcmTail = undefined
+      const pending: Array<Parameters<SpeechOutputPlayer['buffer']>> = []
+      const play = async (chunk: Parameters<SpeechOutputPlayer['buffer']>) => {
+        try { if (await this.buffer(...chunk)) committed() }
+        catch { throw new Error('Audio playback failed, please click retry') }
+      }
       while (!this.controller.signal.aborted) {
         const event = await requestAudio(speechOutputApi.next(id, projectId, this.controller.signal))
         if (event.error) throw event.error_code === 'temporary' ? new TemporarySpeechError(event.error) : new Error(event.error)
         if (event.audio) {
-          try { if (await this.buffer(event.audio, event.format!, event.sample_rate!, event.rate_factor)) committed() }
-          catch { throw new Error('Audio playback failed, please click retry') }
+          const chunk: Parameters<SpeechOutputPlayer['buffer']> = [event.audio, event.format!, event.sample_rate!, event.rate_factor]
+          // A merged stream has no sentence offsets. Wait for completion so a
+          // connection failure can't leave half the batch spoken and half lost.
+          if (atomic) pending.push(chunk)
+          else await play(chunk)
         }
         if (event.done) {
-          if (this.pcmTail !== undefined) throw new Error('Audio data is incomplete')
+          if (!atomic) {
+            if (this.pcmTail !== undefined) throw new Error('Audio data is incomplete')
+            return
+          }
+          const decoded: Array<{ buffer: AudioBuffer; rate?: number }> = []
+          try {
+            for (const [audio, format, rate, factor] of pending) {
+              const buffer = await this.decode(audio, format, rate)
+              if (buffer) decoded.push({ buffer, rate: factor })
+            }
+            if (this.pcmTail !== undefined) throw new Error('Audio data is incomplete')
+            for (const { buffer, rate } of decoded) {
+              if (await this.schedule(buffer, rate)) committed()
+            }
+          } catch {
+            throw new Error('Audio playback failed, please click retry')
+          }
           return
         }
       }
@@ -339,19 +451,23 @@ export class SpeechOutputPlayer {
   private async pump() {
     if (this.pumping) return
     this.pumping = true
-    let sentence = '', committed = false
+    let batch: SpeechBatch | undefined, committed = false
     const markCommitted = () => { committed = true }
     try {
-      while (this.queue.length && !this.controller.signal.aborted) {
-        sentence = this.queue.shift()!
+      while (!this.controller.signal.aborted) {
+        const prepared = this.prepared
+        this.prepared = null
+        const covered = !!this.context && this.sources.size > 0 && this.until - this.context.currentTime > BATCH_WAIT_MS / 1000
+        batch = prepared ?? this.takeBatch(covered)
+        if (!batch) break
         committed = false
-        if (this.options.settings.mode === 'system') await this.system(sentence, markCommitted)
+        if (this.options.settings.mode === 'system') await this.system(batch.text, markCommitted)
         else {
-          try { await this.synthesize(sentence, markCommitted) }
+          try { await this.synthesize(batch, markCommitted, prepared?.created) }
           catch (reason) {
             if (!this.options.onRecovery || committed || !(reason instanceof TemporarySpeechError)) throw reason
             await retryDelay(this.controller.signal)
-            if (!this.controller.signal.aborted) await this.synthesize(sentence, markCommitted)
+            if (!this.controller.signal.aborted) await this.synthesize(batch, markCommitted)
           }
         }
       }
@@ -359,11 +475,16 @@ export class SpeechOutputPlayer {
       if (!this.controller.signal.aborted) {
         const error = reason instanceof Error ? reason : new Error(String(reason))
         if (this.options.onRecovery) {
-          const remaining = committed ? this.queue : [sentence, ...this.queue]
+          const submitted = [...(!committed && batch ? [batch.text] : []), ...(this.prepared ? [this.prepared.text] : [])]
+          const remaining = [...submitted, ...this.queue.map(entry => entry.text)]
+          const firstUnsubmitted = this.queue.findIndex(entry => !entry.fixed)
+          const fixed = submitted.length + (firstUnsubmitted < 0 ? this.queue.length : firstUnsubmitted)
           this.queue = []
+          this.pendingSince = null
+          this.clearBatchTimer()
           this.cancelPrepared()
           if (this.context && this.context.state !== 'running') this.stop()
-          this.options.onRecovery(error, remaining)
+          this.options.onRecovery(error, remaining, fixed)
         } else {
           this.stop()
           this.options.onError?.(error)
@@ -371,7 +492,7 @@ export class SpeechOutputPlayer {
       }
     } finally {
       this.pumping = false
-      if (!this.sources.size) this.state(false)
+      if (!this.sources.size && !this.queue.length && !this.prepared) this.state(false)
     }
   }
 
@@ -383,6 +504,7 @@ export class SpeechOutputPlayer {
   stop() {
     if (activeOutputPlayer === this) activeOutputPlayer = null
     this.controller.abort(); this.queue = []
+    this.clearBatchTimer()
     this.cancelPrepared()
     clearInterval(this.levelTimer);this.levelTimer=undefined;this.audioFrames.clear();this.output(false)
     if (this.utterance) {

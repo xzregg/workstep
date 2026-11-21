@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { takeSpeechSentences, speechText } from '../src/utils/speechOutput'
+import { takeSpeechSentences, speechText, streamingSpeechLimit } from '../src/utils/speechOutput'
 import { SpeechOutputPlayer } from '../src/utils/speechOutput'
 import { speechOutputApi } from '../src/api/speechOutput'
 import { ApiError } from '../src/api/transport'
@@ -203,6 +203,25 @@ test('sentence segmentation preserves partial output, consumes each sentence onc
   assert.equal(result.sentences.join('') + result.rest, long)
 })
 
+test('streaming sentence segmentation keeps closing marks, decimals and surrogate pairs intact', () => {
+  assert.deepEqual(takeSpeechSentences('她说：“好？！”下一句', false), { sentences: ['她说：“好？！”'], rest: '下一句' })
+  assert.deepEqual(takeSpeechSentences('It is 3.', false), { sentences: [], rest: 'It is 3.' })
+  assert.deepEqual(takeSpeechSentences('It is 3.14. “Good.” Next', false),
+    { sentences: ['It is 3.14.', '“Good.”'], rest: ' Next' })
+  const long = '字'.repeat(59) + '𠮷' + '字'.repeat(60)
+  const result = takeSpeechSentences(long, true, false, 60)
+  assert.equal(result.sentences.join(''), long)
+  assert.equal(result.sentences[0].length, 59)
+  assert.ok(result.sentences.every(sentence => sentence.isWellFormed() && sentence.length <= 60))
+  const { settings } = outputStatus
+  assert.deepEqual([
+    streamingSpeechLimit({ ...settings, mode: 'local', model_id: 'moss-nano' }),
+    streamingSpeechLimit({ ...settings, mode: 'local', model_id: 'omnivoice' }),
+    streamingSpeechLimit({ ...settings, mode: 'cloud', provider: 'tencent' }),
+    streamingSpeechLimit({ ...settings, mode: 'remote' }),
+  ], [60, 80, 120, 160])
+})
+
 test('speech removes code and URLs without reading an unfinished streaming code block', () => {
   assert.equal(speechText('你好。\n```ts\nconsole.log(1)'), '你好。\n')
   assert.equal(speechText('看[结果](https://example.com)和![图片](image.png)。'), '看结果和。')
@@ -299,6 +318,113 @@ test('coalesced playback starts the opening separately when a full reply is alre
     assert.deepEqual(started, ['第一句。', '第二句。第三句。'])
   } finally {
     player.stop(); release?.({ done: true }); await new Promise(resolve => setImmediate(resolve))
+    Object.assign(speechOutputApi, original)
+  }
+})
+
+test('streaming playback batches separate updates before prefetch and flushes the final tail', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'] })
+  const original = { ...speechOutputApi }, started: string[] = [], cancelled: string[] = []
+  let finishOpening!: (value: { done: boolean }) => void
+  speechOutputApi.start = async text => { started.push(text); return { id: String(started.length) } }
+  speechOutputApi.next = async id => id === '1' ? new Promise(resolve => { finishOpening = resolve }) : { done: true }
+  speechOutputApi.cancel = async id => { cancelled.push(id) }
+  const player = new SpeechOutputPlayer({ settings: { ...outputStatus.settings, mode: 'remote' }, batchStreaming: true })
+  try {
+    player.enqueue(['Opening.'])
+    await new Promise(resolve => setImmediate(resolve))
+    player.enqueue(['Second!'])
+    context.mock.timers.tick(200)
+    player.enqueue(['“Third?”'])
+    assert.deepEqual(started, ['Opening.'])
+    context.mock.timers.tick(150)
+    assert.deepEqual(started, ['Opening.', 'Second! “Third?”'])
+    player.enqueue(['Fourth.', 'Tail'], { final: true })
+    assert.equal(started.length, 2, 'only one future request can be in flight')
+    finishOpening({ done: true })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(started, ['Opening.', 'Second! “Third?”', 'Fourth. Tail'])
+    assert.deepEqual(cancelled, ['1', '2', '3'])
+  } finally {
+    player.stop(); finishOpening?.({ done: true })
+    await new Promise(resolve => setImmediate(resolve))
+    Object.assign(speechOutputApi, original)
+  }
+})
+
+test('streaming prefetch honors the local model budget and stop discards waiting text', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'] })
+  const original = { ...speechOutputApi }, started: string[] = []
+  let finishOpening!: (value: { done: boolean }) => void
+  speechOutputApi.start = async text => { started.push(text); return { id: String(started.length) } }
+  speechOutputApi.next = async () => new Promise(resolve => { finishOpening = resolve })
+  speechOutputApi.cancel = async () => {}
+  const player = new SpeechOutputPlayer({ settings: { ...outputStatus.settings, mode: 'local', model_id: 'omnivoice' }, batchStreaming: true })
+  try {
+    const full = '字'.repeat(79) + '。'
+    player.enqueue(['首句。'])
+    await new Promise(resolve => setImmediate(resolve))
+    player.enqueue(['较短的一句。'])
+    assert.deepEqual(started, ['首句。'])
+    player.enqueue([full, '待取消。'])
+    assert.deepEqual(started, ['首句。', '较短的一句。'])
+    player.stop()
+    context.mock.timers.tick(1000)
+    finishOpening({ done: true })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(started.length, 2)
+  } finally {
+    player.stop(); finishOpening?.({ done: true })
+    await new Promise(resolve => setImmediate(resolve))
+    Object.assign(speechOutputApi, original)
+  }
+})
+
+test('a partial merged stream retries as a unit and keeps the already submitted successor separate', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'] })
+  const original = { ...speechOutputApi }, started: string[] = []
+  let finishOpening!: (value: { done: boolean }) => void
+  let received = 0, failBatch!: (value: { done: true; error: string; error_code: 'temporary' }) => void
+  speechOutputApi.start = async text => { started.push(text); return { id: String(started.length) } }
+  speechOutputApi.next = async id => {
+    if (id === '1') return new Promise(resolve => { finishOpening = resolve })
+    if (id !== '2' && id !== '4') return { done: true }
+    if (++received % 2) return { done: false, audio: 'AAA=', format: 'pcm', sample_rate: 24000 }
+    if (id === '2') return new Promise(resolve => { failBatch = resolve })
+    return { done: true, error: '断流', error_code: 'temporary' }
+  }
+  speechOutputApi.cancel = async () => {}
+  const settings = { ...outputStatus.settings, mode: 'remote' as const, provider: 'tencent' }
+  let recovery: { pending: string[]; submitted: number } | undefined
+  const player = new SpeechOutputPlayer({ settings, batchStreaming: true,
+    onRecovery: (_, pending, submitted) => { recovery = { pending, submitted } },
+  })
+  const resumed = new SpeechOutputPlayer({ settings, batchStreaming: true })
+  try {
+    const second = '乙'.repeat(59) + '。'
+    const third = '丙'.repeat(59) + '。'
+    player.enqueue(['首句。', second, third, '第四句。'])
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(started, ['首句。', second + third])
+    finishOpening({ done: true })
+    await new Promise(resolve => setImmediate(resolve))
+    context.mock.timers.tick(350)
+    assert.deepEqual(started, ['首句。', second + third, '第四句。'])
+    player.enqueue(['尾巴。'], { final: true })
+    failBatch({ done: true, error: '断流', error_code: 'temporary' })
+    await new Promise(resolve => setImmediate(resolve))
+    context.mock.timers.tick(350)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(started, ['首句。', second + third, '第四句。', second + third])
+    assert.deepEqual(recovery, { pending: [second + third, '第四句。', '尾巴。'], submitted: 2 })
+    resumed.enqueue([...recovery!.pending, '恢复。'], { final: true, submitted: recovery!.submitted })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(started.slice(4), [second + third, '第四句。', '尾巴。恢复。'])
+  } finally {
+    player.stop(); resumed.stop()
+    finishOpening?.({ done: true })
+    failBatch?.({ done: true, error: '断流', error_code: 'temporary' })
+    await new Promise(resolve => setImmediate(resolve))
     Object.assign(speechOutputApi, original)
   }
 })

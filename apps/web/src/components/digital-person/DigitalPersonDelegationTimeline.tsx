@@ -65,6 +65,7 @@ export default function DigitalPersonDelegationTimeline({items, viewedResults, l
     return <div className="digital-home-work-day" key={key}>
      <h4>{heading}</h4>
      <ol>{rows.map(({item, date})=>{
+      const title = item.title || item.instruction
       const status = viewedResults[item.id] ?? item.status
       const viewed = viewedResults[item.id] ? true : item.result_viewed
       const pending = activeStatuses.includes(status)
@@ -73,11 +74,11 @@ export default function DigitalPersonDelegationTimeline({items, viewedResults, l
        : t('digitalPerson.homeTaskUnavailable')
       return <li key={item.id}>
        <Button variant="ghost" className="digital-home-work-summary" data-status={status}
-        aria-haspopup="dialog" title={item.instruction} onClick={()=>onOpen(item)}>
+        aria-haspopup="dialog" title={title} onClick={()=>onOpen(item)}>
         <Icon name="workflow" size={14}/>
         <span>
          <span className="digital-home-event-heading">
-          <strong>{item.instruction}</strong>
+          <strong>{title}</strong>
           {date&&<time dateTime={item.created_at} title={date.toLocaleString(locale)}>
            {date.toLocaleTimeString(locale,{hour:'2-digit',minute:'2-digit',hourCycle:'h23'})}
           </time>}

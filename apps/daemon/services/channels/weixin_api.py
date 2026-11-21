@@ -12,6 +12,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from services.channels.reply_failure import ChannelTransportError
+
 BASE_URL = 'https://ilinkai.weixin.qq.com'
 VERSION = '2.2.0'
 
@@ -49,9 +51,12 @@ def api_url(value):
     raise ValueError('WeChat ClawBot API endpoint is invalid')
 
 
-class SessionExpired(RuntimeError):
+class SessionExpired(ChannelTransportError):
     def __init__(self):
-        super().__init__('微信 ClawBot 登录已失效，请重新扫码')
+        super().__init__('expired')
+
+    def __str__(self):
+        return '微信 ClawBot 登录已失效，请重新扫码'
 
 
 class ILinkClient:
@@ -88,18 +93,26 @@ class ILinkClient:
             response.raise_for_status()
             data = response.json()
             if not isinstance(data, dict):
-                raise ValueError('invalid response')
+                raise ChannelTransportError('invalid_response')
             if data.get('ret') == -14 or data.get('errcode') == -14:
                 raise SessionExpired()
             if data.get('ret', 0) != 0 or data.get('errcode', 0) != 0:
-                raise RuntimeError('WeChat ClawBot request rejected; check login status or try again later')
+                code = data.get('errcode') or data.get('ret')
+                raise ChannelTransportError('rejected', code=code if type(code) is int else None)
             return data
         except httpx.ReadTimeout:
             if endpoint == 'getupdates':
                 return {'msgs': [], 'get_updates_buf': payload.get('get_updates_buf', '')}
             if endpoint == 'get_qrcode_status':
                 return {'status': 'wait'}
-            raise RuntimeError('WeChat ClawBot request timeout') from None
-        except (httpx.HTTPError, ValueError):
-            # Never include request URLs, response bodies or credential values.
-            raise RuntimeError('WeChat ClawBot request failed, please check the network and try again') from None
+            raise ChannelTransportError('timeout') from None
+        except httpx.TimeoutException:
+            raise ChannelTransportError('timeout') from None
+        except httpx.HTTPStatusError as exc:
+            raise ChannelTransportError('http_status', status=exc.response.status_code) from None
+        except (httpx.NetworkError, httpx.RemoteProtocolError):
+            raise ChannelTransportError('connection') from None
+        except (ValueError, httpx.DecodingError):
+            raise ChannelTransportError('invalid_response') from None
+        except httpx.HTTPError:
+            raise ChannelTransportError('unknown') from None

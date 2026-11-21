@@ -1,6 +1,5 @@
 import {useEffect,useRef,useState} from 'react'
 import {createCanvasLoop} from './avatar/canvasLoop'
-import {advanceVoice} from './avatar/visualState'
 import type {OrbPhase} from './avatar/particlePalette'
 import type {AvatarSnapshot} from '../../avatars/runtime'
 import type {createOrb,PresenceReply} from './avatar/presenceOrb'
@@ -21,14 +20,12 @@ export default function DigitalPersonPresence({name,active,presentation,phase,in
     const canvas=orb.current
     const androidWebView=Boolean(window.WorkStepAndroid)||/\bAndroid\b[^)]*;\s*wv\b/i.test(window.navigator.userAgent)
     const renderer=sphere=orbModule.createOrb(canvas,androidWebView)
-    let voice={level:0,activity:0}
     const loop=createCanvasLoop(canvas,(_now,delta,reduced)=>{
      const {presentation:frame,phase:current,inputLevel:mic,metered:hasLevel,reply}=latest.current
      const still=reduced||frame.reducedMotion
-     voice=advanceVoice(voice,frame.speech.playing,frame.speech.level,delta)
      canvas.dataset.presencePhase=frame.phase
      canvas.dataset.motion=still?'still':'animated'
-     return renderer.draw(delta,current,hasLevel?voice.level:0,still,mic,frame.activityId,reply)
+     return renderer.draw(delta,current,hasLevel&&frame.speech.playing?frame.speech.level:0,still,mic,frame.activityId,reply)
     })
     const lost=(event:Event)=>{event.preventDefault();loop.dispose();if(alive)setFallback(true)}
     canvas.addEventListener('webglcontextlost',lost)

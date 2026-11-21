@@ -4,6 +4,7 @@ import type {DigitalActivity} from '../../api/digitalPerson'
 import {useProjectStore} from '../../stores/projectStore'
 import {useCompactLayout} from '../../hooks/useCompactLayout'
 import {useOverlay} from '../../hooks/useOverlay'
+import type {InitialSessionHistory} from '../../hooks/useChatSessionHistory'
 import {useI18n} from '../../i18n'
 import ResizablePanel from '../ResizablePanel'
 import Button from '../Button'
@@ -18,11 +19,12 @@ export default function DigitalPersonDelegationDialog({delegation,onClose,onResu
  delegation:DigitalActivity['delegations'][number];onClose:()=>void;onResultVisible?:(status:string)=>void
 }){
  return <DigitalPersonConversationDialog projectId={delegation.project_id} initialSessionId={delegation.session_id}
-  title={delegation.instruction} messageId={delegation.message_id} onClose={onClose} onResultVisible={onResultVisible}/>
+  title={delegation.title || delegation.instruction} messageId={delegation.message_id} onClose={onClose} onResultVisible={onResultVisible}/>
 }
 
-export function DigitalPersonConversationDialog({projectId,initialSessionId,title,messageId,onClose,onResultVisible,floating}:{
+export function DigitalPersonConversationDialog({projectId,initialSessionId,initialHistory,title,messageId,onClose,onResultVisible,floating}:{
  projectId:string;initialSessionId:string;title:string;messageId?:string|null;onClose:()=>void;onResultVisible?:(status:string)=>void
+ initialHistory?:InitialSessionHistory
  floating?:{anchor:RefObject<HTMLElement|null>;closing:boolean;onExited:()=>void}
 }){
  const {t}=useI18n(),panel=useRef<HTMLDivElement>(null),compact=useCompactLayout()
@@ -75,7 +77,7 @@ export function DigitalPersonConversationDialog({projectId,initialSessionId,titl
     <Button ref={closeButton} variant="icon" className="digital-person-delegation-close" aria-label={t('common.close')} onClick={onClose}><Icon name="x"/></Button>
    </header>
    <div className="digital-person-delegation-content">
-    {project?<Suspense fallback={<div className="digital-person-delegation-loading" role="status"><Spinner/>{t('common.loading')}</div>}><ChatPage embedded={{project,sessionId,onSessionChange:setSessionId,hideHeader:true,readTarget:{messageId:sessionId===initialSessionId?messageId??null:null,onResultVisible}}}/></Suspense>:<p role="alert">{t('digitalPerson.projectUnavailable')}</p>}
+    {project?<Suspense fallback={<div className="digital-person-delegation-loading" role="status"><Spinner/>{t('common.loading')}</div>}><ChatPage embedded={{project,sessionId,initialHistory,onSessionChange:setSessionId,hideHeader:true,readTarget:{messageId:sessionId===initialSessionId?messageId??null:null,onResultVisible}}}/></Suspense>:<p role="alert">{t('digitalPerson.projectUnavailable')}</p>}
    </div>
   </ResizablePanel>
  </div>

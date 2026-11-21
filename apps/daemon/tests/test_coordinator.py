@@ -2374,30 +2374,39 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
 
 
 @pytest.mark.anyio
-async def test_slow_coordinator_artifact_discovery_keeps_health_responsive(
-    api_context, monkeypatch,
+@pytest.mark.parametrize("source", ["artifacts", "project_memory"])
+async def test_slow_coordinator_context_read_keeps_health_responsive(
+    api_context, monkeypatch, source,
 ):
     import threading
     from agent_assistants import coordinator_context
     from engines.core.registry import ENGINE_REGISTRY
+    from services import project_memory
 
     client, tmp_path = api_context
     monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
     project_id, task_id = await _create_task(client, tmp_path)
     entered = threading.Event()
     release = threading.Event()
-    original = coordinator_context.artifact_index
+    loop_thread = threading.get_ident()
+    module, attribute = (
+        (coordinator_context, "artifact_index")
+        if source == "artifacts"
+        else (project_memory, "read_memory_bytes")
+    )
+    original = getattr(module, attribute)
 
-    def slow_artifact_index(project, task):
+    def slow_read(*args):
+        assert threading.get_ident() != loop_thread
         entered.set()
         release.wait(timeout=2)
-        return original(project, task)
+        return original(*args)
 
-    monkeypatch.setattr(coordinator_context, "artifact_index", slow_artifact_index)
+    monkeypatch.setattr(module, attribute, slow_read)
     request = asyncio.create_task(client.post(
         f"/api/task/{task_id}/chat?project_id={project_id}",
-        headers={"Idempotency-Key": "slow-artifact-context"},
-        json={"content": "查看任务产物"},
+        headers={"Idempotency-Key": f"slow-context-{source}"},
+        json={"content": "查看任务上下文"},
     ))
     try:
         assert await asyncio.to_thread(entered.wait, 1)
@@ -2408,6 +2417,53 @@ async def test_slow_coordinator_artifact_discovery_keeps_health_responsive(
     accepted = await request
     assert accepted.status_code == 200
     await _wait_for_reply(client, project_id, task_id)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("supports_resume", [True, False])
+async def test_coordinator_sends_project_memory_only_when_needed(
+    api_context, monkeypatch, supports_resume,
+):
+    from engines.core.registry import ENGINE_REGISTRY
+
+    class MemoryEngine(ResumeCoordinatorFakeEngine):
+        calls = []
+
+    monkeypatch.setattr(MemoryEngine, "supports_resume", supports_resume)
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", MemoryEngine)
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+
+    async def send(*, memory=None, reset=False):
+        if memory is not None:
+            saved = await client.put(f"/api/fs/memory?project_id={project_id}", json={"content": memory})
+            assert saved.status_code == 200, saved.text
+        accepted = await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": f"memory-{len(MemoryEngine.calls)}"},
+            json={"content": "检查当前任务", "reset_session": reset},
+        )
+        assert accepted.status_code == 200, accepted.text
+        reply = await _wait_for_reply(client, project_id, task_id, accepted.json()["assistant_message_id"])
+        assert reply["run_status"] == "succeeded"
+        return json.loads(MemoryEngine.calls[-1]["prompt"].split("Context:\n", 1)[1])
+
+    first = "项目记忆：先检查现有流程。"
+    assert (await send(memory=first))["project_memory"] == first
+    unchanged = await send(memory=f" {first}\n")
+    if supports_resume:
+        assert "project_memory" not in unchanged
+    else:
+        assert unchanged["project_memory"] == first
+    updated = "项目记忆：先检查任务状态。"
+    assert (await send(memory=updated))["project_memory"] == updated
+    assert (await send(reset=True))["project_memory"] == updated
+    cleared = await send(memory="")
+    if supports_resume:
+        assert cleared["project_memory"] == ""
+    else:
+        assert "project_memory" not in cleared
+    assert "project_memory" not in await send()
 
 
 @pytest.mark.anyio
@@ -2455,7 +2511,11 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     assert "steps" in first_context
     assert "workstep-cli" in ResumeCoordinatorFakeEngine.calls[0]["prompt"]
     assert first_context["coordinator_summary"] is None
+    assert "project_memory" not in first_context
 
+    memory_url = f"/api/fs/memory?project_id={project_id}"
+    saved = await client.put(memory_url, json={"content": "  项目约定\r\n先检查现有流程。\n"})
+    assert saved.status_code == 200, saved.text
     selected = "provider-b"
     second = await client.post(
         f"/api/task/{task_id}/chat?project_id={project_id}",
@@ -2481,8 +2541,11 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     resumed_context = json.loads(ResumeCoordinatorFakeEngine.calls[1]["prompt"].split("Context:\n", 1)[1])
     assert [m["content"] for m in resumed_context["recent_coordinator_messages"]] == ["第二问"]
     assert resumed_context["task"]["id"] == task_id
+    assert resumed_context["project_memory"] == "项目约定\n先检查现有流程。"
     assert "Never modify project code" in ResumeCoordinatorFakeEngine.calls[1]["prompt"]
 
+    saved = await client.put(memory_url, json={"content": "更新后的项目约定"})
+    assert saved.status_code == 200, saved.text
     third = await client.post(
         f"/api/task/{task_id}/chat?project_id={project_id}",
         headers={"Idempotency-Key": "chat-r3"},
@@ -2501,6 +2564,7 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     reset_context = json.loads(reset_prompt.split("Context:\n", 1)[1])
     assert reset_context["task"]["id"] == task_id
     assert reset_context["project_id"] == project_id
+    assert reset_context["project_memory"] == "更新后的项目约定"
     assert "steps" in reset_context
     assert "workstep-cli" in reset_prompt
     assert [
@@ -4466,6 +4530,7 @@ async def test_scheduled_turn_runs_beside_main_session_and_preserves_it(api_cont
     from engines.core.registry import ENGINE_REGISTRY
 
     scheduled_started, release = asyncio.Event(), asyncio.Event()
+    project_memory = "定时汇报时检查任务状态。"
     class Engine(CoordinatorFakeEngine):
         @property
         def supports_resume(self):
@@ -4473,6 +4538,7 @@ async def test_scheduled_turn_runs_beside_main_session_and_preserves_it(api_cont
         async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
             if "独立定时指令" in prompt:
                 assert session_id is None
+                assert json.loads(prompt.split("Context:\n", 1)[1])["project_memory"] == project_memory
                 scheduled_started.set()
                 await release.wait()
             async for event in super().spawn(prompt, cwd, model, session_id, **kwargs):
@@ -4480,6 +4546,8 @@ async def test_scheduled_turn_runs_beside_main_session_and_preserves_it(api_cont
     monkeypatch.setitem(ENGINE_REGISTRY, "claude", Engine)
     client, root = api_context
     project_id, task_id = await _create_task(client, root)
+    saved = await client.put(f"/api/fs/memory?project_id={project_id}", json={"content": project_memory})
+    assert saved.status_code == 200, saved.text
     module = ScheduleModule(main.project_manager, main.task_service, main.workflow_runtime, coordinator=main.coordinator_module)
     def prepare(_project):
         session = CoordinatorSession.create(task=task_id, engine="claude", session_id="main-session", created_at=utc_now(), updated_at=utc_now())

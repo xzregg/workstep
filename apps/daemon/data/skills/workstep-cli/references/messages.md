@@ -1,4 +1,28 @@
-# Project chat messages
+# Project conversations
+
+## Archive a conversation
+
+With explicit user authorization and both WorkStep IDs, archive an idle
+ordinary project conversation:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli session archive --project <project_id> --session <session_id> --json
+```
+
+Use [Transport](transport.md) for other runtimes. Native operation:
+`workstep_archive_chat_session` with `project_id`, `session_id`, and
+`confirm: "yes"`. Project-scoped callers need edit access to the target project.
+
+Report `archived: true` as archived with history retained. Report
+`deleted: true` as an empty conversation cleared by the existing archive rule.
+Archiving clears the conversation's schedules. Report `ok: false` or a nonzero
+exit as failure. If a turn is queued, running, or stopping, report the conflict
+and leave the turn alone.
+
+For delegated work, use the record's `project_id` and `session_id`. The
+delegation record stays in history and its archived execution conversation
+cannot accept a delegation continuation. Workflow tasks use their own
+[`task archive`](tasks.md) command.
 
 ## Send an instruction
 

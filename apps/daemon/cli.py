@@ -155,6 +155,13 @@ def build_parser() -> argparse.ArgumentParser:
     message_send.add_argument('--idempotency-key', help='stable key for retries against the same daemon')
     add_json(message_send)
 
+    session = subparsers.add_parser('session', help='manage ordinary project conversations')
+    session_sub = session.add_subparsers(dest='subcommand', required=True)
+    session_archive = session_sub.add_parser('archive', help='archive one idle project conversation')
+    session_archive.add_argument('--project', dest='project_id', required=True)
+    session_archive.add_argument('--session', dest='session_id', required=True)
+    add_json(session_archive)
+
     memory = subparsers.add_parser('memory', help='search memory with intent-derived text clues or date bounds')
     memory_sub = memory.add_subparsers(dest='subcommand', required=True,metavar='{search,history,read}')
     for operation in ('search', 'history', 'read', 'pending'):
@@ -201,6 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_json(delegations)
     delegate = person_sub.add_parser('delegate', help='start or continue a tracked project execution session')
     delegate.add_argument('--project', dest='project_id', required=True)
+    delegate.add_argument('--title', help='short task title (one line, up to 60 characters)')
     delegate.add_argument('--instruction', required=True)
     delegate.add_argument('--session', dest='origin_session_id', required=True)
     delegate.add_argument('--idempotency-key', dest='request_id', required=True)
@@ -572,6 +580,10 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
     """Resolve a parsed command to one tool call and return its JSON result."""
     client = client or WorkstepClient(base_url=args.url)
     command = args.command
+    if command == 'session' and args.subcommand == 'archive':
+        return await client.call('workstep_archive_chat_session', {
+            'project_id': args.project_id, 'session_id': args.session_id, 'confirm': 'yes',
+        })
     if command == 'message':
         if args.subcommand == 'send':
             return await client.call('workstep_send_message', {
@@ -603,7 +615,7 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 key: getattr(args, key) for key in ('project_id', 'origin_session_id', 'delegation_id')
                 if getattr(args, key, None) is not None})
         return await client.call('workstep_delegate_digital_person', {
-            **{key: getattr(args, key) for key in ('project_id', 'instruction', 'origin_session_id', 'request_id', 'continuation_of', 'target_session_id')
+            **{key: getattr(args, key) for key in ('project_id', 'title', 'instruction', 'origin_session_id', 'request_id', 'continuation_of', 'target_session_id')
                if getattr(args, key) is not None}, 'confirm': 'yes'})
     if command == "context":
         from services.conversation_context import current_conversation

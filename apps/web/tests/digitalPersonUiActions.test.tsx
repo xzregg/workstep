@@ -2,14 +2,61 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { chatSessionApi } from '../src/api/client'
+import { ApiError, chatSessionApi, type ChatSessionDetail } from '../src/api/client'
 import { useProjectStore } from '../src/stores/projectStore'
+import { useUserSettingsStore } from '../src/stores/userSettingsStore'
 import type { AssistantChatMessage } from '../src/stores/assistantStore'
-import { useDigitalPersonUiActions } from '../src/components/digital-person/useDigitalPersonUiActions'
+import { resolveDigitalPersonConversation, useDigitalPersonUiActions } from '../src/components/digital-person/useDigitalPersonUiActions'
 import { installDomEnvironment } from './helpers/domEnv'
 
 const reply = (id: string, action: object, status: AssistantChatMessage['status'] = 'succeeded'): AssistantChatMessage => ({
   id, role: 'assistant', status, content: ['```workstep-ui', JSON.stringify(action), '```'].join('\n'),
+})
+
+test('exact opening checks the requested project and session via one authorized detail request', async () => {
+  const { window } = installDomEnvironment()
+  const originalGet = chatSessionApi.get
+  const originalList = chatSessionApi.list
+  const originalProjects = useProjectStore.getState().projects
+  const settings = useUserSettingsStore.getState()
+  useUserSettingsStore.setState({ loaded: true, loading: false })
+  useProjectStore.setState({ projects: [{ id: 'p', name: '网站', path: '/site', workflows: [] }] })
+  const detail: ChatSessionDetail = { id: 'execution', project_id: 'p', title: '真实的委派标题',
+    engine: 'pydantic_ai', messages: [], message_count: 0, running: true }
+  const lookups: string[][] = []
+  let problem: Error | undefined
+  let result = detail
+  chatSessionApi.list = async () => assert.fail('ID lookup must not list sessions')
+  chatSessionApi.get = async (sessionId, projectId) => {
+    lookups.push([sessionId, projectId])
+    if (problem) throw problem
+    return result
+  }
+  const action = { action: 'conversation.open', project_id: 'p', session_id: 'execution' } as const
+  try {
+    const opened = await resolveDigitalPersonConversation(action, 'source')
+    assert.ok('target' in opened)
+    assert.equal(opened.target.title, detail.title)
+    assert.equal(opened.target.sessionId, detail.id)
+    assert.equal(opened.target.initialHistory?.detail, detail)
+    assert.deepEqual(lookups, [['execution', 'p']])
+    assert.deepEqual(await resolveDigitalPersonConversation({ ...action, project_id: 'unknown' }, 'source'), { issue: 'missingTarget' })
+    assert.deepEqual(await resolveDigitalPersonConversation({ ...action, session_id: 'source' }, 'source'), { issue: 'missingTarget' })
+    assert.equal(lookups.length, 1)
+    for (const [status, issue] of [[404, 'missingTarget'], [403, 'forbidden'], [401, 'forbidden'], [503, 'detailUnavailable']] as const) {
+      problem = new ApiError('session error', status)
+      assert.deepEqual(await resolveDigitalPersonConversation(action, 'source'), { issue })
+    }
+    problem = undefined
+    result = { ...detail, project_id: 'another' }
+    assert.deepEqual(await resolveDigitalPersonConversation(action, 'source'), { issue: 'missingTarget' })
+  } finally {
+    chatSessionApi.get = originalGet
+    chatSessionApi.list = originalList
+    useProjectStore.setState({ projects: originalProjects })
+    useUserSettingsStore.setState({ loaded: settings.loaded, loading: settings.loading })
+    await window.happyDOM.close()
+  }
 })
 
 test('applies only a complete acknowledged reply once and ignores late results after leaving', async () => {

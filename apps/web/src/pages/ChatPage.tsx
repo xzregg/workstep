@@ -1,5 +1,6 @@
 import { useProjectProviders } from '../hooks/useProjectProviders'
 import DigitalPersonHome from '../components/digital-person/DigitalPersonHome'
+import DigitalPersonWorkbenchActions from '../components/digital-person/DigitalPersonWorkbenchActions'
 import { visibleDigitalPersonMessages } from '../components/digital-person/digitalPersonUiReply'
 import type { DigitalPersonProfile } from '../api/digitalPerson'
 import DigitalPersonCamera, { type PrepareCameraMessage } from '../components/digital-person/DigitalPersonCamera'
@@ -11,7 +12,7 @@ import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissi
 import { useChatSessionRead, type ChatReadTarget } from '../hooks/useChatSessionRead'
 import { useChatListTurnRefresh } from '../hooks/useChatListTurnRefresh'
 import ProjectGitButton from '../components/git/ProjectGitButton'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import MobileHeaderActions from '../components/MobileHeaderActions'
 import { useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom'
 import AssistantChatPanel, { type AssistantChatPanelProps } from '../components/AssistantChatPanel'
@@ -51,7 +52,7 @@ import { useEngineQuota } from '../hooks/useEngineQuota'
 import { useChatSessionTransitions } from '../hooks/useChatSessionTransitions'
 import { useChatSessionActions } from '../hooks/useChatSessionActions'
 import { useWorkflowDesignSkill } from '../hooks/useWorkflowDesignSkill'
-import { useChatSessionHistory } from '../hooks/useChatSessionHistory'
+import { useChatSessionHistory, type InitialSessionHistory } from '../hooks/useChatSessionHistory'
 import { useChatSessionEngineSelection } from '../hooks/useChatSessionEngineSelection'
 import { useThrottledMemo } from '../hooks/useThrottledMemo'
 import { useCompactLayout } from '../hooks/useCompactLayout'
@@ -79,6 +80,7 @@ export interface EmbeddedProjectChat {
   placeholder?: string
   hideHeader?: boolean
   readTarget?: ChatReadTarget
+  initialHistory?: InitialSessionHistory
 }
 
 const EMPTY_MESSAGES: AssistantChatMessage[] = []
@@ -139,7 +141,8 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   const { can, canOpenSettings, bound: projectScopedAccess } = useGatewayProjectPermissions(activeProject?.id)
 
   // Engine/model picker (session-scoped, mirrors the flow assistant wiring).
-  const loadedDigitalPerson = useDigitalPerson(Boolean(!companionProfile && activeProject?.is_default_workspace && activeProject.type !== 'remote' && !projectScopedAccess && !isEmbedded))
+  const isDigitalPersonWorkspace = Boolean(activeProject?.is_default_workspace && activeProject.type !== 'remote' && !projectScopedAccess && !isEmbedded)
+  const loadedDigitalPerson = useDigitalPerson(!companionProfile && isDigitalPersonWorkspace)
   const digitalPerson = companionProfile || loadedDigitalPerson
   const digitalActivity = useDigitalActivity(Boolean(digitalPerson))
   const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
@@ -178,10 +181,16 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   const messages = session?.messages ?? EMPTY_MESSAGES
   const filterUiReplies = Boolean(companionProfile || activeProject?.is_default_workspace)
   const displayMessages = useMemo(() => filterUiReplies ? visibleDigitalPersonMessages(messages) : messages, [filterUiReplies, messages])
-  const [acceptedCompanionReply, setAcceptedCompanionReply] = useState<{ sessionId: string; replyId: string }>()
+  const actionSourceEnabled = Boolean(companionProfile || isDigitalPersonWorkspace) && !isEmbedded && pane?.active !== false && can('session.read')
+  const actionSource = useMemo(() => ({ routeProjectId, sessionParam, actionSourceEnabled }), [routeProjectId, sessionParam, actionSourceEnabled])
+  const currentActionSource = useRef(actionSource)
+  useLayoutEffect(() => { currentActionSource.current = actionSource }, [actionSource])
+  const [acceptedCompanionReply, setAcceptedCompanionReply] = useState<{ source: typeof actionSource; sessionId: string; replyId: string }>()
   const onCompanionReplyAccepted = useCallback((sessionId: string, replyId: string) => {
-    setAcceptedCompanionReply({ sessionId, replyId })
-  }, [])
+    if (currentActionSource.current === actionSource) setAcceptedCompanionReply({ source: actionSource, sessionId, replyId })
+  }, [actionSource])
+  const uiReply = acceptedCompanionReply?.source === actionSource && acceptedCompanionReply.sessionId === sessionId
+    ? messages.find(message => message.id === acceptedCompanionReply.replyId) : undefined
   const renderDigitalFeedback = useCallback((messageId: string) => <DigitalPersonFeedback messageId={messageId} initialValue={digitalActivity?.feedback?.[messageId] || 0} />, [digitalActivity?.feedback])
   // A streaming bubble is authoritative too: history hydration or a missed START
   // event must never let an active turn fall through to the normal /chat endpoint.
@@ -208,7 +217,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     sessionId, projectId: activeProject?.id, running, engineConfig,
     permissionMode, planMode, goalMode, effectiveEngine,
     onSessionIdChange: setSessionId, onTitleChange: setSessionTitle, prepareContent: prepareCameraContent,
-    onReplyAccepted: companionProfile && pane?.active !== false ? onCompanionReplyAccepted : undefined,
+    onReplyAccepted: actionSourceEnabled ? onCompanionReplyAccepted : undefined,
   })
   const workflowSkill = useWorkflowDesignSkill({
     projectId: routeProjectId, engine: effectiveEngine, sessionId, input, onChange: setInput, running,
@@ -350,6 +359,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     sessionId: sessionParam,
     messageSessionId: sessionId,
     projectId: activeProject?.id,
+    initialHistory: embedded?.initialHistory,
     onLoaded: (detail) => {
       if (!isEmbedded && routeProjectId) {
         if (detail.archived) useRecentVisitsStore.getState().removeSessions(routeProjectId, [detail.id])
@@ -560,7 +570,13 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
         messages={displayMessages}
         actionRuns={projectActions.runs}
         onStopAction={(runId) => { void projectActions.stop(runId) }}
-        afterMessages={<>{messages.length === 0 && embedded?.emptyContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}{embedded?.afterContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}<ProjectActionMessages state={projectActions} /></>}
+        afterMessages={<>
+          {messages.length === 0 && embedded?.emptyContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}
+          {embedded?.afterContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}
+          <ProjectActionMessages state={projectActions} />
+          {actionSourceEnabled && loadedDigitalPerson &&
+            <DigitalPersonWorkbenchActions mainSessionId={digitalActivity?.main_session_id} sessionId={sessionId} reply={uiReply} />}
+        </>}
         availableCommands={session?.availableCommands}
         composerStatus={<>{effectiveEngine === 'codex_sdk' ? <ChatSessionGoalBar
           key={sessionId} projectId={routeProjectId} goal={latestGoalFromMessages(messages)} running={running} stopping={stopping}
@@ -778,7 +794,6 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   )
   return companionProfile ? <DigitalPersonHome profile={companionProfile} activity={digitalActivity}
     projectId={activeProject.id} projectName={activeProject.name} sessionId={sessionId}
-    messages={displayMessages} uiReply={acceptedCompanionReply?.sessionId === sessionId
-      ? messages.find(message => message.id === acceptedCompanionReply.replyId) : undefined}
+    messages={displayMessages} uiReply={uiReply}
     running={running} active={pane?.active !== false && Boolean(assistantConfig) && !coordinatorConfigError && !handingOff && !engineConfigSaving} composerDisabled={composerDisabled} onSend={send} onSendPending={sendPending} onStop={stop} inputValue={input} onDraft={handleInputChange} onPrepareCamera={setCameraPrepare} error={sendError || coordinatorConfigError}>{conversation}</DigitalPersonHome> : conversation
 }

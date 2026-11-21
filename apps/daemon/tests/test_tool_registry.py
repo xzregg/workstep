@@ -18,6 +18,7 @@ def test_registry_defines_expected_tool_set():
     assert names == {
         "workstep_get_message",
         "workstep_send_message",
+        "workstep_archive_chat_session",
         "workstep_check_digital_person",
         "workstep_stop_digital_person_check",
         "workstep_remember_digital_person_rule",

@@ -111,7 +111,6 @@
   .digital-home--atlas:not(.digital-home--chat) .digital-home-main{
     background:radial-gradient(ellipse 80% 52% at 50% 32%,#191226,var(--home-canvas) 70%);
   }
-  .digital-home.digital-home--atlas .digital-home-presence-info .digital-home-metric{display:none}
   .digital-home--atlas .memory-atlas{background:transparent;border-radius:0}
   .digital-home--atlas:not(.digital-home--chat) .atlas-message-fade{
     display:block;position:absolute;inset-inline:0;inset-block-end:0;

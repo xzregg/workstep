@@ -92,7 +92,7 @@ def commit(rows, memories, run_id, existing_ids=()):
                 raise ValueError('Source changed during thinking, old result not submitted')
         stored=knowledge.store_extraction({'memories':memories},
             [r for r in rows if r.get('needs_knowledge',True)],existing_ids,
-            report=True,strict=True,connection=db)
+            report=True,strict=True,connection=db,reflection_run_id=run_id)
         for row in rows:
             db.execute("""INSERT INTO memory_extraction_jobs VALUES(?,?,'done',1,0)
                 ON CONFLICT(memory_id,source_hash) DO UPDATE SET status='done',retry_at=0""",(row['id'],row['source_hash']))
@@ -162,6 +162,7 @@ def instruction(profile):
     from services.digital_person_affect import STYLES, REVIEW_RULES
     from services.memory_policy import RULES
     from services.digital_person import profile_documents
+    from services.digital_person_delegations import DELEGATION_REVIEW_RULES
     persona = profile_documents(profile)
     if profile.persona_markdown is None:
         persona += f'\nRelationships: {STYLES[profile.relationship_style]} {profile.relationship_preferences}'
@@ -194,10 +195,11 @@ def instruction(profile):
             'Name the task, the remaining blocker and the specific user action, citing this batch\'s source IDs. Keep agent-executable work with the execution engine. '
             'Choose silent for running, cancelled, resolved or explicitly paused work, uncertain task status, and unchanged requests already covered by previous_notifications. '
             'Handle entries in delegations using their goal and the message matching message_id, found in conversations, conversation or delegation_messages. '
+            + DELEGATION_REVIEW_RULES + ' '
             'Return delegation_actions with one object per entry: {"id":"provided ID","action":"continue","instruction":"specific next work"} '
-            'only when there is concrete progress and a specific remaining step within the original goal, '
-            '{"id":"provided ID","action":"complete","summary":"result for the user"} when verified complete, '
-            'or {"id":"provided ID","action":"needs_user","summary":"specific blocker or question"} if approval, missing information or no material progress. '
+            'for a specific, actionable step within the goal, '
+            '{"id":"provided ID","action":"complete","summary":"result for the user","evidence":"verbatim result excerpt up to 320 characters"} when verified complete, '
+            'or {"id":"provided ID","action":"needs_user","summary":"specific blocker or question"}. '
             'For pending approval report it without approving. Never use tools to continue these delegations, and do not also report these actions as a general notification. '
             'Other work notices require a verified new result, blocker or pending user action. '
             'For natural social contact, use kind=social and follow companion.contact_policy and companion.contact_timing. '
