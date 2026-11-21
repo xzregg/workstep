@@ -711,8 +711,8 @@ class DigitalPersonRuntime:
                             retried_empty = True
                             def confirm(_):
                                 return checker.submit_internal_event(home.id, row['id'], 'digital_person.reflection',
-                                    'Complete the previous turn by returning the final JSON based on the information already verified. '
-                                    'If nothing changed, return {"decision":"silent","summary":"No changes","source_ids":[]}. '
+                                    'Complete the previous turn with final JSON in one <json>...</json> pair, using the information already verified. '
+                                    'If nothing changed, return <json>{"decision":"silent","summary":"No changes","source_ids":[]}</json>. '
                                     'State uncertain results explicitly as unknown.', str(uuid.uuid4()), schedule=False)
                             accepted = await self.projects.run_db(home.id, confirm)
                             checker.start_queued_turn(accepted.turn_id)

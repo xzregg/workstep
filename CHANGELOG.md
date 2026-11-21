@@ -14,6 +14,8 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 - Add an evidence-backed memory star map, on-demand knowledge details, delegation views and scoped digital-person conversation actions.
 - Give delegated work concise, optional titles without replacing execution instructions or renaming existing conversations; reuse authorized initial history without overwriting newer streamed replies.
 - Allow delegation queries without project or origin-session filters while preserving explicit filtering and access checks.
+- Settle interrupted delegation follow-ups after a successful review when no actionable work or user question remains, and preserve distinct delegation and result timestamps.
+- Compact the recurring reflection prompt while retaining evidence, memory-maintenance, affinity and notification boundaries.
 - Distinguish assistant execution failures from channel delivery failures, send safe failure notices to the original conversation, and retain the last confirmed failure context for follow-up questions.
 - Expand newly created memory summaries independently of complete reflection records, with distinct silent-completion and notification-failure states.
 - Synthesize the first speech segment immediately and batch subsequent sentences within a bounded delay, respecting model limits and clearing pending playback on stop, mute or conversation changes.
@@ -21,6 +23,7 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 - Reuse managed desktop resource downloads and preserve platform-specific Android and iOS media and installation behavior.
 - Refresh saved provider model selection and keep gateway-managed provider records read-only in the workbench.
 - Localize recognized runtime errors while preserving dynamic details and authorization boundaries; align regression fixtures with native permission, workflow, archive and localization contracts without skipping test cases.
+- Translate direct-workspace reconnection and authorization errors through the shared browser-language catalog, and make Chinese gateway regression fixtures independent of runner locale.
 - Update the user manual in all 26 supported languages with current memory-atlas, delegation, speech, provider and workflow-debug guidance and sanitized screenshots from an isolated demonstration instance.
 
 - Refresh security-affected Python, web and Electron dependencies, synchronize desktop and container exports, and verify packaging glob compatibility. Raise the source-install Python minimum to 3.11.5.

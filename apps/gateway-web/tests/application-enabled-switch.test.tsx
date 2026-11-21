@@ -4,6 +4,8 @@ import { JSDOM } from 'jsdom'
 import { ApplicationEnabledSwitch } from '../src/ApplicationEnabledSwitch'
 const dom = new JSDOM('<html><body></body></html>', {url:'https://gateway.test/admin/settings'})
 Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,MutationObserver:dom.window.MutationObserver,Event:dom.window.Event})
+// These UI fixtures explicitly exercise Chinese error recovery.
+Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' })
 Object.defineProperty(globalThis,'navigator',{configurable:true,value:dom.window.navigator})
 const {render,screen,fireEvent,waitFor,cleanup}=await import('@testing-library/react')
 const original=globalThis.fetch

@@ -1264,6 +1264,7 @@ async def test_checker_recovers_empty_final_once_in_same_context(runtime, monkey
     assert len(calls) == 2
     assert calls[1][1] == 'retained-engine'
     assert 'JSON' in calls[1][0]
+    assert '<json>{"decision":"silent","summary":"No changes","source_ids":[]}</json>' in calls[1][0]
 
 
 async def test_checker_shares_one_conversation_without_cross_contact_engine_history(runtime, monkeypatch):

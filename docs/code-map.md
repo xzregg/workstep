@@ -1,6 +1,10 @@
+主动思考固定提示去重：`digital_person_assessment.instruction/MEMORY_GUIDANCE` 合并批次、知识准入／替代、归档、通知和输出字段说明，`digital_person_affect.REVIEW_RULES` 仅供主动思考使用的评分文字同步合并，评分数值与结算不变；数字中枢、`profile_documents` 人设与独立提炼规则保持原样。主提示与空回复补答均示范 `<json>...</json>`，解析器及业务校验不变。行为入口 `test_companion_contact_context.py::test_assessment_prompt_budget_keeps_one_output_contract_and_persona`、`test_memory_maintenance.py`、`test_digital_person_affect.py`、`test_digital_person_runtime.py::test_checker_recovers_empty_final_once_in_same_context` 及委派管理回归。隔离模型输入／输出、逐项校验及同一人设的 token 对照位于 `tmp/reflection-prompt-compact/`。
+
 归档会话停止催办并保留知识：`digital_person_reflection.model_context` 保留每个来源分组的 `archived_source`；`digital_person_assessment.instruction` 说明归档不等于任务完成，可记住未完成与归档状态供用户以后主动检索，但不主动跟进或恢复执行。`DigitalPersonRuntime.check` 在知识提交后保留原归档拦截，并在投递前通过既有项目数据库执行器复查来源会话，覆盖思考期间归档。行为回归 `test_digital_person_reflection.py` 的归档前／思考期间归档、计划记忆落库、不通知不恢复，以及分组状态投影。
 
 主动思考轮次上限：`DigitalPersonRuntime._drain_assessments` 每轮自动调度最多调用两次单批 check，保留无工作／失败／取消／延后、重复批次和关闭开关时的提前退出；剩余待处理消息保留，下一轮仍按最后一批结束后的配置间隔运行，手动 check 保持单批。行为入口 `test_digital_person_unified.py::test_automatic_cycle_limits_to_two_batches_then_waits_for_interval`（真实队列三批、两批上限、五分钟前不再处理、到期完成第三批），以及 `test_digital_person_proactive_delivery.py`。
+
+`memory pending` 的委派字段由 `DelegationManagement.attach` 组装。`goal` 保留原始目标，`instruction` 仅在本轮指令与目标不同时输出。`delegations[].created_at` 来自委派记录，`delegation_messages[].created_at` 随结果正文从项目数据库执行器读取，使用消息创建时间。后台成功评估后，`DelegationManagement.apply` 将没有待答问题或适用动作的中断委派结算为 `stopped`，避免跨轮重复领取。回归见 `test_digital_person_delegation_management.py`。
 
 主动思考异常来源跳过：`DigitalPersonRuntime._collect` 按原消息排除缺失或指纹不一致的来源（同一消息的全部片段一起排除），其余来源继续；全批不可读返回 no_work。`digital_person_assessment.defer_unavailable` 在线程内仅对仍处于 pending 且指纹未变的索引延后5分钟，不写完成回执，避免异常来源占满最早批次；已刷新的新版来源不受旧版延期影响。行为回归 `test_memory_batch_cli.py::test_unreadable_sources_are_skipped_without_blocking_valid_batch`、`test_all_unavailable_sources_are_deferred_without_completion`，覆盖缺失／变化、正常来源提交、异常不结算及读取恢复。
 
@@ -34,7 +38,7 @@ Claude 全权限入口：输入框 `ChatInput` 与设置 `EngineConfigForm` 共�
 
 聊天折叠态过程预览：`useChatSessionHistory.ts` 自动补拉通过既有消息 events API 的 `preview=true` 读取最近两条聚合过程项；`agent_assistants/process_preview.py` 复用 AG-UI 翻译，以短文本、工具组计数／状态代替工具输入输出。`TurnEventJournal.preview` 逐行扫描日志，不物化全量事件；读取经项目数据库执行器。`MessageMetaBar`／`AssistantChatPanel` 传递 preview 意图，`assistantStore.ts` 区分 preview_loaded 与完整 loaded，展开时移除预览投影并从头分页读取详情；预览工具组不挂载隐藏的子工具行。旧后端兼容请求 limit=2，避免忽略 preview 参数时返回全量事件。回归 `test_process_preview.py`、`test_event_journal.py`、`test_chat_session.py::test_collapsed_chat_preview_returns_two_rows_and_keeps_health_responsive`（慢盘健康 canary／归属校验）、Web `useChatSessionHistory.test.tsx`、`assistantStoreTimeline.test.ts`、`processTracePreview.test.tsx`。
 
-知识摘要精简：`services/memory_policy.COMPACT_RULES` 是短摘要与价值筛选的共享指导，覆盖 `digital_person_assessment.instruction`、`memory_knowledge.EXTRACTION_PROMPT` 与纠错反馈。保留独立事实／事件及条件，合并同一变更的重复讨论，默认省略操作日志、测试数量和临时路径，不硬截断摘要。回归 `apps/daemon/tests/test_memory_maintenance.py::test_compact_memory_policy_reaches_assessment_extractor_and_repair`，既有提炼／知识校验回归及隔离模型样例 `tmp/compact-memory/`。
+知识摘要精简：主动思考使用 `digital_person_assessment.MEMORY_GUIDANCE` 的精简指导；独立提炼 `memory_knowledge.EXTRACTION_PROMPT` 和纠错反馈继续使用未改动的 `memory_policy.COMPACT_RULES`。保留独立事实／事件及条件，合并同一变更的重复讨论，默认省略操作日志、测试数量和临时路径，不硬截断摘要。回归 `apps/daemon/tests/test_memory_maintenance.py::test_compact_memory_policy_reaches_assessment_extractor_and_repair`，既有提炼／知识校验回归及隔离模型样例 `tmp/compact-memory/`。
 
 实时正文与刷新历史分离：`ChatMessageBubble.tsx` 在运行态空气泡就挂载正文，`MessageTimeline.tsx` 在空态／首条事件／历史回退间保留同一外壳与首块key，避免首批实时整段被当成历史直接显示；新增实时块显式传 `revealInitial`，初始历史不重播。`useStreamReveal.ts` 普通实时按所选A慢速起步，积压时每次最多32字加速，超大批量及引擎结束后按约450ms快速追平；刷新首屏正文仍直接显示。回归 `streamRevealText.test.tsx` 的真实气泡首批有／无事件、刷新运行／完成历史，`useStreamReveal.test.tsx` 的千字小步及大批预算。
 
@@ -242,7 +246,7 @@ iOS 客户端入口为 `apps/ios/WorkStep.xcodeproj`（可用 `scripts/generate-
 
 # 按功能查找代码
 
-错误国际化：`packages/gateway-ui/src/errorText.ts` 匹配新英文与已保存的旧中文错误模板，并保留动态参数。Web 工作台在 `api/transport.ts` 处理 HTTP 失败，从 `i18n/index.tsx` 取得当前语言，聊天与任务错误在渲染时翻译。网关后台通过 `apps/gateway-web/src/gatewayErrorText.ts` 使用浏览器语言。错误词典在 `packages/gateway-ui/src/errors/`，自定义语言包通过 `apps/web/scripts/generate-language-catalog.mjs` 获取错误键。回归入口为 `apps/web/tests/errorLocalization.test.ts`。
+错误国际化：`packages/gateway-ui/src/errorText.ts` 匹配新英文与已保存的旧中文错误模板，并保留动态参数。Web 工作台在 `api/transport.ts` 处理 HTTP 失败，从 `i18n/index.tsx` 取得当前语言，聊天与任务错误在渲染时翻译。网关后台通过 `apps/gateway-web/src/gatewayErrorText.ts` 使用浏览器语言；`DirectWorkstepWorkspace.tsx` 的临时重连与永久授权错误在展示时经过同一入口，保留原重试和停止语义。错误词典在 `packages/gateway-ui/src/errors/`，自定义语言包通过 `apps/web/scripts/generate-language-catalog.mjs` 获取错误键。回归入口为 `apps/web/tests/errorLocalization.test.ts`、`apps/gateway-web/tests/my-workstep.test.tsx`（中英文重连状态与操作保留）；中文管理界面测试显式指定浏览器语言，不依赖运行器默认值。
 
 后台页面模板：`docs/ui.html#admin` 集中演示分组侧栏、移动菜单、提交式查询与表格状态筛选；示例交互由该 HTML 管理，使用模拟数据，不调用 API。生产导航以 `apps/gateway-web/src/AdminLayout.tsx` 和 `apps/gateway-web/src/AdminNavigation.tsx` 为准，设计约定见 `DESIGN.md` 第 12 节。
 

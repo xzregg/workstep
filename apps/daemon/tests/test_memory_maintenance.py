@@ -10,12 +10,17 @@ def test_compact_memory_policy_reaches_assessment_extractor_and_repair():
     from services.memory_policy import COMPACT_RULES, RULES, repair_instruction
     from services.digital_person_assessment import instruction
     from services.digital_person import DigitalPersonProfile
-    for prompt in (RULES, instruction(DigitalPersonProfile()), knowledge.EXTRACTION_PROMPT,
+    for prompt in (RULES, knowledge.EXTRACTION_PROMPT,
                    repair_instruction('invalid', {})):
         assert COMPACT_RULES in prompt
     for boundary in ('1-2 short sentences', 'not an activity log',
                      'test counts', 'independent facts', 'Preserve complete facts'):
         assert boundary in COMPACT_RULES
+    # Background reflection has its own shorter instructions; the standalone
+    # extractor and repair policy retain their original full guidance.
+    prompt=instruction(DigitalPersonProfile())
+    for boundary in ('not an activity log', '1-2 short sentences', 'test counts', 'independent facts'):
+        assert boundary in prompt
 
 
 def test_assessment_accepts_one_explicit_json_block_with_surrounding_prose():

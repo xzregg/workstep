@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { JSDOM } from 'jsdom'
+import { DirectWorkstepWorkspace } from '../src/DirectWorkstepWorkspace'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { ProjectsPage } from '../src/ProjectsPage'
 import { PortalHeader } from '../src/PortalHeader'
 
 const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'https://gateway.test/'})
 Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,MutationObserver:dom.window.MutationObserver,Event:dom.window.Event,localStorage:dom.window.localStorage,sessionStorage:dom.window.sessionStorage})
+// These UI fixtures explicitly exercise Chinese error recovery.
+Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' })
 Object.defineProperty(globalThis,'navigator',{configurable:true,value:dom.window.navigator})
 const {cleanup,render,screen,fireEvent,waitFor}=await import('@testing-library/react')
 const originalFetch=globalThis.fetch
@@ -228,6 +231,21 @@ test('project-only instance switches authorized projects without requesting whol
  await waitFor(()=>assert.ok(calls.includes('/api/projects/p1/access')))
  assert.equal(calls.some(url=>url.includes('/devices/d/access')),false)
  assert.ok(screen.getByText('仅可访问已授权项目'))
+})
+
+test('connection failure follows the browser language without changing retry state',async()=>{
+ const originalLanguage=navigator.language
+ try{
+  for(const[language,text]of[['zh-CN','网关或设备暂时断开，正在自动重连…'],['en-US','Gateway or device temporarily disconnected, reconnecting automatically...']]){
+   Object.defineProperty(navigator,'language',{configurable:true,value:language})
+   globalThis.fetch=async()=>new Response(null,{status:503})
+   render(<DirectWorkstepWorkspace devices={[{id:'d',name:'电脑',online:true}]} projects={[]}/>)
+   await screen.findByText(text)
+   assert.ok(screen.getByRole('status').querySelector('.gateway-spinner'))
+   assert.ok(screen.getByRole('button',{name:'立即重试'}))
+   cleanup()
+  }
+ }finally{Object.defineProperty(navigator,'language',{configurable:true,value:originalLanguage})}
 })
 
 test('failed direct workspace access stays retryable and revoked access stops retrying',async()=>{

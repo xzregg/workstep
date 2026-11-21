@@ -13,15 +13,24 @@ from tests.test_digital_person_runtime import chat_module, runtime
 
 @pytest.mark.asyncio
 async def test_assessment_can_process_delegation_with_empty_memory_queue(runtime, monkeypatch):
-    service, _, _, _, origin = await seed(runtime)
-    await service.mutate(lambda state: state['delegations'][0].update(followup_state='pending'))
+    service, home, _, _, origin = await seed(runtime)
+    delegation_created = utc_now()
+    message_created = await service.projects.run_db(home.id, lambda _: ChatMessage.get_by_id('result').created_at)
+    await service.mutate(lambda state: state['delegations'][0].update(
+        followup_state='pending', created_at=delegation_created))
     calls = []
 
     async def decide(context):
         await context['_load']()
         assert context['reflection_batch'] == []
-        assert context['delegations'][0]['message_id'] == 'result'
-        assert context['delegation_messages'][0]['content'] == '真实执行结果'
+        delegation, = context['delegations']
+        assert delegation['message_id'] == 'result'
+        assert delegation['goal'] == '核对构建'
+        assert 'instruction' not in delegation
+        assert delegation['created_at'] == delegation_created.isoformat()
+        message, = context['delegation_messages']
+        assert message['content'] == '真实执行结果'
+        assert message['created_at'] == message_created.isoformat()
         calls.append('assessment')
         return {'decision': 'silent', 'summary': '', 'source_ids': [],
                 'delegation_actions': [{'id': 'work', 'action': 'complete', 'summary': '核对通过',
@@ -29,7 +38,33 @@ async def test_assessment_can_process_delegation_with_empty_memory_queue(runtime
 
     monkeypatch.setattr(service, '_decide', decide)
     monkeypatch.setattr('services.digital_person_channels.get_bindings', lambda: [])
-    await service.check()
+    entered, release = threading.Event(), threading.Event()
+    original_select = ChatMessage.select
+
+    def slow_result_select(*fields):
+        if any(field is ChatMessage.content for field in fields) and any(
+            field is ChatMessage.created_at for field in fields
+        ):
+            entered.set()
+            assert release.wait(3)
+        return original_select(*fields)
+
+    monkeypatch.setattr(ChatMessage, 'select', slow_result_select)
+    app = FastAPI()
+
+    @app.get('/health')
+    async def health():
+        return {'ok': True}
+
+    checking = asyncio.create_task(service.check())
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
+            assert (await asyncio.wait_for(client.get('/health'), .3)).status_code == 200
+    finally:
+        release.set()
+        result = await checking
+    assert result['status'] != 'failed', result
     await service.check()
     assert calls == ['assessment']
     state = await service.state()
@@ -199,6 +234,7 @@ async def test_memory_pending_returns_delegation_and_body_only_once(runtime, mon
     async def invoke(*args, **kwargs):
         batch = await memory_query.pending(service.projects, await assessment_access(service))
         assert batch['delegations'][0]['message_id'] == 'result'
+        assert 'created_at' not in batch['delegations'][0]  # Legacy record without a timestamp.
         messages = [message for group in batch.get('conversations', [batch])
                     for message in group['conversation']]
         messages.extend(batch.get('delegation_messages', []))
@@ -213,6 +249,39 @@ async def test_memory_pending_returns_delegation_and_body_only_once(runtime, mon
     assert result['status'] != 'failed', result
     assert seen == [True]
     assert (await service.state())['delegations'][0]['followup_state'] == 'completed'
+
+
+@pytest.mark.parametrize('actions', [[], [{'id': 'work', 'action': 'continue', 'instruction': '继续核对'}]])
+async def test_stopped_delegation_is_not_returned_after_review(runtime, monkeypatch, actions):
+    import json
+
+    from services import memory_query
+    from tests.memory_turn_fixture import assessment_access
+
+    service, home, _, _, _ = await seed(runtime, status='stopped')
+    interrupted = '后台服务已重启，本次生成已中断。'
+    await service.projects.run_db(home.id, lambda _: ChatMessage.update(content=interrupted).where(
+        ChatMessage.id == 'result').execute())
+    await service.mutate(lambda state: state['delegations'][0].update(followup_state='pending'))
+    seen = []
+
+    async def invoke(*args, **kwargs):
+        batch = await memory_query.pending(service.projects, await assessment_access(service))
+        delegation, = batch['delegations']
+        message, = batch['delegation_messages']
+        assert (delegation['status'], message['content']) == ('stopped', interrupted)
+        seen.append(delegation['id'])
+        return json.dumps({'decision': 'silent', 'summary': '', 'source_ids': [],
+                           'delegation_actions': actions}), [], 'assessment-thread'
+
+    monkeypatch.setattr('agent_assistants.base.invoke_engine', invoke)
+    monkeypatch.setattr('services.digital_person_channels.get_bindings', lambda: [])
+    reviewed = await service.check()
+    assert reviewed['status'] == 'silent', reviewed
+    assert (await service.check())['sources']['no_work'] is True
+    assert seen == ['work']
+    delegation, = (await service.state())['delegations']
+    assert delegation['followup_state'] == 'stopped'
 
 
 async def test_assessment_continues_unverified_work_and_closes_with_evidence(runtime, monkeypatch, tmp_path):
@@ -237,6 +306,11 @@ async def test_assessment_continues_unverified_work_and_closes_with_evidence(run
         messages = [message for group in batch.get('conversations', [batch])
                     for message in group['conversation']] + batch.get('delegation_messages', [])
         evidence, = [message['content'] for message in messages if message['id'] == delegation['message_id']]
+        assert delegation['goal'] == '实现导出并验证空表场景'
+        if evidence == verified:
+            assert delegation['instruction'] == followup
+        else:
+            assert 'instruction' not in delegation
         assessments.append(evidence)
         if len(assessments) == 1:
             action = {'action': 'complete', 'summary': '全部通过', 'evidence': '3 个测试全部通过'}

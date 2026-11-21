@@ -10,6 +10,7 @@ from peewee import fn
 from models.chat_session import ChatMessage, ChatSession
 from models.fields import utc_now
 from services.chat_read_state import TERMINAL
+from services.digital_person_companion import timestamp
 from services.memory_secrets import redact
 
 
@@ -187,29 +188,33 @@ class DelegationManagement:
             def select(_):
                 fields = [ChatMessage.id, ChatMessage.session, ChatMessage.status]
                 if include_content:
-                    fields.append(ChatMessage.content)
+                    fields.extend((ChatMessage.content, ChatMessage.created_at))
                 rows = ChatMessage.select(*fields).where(ChatMessage.id.in_([d['message_id'] for d in batch]))
                 return {(row.session_id, row.id): (
                     row.status, row.content if include_content else '',
+                    row.created_at.isoformat() if include_content and row.created_at else None,
                 ) for row in rows}
 
             if self.runtime.projects.get_project_by_id(project_id) is None:
-                return [(item, 'missing', '') for item in batch]
+                return [(item, 'missing', '', None) for item in batch]
             rows = await self.runtime.projects.run_db(project_id, select)
-            return [(item, *rows.get((item['session_id'], item['message_id']), ('missing', '')))
+            return [(item, *rows.get((item['session_id'], item['message_id']), ('missing', '', None)))
                     for item in batch]
 
         groups = await asyncio.gather(*(from_project(pid, batch) for pid, batch in projects.items()))
         records = []
         for group in groups:
-            for item, status, content in group:
+            for item, status, content, message_created_at in group:
                 if status == 'running' and self.runtime.chats.is_turn_queued(item.get('turn_id', '')):
                     status = 'queued'
                 if status == 'succeeded':
                     status = 'completed'
                 questions = self.questions.get((item['project_id'], item['message_id']), {})
                 question = next(iter(questions.values()), None) if status in ACTIVE_TURNS else None
-                records.append({**item, 'status': status, 'content': content, 'question': question})
+                record = {**item, 'status': status, 'content': content, 'question': question}
+                if message_created_at:
+                    record['message_created_at'] = message_created_at
+                records.append(record)
         return records
 
     async def eligible(self, state):
@@ -297,11 +302,20 @@ class DelegationManagement:
             context['delegation_messages'] = [{
                 'id': item['message_id'], 'project_id': item['project_id'], 'session_id': item['session_id'],
                 'role': 'assistant', 'content': redact(item['content']),
+                **({'created_at': item['message_created_at']} if 'message_created_at' in item else {}),
             } for item in extras]
-        context['delegations'] = [redact({key: item[key] for key in (
-            'id', 'project_id', 'session_id', 'message_id', 'origin_session_id', 'instruction',
-            'status', 'question',
-        )} | {'goal': item.get('root_instruction', item['instruction'])}) for item in eligible]
+        context['delegations'] = []
+        for item in eligible:
+            entry = redact({key: item[key] for key in (
+                'id', 'project_id', 'session_id', 'message_id', 'origin_session_id', 'status', 'question',
+            )})
+            instruction = redact(item['instruction'])
+            entry['goal'] = redact(item.get('root_instruction') or item['instruction'])
+            if instruction != entry['goal']:
+                entry['instruction'] = instruction
+            if created_at := timestamp(item.get('created_at')):
+                entry['created_at'] = created_at.isoformat()
+            context['delegations'].append(entry)
         context['no_work'] = False
 
     async def apply(self, actions, eligible, profile, *, foreground=False):
@@ -315,6 +329,12 @@ class DelegationManagement:
                     continue
                 if await self._apply_one(item, redact(action), profile, foreground=foreground) is not False:
                     applied.add(item['id'])
+            if not foreground:
+                for item in eligible:
+                    if (item['status'] == 'stopped' and not item['question'] and item['id'] not in applied
+                            and await self._still_current(item, foreground=False)):
+                        # A reviewed interruption with no applicable action needs no further assessment.
+                        await self._finish(item, 'stopped')
         return applied
 
     async def _apply_one(self, item, action, profile, *, foreground=False):

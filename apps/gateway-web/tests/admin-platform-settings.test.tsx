@@ -14,6 +14,8 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', {
 Object.assign(globalThis, { window: dom.window, document: dom.window.document,
   HTMLElement: dom.window.HTMLElement, MutationObserver: dom.window.MutationObserver,
   Event: dom.window.Event })
+// These UI fixtures explicitly exercise Chinese error recovery.
+Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' })
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import('@testing-library/react')
 const originalFetch = globalThis.fetch

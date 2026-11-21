@@ -9,6 +9,8 @@ import { AdminUserTable } from '../src/AdminUserTable'
 const dom = new JSDOM('<html><body></body></html>', { url: 'https://gateway.test/admin/users' })
 Object.assign(globalThis, { window: dom.window, document: dom.window.document,
   HTMLElement: dom.window.HTMLElement, getComputedStyle: dom.window.getComputedStyle, ShadowRoot: dom.window.ShadowRoot, MutationObserver: dom.window.MutationObserver, Event: dom.window.Event })
+// These UI fixtures explicitly exercise Chinese error recovery.
+Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' })
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
 const { render, screen, fireEvent, waitFor, cleanup } = await import('@testing-library/react')
 const originalFetch = globalThis.fetch

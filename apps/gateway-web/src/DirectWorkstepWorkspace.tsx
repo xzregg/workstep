@@ -1,4 +1,5 @@
 import { DeviceTabs } from './DeviceTabs'
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useState } from 'react'
 import type { WorkspaceDevice } from './MyWorkstepWorkspace'
 import type { Project } from './ProjectCard'
@@ -82,7 +83,7 @@ function DirectConnection({device,project,resumeNext,onError,onChooseDevice}:{de
  },[device.id,project?.id,attempt,onError])
  return <div className={`gateway-direct-state${onChooseDevice ? ' gateway-direct-state--entering' : ''}`} role={permanent?'alert':'status'}>
   {!permanent && <span className="gateway-spinner"/>}
-  <span>{error || `正在进入 ${device.name} 的 WorkStep 工作台…`}</span>
+  <span>{error ? localizeGatewayError(error) : `正在进入 ${device.name} 的 WorkStep 工作台…`}</span>
   {error && <button type="button" onClick={()=>setAttempt(value=>value+1)}>{retrying?'立即重试':'重新连接'}</button>}
   {onChooseDevice && <button type="button" onClick={onChooseDevice}>选择其他设备</button>}
  </div>

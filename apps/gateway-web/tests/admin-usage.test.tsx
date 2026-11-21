@@ -13,6 +13,8 @@ Object.assign(globalThis, { window: dom.window, document: dom.window.document,
   Event: dom.window.Event, getComputedStyle: dom.window.getComputedStyle,
   SVGElement: dom.window.SVGElement, Element: dom.window.Element, ShadowRoot: dom.window.ShadowRoot })
 dom.window.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return false }, media: '', onchange: null })
+// These UI fixtures explicitly exercise Chinese error recovery.
+Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' })
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
 globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
 const { cleanup, fireEvent, render, screen, waitFor, configure } = await import('@testing-library/react')
