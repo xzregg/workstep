@@ -139,7 +139,7 @@ class ChannelDirectoryService:
     @staticmethod
     def _check(bot):
         if not bot.get('directory_enabled') or not bot.get('enabled'):
-            raise DirectoryError('directory_disabled', '请先启用机器人和通讯录')
+            raise DirectoryError('directory_disabled', 'Please enable the bot and contacts first')
 
     def status(self, bot_id):
         return {'status': 'idle', 'count': len(self._snapshots.get(bot_id, ({}, {}))[0]),
@@ -152,7 +152,7 @@ class ChannelDirectoryService:
             return self.status(bot['id'])
         fetch = self._provider(bot)
         if fetch is None:
-            raise DirectoryError('directory_unsupported', '该渠道不支持通讯录')
+            raise DirectoryError('directory_unsupported', 'This channel does not support the address book')
         self._identities[bot['id']] = self._identity(bot)
         self._states[bot['id']] = {**self.status(bot['id']), 'status': 'loading', 'error': ''}
         self._tasks[bot['id']] = asyncio.create_task(self._refresh(dict(bot), fetch, use_cache))
@@ -193,7 +193,7 @@ class ChannelDirectoryService:
     def _snapshot(self, bot):
         self._check(bot)
         if self._identities.get(bot['id']) != self._identity(bot) or bot['id'] not in self._snapshots:
-            raise DirectoryError('directory_not_ready', '通讯录尚未获取完成，请在机器人设置中查看或更新')
+            raise DirectoryError('directory_not_ready', 'The contact list has not been fully retrieved. Please check or update it in the bot settings.')
         return self._snapshots[bot['id']]
 
     async def contacts(self, bot, query='', offset=0, limit=50):
@@ -212,12 +212,12 @@ class ChannelDirectoryService:
         snapshot = self._snapshot(bot)
         rows = ([snapshot[0][contact_id]] if contact_id in snapshot[0] else []) if contact_id else snapshot[1].get((user_name or '').strip(), [])
         if not rows:
-            raise DirectoryError('recipient_not_found', '未找到联系人，请检查姓名或手动更新通讯录')
+            raise DirectoryError('recipient_not_found', 'Contact not found. Please check the name or manually update the address book')
         if len(rows) != 1:
-            raise DirectoryError('ambiguous_recipient', '存在同名联系人，请按部门选择联系人 ID', rows[:50])
+            raise DirectoryError('ambiguous_recipient', 'Duplicate contact name found. Please select the contact ID by department.', rows[:50])
         recipient = self._recipient(bot['id'], rows[0])
         if not recipient.get('user_id'):
-            raise DirectoryError('identity_unverified', '此联系人的机器人发送身份尚未验证，请使用已知用户 ID')
+            raise DirectoryError('identity_unverified', 'The bot\'s sender identity for this contact has not been verified. Please use a known user ID')
         return recipient['user_id']
 
     async def close(self):

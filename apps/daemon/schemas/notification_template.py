@@ -30,8 +30,8 @@ def validate_markdown_template(value: str | None) -> str | None:
     if value is None:
         return None
     if not value.strip():
-        raise ValueError('Markdown 模板不能为空，请填写内容或恢复默认模板')
+        raise ValueError('Markdown template cannot be empty, please fill in the content or restore the default template')
     unknown = sorted({match.group(1) for match in TEMPLATE_VARIABLE.finditer(value)} - set(TEMPLATE_VARIABLES))
     if unknown:
-        raise ValueError('不支持的模板变量：' + '、'.join(unknown))
+        raise ValueError('Unsupported template variable:' + '、'.join(unknown))
     return value

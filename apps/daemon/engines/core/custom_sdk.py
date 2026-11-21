@@ -91,7 +91,7 @@ class CustomEngineBase(AcpEngineBase):
     async def save_config_values(self, values, clear=None, confirmed=None) -> None:
         # Main-process proxies persist generic configuration; worker adapters
         # should read it, never persist a stale worker snapshot.
-        raise RuntimeError("自定义引擎配置必须通过 WorkStep 配置接口保存")
+        raise RuntimeError("Custom engine configuration must be saved via the WorkStep configuration API")
 
     @property
     def supports_resume(self) -> bool:

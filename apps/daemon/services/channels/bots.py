@@ -10,6 +10,7 @@ import uuid
 from typing import Awaitable, Callable
 from weakref import WeakValueDictionary
 
+from agent_assistants.session_state import PROVIDER_HANDOFF_REQUIRED
 from models.task import Task
 from models.chat_session import ChatSession
 from services.config import config_store
@@ -150,11 +151,11 @@ class BotManager:
         data = await self._load()
         bot = next((row for row in data['bots'] if row['id'] == bot_id), None)
         if bot is None:
-            raise LookupError('机器人不存在')
+            raise LookupError('Robot does not exist')
         if project_id is not None and bot['default_project_id'] != project_id:
-            raise PermissionError('机器人不属于此项目')
+            raise PermissionError('The robot does not belong to this project')
         if not self._registered_channels[bot['platform']].DIRECTORY_PROVIDER:
-            raise DirectoryError('directory_unsupported', '该渠道不支持通讯录')
+            raise DirectoryError('directory_unsupported', 'This channel does not support the address book')
         return bot
 
     def _validate_directory(self, bot):
@@ -162,9 +163,9 @@ class BotManager:
             return
         provider = self._registered_channels[bot['platform']].DIRECTORY_PROVIDER
         if provider is None:
-            raise ValueError('该渠道不支持通讯录')
+            raise ValueError('This channel does not support the address book')
         if not all(str(bot.get(key) or '').strip() for key in provider.fields):
-            raise ValueError('请填写完整的通讯录应用凭证')
+            raise ValueError('Please provide complete credentials for the contacts application')
 
     async def send_message(self, **values) -> dict:
         user_name, contact_id = values.pop('user_name', None), values.pop('contact_id', None)
@@ -205,7 +206,7 @@ class BotManager:
         data = await self._load()
         bot = next((row for row in data["bots"] if row["id"] == bot_id), None)
         if bot is None:
-            raise LookupError("机器人不存在")
+            raise LookupError("Robot does not exist")
         config = bot.get(f"{scope}_whitelist", {"enabled": False, "users": []})
         if scope == "group":
             recent = await self.recent_groups(bot_id)
@@ -230,33 +231,33 @@ class BotManager:
         for user in users:
             sender_id = user[id_field].strip()
             if not sender_id:
-                raise ValueError("用户标识不能为空")
+                raise ValueError("User identifier cannot be empty")
             normalized[sender_id] = {id_field: sender_id, name_field: user.get(name_field, "").strip()}
         async with self._config_lock:
             data = await self._load()
             bot = next((row for row in data["bots"] if row["id"] == bot_id), None)
             if bot is None:
-                raise LookupError("机器人不存在")
+                raise LookupError("Robot does not exist")
             bot[f"{scope}_whitelist"] = {"enabled": enabled, "groups" if scope == "group" else "users": list(normalized.values())}
             await self._save(data)
         return await self.private_whitelist(bot_id, scope=scope)
 
     async def _validate_target(self, kind: str, project_id: str, task_id: str) -> None:
         if kind not in {"", "project", "task"}:
-            raise ValueError("绑定目标类型无效")
+            raise ValueError("Invalid binding target type")
         if not kind:
             return
         if not self._project_manager.get_project_by_id(project_id):
-            raise ValueError("项目不存在")
+            raise ValueError("Project not found")
         if kind == "task":
             if not task_id:
-                raise ValueError("请选择任务")
+                raise ValueError("Please select a task")
             exists = await self._project_manager.run_db(
                 project_id,
                 lambda _project: Task.get_or_none(Task.id == task_id) is not None,
             )
             if not exists:
-                raise ValueError("任务不存在")
+                raise ValueError("Task not found")
 
     async def create_bot(self, values: dict) -> dict:
         await self._ensure_factories()
@@ -271,14 +272,14 @@ class BotManager:
         if platform == "telegram":
             app_id = secret.partition(":")[0]
             if not app_id.isdecimal() or not secret.partition(":")[2]:
-                raise ValueError("Telegram Bot Token 格式无效")
+                raise ValueError("Invalid Telegram Bot Token format")
         if platform == "slack" and not app_token:
-            raise ValueError("Slack App-Level Token 为必填项")
+            raise ValueError("Slack App-Level Token is required")
         kind = str(values.get("default_target_type") or "")
         project_id = str(values.get("default_project_id") or "")
         task_id = str(values.get("default_task_id") or "")
         if platform not in self._factories or not name or not app_id or not secret:
-            raise ValueError("平台、名称和凭证均为必填项")
+            raise ValueError("Platform, name, and credentials are all required")
         await self._validate_target(kind, project_id, task_id)
         bot = {
             "id": str(uuid.uuid4()), "platform": platform, "name": name,
@@ -298,7 +299,7 @@ class BotManager:
         async with self._config_lock:
             data = await self._load()
             if any(row["platform"] == platform and row["app_id"] == app_id for row in data["bots"]):
-                raise ValueError("该平台机器人已经添加")
+                raise ValueError("A bot for this platform has already been added")
             data["bots"].append(bot)
             await self._save(data)
             if platform == 'weixin':
@@ -312,14 +313,14 @@ class BotManager:
             data = await self._load()
             bot = next((row for row in data["bots"] if row["id"] == bot_id), None)
             if bot is None:
-                raise LookupError("机器人不存在")
+                raise LookupError("Robot does not exist")
             updated = dict(bot)
             login_id = str(values.get('login_id') or '')
             if bot['platform'] == 'weixin':
                 if login_id:
                     credentials = self.weixin_login.credentials(login_id, bot_id)
                     if credentials['weixin_user_id'] != bot.get('weixin_user_id'):
-                        raise ValueError('请使用原绑定微信重新扫码；其他微信请新增机器人')
+                        raise ValueError('Please rescan with the originally bound WeChat; for other WeChats, please add a new bot')
                     updated.update(credentials)
                 # Weixin credentials can only come from a completed server-side QR receipt.
                 values = {key: value for key, value in values.items() if key not in {'app_id', 'secret'}}
@@ -334,11 +335,11 @@ class BotManager:
                 if str(values.get("app_token") or "").strip():
                     updated["app_token"] = str(values["app_token"]).strip()
                 if not updated.get("app_token"):
-                    raise ValueError("Slack App-Level Token 为必填项")
+                    raise ValueError("Slack App-Level Token is required")
             if bot["platform"] == "telegram":
                 updated["app_id"] = updated["secret"].partition(":")[0]
                 if not updated["app_id"].isdecimal() or not updated["secret"].partition(":")[2]:
-                    raise ValueError("Telegram Bot Token 格式无效")
+                    raise ValueError("Invalid Telegram Bot Token format")
             updated["name"] = str(updated["name"]).strip()
             updated["app_id"] = str(updated["app_id"]).strip()
             updated["default_target_type"] = str(updated["default_target_type"] or "")
@@ -354,13 +355,13 @@ class BotManager:
             if updated["default_target_type"] != "task":
                 updated["default_task_id"] = ""
             if not updated["name"] or not updated["app_id"]:
-                raise ValueError("名称和平台应用标识不能为空")
+                raise ValueError("Name and platform application identifier cannot be empty")
             await self._validate_target(
                 updated["default_target_type"], updated["default_project_id"],
                 updated["default_task_id"],
             )
             if any(row["id"] != bot_id and row["platform"] == bot["platform"] and row["app_id"] == updated["app_id"] for row in data["bots"]):
-                raise ValueError("该平台机器人已经添加")
+                raise ValueError("A bot for this platform has already been added")
             self._validate_directory(updated)
             data["bots"] = [updated if row["id"] == bot_id else row for row in data["bots"]]
             await self._save(data)
@@ -379,7 +380,7 @@ class BotManager:
         async with self._config_lock:
             data = await self._load()
             if not any(row["id"] == bot_id for row in data["bots"]):
-                raise LookupError("机器人不存在")
+                raise LookupError("Robot does not exist")
             removed = next(row for row in data['bots'] if row['id'] == bot_id)
             data["bots"] = [row for row in data["bots"] if row["id"] != bot_id]
             data["groups"] = [row for row in data["groups"] if row["bot_id"] != bot_id]
@@ -397,36 +398,36 @@ class BotManager:
         data = await self._load()
         key = next((key for key, mapped in data["sessions"].items() if mapped == session_id), "")
         if not key:
-            raise LookupError("渠道会话不存在或已重置")
+            raise LookupError("Channel session does not exist or has been reset")
         bot_id, conversation_type, group_id = key.split(":", 2)
         if conversation_type != "group":
-            raise ValueError("仅群聊会话可以绑定任务")
+            raise ValueError("Only group chat sessions can be bound to tasks")
         source = data["session_sources"].get(session_id, {})
         if source.get("project_id") != project_id:
-            raise ValueError("任务必须属于当前渠道会话的项目")
+            raise ValueError("The task must belong to the project of the current channel session")
         return await self.bind_group(project_id, task_id, bot_id, group_id, source_session_id=session_id)
 
     async def bind_group(self, project_id: str, task_id: str, bot_id: str, group_id: str, group_name: str | None = None, *, source_session_id: str = "") -> dict:
         group_id = group_id.strip()
         if not group_id:
-            raise ValueError("群标识不能为空")
+            raise ValueError("Group ID cannot be empty")
         await self._validate_target("task", project_id, task_id)
         async with self._config_lock:
             data = await self._load()
             if source_session_id:
                 key = f"{bot_id}:group:{group_id}"
                 if data["sessions"].get(key) != source_session_id or data["session_sources"].get(source_session_id, {}).get("project_id") != project_id:
-                    raise LookupError("渠道会话不存在或已重置")
+                    raise LookupError("Channel session does not exist or has been reset")
                 bot = next((row for row in data["bots"] if row["id"] == bot_id), None)
                 if not bot or bot.get("default_project_id") != project_id:
-                    raise ValueError("渠道机器人已改绑项目")
+                    raise ValueError("Channel bot has been re-bound to the project")
             if not any(bot["id"] == bot_id for bot in data["bots"]):
-                raise ValueError("机器人不存在")
+                raise ValueError("Robot does not exist")
             if any(bot['id'] == bot_id and bot['platform'] == 'weixin' for bot in data['bots']):
-                raise ValueError('微信 ClawBot 仅支持私聊，不能绑定群聊')
+                raise ValueError('WeChat ClawBot only supports private chats and cannot be bound to group chats')
             conflict = next((row for row in data["groups"] if row["bot_id"] == bot_id and row["group_id"] == group_id), None)
             if conflict and (conflict["project_id"], conflict["task_id"]) != (project_id, task_id):
-                raise ValueError("该机器人群已绑定其它任务")
+                raise ValueError("This bot group is already linked to another task")
             binding = {"bot_id": bot_id, "group_id": group_id, "project_id": project_id, "task_id": task_id}
             recent = next((row for row in data["recent_groups"] if row["bot_id"] == bot_id and row["group_id"] == group_id), {})
             binding["group_name"] = (group_name.strip() if group_name is not None else
@@ -450,21 +451,54 @@ class BotManager:
                 row["group_name"] = names.get((row["bot_id"], row["group_id"]), "")
         return rows
 
-    async def remove_task_bindings(self, project_id: str, task_id: str) -> None:
+    async def remove_task_bindings(self, project_id: str, task_id: str, *,
+                                   notify_group: tuple[str, str] | None = None) -> str | None:
+        removed_origin = False
         async with self._config_lock:
             data = await self._load()
+            origin_binding = next((row for row in data['groups']
+                                   if (row['bot_id'], row['group_id']) == notify_group), None) if notify_group else None
+            if origin_binding is not None:
+                removed_origin = (origin_binding['project_id'], origin_binding['task_id']) == (project_id, task_id)
             data["groups"] = [row for row in data["groups"] if (row["project_id"], row["task_id"]) != (project_id, task_id)]
             for bot in data["bots"]:
                 if (bot["default_target_type"] == "task" and bot["default_project_id"] == project_id
                         and bot["default_task_id"] == task_id):
+                    if notify_group and bot['id'] == notify_group[0] and origin_binding is None:
+                        removed_origin = True
                     bot.update(default_target_type="project", default_task_id="")
+            adapter = self._adapters.get(notify_group[0]) if notify_group and removed_origin else None
             await self._save(data)
+        if notify_group is None:
+            return None
+        if not removed_origin:
+            return 'skipped'
+        return await self._send_binding_notice(adapter, *notify_group, 'This WorkStep task has been archived.')
 
-    async def unbind_group(self, project_id: str, task_id: str, bot_id: str, group_id: str) -> None:
+    async def unbind_group(self, project_id: str, task_id: str, bot_id: str, group_id: str, *, notify: bool = False) -> str | None:
         async with self._config_lock:
             data = await self._load()
-            data["groups"] = [row for row in data["groups"] if (row["project_id"], row["task_id"], row["bot_id"], row["group_id"]) != (project_id, task_id, bot_id, group_id)]
+            remaining = [row for row in data["groups"] if (row["project_id"], row["task_id"], row["bot_id"], row["group_id"]) != (project_id, task_id, bot_id, group_id)]
+            if len(remaining) == len(data["groups"]):
+                return "skipped" if notify else None
+            data["groups"] = remaining
+            adapter = self._adapters.get(bot_id) if notify else None
             await self._save(data)
+        if not notify:
+            return None
+        return await self._send_binding_notice(adapter, bot_id, group_id, "This group has been unlinked from its WorkStep task.")
+
+    async def _send_binding_notice(self, adapter, bot_id: str, group_id: str, text: str) -> str:
+        if adapter is None:
+            return "failed"
+        recipient = IncomingMessage(bot_id=bot_id, message_id=str(uuid.uuid4()), conversation_type="group",
+                                    conversation_id=group_id, sender_id="", text="")
+        try:
+            await asyncio.wait_for(adapter.send_text(recipient, text), timeout=15)
+        except Exception as exc:
+            logger.warning("Failed to send task binding notice for bot %s: %s", bot_id, type(exc).__name__)
+            return "failed"
+        return "sent"
 
     async def recent_groups(self, bot_id: str) -> list[dict]:
         data = await self._load()
@@ -648,7 +682,7 @@ class BotManager:
                     from services.channels.media import incoming_content
                     project = self._project_manager.get_project_by_id(project_id)
                     if project is None:
-                        raise ValueError("项目不存在")
+                        raise ValueError("Project not found")
                     remainder = reset_command(message.text)
                     media_message = replace(message, text=remainder) if remainder is not None else message
                     content = await incoming_content(project, adapter, media_message)
@@ -730,12 +764,20 @@ class BotManager:
                         await adapter.send(message, await outgoing_content(project, adapter, text, file_links=file_links))
                     else:
                         await adapter.send_text(message, await file_links.convert(text))
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to handle channel bot message %s", message.message_id)
             if stream:
                 await stream.close()
             try:
-                await adapter.send_text(message, "处理失败，请稍后重试。")
+                text = "处理失败，请稍后重试。"
+                if str(exc) == PROVIDER_HANDOFF_REQUIRED:
+                    text = (
+                        "协调供应商已变更。发送 /new 加上你的问题，即可在本群开启新的协调上下文。"
+                        if kind == "task" else
+                        "供应商已变更。请在工作台打开此渠道会话，选择新供应商并确认智能交接，再回这里继续。"
+                        "也可以发送 /new 加上你的问题，直接从新的上下文开始。"
+                    )
+                await adapter.send_text(message, text)
             except Exception:
                 logger.exception("Failed to send channel bot error response")
         finally:
@@ -790,7 +832,7 @@ class BotManager:
                     if event.get("status") in {"stopped", "cancelled"}:
                         return "已停止。"
                     if event.get("status") != "succeeded":
-                        raise RuntimeError(str(event.get("error") or "协调助手失败"))
+                        raise RuntimeError(str(event.get("error") or "The coordinator assistant failed"))
                     if event.get("content") is not None:
                         reply = str(event["content"])
                     return reply

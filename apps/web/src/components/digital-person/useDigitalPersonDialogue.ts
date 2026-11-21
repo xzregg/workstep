@@ -1,95 +1,100 @@
-import {useEffect,useRef,useState} from 'react'
-import {voiceWakeApi} from '../../api/digitalPerson'
+import {useCallback,useEffect,useRef,useState} from 'react'
 import {primeSpeechOutput} from '../../utils/speechOutput'
 import {useVoiceInput} from '../../hooks/useVoiceInput'
-import {useWakeState} from './digitalPersonWakeState'
-import {DialogueTurnDetector} from './dialogueTurnDetector'
 import {stopDigitalSpeech} from './digitalPersonVoiceEvents'
 interface Options{
- projectId:string;sessionId:string;active:boolean;running:boolean;speaking:boolean
- onSend:(text:string)=>Promise<boolean>;onStop:()=>Promise<boolean>
+ projectId:string;sessionId:string;active:boolean;running:boolean;speaking:boolean;showLevel?:boolean
+ onRecognized:(text:string)=>void;onSendDraft?:(text:string)=>Promise<boolean>;onStop:()=>Promise<boolean>
 }
-/** Voice capture and chat execution stay in the shared hooks; this owns turn taking. */
+/** Owns the conversation microphone, including rearming after playback. */
 export function useDigitalPersonDialogue(options:Options){
- const [draft,setDraft]=useState('')
- const [connected,setConnected]=useState(false),[muted,setMuted]=useState(false),[sending,setSending]=useState(false),[error,setError]=useState('')
- const detector=useRef(new DialogueTurnDetector()),epoch=useRef(0),sendingRef=useRef(false)
- const latest=useRef(options);latest.current=options
+ const [connected,setConnected]=useState(false),[muted,setMuted]=useState(false),[error,setError]=useState('')
+ const [continuous,setContinuous]=useState(false),continuousRef=useRef(false)
+ const wakeCall=useRef(false)
+ const [callMicMuted,setCallMicMuted]=useState(false)
+ const [playbackOverride,setPlaybackOverride]=useState(false)
+ const playbackPaused=options.speaking&&!playbackOverride
+ const [draft,setDraft]=useState<string|null>(null),draftRef=useRef<string|null>(null)
+ const [sending,setSending]=useState(false),sendingRef=useRef(false),retryDevice=useRef(true)
+ const updateDraft=(value:string|null)=>{draftRef.current=value;setDraft(value)}
+ const epoch=useRef(0)
+ const latest=useRef({...options,playbackPaused});latest.current={...options,playbackPaused}
  const connectedRef=useRef(false),mutedRef=useRef(false)
  connectedRef.current=connected;mutedRef.current=muted
- const activationPending=useWakeState(s=>s.activationPending)
- const resumeAfter=useRef(0),wasBusy=useRef(false),listenStarted=useRef(0)
+ const resumeAfter=useRef(0),wasSpeaking=useRef(false),listenStarted=useRef(0)
  const voice=useVoiceInput({ownerKey:`digital-dialogue:${options.projectId}:${options.sessionId}`,projectId:options.projectId,
-  disabled:!options.active||options.running||options.speaking,compact:false,value:'',cursor:0,onAudioFrame:samples=>{detector.current.observe(samples,performance.now());return detector.current.hasSpeech},onInsert:text=>{
-   if(!detector.current.accepts(text)||!connectedRef.current||mutedRef.current||sendingRef.current||latest.current.running||latest.current.speaking)return
-   setDraft(text.trim())
-   const version=epoch.current,current=latest.current
-   sendingRef.current=true;setSending(true);setError('')
-   void (async()=>{
-    try{
-     if(version!==epoch.current||!connectedRef.current)return
-     resumeAfter.current=performance.now()+600
-     if(!await current.onSend(text.trim()))throw new Error('digitalPerson.homeSendFailed')
-     if(version===epoch.current)setDraft('')
-    }catch(reason){if(version===epoch.current){setError(reason instanceof Error?reason.message:String(reason));setMuted(true)}}
-    finally{if(version===epoch.current){sendingRef.current=false;setSending(false)}}
-   })()
+  disabled:!options.active,compact:false,value:'',cursor:0,automatic:true,showLevel:options.showLevel,onInsert:text=>{
+   if(!connectedRef.current||mutedRef.current||!latest.current.active||latest.current.playbackPaused)return
+   if(!/[\p{L}\p{N}]/u.test(text))return
+   retryDevice.current=true
+   const segment=text.trim()
+   if(continuousRef.current)latest.current.onRecognized(segment)
+   else updateDraft(draftRef.current?`${draftRef.current} ${segment}`:segment)
   }})
  const capture=useRef(voice);capture.current=voice
+ const end=useCallback(()=>{
+  stopDigitalSpeech(options.projectId,options.sessionId)
+  epoch.current++;connectedRef.current=false;setConnected(false);setMuted(false);capture.current.cancel()
+  sendingRef.current=false;setSending(false)
+  continuousRef.current=false;setContinuous(false);wakeCall.current=false
+ },[options.projectId,options.sessionId])
  useEffect(()=>{
-  if(!activationPending||!options.active)return
-  useWakeState.setState({activationPending:false})
-  listenStarted.current=0
-  connectedRef.current=true;mutedRef.current=false
-  setConnected(true);setMuted(false);setError('')
- },[activationPending,options.active])
- useEffect(()=>{
-  if(voice.phase==='requesting')detector.current.reset()
-  if(voice.phase==='recording'&&!listenStarted.current)listenStarted.current=performance.now()
-  if(voice.phase==='error'){setMuted(true);setError(voice.error)}
+  if(voice.phase==='recording')listenStarted.current=performance.now()
+  if(voice.phase==='error'){
+   if(voice.error==='speech.deviceLost'&&retryDevice.current&&connectedRef.current&&!mutedRef.current
+      &&latest.current.active&&!latest.current.playbackPaused&&!document.hidden){
+    retryDevice.current=false
+    capture.current.cancel()
+   }else{mutedRef.current=true;setMuted(true);setError(voice.error)}
+  }
  },[voice.phase,voice.error])
  useEffect(()=>{
-  if(options.running||options.speaking){
-   // A typed turn during keyword standby owns the microphone too; resume its short window after playback.
-   if(connectedRef.current&&useWakeState.getState().listening){
-    useWakeState.setState({listening:false,activationPending:false})
-    mutedRef.current=false;setMuted(false)
-   }
-   wasBusy.current=true
-   listenStarted.current=0
-   detector.current.reset()
+  if(playbackPaused){
+   wasSpeaking.current=true
+   if(capture.current.active)capture.current.cancel()
    return
   }
-  if(wasBusy.current){wasBusy.current=false;resumeAfter.current=performance.now()+600}
-  if(!connected||muted||sending||!options.active||document.hidden||voice.phase!=='idle')return
+  if(wasSpeaking.current){
+   wasSpeaking.current=false
+   resumeAfter.current=options.speaking?0:performance.now()+600
+  }
+  if(!connected||muted||!options.active||document.hidden||voice.phase!=='idle')return
   const start=()=>{
    const current=latest.current
-   if(connectedRef.current&&!mutedRef.current&&current.active&&!current.running&&!current.speaking&&!document.hidden)void capture.current.start()
+   if(connectedRef.current&&!mutedRef.current&&current.active&&!current.playbackPaused&&!document.hidden){
+    void capture.current.start()
+   }
   }
   const delay=Math.max(0,resumeAfter.current-performance.now())
   if(!delay){start();return}
   const timer=setTimeout(start,delay)
   return()=>clearTimeout(timer)
- },[connected,muted,sending,voice.phase,options.active,options.running,options.speaking])
+ },[connected,muted,voice.phase,options.active,options.speaking,playbackPaused])
+ useEffect(()=>{if(!options.speaking||!connected||!options.active)setPlaybackOverride(false)},[options.speaking,connected,options.active])
  useEffect(()=>{
-  if(!connected||muted)return
+  if(!connected||muted||!continuous)return
   const timer=setInterval(()=>{
-   if(latest.current.running||latest.current.speaking||capture.current.phase!=='recording')return
    const now=performance.now()
-   if(!detector.current.hasSpeech&&now-listenStarted.current>=15000){
-    mutedRef.current=true;setMuted(true);capture.current.cancel()
-    if(useWakeState.getState().keyword.trim())useWakeState.setState({listening:true,error:''})
+   if(wakeCall.current){
+    if(latest.current.running||latest.current.speaking||capture.current.phase!=='recording'||capture.current.hasSpeech){
+     listenStarted.current=now
+    }else if(now-listenStarted.current>=60000)end()
     return
    }
-   if(detector.current.tick(now)==='finish')void capture.current.finish()
+   if(latest.current.speaking||capture.current.phase!=='recording')return
+   if(!capture.current.hasSpeech&&now-listenStarted.current>=15000){
+    mutedRef.current=true;setMuted(true);capture.current.cancel()
+   }
   },100)
   return()=>clearInterval(timer)
- },[connected,muted])
+ },[connected,muted,continuous,end])
  useEffect(()=>{
+  setPlaybackOverride(false)
+  updateDraft(null);sendingRef.current=false;setSending(false)
   const end=()=>{
    if(!document.hidden)return
-   useWakeState.setState({listening:false,activationPending:false})
    connectedRef.current=false;setConnected(false);setMuted(false);capture.current.cancel()
+   continuousRef.current=false;setContinuous(false)
    stopDigitalSpeech(options.projectId,options.sessionId)
   }
   document.addEventListener('visibilitychange',end)
@@ -98,25 +103,69 @@ export function useDigitalPersonDialogue(options:Options){
    document.removeEventListener('visibilitychange',end)
   }
  },[options.projectId,options.sessionId])
- useEffect(()=>{if(!options.active){connectedRef.current=false;setConnected(false);capture.current.cancel()}},[options.active])
- const toggle=()=>{
-  if(connected&&!muted){useWakeState.setState({listening:false,activationPending:false});mutedRef.current=true;setMuted(true);voice.cancel();return}
-  listenStarted.current=0
+ useEffect(()=>{if(!options.active){connectedRef.current=false;setConnected(false);continuousRef.current=false;setContinuous(false);capture.current.cancel()}},[options.active])
+ const begin=(keepListening:boolean,overridePlayback=false)=>{
+  if(continuousRef.current!==keepListening&&voice.active)voice.cancel()
+  retryDevice.current=true
+  continuousRef.current=keepListening;setContinuous(keepListening)
+  setCallMicMuted(false)
+  setPlaybackOverride(overridePlayback)
   primeSpeechOutput()
-  useWakeState.setState({listening:false,activationPending:false})
-  const version=epoch.current
-  void voiceWakeApi.get().then(config=>{
-   if(version===epoch.current&&connectedRef.current)useWakeState.setState({keyword:config.keyword,sensitivity:config.sensitivity})
-  }).catch(()=>{})
   connectedRef.current=true;mutedRef.current=false;setConnected(true);setMuted(false);setError('')
-  if(!options.running&&!options.speaking&&performance.now()>=resumeAfter.current)void voice.start()
+  if(!voice.active&&(overridePlayback||(!options.speaking&&performance.now()>=resumeAfter.current)))void voice.start()
  }
- const mute=()=>{useWakeState.setState({listening:false,activationPending:false});mutedRef.current=true;setMuted(true);voice.cancel()}
- const end=()=>{
-  useWakeState.setState({listening:false,activationPending:false})
-  epoch.current++;connectedRef.current=false;setConnected(false);setMuted(false);sendingRef.current=false;setSending(false);voice.cancel()
+ const mute=()=>{mutedRef.current=true;setMuted(true);setPlaybackOverride(false);voice.cancel()}
+ const toggle=()=>{
+  if(continuousRef.current){
+   if(options.speaking&&!options.running){
+    wasSpeaking.current=false
+    resumeAfter.current=0
+    stopDigitalSpeech(options.projectId,options.sessionId)
+    begin(true,true)
+   }else if(mutedRef.current||playbackPaused)begin(true,options.speaking)
+   else{setCallMicMuted(true);mute()}
+   return
+  }
+  if(connected&&!muted&&!playbackPaused){
+   voice.recover()
+   mutedRef.current=true;setMuted(true)
+   connectedRef.current=false;setConnected(false)
+   return
+  }
+  begin(false,options.speaking)
+ }
+ const clearDraft=()=>{
+  if(continuousRef.current||sendingRef.current)return
+  updateDraft(null)
+  voice.cancel()
+ }
+ const editDraft=(value:string)=>{
+  if(continuousRef.current||sendingRef.current||draftRef.current===null)return
+  updateDraft(value)
+ }
+ const sendDraft=async()=>{
+  const submit=latest.current.onSendDraft
+  if(!draftRef.current?.trim()||!submit||!latest.current.active||sendingRef.current)return
+  if(voice.hasSpeech&&voice.text)voice.recover()
+  const text=draftRef.current
+  const version=epoch.current
+  sendingRef.current=true;setSending(true);setError('')
+  try{
+   const accepted=await submit(text.trim())
+   if(version===epoch.current){
+    // Recognition can append more text while the submitted prefix is in flight.
+    if(accepted)updateDraft(draftRef.current?.slice(text.length).trimStart()||null)
+    else setError('chatSession.sendFailed')
+   }
+  }catch{if(version===epoch.current)setError('chatSession.sendFailed')}
+  finally{if(version===epoch.current){sendingRef.current=false;setSending(false)}}
+ }
+ const stopReply=()=>{
   stopDigitalSpeech(options.projectId,options.sessionId)
   if(options.running)void options.onStop().catch(()=>setError('digitalPerson.homeInterruptFailed'))
  }
- return {connected,muted,sending,error,draft,phase:voice.phase,text:detector.current.hasSpeech?voice.text:'',level:voice.level,toggle,mute,end}
+ return {connected,continuous:continuous&&connected,muted,playbackPaused,callMicMuted:continuous&&connected&&callMicMuted,error,phase:voice.phase,text:voice.hasSpeech?voice.text:'',level:voice.level,
+  draft,sending,sendDraft,clearDraft,editDraft,toggle,
+  startContinuous:()=>{wakeCall.current=false;begin(true)},
+  startWakeContinuous:()=>{wakeCall.current=true;begin(true)},mute,end,stopReply}
 }

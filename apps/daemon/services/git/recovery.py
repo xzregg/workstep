@@ -13,22 +13,22 @@ from .command import GitError, text
 def _read_records(common_dir):
     file = Path(common_dir) / 'workstep-merge-operations.json'
     if file.is_symlink():
-        raise GitError('合并记录文件不能是符号链接。', 409)
+        raise GitError('The merged record file cannot be a symbolic link.', 409)
     if not file.exists():
         return []
     try:
         value = json.loads(file.read_text(encoding='utf-8'))
     except (OSError, ValueError) as exc:
-        raise GitError('合并记录无法读取，请检查仓库元数据。', 409) from exc
+        raise GitError('Merge record cannot be read, please check repository metadata.', 409) from exc
     if not isinstance(value, list):
-        raise GitError('合并记录格式无效。', 409)
+        raise GitError('Invalid merge record format.', 409)
     return value
 
 
 def _write_records(common_dir, records):
     file = Path(common_dir) / 'workstep-merge-operations.json'
     if file.is_symlink():
-        raise GitError('合并记录文件不能是符号链接。', 409)
+        raise GitError('The merged record file cannot be a symbolic link.', 409)
     fd, temporary = tempfile.mkstemp(prefix='workstep-merge-', dir=common_dir)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:
@@ -60,42 +60,42 @@ class GitRecoveries:
         branches = (await self.branches(id))['branches']
         branch = next((item for item in branches if item['name'] == target), None)
         if not branch:
-            raise GitError('目标分支不存在，请刷新。', 404)
+            raise GitError('Target branch does not exist, please refresh.', 404)
         target_id = branch['worktree_id']
         target_path = (await self.directory(target_id))['path'] if target_id else None
         if target_path:
             status = await self.status(target_id)
             if status['branch'] != target or status['active'] or status['operation']:
-                raise GitError('目标分支正在使用或有未完成的 Git 操作。', 409)
+                raise GitError('The target branch is in use or has unfinished Git operations.', 409)
         return directory, branch, target_path
 
     async def _prepare_recovery(self, path, common_dir, mode, target, commit, operation_id, head):
         if mode == 'undo_merge':
             if not operation_id:
-                raise GitError('请选择要撤销的合并记录。')
+                raise GitError('Please select the merge record to undo.')
             records = await asyncio.to_thread(_read_records, common_dir)
             record = next((item for item in records if item['id'] == operation_id and item['target'] == target), None)
             if not record or record.get('undone_by'):
-                raise GitError('合并记录不存在或已撤销。', 404)
+                raise GitError('Merge record does not exist or has been revoked.', 404)
             commit = record['after']
             base = record['base']
             if base == commit:
-                raise GitError('合并没有引入新内容。', 409)
+                raise GitError('Merge did not introduce new content.', 409)
         elif mode == 'undo_commit':
             base = None
         elif mode == 'restore_tree':
             base = None
         else:
-            raise GitError('未知的恢复操作。')
+            raise GitError('Unknown recovery operation.')
         if not commit:
-            raise GitError('请选择历史提交。')
+            raise GitError('Please select a historical submission.')
         raw, code = await self.command(path, 'rev-parse', '--verify', '--end-of-options', commit + '^{commit}', check=False)
         if code:
-            raise GitError('历史提交不存在。', 404)
+            raise GitError('Historical submission does not exist.', 404)
         commit = text(raw).strip()
         _, code = await self.command(path, 'merge-base', '--is-ancestor', commit, head, check=False)
         if code:
-            raise GitError('所选提交不在目标分支历史中。', 409)
+            raise GitError('The selected commit is not in the target branch\'s history.', 409)
         if mode == 'undo_merge':
             parents, _ = await self.command(path, 'rev-list', '--parents', '-n', '1', commit)
             parent_count = len(text(parents).split()) - 1
@@ -103,7 +103,7 @@ class GitRecoveries:
         elif mode == 'undo_commit':
             parents, _ = await self.command(path, 'rev-list', '--parents', '-n', '1', commit)
             if len(text(parents).split()) != 3:
-                raise GitError('请选择双亲合并提交。', 409)
+                raise GitError('Please select a parent merge commit.', 409)
             strategy = 'merge'
         else:
             strategy = 'restore'
@@ -125,11 +125,11 @@ class GitRecoveries:
                 else:
                     await self.command(temporary, 'restore', '--source=' + commit, '--staged', '--worktree', '--', '.', timeout=120)
             except GitError as exc:
-                raise GitError('恢复内容发生冲突，目标分支未改变。\n' + str(exc), 409) from exc
+                raise GitError('Conflict occurred while restoring content; target branch unchanged.\n' + str(exc), 409) from exc
             diff, _ = await self.command(temporary, 'diff', '--cached', '--name-only', '-z', '--')
             files = [text(item) for item in diff.split(b'\0') if item]
             if not files:
-                raise GitError('恢复后内容没有变化。', 409)
+                raise GitError('No changes after recovery.', 409)
             numstat, _ = await self.command(temporary, 'diff', '--cached', '--numstat', '--no-renames', '-z', '--')
             changes = []
             for entry in numstat.split(b'\0'):
@@ -158,7 +158,7 @@ class GitRecoveries:
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             _, branch, _ = await self._recovery_target(id, target)
             if (await self.status(id))['active']:
-                raise GitError('项目有正在运行的任务或对话，请结束后再恢复。', 409)
+                raise GitError('Project has running tasks or conversations, please end them before resuming.', 409)
             return await self._run_recovery(directory['path'], directory['common_dir'], branch['head'],
                                             mode, target, commit, operation_id, apply=False)
 
@@ -167,7 +167,7 @@ class GitRecoveries:
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             _, branch, target_path = await self._recovery_target(id, target)
             if branch['head'] != expected_head or (await self.status(id))['active']:
-                raise GitError('目标分支已变化，请重新预览。', 409)
+                raise GitError('The target branch has changed. Please preview again.', 409)
             if branch.get('remote') and branch['remote'] != '.' and branch.get('upstream_ref'):
                 auth = await self.credential_for(directory, branch['remote'])
                 await self.command(directory['path'], 'fetch', '--prune', '--no-recurse-submodules',
@@ -175,22 +175,22 @@ class GitRecoveries:
                 remote_head, code = await self.command(directory['path'], 'rev-parse', '--verify',
                                                         branch['upstream_ref'] + '^{commit}', check=False)
                 if code:
-                    raise GitError('目标分支的远程上游已不存在，请刷新。', 409)
+                    raise GitError('The remote upstream for the target branch no longer exists, please refresh.', 409)
                 _, behind = await self.command(directory['path'], 'merge-base', '--is-ancestor',
                                                text(remote_head).strip(), expected_head, check=False)
                 if behind:
-                    raise GitError('目标分支的远程上游已有新提交，请先更新目标分支再预览。', 409)
+                    raise GitError('The remote upstream of the target branch has new commits. Please update the target branch before previewing.', 409)
             identity = await self.identity(branch['worktree_id'] or id)
             result = await self._run_recovery(directory['path'], directory['common_dir'], expected_head,
                                               mode, target, commit, operation_id, apply=True, identity=identity)
             if target_path:
                 latest = await self.status(branch['worktree_id'])
                 if latest['branch'] != target or latest['head'] != expected_head or latest['active'] or latest['operation']:
-                    raise GitError('目标分支已变化，请重新预览。', 409)
+                    raise GitError('The target branch has changed. Please preview again.', 409)
                 try:
                     await self.command(target_path, '-c', 'merge.autoStash=false', 'merge', '--ff-only', result['new_head'], timeout=120)
                 except GitError as exc:
-                    raise GitError('目标工作目录与恢复结果冲突，未改变分支。\n' + str(exc), 409) from exc
+                    raise GitError('Target working directory conflicts with recovery result; branch unchanged.\n' + str(exc), 409) from exc
             else:
                 await self.command(directory['path'], 'update-ref', 'refs/heads/' + target,
                                    result['new_head'], expected_head)

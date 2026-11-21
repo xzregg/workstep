@@ -30,25 +30,25 @@ class TaskGitWorkspace:
     @staticmethod
     def root(project_path: str | Path, task_id: str, workflow_id: str | None = None) -> Path:
         if not re.fullmatch(r"[A-Za-z0-9-]{1,80}", task_id):
-            raise GitError("无效的任务 ID。")
+            raise GitError("Invalid task ID.")
         project = Path(project_path).resolve()
         workstep = data_directory(project)
         if workstep.is_symlink():
-            raise GitError("项目元数据目录不能是符号链接。", 409)
+            raise GitError("The project metadata directory cannot be a symbolic link.", 409)
         legacy_container = workstep / "worktrees"
         legacy = legacy_container / task_id
         if legacy_container.is_symlink() or legacy.is_symlink():
-            raise GitError("任务工作区目录不能是符号链接。", 409)
+            raise GitError("The task workspace directory cannot be a symbolic link.", 409)
         if workflow_id is None or (legacy.is_dir() and any(legacy.iterdir())):
             return legacy
         if not re.fullmatch(r"[A-Za-z0-9-]{1,80}", workflow_id):
-            raise GitError("无效的流程 ID。")
+            raise GitError("Invalid process ID.")
         artifacts = workstep / "artifacts"
         workflow_root = artifacts / workflow_id
         task_root = workflow_root / task_id
         target = task_root / ".worktrees"
         if any(path.is_symlink() for path in (artifacts, workflow_root, task_root, target)):
-            raise GitError("任务工作区目录不能是符号链接。", 409)
+            raise GitError("The task workspace directory cannot be a symbolic link.", 409)
         return target
 
     def _project_repositories(self, project_path: Path):
@@ -73,7 +73,7 @@ class TaskGitWorkspace:
             while job['state'] == 'running':
                 await asyncio.sleep(.05)
             if job['state'] != 'complete':
-                raise GitError('Git 仓库扫描失败，请重试。', 503)
+                raise GitError('Git repository scan failed, please retry.', 503)
 
     async def _relative_links_supported(self, path: str | Path) -> bool:
         raw, _ = await self.git.command(path, "version")
@@ -143,14 +143,14 @@ class TaskGitWorkspace:
 
     async def _add(self, project_path: str | Path, task_id: str, repository_id: str, alias: str, base_ref: str, branch_name: str | None, creator_name: str) -> dict:
         if not ALIAS.fullmatch(alias) or alias in {".", ".."}:
-            raise GitError("无效的工作目录名称。")
+            raise GitError("Invalid work directory name.")
         if not base_ref or base_ref.startswith("-") or "\0" in base_ref:
-            raise GitError("无效的基准分支。")
+            raise GitError("Invalid base branch.")
         project = await asyncio.to_thread(Path(project_path).resolve)
         await self._ensure_repositories()
         repo = (await asyncio.to_thread(self._project_repositories, project)).get(repository_id)
         if not repo:
-            raise GitError("仓库不属于当前项目，请重新扫描。", 404)
+            raise GitError("The repository does not belong to the current project. Please rescan.", 404)
         def find_source():
             project_ids = {
                 p["id"] for p in self.git.snapshot["projects"]
@@ -163,43 +163,43 @@ class TaskGitWorkspace:
 
         source = await asyncio.to_thread(find_source)
         if source is None:
-            raise GitError("源仓库目录已不存在。", 404)
+            raise GitError("Source repository directory no longer exists.", 404)
         actual_source = await asyncio.to_thread(source.resolve)
         if not actual_source.is_relative_to(project):
-            raise GitError("源仓库已越过项目目录。", 409)
+            raise GitError("The source repository has exceeded the project directory.", 409)
         raw, _ = await self.git.command(source, "rev-parse", "--path-format=absolute", "--git-common-dir")
         actual_common = str(await asyncio.to_thread(Path(text(raw).strip()).resolve))
         if actual_common != repo["common_dir"]:
-            raise GitError("源仓库已变化，请重新扫描。", 409)
+            raise GitError("Source repository has changed, please rescan.", 409)
         root = await asyncio.to_thread(self._root, project, task_id)
         target = root / alias
         lock = self.git.locks.setdefault(repo["common_dir"], asyncio.Lock())
         async with lock:
             if await asyncio.to_thread(target.exists) or await asyncio.to_thread(target.is_symlink):
-                raise GitError("任务目录中已存在同名工作目录。", 409)
+                raise GitError("A work directory with the same name already exists in the task directory.", 409)
             sha = await self.git.revision(str(source), base_ref)
             if not sha:
-                raise GitError("基准分支尚无提交。", 409)
+                raise GitError("No commits on the base branch.", 409)
             default_branch = f"workstep/{task_id}/{alias}"
             branch = default_branch if branch_name is None else branch_name
             if not branch or branch.startswith("-") or "\0" in branch:
-                raise GitError("功能分支名称无效。")
+                raise GitError("Invalid feature branch name.")
             _, code = await self.git.command(source, "check-ref-format", "--branch", branch, check=False)
             if code:
-                raise GitError("功能分支名称无效。")
+                raise GitError("Invalid feature branch name.")
             _, code = await self.git.command(source, "show-ref", "--verify", "--quiet", "refs/heads/" + branch, check=False)
             if not code and branch != default_branch:
-                raise GitError("功能分支已存在，请填写新的分支名。", 409)
+                raise GitError("Feature branch already exists. Please enter a new branch name.", 409)
             await self.git.command(source, "config", "extensions.worktreeConfig", "true")
             await asyncio.to_thread(root.mkdir, parents=True, exist_ok=True)
             if not await self._relative_links_supported(source):
-                raise GitError("创建可跨容器使用的工作目录需要 Git 2.48 或更新版本。", 400)
+                raise GitError("Creating a work directory that can be used across containers requires Git 2.48 or later.", 400)
             if code:
                 await self.git.command(source, "worktree", "add", "--relative-paths", "-b", branch, str(target), sha, timeout=120)
             else:
                 occupied = next((tree for tree in repo["worktrees"] if tree["branch"] == branch and tree["available"]), None)
                 if occupied:
-                    raise GitError("此任务的功能分支已在其他工作目录检出。", 409)
+                    raise GitError("The feature branch for this task is already checked out in another working directory.", 409)
                 await self.git.command(source, "worktree", "add", "--relative-paths", str(target), branch, timeout=120)
             await self.git.command(target, "config", "--worktree", "workstep.createdBranch", branch)
             discovered = await self.git.discover_repository(source)
@@ -215,27 +215,27 @@ class TaskGitWorkspace:
 
     async def _remove(self, project_path: str | Path, task_id: str, alias: str, *, force: bool = False) -> dict:
         if not ALIAS.fullmatch(alias) or alias in {".", ".."}:
-            raise GitError("无效的工作目录名称。")
+            raise GitError("Invalid work directory name.")
         project = await asyncio.to_thread(Path(project_path).resolve)
         root = await asyncio.to_thread(self._root, project, task_id)
         current = await self.list(project, task_id)
         tree = next((item for item in current["worktrees"] if item["alias"] == alias), None)
         if tree is None:
-            raise GitError("任务 Worktree 不存在。", 404)
+            raise GitError("Task Worktree does not exist.", 404)
         repo = (await asyncio.to_thread(self._project_repositories, project))[tree["repository_id"]]
         branch = tree.get("created_branch") or tree["branch"]
         if not branch or any(item["main"] and item["branch"] == branch for item in repo["worktrees"]):
-            raise GitError("无法确认此工作目录对应的功能分支，已停止删除。", 409)
+            raise GitError("Unable to confirm the feature branch corresponding to this working directory; deletion has been stopped.", 409)
         await self.git.protect_branch(tree["path"], branch)
         lock = self.git.locks.setdefault(repo["common_dir"], asyncio.Lock())
         async with lock:
             target = root / alias
             raw, _ = await self.git.command(target, "status", "--porcelain=v1", "-z", "--untracked-files=all")
             if raw and not force:
-                raise GitError("工作目录存在未提交内容，请先处理后再移除。", 409)
+                raise GitError("Uncommitted changes exist in the working directory; please resolve them before removal.", 409)
             source = next((item["path"] for item in repo["worktrees"] if item["main"] and item["available"]), None)
             if source is None:
-                raise GitError("源仓库目录不可用，请重新扫描。", 409)
+                raise GitError("Source repository directory is unavailable, please rescan.", 409)
             await self.git.command(source, "worktree", "remove", *(["--force"] if force else []), str(target), timeout=120)
             try:
                 _, exists_code = await self.git.command(source, "show-ref", "--verify", "--quiet", "refs/heads/" + branch, check=False)
@@ -251,27 +251,27 @@ class TaskGitWorkspace:
         async with self._lock(project_path, task_id):
             root = await asyncio.to_thread(self._root, project_path, task_id)
             if not await asyncio.to_thread(root.is_dir):
-                raise GitError("任务 Git 工作区不存在。", 404)
+                raise GitError("Task Git workspace does not exist.", 404)
             current = await self.list(project_path, task_id)
             entries = await asyncio.to_thread(lambda: {entry.name for entry in root.iterdir()})
             aliases = {tree["alias"] for tree in current["worktrees"]}
             if entries != aliases:
-                raise GitError("工作区内存在未识别的文件或目录，请先手动处理。", 409)
+                raise GitError("Unrecognized file or directory found in the workspace. Please handle it manually first.", 409)
             project = await asyncio.to_thread(Path(project_path).resolve)
             repos = await asyncio.to_thread(self._project_repositories, project)
             for tree in current["worktrees"]:
                 if tree["locked"] or tree["prunable"] or not tree["available"]:
-                    raise GitError("工作区包含不可安全移除的 Worktree。", 409)
+                    raise GitError("Workspace contains a worktree that cannot be safely removed.", 409)
                 repo = repos.get(tree["repository_id"])
                 if not repo or not any(item["main"] and item["available"] for item in repo["worktrees"]):
-                    raise GitError("源仓库目录不可用，请重新扫描。", 409)
+                    raise GitError("Source repository directory is unavailable, please rescan.", 409)
                 branch = tree.get("created_branch") or tree["branch"]
                 if not branch or any(item["main"] and item["branch"] == branch for item in repo["worktrees"]):
-                    raise GitError("无法确认此工作目录对应的功能分支，已停止删除。", 409)
+                    raise GitError("Unable to confirm the feature branch corresponding to this working directory; deletion has been stopped.", 409)
                 await self.git.protect_branch(tree["path"], branch)
                 raw, _ = await self.git.command(tree["path"], "status", "--porcelain=v1", "-z", "--untracked-files=all")
                 if raw and not force:
-                    raise GitError("工作区存在未提交内容，请先处理后再删除。", 409)
+                    raise GitError("Workspace has uncommitted changes. Please handle them before deletion.", 409)
             try:
                 for tree in current["worktrees"]:
                     await self._remove(project_path, task_id, tree["alias"], force=force)
@@ -282,7 +282,7 @@ class TaskGitWorkspace:
                 removed = [tree['alias'] for tree in current['worktrees'] if tree['alias'] not in remaining_aliases]
                 if not removed:
                     if isinstance(exc, OSError):
-                        raise GitError("工作区目录未清空，请检查后重试。", 409) from exc
+                        raise GitError("Workspace directory not cleared, please check and retry.", 409) from exc
                     raise
                 return {**remaining, 'outcome': 'partial', 'removed_aliases': removed, 'failure': str(exc)}
             return {"path": str(root), "worktrees": [], 'outcome': 'deleted',

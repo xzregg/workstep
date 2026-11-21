@@ -43,7 +43,7 @@ class DecisionRuntime:
                 line = await asyncio.wait_for(self.reader.readline(), 120 if cold else 20)
                 result = json.loads(line)
                 if result.get('id') != request_id or 'result' not in result:
-                    raise ValueError('本地推理响应无效')
+                    raise ValueError('Invalid local inference response')
                 self.state = 'ready'
                 self.reaper = asyncio.get_running_loop().call_later(300, lambda: asyncio.create_task(self.close()))
                 return result['result']

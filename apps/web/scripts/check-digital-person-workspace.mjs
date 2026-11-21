@@ -91,7 +91,7 @@ try{
   await page.locator('.digital-person-stat-counts').waitFor()
   assert.deepEqual(await page.locator('.digital-person-stat-counts dd').allTextContents(),['12','44','8','5'])
   assert.equal(await page.locator('.digital-person-stat-skills').count(),0,'namecard hides skills')
-  assert.equal(await page.locator('.digital-person-card-details').evaluate(el=>el.open),width>1023,'duties expand on desktop only')
+  assert.equal(await page.locator('.digital-person-card').getByText('职责',{exact:true}).count(),0,'namecard hides duties')
   assert.equal(await page.evaluate(()=>window.workspaceFixture.calls.activity),1,'one namecard data request')
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'namecard does not overflow')
   await page.screenshot({animations:'disabled',path:path.join(artifacts,`namecard-${width}.png`),fullPage:true})

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import Button from './Button'
 import Input from './Input'
@@ -82,7 +82,7 @@ export default function ProjectDirectorySetting() {
           {t('common.save')}
         </Button>
       </div>
-      {error && <div role="alert" className="project-directory-setting-error">{error}</div>}
+      {error && <div role="alert" className="project-directory-setting-error">{localizeErrorDisplay(error)}</div>}
       {saved && <div role="status" className="project-directory-setting-saved">{t('settings.defaultProjectDirectorySaved')}</div>}
     </section>
   )

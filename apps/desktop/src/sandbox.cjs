@@ -27,31 +27,31 @@ async function canonical(value) {
   }
 }
 async function validateSettings(input) {
-  if (!input || typeof input.root !== 'string' || !input.root.trim() || typeof input.project !== 'string' || !input.project.trim()) throw new Error('请选择沙箱目录和项目根目录')
-  if (!path.isAbsolute(input.root) || !path.isAbsolute(input.project)) throw new Error('目录必须是绝对路径')
+  if (!input || typeof input.root !== 'string' || !input.root.trim() || typeof input.project !== 'string' || !input.project.trim()) throw new Error('Please select the sandbox directory and project root directory')
+  if (!path.isAbsolute(input.root) || !path.isAbsolute(input.project)) throw new Error('The directory must be an absolute path')
   const root = await canonical(input.root), project = await canonical(input.project)
-  if (root === path.parse(root).root || root === await canonical(os.homedir())) throw new Error('请选择独立的沙箱目录')
+  if (root === path.parse(root).root || root === await canonical(os.homedir())) throw new Error('Please select an independent sandbox directory')
   const mounts = input.mounts ?? []
-  if (!Array.isArray(mounts) || mounts.length > 32) throw new Error('额外挂载配置无效')
+  if (!Array.isArray(mounts) || mounts.length > 32) throw new Error('Additional mount configuration is invalid')
   const normalized = []
   const targets = ['/data/projects']
   for (const mount of mounts) {
-    if (typeof mount?.source !== 'string' || !path.isAbsolute(mount.source) || typeof mount.target !== 'string' || !/^\/data\/projects\/[A-Za-z0-9_.-]+$/.test(mount.target) || ['.', '..'].includes(path.posix.basename(mount.target))) throw new Error('额外挂载必须使用独立的项目路径')
-    if (targets.includes(mount.target)) throw new Error('项目挂载目标重复')
+    if (typeof mount?.source !== 'string' || !path.isAbsolute(mount.source) || typeof mount.target !== 'string' || !/^\/data\/projects\/[A-Za-z0-9_.-]+$/.test(mount.target) || ['.', '..'].includes(path.posix.basename(mount.target))) throw new Error('Additional mounts must use an independent project path')
+    if (targets.includes(mount.target)) throw new Error('Project mount target is duplicated')
     targets.push(mount.target)
     normalized.push({ source: await canonical(mount.source), target: mount.target })
   }
   for (const source of [project, ...normalized.map(mount => mount.source)]) {
-    if (contains(root, source) || contains(source, root)) throw new Error('沙箱目录与项目目录不能重叠')
-    if (!(await fs.stat(source)).isDirectory()) throw new Error('项目目录不存在')
-    if (source.includes(',') || source.includes('\n')) throw new Error('项目目录不能包含逗号或换行')
+    if (contains(root, source) || contains(source, root)) throw new Error('Sandbox directory and project directory cannot overlap')
+    if (!(await fs.stat(source)).isDirectory()) throw new Error('Project directory does not exist')
+    if (source.includes(',') || source.includes('\n')) throw new Error('Project directory cannot contain commas or newlines')
   }
-  if (root.includes(',') || root.includes('\n')) throw new Error('沙箱目录不能包含逗号或换行')
+  if (root.includes(',') || root.includes('\n')) throw new Error('Sandbox directory cannot contain commas or newlines')
   return { root, project, mounts: normalized, id: createHash('sha256').update(root).digest('hex').slice(0, 16) }
 }
 function windowsPath(value) {
   const match = /^([A-Za-z]):[\\/](.*)$/.exec(value)
-  if (!match) throw new Error('Windows 沙箱仅支持本地盘符目录')
+  if (!match) throw new Error('Windows Sandbox only supports local drive directories')
   return `/mnt/${match[1].toLowerCase()}/${match[2].replaceAll('\\', '/')}`
 }
 function guestMounts(config, platform) {
@@ -143,12 +143,12 @@ class SandboxManager {
     return { configSyncVersion: 1, settings, onlineImage: Boolean(this.image), platform: this.platform, arch: this.arch, runtimeReady: installed || this.runtimeRoot === settings.root || Boolean(settings.prepared), imageReady: Boolean(seed) || Boolean(settings.prepared && this.compatibleImage(settings)), cachedDockerImage: seed?.source.startsWith('sha256:') ? seed.source : settings.dockerImage || null, phase: this.phase, progress: this.progress, error: this.error, running: this.running, health: this.health, hostPort: this.hostPort, logDirectory: settings.root ? path.join(settings.root, 'desktop') : null, supported: ['darwin-arm64', 'darwin-x64', 'win32-x64', 'linux-x64'].includes(`${this.platform}-${this.arch}`) }
   }
   async stageRoot(input) {
-    if (this.running || (await this.settings()).enabled) throw new Error('请先关闭沙箱并重启')
-    if (typeof input?.root !== 'string' || !input.root.trim() || !path.isAbsolute(input.root)) throw new Error('请选择独立的沙箱目录')
+    if (this.running || (await this.settings()).enabled) throw new Error('Please close the sandbox and restart')
+    if (typeof input?.root !== 'string' || !input.root.trim() || !path.isAbsolute(input.root)) throw new Error('Please select an independent sandbox directory')
     const root = await canonical(input.root)
-    if (root === path.parse(root).root || root === await canonical(this.hostHome) || root.includes(',') || root.includes('\n')) throw new Error('请选择独立的沙箱目录')
+    if (root === path.parse(root).root || root === await canonical(this.hostHome) || root.includes(',') || root.includes('\n')) throw new Error('Please select an independent sandbox directory')
     const existing = (await this.status()).settings
-    if (existing.root && existing.root !== root) throw new Error('请先删除旧沙箱，或继续使用原沙箱目录')
+    if (existing.root && existing.root !== root) throw new Error('Please delete the old sandbox first, or continue using the original sandbox directory')
     const config = { enabled: false, prepared: false, root, project: existing.project || '', mounts: existing.mounts || [], dockerImage: Object.hasOwn(input, 'dockerImage') ? input.dockerImage || null : existing.dockerImage || null, id: createHash('sha256').update(root).digest('hex').slice(0, 16) }
     await this.claimRoot(config)
     await fs.mkdir(this.stateDir, { recursive: true })
@@ -158,9 +158,9 @@ class SandboxManager {
   async prepareRuntime(input) {
     return this.exclusive(async () => {
       const config = await this.stageRoot(input)
-      if (!(await this.status()).supported) throw new Error('当前系统或架构不支持桌面沙箱')
+      if (!(await this.status()).supported) throw new Error('The current system or architecture does not support desktop sandbox')
       if (this.platform === 'win32') {
-        try { await this.execute('wsl.exe', ['--status'], { timeout: 15000 }) } catch { throw new Error('请先启用 Windows WSL2 和虚拟化：https://learn.microsoft.com/windows/wsl/install') }
+        try { await this.execute('wsl.exe', ['--status'], { timeout: 15000 }) } catch { throw new Error('Please enable Windows WSL2 and virtualization: https://learn.microsoft.com/windows/wsl/install') }
       }
       this.update('download')
       await this.install(config.root, this.platform, this.arch, progress => this.update('download', progress))
@@ -182,28 +182,35 @@ class SandboxManager {
   async inspectImage(command, image) {
     const [details] = JSON.parse(await command(['image', 'inspect', image]))
     const architecture = this.arch === 'x64' ? 'amd64' : this.arch
-    if (details?.Os !== 'linux') throw new Error('镜像系统不匹配：需要 Linux 镜像')
-    if (details?.Architecture !== architecture) throw new Error(`镜像架构不匹配：需要 ${architecture}，实际为 ${details?.Architecture || '未知'}`)
-    if (!details?.Config?.Entrypoint?.includes('/usr/local/bin/workstep-entrypoint')) throw new Error('镜像缺少 WorkStep 入口：/usr/local/bin/workstep-entrypoint')
+    if (details?.Os !== 'linux') throw new Error('Image system mismatch: Linux image required')
+    if (details?.Architecture !== architecture) throw new Error(`Image architecture mismatch: expected ${architecture}, actual ${details?.Architecture || 'unknown'}`)
+    if (!details?.Config?.Entrypoint?.includes('/usr/local/bin/workstep-entrypoint')) throw new Error('Image missing WorkStep entry: /usr/local/bin/workstep-entrypoint')
     // Podman reports a bare config digest; Docker commonly includes sha256:.
-    if (typeof details.Id !== 'string' || !/^(?:sha256:)?[a-f0-9]{64}$/.test(details.Id)) throw new Error('镜像 ID 无效')
+    if (typeof details.Id !== 'string' || !/^(?:sha256:)?[a-f0-9]{64}$/.test(details.Id)) throw new Error('Invalid image ID')
     return 'sha256:' + details.Id.replace(/^sha256:/, '')
+  }
+
+  async acquireReleaseImage(command, image, reuse = false) {
+    if (reuse) {
+      try { return await this.inspectImage(command, image) } catch { /* pull and validate the release image */ }
+    }
+    await command(['pull', image])
+    return this.inspectImage(command, image)
   }
   async prepareImage(input) {
     return this.exclusive(async () => {
       const config = await this.stageRoot(input)
       const source = input.dockerImage || this.image
-      if (!source || (input.dockerImage && !/^sha256:[a-f0-9]{64}$/.test(input.dockerImage))) throw new Error('请选择兼容的本地镜像或当前版本的发布镜像')
+      if (!source || (input.dockerImage && !/^sha256:[a-f0-9]{64}$/.test(input.dockerImage))) throw new Error('Please select a compatible local image or a release image for the current version')
       const cached = await this.imageSeed(config.root)
       if (cached?.source === source && await fileDigest(cached.archive) === cached.sha256) { this.update('imageReady'); return this.status() }
       const session = await this.setup(config)
       const archive = path.join(config.root, 'podman/cache/image-seed.tar')
       try {
         this.update('image')
-        let image = source
-        if (input.dockerImage) image = await importDockerImage({ root: config.root, id: source, execute: this.execute, command: session.command, platform: this.platform, arch: this.arch })
-        else { try { await this.inspectImage(session.command, source) } catch { await session.command(['pull', source]) } }
-        const id = await this.inspectImage(session.command, image)
+        const id = input.dockerImage
+          ? await this.inspectImage(session.command, await importDockerImage({ root: config.root, id: source, execute: this.execute, command: session.command, platform: this.platform, arch: this.arch }))
+          : await this.acquireReleaseImage(session.command, source, true)
         this.update('caching')
         await session.command(['save', '--format=oci-archive', '--output', archive + '.partial', id])
         const sha256 = await fileDigest(archive + '.partial')
@@ -220,7 +227,7 @@ class SandboxManager {
     })
   }
   async exclusive(operation) {
-    if (this.busy) throw new Error('沙箱操作正在进行，请稍候')
+    if (this.busy) throw new Error('Sandbox operation in progress, please wait')
     this.busy = true; this.error = null
     try { return await operation() } catch (error) { this.error = error.message; this.update('error'); throw error } finally { this.busy = false }
   }
@@ -229,20 +236,20 @@ class SandboxManager {
     const marker = path.join(config.root, 'desktop', 'owner.json')
     let owner
     try { owner = JSON.parse(await fs.readFile(marker, 'utf8')) } catch (error) { if (error.code !== 'ENOENT') throw error }
-    if (owner && owner.id !== config.id) throw new Error('该目录属于另一个沙箱')
+    if (owner && owner.id !== config.id) throw new Error('This directory belongs to another sandbox')
     let preserveHome = owner?.preserveHome === true
     if (!owner) {
       const entries = await fs.readdir(config.root)
-      if (entries.some(name => !['home', '.DS_Store'].includes(name))) throw new Error('首次开启请选择空目录，或仅包含已有 home 的目录；其他文件不会自动接管')
+      if (entries.some(name => !['home', '.DS_Store'].includes(name))) throw new Error('When enabling for the first time, please select an empty directory, or one that only contains existing home directories; other files will not be automatically taken over')
       if (entries.includes('home')) {
         const home = await fs.lstat(path.join(config.root, 'home'))
-        if (!home.isDirectory() || home.isSymbolicLink()) throw new Error('已有 Home 必须是真实目录，不能是文件或符号链接')
+        if (!home.isDirectory() || home.isSymbolicLink()) throw new Error('Home must be a real directory, not a file or symbolic link')
         preserveHome = true
       }
     }
     for (const directory of ['home', 'desktop', 'desktop/managed-gateway', 'podman/config', 'podman/data', 'podman/cache']) {
       const destination = path.join(config.root, directory)
-      if (!contains(config.root, await canonical(destination))) throw new Error('沙箱内部目录不能指向外部位置')
+      if (!contains(config.root, await canonical(destination))) throw new Error('The directory inside the sandbox cannot point to an external location')
       await fs.mkdir(destination, { recursive: true })
     }
     this.logFile = path.join(config.root, 'desktop/sandbox.log')
@@ -253,7 +260,7 @@ class SandboxManager {
     const runtimeDir = path.join(os.tmpdir(), `workstep-podman-${config.id}`)
     await fs.mkdir(runtimeDir, { recursive: true, mode: 0o700 })
     const runtimeStat = await fs.lstat(runtimeDir)
-    if (runtimeStat.isSymbolicLink() || (process.getuid && runtimeStat.uid !== process.getuid())) throw new Error('沙箱临时运行目录归属无效')
+    if (runtimeStat.isSymbolicLink() || (process.getuid && runtimeStat.uid !== process.getuid())) throw new Error('Invalid ownership of the sandbox temporary runtime directory')
     await fs.chmod(runtimeDir, 0o700)
     const configFile = path.join(root, 'config', 'containers.conf')
     const helpers = [...new Set([path.dirname(runtime.executable), ...(runtime.helpers || [])])]
@@ -266,7 +273,7 @@ class SandboxManager {
     return env
   }
   async setup(config) {
-    if (!(await this.status()).supported) throw new Error('当前系统或架构不支持桌面沙箱')
+    if (!(await this.status()).supported) throw new Error('The current system or architecture does not support desktop sandbox')
     await this.claimRoot(config)
     this.update('download')
     const runtime = await this.install(config.root, this.platform, this.arch, progress => this.update('download', progress))
@@ -275,7 +282,7 @@ class SandboxManager {
     const podman = (args, options = {}) => this.execute(runtime.executable, args, { env, ...options })
     this.update('machine')
     if (this.platform === 'win32') {
-      try { await this.execute('wsl.exe', ['--status'], { timeout: 15000 }) } catch { throw new Error('请先启用 Windows WSL2 和虚拟化，再重试开启沙箱：https://learn.microsoft.com/windows/wsl/install') }
+      try { await this.execute('wsl.exe', ['--status'], { timeout: 15000 }) } catch { throw new Error('Please enable Windows WSL2 and virtualization, then retry enabling the sandbox: https://learn.microsoft.com/windows/wsl/install') }
     }
     const machine = `workstep-${config.id}`
     try {
@@ -334,11 +341,11 @@ class SandboxManager {
     return this.exclusive(async () => {
       const previous = await this.settings()
       const config = { ...await validateSettings(input), compatibility: input.compatibility === true, dockerImage: input.dockerImage || null }
-      if (config.dockerImage && !/^sha256:[a-f0-9]{64}$/.test(config.dockerImage)) throw new Error('无效的 Docker 镜像 ID')
+      if (config.dockerImage && !/^sha256:[a-f0-9]{64}$/.test(config.dockerImage)) throw new Error('Invalid Docker image ID')
       const image = config.dockerImage || this.image
-      if (typeof image !== 'string' || !image.length) throw new Error('当前版本未配置在线沙箱镜像，请扫描并选择本地 Docker 中的 WorkStep 镜像')
-      if (this.platform !== 'win32' && [config.root, config.project, ...config.mounts.map(m => m.source)].some(value => value.includes(':'))) throw new Error('沙箱挂载目录不能包含冒号')
-      if (previous.root && previous.root !== config.root) throw new Error('请先删除旧沙箱，或继续使用原沙箱目录')
+      if (typeof image !== 'string' || !image.length) throw new Error('The current version is not configured with an online sandbox image. Please scan and select a WorkStep image from local Docker.')
+      if (this.platform !== 'win32' && [config.root, config.project, ...config.mounts.map(m => m.source)].some(value => value.includes(':'))) throw new Error('Sandbox mount directory cannot contain colons')
+      if (previous.root && previous.root !== config.root) throw new Error('Please delete the old sandbox first, or continue using the original sandbox directory')
       await fs.mkdir(this.stateDir, { recursive: true })
       await fs.writeFile(path.join(this.stateDir, 'sandbox-pending.json'), JSON.stringify(config), { mode: 0o600 })
       const session = await this.setup(config)
@@ -356,17 +363,17 @@ class SandboxManager {
           }
         }
         else if (seed?.source === image) {
-          if (await fileDigest(seed.archive) !== seed.sha256) throw new Error('镜像缓存校验失败，请返回镜像步骤重新准备')
+          if (await fileDigest(seed.archive) !== seed.sha256) throw new Error('Image cache validation failed, please return to the image step to reprepare')
           try { config.image = await this.inspectImage(session.command, seed.id) }
           catch {
             await session.command(['load', '--input', seed.archive])
             config.image = await this.inspectImage(session.command, seed.id)
           }
-          if (config.image !== seed.id) throw new Error('导入后的镜像身份不匹配')
+          if (config.image !== seed.id) throw new Error('The imported image identity does not match')
           if (!config.dockerImage) config.releaseImage = this.image
         }
         else if (config.dockerImage) config.image = await importDockerImage({ root: config.root, id: image, execute: this.execute, command: session.command, platform: this.platform, arch: this.arch })
-        else { await session.command(['pull', image]); config.image = image }
+        else { await this.acquireReleaseImage(session.command, image); config.image = image }
         if (input.registeredProjects !== undefined) {
           await this.writeProjectConfig(config, input.registeredProjects)
           config.registeredProjects = input.registeredProjects
@@ -388,9 +395,9 @@ class SandboxManager {
       this.health = 'starting'; this.hostPort = null
       const settings = await this.settings()
       const config = { ...settings, ...await validateSettings(settings) }
-      if (!config.enabled || !config.prepared || !this.compatibleImage(config)) throw new Error('沙箱需要先完成当前版本的初始化')
+      if (!config.enabled || !config.prepared || !this.compatibleImage(config)) throw new Error('The sandbox must first complete initialization for the current version')
       const session = await this.setup(config)
-      if (generation !== this.startGeneration) throw new Error('沙箱启动已取消')
+      if (generation !== this.startGeneration) throw new Error('Sandbox launch canceled')
       this.session = session; this.activeConfig = config; this.redactions = [token]
       this.update('starting')
       try {
@@ -409,7 +416,7 @@ class SandboxManager {
         }
         const mapping = await session.command(['port', `workstep-${config.id}`, '8765/tcp'])
         const matched = /(?:127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):(\d+)/.exec(mapping)
-        if (!matched) throw new Error('无法取得沙箱后台端口')
+        if (!matched) throw new Error('Failed to obtain the sandbox backend port')
         this.hostPort = Number(matched[1])
         const url = `http://127.0.0.1:${matched[1]}`
         await this.waitForHealth(url, token, generation)
@@ -430,7 +437,7 @@ class SandboxManager {
     const timeout = this.platform === 'win32' ? 300000 : 90000
     const started = Date.now(), deadline = started + timeout
     while (Date.now() < deadline) {
-      if (generation !== this.startGeneration) throw new Error('沙箱启动已取消')
+      if (generation !== this.startGeneration) throw new Error('Sandbox launch canceled')
       try {
         const response = await fetch(`${url}/api/health`, { headers: { 'X-WorkStep-Desktop-Token': token }, signal: AbortSignal.timeout(2000) })
         if (response.ok && (await response.json()).status === 'ok') return
@@ -438,7 +445,7 @@ class SandboxManager {
       this.report({ phase: 'starting', progress: null, percent: 75 + Math.min(20, Math.round((Date.now() - started) / timeout * 20)) })
       await delay(500)
     }
-    throw new Error('沙箱后台健康检查超时，请查看容器日志')
+    throw new Error('Sandbox backend health check timed out, please check container logs')
   }
   async captureLogs() {
     if (!this.session || !this.activeConfig) return
@@ -483,9 +490,9 @@ class SandboxManager {
   }
   async setEnabled(enabled) {
     return this.exclusive(async () => {
-      if (typeof enabled !== 'boolean') throw new Error('模式无效')
+      if (typeof enabled !== 'boolean') throw new Error('Invalid mode')
       const settings = await this.settings()
-      if (enabled && (!settings.prepared || !this.compatibleImage(settings))) throw new Error('请先准备当前版本的沙箱')
+      if (enabled && (!settings.prepared || !this.compatibleImage(settings))) throw new Error('Please prepare the sandbox for the current version first')
       await this.save({ ...settings, enabled })
       return this.status()
     })
@@ -495,8 +502,8 @@ class SandboxManager {
     await this.save({ ...settings, enabled: false })
   }
   async queueImageSwitch(dockerImage, dockerTag = null) {
-    if (!/^sha256:[a-f0-9]{64}$/.test(dockerImage || '')) throw new Error('请选择有效的本地 WorkStep 镜像')
-    if (dockerTag !== null && (typeof dockerTag !== 'string' || !dockerTag.trim())) throw new Error('镜像标签无效')
+    if (!/^sha256:[a-f0-9]{64}$/.test(dockerImage || '')) throw new Error('Please select a valid local WorkStep image')
+    if (dockerTag !== null && (typeof dockerTag !== 'string' || !dockerTag.trim())) throw new Error('Invalid image tag')
     this.startGeneration += 1
     await this.stop()
     const settings = await this.settings()
@@ -505,21 +512,21 @@ class SandboxManager {
   async importConfig(input) {
     return this.exclusive(async () => {
       const kind = typeof input === 'string' ? input : 'other'
-      if (kind !== 'other' && !Object.hasOwn(IMPORTS, kind)) throw new Error('不支持的配置类型')
+      if (kind !== 'other' && !Object.hasOwn(IMPORTS, kind)) throw new Error('Unsupported configuration type')
       const settings = (await this.status()).settings
-      if (!settings.root) throw new Error('请先准备沙箱')
+      if (!settings.root) throw new Error('Please prepare the sandbox first')
       let sources
       if (kind === 'other') {
         const source = input?.source
-        if (typeof source !== 'string' || !path.isAbsolute(source)) throw new Error('请选择配置目录的绝对路径')
+        if (typeof source !== 'string' || !path.isAbsolute(source)) throw new Error('Please select the absolute path of the configuration directory')
         const stat = await fs.lstat(source)
-        if (stat.isSymbolicLink()) throw new Error('配置来源不能是符号链接')
-        if (!stat.isDirectory()) throw new Error('配置来源必须是目录')
+        if (stat.isSymbolicLink()) throw new Error('Configuration source cannot be a symbolic link')
+        if (!stat.isDirectory()) throw new Error('The configuration source must be a directory')
         const real = await fs.realpath(source), root = await canonical(settings.root)
-        if (real === await canonical(this.hostHome) || real === path.parse(real).root) throw new Error('不能同步整个 Home 或磁盘根目录')
-        if (contains(root, real) || contains(real, root)) throw new Error('配置来源不能与沙箱目录重叠')
+        if (real === await canonical(this.hostHome) || real === path.parse(real).root) throw new Error('Cannot sync the entire Home or disk root directory')
+        if (contains(root, real) || contains(real, root)) throw new Error('The configuration source cannot overlap with the sandbox directory:')
         const name = path.basename(path.resolve(source))
-        if (name.toLowerCase() === '.workstep') throw new Error('WorkStep 配置请使用配置迁移入口')
+        if (name.toLowerCase() === '.workstep') throw new Error('Please use the configuration migration entry for WorkStep configuration')
         sources = [{ source: real, name }]
       } else sources = IMPORTS[kind].map(name => ({ source: path.join(this.hostHome, name), name }))
       await this.claimRoot(settings)
@@ -530,7 +537,7 @@ class SandboxManager {
         for (const { source, name } of sources) {
           try {
             const stat = await fs.lstat(source)
-            if (stat.isSymbolicLink()) throw new Error('配置来源不能是符号链接')
+            if (stat.isSymbolicLink()) throw new Error('Configuration source cannot be a symbolic link')
           } catch (error) { if (error.code === 'ENOENT') continue; throw error }
           await fs.cp(source, path.join(stage, name), { recursive: true, dereference: false, filter: async file => {
             const stat = await fs.lstat(file)
@@ -538,7 +545,7 @@ class SandboxManager {
           } })
           entries.push(name)
         }
-        if (!entries.length) throw new Error('宿主机没有对应的引擎配置')
+        if (!entries.length) throw new Error('Host does not have corresponding engine configuration')
         for (const name of entries) {
           const target = path.join(settings.root, 'home', name)
           if (await fs.lstat(target).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error })) {
@@ -557,7 +564,7 @@ class SandboxManager {
   }
   async configFile(config) {
     const directory = path.join(config.root, 'home/.workstep')
-    if (!contains(config.root, await canonical(directory))) throw new Error('配置目录不能指向沙箱外部')
+    if (!contains(config.root, await canonical(directory))) throw new Error('The configuration directory cannot point outside the sandbox')
     return path.join(directory, 'config.json')
   }
   async writeConfig(config, value, label) {
@@ -584,10 +591,10 @@ class SandboxManager {
   }
   async migrateSettings(options) {
     return this.exclusive(async () => {
-      if (this.running || (await this.settings()).enabled) throw new Error('请先关闭沙箱并重启，再导入配置')
-      if (!options || ['providers', 'engines', 'preferences', 'overwrite'].some(key => options[key] !== undefined && typeof options[key] !== 'boolean')) throw new Error('配置迁移选项无效')
+      if (this.running || (await this.settings()).enabled) throw new Error('Please close the sandbox and restart, then import the configuration')
+      if (!options || ['providers', 'engines', 'preferences', 'overwrite'].some(key => options[key] !== undefined && typeof options[key] !== 'boolean')) throw new Error('Invalid configuration migration options')
       const config = await this.settings()
-      if (!config.prepared) throw new Error('请先准备沙箱')
+      if (!config.prepared) throw new Error('Please prepare the sandbox first')
       await this.claimRoot(config)
       this.update('migration')
       const target = await readConfig(await this.configFile(config))
@@ -605,8 +612,8 @@ class SandboxManager {
       if (!settings.root) return this.status()
       const config = settings.project ? await validateSettings(settings) : { ...settings, root: await canonical(settings.root), id: createHash('sha256').update(await canonical(settings.root)).digest('hex').slice(0, 16) }
       const owner = JSON.parse(await fs.readFile(path.join(config.root, 'desktop/owner.json'), 'utf8'))
-      if (owner.id !== config.id || !Array.isArray(owner.mounts)) throw new Error('无法确认沙箱目录归属')
-      for (const mount of [{ source: owner.project }, ...owner.mounts].filter(mount => mount.source)) if (contains(config.root, await canonical(mount.source))) throw new Error('沙箱内存在项目数据，拒绝删除')
+      if (owner.id !== config.id || !Array.isArray(owner.mounts)) throw new Error('Unable to confirm the ownership of the sandbox directory')
+      for (const mount of [{ source: owner.project }, ...owner.mounts].filter(mount => mount.source)) if (contains(config.root, await canonical(mount.source))) throw new Error('Project data exists in the sandbox, deletion denied')
       await this.claimRoot(config)
       await this.stop()
       const record = JSON.parse(await fs.readFile(path.join(config.root, 'podman/runtime.json'), 'utf8').catch(() => 'null'))
@@ -620,7 +627,7 @@ class SandboxManager {
           const containers = JSON.parse(await invoke(['ps', '-a', '--filter', `label=com.workstep.sandbox=${config.id}`, '--format=json']))
           for (const item of containers) await invoke(['rm', '--force', item.Id || item.ID])
           const storage = path.join(config.root, 'podman/data/storage')
-          if (!contains(config.root, await canonical(storage))) throw new Error('容器存储不能指向沙箱外部')
+          if (!contains(config.root, await canonical(storage))) throw new Error('Container storage cannot point outside the sandbox')
           try { await fs.rm(storage, { recursive: true, force: true }) } catch (error) {
             if (!['EACCES', 'EPERM'].includes(error.code)) throw error
             // Rootless image files can belong to subordinate UIDs.

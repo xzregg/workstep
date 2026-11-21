@@ -22,6 +22,6 @@ for (const chapter of chapters) {
 }
 console.log(`操作手册：${chapters.length} 章，截图 ${count - gaps.length}/${count}`)
 if (gaps.length) {
-  console.error('待补真实截图：\n' + gaps.map(gap => `- ${gap}`).join('\n'))
+  console.error('Pending real screenshot:\n' + gaps.map(gap => `- ${gap}`).join('\n'))
   process.exitCode = 1
 }

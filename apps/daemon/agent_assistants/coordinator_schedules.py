@@ -16,11 +16,11 @@ async def submit_scheduled(module, project_id, run_id):
             from services.task_schedule_runtime import task_is_terminal
             reason = None
             if schedule.target_type != "task" or task is None or task.archived:
-                reason = "定时目标任务不存在或已归档"
+                reason = "The scheduled task was deleted or archived."
             elif run.status != "running" or schedule.status not in {"active", "completed"}:
-                reason = "定时规则已暂停、删除或失效"
+                reason = "The schedule is paused, deleted, or inactive."
             elif schedule.stop_condition == "task_terminal" and task_is_terminal(task):
-                reason = "任务已结束"
+                reason = "The task has ended."
                 schedule.status, schedule.invalid_reason, schedule.next_run_at = "completed", reason, None
                 schedule.save()
             if reason:

@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { UsageActivityHeatmap } from './UsageActivityHeatmap'
 import { useEffect, useState } from 'react'
 import { UsageTrendChart } from './UsageTrendChart'
@@ -15,17 +16,17 @@ export function UsageOverviewCharts({ filters }: { filters: string }) {
   void Promise.all((['day','model'] as const).map(async dimension => {
    const params = new URLSearchParams(filters);params.set('group_by',dimension);params.set('limit','1000');params.set('offset','0')
    const response = await fetch(`/api/admin/usage?${params}`,{credentials:'same-origin',signal:controller.signal})
-   if(!response.ok)throw Error('用量图表加载失败。')
+   if(!response.ok)throw Error('Failed to load usage chart.')
    return [dimension,await response.json()] as const
   })).then(results => {
    if(controller.signal.aborted)return
    setData(Object.fromEntries(results.map(([key,value])=>[key,value.groups ?? []])) as typeof data)
    setTruncated(results.some(([,value])=>value.group_total>1000))
-  }).catch(reason=>{if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'用量图表加载失败。')})
+  }).catch(reason=>{if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'Failed to load usage chart.')})
   .finally(()=>{if(!controller.signal.aborted)setLoading(false)})
   return()=>controller.abort()
  },[filters,revision])
  if(loading)return <p role="status"><span className="gateway-spinner"/> 正在加载图表…</p>
- if(error)return <p role="alert">{error}<button type="button" onClick={()=>setRevision(value=>value+1)}>重试图表</button></p>
+ if(error)return <p role="alert">{localizeGatewayError(error)}<button type="button" onClick={()=>setRevision(value=>value+1)}>重试图表</button></p>
  return <><UsageActivityHeatmap rows={data.day} filters={filters}/><div className="gateway-usage-charts"><UsageTrendChart rows={data.day} field="total_tokens" title="每日 Token 趋势（UTC）"/><UsageTrendChart rows={data.day} field="event_count" title={new URLSearchParams(filters).get('source')==='provider_reconciled'?'每日账单行趋势（UTC）':'每日调用趋势（UTC）'}/><UsageDistributionChart rows={data.model}/></div>{truncated && <p className="gateway-usage-chart-note">图表仅显示前 1000 天／组；完整统计请在对应 Tab 分页查看。</p>}</>
 }

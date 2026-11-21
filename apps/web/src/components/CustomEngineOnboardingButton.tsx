@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useInRouterContext, useNavigate } from 'react-router-dom'
 import Button from './Button'
 import { engineApi } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import { useChatListStore } from '../stores/chatSessionStore'
 import { saveDraft } from '../utils/chatDraft'
@@ -42,6 +42,6 @@ function OnboardingButton({ onStarted, navigate }: { onStarted?: () => void; nav
       event.currentTarget.value = ''
       if (file) void start(file)
     }} />
-    {error && <span role="alert" className="engine-settings-error">{error}</span>}
+    {error && <span role="alert" className="engine-settings-error">{localizeErrorDisplay(error)}</span>}
   </div>
 }

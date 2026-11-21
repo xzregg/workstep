@@ -99,6 +99,9 @@ export function activate(api) {
 | --- | --- |
 | `version / projectId / sessionId` | 协议版本与所属会话 |
 | `phase` | `idle/listening/thinking/working/replying/speaking` |
+| `callState` | 当前通话状态。涵盖原有六个主状态，以及 `waitingForWake/preparing/transcribing/sending/checking/awaitingConfirmation/synthesizing/muted/stopped/error`。状态变化触发 `state` 事件。 |
+| `inputLevel` | 当前麦克风输入电平，范围 0–1。变化触发 `audio` 事件。 |
+| `speech.metered` | 播放期间是否提供实测电平。系统播音没有电平时，`playing=true`、`metered=false`、`level=0`。 |
 | `action` | `rest/listen/raise-hand/work/lower-hand`，角色可自行解释为相应动作 |
 | `hands` | `lowered/raised/working`，表达目标姿态，不代表已经完成过渡 |
 | `activityId / sequence` | 当前活动标识与语义变化序号；文本分块和音量变化不会重新启动同一动作 |
@@ -108,7 +111,7 @@ export function activate(api) {
 | `reducedMotion` | 系统减少动态效果偏好 |
 | `transition` | `{from,to,startedAt,durationMs,easing:'smoothstep',interruptible:true}`；时间基准为 `performance.now()` |
 
-动作字段表达目标语义：思考托下巴、工作专注、回复／播音放下手。当前默认形象使用完整待机图与托下巴图切换，停用会拉扯手指和拆开关节的网格蒙皮；尚未完成真正的骨骼抬手／放手过渡，`transition` 不代表默认角色已经具备该动画。皮肤仍可通过同一状态与混合工具实现自己的骨骼动作。只有真实播音驱动嘴灯和舞台后的双层流光，停止后流光按时间衰减并停止绘制；音频帧不会重新触发动作。关节灯慢速呼吸、眼睛间歇闪动，胸口灯随真实好感度由青向红变化；减少动态效果时停止呼吸、眨眼与流光。隐藏、离屏、停用或卸载时暂停／清理绘制资源。
+皮肤可以直接读取 `state.callState`，也可以通过 `api.avatar.subscribe` 订阅变化。纯 CSS 皮肤可使用宿主属性 `[data-ui="avatar"][data-avatar-call-state="waitingForWake"]`。形象、颜色、动作和节奏由皮肤定义。
 
 以下 `theme.js` 可直接注册另一种形象（资源由皮肤包提供）：
 

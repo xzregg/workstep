@@ -12,6 +12,7 @@ from fastapi import WebSocket
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
+from workstep_gateway_protocol.voice_assets import is_voice_worker
 from services.gateway_client.browser_login import local_session_cookie_name
 
 from services.remote_access import ActorSnapshot, actor_context, authenticated_remote_dispatch, is_project_upload_path, native_workspace_context
@@ -416,7 +417,11 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 if remote_bridge and response.status_code >= 400:
                     await record_remote_request_failure(actor, response.status_code, "handler_rejected")
 
-        response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        policy = CONTENT_SECURITY_POLICY
+        if request.method in ('GET', 'HEAD') and is_voice_worker(
+                request.url.path, response.status_code, response.headers.get('content-type', '')):
+            policy = policy.replace("script-src 'self' 'unsafe-inline'", "script-src 'self' 'wasm-unsafe-eval'")
+        response.headers.setdefault("Content-Security-Policy", policy)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         # React Router also accepts a trailing slash on these exact routes.

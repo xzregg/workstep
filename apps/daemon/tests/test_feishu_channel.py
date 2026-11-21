@@ -169,7 +169,7 @@ async def test_native_media_upload_and_bounded_authenticated_download(tmp_path):
         assert len(await asyncio.to_thread(extract_uploaded_images, project, str(tmp_path), content)) == 1
         from dataclasses import replace
         bot.CAPABILITIES = replace(bot.CAPABILITIES, max_image_bytes=2)
-        with pytest.raises(ValueError, match='超过'):
+        with pytest.raises(ValueError, match='exceeds'):
             await bot.download(attachment)
     finally:
         await bot._http.aclose()

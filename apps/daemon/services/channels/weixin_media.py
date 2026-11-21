@@ -22,7 +22,7 @@ def checked_url(url):
             return url
     except ValueError:
         pass
-    raise ValueError('微信 ClawBot 媒体地址无效')
+    raise ValueError('WeChat ClawBot media address is invalid')
 
 
 def media_url(media):
@@ -50,14 +50,14 @@ def decode_key(value):
     if len(key) == 32:
         key = bytes.fromhex(key.decode('ascii'))
     if len(key) != 16:
-        raise ValueError('微信 ClawBot 媒体密钥无效')
+        raise ValueError('WeChat ClawBot media key is invalid')
     return key
 
 
 async def download(api, attachment, limit):
     media = attachment.reference
     if media.get('encrypt_query_param') and not media.get('aes_key'):
-        raise ValueError('微信 ClawBot 加密附件缺少密钥')
+        raise ValueError('WeChat ClawBot encrypted attachment missing key')
     try:
         client = await api.client()
         async with client.stream('GET', media_url(media), timeout=60) as response:
@@ -66,15 +66,15 @@ async def download(api, attachment, limit):
             async for part in response.aiter_bytes():
                 data.extend(part)
                 if len(data) > limit + 16:
-                    raise ValueError('附件超过渠道大小限制')
+                    raise ValueError('Attachment exceeds channel size limit')
         raw = bytes(data)
         if media.get('aes_key'):
             raw = await asyncio.to_thread(decrypt, raw, decode_key(media['aes_key']))
         if len(raw) > limit:
-            raise ValueError('附件超过渠道大小限制')
+            raise ValueError('Attachment exceeds channel size limit')
         return raw, attachment.name
     except httpx.HTTPError:
-        raise RuntimeError('微信 ClawBot 附件下载失败') from None
+        raise RuntimeError('WeChat ClawBot attachment download failed') from None
 
 
 async def upload(api, recipient, attachment):
@@ -97,9 +97,9 @@ async def upload(api, recipient, attachment):
         response.raise_for_status()
         query = response.headers.get('x-encrypted-param')
         if not query:
-            raise RuntimeError('微信 ClawBot 附件上传未返回文件标识')
+            raise RuntimeError('WeChat ClawBot attachment upload did not return a file identifier')
     except httpx.HTTPError:
-        raise RuntimeError('微信 ClawBot 附件上传失败') from None
+        raise RuntimeError('WeChat ClawBot attachment upload failed') from None
     media = {'encrypt_query_param': query, 'aes_key': base64.b64encode(key.hex().encode()).decode(), 'encrypt_type': 1}
     if attachment.kind == 'image':
         return {'type': 2, 'image_item': {'media': media, 'mid_size': len(ciphertext)}}

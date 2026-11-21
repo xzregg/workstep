@@ -25,7 +25,7 @@ async def _require_scheduled_creation(
         return PermissionError(f"Managed capability denied: task.create（{detail}）")
 
     if not creator_fields or not creator_fields.get("creator_id"):
-        raise denied("定时规则缺少创建人身份，请由有任务创建权限的用户重新保存规则")
+        raise denied("Scheduled rule lacks creator identity; please have a user with task creation permissions resave the rule.")
     if creator_source in {None, "remote"}:
         device_id = creator_fields.get("creator_device_id")
 
@@ -49,7 +49,7 @@ async def _require_scheduled_creation(
                 "revoked": "创建人设备的目标项目授权已撤销",
                 "expired": "创建人设备的目标项目授权已过期",
             }.get(status, "找不到创建人设备的目标项目授权")
-            raise denied(f"定时规则授权失效：{detail}")
+            raise denied(f"Scheduled rule authorization expired: {detail}")
     with replayed_actor_context(None):
         try:
             require_managed_capability("task.create", creator_fields=creator_fields,
@@ -57,13 +57,13 @@ async def _require_scheduled_creation(
         except PermissionError as exc:
             policy = gateway_client.policy_cache.current
             if policy is None:
-                detail = "网关权限快照尚未就绪，请检查宿主的网关登录与连接"
+                detail = "Gateway permissions are not ready. Check that the host is signed in and connected."
             elif not policy.valid:
-                detail = "网关权限快照已过期，请检查宿主的网关连接"
+                detail = "Gateway permissions have expired. Check the host’s gateway connection."
             elif policy.user_id != creator_fields["creator_id"]:
-                detail = "定时规则创建人与当前网关用户不匹配，请由有任务创建权限的用户重新建立规则"
+                detail = "The schedule owner differs from the current gateway user. Ask a user who can create tasks to recreate the schedule."
             else:
-                detail = "定时规则创建人没有目标项目的任务创建权限"
+                detail = "The schedule owner cannot create tasks in the target project."
             raise denied(detail) from exc
 
 

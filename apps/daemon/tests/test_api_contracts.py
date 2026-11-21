@@ -515,21 +515,21 @@ async def test_local_user_name_is_required_for_manual_run_and_task_chat(
         "task_id": "task-identity-required", "prompt": "开始",
     })
     assert run.status_code == 409
-    assert "用户名" in run.json()["detail"]
+    assert 'username' in run.json()["detail"]
     chat = await client.post(
         f"/api/task/task-identity-required/chat?project_id={project_id}",
         headers={"Idempotency-Key": "identity-required"},
         json={"content": "开始"},
     )
     assert chat.status_code == 400
-    assert "用户名" in chat.json()["detail"]
+    assert 'username' in chat.json()["detail"]
     pending = await client.post("/api/pending-message-inserts", json={
         "project_id": project_id,
         "target_message_id": "pending-reply",
         "content": "稍后处理",
     })
     assert pending.status_code == 400
-    assert "用户名" in pending.json()["detail"]
+    assert 'username' in pending.json()["detail"]
     assert await main.project_manager.run_db(
         project_id, lambda _project: Task.get_by_id("task-identity-required").status,
     ) == "ready"
@@ -1080,6 +1080,8 @@ async def test_reopen_project_slow_sql_does_not_block_health(api_context, monkey
 @pytest.mark.anyio
 async def test_task_creation_binds_selected_workflow(api_context, monkeypatch):
     import api.task as task_api
+    from main import event_bus
+    from streaming.ws import WsSubscription, _make_subscription_predicate
 
     monkeypatch.setattr(
         task_api.config_store,
@@ -1114,14 +1116,30 @@ async def test_task_creation_binds_selected_workflow(api_context, monkeypatch):
     )
     workflow_id = workflow.json()["id"]
 
-    created = await client.post(
-        f"/api/task/create?project_id={project_id}",
-        json={
-            "title": "Selected task",
-            "cwd": str(project_dir),
-            "workflow_id": workflow_id,
-        },
-    )
+    watcher = event_bus.subscribe(_make_subscription_predicate(
+        WsSubscription(active=True, selected_project_id=project_id, channels={"task_board"}),
+    ))
+    other = event_bus.subscribe(_make_subscription_predicate(
+        WsSubscription(active=True, selected_project_id="another-project", channels={"task_board"}),
+    ))
+    try:
+        created = await client.post(
+            f"/api/task/create?project_id={project_id}",
+            json={
+                "title": "Selected task",
+                "cwd": str(project_dir),
+                "workflow_id": workflow_id,
+            },
+        )
+        event = watcher.get_nowait()
+        assert event["name"] == "workstep.task_created"
+        assert event["value"]["task"]["id"] == created.json()["id"]
+        assert event["value"]["task"]["workflow_id"] == workflow_id
+        assert "cwd" not in event["value"]["task"]
+        assert other.empty()
+    finally:
+        event_bus.unsubscribe(watcher)
+        event_bus.unsubscribe(other)
 
     assert created.status_code == 200
     assert created.json()["engine"] == "pydantic_ai"
@@ -3447,7 +3465,7 @@ async def test_engine_test_reports_unavailable_engine(api_context, monkeypatch):
     assert response.json() == {
         "engine_id": "missing",
         "success": False,
-        "message": "引擎未安装或当前不可用",
+        "message": "Engine not installed or currently unavailable",
         "duration_ms": 0,
     }
 
@@ -3627,7 +3645,7 @@ async def test_engine_binary_path_rejects_missing_files(
 
     assert response.status_code == 200
     assert response.json()["saved"] is False
-    assert response.json()["message"] == "指定的可执行文件不存在"
+    assert response.json()["message"] == 'The specified executable does not exist'
 
 
 def test_ensure_global_templates_seeds_without_overwrite(tmp_path, monkeypatch):
@@ -6238,7 +6256,7 @@ async def test_step_execution_config_inherits_and_overrides_without_mutating_wor
         json={
             "engine": "pydantic_ai",
             "model": "gpt-task",
-            "config": {"sandbox": "workspace-write"},
+            "config": {"permission_mode": "auto"},
             "context_mode": "smart",
         },
     )
@@ -6246,7 +6264,7 @@ async def test_step_execution_config_inherits_and_overrides_without_mutating_wor
     assert overridden.json()["configured"] == {
         "engine": "pydantic_ai",
         "model": "gpt-task",
-        "config": {"sandbox": "workspace-write"},
+        "config": {"permission_mode": "auto"},
     }
     assert overridden.json()["resolved"] == overridden.json()["configured"]
     assert overridden.json()["source"] == "task_override"

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { taskApi } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import './TaskScheduleEditor.css'
 
@@ -20,6 +20,6 @@ export default function ScheduledMessageStatus({ taskId, projectId, message, can
   return <div className="task-message-schedule-source" title={message.schedule_run_id}>
     {message.role === 'user' ? message.author_name || t('schedules.scheduledExecution') : t('schedules.scheduledExecution')}
     {canStop && projectId && message.role !== 'user' && ['running','queued'].includes(message.run_status || '') && <Button className="chat-message-action" size="sm" loading={busy} onClick={() => void stop()}>{t('common.stop')}</Button>}
-    {error && <span role="alert">{error}</span>}
+    {error && <span role="alert">{localizeErrorDisplay(error)}</span>}
   </div>
 }

@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { PasswordConfirmation, confirmStepUp, PasswordConfirmationRequired } from './PasswordConfirmation'
 import { useContext, useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -23,11 +24,11 @@ export function AdminUsageBillImport() {
     const controller = new AbortController()
     void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error('管理员会话读取失败。')
+        if (!response.ok) throw new Error('Failed to read admin session.')
         const data = await response.json()
         if (!controller.signal.aborted) setCsrf(data.csrf_token ?? '')
       }).catch(reason => {
-        if (reason?.name !== 'AbortError') setError('管理员会话读取失败。')
+        if (reason?.name !== 'AbortError') setError('Failed to read admin session.')
       })
     return () => controller.abort()
   }, [open])
@@ -42,13 +43,13 @@ export function AdminUsageBillImport() {
     if (!Number.isSafeInteger(input) || input < 0 || !Number.isSafeInteger(output) || output < 0
         || !/^\d+(?:\.\d{1,6})?$/.test(form.billedCost)
         || !/^[A-Z]{3}$/.test(form.currency)) {
-      setError('Token、金额或币种格式无效。'); return
+      setError('Invalid token, amount, or currency format.'); return
     }
     setBusy(true); setError(''); setResult('')
     const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
     try {
       const step = await confirmStepUp(csrf, form.password, passwordRequired)
-      if (!step.ok) throw new Error('管理员密码验证失败。')
+      if (!step.ok) throw new Error('Administrator password verification failed.')
       const response = await fetch('/api/admin/usage/provider-bills', { method: 'POST',
         credentials: 'same-origin', headers, body: JSON.stringify({
           batch_id: form.lineId.trim(), lines: [{
@@ -59,12 +60,12 @@ export function AdminUsageBillImport() {
           }],
         }) })
       if (!response.ok) throw new Error(response.status === 409
-        ? '该供应商账单行 ID 已存在，但内容不同。' : '账单行导入失败。')
+        ? 'This supplier billing line ID already exists, but the content differs.' : 'Failed to import billing line items.')
       const data = await response.json()
       setResult(`已导入 ${(data.accepted ?? []).length} 条账单行，重复 ${(data.duplicates ?? []).length} 条。请查看账单差异。`)
       setForm(emptyForm)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '账单行导入失败。')
+      setError(reason instanceof Error ? reason.message : 'Failed to import billing line items.')
     } finally { setBusy(false) }
   }
 
@@ -100,7 +101,7 @@ export function AdminUsageBillImport() {
           onChange={event => update('billedCost', event.target.value)} /></label>
       </div>
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在导入账单行…</p>}
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
       {result && <p role="status">{result}</p>}
     </GatewayConfirmDialog>}
     {discard && <GatewayConfirmDialog title="放弃账单导入" message="已填写的账单字段将被清除。"

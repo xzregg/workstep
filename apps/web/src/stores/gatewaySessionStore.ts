@@ -62,11 +62,11 @@ async function recoverSession(previous: GatewayRemoteSession | null, signal: Abo
   // sessions project-scoped and let the platform check current permissions.
   const endpoint = `/api/${scope.project_id ? 'projects' : 'devices'}/${encodeURIComponent(scope.project_id ?? scope.device_id)}/access`
   const accessResponse = await fetch(endpoint, { credentials: 'same-origin', signal })
-  if (!accessResponse.ok) throw new ApiError('远程访问授权恢复失败。', accessResponse.status)
+  if (!accessResponse.ok) throw new ApiError('Remote access authorization restoration failed.', accessResponse.status)
   const access = await accessResponse.json()
   const target = new URL(access.url, window.location.origin)
   if (target.origin !== window.location.origin || target.pathname !== path + '/' || !access.ticket) {
-    throw new Error('远程访问授权无效。')
+    throw new Error('Remote access authorization is invalid.')
   }
   const redeemed = await fetch(new URL('api/remote/redeem', target).href, {
     method: 'POST', credentials: 'same-origin', signal, redirect: 'manual',
@@ -75,7 +75,7 @@ async function recoverSession(previous: GatewayRemoteSession | null, signal: Abo
   // Browsers hide manual redirect responses but still accept their Set-Cookie.
   // Do not navigate or follow the redirect: keep the current page and drafts.
   if (redeemed.type !== 'opaqueredirect' && redeemed.status !== 303) {
-    throw new ApiError('远程访问授权恢复失败。', redeemed.status)
+    throw new ApiError('Remote access authorization restoration failed.', redeemed.status)
   }
   return true
 }
@@ -122,11 +122,11 @@ export const useGatewaySessionStore = create<GatewaySessionState>((set, get) => 
           (!!session.project_id !== !!session.host_project_id) ||
           (session.project_id && !['read', 'edit'].includes(session.access_level ?? '')) ||
           (session.permissions != null && (!Array.isArray(session.permissions) || session.permissions.some((key: unknown) => typeof key !== 'string')))) {
-        throw new Error('远程项目会话无效，请从平台重新打开。')
+        throw new Error('Remote project session is invalid, please reopen from the platform.')
       }
       if (session.projects && (!Array.isArray(session.projects) || session.projects.some(project =>
         !project.project_id || !project.host_project_id || !['read', 'edit'].includes(project.access_level)))) {
-        throw new Error('远程项目目录无效。')
+        throw new Error('Remote project directory is invalid.')
       }
       const current = get().session
       if (session.projects && current?.device_id === session.device_id && current.user_id === session.user_id) {
@@ -140,7 +140,7 @@ export const useGatewaySessionStore = create<GatewaySessionState>((set, get) => 
       const temporary = reason instanceof ApiError
         ? reason.status >= 500 || reason.status === 408 || reason.status === 429
         : reason instanceof TypeError || (reason instanceof Error && reason.name === 'AbortError')
-      set({ session: temporary ? get().session : null, error: reason instanceof Error ? reason.message : '远程会话已失效。',
+      set({ session: temporary ? get().session : null, error: reason instanceof Error ? reason.message : 'Remote session has expired.',
         errorStatus: reason instanceof ApiError ? reason.status : null })
       throw reason
     }).finally(() => { window.clearTimeout(timeout); pending = null; set({ loading: false }) })

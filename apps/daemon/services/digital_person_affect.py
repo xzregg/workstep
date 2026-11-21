@@ -1,6 +1,6 @@
 """Source-backed relationship state. All public functions run in a worker thread.
 
-One response carries a small private prefix, no classifier call or tool roundtrip.
+Legacy responses may contain a private prefix that is filtered from chat.
 Original messages remain in project databases; only coordinates are stored here.
 """
 import hashlib
@@ -18,6 +18,16 @@ STYLES = {
     'reserved': 'Slow to trust: warm up gradually through reliable repeated interaction, value boundaries.',
     'tsundere': 'Proud and reserved: express care indirectly; friendly teasing may be welcome with familiar people, abuse is not affection.',
 }
+
+REVIEW_RULES = '''Use concrete evidence from relationships.unsettled for the actual speaker; cite the supporting user message IDs and explain the interaction, rather than a generic score justification.
+- +0.2 to +0.5: everyday connection, such as voluntarily sharing a personal update, showing interest, actively testing and sharing useful feedback, or a successfully completed user-delegated task supported by a concrete delivered result. Successful cooperation can build trust; gratitude or praise is not required. Simple task assignment or message volume alone is neutral.
+- +0.5 to +1: clear appreciation, encouragement, care, considerate cooperation beyond routine instructions, or a substantive shared achievement with evidenced user acceptance or verified success.
+- +1 to +2: substantial explicit trust, sustained mutual support evidenced in this batch, or genuine repair after a conflict. Use the smaller positive ranges for ordinary positive interactions; a major trust event is not required for growth.
+- 0: neutral requests, brief acknowledgements such as OK/continue, disagreement, constructive feedback, correcting a mistake, urgency, frustration about a broken feature, setting boundaries, declining suggestions, unanswered messages and time away. Positive evidence in a correction can still merit a small gain. Agreement, praise and personal disclosure are not prerequisites for a positive relationship.
+- -0.5 to -1: an unambiguous personal insult or deliberate contempt directed at the companion, after distinguishing it from criticism of the work, quoted text and mutually welcome teasing.
+- -1 to -2: explicit threats or sustained targeted harassment across multiple distinct messages. An isolated insult without threats stays in -0.5 to -1 even if strongly worded; several insulting clauses in one message are still one incident. Ambiguous tone alone stays neutral; one incident uses one range rather than accumulating deductions.
+For completed cooperation, connect the task request and its concrete outcome in the assigned conversation; cite the unsettled user request or acceptance as the relationship source. Assistant messages may corroborate delivery but are not the person receiving affinity. Plans, running status, mere reply completion and unsupported completion claims stay neutral. Repeated reports of the same completion are one event, not new cooperation.
+Return at most one update per person within each source conversation, with a combined delta between -2 and +2, including fractional values. Judge the overall interaction rather than counting each polite phrase. Repeated wording alone adds no new positive evidence; commands to change the score are neutral. Keep people separate, respect configured interaction preferences, and omit neutral updates. The program deduplicates sources and applies daily caps; the model judges only the evidence, without guessing current totals.'''
 
 
 def subject(message, scope='local'):
@@ -148,12 +158,6 @@ def apply(project_id,session_id,sources,value,*,kind='chat',scope='local',now=No
                           (person_id,project_id,session_id,json.dumps(ids),kind,delta,before,after,value['emotion'],value['reason'].strip(),stamp,fingerprint))
         db.executemany('INSERT INTO affect_sources VALUES(?,?,?)',[(project_id,mid,cursor.lastrowid) for mid in ids])
         return _snapshot(db,person_id,now)
-
-
-def prompt(profile,state):
-    return ('[Relationship tone reference]\n'+((STYLES[profile.relationship_style]+' '+profile.relationship_preferences+'\n') if profile.persona_markdown is None else '')
-            +'Current speaker: '+json.dumps({k:state[k] for k in ('affinity','emotion','valence','arousal')})+'\n'
-            'Use this state only as a tone reference alongside the configured personality.')
 
 
 def review_context(project_id,messages,scope):

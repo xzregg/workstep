@@ -24,6 +24,7 @@ class StrictModel(BaseModel):
 
 class Settings(StrictModel):
     enabled: bool = False
+    show_boxes: bool = True
     show_names: bool = True
     include_people: bool = True
     include_relationship: bool = True
@@ -42,7 +43,7 @@ class PersonEdit(StrictModel):
     def text(cls, value):
         value = value.strip()
         if not value or any(ord(c) < 32 for c in value):
-            raise ValueError('称呼与关系不能为空或包含控制字符')
+            raise ValueError('Title and relationship cannot be empty or contain control characters')
         return value
 
 
@@ -57,7 +58,7 @@ class Samples(StrictModel):
             or any(isinstance(x, bool) or not isinstance(x, (int, float))
                    or not math.isfinite(x) or abs(x) > 1000 for x in v)
             or sum(x*x for x in v) < 1e-12 for v in value):
-            raise ValueError('人脸特征格式或模型维度不正确，请重新采集')
+            raise ValueError('The face feature format or model dimensions are incorrect. Please recapture.')
         return value
 
 
@@ -144,7 +145,7 @@ def catalog():
 def _insert_samples(db, pid, value):
     count = db.execute('SELECT COUNT(*) FROM face_samples WHERE person_id=?', (pid,)).fetchone()[0]
     if count + len(value.embeddings) > 30:
-        raise ValueError('每个人最多保留 30 份样本，请先删除旧样本')
+        raise ValueError('Each user can retain up to 30 samples. Please delete old samples first.')
     stamp = datetime.now(timezone.utc).isoformat()
     for embedding in value.embeddings:
         db.execute('INSERT INTO face_samples VALUES(?,?,?,?,?)',
@@ -155,13 +156,13 @@ def create(value: Enrollment):
     with connect() as db:
         _tables(db)
         if db.execute('SELECT COUNT(*) FROM face_people').fetchone()[0] >= 100:
-            raise ValueError('最多录入 100 个人物')
+            raise ValueError('Maximum of 100 characters allowed')
         pid, stamp = uuid.uuid4().hex, datetime.now(timezone.utc).isoformat()
         try:
             db.execute('INSERT INTO face_people VALUES(?,?,?,?,?,?,?)',
                        (pid,value.name,value.relationship,value.notes,value.enabled,stamp,stamp))
         except sqlite3.IntegrityError as exc:
-            raise ValueError('已有同名人物，请补充样本或使用不同称呼') from exc
+            raise ValueError('A person with the same name already exists. Please provide additional samples or use a different name.') from exc
         _insert_samples(db,pid,value)
         _bump(db)
         return next(p for p in _people(db) if p['id'] == pid)
@@ -174,9 +175,9 @@ def update(pid, value: PersonEdit):
             changed = db.execute('UPDATE face_people SET name=?,relationship=?,notes=?,enabled=?,updated_at=? WHERE id=?',
                 (value.name,value.relationship,value.notes,value.enabled,datetime.now(timezone.utc).isoformat(),pid)).rowcount
         except sqlite3.IntegrityError as exc:
-            raise ValueError('已有同名人物') from exc
+            raise ValueError('A person with the same name already exists') from exc
         if not changed:
-            raise LookupError('人物不存在')
+            raise LookupError('User does not exist')
         _bump(db)
         return next(p for p in _people(db) if p['id'] == pid)
 
@@ -185,7 +186,7 @@ def add_samples(pid, value: Samples):
     with connect() as db:
         _tables(db)
         if not db.execute('SELECT 1 FROM face_people WHERE id=?', (pid,)).fetchone():
-            raise LookupError('人物不存在')
+            raise LookupError('User does not exist')
         _insert_samples(db,pid,value)
         _bump(db)
         return next(p for p in _people(db) if p['id'] == pid)
@@ -237,8 +238,11 @@ def person_prompt(person_ids):
     if not person_ids:
         return ''
     recognized = context(person_ids, 0)['people']
-    return '\n'.join(
-        f"人脸识别到用户：用户名：{person['name']}"
-        + (f"；关系：{person['relationship']}" if person.get('relationship') else '') + '。'
+    if not recognized:
+        return ''
+    matches = '\n'.join(
+        f"- Name: {person['name']}"
+        + (f"; Relationship: {person['relationship']}" if person.get('relationship') else '')
         for person in recognized
     )
+    return f'[Visual Context]\nSource: Camera face recognition\nMatches:\n{matches}'

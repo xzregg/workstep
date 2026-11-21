@@ -193,12 +193,12 @@ async def test_retry_failed_message_targets_only_the_latest_failed_execution(tmp
     restart = AsyncMock(return_value=SimpleNamespace(id="retry-child"))
     monkeypatch.setattr(runtime, "restart_from_step", restart)
 
-    with pytest.raises(ValueError, match="最后一条"):
+    with pytest.raises(ValueError, match='last failed message'):
         await runtime.retry_failed_message(project.id, task.id, "older-failure")
     with pm.activate_project(project.path):
         other_step.status = "running"
         other_step.save()
-    with pytest.raises(ValueError, match="其他步骤"):
+    with pytest.raises(ValueError, match='Other steps'):
         await runtime.retry_failed_message(project.id, task.id, "latest-failure")
     with pm.activate_project(project.path):
         other_step.status = "pending"
@@ -223,7 +223,7 @@ async def test_retry_failed_message_targets_only_the_latest_failed_execution(tmp
             role="user", sequence=3, run_status="completed", position=0,
             created_at=now,
         )
-    with pytest.raises(ValueError, match="最后一条"):
+    with pytest.raises(ValueError, match='last failed message'):
         await runtime.retry_failed_message(project.id, task.id, "latest-failure")
     with pm.activate_project(project.path):
         later_message.delete_instance()
@@ -231,7 +231,7 @@ async def test_retry_failed_message_targets_only_the_latest_failed_execution(tmp
     with pm.activate_project(project.path):
         step_run.error = None
         step_run.save()
-    with pytest.raises(ValueError, match="异常"):
+    with pytest.raises(ValueError, match="exceptional errors"):
         await runtime.retry_failed_message(project.id, task.id, "latest-failure")
     with pm.activate_project(project.path):
         step_run.error = "temporary network error"
@@ -1009,14 +1009,14 @@ async def test_restart_without_parent_rejects_unusable_input_round(tmp_path):
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
     try:
-        with pytest.raises(ValueError, match="不可沿用"):
+        with pytest.raises(ValueError, match='cannot be reused'):
             await runtime.restart_from_step(
                 project.id,
                 task.id,
                 "ui",
                 input_rounds={"req": 2},
             )
-        with pytest.raises(ValueError, match="不是目标步骤"):
+        with pytest.raises(ValueError, match='is not an input source'):
             await runtime.restart_from_step(
                 project.id,
                 task.id,
@@ -1153,17 +1153,17 @@ async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path, monke
         )
         assert json.loads(backend_run.input_rounds_json) == {"test": 2}
         assert json.loads(backend_run.input_snapshot_json)["execution_type"] == "feedback"
-        with pytest.raises(ValueError, match="不可沿用"):
+        with pytest.raises(ValueError, match='cannot be reused'):
             validate_restart_input_rounds(
                 project, task, "backend", {"test": 1},
                 current_workflow_steps=runtime._current_workflow_steps,
             )
-        with pytest.raises(ValueError, match="没有可用的返工产物"):
+        with pytest.raises(ValueError, match='No available rework artifacts'):
             validate_restart_input_rounds(
                 project, task, "backend", {"test": 3},
                 current_workflow_steps=runtime._current_workflow_steps,
             )
-        with pytest.raises(ValueError, match="不是目标步骤"):
+        with pytest.raises(ValueError, match="is not an input source"):
             validate_restart_input_rounds(
                 project, task, "backend", {"unrelated": 2},
                 current_workflow_steps=runtime._current_workflow_steps,
@@ -2006,6 +2006,9 @@ async def test_task_step_provider_override_hands_off_history_without_session(tmp
         def supported_provider_protocols(cls):
             return {"anthropic_messages"}
 
+        def resolve_provider_id(self, provider_id=None):
+            return provider_id or "provider-b"
+
     db = init_db(str(tmp_path / "workstep.db"))
     now = utc_now()
     task = Task.create(
@@ -2026,7 +2029,7 @@ async def test_task_step_provider_override_hands_off_history_without_session(tmp
                 "type": "do",
                 "title": "执行",
                 "engine": "provider-engine",
-                "config": {"provider_id": "provider-a"},
+                "config": {},
                 "prompt": "完成任务",
             }],
             "connections": [],
@@ -2038,6 +2041,7 @@ async def test_task_step_provider_override_hands_off_history_without_session(tmp
         status="passed",
         engine="provider-engine",
         session_id=None,
+        session_provider="provider-a",
         started_at=now,
         ended_at=now,
     )
@@ -2064,6 +2068,20 @@ async def test_task_step_provider_override_hands_off_history_without_session(tmp
     ENGINE_REGISTRY["provider-engine"] = ProviderEngine
     runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
     try:
+        await runtime.resume_step_with_message(project.id, task.id, "do", "继续")
+        for _ in range(500):
+            if task.id not in runtime._runners:
+                break
+            await asyncio.sleep(0.01)
+        blocked = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        assert blocked.status == "failed"
+        assert "智能交接" in blocked.error
+        assert blocked.session_provider == "provider-a"
+        assert not blocked.pending_handoff_json
+        await runtime.update_step_execution_config(
+            project.id, task.id, "do", engine="provider-engine", model="new-model", config={},
+        )
+        assert not TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do")).pending_handoff_json
         await runtime.update_step_execution_config(
             project.id,
             task.id,
@@ -2881,7 +2899,7 @@ async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_pa
     bus = EventBus()
     runtime = WorkflowRuntime(bus, ProjectManagerStub())
     try:
-        with pytest.raises(ValueError, match="仍由其他运行器执行"):
+        with pytest.raises(ValueError, match='executed by another runner'):
             await runtime.cancel_step(project.id, task.id, "do")
         assert TaskStep.get_by_id((task.id, "do")).status == "running"
 
@@ -2908,7 +2926,7 @@ async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_pa
 
         step = TaskStep.get_by_id((task.id, "do"))
         assert step.status == "cancelled"
-        assert step.error == "手动停止（运行器已不存在）"
+        assert step.error == 'Stopped manually because the runner is no longer active'
         assert step.session_id == session_id
         assert step.ended_at is not None
 
@@ -3101,11 +3119,11 @@ async def test_resume_step_rejects_empty_or_unstopped_step(tmp_path):
     ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
     runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
     try:
-        with pytest.raises(ValueError, match="不能为空"):
+        with pytest.raises(ValueError, match='cannot be empty'):
             await runtime.resume_step_with_message(
                 project.id, task.id, "do", "   "
             )
-        with pytest.raises(ValueError, match="步骤当前不可重新执行"):
+        with pytest.raises(ValueError, match='Step cannot be re-executed'):
             await runtime.resume_step_with_message(
                 project.id, task.id, "do", "重新来"
             )
@@ -3298,7 +3316,7 @@ async def test_resume_step_rejects_running_step_even_with_history(tmp_path, allo
     ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
     runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
     try:
-        with pytest.raises(ValueError, match="步骤当前不可重新执行"):
+        with pytest.raises(ValueError, match='Step cannot be re-executed'):
             await runtime.resume_step_with_message(
                 project.id, task.id, "do", "重新来", allow_pending=allow_pending
             )
@@ -3476,7 +3494,7 @@ async def test_restart_step_with_fresh_session_rejects_running_step(tmp_path):
     ENGINE_REGISTRY["resumable"] = RuntimeFakeEngine
     runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
     try:
-        with pytest.raises(ValueError, match="不能重建会话"):
+        with pytest.raises(ValueError, match='Cannot rebuild session'):
             await runtime.restart_step_with_fresh_session(
                 project.id, task.id, "do"
             )

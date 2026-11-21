@@ -139,10 +139,12 @@ def model_context(context, project_id):
     """
     if context.get('_groups'):
         return {'origin_project_id':context['origin_project_id'],
+                'delegations': context.get('delegations', []),
+                'delegation_messages': context.get('delegation_messages', []),
                 'conversations':[dict(model_context(group,project_id),project_id=group['origin_project_id'],
                                       session_id=group['origin_session_id']) for group in context['_groups']]}
     result = {key:value for key,value in context.items() if not key.startswith('_') and key not in (
-        'messages','reflection_batch','conversation','memory','indexed','busy','archived_source','no_work')}
+        'messages','reflection_batch','conversation','memory','indexed','busy','no_work')}
     if 'previous_notifications' in context:
         # Preserve timing and delivery state without repeating old prose.
         result['previous_notifications'] = [

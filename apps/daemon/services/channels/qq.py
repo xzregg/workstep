@@ -31,7 +31,7 @@ class QQAdapter(SocialAdapter):
             code = data.get('code') if isinstance(data, dict) else None
             # Platform error messages may echo credentials or request bodies.
             code = code if isinstance(code, int) else 'unknown'
-            raise RuntimeError(f'QQ 接口失败（错误码 {code}），请检查凭证、权限及发送限制')
+            raise RuntimeError(f'QQ API failed (error code {code}), please check credentials, permissions, and sending limits')
         return data
 
     async def _access_token(self):
@@ -46,7 +46,7 @@ class QQAdapter(SocialAdapter):
             except (TypeError, ValueError):
                 lifetime = 0
             if not isinstance(token, str) or not token or lifetime <= 0:
-                raise RuntimeError('QQ 访问凭证无效，请检查 App ID 和 App Secret')
+                raise RuntimeError('Invalid QQ access token, please check App ID and App Secret')
             self._token, self._expires = token, time.monotonic() + max(1, lifetime - 60)
             return token
 
@@ -67,7 +67,7 @@ class QQAdapter(SocialAdapter):
                 response.raise_for_status()
                 return data
             except (httpx.HTTPError, ValueError):
-                raise RuntimeError('QQ 接口请求失败，请检查凭证、权限及网络') from None
+                raise RuntimeError('QQ API request failed. Please check credentials, permissions, and network.') from None
 
     async def _connect(self):
         gateway = await self._api('GET', '/gateway')
@@ -75,10 +75,10 @@ class QQAdapter(SocialAdapter):
         async with websockets.connect(gateway['url'], open_timeout=15, max_size=2 * 1024 * 1024) as socket:
             hello = json.loads(await asyncio.wait_for(socket.recv(), 15))
             if hello.get('op') != 10:
-                raise RuntimeError('QQ Gateway 握手失败')
+                raise RuntimeError('QQ Gateway handshake failed')
             interval = float(hello['d']['heartbeat_interval']) / 1000
             if interval <= 0:
-                raise RuntimeError('QQ Gateway 心跳间隔无效')
+                raise RuntimeError('QQ Gateway heartbeat interval is invalid')
             acknowledged = True
             async def heartbeat():
                 nonlocal acknowledged
@@ -165,7 +165,7 @@ class QQAdapter(SocialAdapter):
         if passive:
             remaining = (5 if group else 4) - context.get('msg_seq', 0)
             if remaining <= 0:
-                raise RuntimeError('QQ 被动回复次数已用尽，请在 WorkStep 查看结果')
+                raise RuntimeError('QQ passive reply count exhausted, please check results in WorkStep')
             if len(pieces) > remaining:
                 # Do not silently drop content or switch to permissioned active sends.
                 pieces = pieces[:remaining]

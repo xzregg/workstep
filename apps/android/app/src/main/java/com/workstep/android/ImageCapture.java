@@ -44,7 +44,7 @@ final class ImageCapture {
                 && results[0] == PackageManager.PERMISSION_GRANTED
                 && activity.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) launch();
         else {
-            Toast.makeText(activity, "未获得摄像头权限，可重试或选择本地图片", Toast.LENGTH_LONG).show();
+            Toast.makeText(activity, activity.getString(R.string.camera_permission_denied), Toast.LENGTH_LONG).show();
             cancelled.run();
         }
     }
@@ -65,7 +65,7 @@ final class ImageCapture {
             activity.startActivityForResult(camera, resultRequest);
         } catch (Exception error) {
             clear();
-            Toast.makeText(activity, "无法打开相机，请选择本地图片", Toast.LENGTH_LONG).show();
+            Toast.makeText(activity, activity.getString(R.string.camera_open_failed), Toast.LENGTH_LONG).show();
             cancelled.run();
         }
     }

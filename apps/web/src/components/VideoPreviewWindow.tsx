@@ -1,3 +1,4 @@
+import { localizeErrorDisplay } from '../i18n'
 import {useEffect,useLayoutEffect,useRef,useState,type CSSProperties,type ReactNode,type RefObject,type PointerEvent as ReactPointerEvent} from 'react'
 import {useI18n} from '../i18n'
 import Button from './Button'
@@ -130,7 +131,7 @@ export default function VideoPreviewWindow({open,onClose,label,closeLabel,videoR
    <video ref={video} className="video-preview-media" autoPlay playsInline muted aria-label={label}/>
    {ready&&overlay}
    {!ready&&!error&&<div className="video-preview-loading"><Spinner size={16}/></div>}
-   {error&&<p role="alert" className="video-preview-error">{error}</p>}
+   {error&&<p role="alert" className="video-preview-error">{localizeErrorDisplay(error)}</p>}
   </div>
   {edges.map(edge=><div key={edge} data-video-resize={edge} className={`video-preview-resize video-preview-resize--${edge}`} role="separator" tabIndex={0} aria-label={t(`taskDetail.resize.${edge}` as never)} onPointerDown={event=>start(event,edge)} onKeyDown={event=>{
    const delta={ArrowLeft:-8,ArrowRight:8,ArrowUp:-8,ArrowDown:8}[event.key]

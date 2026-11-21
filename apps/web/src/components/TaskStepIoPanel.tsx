@@ -138,6 +138,7 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
             {inputArtifact?.unchanged_from_round &&
               <ArtifactUnchangedBadge fromRound={inputArtifact.unchanged_from_round} />}
             <span className="task-step-io-status" data-ready={Boolean(inputArtifact || taskContext)}>{inputStatus}</span>
+            {inputArtifact?.manifest_status === 'debug_sample' && <span className="task-step-io-type">{t('canvas.debugProvided')}</span>}
             {inputArtifact && <span className="task-step-io-open">{t('taskDetail.view')}</span>}
           </div>}
           {subOutputs.map((output: any, outputIndex: number) => {

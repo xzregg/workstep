@@ -19,6 +19,6 @@ def discover_channels() -> dict[str, type[ChannelAdapter]]:
             if not adapter.CHANNEL_ID:
                 continue
             if adapter.CHANNEL_ID in channels:
-                raise ValueError(f'重复渠道标识：{adapter.CHANNEL_ID}')
+                raise ValueError(f'Duplicate channel identifier: {adapter.CHANNEL_ID}')
             channels[adapter.CHANNEL_ID] = adapter
     return channels

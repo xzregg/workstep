@@ -1,7 +1,11 @@
-import { CircleCheckBig, GitBranch, History, PackageOpen, RefreshCw, Waypoints } from 'lucide-react'
+import { PackageOpen, RefreshCw, Waypoints } from 'lucide-react'
 import { useI18n } from '../i18n'
 
-const ICONS = [History, Waypoints, CircleCheckBig, RefreshCw, GitBranch, PackageOpen]
+const FEATURES = [
+  { Icon: Waypoints, index: 1 },
+  { Icon: PackageOpen, index: 3 },
+  { Icon: RefreshCw, index: 4 },
+]
 
 export function Features() {
   const { t } = useI18n()
@@ -13,13 +17,13 @@ export function Features() {
         <h2 className="section-title">{t('features.title')}</h2>
         <p className="section-lede">{t('features.lede')}</p>
         <div className="features-grid">
-          {ICONS.map((Icon, index) => (
+          {FEATURES.map(({ Icon, index }) => (
             <div key={index} className="feature-card">
               <span className="feature-icon">
                 <Icon size={18} />
               </span>
-              <h3>{t(`features.item${index + 1}Title`)}</h3>
-              <p>{t(`features.item${index + 1}Desc`)}</p>
+              <h3>{t(`features.item${index}Title`)}</h3>
+              <p>{t(`features.item${index}Desc`)}</p>
             </div>
           ))}
         </div>

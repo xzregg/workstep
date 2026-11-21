@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { GrantSubjectPicker } from './GrantSubjectPicker'
 import { GatewayModal } from './GatewayModal'
@@ -29,17 +30,17 @@ export function AdminProjectGrantDialog({ projectId, deviceId, grant, csrf, name
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       for (const subject of selectedSubjects.filter(subject => !completed.includes(subject.id))) {
         const response = await fetch(`/api/admin/${deviceId ? 'devices' : 'projects'}/${encodeURIComponent(deviceId ?? projectId!)}/grants`, {
           method: 'POST', credentials: 'same-origin', headers,
           body: JSON.stringify({ subject_type: subjectType, subject_id: subject.id, access_level: level }),
         })
-        if (!response.ok) throw new Error(`保存 ${subject.name} 的授权失败，请重试。`)
+        if (!response.ok) throw new Error(`Failed to save authorization for ${subject.name}, please try again.`)
         setCompleted(values => [...values, subject.id])
       }
       onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '保存授权失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to save authorization.') }
     finally { setBusy(false) }
   }
   function close() { if (busy) return; if (dirty) setDiscard(true); else onClose() }
@@ -72,7 +73,7 @@ export function AdminProjectGrantDialog({ projectId, deviceId, grant, csrf, name
       </fieldset>
       <p className="gateway-grant-summary" aria-live="polite">{selectedSubjects.length ? `已选择：${selectedSubjects.map(subject => subject.name).join('、')} · ${level === 'read' ? '只读' : '可编辑'}` : '请选择授权对象'}</p>
       {completed.length > 0 && <p role="status">已保存 {completed.length} 个对象，重试仅保存未成功的对象。</p>}
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
       </div>
       {discard && <GatewayConfirmDialog title="放弃项目授权修改" message={completed.length ? `已保存 ${completed.length} 个对象的授权；关闭不会撤销这些授权，确定放弃其余修改？` : "当前授权表单有未保存内容。"}
       confirmLabel="放弃并关闭" onConfirm={onClose} onCancel={() => setDiscard(false)} />}
@@ -91,18 +92,18 @@ export function AdminProjectRevokeDialog({ projectId, deviceId, grant, csrf, onC
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const response = await fetch(`/api/admin/${deviceId ? 'devices' : 'projects'}/${encodeURIComponent(deviceId ?? projectId!)}/grants/${grant.subject_type}/${encodeURIComponent(grant.subject_id)}`, {
         method: 'DELETE', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
       })
-      if (!response.ok) throw new Error('撤销授权失败。')
+      if (!response.ok) throw new Error('Failed to revoke authorization.')
       onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '撤销授权失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to revoke authorization.') }
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title={deviceId ? '撤销设备授权' : '撤销项目授权'} message={`确认撤销 ${grant.subject_name} 的${deviceId ? '设备' : '项目'}访问？${deviceId ? '' : '撤销后将禁止该用户通过邀请重新加入，需管理员重新授权。'}`}
     confirmLabel="撤销授权" busy={busy} disabled={!passwordReady} onConfirm={() => void revoke()} onCancel={onClose}
       passwordConfirmation={<PasswordConfirmation id="project-revoke-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   </GatewayConfirmDialog>
 }

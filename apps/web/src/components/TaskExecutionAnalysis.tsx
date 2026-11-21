@@ -6,7 +6,7 @@ import {
   type TaskExecutionReport,
   type TaskExecutionSegment,
 } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useTaskStore } from '../stores/taskStore'
 import { formatDuration } from '../utils/datetime'
 import { formatCompactMetric } from '../utils/statistics'
@@ -141,7 +141,7 @@ export default function TaskExecutionAnalysis({ taskId, projectId, loadReport }:
   if (error && !report) {
     return (
       <div className="execution-analysis-state execution-analysis-state--error">
-        <span>{t('executionAnalysis.loadFailed')} · {error}</span>
+        <span>{t('executionAnalysis.loadFailed')} · {localizeErrorDisplay(error)}</span>
         <Button variant="ghost" onClick={() => { void reload() }}>{t('common.retry')}</Button>
       </div>
     )

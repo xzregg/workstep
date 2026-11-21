@@ -20,7 +20,7 @@ import { deriveSessionFailedStateFromLastStatus, useSidebarActivityStore } from 
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { writeChatSessionDrag } from '../utils/chatSessionDrag'
 
-export default function RecentConversations({ now = Date.now(), heading, collapsed = false }: { now?: number; heading?: ReactNode; collapsed?: boolean }) {
+export default function RecentConversations({ now = Date.now(), heading, collapsed = false, hidden }: { now?: number; heading?: ReactNode; collapsed?: boolean; hidden?: boolean }) {
   const { t, locale } = useI18n()
   const compact = useCompactLayout()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -88,7 +88,7 @@ export default function RecentConversations({ now = Date.now(), heading, collaps
       useRecentActivityStore.getState().setTargets([])
     }
   }, [scope])
-  return <section className="layout-sidebar-recent" aria-label={t('layout.recentConversations')}>
+  return <section className="layout-sidebar-recent" aria-label={t('layout.recentConversations')} hidden={hidden}>
     {heading ?? <div className="layout-sidebar-section-label"><span>{t('layout.recentConversations')}</span></div>}
     <div id="workspace-recent-content" className="layout-sidebar-recent-list" hidden={collapsed}>
       {visible.map(({ entry, project, canManage }) => {

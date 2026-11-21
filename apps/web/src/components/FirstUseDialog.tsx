@@ -1,6 +1,6 @@
 import ResizablePanel from './ResizablePanel'
 import { useEffect, useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import Button from './Button'
@@ -81,7 +81,7 @@ export default function FirstUseDialog() {
           </div>
           {error && (
             <div role="status" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(11px * var(--font-scale))' }}>
-              {error}
+              {localizeErrorDisplay(error)}
             </div>
           )}
         </div>

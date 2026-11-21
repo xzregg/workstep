@@ -20,21 +20,41 @@ test('settings loads the model, downloads resources, exposes cancellation and sa
       model_bytes: 238507720, installed: false, streaming: 'native',
       install: { stage: 'idle', total_bytes: null, downloaded_bytes: 0, error: '' } }],
   }
-  let downloads = 0, cancelled = 0, configurations = 0
+  let downloads = 0, cancelled = 0, configurations = 0, mirror: string | undefined
   speechApi.status = async () => structuredClone(status)
-  speechApi.download = async () => { downloads++; status.models[0].install = { stage: 'downloading', total_bytes: 268082449, downloaded_bytes: 1048576, error: '' }; return structuredClone(status) }
-  speechApi.cancelDownload = async () => { cancelled++; status.models[0].install.stage = 'cancelled'; return structuredClone(status) }
+  speechApi.download = async (_id, source) => { mirror = source; downloads++; status.models[0].install = { stage: 'downloading', total_bytes: 268082449, downloaded_bytes: 1048576, error: '' }; return structuredClone(status) }
+  speechApi.cancelDownload = async () => {
+    cancelled++
+    status.models[0].install = { ...status.models[0].install, stage: 'cancelled', partial_bytes: 1048576 }
+    return structuredClone(status)
+  }
+  speechApi.deleteModel = async (id, partial) => {
+    assert.equal(id, status.models[0].id)
+    assert.equal(partial, true)
+    status.models[0].install = { stage: 'idle', total_bytes: null, downloaded_bytes: 0, error: '' }
+    return structuredClone(status)
+  }
   speechApi.configure = async (enabled, language) => { configurations++; status = { ...status, enabled, language }; return status }
-  const button = (text: string) => Array.from(document.querySelectorAll('button')).find(b => b.textContent === text)!
+  const button = (text: string | RegExp) => Array.from(document.querySelectorAll('button')).find(b => typeof text === 'string' ? b.textContent === text : text.test(b.textContent ?? ''))!
   try {
     await act(async () => root.render(<I18nProvider><VoiceInputSettings /></I18nProvider>))
     assert.match(document.body.textContent!, /Streaming Paraformer/)
     assert.equal((document.querySelector('input[type=checkbox]') as HTMLInputElement).checked, false)
+    assert.match(document.body.textContent!, /(?:模型文件|Model files) 227\.5 MiB/)
+    const source = document.querySelector<HTMLSelectElement>('[data-model-mirror]')!
+    await act(async () => { source.value = 'china'; source.dispatchEvent(new window.Event('change', { bubbles: true })) })
     await act(async () => button('下载模型与运行库').click())
+    assert.equal(mirror, 'https://hf-mirror.com')
     assert.equal(downloads, 1)
     assert.equal(document.querySelector('progress')?.getAttribute('value'), '1048576')
-    await act(async () => button('取消下载').click())
+    await act(async () => root.render(<I18nProvider><VoiceInputSettings key="reopened" /></I18nProvider>))
+    assert.equal(cancelled, 0)
+    assert.equal(document.querySelector('progress')?.getAttribute('value'), '1048576')
+    await act(async () => button(/^(?:暂停下载|Pause download)$/).click())
     assert.equal(cancelled, 1)
+    assert.ok(button(/^(?:继续下载|Resume download)$/))
+    await act(async () => button(/^(?:清理下载文件|Clear downloaded files)$/).click())
+    await act(async () => document.querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
     assert.ok(button('下载模型与运行库'))
     await act(async () => (document.querySelector('input[type=checkbox]') as HTMLInputElement).click())
     assert.equal(configurations, 1)
@@ -111,16 +131,16 @@ test('installed speech model offers punctuation-only download without disabling 
 })
 
 
-test('two streaming models download by id and selection uses the installed current model', async () => {
+test('local models download by id and selection uses the installed current model', async () => {
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   const original = { ...speechApi }
   const downloads: string[] = [], selections: string[] = []
   let status: SpeechStatus = {
     enabled: true, language: 'auto', model_id: 'first', service: 'stopped', languages: ['auto'],
-    models: ['first', 'second'].map(id => ({ id, name: id === 'first' ? 'Paraformer' : 'Zipformer',
+    models: ['first', 'second'].map(id => ({ id, name: id === 'first' ? 'Paraformer' : 'SenseVoiceSmall',
       license: '来源', license_url: 'https://example.com', model_bytes: 100, installed: id === 'first',
-      streaming: 'native', punctuation: true, install: { stage: 'idle', downloaded_bytes: 0, total_bytes: null, error: '' } })),
+      streaming: id === 'first' ? 'native' : 'segment', punctuation: id === 'first', install: { stage: 'idle', downloaded_bytes: 0, total_bytes: null, error: '' } })),
   }
   speechApi.status = async () => structuredClone(status)
   speechApi.download = async id => { downloads.push(id!); status.models[1].installed = true; return structuredClone(status) }
@@ -140,7 +160,7 @@ test('two streaming models download by id and selection uses the installed curre
   }
 })
 
-test('speech settings separates input output and wake, preserves output drafts and saves only voice fields', async () => {
+test('global speech settings offers input and output, preserves output drafts and saves only voice fields', async () => {
   const oldOutput = { ...speechOutputApi }
   speechOutputApi.status = async () => structuredClone(outputStatus)
   speechOutputApi.save = async value => value
@@ -151,22 +171,25 @@ test('speech settings separates input output and wake, preserves output drafts a
   let current = { enabled: true, name: '小研', role: '伙伴', personality: '严谨', duties: '', avatar: 'robot' as const, greeting: '你好', voice_rate: 1, auto_speak: false }
   digitalPersonApi.get = async () => ({...current})
   digitalPersonApi.save = async value => { current = value as typeof current; return value }
-  voiceWakeApi.get = async () => ({keyword:'你好小研', sensitivity:'balanced', available:false, listening:false})
+  let wakeLoads = 0
+  voiceWakeApi.get = async () => {
+    wakeLoads++
+    return {keyword:'你好小研', sensitivity:'balanced', available:false, listening:false}
+  }
   speechApi.status = async () => ({enabled:false, language:'auto', model_id:'none', languages:['auto'], service:'stopped', models:[]})
   const switchTab = async (label: string) => act(async () => [...host.querySelectorAll<HTMLButtonElement>('[role=tab]')].find(button => button.textContent === label)!.click())
   try {
     await act(async () => root.render(<I18nProvider><VoiceInputSettings /></I18nProvider>))
     assert.equal(host.querySelector('h1')!.textContent, '语音设置')
-    assert.deepEqual([...host.querySelectorAll('[role=tab]')].map(tab => tab.textContent), ['输入','输出','唤醒'])
+    assert.deepEqual([...host.querySelectorAll('[role=tab]')].map(tab => tab.textContent), ['输入','输出'])
+    assert.equal(host.querySelector('.voice-wake-settings'), null)
+    assert.equal(wakeLoads, 0)
     await switchTab('输出')
     const output = host.querySelector<HTMLElement>('#speech-panel-output')!
     assert.equal(output.hidden, false)
     await act(async () => output.querySelector<HTMLInputElement>('input[type=checkbox]')!.click())
-    await switchTab('唤醒')
-    assert.equal(host.querySelector<HTMLElement>('#speech-panel-input')!.hidden, true)
-    assert.ok(host.querySelector('#speech-panel-wake .voice-wake-settings'))
-    assert.equal(host.querySelector('#speech-panel-wake h2') === null, true, 'tab label replaces the extra wake title')
-    assert.equal(host.querySelectorAll('#speech-panel-wake .voice-wake-settings').length, 1, 'wake control is not another settings container')
+    await switchTab('输入')
+    assert.equal(output.hidden, true)
     await switchTab('输出')
     assert.equal(output.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked, true)
     current.name = '已更新姓名'
@@ -195,7 +218,7 @@ test('input offers cloud credentials and a self-hosted address without requiring
   }
   let dirty=false
   const setInput = async (label:string, value:string) => {
-    const input=[...host.querySelectorAll('label')].find(l=>l.firstChild?.textContent===label)!.querySelector('input')!
+    const input=[...host.querySelectorAll('label')].find(l=>l.firstChild?.textContent===label)!.control as HTMLInputElement
     await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new window.Event('input',{bubbles:true}))})
   }
   try {
@@ -209,11 +232,25 @@ test('input offers cloud credentials and a self-hosted address without requiring
     await chooseMode('remote')
     await setInput('服务地址','http://localhost:9001/v1')
     await setInput('模型','my-whisper')
+    await setInput('API Key','draft-key')
+    await chooseMode('local')
+    await chooseMode('remote')
+    const key = () => host.querySelector<HTMLInputElement>('.speech-secret-field input')!
+    assert.equal(key().value, 'draft-key')
+    assert.equal(key().type, 'password')
+    await act(async () => host.querySelector<HTMLButtonElement>('.speech-secret-field button')!.click())
+    assert.equal(key().type, 'text')
+    await setInput('服务地址','http://localhost:9002/v1')
+    assert.equal(key().value, '')
+    await setInput('服务地址','http://localhost:9001/v1')
+    assert.equal(key().value, 'draft-key')
+    assert.equal(key().type, 'password')
     assert.equal(dirty,true)
     assert.match(host.textContent!,/录音结束后返回文字/)
     await act(async()=>host.querySelector<HTMLButtonElement>('[data-save-input]')!.click())
     assert.equal(saved!.base_url,'http://localhost:9001/v1')
     assert.equal(saved!.model,'my-whisper')
+    assert.equal(saved!.api_key,'draft-key')
     assert.equal(dirty,false)
     assert.equal([...host.querySelectorAll('button')].find(b=>b.textContent==='测试麦克风')!.disabled,false)
   } finally {

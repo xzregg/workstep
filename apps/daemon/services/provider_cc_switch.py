@@ -198,7 +198,7 @@ def _cc_switch_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
     error = (
         validate_provider_values(name=name, type_id=type_id, base_url=base_url)
         if base_url
-        else "未找到可导入的 API 地址"
+        else "No importable API address found"
     )
     wire_api = str(
         parsed.get("wire_api")

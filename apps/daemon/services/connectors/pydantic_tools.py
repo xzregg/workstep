@@ -35,25 +35,25 @@ class ConnectorTools:
         """Call a discovered connector tool. Never pass credentials in arguments."""
         item = next((i for i in await self.items() if i['id'] == connector_id), None)
         if item is None:
-            raise PermissionError('连接器已停用或项目未获授权')
+            raise PermissionError('Connector is disabled or project is not authorized')
         allowed = await self.engine._request_permission(
             self.on_event, tool_name='connector:' + connector_id + ':' + tool_name,
             title=item['name'] + ': ' + tool_name, kind='other', tool_input=arguments,
         )
         if not allowed:
-            return {'error': '用户拒绝执行'}
+            return {'error': 'User declined to execute'}
         current = next((i for i in await self.items() if i['id'] == connector_id), None)
         if current is None:
-            raise PermissionError('连接器已停用或项目未获授权')
+            raise PermissionError('Connector is disabled or project is not authorized')
         if current['revision'] != item['revision']:
-            raise PermissionError('连接器配置已更新，请重新调用')
+            raise PermissionError('Connector configuration has been updated, please re-call')
         if item['kind'] == 'cli':
             if tool_name != 'run':
-                raise ValueError('未知 CLI 工具')
+                raise ValueError('Unknown CLI tool')
             return await run_cli(item, arguments.get('arguments', []), self.cwd)
         try:
             async with connect(item) as client:
                 result = await client.call_tool(tool_name, arguments)
                 return result.model_dump(mode='json', exclude_none=True)
         except Exception:
-            return {'error': '连接器调用失败，请检查连接状态'}
+            return {'error': 'Connector call failed, please check the connection status'}

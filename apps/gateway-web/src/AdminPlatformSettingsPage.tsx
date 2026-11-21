@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { AdminCompanyNameDialog } from './AdminCompanyNameDialog'
 import { AdminTabs } from './AdminTabs'
 import { PlatformAddress } from './PlatformAddress'
@@ -37,12 +38,12 @@ export function AdminPlatformSettingsPage() {
       fetch('/api/admin/platform-settings', { credentials: 'same-origin', signal: controller.signal }),
       fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal }),
     ]).then(async ([response, session]) => {
-      if (!response.ok || !session.ok) throw new Error('平台设置加载失败。')
+      if (!response.ok || !session.ok) throw new Error('Failed to load platform settings.')
       const [data, auth] = await Promise.all([response.json(), session.json()])
       if (!controller.signal.aborted) { setSettings(data); setCsrf(auth.csrf_token) }
     }).catch(reason => {
       if (!controller.signal.aborted && reason?.name !== 'AbortError') {
-        setError(reason instanceof Error ? reason.message : '平台设置加载失败。')
+        setError(reason instanceof Error ? reason.message : 'Failed to load platform settings.')
       }
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
@@ -52,7 +53,7 @@ export function AdminPlatformSettingsPage() {
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>平台设置</h2></div>
     {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在加载平台设置…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button"
       onClick={() => setRevision(current => current + 1)}>重试</button></p>}
     {!error && settings && <AdminTabs label="平台设置分类" value={tab} onChange={setTab} items={[
      { id: 'platform', label: '平台信息', content: (

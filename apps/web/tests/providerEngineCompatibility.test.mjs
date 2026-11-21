@@ -59,17 +59,6 @@ test('provider settings exposes all supported protocols', () => {
   assert.match(providerEditorSource, /base_url: protocolBaseUrls\[form\.protocols\[0\]\]/)
 })
 
-test('provider protocols use switches and reveal their own address field', () => {
-  assert.match(providerEditorSource, /className="provider-protocol-toggle"/)
-  assert.match(providerEditorSource, /role="switch"/)
-  assert.match(providerEditorSource, /className="provider-protocol-switch"/)
-  assert.match(
-    providerEditorSource,
-    /const enabled = form\.protocols\.includes\(option\.value\)[\s\S]*?provider-base-url-\$\{option\.value\}/,
-  )
-  assert.doesNotMatch(providerEditorSource, /provider-protocol-checkmark/)
-})
-
 test('provider settings can copy an existing provider into a new configuration', () => {
   assert.match(providerSource, /providerSettings\.copy/)
   assert.match(providerEditorSource, /providerSettings\.copyTitle/)

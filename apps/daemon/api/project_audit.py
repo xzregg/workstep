@@ -28,9 +28,9 @@ async def get_project_audit(
     if not local or remote_audit_source() or request.scope.get("gateway_remote_actor") is not None or (
         actor is not None and actor.source == "remote"
     ):
-        raise HTTPException(403, "操作审计仅限项目所在设备查看")
+        raise HTTPException(403, "Operation audit is only viewable on the device where the project resides")
     if project_manager.get_project_by_id(project_id) is None:
-        raise HTTPException(404, "项目不存在")
+        raise HTTPException(404, "Project not found")
     try:
         return await project_manager.run_db(
             project_id,

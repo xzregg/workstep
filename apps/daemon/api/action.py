@@ -54,24 +54,24 @@ async def ensure_action_directory(project_id: str, action_id: str, workflow_id: 
     from main import project_manager
 
     if not ACTION_ID.fullmatch(action_id):
-        raise HTTPException(400, "Action ID 无效")
+        raise HTTPException(400, "Invalid Action ID")
     project = project_manager.get_project_by_id(project_id)
     if project is None:
-        raise HTTPException(404, "项目不存在")
+        raise HTTPException(404, "Project not found")
     from services.task_queries import workflow_exists
     if workflow_id:
         exists = await project_manager.run_db(
             project_id, lambda _project: workflow_exists(workflow_id),
         )
         if not exists:
-            raise HTTPException(404, "流程不存在")
+            raise HTTPException(404, "Process does not exist")
 
     def create():
         root = Path(project.path).resolve()
         workstep = project.workstep_dir.resolve()
         target = (workstep / "artifacts" / workflow_id / "actions" / action_id) if workflow_id else (workstep / "actions" / action_id)
         if not target.resolve().is_relative_to(workstep):
-            raise ActionError("Action 目录超出项目根目录")
+            raise ActionError("Action directory exceeds the project root directory")
         target.mkdir(parents=True, exist_ok=True)
         return {"path": target.relative_to(root).as_posix() if target.is_relative_to(root) else str(target)}
 

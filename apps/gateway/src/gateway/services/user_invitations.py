@@ -41,7 +41,7 @@ def valid_invitation(token):
 
 
 def unavailable():
-    return GatewayError('gone', '邀请链接已失效，请联系管理员重新获取。')
+    return GatewayError('gone', 'The invitation link has expired. Please contact the administrator to obtain a new one.')
 
 
 async def issue_invitation(call: GatewayCall, user_id: str):
@@ -54,7 +54,7 @@ async def issue_invitation(call: GatewayCall, user_id: str):
             result = await session.execute(update(User).where(User.id == user_id, *eligible()).values(
                 invitation_token_hash=User.invitation_token_hash))
             if result.rowcount != 1:
-                raise GatewayError('conflict', '停用、删除或受保护的账户不能获取邀请链接。')
+                raise GatewayError('conflict', 'Disabled, deleted, or protected accounts cannot obtain invitation links.')
             user = await session.get(User, user_id)
             if (user.invitation_token_hash and user.invitation_token_ciphertext
                     and user.invitation_expires_at and _as_utc(user.invitation_expires_at) > _now()):
@@ -124,4 +124,4 @@ async def accept_invitation(call: GatewayCall, response: ReplyEffects, body: Acc
                 _set_session_cookie(response, token, call)
             return result
     except IntegrityError as exc:
-        raise GatewayError('conflict', '登录名已被使用，请换一个。') from exc
+        raise GatewayError('conflict', 'Login name is already in use, please choose another.') from exc

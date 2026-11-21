@@ -117,7 +117,7 @@ class HtmlSource(HTMLParser):
     def context(self, node_id: str):
         node = self.nodes.get(node_id)
         if node is None:
-            raise ValueError('元素已失效，请重新选择')
+            raise ValueError('Element is invalid, please reselect')
         editable = node.end is not None and node.tag not in {'html', 'body', 'head', 'script', 'style'}
         text_editable = editable and not node.children and node.tag not in VOID
         text_value = unescape(self.source[node.opening_end:node.closing_start]) if text_editable else ''
@@ -128,33 +128,33 @@ class HtmlSource(HTMLParser):
 
     def edit(self, node_id: str, operation: str, values: dict, version: str):
         if version != self.version:
-            raise SourceConflict('文件已更新，请重新选择元素')
+            raise SourceConflict('File has been updated, please reselect the element')
         node = self.nodes.get(node_id)
         if node is None or node.end is None or node.tag in {'html', 'head', 'body', 'script', 'style'}:
-            raise ValueError('此元素不能直接编辑，请通过评论修改')
+            raise ValueError('This element cannot be edited directly. Please modify it through comments.')
         start, end = node.start, node.end
         if operation == 'delete':
             replacement = ''
         elif operation == 'text':
             if node.children or node.tag in VOID:
-                raise ValueError('请选择具体文字元素，不能覆盖嵌套结构')
+                raise ValueError('Please select a specific text element; nested structures cannot be overwritten.')
             start, end = node.opening_end, node.closing_start
             replacement = escape(str(values.get('text', '')), quote=False)
         elif operation == 'style':
             if not values or not set(values) <= PROPERTIES:
-                raise ValueError('不支持的样式属性')
+                raise ValueError('Unsupported style attribute')
             for value in values.values():
                 if not isinstance(value, str) or len(value) > 100 or re.search(r'[;{}<>\\]|url\s*\(|expression\s*\(|!important', value, re.I):
-                    raise ValueError('样式值无效')
+                    raise ValueError('Invalid style value')
             opening = self.source[node.start:node.opening_end]
             matches = [attr for attr in attributes(opening) if attr.group(1).lower() == 'style']
             if len(matches) > 1:
-                raise ValueError('重复 style 属性，请通过评论修改')
+                raise ValueError('Duplicate style attribute, please modify via comments')
             match = matches[0] if matches else None
             style = unescape((match.group(2) or '').strip('"\'')) if match else ''
             parsed = tinycss2.parse_declaration_list(style, skip_whitespace=True)
             if any(part.type == 'error' for part in parsed):
-                raise ValueError('现有内联样式无法安全解析，请通过评论修改')
+                raise ValueError('Current inline styles cannot be safely parsed; please modify via comments')
             declarations = [tinycss2.serialize([part]).rstrip(';') for part in parsed
                             if not (part.type == 'declaration' and part.lower_name in values)]
             declarations.extend(f'{key}: {value.strip()}' for key, value in values.items() if value.strip())
@@ -166,5 +166,5 @@ class HtmlSource(HTMLParser):
                 replacement = opening[:position] + attribute + opening[position:]
             end = node.opening_end
         else:
-            raise ValueError('不支持的编辑操作')
+            raise ValueError('Unsupported edit operation')
         return self.source[:start] + replacement + self.source[end:]

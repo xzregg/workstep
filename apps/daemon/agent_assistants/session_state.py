@@ -5,6 +5,15 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+PROVIDER_HANDOFF_REQUIRED = "供应商已变更。请确认智能交接后继续，或开启新会话。"
+
+
+def provider_context_changed(previous: str | None, selected: str) -> bool:
+    """Treat an unknown legacy binding as unverified on a WorkStep provider."""
+    if previous is None:
+        return bool(selected)
+    return previous != selected
+
 
 @dataclass
 class AssistantSession:
@@ -24,6 +33,7 @@ class AssistantSession:
     steps: dict | None = None
     extra: dict = field(default_factory=dict)
     engine_state: Any = None
+    session_provider: str | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     last_active: float = field(default_factory=time.monotonic)
 

@@ -52,7 +52,7 @@ class PooledSDKClient:
                         async def invoke(*args, **kwargs):
                             callback = callbacks.get(key)
                             if callback is None:
-                                raise RuntimeError('当前 SDK 会话没有活动的请求')
+                                raise RuntimeError('No active request in the current SDK session')
                             return await callback(*args, **kwargs)
                         return invoke
                     setattr(self.options, name, make_callback(name))

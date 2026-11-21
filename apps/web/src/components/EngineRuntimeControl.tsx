@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { engineApi, type EngineRuntimeCatalog, type EngineRuntimeOperation } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button, { ButtonLink } from './Button'
 import Select from './Select'
 import ConfirmDialog from './ConfirmDialog'
@@ -158,7 +158,7 @@ export default function EngineRuntimeControl({ engineId, onChanged }: {
             ? t('settings.runtimePrimarySize', { size: formatPackageBytes(selected.size_bytes) })
             : t('settings.runtimeSizeUnknown')}<br />{t('settings.runtimeSizeScope')}</p>
           {catalog.configured_path && <p role="alert">{t('settings.runtimeOverride')}</p>}
-          {catalog.error && <p role="alert">{catalog.error}</p>}
+          {catalog.error && <p role="alert">{localizeErrorDisplay(catalog.error)}</p>}
           {!!catalog.history.length && <details>
             <summary>{t('settings.runtimeHistory')}</summary>
             <ul>{catalog.history.slice().reverse().map((item, index) => <li key={`${item.at}-${index}`}>
@@ -173,7 +173,7 @@ export default function EngineRuntimeControl({ engineId, onChanged }: {
         {running && <p className="engine-runtime-note">{t('settings.runtimeContinue')}</p>}
         {operation?.message && <p role={operation.status === 'failed' ? 'alert' : 'status'}>{operation.message}</p>}
         {pollError && <p role="alert">{t('settings.runtimePollingError')}</p>}
-        {error && !confirmation && <p role="alert">{error}</p>}
+        {error && !confirmation && <p role="alert">{localizeErrorDisplay(error)}</p>}
       </div>}
       <ConfirmDialog open={confirmation !== null} width={480}
         title={confirmation === 'rollback' ? t('settings.runtimeConfirmRollback') : t('settings.runtimeConfirmInstall')}
@@ -188,7 +188,7 @@ export default function EngineRuntimeControl({ engineId, onChanged }: {
             {catalog.terms_url && <ButtonLink href={catalog.terms_url} target="_blank" rel="noreferrer">{t('settings.reviewThirdPartyTerms')}</ButtonLink>}
           </span>
         </label>}
-        {error && <p role="alert">{error}</p>}
+        {error && <p role="alert">{localizeErrorDisplay(error)}</p>}
       </ConfirmDialog>
     </div>
   )

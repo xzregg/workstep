@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { thirdPartyError, thirdPartyRequest, validIssuedCallback } from './thirdPartyAuth'
@@ -15,7 +16,7 @@ export function ThirdPartyAuthorizePage({onAuthorized=goToCallback}: {onAuthoriz
   async function start(){
    try{
     const request=thirdPartyRequest(new URLSearchParams(search))
-    if(!request)throw Error('登录链接参数无效，请从第三方系统重新发起登录。')
+    if(!request)throw Error('Invalid login link parameters. Please initiate login again from the third-party system.')
     const options={method:'POST',credentials:'same-origin' as const,signal:controller.signal,
      headers:{'Content-Type':'application/json'},body:JSON.stringify(request)}
     const validated=await fetch('/api/auth/third-party/validate',options)
@@ -24,16 +25,16 @@ export function ThirdPartyAuthorizePage({onAuthorized=goToCallback}: {onAuthoriz
     const session=await fetch('/api/auth/session',{credentials:'same-origin',signal:controller.signal})
     if(controller.signal.aborted)return
     if(session.status===401){navigate('/auth?next='+encodeURIComponent(pathname+search),{replace:true});return}
-    if(!session.ok)throw Error('登录状态检查失败，请重试。')
+    if(!session.ok)throw Error('Login status check failed, please try again.')
     const auth=await session.json()
-    if(!auth.csrf_token)throw Error('登录状态已失效，请重新登录。')
+    if(!auth.csrf_token)throw Error('Your session has expired. Sign in again.')
     if(controller.signal.aborted)return
     const result=await fetch('/api/auth/third-party/authorize',{...options,headers:{...options.headers,'X-CSRF-Token':auth.csrf_token}})
     if(!result.ok)throw await thirdPartyError(result,'授权失败，请重试。')
     const body=await result.json()
-    if(typeof body.callback_url!=='string' || !validIssuedCallback(body.callback_url,request))throw Error('网关返回的回调地址无效，请重新发起登录。')
+    if(typeof body.callback_url!=='string' || !validIssuedCallback(body.callback_url,request))throw Error('The callback address returned by the gateway is invalid. Please re-initiate login.')
     if(!controller.signal.aborted)onAuthorized(body.callback_url)
-   }catch(reason){if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'授权失败，请重试。')}
+   }catch(reason){if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'Authorization failed, please try again.')}
   }
   void start()
   return ()=>controller.abort()
@@ -41,7 +42,7 @@ export function ThirdPartyAuthorizePage({onAuthorized=goToCallback}: {onAuthoriz
  return <section className="gateway-auth-card">
   <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
   <h2>第三方登录</h2>
-  {error?<><p className="gateway-auth-error" role="alert">{error}</p><button type="button" onClick={()=>setRetry(value=>value+1)}>重试</button></>
+  {error?<><p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p><button type="button" onClick={()=>setRetry(value=>value+1)}>重试</button></>
    :<p role="status"><span className="gateway-spinner"/> 正在验证登录并返回第三方系统…</p>}
  </section>
 }

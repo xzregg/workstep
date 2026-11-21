@@ -1,6 +1,6 @@
 # WorkStep 统一设计规范
 
-> 适用：工作台 Web/桌面/移动端、官网、平台后台。2026-11-13 整合。
+> 适用：工作台 Web／桌面／移动端、官网、平台后台。
 > 本文件是设计规范唯一入口；开发交互和工程约束见 [AGENTS.md](AGENTS.md)，功能与测试定位见 [Code Map](docs/code-map.md)。
 
 ## 1. 适用范围与权威来源
@@ -12,17 +12,23 @@
 | 平台管理后台 | 第 12 章 | `apps/gateway-web` 与共享 `packages/gateway-ui` |
 
 - 品牌共用中性色、语义色和克制的层级；产品控件不能照搬官网大标题、大间距和 CTA 尺寸。
-- 工作台按钮默认圆角为 `--radius-sm`（10px）；官网控件 12px、平台后台 12px 仅限对应表面，不构成工作台规则的另一套默认值。
+- 各端的字号、圆角和控件高度按对应章节执行，不跨端套用。
 - 设计规则由本文统一维护；组件 API、默认值和运行状态以实际代码为准。发生偏差时记录并修复代码或修正规范，不直接按旧原型覆盖已验证行为，也不把现存缺陷视为规范。
 - `AGENTS.md` 维护执行要求与当前产品不变量，不复制完整视觉规格；通用设计技能辅助选型，遇到具体项目参数以本文及 `AGENTS.md` 为准。
 - 静态原型不再作为生产设计权威；开发原型和配套图纸、样式、脚本放 `tmp/<任务>/`，不纳入 Git 或发布包。
 - 保留语义化标题、button/link/input、可见焦点和完整交互状态；禁止将设计工具注入脚本、预览标注、虚构数据混入产品。
 
-## 2. Design Tokens
+### 1.1 工作台组件参考方式
+
+- 在浏览器打开[工作台组件展台](docs/ui.html)，按类别或组件名查看交互示例，包括常用图标与动效。右上角「手机预览」切换到同一页的 320／390／430px 实际视口。展台是布局、状态和交互示例，不是生产组件、验收结果或规范来源。
+- 开发或评审按「本文选型 → [Code Map](docs/code-map.md) 定位 → 复用 `apps/web/src/components/` 与公共样式 → 第 8 章实际渲染验收」执行。不复制展台的 HTML、样式或模拟数据。
+- 检查设置页时，区分独立且即时保存的开关与表单草稿：复选框允许多项，单选框只选一项，两者在设置表单里都等用户点保存才提交。移动端同时检查短文案单行、图标尺寸、按钮文字行高、操作行高度和点击区域；不要用缩图标或撑高按钮来解决窄屏排版。
+
+## 2. 设计变量
 
 ### 2.1 颜色（浅色主题）
 
-| Token | 浅色值 | 语义 |
+| 变量 | 浅色值 | 语义 |
 |---|---|---|
 | `--bg` | `#ffffff` | 页面背景 |
 | `--fg` | `#1d1d1f` | 标题/正文主色 |
@@ -53,7 +59,7 @@
 
 ### 2.2 字体栈
 
-| Token | 值 | 说明 |
+| 变量 | 值 | 说明 |
 |---|---|---|
 | `--font-display` | `system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif` | 标题/数字/品牌 |
 | `--font-body` | 同上 | 正文 |
@@ -63,14 +69,14 @@
 
 ### 2.3 圆角
 
-| Token | 值 | 用途 | 规格 |
-|---|---|---|---|
-| `--radius-xs` | `8px` | 输入框、侧栏项、小控件 | ✓ 8px |
-| `--radius-sm` | `10px` | 按钮、KPI 卡 | 10px |
-| `--radius-md` | `12px` | 卡片、列表、弹框内层 | ✓ 12px |
-| `--radius-lg` | `14px` | 大卡片（feature/quote） | ✓ 14px |
-| `--radius-xl` | `18px` | 大型浮层外框 | ✓ 18px |
-| `--radius-pill` | `999px` | 胶囊、徽标、头像 | ✓ 999px |
+| 变量 | 值 | 用途 |
+|---|---|---|
+| `--radius-xs` | `8px` | 输入框、侧栏项、小控件 |
+| `--radius-sm` | `10px` | 按钮、指标卡 |
+| `--radius-md` | `12px` | 卡片、列表、弹框内层 |
+| `--radius-lg` | `14px` | 大卡片（功能介绍／引言） |
+| `--radius-xl` | `18px` | 大型浮层外框 |
+| `--radius-pill` | `999px` | 胶囊、徽标、头像 |
 
 ### 2.4 间距
 
@@ -86,7 +92,7 @@
 
 ### 2.5 阴影与描边
 
-| Token | 值 | 用途 |
+| 变量 | 值 | 用途 |
 |---|---|---|
 | `--elev-raised` | 沿用现有 `0 12px 32px rgba(0,0,0,0.08)` | 普通浮层 |
 | `--elev-overlay` | `0 30px 80px rgba(0,0,0,0.06), 0 12px 30px rgba(0,0,0,0.04)` | 大型浮层 |
@@ -111,7 +117,7 @@
 
 **工作台基础字号采用 5 档**，按信息语义和层级选择，生产值统一乘 `--font-scale`。移动端输入字号复用 `mobile.css` 的防自动缩放规则，不为套档位覆盖现有可用性约束：
 
-| 档位 | Token | 大小 | 嵌套层级 | 用途 |
+| 档位 | 变量 | 大小 | 嵌套层级 | 用途 |
 |---|---|---|---|---|
 | 1 | `--text-title-1` | **20px** | 第 1 层（页面） | 页面标题、任务大标题 |
 | 2 | `--text-title-2` | **16px** | 第 2 层（区块） | 区块标题、弹框标题、品牌标识 |
@@ -157,6 +163,8 @@
 ### 3.4 Markdown 排版映射
 
 Markdown 使用 `MarkdownMessage` 的统一样式：h1/h2/h3/h4 对应 20/16/14/13px 基础档并跟随字号缩放；引用使用 muted 色与左侧边线，代码使用 mono 字体。不要在调用页面覆盖 Markdown 的标题和代码字号。
+
+消息表格优先适配正文宽度：单元格中的正文和行内代码可换行；列数过多、达到最小可读列宽后，仅表格容器横向滚动。
 
 ## 4. 布局规范
 
@@ -208,6 +216,7 @@ Markdown 使用 `MarkdownMessage` 的统一样式：h1/h2/h3/h4 对应 20/16/14/
 - `Button`：变体 `primary`（accent 底 + `--accent-fg` 文字，hover `--accent-hover`）、`ghost`（`--border` 描边）、`danger`、`icon`（圆形图标钮）；尺寸 `sm`/默认；loading 态内置 `Spinner`。
 - `Input`/`Select`/`Textarea`：统一高度 32px（多行除外）、`--radius-xs`、`--border` 描边、focus `--accent` 边框 + `--focus-ring`、disabled 置灰、placeholder `--text-tertiary`。
 - 移动端普通按钮、输入和工具栏控件复用 `mobile.css` 的 32px 高度变量；菜单项与需要较大点击区域的控件复用 44px 变量。不要在页面样式中另写 36px、48px 等高度。消息操作小按钮保留紧凑规格。
+- **移动端按钮行高**：文字行高沿用公共按钮规格，不继承外层正文的宽松行高，不用加大 `line-height` 或纵向内边距实现居中或补触控面积。单行按钮及同组操作行不得被图标、长文案或状态切换意外撑高；需更大触控面积时用上面的触控档位。
 - 任务详情头部增加操作或信息时，需在 320px、390px 和 1023px 宽度检查整行布局，优先让信息在两行内显示，保留创建者与时间，避免长任务 ID 被按钮挤到第三行。「绑定BOT」位于分享按钮左侧。较长的元信息和 ID 可限宽滚动展示，但完整值应可查看、复制；滚动效果需适配减少动态效果的系统设置。核对实际渲染中的换行与按钮点击区域。
 - `Field`：label + 帮助文本 + 错误提示组合；label `--text-body` 加粗，帮助/错误提示在**固定高度区域**（`minHeight` 占位）避免布局跳动。
 - `Spinner`：统一旋转加载图标（沿用手写 CSS 圆环，`currentColor`）。
@@ -233,6 +242,7 @@ Markdown 使用 `MarkdownMessage` 的统一样式：h1/h2/h3/h4 对应 20/16/14/
 2. 校验/错误信息使用 `--text-danger`（`--danger`），正常帮助文本 `--text-muted`。
 3. 名称类输入（项目/流程名）即时校验空白字符（AGENTS.md）。
 4. 新建聊天或 Markdown 编辑表单不得自建 textarea + 图片上传实现，一律复用 `ChatInput`/`MarkdownEditor`。
+5. **密钥输入组**：API 密钥、访问令牌等敏感字段默认遮盖，输入框和右侧眼睛按钮同高、共用外框。显示后切换为眼睛带斜线，按钮提供「显示／隐藏 + 字段名」的可访问名称，支持键盘操作。图标沿用 16px 档位，移动端整组使用 44px 触控档。显示和隐藏只改变可见性，编辑值随表单保存。已保存且默认由服务端保留的密钥，仅在用户主动点击显示后通过现有授权接口读取，隐藏或离开字段所在页面后清除临时明文。见[组件展台示例](docs/ui.html#inputs)。
 
 ### 5.5 按钮/徽标视觉对齐
 
@@ -247,7 +257,7 @@ Markdown 使用 `MarkdownMessage` 的统一样式：h1/h2/h3/h4 对应 20/16/14/
 
 ---
 
-## 6. Icon 库规范
+## 6. 图标库规范
 
 ### 6.1 统一入口
 
@@ -257,6 +267,7 @@ Markdown 使用 `MarkdownMessage` 的统一样式：h1/h2/h3/h4 对应 20/16/14/
 
 - 同一类操作使用同一尺寸档位和线宽，不能逐按钮试大小；尺寸差异必须来自下表的用途差异。
 - 图标容器固定宽高并禁止 flex 收缩；单行按钮中图标与文字垂直居中，多行信息行的前置图标对齐首行。
+- **移动端图标不缩小**：同一按钮在窄屏沿用其公共组件的图标档位，固定图标容器和 SVG 的实际宽高，不让长文案或工具栏挤压图标。空间不足时先处理文案或收起次要操作，不临时改图标尺寸或线宽。
 - 图标和文字间距由公共组件统一，按钮内加载动画占位与图标一致，状态切换不能挤动文字。
 - 可见图标尺寸与触控热区分开设置；紧凑图标通过外层按钮提供命中范围，不通过放大图标补热区，不让相邻热区重叠。
 - 字形自带留白导致的视觉偏差在公共图标映射中校正，不在页面散加 transform 或 margin。
@@ -293,6 +304,7 @@ Markdown 使用 `MarkdownMessage` 的统一样式：h1/h2/h3/h4 对应 20/16/14/
 - 使用真实生产组件和明确标注的模拟数据进行隔离渲染；临时截图、报告、脚本放在仓库根 `tmp/<任务>/`。模拟截图不能冒充线上截图或操作手册截图。
 - 同时检查默认/放大字号、中文/长译文、空态/加载/成功/错误/禁用、长标题和长 ID。复杂操作需覆盖键盘焦点、移动端触控与关闭保护。
 - 检查按钮同高、图标占位和线宽一致、文本基线、组间距、单行控件不折字、信息列对齐、无意外横向溢出、无浮层遮挡和底层滚动穿透。
+- 移动端按钮至少在 320px、390px 和断点两侧核对实际渲染：测量按钮与操作行高度、文字 `line-height` 和 SVG 宽高。覆盖长译文、放大字号及正常／加载状态；对照组件档位与实际触控区域，不只检查 CSS 声明。
 - 无法容纳的工具栏明确选择收起次要操作、横向滚动或整组移行；不能靠缩小文字或无规则折行掩盖问题。正文保留自然换行。
 - 浮层避让安全区、软键盘与已有悬浮入口。移动端底部面板的标题、滚动内容和底部操作分区明确；桌面窗口按 `AGENTS.md` 支持四边与四角缩放及视口边界。
 - 行为测试覆盖实际拥有职责的模块；运行适用测试、构建与 lint。自动测量溢出和尺寸辅助发现问题，不能替代实际渲染的视觉检查。
@@ -314,7 +326,8 @@ Markdown 使用 `MarkdownMessage` 的统一样式：h1/h2/h3/h4 对应 20/16/14/
 
 ### 9.1 通用布局约束
 
-- **操作栏**：组内同高、统一图标与间距；短标签单行、不压缩图标；次要操作优先进入更多菜单。换行以操作组为单位，不让按钮自身变成多行。
+- **短文案优先单行**：按钮、字段标签、复选框／单选框选项、状态标签和列表摘要避免折成两行。窄屏先精简措辞或给文字腾出空间；仍放不下时，非关键信息可省略，但完整内容必须可查看。不要缩小字号、挤压图标或硬裁关键信息；说明正文和错误提示可以自然换行。
+- **操作栏**：组内同高、统一图标与间距；次要操作优先进入更多菜单。空间不足时按操作组移行，不拆分组内操作。
 - **信息行**：左标签、右值使用共享列布局；标签与值的首行对齐，时间/数量保持稳定宽度，长值明确采用省略并可查看完整值，或单独一行展开。
 - **标题行**：图标、标题、状态、操作区分槽位；标题区域允许收缩，操作区不被挤扁。长标题截断或单独换行，不能挤散右侧操作。
 - **设置页标题操作**：刷新、重新扫描等作用于整个分区的轻操作紧随对应标题，垂直居中并放在同一标题行；不得独占下一行或放在表单字段之间。只更新某个模型、目录或列表的操作放在该对象的标题／工具栏，不能误放到整页标题旁。
@@ -322,12 +335,13 @@ Markdown 使用 `MarkdownMessage` 的统一样式：h1/h2/h3/h4 对应 20/16/14/
 - **数字输入的编辑态**：允许暂时清空再输入，不得把空串逐键转换为 0 或最小值，也不得在输入期间自动夹紧到范围边界。空值、非数字和越界值须阻止保存／试听等提交操作；只有用户输入合法值后恢复，不用默认数值覆盖用户正在编辑的内容。
 - **上述布局验收**：至少在 320px、390px 和桌面实际配置区宽度下检查；自动测量标题与轻操作的纵向中心、成对按钮的顶部及高度，并实际查看截图。仅验证 DOM 同属一个容器或构建通过，不算排版验收。
 - **列表/表格**：文本左对齐、数字右对齐、同列状态对齐；窄表格在自身区域滚动，不把表头挤成逐字换行。
+- **树形导航**：用于目录、分组等有明确父子关系的数据；区分目录展开与叶节点选中，长名称保持单行且可查看完整路径，支持键盘导航。文件树先查阅现有 `GitDiffFileTree`，不要用平铺列表模拟层级。
 - **设置页**：按语义分区，统一字段标签宽度和说明位置；移动端可切为上下布局，不在单个字段内临时拼接补丁。
 - **聊天**：复用现有消息、输入、配置和操作组件；业务模块不修改其统一高度或另写一套工具栏。
 
 ## 10. 执行边界与治理状态
 
-本文是统一的设计契约，并不代表所有存量页面已经达标。本次整合只修改规范、导航和原型目录，不改变生产组件外观。
+本文定义交付标准，不代表所有存量页面已经达标。
 
 开发前先确定表面（工作台/官网/平台后台）、页面模式和可复用组件；实现中优先修公共默认值，同一 UI 两处出现即复用；交付前完成第 8 章检查。扩展或移动功能职责时同步 `docs/code-map.md`。
 
@@ -335,145 +349,48 @@ Markdown 使用 `MarkdownMessage` 的统一样式：h1/h2/h3/h4 对应 20/16/14/
 
 ## 11. 官网与品牌视觉
 
-本章保留原品牌视觉规范，仅适用于官网/营销展示；工作台紧凑控件使用前文规格。机器可消费的产品 tokens 以生产 CSS 为准，不再在 Markdown front matter 维护第二份参数表。
+本章仅适用于官网和营销展示。用直接的标题说清产品用途，以真实界面预览、状态和流程演示说明产品如何工作；不以通用装饰卡片或抽象插画替代，也不作无依据的性能、安全或采用规模承诺。
 
-### Overview
+### 11.1 色彩与材质
 
-**Creative North Star: "The Precise Workbench"**
+- 中性色按第 2.1 和 3.2 节的语义分层：近白底、深色正文、层级清晰的辅助文字与细分隔线；需要与页面背景区分的区块可换浅色底。结构不靠饱和色区分。
+- 蓝色用于主操作、链接、焦点和运行状态；主操作悬停用更亮的蓝。紫色只辅助表达编排，蓝紫渐变仅用于小型品牌标记和少量强调，不与主操作争夺注意力。
+- 控件、内容面板、应用窗口的圆角分别为 12px、14px、18px；胶囊仅用于紧凑操作、筛选项和状态徽标。
+- 普通内容容器以底色和细描边区分，不加大阴影。产品窗口、模态和需要突出展示的预览使用 `0 30px 80px rgba(0, 0, 0, 0.07), 0 12px 30px rgba(0, 0, 0, 0.05)`；演示卡片悬停时可叠加向上位移 4px。
 
-WorkStep presents complex orchestration as a calm, inspectable workspace. The visual system is bright, restrained, and product-led: large direct statements establish confidence, while interface previews and status details provide proof without turning the page into a technical dashboard.
+### 11.2 字体与层级
 
-The system favors clear hierarchy, generous section rhythm, and familiar desktop-product surfaces. Blue signals action and active work; violet appears as a secondary orchestration cue. Motion demonstrates continuity between workflow steps and stays subordinate to comprehension.
+标题和正文用系统字体，按平台回退到 Apple 系统字体、Segoe UI、Roboto、苹方等；等宽字体栈见第 2.2 节，仅用于引擎名、技术状态、标识符和技术数值。用字号、字重和间距表达层级，不用等宽字作为装饰。各宽度下中英文保持相同的信息层级。
 
-**Key Characteristics:**
+| 文字角色 | 字重 | 字号 | 行高 | 用途 |
+|---|---|---|---|---|
+| 首屏主标题 | 700 | 流式 40–66px | 1.06 | 仅用于首屏主张，字距略收紧 |
+| 主要区块标题 | 700 | 流式 30–44px | 1.12 | 区块主张 |
+| 卡片和面板标题 | 600–700 | 15–20px | — | 卡片、面板、产品概念名称 |
+| 正文 | 400 | 15–17px | 1.55–1.65 | 说明文字，行长约 52–70 个字符 |
+| 标签 | 600 | 11–13px | — | 元信息和紧凑控件，仅短技术标签可全大写 |
 
-- Bright neutral canvases with sparse blue and violet emphasis.
-- Large, tightly tracked headings paired with compact product detail.
-- Softly lifted windows, restrained borders, and rounded controls.
-- Real interface scenes used as evidence, not decorative illustration.
-- Direct, calm copy that explains what the product does.
+### 11.3 布局与响应式
 
-### Colors
+- 内容居中，容器最大宽度 1360px，左右留白 28px。区块纵向间距桌面为 92px，低于 760px 时为 64px。
+- 先给出区块主张，再用界面预览、双列说明或三列演示展开；区块之间宽松，界面预览内部紧凑。
+- 窄屏先减少功能和协作网格的列数，再考虑调整排版；导航链接按空间收起，约 600px 时主要行动按钮改为全宽纵排。`DOM` 顺序与阅读顺序一致。
 
-The palette uses quiet near-white surfaces and dark neutral text so the workflow blue remains a deliberate signal rather than ambient decoration.
+### 11.4 官网组件
 
-#### Primary
-
-- **Workflow Blue:** The principal action, running-state, link, and focus color.
-- **Active Workflow Blue:** The hover state for primary actions.
-
-#### Secondary
-
-- **Orchestration Violet:** A supporting cue in the brand mark and selected workflow accents.
-
-#### Neutral
-
-- **Canvas White:** The base page and raised window surface.
-- **Soft Control Gray:** Low-contrast controls, bars, and grouped regions.
-- **Lifted Paper:** Alternate sections that need separation from the base canvas.
-- **Primary Ink:** Headlines, primary labels, and strong controls.
-- **Secondary Ink:** Supporting labels that still need clear contrast.
-- **Muted Ink:** Body support copy and metadata.
-- **Quiet Ink:** Timestamps and tertiary details.
-- **Separator Gray / Soft Separator:** Structural boundaries, with the softer value preferred for large regions.
-
-#### Named Rules
-
-**The Active Signal Rule.** Blue marks actions or live state; violet supports orchestration and never competes with the primary action.
-
-**The Quiet Canvas Rule.** Neutral surfaces carry most of every viewport so interface evidence and active states remain legible.
-
-### Typography
-
-**Display Font:** System UI with Apple, Segoe UI, Roboto, and PingFang SC fallbacks  
-**Body Font:** System UI with the same platform-native fallbacks  
-**Label/Mono Font:** UI monospace with SF Mono, JetBrains Mono, and Menlo fallbacks
-
-**Character:** The primary face is neutral and highly legible across Chinese and English. Monospace is reserved for engine names, status metadata, identifiers, and values that behave like technical data.
-
-#### Hierarchy
-
-- **Display** (700, fluid 40–66px, 1.06): Hero statements only.
-- **Headline** (700, fluid 30–44px, 1.12): Major section propositions.
-- **Title** (600–700, 15–20px): Cards, panels, and named product concepts.
-- **Body** (400, 15–17px, 1.55–1.65): Explanations with lines kept near 52–70 characters.
-- **Label** (600, 11–13px): Metadata and compact controls; uppercase is limited to short technical labels.
-
-#### Named Rules
-
-**The Product Voice Rule.** Use weight, scale, and spacing for emphasis; reserve monospace for information that is genuinely code-like or measurable.
-
-### Layout
-
-The page uses a centered container capped at 1360px with 28px horizontal gutters. Sections follow a generous 92px vertical rhythm on desktop and compress to 64px below 760px. Major propositions lead each region, followed by proof in interface previews, two-column explanations, or three-column demonstrations.
-
-Responsive layouts reduce column count before reducing legibility: feature and collaboration grids collapse progressively, navigation links hide on narrow screens, and primary calls to action become full-width stacks around 600px. DOM order remains the reading order.
-
-### Elevation & Depth
-
-Depth is a hybrid of tonal layering, fine separators, and a single ambient elevation. Most surfaces stay flat; large product windows and hovered demonstration cards use a soft two-stage shadow to distinguish interactive evidence from the page.
-
-#### Shadow Vocabulary
-
-- **Ambient Window:** `0 30px 80px rgba(0, 0, 0, 0.07), 0 12px 30px rgba(0, 0, 0, 0.05)` for product windows, modals, and elevated evidence.
-- **Interactive Lift:** The ambient window shadow paired with a 4px upward translation on hover.
-
-#### Named Rules
-
-**The Evidence Lifts Rule.** Elevation belongs to product previews, modal focus, and interactive response—not ordinary copy containers.
-
-### Shapes
-
-Controls use gently rounded 12px corners, content panels use 14px, and application windows use 18px. Pills are restricted to compact actions, filters, and status badges. Thin neutral borders define structure; the blue-to-violet gradient is reserved for the compact WorkStep mark and small signature accents.
-
-### Components
-
-#### Buttons
-
-- **Shape:** Confident rounded rectangle (12px); compact navigation actions may use a pill.
-- **Primary:** Workflow blue with white text and 12px × 20px padding.
-- **Hover / Focus:** Shift to active blue with a subtle 1px lift; keyboard focus uses a 2px blue outline and 2px offset.
-- **Secondary / Ghost:** Canvas surface, primary ink, and a neutral border; hover changes the surface tone.
-
-#### Chips
-
-- **Style:** Compact pill geometry with muted neutral surfaces and short labels.
-- **State:** Active or live chips may use blue or success green; passive chips remain neutral.
-
-#### Cards / Containers
-
-- **Corner Style:** 14–18px depending on scale.
-- **Background:** Canvas or lifted paper.
-- **Shadow Strategy:** Flat at rest unless the card is primary evidence or interactive.
-- **Border:** One-pixel neutral separator.
-- **Internal Padding:** Compact 14–20px for interface cards; larger prose compositions rely on surrounding layout gaps.
-
-#### Navigation
-
-The sticky 64px navigation uses a translucent canvas with saturation blur and a soft bottom separator. Links are compact and muted until hover; the main action uses inverted ink and canvas colors.
-
-#### Workflow Preview
-
-Application previews combine neutral chrome, compact technical labels, real status colors, and continuous motion. They should read as plausible product UI at a glance and remain the richest visual regions on the page.
-
-### Do's and Don'ts
-
-#### Do:
-
-- **Do** keep most surfaces neutral and spend saturated color on actions, active workflow state, and small signature cues.
-- **Do** use generous spacing between propositions and tighter spacing inside interface evidence.
-- **Do** preserve real workflow motion and product-state detail when rearranging the page.
-- **Do** keep Chinese and English hierarchy equivalent across responsive sizes.
-
-#### Don't:
-
-- **Don't** replace product evidence with generic decorative cards or abstract illustrations.
-- **Don't** apply ambient shadows to every container.
-- **Don't** use monospace as a general-purpose technology aesthetic.
-- **Don't** invent performance, security, or adoption claims that the product cannot substantiate.
+| 组件 | 视觉与交互要求 |
+|---|---|
+| 按钮 | 主按钮蓝底白字，内边距 `12px 20px`；悬停切换至亮蓝并上移 1px，键盘焦点使用 2px 蓝色描边加 2px 偏移。次按钮和幽灵按钮用页面底色、主文字色与中性描边，悬停切换底色。 |
+| 胶囊标签 | 文案简短；非活动状态保持中性，选中或实时状态可用蓝色或成功绿。 |
+| 卡片 | 页面底色或交替区块浅色底，1px 中性描边；界面卡片内边距 14–20px，大段文案依靠外围布局留白。圆角与阴影按第 11.1 节。 |
+| 导航 | 64px 高的粘性导航，使用半透明底、饱和度模糊和浅色底边；链接紧凑、默认低强调，主要操作用深底浅字。 |
+| 流程预览 | 使用中性窗口外框、紧凑技术标签和真实状态色；动效服务于理解步骤如何衔接，调整布局时保留流程和状态细节。 |
 
 
 ## 12. 平台管理后台
 
+- 常规列表页参考[后台页面模板](docs/ui.html#admin)：桌面分组侧栏、内容区顶栏和页面标题；窄屏改用顶栏按钮打开左侧菜单抽屉。当前栏目高亮，其所在分组默认展开，其余分组默认收起。
+- 同一列表只设一组查询表单，将关键词与其他必要条件集中，点「搜索」或按回车提交，「重置」清除这些条件；不要在表格工具栏重复设搜索框。状态筛选紧贴表头，即时筛选已提交的查询结果，不与表格内的只读状态标签混用。表格工具栏排序和表头排序共享一个状态。
+- 显示字段在独立面板中勾选，点「应用」才更新；取消保留原列，标识列与必要操作不能隐藏。窄屏允许查询条件重排、搜索与重置成组，状态筛选仍留在表头正上方，宽表只在表格区域内滚动。展示页使用模拟数据，不代替生产组件。
 
 管理后台使用紧凑规格：页面标题 24px、分区标题 16px、表单与表格 14px、导航项 13px、菜单分类 12px、辅助标记 11px；桌面表单控件高度 36px、圆角 12px，内容面板圆角 14px、主区域圆角 18px。侧栏使用浅色中性背景，蓝色只强调当前分类及操作；二级菜单默认收起。1023px 及以下通过顶部按钮打开模态抽屉菜单，导航点击区域 44px、普通控件 32px；窄表格在自身区域滚动，搜索栏根据内容区宽度调整布局。该规格适用于 `apps/gateway-web` 的管理区域，登录及门户页面保留现有规格。颜色复用上述调色板，表格在窄空间内横向滚动，禁止把表头和状态挤成逐字换行。

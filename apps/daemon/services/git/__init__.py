@@ -25,7 +25,7 @@ def directory_entries(path):
 def validate_gitignore(path):
     target = path / '.gitignore'
     if target.is_symlink() or (target.exists() and not target.is_file()):
-        raise GitError('.gitignore 不是可安全写入的普通文件。')
+        raise GitError('.gitignore is not a regular file that can be safely written.')
 
 
 def ensure_gitignore(path):
@@ -93,15 +93,15 @@ class GitService(GitQueries, GitWrites, GitRecoveries):
         projects = await asyncio.to_thread(lambda: [dict(project) for project in self.projects_provider()])
         project = next((project for project in projects if project['id'] == project_id), None)
         if not project:
-            raise GitError('项目不存在或已移除。', 404)
+            raise GitError('Project does not exist or has been removed.', 404)
         root = await asyncio.to_thread(Path(project['path']).resolve)
         if not await asyncio.to_thread(root.is_dir):
-            raise GitError('项目目录不存在。', 404)
+            raise GitError('Project directory does not exist.', 404)
         lock = self.locks.setdefault('project:' + project_id, asyncio.Lock())
         async with lock:
             marker = root / '.git'
             if await asyncio.to_thread(lambda: marker.exists() or marker.is_symlink()):
-                raise GitError('项目根目录已经是 Git 仓库。', 409)
+                raise GitError('The project root directory is already a Git repository.', 409)
             await asyncio.to_thread(validate_gitignore, root)
             await self.command(root, 'init', '-b', 'main')
             await asyncio.to_thread(ensure_gitignore, root)
@@ -201,13 +201,13 @@ class GitService(GitQueries, GitWrites, GitRecoveries):
     async def directory(self, id):
         directory = self.directories.get(id)
         if not directory or not set(directory['project_ids']).intersection(p['id'] for p in self.projects_provider()):
-            raise GitError('工作目录未授权或已移除，请重新扫描。', 404)
+            raise GitError('The working directory is unauthorized or has been removed. Please rescan.', 404)
         if not await asyncio.to_thread(Path(directory['path']).is_dir):
-            raise GitError('工作目录已不存在，请重新扫描。', 404)
+            raise GitError('The working directory no longer exists. Please rescan.', 404)
         raw, _ = await self.command(directory['path'], 'rev-parse', '--path-format=absolute', '--git-common-dir')
         actual = str(await asyncio.to_thread(Path(text(raw).strip()).resolve))
         if actual != directory['common_dir']:
-            raise GitError('仓库位置已变化，请重新扫描。', 409)
+            raise GitError('Warehouse location has changed, please rescan.', 409)
         return directory
 
 

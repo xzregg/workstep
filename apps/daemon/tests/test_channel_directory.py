@@ -119,7 +119,7 @@ async def test_ambiguity_and_identity():
         assert error.value.code == 'ambiguous_recipient'
         assert len(error.value.candidates) == 2
         assert await service.resolve(bot(), contact_id='u2') == 'u2'
-        with pytest.raises(DirectoryError, match='身份'):
+        with pytest.raises(DirectoryError, match='identity'):
             await service.resolve(bot(), contact_id='u3')
     finally:
         await service.close()
@@ -266,7 +266,7 @@ async def test_wecom_observed_exact_bot_id_enables_directory_send(bots, monkeypa
     id=created['id']
     await manager.directory.wait(id)
     values={'project_id':project.id,'bot_id':id,'text':'通知','user_name':'张三'}
-    with pytest.raises(DirectoryError,match='身份'):
+    with pytest.raises(DirectoryError,match='identity'):
         await manager.send_message(**values)
     # An encrypted/different ID with the same display name proves nothing.
     manager.directory.observe_sender(id, 'encrypted_u1')

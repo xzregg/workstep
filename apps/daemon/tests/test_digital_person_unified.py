@@ -49,6 +49,41 @@ async def test_disabling_automatic_thinking_stops_drain_after_current_batch(runt
     await current._drain_assessments()
     assert calls==['delegation','thinking']
 
+
+async def test_automatic_cycle_limits_to_two_batches_then_waits_for_interval(runtime, monkeypatch):
+    current, project, store = runtime
+    store.set('digital_person', {'enabled':True, 'reflection_enabled':True,
+                               'proactive_enabled':True, 'proactive_interval_minutes':5,
+                               'memory_batch_size':2})
+    sid = (await current.main_session())['id']
+    base = utc_now() - timedelta(minutes=2)
+    def prepare(_):
+        for i in range(3):
+            create_completed_user(id=f'bounded-{i}', session=sid, role='user', status='completed',
+                                  content=f'第{i}条独立新事件', created_at=base+timedelta(seconds=i))
+    await current.projects.run_db(project.id, prepare)
+    batches = []
+    async def decide(context):
+        await context['_load']()
+        batches.append([m['id'] for m in context['conversation']])
+        return dict(decision='silent', summary='本批处理完成', source_ids=[])
+    monkeypatch.setattr(current, '_decide', decide)
+    await current._tick()
+    assert len(batches) == 2
+    with index.connect() as db:
+        assert db.execute("SELECT count(*) FROM memories WHERE memory_status='pending'").fetchone()[0] == 2
+    last = (await current.state())['last_check']
+    from datetime import datetime
+    last = datetime.fromisoformat(str(last))
+    await current._tick(last + timedelta(minutes=4, seconds=59))
+    assert len(batches) == 2
+    await current._tick(last + timedelta(minutes=5))
+    assert len(batches) == 3
+    assert len({mid for batch in batches for mid in batch}) == 6
+    with index.connect() as db:
+        assert db.execute("SELECT count(*) FROM memories WHERE memory_status='pending'").fetchone()[0] == 0
+
+
 @pytest.mark.parametrize('shared',[True,False])
 async def test_reflection_is_an_internal_event_not_a_user_message(runtime,monkeypatch,shared):
     from types import SimpleNamespace

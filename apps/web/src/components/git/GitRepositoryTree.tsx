@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { type GitBranch, type GitRepository, type GitDiscovery } from '../../api/git'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import Icon from '../Icon'
 import { useGitApi } from './GitApiContext'
 import Button from '../Button'
@@ -29,7 +29,7 @@ function Repository({ repo, selected, branch, query, relative, open, onToggle, o
   return <section className="git-repository"><button className="git-repository-title" onClick={() => { if (!window.getSelection()?.toString()) onToggle() }} aria-expanded={expanded}><Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={13} /><Icon name="folder-open" size={15} /><strong>{relative === '.' ? repo.name : relative}</strong></button>
     {expanded && <>{visibleTrees.map(w => <div key={w.id} className="git-tree-row"><button className={`git-tree-item ${selected === w.id && !branch ? 'selected' : ''}`} title={w.path} disabled={!w.available || w.prunable} onClick={() => { if (!window.getSelection()?.toString()) onSelect(w.id) }}><Icon name={w.main ? 'folder' : 'git-fork'} size={15} /><span><strong>{w.branch || t('git.detached')}</strong><small>{w.main ? t('git.main') : t('git.worktree')} · {w.path}</small></span>{branches.find(b => b.name === w.branch) && <GitBranchStatus branch={branches.find(b => b.name === w.branch)!} />}{!w.available && <small>{t('git.missing')}</small>}</button>{!w.main && w.available && !w.locked && !w.prunable && !isProtectedGitBranch(w.branch) && w.branch !== repo.worktrees.find(tree => tree.main)?.branch && <GitWorktreeDeleteButton tree={w} onDeleted={() => { if (selected === w.id) { const main = repo.worktrees.find(tree => tree.main && tree.available); if (main) onSelect(main.id) } return onChanged?.() }} />}</div>)}
       {!!missingTrees.length && <details className="git-missing-worktrees"><summary>{t('git.cleanupMissingWorktrees', { count: missingTrees.length })}</summary>{missingTrees.map(w => <div className="git-missing-worktree" key={w.id}><span title={w.path}>{w.branch || t('git.detached')}</span>{!w.locked && !isProtectedGitBranch(w.branch) && w.branch !== repo.worktrees.find(tree => tree.main)?.branch && <GitWorktreeDeleteButton tree={w} onDeleted={() => { if (selected === w.id && directory) onSelect(directory.id); return onChanged?.() }} />}</div>)}</details>}
-      {error && <p className="git-danger">{error}</p>}
+      {error && <p className="git-danger">{localizeErrorDisplay(error)}</p>}
     </>}
   </section>
 }

@@ -1706,7 +1706,7 @@ async def test_codex_spawn_reports_stderr_when_silent_exit_zero(tmp_path, monkey
 
     errors = [event for event in events if event.type == "error"]
     assert len(errors) == 1
-    assert errors[0].data["message"] == "codex 未产生任何输出"
+    assert errors[0].data["message"] == 'codex did not produce any output'
     assert "failed to initialize" in errors[0].data["stderr"]
 
 
@@ -4662,7 +4662,7 @@ async def test_claude_permission_mode_save_requires_confirmation(monkeypatch):
     )
     engine = ClaudeCodeEngine()
 
-    with pytest.raises(ValueError, match="明确确认"):
+    with pytest.raises(ValueError, match='explicit confirmation'):
         await engine.save_config_values({"permission_mode": "bypassPermissions"})
     assert saved == []
 

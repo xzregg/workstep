@@ -29,15 +29,15 @@ def canonical_workflow(raw: dict) -> dict:
     result = deepcopy(raw)
     items = raw.get("nodes") if "nodes" in raw else raw.get("steps", [])
     if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
-        raise WorkflowConflict("流程节点格式无效")
+        raise WorkflowConflict("Invalid workflow node format")
     nodes, keys, aliases = [], set(), {}
     for index, item in enumerate(items):
         key = str(item.get("type") or item.get("key") or item.get("id") or "")
         if key in keys:
-            raise WorkflowConflict(f"阶段标识重复: {key}")
+            raise WorkflowConflict(f"Duplicate stage identifier: {key}")
         keys.add(key)
         if str(item.get("id", index + 1)) in aliases:
-            raise WorkflowConflict("节点 ID 不能重复")
+            raise WorkflowConflict("Node ID must be unique")
         aliases[str(item.get("id", index + 1))] = key
         node = deepcopy(item)
         node.update(id=key, type=key)
@@ -57,7 +57,7 @@ def canonical_workflow(raw: dict) -> dict:
         node.pop("name", None)
         for field in ("inputs", "outputs"):
             if not isinstance(node[field], list) or any(not isinstance(value, (dict, str)) for value in node[field]):
-                raise WorkflowConflict(f"阶段端口格式无效: {key}.{field}")
+                raise WorkflowConflict(f"Invalid stage port format: {key}.{field}")
             node[field] = [deepcopy(value) if isinstance(value, dict)
                            else {"name": str(value), "type": "md"}
                            for value in node[field]]
@@ -66,13 +66,13 @@ def canonical_workflow(raw: dict) -> dict:
         for port in node["inputs"]:
             port.setdefault("outputs", [])
             if not isinstance(port["outputs"], list) or any(not isinstance(output, (dict, str)) for output in port["outputs"]):
-                raise WorkflowConflict(f"输入口产物格式无效: {key}")
+                raise WorkflowConflict(f"Invalid input artifact format: {key}")
             port["outputs"] = [deepcopy(output) if isinstance(output, dict) else {"name": output}
                                for output in port["outputs"]]
             for output in port["outputs"]:
                 output.setdefault("type", "md")
         if not isinstance(node.get("prompt") or "", str):
-            raise WorkflowConflict(f"阶段提示词必须为文本: {key}")
+            raise WorkflowConflict(f"Stage prompt must be text: {key}")
         review = node.get("review")
         review = deepcopy(review) if isinstance(review, dict) else {"mode": "skip"}
         review.setdefault("mode", "auto" if review.get("auto") else "manual")
@@ -92,7 +92,7 @@ def canonical_workflow(raw: dict) -> dict:
                     "kind": edge.get("kind", "solid"),
                 })
             except (KeyError, TypeError) as exc:
-                raise WorkflowConflict("连接引用了不存在的阶段") from exc
+                raise WorkflowConflict("Connection references a non-existent stage") from exc
     else:
         for node, item in zip(nodes, items):
             for dep in item.get("dependsOn", []):
@@ -147,45 +147,45 @@ def _port_contract(node: dict) -> dict:
 def _check_extension(base: dict, edited: dict) -> None:
     key = base["type"]
     if base.get("kind", "llm") != edited.get("kind", "llm"):
-        raise WorkflowConflict(f"不能修改原阶段类型: {key}")
+        raise WorkflowConflict(f"Cannot modify the original stage type: {key}")
     if base.get("dispatch") != edited.get("dispatch"):
-        raise WorkflowConflict(f"不能修改原交接阶段的目标: {key}")
+        raise WorkflowConflict(f"Cannot modify the target of the original handover phase: {key}")
     for field in ("autoStart", "quickButtons", "condition"):
         if field in edited and edited.get(field) != base.get(field):
-            raise WorkflowConflict(f"不支持修改原阶段字段 {field}: {key}")
+            raise WorkflowConflict(f"Cannot modify the original stage field {field}: {key}")
     old_ports, new_ports = base.get("inputs", []), edited.get("inputs", [])
     if len(old_ports) != len(new_ports) or any(
         {k: v for k, v in old.items() if k != "outputs"}
         != {k: v for k, v in new.items() if k != "outputs"}
         for old, new in zip(old_ports, new_ports)
     ):
-        raise WorkflowConflict(f"不能修改原输入连接点: {key}")
+        raise WorkflowConflict(f"Cannot modify the original input connection point: {key}")
     old_outputs, new_outputs = base.get("outputs", []), edited.get("outputs", [])
     if _without_templates(new_outputs[:len(old_outputs)]) != _without_templates(old_outputs):
-        raise WorkflowConflict(f"只能末尾追加产物，不能修改原产物及其编号: {key}")
+        raise WorkflowConflict(f"Only appending artifacts at the end is allowed; modifying original artifacts and their IDs is not permitted: {key}")
     for old, new in zip(old_ports, new_ports):
         old_values = old.get("outputs", [])
         if _without_templates(new.get("outputs", [])[:len(old_values)]) != _without_templates(old_values):
-            raise WorkflowConflict(f"不能删除或修改原输入口的产物: {key}")
+            raise WorkflowConflict(f"Cannot delete or modify the artifact of the original input port: {key}")
     nested = [value for port in new_ports for value in port.get("outputs", [])]
     if any(port.get("outputs") for port in old_ports) and nested != new_outputs:
-        raise WorkflowConflict(f"追加产物不能改变输入口与输出编号的对应关系: {key}")
+        raise WorkflowConflict(f"The additional artifact cannot change the correspondence between input ports and output IDs: {key}")
 
 
 def _validate(value: dict) -> None:
     if not value.get("nodes"):
-        raise WorkflowConflict("至少保留一个步骤节点")
+        raise WorkflowConflict("At least one step node must be retained")
     WorkflowDefinition.load(value).compile()
     edges = [edge_key(edge) for edge in value.get("connections", [])]
     if len(edges) != len(set(edges)):
-        raise WorkflowConflict("不能重复连接相同端口")
+        raise WorkflowConflict("Cannot connect to the same port repeatedly")
     for node in value["nodes"]:
         mode = (node.get("review") or {}).get("mode", "skip")
         if not isinstance(mode, str) or mode not in {"skip", "auto", "manual"}:
-            raise WorkflowConflict(f"审核模式无效: {node['type']}")
+            raise WorkflowConflict(f"Invalid review mode: {node['type']}")
         names = [item.get("name") for item in node.get("outputs", [])]
         if len(names) != len(set(names)):
-            raise WorkflowConflict(f"产物名称不能重复: {node['type']}")
+            raise WorkflowConflict(f"Product name cannot be duplicated: {node['type']}")
 
 
 def build_overrides(source: dict, edited: dict) -> dict | None:
@@ -195,7 +195,7 @@ def build_overrides(source: dict, edited: dict) -> dict | None:
     new = {node["type"]: node for node in value["nodes"]}
     missing = old.keys() - new.keys()
     if missing:
-        raise WorkflowConflict("不能删除原阶段: " + ", ".join(sorted(missing)))
+        raise WorkflowConflict("Cannot delete the original stage: " + ", ".join(sorted(missing)))
     changes, guards = {}, {}
     for key in old:
         _check_extension(old[key], new[key])
@@ -250,22 +250,22 @@ def merge_workflow(source: dict, delta: dict | None) -> dict:
     if not delta:
         return deepcopy(source)
     if not isinstance(delta, dict) or delta.get("version") != 1:
-        raise WorkflowConflict("任务流程增量版本无效")
+        raise WorkflowConflict("Invalid incremental version for task flow")
     result = canonical_workflow(source)
     if "bookmarks" in delta:
         result["bookmarks"] = deepcopy(delta["bookmarks"])
     nodes = {node["type"]: node for node in result["nodes"]}
     for key, guard in delta.get("guards", {}).items():
         if key not in nodes:
-            raise WorkflowConflict(f"主流程已删除任务覆盖的阶段: {key}；请移除覆盖或同步主流程")
+            raise WorkflowConflict(f"The main process has deleted the stage covered by the task: {key}; please remove the override or sync the main process")
         contract = _port_contract(nodes[key])
         if any(contract.get(field) != value for field, value in guard.items()):
-            raise WorkflowConflict(f"主流程已修改端口约定: {key}；请重新编辑或同步主流程")
+            raise WorkflowConflict(f"Main flow port convention modified: {key}; please re-edit or sync the main flow")
     for key, patch in delta.get("nodes", {}).items():
         if key not in nodes:
-            raise WorkflowConflict(f"覆盖阶段不存在: {key}")
+            raise WorkflowConflict(f"Coverage phase does not exist: {key}")
         if set(patch) - PATCH_FIELDS:
-            raise WorkflowConflict(f"不支持的任务覆盖字段: {key}")
+            raise WorkflowConflict(f"Unsupported task override field: {key}")
         if "engine" in patch and patch["engine"] != nodes[key].get("engine"):
             nodes[key]["config"] = {}
         review_patch = patch.get("review")
@@ -275,7 +275,7 @@ def merge_workflow(source: dict, delta: dict | None) -> dict:
         nodes[key] = _patch(nodes[key], {k: v for k, v in patch.items() if k not in {"append_outputs", "append_input_outputs", "output_templates"}})
         for index, template in patch.get("output_templates", {}).items():
             if not isinstance(template, str) or not str(index).isdigit() or int(index) >= len(nodes[key]["outputs"]):
-                raise WorkflowConflict(f"产物模板覆盖无效: {key}")
+                raise WorkflowConflict(f"Invalid artifact template override: {key}")
             output = nodes[key]["outputs"][int(index)]
             output["template"] = template
             for port in nodes[key]["inputs"]:
@@ -288,7 +288,7 @@ def merge_workflow(source: dict, delta: dict | None) -> dict:
     result["nodes"] = list(nodes.values())
     for node in delta.get("added_nodes", []):
         if node["type"] in nodes:
-            raise WorkflowConflict(f"新增阶段与主流程冲突: {node['type']}")
+            raise WorkflowConflict(f"New phase conflicts with the main process: {node['type']}")
         nodes[node["type"]] = deepcopy(node)
         result["nodes"].append(nodes[node["type"]])
     removed = {edge_key(edge) for edge in delta.get("removed_connections", [])}

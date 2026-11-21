@@ -1,0 +1,2 @@
+.voice-model-mirror { display: grid; gap: var(--space-3); min-width: 0; }
+.voice-model-mirror p { color: var(--text-muted); font-size: var(--text-body); margin: 0; }

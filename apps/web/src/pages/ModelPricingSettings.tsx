@@ -9,7 +9,7 @@ import {
   type ModelSettings,
   type ModelType,
 } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { engineLabel } from '../engineMeta'
 
 interface CatalogModel {
@@ -256,7 +256,7 @@ export default function ModelSettingsPage() {
         <span style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', paddingBottom: 9 }}>{t('settings.pricingUnit', { currency: settings.currency })}</span>
       </div>
 
-      {error && <div role="alert" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 10 }}>{error}</div>}
+      {error && <div role="alert" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 10 }}>{localizeErrorDisplay(error)}</div>}
       {saved && <div role="status" style={{ color: 'var(--success)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 10 }}>{t('settings.pricingSaved')}</div>}
       {loading ? (
         <div style={{ padding: 28, textAlign: 'center', color: 'var(--meta)' }}>{t('common.loading')}</div>

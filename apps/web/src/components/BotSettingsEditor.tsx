@@ -3,7 +3,7 @@ import { channelBotApi, type BotDraft, type BotPlatform, type ChannelBot } from 
 import Button, { ButtonLink } from './Button'
 import Input from './Input'
 import Select from './Select'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import WeixinLoginPanel from './WeixinLoginPanel'
 import BotDirectorySettings from './BotDirectorySettings'
@@ -118,7 +118,7 @@ export default function BotSettingsEditor({ platform, bot, onSaved, onCancel, on
     </div>
     <p className="bot-settings-hint">{localProjects.length ? t(platform === 'weixin' ? 'channelBot.weixinProjectHint' : 'channelBot.defaultProjectHint') : t('channelBot.noLocalProject')}</p>
     {platform !== 'weixin' && <p className="bot-settings-hint">{t('channelBot.taskBindingHint')}</p>}
-    {error && <p className="bot-settings-error" role="alert">{error}</p>}
+    {error && <p className="bot-settings-error" role="alert">{localizeErrorDisplay(error)}</p>}
     <div className="bot-settings-actions"><Button variant="primary" loading={busy} disabled={!valid || directoryDirty || directoryBusy} onClick={() => void save()}>{t('common.save')}</Button><Button disabled={busy || directoryBusy} onClick={onCancel}>{t('common.cancel')}</Button></div>
   </section>
 }

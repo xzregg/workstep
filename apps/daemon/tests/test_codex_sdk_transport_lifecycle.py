@@ -5,20 +5,24 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 
+import psutil
 import pytest
+import pytest_asyncio
 
 from engines.codex_sdk import CodexSDKEngine
 from engines.codex_sdk_clients import CodexClientPool
 from engines.core.base import ProviderRuntimeConfig
 
 pytestmark = [
+    pytest.mark.asyncio,
     pytest.mark.filterwarnings('error::pytest.PytestUnhandledThreadExceptionWarning'),
     pytest.mark.filterwarnings('error::pytest.PytestUnraisableExceptionWarning'),
     pytest.mark.filterwarnings('error::RuntimeWarning'),
 ]
 
 
-@pytest.fixture
+# The pool and its background cleanup must share the test event loop.
+@pytest_asyncio.fixture
 async def transport(monkeypatch, tmp_path):
     monkeypatch.setenv('CODEX_HOME', str(tmp_path / 'codex-home'))
     sdk = pytest.importorskip('openai_codex')
@@ -60,16 +64,16 @@ async def transport(monkeypatch, tmp_path):
     finally:
         track()
         await pool.close()
-        assert all(p.poll() is not None for p in processes)
+        assert not [p.pid for p in processes if p.poll() is None], 'Codex app-server processes still running'
         assert not [thread for client in clients for name in ('_reader_thread','_stderr_thread')
                     if (thread := getattr(client._client._sync, name, None)) is not None and thread.is_alive()]
         assert not [thread for router in routers for thread in router.background_threads() if thread.is_alive()]
 
 
-async def collect(transport, prompt, *, sid=None, engine=None, **kwargs):
+async def collect(transport, prompt, *, sid=None, engine=None, cwd=None, **kwargs):
     events = []
     engine = engine or CodexSDKEngine()
-    async for event in engine.spawn(prompt=prompt, cwd=str(transport.root), session_id=sid, **kwargs):
+    async for event in engine.spawn(prompt=prompt, cwd=str(cwd or transport.root), session_id=sid, **kwargs):
         events.append(event)
         transport.track()
     return events
@@ -83,7 +87,6 @@ def text(events):
     return ''.join(e.data['content']['text'] for e in events if e.type == 'agent_message_chunk')
 
 
-@pytest.mark.anyio
 async def test_six_active_turns_use_two_processes_and_stopping_one_keeps_neighbors(transport):
     engines = [CodexSDKEngine() for _ in range(6)]
     queues = [asyncio.Queue() for _ in engines]
@@ -122,7 +125,6 @@ async def test_six_active_turns_use_two_processes_and_stopping_one_keeps_neighbo
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-@pytest.mark.anyio
 async def test_two_pending_approvals_are_routed_independently_and_stop_is_local(transport, monkeypatch):
     engines = [CodexSDKEngine(), CodexSDKEngine()]
     ready = asyncio.Queue()
@@ -142,6 +144,13 @@ async def test_two_pending_approvals_are_routed_independently_and_stop_is_local(
     try:
         requests = dict([await asyncio.wait_for(ready.get(), 5) for _ in engines])
         assert len(transport.clients) == 1
+        approval_process = transport.processes[0]
+        for name in ('idle-a', 'idle-b', 'idle-c'):
+            cwd = transport.root / name
+            cwd.mkdir()
+            assert text(await collect(transport, name, cwd=cwd)) == name
+        assert len(transport.pool._workers) == 3  # Two idle, one awaiting approvals.
+        assert approval_process.poll() is None
         # Wrong engine cannot consume the other thread's approval response.
         assert not await engines[1].respond_interaction(requests[0].data, {'outcome': {'option_id':'allow_once'}})
         await asyncio.wait_for(engines[0].stop(), 5)
@@ -157,7 +166,6 @@ async def test_two_pending_approvals_are_routed_independently_and_stop_is_local(
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-@pytest.mark.anyio
 async def test_shared_native_crash_fails_active_neighbor_and_resumes_both(transport):
     seed_a = await collect(transport, 'seed-a')
     seed_b = await collect(transport, 'seed-b')
@@ -193,7 +201,6 @@ async def test_shared_native_crash_fails_active_neighbor_and_resumes_both(transp
         await asyncio.gather(task, return_exceptions=True)
 
 
-@pytest.mark.anyio
 async def test_stop_during_turn_start_response_recovers_turn_id_without_stopping_neighbor(transport, monkeypatch):
     import openai_codex
     a = session(await collect(transport, 'seed-a'))
@@ -222,7 +229,6 @@ async def test_stop_during_turn_start_response_recovers_turn_id_without_stopping
         await asyncio.gather(task, return_exceptions=True)
 
 
-@pytest.mark.anyio
 async def test_process_death_invalidates_visible_approval_and_old_click_cannot_authorize_restart(transport, monkeypatch):
     from agent_assistants.engine_invocation import run_engine_turn
     from services.intervention import intervention_manager
@@ -268,7 +274,6 @@ async def test_process_death_invalidates_visible_approval_and_old_click_cannot_a
         await asyncio.gather(task, return_exceptions=True)
 
 
-@pytest.mark.anyio
 async def test_stop_while_process_is_starting_does_not_leave_late_process(transport, monkeypatch):
     import subprocess
     import threading
@@ -315,7 +320,6 @@ async def test_stop_while_process_is_starting_does_not_leave_late_process(transp
             await client.close()
 
 
-@pytest.mark.anyio
 async def test_real_sdk_reuse_streaming_and_native_crash_recovery(transport):
     first = await asyncio.wait_for(collect(transport, 'hello'), 5)
     assert text(first) == 'hello'
@@ -333,7 +337,6 @@ async def test_real_sdk_reuse_streaming_and_native_crash_recovery(transport):
     assert len(transport.clients) == 2
 
 
-@pytest.mark.anyio
 @pytest.mark.parametrize('decision', ['allow_once', 'reject_once'])
 async def test_real_sdk_parallel_approval_isolation_and_stop(transport, monkeypatch, decision):
     first = await collect(transport, 'seed')
@@ -378,7 +381,6 @@ async def test_real_sdk_parallel_approval_isolation_and_stop(transport, monkeypa
         await asyncio.gather(waiting, return_exceptions=True)
 
 
-@pytest.mark.anyio
 async def test_real_sdk_live_injection_plan_and_idle_cleanup(transport):
     first = await collect(transport, 'seed')
     sid = session(first)
@@ -398,7 +400,31 @@ async def test_real_sdk_live_injection_plan_and_idle_cleanup(transport):
     assert all(p.poll() is not None for p in transport.processes)
 
 
-@pytest.mark.anyio
+async def test_real_sdk_idle_worker_cap_reaps_process_tree_and_resumes(transport):
+    first = await collect(transport, 'spawn-helper')
+    sid = session(first)
+    original = transport.processes[0]
+    helper = psutil.Process(int(text(first)))
+    assert helper.ppid() == original.pid
+
+    for name in ('second-project', 'third-project'):
+        cwd = transport.root / name
+        cwd.mkdir()
+        assert text(await collect(transport, name, cwd=cwd)) == name
+
+    # Resume immediately while the evicted transport may still be closing.
+    resumed = await asyncio.wait_for(collect(transport, 'resumed', sid=sid), 5)
+    assert session(resumed) == sid
+    assert text(resumed) == 'resumed'
+    assert original.poll() is not None
+    try:
+        assert not helper.is_running() or helper.status() == psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        pass
+    assert len(transport.pool._workers) == 2
+    assert any(row['params']['threadId'] == sid for row in wire(transport, 'thread/resume'))
+
+
 async def test_real_sdk_warm_instructions_images_compaction_and_fork(transport):
     from engines.core.schema import EngineImage
     first = await collect(transport, 'seed', system_prompt='first rules')
@@ -422,7 +448,6 @@ async def test_real_sdk_warm_instructions_images_compaction_and_fork(transport):
     assert transport.processes[0].poll() is None
 
 
-@pytest.mark.anyio
 @pytest.mark.parametrize('shutdown', ['stop', 'pool'])
 async def test_real_sdk_stop_while_reader_waits_for_approval(transport, monkeypatch, shutdown):
     engine = CodexSDKEngine()
@@ -446,7 +471,6 @@ async def test_real_sdk_stop_while_reader_waits_for_approval(transport, monkeypa
         await stream.aclose()
 
 
-@pytest.mark.anyio
 async def test_codex_and_speech_shutdown_do_not_kill_each_other(transport):
     from services.speech_runtime import SpeechRuntime
     worker = transport.root / 'speech-peer.py'
@@ -480,7 +504,6 @@ def goal_status(events):
     return [e.data['status'] for e in events if e.type == 'goal_update']
 
 
-@pytest.mark.anyio
 async def test_real_sdk_plan_default_switching_and_other_session_isolation(transport):
     first = await collect(transport, 'effective-mode', plan_mode=True)
     sid = session(first)
@@ -494,7 +517,6 @@ async def test_real_sdk_plan_default_switching_and_other_session_isolation(trans
     assert len(transport.clients) == 1
 
 
-@pytest.mark.anyio
 @pytest.mark.parametrize('recovery', ['warm', 'ttl', 'lru', 'config'])
 async def test_real_sdk_goal_after_plan_and_resume_after_reclamation(transport, monkeypatch, recovery):
     first = await collect(transport, 'effective-mode', plan_mode=True)
@@ -543,7 +565,6 @@ async def test_real_sdk_goal_after_plan_and_resume_after_reclamation(transport, 
     assert goal_start['params']['collaborationMode']['mode'] == 'default'
 
 
-@pytest.mark.anyio
 @pytest.mark.parametrize('stop_kind', ['stop', 'cancel_session', 'task_cancel', 'pool_close'])
 async def test_real_sdk_active_goal_never_expires_and_cleans_up_on_stop(transport, stop_kind):
     transport.pool.idle_seconds = 0.01
@@ -595,7 +616,6 @@ async def test_real_sdk_active_goal_never_expires_and_cleans_up_on_stop(transpor
         await asyncio.gather(task, return_exceptions=True)
 
 
-@pytest.mark.anyio
 @pytest.mark.parametrize('objective', ['goal-set-fail', 'goal-crash'])
 async def test_real_sdk_goal_failure_discards_transport_and_resumes_session(transport, objective):
     seed = await collect(transport, 'seed')
@@ -609,7 +629,6 @@ async def test_real_sdk_goal_failure_discards_transport_and_resumes_session(tran
     assert session(recovered) == sid and text(recovered) == 'default'
 
 
-@pytest.mark.anyio
 @pytest.mark.parametrize('decision', ['allow_once', 'reject_once'])
 async def test_real_sdk_goal_approval_parallel_normal_turn(transport, monkeypatch, decision):
     first = await collect(transport, 'plan', plan_mode=True)
@@ -642,7 +661,6 @@ async def test_real_sdk_goal_approval_parallel_normal_turn(transport, monkeypatc
         await asyncio.gather(task, return_exceptions=True)
 
 
-@pytest.mark.anyio
 @pytest.mark.parametrize(('objective', 'expected'), [
     ('goal-complete', 'complete'), ('goal-blocked', 'blocked'),
     ('goal-budget', 'budgetLimited'), ('goal-usage', 'usageLimited'),
@@ -662,7 +680,6 @@ async def test_real_sdk_terminal_goal_preserves_final_text_and_failure(transport
         assert len(transport.clients) == 1
 
 
-@pytest.mark.anyio
 @pytest.mark.parametrize('shutdown', ['stop', 'pool', 'task_cancel'])
 async def test_real_sdk_goal_stop_during_pending_approval(transport, monkeypatch, shutdown):
     engine = CodexSDKEngine()

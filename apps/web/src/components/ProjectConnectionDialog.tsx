@@ -2,7 +2,7 @@ import ProjectStorageField from './ProjectStorageField'
 import ResizablePanel from './ResizablePanel'
 import { useEffect, useState } from 'react'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import type { Project } from '../api/client'
 import Button from './Button'
@@ -138,7 +138,7 @@ export default function ProjectConnectionDialog({
               <p className="project-storage-existing-hint">{t('projectStorage.existingHint')}</p>
               {error && (
                 <div style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>
-                  {error}
+                  {localizeErrorDisplay(error)}
                 </div>
               )}
             </>

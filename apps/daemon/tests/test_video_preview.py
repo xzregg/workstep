@@ -11,6 +11,27 @@ pytestmark = pytest.mark.usefixtures("preview_directory")
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(('name', 'payload', 'kind', 'mime'), [
+    ('dialogue.ts', 'export const message: string = "你好";\n'.encode(), 'text', 'text/plain'),
+    ('dialogue.TS', b'/' * 4095 + '你'.encode() + b'\n', 'text', 'text/plain'),
+    ('segment.ts', (b'\x47\x1f\xff\x10' + b'\xff' * 184) * 6000, 'video', 'video/mp2t'),
+])
+async def test_ts_preview_distinguishes_source_and_video(tmp_path, monkeypatch, name, payload, kind, mime):
+    source = tmp_path / name
+    source.write_bytes(payload)
+    monkeypatch.setattr(fs_paths, '_project', lambda _: SimpleNamespace(path=tmp_path, workstep_dir=tmp_path / '.workstep'))
+    app = FastAPI()
+    app.include_router(fs.router)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        response = await client.get('/api/fs/preview', params={'path': name, 'project_id': 'p'})
+    assert response.status_code == 200
+    assert response.json() == {
+        'type': kind, 'content_type': mime, 'content': payload.decode() if kind == 'text' else '',
+        'file_size': len(payload), 'extension': source.suffix, 'relative_path': name,
+    }
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(('name', 'kind', 'mime'), [
     ('intro.mp4', 'video', 'video/mp4'),
     ('月光替我回答-纯音乐试听.wav', 'audio', 'audio/x-wav'),
@@ -44,13 +65,23 @@ async def test_large_media_preview_is_metadata_and_raw_supports_ranges(tmp_path,
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('name', ['intro.mp4', 'song.wav'])
+@pytest.mark.parametrize('name', ['intro.mp4', 'song.wav', 'dialogue.ts'])
 async def test_slow_media_metadata_keeps_health_responsive(tmp_path, monkeypatch, name):
     source = tmp_path / name
     source.write_bytes(b'video')
+    original_open = type(source).open
+
+    def slow_open(path, *args, **kwargs):
+        if path == source and args == ('rb',):
+            time.sleep(.15)
+        return original_open(path, *args, **kwargs)
+
     def slow_resolve(*args, **kwargs):
-        time.sleep(.15)
+        if source.suffix != '.ts':
+            time.sleep(.15)
         return source
+
+    monkeypatch.setattr(type(source), 'open', slow_open)
     monkeypatch.setattr(fs, '_resolve_preview_file', slow_resolve)
     monkeypatch.setattr(fs, '_project_relative_path', lambda *args: name)
     app = FastAPI()

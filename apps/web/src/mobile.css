@@ -157,7 +157,7 @@
   .app-shell > .task-detail-split-handle { display: none; }
   .app-main { width: 100%; }
   .app-main > .assistant-chat-panel { width: 100%; max-width: 900px; margin-inline: auto; }
-  .assistant-chat-panel > div:first-child { padding: 8px 16px !important; gap: 8px !important; flex-wrap: wrap; }
+  .assistant-chat-panel > .assistant-chat-header { padding: 8px 16px !important; gap: 8px !important; flex-wrap: wrap; }
   .assistant-chat-header-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: calc(16px * var(--font-scale)) !important; }
   .chat-history-scroll { min-height: 0; overscroll-behavior-y: contain; overflow-x: clip; }
   .chat-history-content { max-width: 100%; padding-inline: 12px !important; }
@@ -212,20 +212,18 @@
     overflow-wrap: anywhere;
     margin: 0;
   }
-  .provider-protocol-toggle { height: var(--mobile-button-height); min-height: var(--mobile-button-height); }
+  .modal-body label.provider-protocol-choice { min-height: var(--mobile-control-touch); }
   .chat-input-text-segment { min-width: 0; overflow-wrap: anywhere; }
   .markdown-body, .markdown-message { min-width: 0; overflow-wrap: anywhere; }
   .markdown-body pre, .markdown-message pre, .chat-message-row pre { max-width: 100%; overflow-x: auto; }
-  .markdown-body table, .markdown-message table { display: block; max-width: 100%; overflow-x: auto; }
-  .markdown-body th, .markdown-body td,
-  .markdown-message th, .markdown-message td {
+  .markdown-body table { display: block; max-width: 100%; overflow-x: auto; }
+  .markdown-body th, .markdown-body td {
     white-space: normal;
     overflow-wrap: break-word;
     word-break: break-word;
     vertical-align: top;
   }
-  .markdown-body td code, .markdown-body th code,
-  .markdown-message td code, .markdown-message th code {
+  .markdown-body td code, .markdown-body th code {
     white-space: break-spaces;
     overflow-wrap: break-word;
     word-break: break-word;
@@ -462,6 +460,12 @@
   }
   .task-detail-primary-tabs-row > .task-detail-primary-tabs > button { flex-shrink: 0; padding-inline: 1px; }
   .task-detail-primary-tabs-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .task-detail-primary-tabs-row:has(.workflow-debug-tools) > .task-detail-primary-tabs-actions {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-inline-start: auto;
+  }
   .task-detail-id-button:hover { background: transparent; }
   .mobile-detail-tabs { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--border-soft); padding-inline: 12px; }
   .mobile-detail-tabs button { flex: 1; height: var(--mobile-button-height); min-height: var(--mobile-button-height); padding: 0 12px; justify-content: center; border-radius: 0; border-bottom: 2px solid transparent; }
@@ -589,18 +593,6 @@
     min-height: var(--mobile-button-height);
     align-items: center;
   }
-  .provider-protocol-switch {
-    width: 52px;
-    height: var(--mobile-button-height);
-    flex-basis: 52px;
-  }
-  .provider-protocol-switch::after {
-    width: 28px;
-    height: 28px;
-    top: 2px;
-    left: 2px;
-  }
-  .provider-protocol-toggle input:checked + .provider-protocol-switch::after { transform: translateX(20px); }
   .provider-settings-header {
     flex-direction: column;
     align-items: stretch !important;
@@ -772,7 +764,7 @@
   /* 隐藏 40px 会话头部（标题/状态/新建/重命名/删除/打开目录/设置）。
      覆盖上面的 padding/flex-wrap 规则：整行不再渲染。
      运行状态由消息区 thinking 气泡承接；「新建对话」只剩顶栏「+」。 */
-  .assistant-chat-panel > div:first-child {
+  .assistant-chat-panel > .assistant-chat-header {
     display: none !important;
   }
 

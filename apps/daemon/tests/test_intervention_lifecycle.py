@@ -6,6 +6,7 @@ import pytest
 
 from engines.core.events import InternalEvent
 from services.intervention import intervention_manager
+from services.messages import StepEventProgress
 from services.step_interaction_messages import StepInteractionMessages
 
 
@@ -17,7 +18,8 @@ async def test_task_interaction_finishes_with_cancelled_or_actual_response(endin
     event = InternalEvent(type='interaction_request', data={
         'interaction_id': iid, 'method':'session/request_permission',
     })
-    recorded, published, events = [], [], []
+    recorded, published = [], []
+    progress = StepEventProgress(count=4)
     async def record(ref, data):
         recorded.append(data)
     async def run_db(operation):
@@ -39,7 +41,7 @@ async def test_task_interaction_finishes_with_cancelled_or_actual_response(endin
     waiter = asyncio.create_task(intervention_manager.request_response(iid,'task','step',event.data))
     await asyncio.sleep(0)
     task = asyncio.create_task(bridge.finish(waiter=waiter, task_id='task', step_key='step',
-        event=event,engine=engine,message_id='message',journal_ref=None,events_collected=events,
+        event=event,engine=engine,message_id='message',journal_ref=None,event_progress=progress,
         resolved_model=None,engine_id='codex_sdk'))
     try:
         if ending=='engine_failure':
@@ -49,7 +51,7 @@ async def test_task_interaction_finishes_with_cancelled_or_actual_response(endin
         await asyncio.wait_for(task,1)
         expected = ({'outcome':{'option_id':'allow_once'}} if ending=='user_answer'
                     else {'outcome':{'outcome':'cancelled'}})
-        assert events[0]['data']['response'] == expected
+        assert progress.count == published[0]['event_sequence'] == 5
         assert recorded[0]['data']['response'] == expected
         assert published[0]['data']['response'] == expected
         assert not intervention_manager.deliver_response(iid, {'outcome':{'option_id':'allow_once'}})

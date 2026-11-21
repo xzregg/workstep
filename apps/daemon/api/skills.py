@@ -38,10 +38,10 @@ class ProjectSkillBatchToggleRequest(BaseModel):
 
 def _project(project_id: str):
     if not project_id.strip():
-        raise HTTPException(status_code=400, detail="需要选择项目")
+        raise HTTPException(status_code=400, detail="Please select a project")
     project = project_manager.get_project_by_id(project_id)
     if project is None:
-        raise HTTPException(status_code=404, detail="项目不存在")
+        raise HTTPException(status_code=404, detail="Project not found")
     return project
 
 

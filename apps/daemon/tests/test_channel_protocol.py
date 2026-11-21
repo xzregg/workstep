@@ -143,7 +143,7 @@ async def test_media_download_is_bounded_and_does_not_block_health(monkeypatch, 
         async with AsyncClient(transport=ASGITransport(app=main.app),base_url='http://test') as client:
             assert (await asyncio.wait_for(client.get('/api/health'),.5)).status_code==200
     finally: release.set()
-    with pytest.raises(ValueError,match='超过'):
+    with pytest.raises(ValueError,match='exceeds'):
         await pending
     with pytest.raises(ValueError,match='HTTPS'):
         await fetch_media('http://127.0.0.1/secret',10,('qq.com',))
@@ -211,7 +211,7 @@ def test_new_adapter_discovery_and_duplicate_ids(monkeypatch):
     monkeypatch.setattr(registry.pkgutil,'iter_modules',lambda paths:[SimpleNamespace(name='example')])
     assert registry.discover_channels.__wrapped__()=={'example':first}
     monkeypatch.setattr(registry.pkgutil,'iter_modules',lambda paths:[SimpleNamespace(name='example'),SimpleNamespace(name='duplicate')])
-    with pytest.raises(ValueError,match='重复'):
+    with pytest.raises(ValueError,match='Duplicate'):
         registry.discover_channels.__wrapped__()
 
 
@@ -219,6 +219,6 @@ async def test_dingtalk_unsupported_file_type_is_rejected_before_delivery():
     from services.channels.dingtalk import DingTalkAdapter
     adapter=DingTalkAdapter({'id':'b','app_id':'ding','secret':'secret'},AsyncMock(),AsyncMock())
     adapter._send_active=AsyncMock()
-    with pytest.raises(ValueError,match='文件格式'):
+    with pytest.raises(ValueError,match='file format'):
         await adapter.send(IncomingMessage('b','m','single','u','u',''),OutgoingMessage(attachments=(ChannelAttachment('file','script.py',data=b'code'),)))
     adapter._send_active.assert_not_awaited()

@@ -6,6 +6,7 @@ import { LegacyCompletionDestinationPage } from '../src/LegacyCompletionDestinat
 const dom=new JSDOM('',{url:'https://gateway.test/'})
 Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,MutationObserver:dom.window.MutationObserver})
 Object.defineProperty(globalThis,'navigator',{configurable:true,value:dom.window.navigator})
+Object.defineProperty(dom.window.navigator,'language',{configurable:true,value:'zh-CN'})
 const {render,screen,waitFor,cleanup}=await import('@testing-library/react')
 const oldFetch=globalThis.fetch,oldSubmit=dom.window.HTMLFormElement.prototype.submit
 afterEach(()=>{cleanup();globalThis.fetch=oldFetch;dom.window.HTMLFormElement.prototype.submit=oldSubmit})

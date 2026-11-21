@@ -213,10 +213,10 @@ async def get_project_storage(project_id: str, request: Request):
     from services.remote_access import get_current_actor
     actor = get_current_actor()
     if request.scope.get("gateway_remote_actor") or (actor and (actor.project_id is not None or actor.source == "remote")):
-        raise HTTPException(403, "数据存储位置只能由本机管理")
+        raise HTTPException(403, "The data storage location can only be managed by the local machine")
     project = project_manager.get_project_by_id(project_id)
     if project is None:
-        raise HTTPException(404, "项目不存在")
+        raise HTTPException(404, "Project not found")
     return {"follow_project": project.follow_project, "data_path": str(project.workstep_dir)}
 
 
@@ -225,10 +225,10 @@ async def set_project_storage(project_id: str, req: ProjectStorageRequest, reque
     from services.remote_access import get_current_actor
     actor = get_current_actor()
     if request.scope.get("gateway_remote_actor") or (actor and (actor.project_id is not None or actor.source == "remote")):
-        raise HTTPException(403, "数据存储位置只能由本机管理")
+        raise HTTPException(403, "The data storage location can only be managed by the local machine")
     try:
         return await project_manager.set_storage(project_id, req.follow_project)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
     except OSError as exc:
-        raise HTTPException(500, "迁移未完成，请检查磁盘空间和目录权限后重试") from exc
+        raise HTTPException(500, "Migration incomplete. Please check disk space and directory permissions, then retry.") from exc

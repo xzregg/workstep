@@ -40,24 +40,24 @@ def volc_frame(payload, sequence, config=False, final=False):
 
 def volc_response(data):
     if not isinstance(data, bytes) or len(data) < 8:
-        raise ValueError('云识别响应格式错误')
+        raise ValueError('Cloud recognition response format error')
     flags, kind = data[1] & 15, data[1] >> 4
     offset = (data[0] & 15) * 4
     if flags & 1: offset += 4
     if flags & 4: offset += 4
     if kind == 15:
-        raise ValueError('云识别返回错误')
+        raise ValueError('Cloud recognition returned an error')
     if kind != 9 or len(data) < offset + 4:
-        raise ValueError('云识别响应格式错误')
+        raise ValueError('Cloud recognition response format error')
     size = struct.unpack('>I', data[offset:offset + 4])[0]
     payload = data[offset + 4:]
     if len(payload) != size or size > MAX_RESPONSE:
-        raise ValueError('云识别响应过大或不完整')
+        raise ValueError('Cloud recognition response is too large or incomplete')
     if data[2] & 15 == 1:
         decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
         payload = decoder.decompress(payload, MAX_RESPONSE + 1)
         if len(payload) > MAX_RESPONSE or decoder.unconsumed_tail or not decoder.eof:
-            raise ValueError('云识别响应过大或不完整')
+            raise ValueError('Cloud recognition response is too large or incomplete')
     return json.loads(payload), bool(flags & 2)
 
 
@@ -98,7 +98,7 @@ class RemoteSpeechRuntime:
         if self.settings['provider'] == 'tencent':
             event = json.loads(await asyncio.wait_for(self.socket.recv(), 8))
             if event.get('code') != 0:
-                raise ValueError('云识别认证失败')
+                raise ValueError('Cloud recognition authentication failed')
         else:
             config = dict(user=dict(uid=uuid.uuid4().hex), audio=dict(format='pcm', rate=16000, bits=16, channel=1),
                           request=dict(model_name='bigmodel', enable_itn=True, enable_punc=True, result_type='full'))
@@ -111,7 +111,7 @@ class RemoteSpeechRuntime:
 
     def _update(self, event, final):
         if event.get('code', 0) not in (0, 1000):
-            raise ValueError('云识别返回错误')
+            raise ValueError('Cloud recognition returned an error')
         result = event.get('result', {})
         if self.settings['provider'] == 'tencent':
             if 'voice_text_str' in result:
@@ -121,7 +121,7 @@ class RemoteSpeechRuntime:
         elif isinstance(result, dict) and 'text' in result:
             self.text = result['text']
         if not isinstance(self.text, str) or len(self.text) > 100000:
-            raise ValueError('云识别文本格式无效')
+            raise ValueError('Invalid cloud recognition text format')
         self.changed.set()
         if final:
             self.done.set()
@@ -134,22 +134,22 @@ class RemoteSpeechRuntime:
                 if self.done.is_set():
                     return
             if not self.done.is_set():
-                raise ValueError('云识别连接提前关闭')
+                raise ValueError('Cloud recognition connection closed prematurely')
         except asyncio.CancelledError:
             raise
         except Exception:
-            self.error = ValueError('云识别失败，请检查连接、模型和认证配置')
+            self.error = ValueError('Cloud recognition failed. Please check the connection, model, and authentication configuration:')
             self.done.set(); self.changed.set()
 
     async def infer(self, pcm, final):
         if self.closed:
-            raise LookupError('录音已结束')
+            raise LookupError('Recording has ended')
         self.operation = asyncio.create_task(self._infer(pcm, final))
         try:
             return await self.operation
         except asyncio.CancelledError:
             if self.closed:
-                raise LookupError('录音已结束') from None
+                raise LookupError('Recording has ended') from None
             raise
         finally:
             self.operation = None
@@ -186,13 +186,13 @@ class RemoteSpeechRuntime:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            raise ValueError('云端或远程识别失败，请检查服务地址、模型和认证配置') from exc
+            raise ValueError('Cloud or remote recognition failed. Please check the service address, model, and authentication configuration:') from exc
         finally:
             self.last_used = time.monotonic()
 
     async def _transcribe(self, pcm, final):
         if len(self.pcm) + len(pcm) > 16000 * 2 * 120:
-            raise ValueError('录音超过限制')
+            raise ValueError('Recording exceeds the limit')
         self.pcm.extend(pcm)
         if not final or not self.pcm:
             return self.text
@@ -214,10 +214,10 @@ class RemoteSpeechRuntime:
             async for chunk in response.aiter_bytes():
                 data.extend(chunk)
                 if len(data) > MAX_RESPONSE:
-                    raise ValueError('识别响应过大')
+                    raise ValueError('Response too large')
             text = json.loads(data)['text']
             if not isinstance(text, str) or len(text) > 100000:
-                raise ValueError('识别结果格式无效')
+                raise ValueError('Invalid recognition result format')
             return text
 
     async def close(self):

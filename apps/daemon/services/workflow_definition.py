@@ -93,7 +93,7 @@ class WorkflowDefinition:
                     outputs.extend(port.get("outputs", []))
             for output in outputs:
                 if isinstance(output, dict) and "template" in output and not isinstance(output["template"], str):
-                    raise WorkflowValidationError("产物模板必须为文本")
+                    raise WorkflowValidationError("The artifact template must be text")
         seen_keys: dict[str, int] = {}
         for index, item in enumerate(items):
             key = item.get("key", item.get("type", item.get("id", "")))

@@ -9,11 +9,11 @@ function placeholders(value: string) { return [...value.matchAll(/\{(\w+)\}/g)].
 export function validateLanguage(value: unknown): LanguageDocument {
  const pack = value as LanguageDocument
  const m = pack?.manifest
- if (!m || m.schema_version !== 1 || m.direction !== 'ltr' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(m.id) || !/^[a-f0-9]{64}$/.test(pack.revision) || !m.name?.trim() || !m.native_name?.trim() || !m.version?.trim() || !builtinLocales.includes(m.fallback_locale) || builtinLocales.some(locale => locale.toLowerCase() === m.locale?.toLowerCase())) throw new Error('语言包元数据无效')
- try { if (Intl.getCanonicalLocales(m.locale).length !== 1) throw new Error() } catch { throw new Error('语言标识无效') }
- if (!pack.messages || typeof pack.messages !== 'object' || Array.isArray(pack.messages) || languageCatalog.required_keys.some(key => !pack.messages[key])) throw new Error('语言包缺少必要文案')
+ if (!m || m.schema_version !== 1 || m.direction !== 'ltr' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(m.id) || !/^[a-f0-9]{64}$/.test(pack.revision) || !m.name?.trim() || !m.native_name?.trim() || !m.version?.trim() || !builtinLocales.includes(m.fallback_locale) || builtinLocales.some(locale => locale.toLowerCase() === m.locale?.toLowerCase())) throw new Error('Invalid language pack metadata')
+ try { if (Intl.getCanonicalLocales(m.locale).length !== 1) throw new Error() } catch { throw new Error('Invalid language identifier') }
+ if (!pack.messages || typeof pack.messages !== 'object' || Array.isArray(pack.messages) || languageCatalog.required_keys.some(key => !pack.messages[key])) throw new Error('Language pack is missing required messages')
  for (const [key, text] of Object.entries(pack.messages)) {
-  if (!Object.hasOwn(languageCatalog.messages, key) || typeof text !== 'string' || !text.trim() || text.length > 20000 || /<[!/A-Za-z][^>]*>/.test(text) || placeholders(text) !== placeholders(languageCatalog.messages[key])) throw new Error('语言文案或占位符无效：' + key)
+  if (!Object.hasOwn(languageCatalog.messages, key) || typeof text !== 'string' || !text.trim() || text.length > 20000 || /<[!/A-Za-z][^>]*>/.test(text) || placeholders(text) !== placeholders(languageCatalog.messages[key])) throw new Error('Invalid language message or placeholder:' + key)
  }
  return pack
 }

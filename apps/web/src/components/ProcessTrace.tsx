@@ -14,7 +14,7 @@ import {
   toMilliseconds,
   type DateTimeValue,
 } from '../utils/datetime'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import {
   buildMessageTimeline,
   estimateTokens,
@@ -488,7 +488,7 @@ export default function ProcessTrace({
             <StreamingStatusText label={t('trace.loadingDetails')} />
           )}
           {!detailsLoading && detailsError && (
-            <div style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{detailsError}</div>
+            <div style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{localizeErrorDisplay(detailsError)}</div>
           )}
           {!detailsLoading && !detailsError && detailsAvailable && !detailsLoaded && Boolean(eventSummary?.thought_characters) && (
             <div style={{ color: 'var(--meta)', fontSize: 'calc(12px * var(--font-scale))' }}>

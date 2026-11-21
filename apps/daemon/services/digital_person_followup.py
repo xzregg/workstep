@@ -23,7 +23,7 @@ class DelegationFollower:
         async with self.lock:
             state=await self.runtime.state()
             for item in state.get('delegations',[]):
-                if item.get('notified'):
+                if item.get('notified') or item.get('followup_state'):
                     continue
                 try:
                     await self._follow(item,profile)
@@ -44,6 +44,8 @@ class DelegationFollower:
         except (ValueError,LookupError):
             result={'status':'missing','content':'执行项目已不可用。','read':False}
         status=result['status']
+        if status == 'running' and item.get('continuation_of') and runtime.chats.is_turn_queued(item['turn_id']):
+            status = 'queued'
         terminal=status in TERMINAL or status=='missing'
         run_id=str(uuid.uuid5(uuid.NAMESPACE_URL,'workstep-delegation:'+item['id']))
         def update(state):
@@ -60,7 +62,7 @@ class DelegationFollower:
             return terminal
         if not await runtime.mutate(update):
             return
-        labels={'completed':'已完成','succeeded':'已完成','failed':'失败','error':'失败','stopped':'已停止','missing':'不可用'}
+        labels={'completed':'已完成','succeeded':'已完成','failed':'失败','error':'Failed','stopped':'已停止','missing':'不可用'}
         summary=f"委派任务{labels[status]}：{item.get('instruction','')[:100]}\n\n{result['content'] or '请打开执行会话查看结果。'}"
         run={'id':run_id,'created_at':utc_now(),'trigger':'delegation','kind':'work',
              'origin_session_id':item['origin_session_id'],'notification_sources':[item['id']],

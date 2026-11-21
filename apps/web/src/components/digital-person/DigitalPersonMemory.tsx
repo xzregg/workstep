@@ -6,7 +6,7 @@ import SegmentedControl from '../SegmentedControl'
 import Spinner from '../Spinner'
 import Icon from '../Icon'
 import DigitalPersonMemoryGraph from './DigitalPersonMemoryGraph'
-import { memoryTitle as title } from './memoryView'
+import { memoryClues, memoryTitle as title } from './memoryView'
 import DigitalPersonMemorySource from './DigitalPersonMemorySource'
 import './DigitalPersonMemory.css'
 
@@ -38,7 +38,8 @@ export default function DigitalPersonMemory({name}:{name:string;avatar:'robot'|'
   const changeKind=(value:typeof kind)=>{setKind(value);setSelected('')}
   const select=(id:string)=>{setSelected(id);detail.current?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}
   const sharedEntities=(item:MemoryViewItem)=>current?item.entities.filter(e=>current.entities.some(c=>c.kind===e.kind&&c.name===e.name)).length:0
-  const related=current?items.filter(item=>item.id!==current.id && (item.sources.some(s=>current.sources.some(c=>c.id===s.id)) || item.entities.some(e=>current.entities.some(c=>c.kind===e.kind&&c.name===e.name)))).sort((a,b)=>sharedEntities(b)-sharedEntities(a)).slice(0,6):[]
+  const currentClues=new Set(current?memoryClues(current):[])
+  const related=current?items.filter(item=>item.id!==current.id && memoryClues(item).some(key=>currentClues.has(key))).sort((a,b)=>sharedEntities(b)-sharedEntities(a)).slice(0,6):[]
   const state=(item:MemoryViewItem)=>text(!item.interpretation?'sourceRecord':item.state==='conflict'?'conflict':'derived')
   const date=(value:string)=>value?new Date(value).toLocaleString(): '—'
   const card=(item:MemoryViewItem)=> <Button key={item.id} className="digital-memory-card" aria-pressed={selected===item.id} onClick={()=>select(item.id)}><small>{text(item.kind)} · {date(item.time)}</small><strong>{title(item)}</strong><small>{[...new Set(item.sources.map(s=>s.project_name))].join('、')}</small></Button>

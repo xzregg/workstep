@@ -8,9 +8,9 @@ export type ComposerSendGlyph = keyof typeof composerSendGlyphs | {paths: string
 /** Declarative geometry only: no XML, attributes, URLs or executable content. */
 export function validateComposerSendGlyph(value: unknown): asserts value is ComposerSendGlyph {
  if (typeof value === 'string' && Object.hasOwn(composerSendGlyphs, value)) return
- if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== 1 || !('paths' in value)) throw new Error('发送图标配置无效')
+ if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== 1 || !('paths' in value)) throw new Error('Invalid icon configuration')
  const paths = value.paths
- if (!Array.isArray(paths) || paths.length < 1 || paths.length > 32 || paths.some(path => typeof path !== 'string' || path.length > 4096 || !/^[Mm]\s*[-+.0-9]/.test(path) || !/^[MmLlHhVvCcSsQqTtAaZz0-9., +\-]+$/.test(path))) throw new Error('发送图标路径无效')
+ if (!Array.isArray(paths) || paths.length < 1 || paths.length > 32 || paths.some(path => typeof path !== 'string' || path.length > 4096 || !/^[Mm]\s*[-+.0-9]/.test(path) || !/^[MmLlHhVvCcSsQqTtAaZz0-9., +\-]+$/.test(path))) throw new Error('Invalid icon path')
 }
 export function composerSendMarkup(name: ComposerSendGlyph = 'send') {
  validateComposerSendGlyph(name)

@@ -412,7 +412,7 @@ async def test_dingtalk_card_http_is_async_and_checks_platform_error(monkeypatch
     assert calls[0][0:2] == ('POST','https://api.dingtalk.com/v1.0/card/instances/createAndDeliver')
     assert calls[0][2]['json']['openSpaceId'] == 'dtv1.card//IM_ROBOT.u'
     result.update(code='Forbidden')
-    with pytest.raises(RuntimeError,match='卡片操作失败'):
+    with pytest.raises(RuntimeError,match='card operation failed'):
         await adapter.update_card(None,card)
 
 

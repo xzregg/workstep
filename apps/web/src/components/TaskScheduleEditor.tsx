@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { scheduleApi, taskApi, type ProjectSchedule, type SchedulePayload, type ScheduleRule, type Task } from '../api/client'
 import { useScheduleDraftState, type ScheduleEditorState } from '../hooks/useScheduleDraftState'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import ScheduleRuleEditor from './ScheduleRuleEditor'
 import ScheduleNotificationEditor, { type NotificationEditorState } from './ScheduleNotificationEditor'
@@ -85,7 +85,7 @@ export default function TaskScheduleEditor({ projectId, schedule, workflows = []
     <ScheduleNotificationEditor key={taskId} projectId={projectId} taskId={taskId || undefined} initialValue={schedule?.notification}
       onChange={(state, automatic) => { if (automatic) acceptDefaults('notification', state.value); setNotification(state) }} />
     <div className="task-schedule-preview">{t('schedules.nextRuns')}: {preview.slice(0,3).map(value => new Date(value).toLocaleString()).join(' · ') || '—'}</div>
-    {error && <div role="alert" className="task-schedule-error">{error}</div>}
+    {error && <div role="alert" className="task-schedule-error">{localizeErrorDisplay(error)}</div>}
     <Button variant="primary" loading={busy} disabled={!name.trim() || !taskId || !instruction.trim() || !preview.length || !notification.valid} onClick={() => void save()}>{t('common.save')}</Button>
   </div>
 }

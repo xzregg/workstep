@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ChatSessionSummary } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useSidebarSessionActions } from '../hooks/useSidebarSessionActions'
 import { useOverlay } from '../hooks/useOverlay'
 import type { RecentVisit } from '../stores/recentVisitsStore'
@@ -71,7 +71,7 @@ export default function RecentConversationActions({ entry, session, hovered, now
         danger loading={busy} onConfirm={() => { void remove() }}
         onCancel={() => { if (!busy) { setMode(null); clearSessionError() } }} />
       {sessionError && <div role="alert" className="layout-session-delete-error">
-        <span>{sessionError}</span><Button variant="icon" aria-label={t('common.close')}
+        <span>{localizeErrorDisplay(sessionError)}</span><Button variant="icon" aria-label={t('common.close')}
           className="layout-session-delete-error-close" onClick={clearSessionError}><Icon name="x" size={13} /></Button>
       </div>}
     </>, document.body)}

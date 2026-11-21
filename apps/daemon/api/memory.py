@@ -32,6 +32,7 @@ class SearchRequest(ExecutionRequest):
 
 
 class ExpandedSearchRequest(SearchRequest):
+    knowledge_only: bool = False
     person: str = Field(default='', max_length=120)
     event: str = Field(default='', max_length=120)
     object: str = Field(default='', max_length=120)

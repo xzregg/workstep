@@ -1,5 +1,6 @@
 """Persistent task message creation, ordering, and usage projection."""
 
+from dataclasses import dataclass
 import json
 import secrets
 import threading
@@ -10,10 +11,31 @@ from models import Message, Task, WorkflowRun
 from models.base import db_proxy
 
 
+_USAGE_EVENT_TYPES = {"usage", "usage_update"}
+
+
+@dataclass
+class StepEventProgress:
+    """Keep the live sequence and latest usage while detail goes to the journal."""
+
+    count: int = 0
+    last_usage_event: dict | None = None
+
+    def observe(self, event: dict) -> None:
+        self.count += 1
+        if event.get("type") in _USAGE_EVENT_TYPES:
+            self.last_usage_event = event
+
+    def usage_json(self) -> str | None:
+        if self.last_usage_event is None:
+            return None
+        return json.dumps(self.last_usage_event.get("data", {}))
+
+
 def extract_usage_json(events_collected: list[dict]) -> str | None:
     """Extract the last usage event's data as JSON for message.usage_json."""
     for event in reversed(events_collected):
-        if event.get("type") in {"usage", "usage_update"}:
+        if event.get("type") in _USAGE_EVENT_TYPES:
             return json.dumps(event.get("data", {}))
     return None
 

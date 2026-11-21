@@ -223,6 +223,8 @@ export interface EngineConfigSaveInput {
 // --- Provider (供应商) API ---
 
 export interface ProviderInfo {
+  managed?: boolean
+  test_success?: boolean | null
   id: string
   name: string
   type: string
@@ -296,6 +298,7 @@ export interface ProviderSaveResult {
 export interface ProviderTestResult {
   provider_id: string
   success: boolean
+  test_success?: boolean | null
   message: string
   duration_ms: number
 }

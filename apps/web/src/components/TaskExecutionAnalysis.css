@@ -34,6 +34,25 @@
   font-weight: 600;
 }
 
+@media (min-width: 1024px) {
+  .task-detail-primary-tabs-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    gap: 8px;
+    padding-inline-end: 12px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .task-detail-primary-tabs-row > .task-detail-primary-tabs {
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    border-bottom: 0;
+  }
+}
+
 .execution-analysis-heading,
 .execution-analysis-panel-head,
 .execution-segment-head {

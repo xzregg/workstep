@@ -68,7 +68,7 @@ import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import { useTaskReviewActions } from '../hooks/useTaskReviewActions'
 import { useTaskPendingInserts } from '../hooks/useTaskPendingInserts'
 import { CUSTOM } from '../utils/agui'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import type { SharedTaskDetailBinding } from './SharedEditableTaskDetail'
 
 const EMPTY_EVENTS: any[] = []
@@ -120,6 +120,7 @@ interface StepProgress extends Partial<TaskStepState> {
 }
 
 interface TaskDetailProps {
+  debugWorkflowTools?: React.ReactNode
   focusMessageId?: string
   shared?: SharedTaskDetailBinding
   project?: Project
@@ -127,7 +128,7 @@ interface TaskDetailProps {
   onClose: () => void
 }
 
-export default function TaskDetail({ taskId, onClose, shared, project, focusMessageId }: TaskDetailProps) {
+export default function TaskDetail({ taskId, onClose, shared, project, focusMessageId, debugWorkflowTools }: TaskDetailProps) {
   const { t, locale } = useI18n()
   const { openTask } = useTaskRoute()
   const activeProject = useProjectStore((s) => s.activeProject)
@@ -191,7 +192,7 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
   const { task, status: taskReadStatus, error: taskReadError, retry: retryTaskRead } = useTaskRecord(
     taskId, projectId, shared?.task, Boolean(project && projectId !== activeProject?.id),
   )
-  useRecordRecentVisit(!shared && task && detailProject ? {
+  useRecordRecentVisit(!shared && task && !task.is_debug && !debugWorkflowTools && detailProject ? {
     kind: 'task', id: task.id, projectId: detailProject.id,
     title: task.title, workflowId: task.workflow_id || undefined,
   } : null)
@@ -923,10 +924,11 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
         workflowConnections={workflowConfiguration?.workflow?.connections || []}
         templateConfiguration={workflowConfiguration}
         onTemplateSaved={!shared ? updateWorkflowConfiguration : undefined}
-        workflowTools={workflowConfiguration
+        debugWorkflowTools={debugWorkflowTools}
+        workflowTools={debugWorkflowTools ? undefined : (workflowConfiguration
           ? <TaskWorkflowTools taskId={taskId} projectId={projectId} configuration={workflowConfiguration}
               readOnly={Boolean(shared)} onChanged={(value) => { updateWorkflowConfiguration(value); void refreshTask(taskId, projectId) }} />
-          : workflowError ? <div role="alert">{workflowError}</div> : <Spinner />}
+          : workflowError ? <div role="alert">{localizeErrorDisplay(workflowError)}</div> : <Spinner />)}
         stepProgress={stepProgress}
         selectedStep={selectedStep}
         onStepClick={handleStepClick}
@@ -1018,7 +1020,7 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
         coordinatorStopping={coordinatorStopping}
         titleEditable
         descriptionEditable
-        onOpenPromptEditor={!shared && workflowConfiguration?.editable && !workflowConfiguration.conflict
+        onOpenPromptEditor={!debugWorkflowTools && !shared && workflowConfiguration?.editable && !workflowConfiguration.conflict
           ? () => setShowPromptEditor(true) : undefined}
         reviewConfigEditable
         onA2uiAction={handleA2uiAction}

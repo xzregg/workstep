@@ -52,6 +52,16 @@ WORKSTEP_LOG_KIB_PER_SECOND=256
 
 修改 I/O 路径时写慢盘、慢 SQL、网络延迟或锁竞争回归，并在慢操作进行时测轻量协程或健康检查是否及时响应。静态搜索只能辅助定位，不能代替真实调用路径测试。详细约束见 [Daemon 指导](../apps/daemon/AGENTS.md)。
 
+## 托管资源下载
+
+语音模型、运行库和沙箱安装包等由 WorkStep 管理的资源，按以下方式接入。
+
+- **普通文件**由调用方提供可信 URL、稳定资源 ID、预期哈希，以及已知时的文件大小。Daemon 复用 `services/resource_download.py::ResourceDownload`，桌面主进程复用 `src/resource-download.cjs::downloadFile`。桌面安装可先于 daemon 启动，两者各自在宿主运行环境内下载。
+- 部分文件按资源标识和哈希隔离。暂停、网络中断或宿主重启后保留字节，下次启动从已写入的位置请求 HTTP Range。收到的范围必须匹配请求；下载源忽略 Range 时只重下该文件。完整校验通过后才交给安装方，损坏的缓存应移除。
+- 任务由宿主管理模块持有。进度至少提供已接收字节和可为空的总字节数，页面退出只停止观察；恢复操作重新提交同一资源。支持暂停的入口应等待写入停止再返回。清理入口只删除所选资源的下载缓存，保留已安装内容和其他任务。
+- **在线 OCI 镜像**走容器引擎拉取和镜像检查。桌面沙箱复用 `sandbox.cjs::acquireReleaseImage`，复用镜像层由 Podman 管理；下载进度未知时只展示阶段。按文件断点续传适用于独立发布且可校验的镜像归档。
+- 修改下载行为时用模拟源覆盖中断、恢复、Range 不可用、校验失败和清理范围。需要用户操作时，界面只提供对应任务实际支持的操作。
+
 ## 文件描述符与数据库连接
 
 `start.sh` 和 `start-gateway.sh` 共用 `scripts/file-limits.sh`，启动时默认将文件描述符软上限提高到 4096；可在 `.env` 或启动环境设置 `WORKSTEP_NOFILE_LIMIT=8192`。脚本不降低已有更高上限，不超过系统硬上限，并输出实际值。配置由随后启动的后端及子进程继承，已运行的进程须在下次重启后生效。`main.py::lifespan` 同时调用 `services/resource_limits.py::configure_file_limit`，让直接运行 uvicorn 和桌面包内后端也采用相同默认值；macOS/Linux 只提高软上限，Windows 没有 POSIX `RLIMIT_NOFILE` 时跳过。桌面包需要重新构建安装才能获得新代码。
@@ -63,6 +73,8 @@ daemon 的专用 `ProjectDatabaseExecutor` 每个项目复用一个线程本地�
 排查 `Too many open files` 时，用 `lsof -nP -p <PID>` 区分数字 FD 与 `txt` 映射；`.db`、`-wal`、`-shm` 都占描述符，同一项目跨临时线程出现大量 `.db` 重复项时检查工作单元的关闭路径。回归入口为 daemon `test_project.py` / `test_api_contracts.py`、gateway `test_database.py` / `test_startup_script.py` 和 `scripts/tests/test_file_limits.py`。
 
 ## 前端控件与样式
+
+后台、桌面和前端源码中的错误使用可读英文。Web 工作台和网关页面通过 `packages/gateway-ui/src/errorText.ts` 翻译已登记的错误模板。新增用户可见错误时同步登记英文、简体中文及其他内置语言。模板占位符按 `{p0}`、`{p1}` 编号，保留现有文案 ID 供自定义语言包沿用。控制流优先依据状态码或异常类型。展示层保留无法识别的上游错误。
 
 优先用 `Button`、`Input`、`Select`、`Textarea`、`ChatInput`、`ConfirmDialog` 等共享组件，设计规则见[统一设计规范](../DESIGN.md)。移动端普通可见控件统一为 32px，高点击区域和菜单项用 44px；使用 `src/mobile.css` 的 `--mobile-control-*` 变量，不在页面样式写一次性高度。消息操作按钮保持紧凑；图标按钮要有明确内边距。新增文案先写 `zh-CN.ts`，所有词典键集合保持一致且非空。
 

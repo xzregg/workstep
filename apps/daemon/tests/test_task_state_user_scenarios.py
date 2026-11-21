@@ -78,7 +78,7 @@ async def test_pre_execution_exit_is_not_running(scenario, monkeypatch, failure)
         monkeypatch.setattr(StepArtifactRoutes, 'reconcile_configuration', broken)
     try:
         if failure == 'empty':
-            with pytest.raises(ValueError, match='空流程'):
+            with pytest.raises(ValueError, match='Empty flow'):
                 await runtime._start_after_slot(project.id, task.id, '')
             assert not WorkflowRun.select().where(WorkflowRun.task == task).exists()
             assert Task.get_by_id(task.id).status == 'ready'

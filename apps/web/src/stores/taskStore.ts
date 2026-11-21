@@ -152,11 +152,11 @@ interface TaskState {
   ) => Promise<Task>
   updateScheduledStart: (taskId: string, scheduledStartAt: string | null, projectId: string) => Promise<Task>
   deleteTask: (taskId: string, projectId: string, deleteWorkspace?: boolean) => Promise<void>
-  archiveTask: (taskId: string, projectId: string) => Promise<void>
+  archiveTask: (taskId: string, projectId: string, deleteWorkspace?: boolean) => Promise<void>
   getArchiveExperienceDraft: (taskId: string, projectId: string) => Promise<ArchiveExperienceDraft>
   prepareArchiveExperience: (taskId: string, projectId: string, messageId: string) => Promise<ArchiveExperienceDraft>
   stopArchiveExperience: (taskId: string, projectId: string, messageId: string) => Promise<boolean>
-  confirmArchiveExperience: (taskId: string, projectId: string, experience: string) => Promise<void>
+  confirmArchiveExperience: (taskId: string, projectId: string, experience: string, deleteWorkspace?: boolean) => Promise<void>
   unarchiveTask: (taskId: string, projectId: string) => Promise<void>
   copyTask: (taskId: string, newTitle: string, projectId: string) => Promise<void>
   handleWsEvent: (event: TaskEvent) => void
@@ -167,11 +167,12 @@ type TaskListQuery = NonNullable<TaskState['listQuery']>
 const taskListRequests = new Map<string, {
   query: TaskListQuery
   promise: Promise<void>
+  created: Set<string>
 }>()
 
 export function selectWorkflowTasks(tasks: Task[], workflowId: string | null, archived: boolean): Task[] {
   return tasks.filter(task => (
-    Boolean(task.archived) === archived
+    !task.is_debug && Boolean(task.archived) === archived
     && (!workflowId || task.workflow_id === workflowId)
   ))
 }
@@ -212,10 +213,24 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
     set({ loading: true, listError: null, listQuery: query,
       ...(previous?.projectId !== projectId ? { tasks: [], activeTaskId: null } : {}) })
+    const created = new Set<string>()
     const promise = Promise.resolve()
       .then(() => taskApi.list(projectId, query.workflowId, query.archived))
       .then(({ tasks }) => {
-        if (get().listQuery === query) set({ tasks, loading: false })
+        if (get().listQuery !== query) return
+        const live = get().tasks.filter(task => created.has(task.id))
+        if (!live.length) {
+          set({ tasks, loading: false })
+          return
+        }
+        const persisted = new Map(tasks.map(task => [task.id, task]))
+        const arrivals = live.map(task => {
+          const current = persisted.get(task.id)
+          persisted.delete(task.id)
+          if (!current) return task
+          return (current.state_version ?? 0) > (task.state_version ?? 0) ? current : { ...task, cwd: current.cwd }
+        })
+        set({ tasks: [...arrivals, ...persisted.values()], loading: false })
       })
       .catch(error => {
         if (get().listQuery === query) set({ loading: false, listError: error instanceof Error ? error.message : zhCNT('taskList.loadFailed') })
@@ -223,7 +238,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       .finally(() => {
         taskListRequests.delete(requestKey)
       })
-    taskListRequests.set(requestKey, { query, promise })
+    taskListRequests.set(requestKey, { query, promise, created })
     return promise
   },
 
@@ -258,7 +273,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       autoStart,
       scheduledStartAt || null,
     )
-    set((s) => ({ tasks: [...s.tasks, task] }))
+    set((s) => ({
+      tasks: s.tasks.some(item => item.id === task.id)
+        ? s.tasks.map(item => item.id === task.id ? { ...item, cwd: task.cwd } : item)
+        : [...s.tasks, task],
+    }))
     return task
   },
 
@@ -317,8 +336,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }))
   },
 
-  archiveTask: async (taskId, projectId) => {
-    await taskApi.archive(taskId, projectId)
+  archiveTask: async (taskId, projectId, deleteWorkspace) => {
+    await taskApi.archive(taskId, projectId, deleteWorkspace)
     set((s) => ({
       tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, archived: true } : t)),
     }))
@@ -342,8 +361,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     return result.stopped
   },
 
-  confirmArchiveExperience: async (taskId, projectId, experience) => {
-    await taskApi.confirmArchiveExperience(taskId, projectId, experience)
+  confirmArchiveExperience: async (taskId, projectId, experience, deleteWorkspace) => {
+    await taskApi.confirmArchiveExperience(taskId, projectId, experience, deleteWorkspace)
     set((s) => ({
       tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, archived: true } : t)),
     }))
@@ -362,6 +381,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   handleWsEvent: (event) => {
+    if (isCustom(event, CUSTOM.taskCreated)) {
+      const { listQuery, tasks } = get()
+      const snapshot = customValue(event).task as Omit<Task, 'cwd'> | undefined
+      if (typeof snapshot?.id !== 'string' || !Array.isArray(snapshot.steps) || !listQuery || event.project_id !== listQuery.projectId ||
+        tasks.some(task => task.id === snapshot.id)) return
+      const task = { ...snapshot, cwd: '' }
+      if (!selectWorkflowTasks([task], listQuery.workflowId, listQuery.archived).length) return
+      taskListRequests.get(JSON.stringify(listQuery))?.created.add(task.id)
+      set({ tasks: [task, ...tasks] })
+      return
+    }
     const taskId = event.task_id
     if (!taskId) return
     if (isCustom(event, CUSTOM.taskUpdated)) {

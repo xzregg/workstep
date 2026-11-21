@@ -27,9 +27,15 @@ async def test_remote_config_encrypts_secrets_and_requires_no_local_model(tmp_pa
         assert status['ready'] and status['streaming'] == 'final'
         assert 'private-key' not in json.dumps(status)
         assert status['connection']['has_api_key']
-        assert 'private-key' not in (tmp_path/'settings.json').read_text()
+        settings_path = tmp_path / 'settings.json'
+        assert 'private-key' not in settings_path.read_text()
+        legacy = json.loads(settings_path.read_text())
+        legacy.pop('connections')
+        settings_path.write_text(json.dumps(legacy))
         reloaded = SpeechService(tmp_path)
         assert (await reloaded.get_settings())['connection']['api_key'] == 'private-key'
+        monkeypatch.setattr(speech, 'service', reloaded)
+        service = reloaded
         body['connection']['api_key'] = None
         assert (await client.put('/api/speech/settings', json=body)).status_code == 200
         assert (await service.get_settings())['connection']['api_key'] == 'private-key'
@@ -39,6 +45,21 @@ async def test_remote_config_encrypts_secrets_and_requires_no_local_model(tmp_pa
         body['connection']['base_url'] = 'http://other-host/v1'
         await client.put('/api/speech/settings', json=body)
         assert not (await service.get_settings())['connection']['api_key']
+        await client.put('/api/speech/settings', json=dict(enabled=True, connection=dict(mode='local')))
+        monkeypatch.setattr(speech, 'service', SpeechService(tmp_path))
+        status = (await client.get('/api/speech')).json()
+        assert 'private-key' not in json.dumps(status)
+        assert 'private-key' not in settings_path.read_text()
+        assert len(status['connections']) == 2
+        assert 'connections' not in (await client.get('/api/speech?project_id=p')).json()
+        other = await client.post('/api/speech/settings/secret', json={**body['connection'], 'field': 'api_key'})
+        assert other.json() == {'value': ''}
+        body['connection']['base_url'] = 'http://localhost:9988/v1/'
+        revealed = await client.post('/api/speech/settings/secret', json={**body['connection'], 'field': 'api_key'})
+        assert revealed.json() == {'value': 'private-key'}
+        assert revealed.headers['cache-control'] == 'no-store'
+        restored = await client.put('/api/speech/settings', json=body)
+        assert restored.json()['connection']['has_api_key']
     await service.close()
 
 

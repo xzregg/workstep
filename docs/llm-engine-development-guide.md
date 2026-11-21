@@ -28,7 +28,7 @@
 
 `engines/core/session_pool.py` 提供共享缓存和 `ManagedConnection` 常驻所有者协程。默认成功完整收流后空闲 600 秒、每个引擎最多缓存 8 个空闲客户端；正在执行、等待审批不计空闲。启动参数、供应商、认证、权限、连接器、技能或来源身份变化时重建；取消、错误、提前关闭不得返回可用缓存。新请求必须绑定自己的回调和队列，空闲客户端不得保留上一轮的审批授权。进程树回收走 `core/process_cleanup.py`，daemon 在消息生产者／任务停止后关闭全部池。
 
-Codex SDK 的 `codex_sdk_clients.py` 在同项目目录及兼容启动指纹内共享 app-server，每个进程最多承载 5 个活动会话，第 6 个另开进程；审批／提问等待仍占活动名额。每会话保留独立 `AsyncThread`、轮次消费者、审批和授权缓存；空闲槽可释放给新会话，被淘汰的会话稍后通过原生 ID 恢复。默认保留最多 8 个空闲会话槽，各槽空闲 600 秒后卸载，最后一个槽释放才关闭进程。供应商、来源身份、凭据、权限或其他启动指纹不兼容时不共享；普通停止和错误只中断、卸载本会话，整个进程崩溃会影响同进程活动会话，其历史仍可按原生 ID 恢复。`codex_sdk_approvals.py` 按原生 thread ID 路由服务器请求，异步完成后写回对应 RPC ID；等待用户不能阻塞 SDK 唯一 stdout 读取线程。取消旧轮次后的迟到审批不得进入新轮次；无法路由的请求默认拒绝。辅助工具子进程仍可能按会话独立创建。验收入口为 `tests/test_codex_sdk_multiplex.py`、`tests/test_codex_sdk_transport_lifecycle.py`。
+Codex SDK 的 `codex_sdk_clients.py` 在同项目目录及兼容启动指纹内共享 app-server，每个进程最多承载 5 个活动会话，第 6 个另开进程；审批／提问等待仍占活动名额。每会话保留独立 `AsyncThread`、轮次消费者、审批和授权缓存；空闲槽可释放给新会话，被淘汰的会话稍后通过原生 ID 恢复。默认最多保留 8 个空闲会话槽，各槽空闲 600 秒（10 分钟）后卸载。完全空闲的 app-server 最多保留 2 个，超限时优先回收最久未归还成功轮次的进程及其子进程。活动槽（含等待审批）所在的进程不参与淘汰。回收期间重新打开同一会话时，等待旧进程退出后按原生会话 ID 恢复。供应商、来源身份、凭据、权限或其他启动指纹不兼容时不共享；普通停止和错误只中断、卸载本会话，整个进程崩溃会影响同进程活动会话，其历史仍可按原生 ID 恢复。`codex_sdk_approvals.py` 按原生 thread ID 路由服务器请求，异步完成后写回对应 RPC ID；等待用户不能阻塞 SDK 唯一 stdout 读取线程。取消旧轮次后的迟到审批不得进入新轮次；无法路由的请求默认拒绝。辅助工具子进程仍可能按会话独立创建。验收入口为 `tests/test_codex_sdk_multiplex.py`、`tests/test_codex_sdk_transport_lifecycle.py`。
 
 Codex SDK 读取线程报告传输失败时，池立即撤销该进程所有会话租约及待回答请求，不能依赖上层继续消费事件才发现断连。助手和任务的审批等待通过 `services/intervention.py::wait_for_interaction_response` 同时观察引擎侧请求结束，记录取消终态并移除待办；迟到确认返回失效，恢复会话产生新的审批 ID，不能继承旧 RPC 的确认。测试：`test_codex_sdk_transport_lifecycle.py::test_process_death_invalidates_visible_approval_and_old_click_cannot_authorize_restart`、`test_intervention_lifecycle.py`。
 
@@ -71,6 +71,8 @@ ACP 多会话上下文的依据是[官方 v1 Session Setup](https://agentclientp
 `agent_assistants/chat_session.py` 将项目设置中的「全局提示词」（`project_settings.chat_system_prompt`，不是跨项目的系统设置）作为独立 `system_prompt` 提供；正文仅保留用户输入及必要交接/重建背景，空配置不补默认角色。普通对话使用默认首次正文降级策略，固定规则不在恢复轮次重复插入；原生适配器按自身 system/developer 配置追加。
 
 `agent_assistants/channel_chat.py` 通过该入口独立提供固定角色与项目配置，采用默认恢复策略，不强制每轮注入。渠道会话背景和当前发送者由 `build_channel_background` 每轮放入正文上下文，恢复及线程重建时保持最新，用户消息正文仍只保存原文。Codex SDK 等确认原生规则已保存后复用；需要每次启动配置的引擎继续按各自适配器传递。回归见 `tests/test_channel_prompt.py` 和 `tests/test_channel_bots.py`。
+
+绑定到数字人的渠道对话复用主对话的系统提示分段指纹。Codex SDK 新建或重建原生会话时接收完整指令，恢复时仅接收变更的分段；运行统计变化不会连带重发人设。接收者和发送者等渠道来源仍属于每轮正文，主对话的本地主动消息不补入渠道会话。
 
 `capture_prompt_input=True` 在统一入口的降级与重试选择后捕获本轮实际适配器输入，不改变首次／每轮降级策略；参数由统一入口消费，不传给 SDK。`agent_assistants/prompt_input.py` 只展示实传独立指令、正文及明确传入的历史／图片；没有独立指令时不显示该区块。持久化助手复用原字段保存格式化输入：普通／渠道对话为 `chat_messages.prompt`，流程为 `gen_sessions.messages_json` 内消息的 `prompt`，协调与经验归档为 `messages.prompt_json` 的 `prompt`。用户正文仍独立保存在 `content`；内部 `prompt_input` 不进入过程日志。历史读取优先使用对应当轮记录，不使用当前配置重新组合；重启或缓存清除后已存输入仍可查看，未捕获的历史不补造。固定角色／输出规则通过独立指令提供，变化画布／草稿／任务状态作为本轮正文背景；协调恢复轮次刷新任务快照，权限和角色规则由协调助手上下文层统一提供，捕获路径不再由 ACP 追加第二套 guard。任务创建／定时生成等创建态会话仍默认仅内存；步骤／审核的固定角色与结果格式也通过此入口传入，任务要求留在正文；`messages.prompt_json` 和 `review_runs.prompt_json` 中 `prompt` 保存实际查看记录、`input_prompt` 保存恢复用原始输入，恢复读取兼容仅有 `prompt` 的旧记录。回归见 `tests/test_prompt_input.py`、`tests/test_engine_system_prompt.py`、`tests/test_chat_session.py`（真实 API、恢复后的实际输入、配置修改不改变历史、慢读取健康检查）、`tests/test_channel_bots.py`、`tests/test_workflow_gen.py`、`tests/test_coordinator.py`、`tests/test_review_gate.py`（执行与审核的原生／正文降级、同会话重跑、检查点恢复、慢输入保存健康检查）和 `tests/test_pydantic_ai_harness.py`。
 
@@ -722,7 +724,7 @@ Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，�
 5. 恢复失败时产出明确错误，不应无提示降级为新会话。
 6. `usage_update` 事件可携带 `session_id` 复述会话标识（Claude Agent SDK、Qoder SDK），供错过 `session_started` 的场景兜底。
 
-助手只在引擎 ID 发生变化时清除引擎 Session；同一引擎切换模型、快速模型或视觉模型时保留 Session ID，并从下一轮开始使用新模型。
+同一引擎切换模型、快速模型或视觉模型时保留原生会话。聊天、任务协调和步骤执行发现有效供应商与既有上下文不一致时，提示用户确认，保留原上下文。聊天和步骤的智能交接沿用项目内的交接日志，确认只对当次选中的目标供应商有效。旧版上下文在无法确定绑定且目标为 WorkStep 供应商时同样要求确认。Codex SDK 报告原生供应商冲突时也提示交接，原生会话缺失的历史重建仅适用于已知未换供应商的会话。
 
 ### 7.2 执行中交互
 

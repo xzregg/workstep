@@ -164,7 +164,7 @@ def prepare_project_recovery(
                 step_run.artifact_round = None
                 step_run.input_rounds_json = None
             step_run.status = "failed"
-            step_run.error = "进程重启中断，等待自动恢复"
+            step_run.error = "Process restart interrupted, waiting for automatic recovery"
             step_run.ended_at = now
             step_run.save()
             stale_keys.add(step_run.step_key)
@@ -217,7 +217,7 @@ def prepare_project_recovery(
                 review_passed_keys.add(ts.step_key)
             ReviewRun.update(
                 status="failed",
-                error="进程重启中断，等待自动恢复审核",
+                error="A process restart interrupted the review. Waiting to resume it automatically.",
                 ended_at=now,
             ).where(
                 (ReviewRun.step_run == latest_step_run)

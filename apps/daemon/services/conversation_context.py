@@ -37,5 +37,5 @@ def current_conversation() -> dict:
     project = env.get(PROJECT_ENV, "")
     session = env.get(SESSION_ENV, "")
     if not project or not session:
-        return {"ok": False, "error": "当前执行环境没有 WorkStep 会话信息"}
+        return {"ok": False, "error": "Current execution environment lacks WorkStep session information"}
     return {"project_id": project, "session_id": session}

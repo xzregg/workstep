@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { EngineModel } from '../api/client'
-import { useI18n, type TKey } from '../i18n'
+import { useI18n, type TKey, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import Input from './Input'
 import Select from './Select'
@@ -96,7 +96,7 @@ export default function ModelMapEditor({
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
         {modelOptionsError && (
           <span role="status" style={{ color: 'var(--danger)', fontSize: 'calc(11px * var(--font-scale))' }}>
-            {modelOptionsError}
+            {localizeErrorDisplay(modelOptionsError)}
           </span>
         )}
         {onRefresh && (

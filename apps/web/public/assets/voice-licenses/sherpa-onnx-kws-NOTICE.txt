@@ -1,0 +1,12 @@
+WorkStep keyword spotting uses the sherpa-onnx Zipformer Chinese/English KWS model
+(sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20), Sherpaw KWS v0.3.0, and pinyin-pro v3.29.5.
+
+Model and runtime are distributed under Apache License 2.0.
+Model license: https://www.modelscope.cn/models/pkufool/icefall-kws-zipformer-zh-en-3M-2025-12-20
+Runtime source: https://github.com/moeru-ai/sherpaw
+Upstream model archive: https://github.com/k2-fsa/sherpa-onnx/releases/tag/kws-models
+SHA-256 of the upstream archive: 68447f4fbc67e70eee3a93961f36e81e98f47aef73ce7e7ca00885c6cd3616a6
+
+The WorkStep data asset concatenates the unmodified chunk-16 INT8 encoder and
+joiner, FP32 decoder, and tokens from the archive, with offsets in metadata.json.
+The archive's English pronunciation lexicon is a separate asset.

@@ -15,9 +15,9 @@ async def operation(function, *args):
     try:
         return await asyncio.to_thread(function, *args)
     except PermissionError as exc:
-        raise HTTPException(403, '连接器不在当前项目可用范围内') from exc
+        raise HTTPException(403, 'Connector is not within the scope of the current project') from exc
     except (ValueError, OSError):
-        raise HTTPException(400, '配置无效、已变化或无法读取，请检查后重试') from None
+        raise HTTPException(400, 'Configuration is invalid, changed, or unreadable. Please check and retry.') from None
 
 
 @router.get('', dependencies=[Depends(authorize)])
@@ -60,7 +60,7 @@ async def test(identifier: str):
     from services.connectors.transport import probe
     item = await operation(connector_store.resolve, identifier)
     if item is None:
-        raise HTTPException(404, '连接器不存在')
+        raise HTTPException(404, 'Connector does not exist')
     return await probe(item)
 
 
@@ -69,7 +69,7 @@ def project_access(project_id, write=False):
     from services.remote_access import get_current_actor
     actor = get_current_actor()
     if write and actor and actor.project_id is not None and actor.access_level != 'edit':
-        raise HTTPException(403, '需要项目编辑权限')
+        raise HTTPException(403, 'Project editing permissions are required')
 
 
 @router.get('/available')

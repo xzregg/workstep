@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useTaskStore } from '../stores/taskStore'
 import Spinner from './Spinner'
 
@@ -66,7 +66,7 @@ export default function TaskDetailTitle({ task, projectId, editable = false }: P
           }
         }} />
       {saving && <Spinner />}
-      {error && <span className="task-title-error" role="alert">{error}</span>}
+      {error && <span className="task-title-error" role="alert">{localizeErrorDisplay(error)}</span>}
     </> : task.title}
   </span>
 }

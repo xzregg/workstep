@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { type ActionRun, type TaskQuickButton } from '../api/client'
 import { useTaskActions } from './useActionRuns'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import ActionConfirmDialog from './ActionConfirmDialog'
 import Icon from './Icon'
@@ -89,7 +89,7 @@ export function TaskActionButtons({ state, onFillPrompt, onSendPrompt, compact =
         {enabledButtons.map((button) => renderButton(button, true))}
       </MobileSheet>
     </> : <QuickPromptOverflow label={t('actionShortcuts.quickButtons')} items={enabledButtons.map((button) => renderButton(button, false))} />)}
-    {state.error && !compact && <span role="alert" style={{ color: 'var(--danger)' }}>{state.error}</span>}
+    {state.error && !compact && <span role="alert" style={{ color: 'var(--danger)' }}>{localizeErrorDisplay(state.error)}</span>}
     <ActionConfirmDialog
       button={state.pending} directory={state.pending?.cwd_mode || 'task'} loading={state.busy}
       onCancel={() => state.setPending(null)}

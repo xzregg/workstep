@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -58,11 +59,11 @@ export function AdminOverviewPage() {
       .then(async response => {
         if (response.status === 401) { navigate('/auth?next=%2Fadmin', { replace: true }); return }
         if (response.status === 403) { setAccess('forbidden'); setOverview(null); return }
-        if (!response.ok) throw new Error('管理概览加载失败。')
+        if (!response.ok) throw new Error('Failed to load management overview.')
         const data = await response.json()
         if (!controller.signal.aborted) { setOverview(data); setAccess('ready'); setUpdatedAt(new Date()) }
       }).catch(reason => {
-        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '管理概览加载失败。')
+        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load management overview.')
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [navigate, revision])
@@ -77,7 +78,7 @@ export function AdminOverviewPage() {
     </header>
     {access === 'checking' && !error && <div className="gateway-overview-empty" role="status">正在加载管理概览…</div>}
     {access === 'forbidden' && <p role="alert">当前账号没有管理后台权限。</p>}
-    {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" disabled={loading}
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)} <button type="button" disabled={loading}
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {access === 'ready' && overview && <div aria-busy={loading}>
       <div className="gateway-overview-metrics">

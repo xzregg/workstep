@@ -14,7 +14,8 @@ def test_session_schedule_validation_and_lifetime(setup_notifications):
     from agent_assistants.chat_session import ChatSessionModule
     from streaming.bus import EventBus
     from services.schedule import ScheduleValidationError
-    from models import Schedule
+    from models import ChatMessage, Schedule
+    from models.fields import utc_now
     s=setup_notifications
     rule=create(s)
     assert rule['target_session_id']=='session'
@@ -23,6 +24,8 @@ def test_session_schedule_validation_and_lifetime(setup_notifications):
         s.module.update(s.project.id,rule['id'],target_session_id='missing')
     chat=ChatSessionModule(EventBus(),s.manager)
     with s.manager.activate_project_by_id(s.project.id):
+        ChatMessage.create(id='history', session='session', role='user',
+                           content='Existing conversation', created_at=utc_now())
         chat.set_archived(s.project.id,'session',True)
         assert Schedule.get_by_id(rule['id']).status=='deleted'
         chat.set_archived(s.project.id,'session',False)

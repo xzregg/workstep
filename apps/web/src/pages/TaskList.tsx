@@ -36,6 +36,7 @@ import TaskCreatePanel from '../components/TaskCreatePanel'
 import ProjectMemoryPanel from '../components/ProjectMemoryPanel'
 import TaskTableView from '../components/TaskTableView'
 import TaskBoardCard from '../components/TaskBoardCard'
+import TaskBoardMotion from '../components/TaskBoardMotion'
 import TaskBoardViewToggle, { type TaskBoardView } from '../components/TaskBoardViewToggle'
 import { getTaskStatusLanes, taskStatusLane } from './taskStatusLanes'
 import { useI18n, type TFunction } from '../i18n'
@@ -93,7 +94,7 @@ export default function TaskList() {
     unarchiveTask, setActiveTask,
   } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
-  const { can, canEdit, canCreateTask, canOpenSettings } = useGatewayProjectPermissions(activeProject?.id)
+  const { can, bound, canEdit, canCreateTask, canOpenSettings } = useGatewayProjectPermissions(activeProject?.id)
   const activeWorkflowId = useProjectStore((s) => s.activeWorkflowId)
   const saveSteps = useProjectStore((s) => s.saveSteps)
   const activeWorkflowName = activeProject?.workflows?.find((w) => w.id === activeWorkflowId)?.name
@@ -247,6 +248,10 @@ export default function TaskList() {
     for (const task of visibleTasks) grouped[taskStatusLane(task.status)].push(task)
     return grouped
   }, [boardView, boardLanes, tasksByLane, visibleTasks])
+  const motionScope = !loading && activeProject?.id && listQuery?.projectId === activeProject.id
+    ? JSON.stringify([activeProject.id, activeWorkflowId, showArchived])
+    : null
+  const mobileTasks = compact ? visibleTasks.filter(task => !mobileStep || getCardLane(task.id) === mobileStep) : []
 
   const anyRunning = useMemo(
     () => visibleTasks.some((task: any) => (task.status || 'ready') === 'running'),
@@ -556,11 +561,13 @@ export default function TaskList() {
       )}
 
       {/* Kanban board */}
-      {compact && <div className="mobile-task-list">
+      {compact && <TaskBoardMotion className="mobile-task-list"
+        scope={motionScope && JSON.stringify([motionScope, mobileStep])}
+        layout={JSON.stringify([mobileTasks.map(task => task.id)])}>
         {directoryNotice && <p className="mobile-task-notice" role="status">{directoryNotice}</p>}
         {loading && <div role="status">{t('common.loading')}</div>}
-        {!loading && visibleTasks.filter(task => !mobileStep || getCardLane(task.id) === mobileStep).length === 0 && <p className="mobile-empty">{t('mobile.emptyTasks')}</p>}
-        {visibleTasks.filter(task => !mobileStep || getCardLane(task.id) === mobileStep).map(task => <MobileTaskRow key={task.id} title={task.title} status={task.status} archived={showArchived}
+        {!loading && mobileTasks.length === 0 && <p className="mobile-empty">{t('mobile.emptyTasks')}</p>}
+        {mobileTasks.map(task => <MobileTaskRow key={task.id} title={task.title} status={task.status} archived={showArchived}
           projectId={activeProject?.id} taskId={task.id} readOnly={!canEdit}
           canStart={can('task.run') && isTaskNotStarted(task.steps || [])}
           starting={startingTaskId === task.id} onStart={() => setConfirmStartTaskId(task.id)}
@@ -572,8 +579,10 @@ export default function TaskList() {
           <span className="mobile-task-row-title">{task.title}</span>
           <span className="mobile-task-row-meta"><StatusBadge status={task.status} loading={['running', 'reviewing', 'retrying'].includes(task.status)} label={t(`status.${task.status === 'completed' ? 'passed' : task.status || 'ready'}` as 'status.ready')} />{task.creator_name && <span>{t('taskList.creator')}：{task.creator_name}</span>}<span>{lanes.find(lane => lane.key === getCardLane(task.id))?.label}</span><time>{new Date(task.updated_at || task.created_at).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></span>
         </MobileTaskRow>)}
-      </div>}
-      <div className={`desktop-task-board ${boardView === 'table' ? 'task-board-table' : 'task-board-lanes'}`}>
+      </TaskBoardMotion>}
+      <TaskBoardMotion className={`desktop-task-board ${boardView === 'table' ? 'task-board-table' : 'task-board-lanes'}`}
+        scope={!compact && boardView !== 'table' && motionScope ? JSON.stringify([motionScope, boardView, boardLanes.map(lane => lane.key)]) : null}
+        layout={JSON.stringify(boardLanes.map(lane => (boardTasksByLane[lane.key] || []).map(task => task.id)))}>
         {loading && (
           <div className="task-board-loading">
             {t('common.loading')}
@@ -615,6 +624,7 @@ export default function TaskList() {
               </div>
               <div
                 className="task-board-lane-body"
+                data-board-lane={lane.key}
                 data-drag-over={(boardView === 'lanes' && dragOverLane === lane.key) || undefined}
                 onDragOver={boardView === 'lanes' ? (e) => onDragOver(e, lane.key) : undefined}
                 onDragLeave={onDragLeave}
@@ -652,13 +662,14 @@ export default function TaskList() {
             readOnly={!can('task.archive') && !can('task.delete')}
             canArchive={can('task.archive')} canDelete={can('task.delete')}
             canCreateTask={canCreateTask}
+            canCleanWorkspace={!bound && can('file.edit')}
             lanes={lanes}
             tasksByLane={tasksByLane}
             showArchived={showArchived}
             durationNowMs={durationNowMs}
             onOpenTask={handleSelectTask}
             onAddTask={openNewPanel}
-            onArchiveTask={(taskId) => archiveTask(taskId, activeProject.id)}
+            onArchiveTask={(taskId, deleteWorkspace) => archiveTask(taskId, activeProject.id, deleteWorkspace)}
             onDeleteTask={(taskId, deleteWorkspace) => deleteTask(taskId, activeProject.id, deleteWorkspace)}
             onError={(message) => {
               setDirectoryNotice(message)
@@ -666,7 +677,7 @@ export default function TaskList() {
             }}
           />
         )}
-      </div>
+      </TaskBoardMotion>
 
       {canCreateTask && createRequest && activeProject && (
         <TaskCreatePanel

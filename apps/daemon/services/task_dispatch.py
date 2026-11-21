@@ -101,7 +101,7 @@ class TaskDispatchService:
         workflow_token = f"{source_project_id}/{source_workflow}"
         target_token = f"{target_project_id}/{target_workflow_id}"
         if target_token in (*lineage, workflow_token) or len(lineage) >= 16:
-            raise ValueError("检测到流程步骤循环派发，已阻止创建下游任务")
+            raise ValueError("Detected loop dispatch in workflow steps; downstream task creation has been blocked")
 
         if target is None:
             return await self._dispatch_remote(
@@ -119,12 +119,12 @@ class TaskDispatchService:
 
         workflow = target.workflow_by_id(target_workflow_id)
         if workflow is None:
-            raise ValueError(f"目标流程不存在: {target_workflow_id}")
+            raise ValueError(f"Target workflow does not exist: {target_workflow_id}")
         definition = WorkflowDefinition.load(workflow["steps"])
         compiled = definition.compile().to_steps_config()
         valid_keys = {item["key"] for item in compiled["steps"]}
         if target_start_step_key not in valid_keys:
-            raise ValueError(f"目标步骤不存在: {target_start_step_key}")
+            raise ValueError(f"Target step does not exist: {target_start_step_key}")
 
         manifest = await asyncio.to_thread(
             self._copy_inputs,
@@ -181,7 +181,7 @@ class TaskDispatchService:
     ) -> dict:
         client_manager = self._remote_client
         if client_manager is None:
-            raise ValueError("远程项目连接服务未初始化")
+            raise ValueError("Remote project connection service not initialized")
         workflow_response = await client_manager.request(
             target_project_id,
             RemoteHttpRequest(
@@ -192,13 +192,13 @@ class TaskDispatchService:
             ),
         )
         if not 200 <= workflow_response.status < 300:
-            raise ValueError(f"读取远程目标流程失败: {workflow_response.json()}")
+            raise ValueError(f"Failed to read remote target workflow: {workflow_response.json()}")
         workflow = workflow_response.json()
         definition = WorkflowDefinition.load(workflow["steps"])
         compiled = definition.compile().to_steps_config()
         valid_keys = {item["key"] for item in compiled["steps"]}
         if target_start_step_key not in valid_keys:
-            raise ValueError(f"目标步骤不存在: {target_start_step_key}")
+            raise ValueError(f"Target step does not exist: {target_start_step_key}")
         source_workflow = task.workflow_id or "default"
         files = await asyncio.to_thread(
             self._collect_remote_inputs,
@@ -222,7 +222,7 @@ class TaskDispatchService:
         }
         body = json.dumps(payload, ensure_ascii=False).encode()
         if len(body) > REMOTE_REQUEST_BODY_LIMIT:
-            raise ValueError("远程输入产物超过单次派发大小限制（64 MiB）")
+            raise ValueError("Remote input artifact exceeds single dispatch size limit (64 MiB):")
         response = await client_manager.request(
             target_project_id,
             RemoteHttpRequest(
@@ -235,7 +235,7 @@ class TaskDispatchService:
             ),
         )
         if not 200 <= response.status < 300:
-            raise ValueError(f"远程创建下游任务失败: {response.json()}")
+            raise ValueError(f"Failed to remotely create downstream task: {response.json()}")
         return response.json()
 
     @staticmethod
@@ -335,7 +335,7 @@ def prepare_received_dispatch(project_manager, task_service, project_id, req):
         raise ValueError("Project not found")
     workflow = project.workflow_by_id(req.workflow_id)
     if workflow is None:
-        raise ValueError("目标流程不存在")
+        raise ValueError("Target workflow does not exist")
     existing = Task.get_or_none(Task.source_dispatch_id == req.dispatch_id)
     if existing is not None:
         return {"existing": task_service.get_task(existing.id)}
@@ -344,7 +344,7 @@ def prepare_received_dispatch(project_manager, task_service, project_id, req):
     for item in req.files:
         relative = Path(item.relative_path)
         if relative.is_absolute() or ".." in relative.parts:
-            raise ValueError("输入产物路径非法")
+            raise ValueError("Invalid output artifact path")
         destination = (root / item.source_step_key / relative).resolve()
         destination.relative_to(root.resolve())
         destination.parent.mkdir(parents=True, exist_ok=True)

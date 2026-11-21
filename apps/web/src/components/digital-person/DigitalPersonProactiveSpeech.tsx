@@ -18,24 +18,27 @@ export default function DigitalPersonProactiveSpeech(){
    seen.add(key);if(seen.size>200)seen.delete(seen.values().next().value!)
    // Consume while hidden too: returning to the page must never replay it.
    if(document.hidden)return
+   const local=getProactiveSpeechContext()
+   if(local?.projectId!==value.projectId||local.sessionId!==value.sessionId||local.muted||local.blockNew)return
+   const profile=local.profile
+   if(!profile.enabled||!profile.auto_speak)return
    stop();current=value;const request=sequence
    try{
-    const local=getProactiveSpeechContext()
-    const matches=local?.projectId===value.projectId&&local.sessionId===value.sessionId
-    if(!matches||local.muted)return
-    const profile=local.profile
-    if(!profile.enabled||!profile.auto_speak)return
     const settings=await loadSpeechOutputSettings(value.projectId)
     if(!alive||request!==sequence||document.hidden)return
     const latest=getProactiveSpeechContext()
-    if(!latest||latest.projectId!==value.projectId||latest.sessionId!==value.sessionId||latest.muted||!latest.profile.enabled||!latest.profile.auto_speak)return
-    player=new SpeechOutputPlayer({projectId:value.projectId,settings:{...settings,rate:profile.voice_rate??settings.rate},systemVoice:profile.voice_name,
-     onState:busy=>window.dispatchEvent(new window.CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{projectId:value.projectId,sessionId:value.sessionId,playing:busy,busy,level:0}})),
+    if(!latest||latest.projectId!==value.projectId||latest.sessionId!==value.sessionId||latest.muted||latest.blockNew||!latest.profile.enabled||!latest.profile.auto_speak)return
+    const frame={projectId:value.projectId,sessionId:value.sessionId,source:'proactive',metered:settings.mode!=='system'&&settings.volume>0,playing:false,busy:false,level:0}
+    const publish=()=>window.dispatchEvent(new window.CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{...frame}}))
+    player=new SpeechOutputPlayer({projectId:value.projectId,digitalSessionId:value.sessionId,settings:{...settings,rate:profile.voice_rate??settings.rate},systemVoice:profile.voice_name,
+     onPlayback:playing=>{frame.playing=playing;publish()},
+     onLevel:level=>{frame.level=level;publish()},
+     onState:busy=>{frame.busy=busy;publish()},
      onError:()=>{stop()}})
     player.enqueue([speechText(value.text)])
    }catch{stop()}
   }
-  const preference=()=>{const local=getProactiveSpeechContext();if(!local||local.muted||!local.profile.enabled||!local.profile.auto_speak||current?.projectId!==local.projectId||current.sessionId!==local.sessionId)stop()}
+  const preference=()=>{const local=getProactiveSpeechContext();if(!local||local.muted||(local.blockNew&&!player)||!local.profile.enabled||!local.profile.auto_speak||current?.projectId!==local.projectId||current.sessionId!==local.sessionId)stop()}
   const interrupt=(event:Event)=>{const detail=(event as CustomEvent).detail;if(current?.projectId===detail?.projectId&&current?.sessionId===detail?.sessionId)stop()}
   const visibility=()=>{if(document.hidden)stop()}
   window.addEventListener(PROACTIVE_MESSAGE,receive)

@@ -216,7 +216,9 @@ class TaskService:
         By default archived tasks are hidden from the active board; pass
         ``archived=True`` to list only archived tasks.
         """
-        q = Task.select().order_by(Task.updated_at.desc())
+        from services.task_queries import formal_tasks
+
+        q = formal_tasks().order_by(Task.updated_at.desc())
         if workflow_id:
             q = q.where(Task.workflow_id == workflow_id)
         q = q.where(Task.archived == (1 if archived else 0))
@@ -226,7 +228,11 @@ class TaskService:
         """Get a single task by ID."""
         try:
             task = Task.get_by_id(task_id)
-            return task_to_dict(task)
+            from services.task_queries import is_debug_task
+            result = task_to_dict(task)
+            if is_debug_task(task_id):
+                result["is_debug"] = True
+            return result
         except Task.DoesNotExist:
             return None
 
@@ -437,7 +443,7 @@ class TaskService:
             if task_id in self._cancelled_tasks:
                 # 手动停止：与普通失败区分，前端显示「手动停止」。
                 step_status = "cancelled"
-                step_error = "手动停止"
+                step_error = "Stopped manually"
                 task_status = "stopped"
             elif reported_error is not None:
                 step_status = "failed"
@@ -598,7 +604,8 @@ class TaskService:
                 )
             return True
 
-    def delete_task(self, task_id: str, project_id: str, *, workstep_dir: str | Path) -> bool:
+    def delete_task(self, task_id: str, project_id: str, *, workstep_dir: str | Path,
+                    keep_worktrees: bool = False) -> bool:
         """Delete a task."""
         try:
             with Task._meta.database.atomic():
@@ -607,6 +614,9 @@ class TaskService:
                 if task_has_active_execution(task):
                     raise RuntimeError("Running tasks cannot be deleted")
                 from services.task_schedule_runtime import invalidate_task_schedules
+                from services.task_owned_storage import delete_task_artifacts
+
+                delete_task_artifacts(workstep_dir, task.workflow_id, task_id, keep_worktrees=keep_worktrees)
                 invalidate_task_schedules(task_id)
                 self._event_journal.delete_session(workstep_dir, f"task-{task_id}")
                 task.delete_instance(recursive=True)

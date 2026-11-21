@@ -2,7 +2,7 @@ import ArchivedChatPreview from './ArchivedChatPreview'
 import ChatSessionSourceBadge from './ChatSessionSourceBadge'
 import { useEffect, useMemo, useState } from 'react'
 import { chatSessionApi, type ChatSessionSummary } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useRecentVisitsStore } from '../stores/recentVisitsStore'
 import Button from './Button'
@@ -104,7 +104,7 @@ export default function ArchivedChatSessions({ projectId }: { projectId: string 
       <Button variant="ghost" disabled={!selected.size || busy}
         onClick={() => setDeleteIds([...selected])}>{t('chatSession.deleteSelected')}</Button>
     </div>
-    {error && <div role="alert" style={{ color: 'var(--danger)' }}>{error}</div>}
+    {error && <div role="alert" style={{ color: 'var(--danger)' }}>{localizeErrorDisplay(error)}</div>}
     {loading ? <div>{t('common.loading')}</div> : visible.length === 0 ? (
       <div style={{ color: 'var(--muted)' }}>{t('chatSession.archiveEmpty')}</div>
     ) : visible.map((session) => <div key={session.id} className="archived-session-item">

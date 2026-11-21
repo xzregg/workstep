@@ -23,13 +23,13 @@ def asset():
     arch=platform.machine().lower()
     arch={'amd64':'x86_64','aarch64':'arm64'}.get(arch,arch)
     try:return ASSETS[(sys.platform,arch)]
-    except KeyError:raise ValueError('当前平台没有匹配的原生 CPU 推理组件') from None
+    except KeyError:raise ValueError('No matching native CPU inference component found on the current platform') from None
 
 
 def _safe(name):
     path=PurePosixPath(name)
     if path.is_absolute() or '..' in path.parts or '\\' in name or ':' in name:
-        raise ValueError('运行组件压缩包包含非法路径')
+        raise ValueError('The runtime component archive contains an invalid path')
     return path
 
 
@@ -39,7 +39,7 @@ def unpack(archive,target):
     def copy(name,size,source,executable=False):
         nonlocal count,total
         path=_safe(name);count+=1;total+=size
-        if count>2000 or total>1024**3:raise ValueError('运行组件解压体积超限')
+        if count>2000 or total>1024**3:raise ValueError('Component extraction volume exceeds limit')
         dest=target.joinpath(*path.parts);dest.parent.mkdir(parents=True,exist_ok=True)
         with dest.open('wb') as output:shutil.copyfileobj(source,output,256*1024)
         if executable:dest.chmod(0o755)
@@ -48,7 +48,7 @@ def unpack(archive,target):
             for item in source.infolist():
                 _safe(item.filename)
                 if item.is_dir():continue
-                if stat.S_ISLNK(item.external_attr>>16):raise ValueError('不支持 ZIP 符号链接')
+                if stat.S_ISLNK(item.external_attr>>16):raise ValueError('ZIP symbolic links are not supported')
                 with source.open(item) as data:copy(item.filename,item.file_size,data)
     else:
         with tarfile.open(archive,'r:gz') as source:
@@ -59,18 +59,18 @@ def unpack(archive,target):
                 resolved=item
                 for _ in range(8):
                     if resolved.isfile():break
-                    if not (resolved.issym() or resolved.islnk()):raise ValueError('不支持的压缩包成员')
+                    if not (resolved.issym() or resolved.islnk()):raise ValueError('Unsupported archive member')
                     link=posixpath.normpath(posixpath.join(posixpath.dirname(resolved.name),resolved.linkname) if resolved.issym() else resolved.linkname)
                     _safe(link);resolved=index.get(link)
-                    if resolved is None:raise ValueError('运行组件链接无效')
-                if not resolved.isfile():raise ValueError('运行组件链接循环')
+                    if resolved is None:raise ValueError('Invalid link for running component')
+                if not resolved.isfile():raise ValueError('Running component link loop')
                 with source.extractfile(resolved) as data:copy(item.name,resolved.size,data,bool(resolved.mode&0o111))
 
 
 def find_binary(root):
     name='llama-server.exe' if sys.platform=='win32' else 'llama-server'
     matches=list(Path(root).rglob(name))
-    if len(matches)!=1 or matches[0].is_symlink():raise ValueError('未找到唯一的原生推理程序')
+    if len(matches)!=1 or matches[0].is_symlink():raise ValueError('No unique native inference program found')
     return matches[0]
 
 

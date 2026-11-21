@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Input from './Input'
 import './SidebarRenameField.css'
 
@@ -56,7 +56,7 @@ export default function SidebarRenameField({ kind, initialName, onSave, onClose 
         }}
         onBlur={() => { void commit(true) }}
       />
-      {error && <span role="alert" className="sidebar-rename-error">{error}</span>}
+      {error && <span role="alert" className="sidebar-rename-error">{localizeErrorDisplay(error)}</span>}
     </span>
   )
 }

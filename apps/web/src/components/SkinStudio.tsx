@@ -8,7 +8,7 @@ import oceanTokens from '../../../daemon/data/skins/example/tokens.json' with { 
 import { useChatSessionStore } from '../stores/chatSessionStore'
 import ChatPage from '../pages/ChatPage'
 import { useOverlay } from '../hooks/useOverlay'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import ResizablePanel from './ResizablePanel'
 import ConfirmDialog from './ConfirmDialog'
 import Button from './Button'
@@ -130,7 +130,7 @@ export default function SkinStudio({ workspace, initialSkin, onClose, onSaved }:
           <SegmentedControl ariaLabel={t('skins.studioEditing')} value={editorTab} onChange={setEditorTab} options={[{value:'skin', label:t('skins.studioPreviewTab')}, {value:'language', label:t('languages.tab')}]} />
           <div hidden={editorTab !== 'language'}><LanguageDraftPanel workspacePath={workspace.workspace_path} running={running} /></div>
           <div hidden={editorTab !== 'skin'}>
-          {error && <p className="skin-studio-error" role="alert">{error}</p>}
+          {error && <p className="skin-studio-error" role="alert">{localizeErrorDisplay(error)}</p>}
           {!skin ? <><p className="skin-studio-note" role="status">{t('skins.studioWaiting')}</p><Button onClick={() => void load().catch(reason => setError(String(reason.message)))}>{t('common.retry')}</Button></> : <>
           <fieldset disabled={busy || running}>
             <label>{t('skins.studioName')}<Input value={skin.manifest.name} onChange={event => edit(current => ({ ...current, manifest: { ...current.manifest, name: event.target.value } }))} /></label>

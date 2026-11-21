@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { passwordRequirements } from './portalAccount'
 import { useRef, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -37,18 +38,18 @@ export function GatewayRegistrationForm({ mode, onRegistered, onClosed, onBack }
       }
       if (response.status === 403) {
         setClosed(true); onClosed()
-        setError('平台已关闭注册，请联系管理员创建账号。')
+        setError('Registration is disabled. Please contact the administrator to create an account.')
       } else if (response.status === 409) {
-        setError('用户名已被使用，请更换用户名后重试。')
+        setError('Username is already in use. Please change the username and try again.')
       } else if (response.status === 429) {
-        setError('尝试次数过多，请稍后再试。')
+        setError('Too many attempts, please try again later.')
       } else if (response.status === 422) {
-        setError('填写内容不符合要求，请检查用户名、显示名称和密码。')
+        setError('The entered content does not meet the requirements. Please check the username, display name, and password.')
       } else {
-        setError('注册服务暂时不可用，请稍后重试。')
+        setError('Registration service is temporarily unavailable, please try again later.')
       }
     } catch {
-      setError('网络连接失败，请检查连接后重试。')
+      setError('Network connection failed. Please check the connection and try again.')
     } finally {
       submitting.current = false
       setBusy(false)
@@ -78,7 +79,7 @@ export function GatewayRegistrationForm({ mode, onRegistered, onClosed, onBack }
     {confirmation && confirmation !== account.password && <p className="gateway-auth-hint gateway-auth-error"
       id="portal-confirmation-hint">两次输入的密码不一致。</p>}
     {mode === 'open_with_approval' && <p>提交后需等待管理员审核。</p>}
-    {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
     <button type="submit" disabled={busy || !valid || closed || mode === 'closed'}>
       {busy && <span className="gateway-spinner" aria-hidden="true" />}{busy ? '正在提交…' : '注册'}
     </button>

@@ -6,35 +6,30 @@ work, delivery receipts and bounded audit records. It never learns prompt rules.
 import asyncio
 import hashlib
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from models.chat_session import ChatSession, ChatMessage, ProjectSetting
 from models.fields import utc_now
 from services import customization_workspace, digital_person
 from services import digital_person_memory_index as memory_index
+from services.memory_secrets import redact
 
 KEY = 'digital_person_runtime'
 CHECK_SESSION_TITLE = '主动思考'
 
 
-def completed_activity_summary(run):
+def completed_activity_processing(run):
     knowledge=(run.get('memory_processing') or {}).get('knowledge') or {}
     batch=(run.get('sources') or {}).get('reflection_batch',[])
     sessions=len({(row['project_id'],row['session_id']) for row in batch})
-    changes=[row.get('affinity_delta',0) for row in run.get('relationship_updates',[])]
-    increased=sum(max(delta,0) for delta in changes)
-    decreased=-sum(min(delta,0) for delta in changes)
-    parts=[]
-    if increased:parts.append(f'上升 {increased:g}')
-    if decreased:parts.append(f'下降 {decreased:g}')
-    affinity='好感度'+'、'.join(parts) if parts else '好感度 0'
-    return f"整理 {knowledge.get('processed',0)} 条消息（{sessions} 个会话），新增 {knowledge.get('created',0)} 条记忆；{affinity}"
+    return {'messages': knowledge.get('processed', 0), 'sessions': sessions, 'memories': knowledge.get('created', 0)}
 
 
 def resolve_check_sources(context, references):
     """Resolve exact current-batch read aliases; reject unknown or ambiguous origins."""
     if not isinstance(references, list) or any(not isinstance(value, str) for value in references):
-        raise ValueError('思考引用的来源编号格式不正确。')
+        raise ValueError('The format of the source reference number is incorrect.')
     aliases = {}
     for group in context.get('_groups', [context]):
         for key in ('messages', 'delegations', 'conversation', 'memory', 'thought_sources'):
@@ -46,9 +41,9 @@ def resolve_check_sources(context, references):
     unknown = sum(not aliases.get(value) for value in references)
     ambiguous = sum(len(aliases.get(value, ())) > 1 for value in references)
     if unknown:
-        raise ValueError(f'本轮引用的 {len(references)} 条来源中，有 {unknown} 条未能对应到本批次消息，结果未采用。')
+        raise ValueError(f'Of the {len(references)} sources cited in this round, {unknown} could not be matched to the current batch of messages, so the results were not adopted.')
     if ambiguous:
-        raise ValueError(f'本轮引用的 {ambiguous} 条来源对应多个会话，暂未采用这轮结果。')
+        raise ValueError(f'The {ambiguous} sources cited in this round correspond to multiple sessions; the results for this round have not been adopted.')
     return list(dict.fromkeys(next(iter(aliases[value]))[2] for value in references))
 
 
@@ -56,38 +51,51 @@ def activity_failure_reason(run):
     error = run.get('error')
     if not error:
         return None
-    if error == '检查结果来源无效':
-        return '未能确认思考内容对应的消息，本轮结果未采用。'
-    if error == '尚未调用 CLI 获取待整理消息':
-        return '本轮尚未读取待整理消息，思考未完成。'
-    if error.startswith('本轮引用的') or error == '思考引用的来源编号格式不正确。':
-        return error
-    if 'JSON' in error or '结果结构' in error:
-        return '返回的思考内容格式不完整，本轮未完成。'
-    if '尚未读取' in error:
-        return '本轮需要阅读的消息尚未读完，结果未采用。'
-    if '来源已变化' in error:
-        return '思考期间原始消息发生了变化，旧结果未采用。'
+    if error in {'Invalid sources in the check result', '检查结果来源无效'}:
+        return 'Could not match the reflection to its source messages. The result was discarded.'
+    if error in {'The CLI has not fetched the messages to review', '尚未调用 CLI 获取待整理消息'}:
+        return 'Reflection could not finish because it did not fetch the pending messages.'
+    if 'JSON' in error or 'result structure' in error or '结果结构' in error:
+        return 'Reflection could not finish because its result was incomplete or malformed.'
+    if 'not yet read' in error or '尚未读取' in error:
+        return 'Some required messages were not read. The reflection result was discarded.'
+    if error.startswith('Source changed during thinking') or '来源已变化' in error:
+        return 'The source messages changed during reflection. The previous result was discarded.'
     return str(error)
 
 
-def activity_preview(run):
-    if run.get('status') in ('failed', 'error'):
-        return '本轮思考未完成'
-    return str(run.get('activity_summary') or run.get('summary') or '').replace('好感度无变化', '好感度 0')[:120]
+def is_notification_run(run):
+    return bool(run.get('deliveries') or run.get('notification_key') or
+                run.get('status') in ('notify', 'notifying', 'notified', 'delivery_failed', 'deferred'))
+
+
+def activity_record_content(run, *, preview=False):
+    processing = run.get('processing')
+    if processing is None:
+        legacy = re.match(r'^整理 (\d+) 条消息（(\d+) 个会话），新增 (\d+) 条记忆', run.get('activity_summary') or '')
+        if legacy:
+            messages, sessions, memories = map(int, legacy.groups())
+            processing = {'messages': messages, 'sessions': sessions, 'memories': memories}
+    status = run.get('status')
+    thought = '' if is_notification_run(run) else str(run.get('summary') or '')
+    if preview:
+        thought = '' if processing is not None or status in ('failed', 'error') else thought[:120]
+    return {'summary': thought, **({'processing': processing} if processing is not None else {})}
 
 
 def activity_outcome(run):
     """Small factual projection; never expose recipients or relationship source data."""
-    if run.get('status') == 'running' or 'deliveries' not in run or 'relationship_updates' not in run:
-        return None
     receipts = run.get('deliveries') or []
+    if run.get('status') == 'running' or (not receipts and ('deliveries' not in run or 'relationship_updates' not in run)):
+        return None
     changes = [row.get('affinity_delta', 0) for row in run.get('relationship_updates') or []]
-    sent = sum(row.get('status') == 'delivered' for row in receipts)
+    failures = [row for row in receipts if row.get('status') in ('failed', 'delivery_failed')]
+    reasons = dict.fromkeys(redact(str(row.get('error') or '')).strip() for row in failures)
+    reasons.pop('', None)
     return {
-        **({'message_preview': str(run.get('summary') or '')[:120]} if sent else {}),
-        'sent': sent,
-        'failed': sum(row.get('status') in ('failed', 'delivery_failed') for row in receipts),
+        **({'delivery_failure_reasons': list(reasons)} if reasons else {}),
+        'sent': sum(row.get('status') == 'delivered' for row in receipts),
+        'failed': len(failures),
         'affinity_increased': sum(max(delta, 0) for delta in changes),
         'affinity_decreased': -sum(min(delta, 0) for delta in changes),
     }
@@ -96,7 +104,7 @@ def activity_outcome(run):
 def assessment_audit(context):
     """Keep source coordinates in operational history, never copied message bodies."""
     result={key:value for key,value in context.items() if not key.startswith('_')}
-    for key in ('messages','conversation','memory','thought_sources'):
+    for key in ('messages','conversation','memory','thought_sources','delegation_messages'):
         if key in result:
             result[key]=[{k:v for k,v in row.items() if k not in ('content','source_text','_end')} for row in result[key]]
     if context.get('_groups'):
@@ -136,22 +144,22 @@ def parse_check_result(content):
     """Validate model output before it can influence cursor or delivery state."""
     body = content.strip()
     if not body:
-        raise ValueError('主动检查未返回检查结果，请检查数字人引擎配置后重试')
+        raise ValueError('Active check did not return results. Please check the digital human engine configuration and retry.')
     if body in ('NO_REPLY', '[SILENT]', 'HEARTBEAT_OK'):
         return {'decision': 'silent', 'summary': '无需要通知的新变化', 'source_ids': []}
     if '<json>' in body or '</json>' in body:
         prefix, opening, payload = body.partition('<json>')
         if not opening or '</json>' in prefix:
-            raise ValueError('主动检查结果需要唯一完整的 <json>...</json> 标签')
+            raise ValueError('The active check result requires a unique and complete <json>...</json> tag')
         try:
             payload = payload.lstrip()
             _, end = json.JSONDecoder().raw_decode(payload)
         except json.JSONDecodeError as exc:
-            raise ValueError('主动检查标签内不是有效的 JSON') from exc
+            raise ValueError('Actively check that the label is not valid JSON') from exc
         remainder = payload[end:].lstrip()
         if (not remainder.startswith('</json>') or '<json>' in remainder[7:]
                 or '</json>' in remainder[7:]):
-            raise ValueError('主动检查结果需要唯一完整的 <json>...</json> 标签')
+            raise ValueError('The active check result requires a unique and complete <json>...</json> tag')
         body = payload[:end]
     lines = body.splitlines()
     if len(lines) >= 3 and lines[0].strip().lower() in ('```', '```json') and lines[-1].strip() == '```':
@@ -163,16 +171,16 @@ def parse_check_result(content):
         blocks = re.findall(r'^```([^\r\n]*)\r?\n(.*?)^```[ \t]*$', body,
                             flags=re.MULTILINE | re.DOTALL | re.IGNORECASE)
         if len(blocks) != 1 or blocks[0][0].strip().lower() not in ('', 'json'):
-            raise ValueError('主动检查结果不是有效的 JSON，请重试或更换数字人引擎') from exc
+            raise ValueError('The active check result is not valid JSON. Please retry or switch the digital human engine.') from exc
         try:
             result = json.loads(blocks[0][1])
         except json.JSONDecodeError as block_error:
-            raise ValueError('主动检查结果不是有效的 JSON，请重试或更换数字人引擎') from block_error
+            raise ValueError('The active check result is not valid JSON. Please retry or switch the digital human engine.') from block_error
     if (not isinstance(result, dict) or result.get('decision') not in ('silent', 'notify')
             or not isinstance(result.get('summary'), str)
             or not isinstance(result.get('source_ids'), list)
             or any(not isinstance(item, str) for item in result['source_ids'])):
-        raise ValueError('主动检查结果结构无效，请重试或更换数字人引擎')
+        raise ValueError('The active check result structure is invalid. Please retry or switch to a different digital human engine.')
     return result
 
 
@@ -180,12 +188,16 @@ class DigitalPersonRuntime:
     def __init__(self, projects, chats, bots, bus):
         self.projects, self.chats, self.bots, self.bus = projects, chats, bots, bus
         self._check_lock = asyncio.Lock()
+        self._delegate_lock = asyncio.Lock()
         self._loop_task = None
         self._cycle_task = None
         self._active_check = None
         self._active_assessment_task = None
         from services.digital_person_followup import DelegationFollower
+        from services.digital_person_delegations import DelegationManagement
         self._follower = DelegationFollower(self)
+        self.delegation_management = DelegationManagement(self)
+        self.chats.digital_person_delegations = self.delegation_management
 
     async def home(self):
         return await customization_workspace.ensure_default_workspace(self.projects)
@@ -240,7 +252,6 @@ class DigitalPersonRuntime:
             delivery_runs = {row['id']: row for row in all_runs}
             delegations = sorted(state.get('delegations', []),
                                  key=lambda item: str(item.get('created_at', '')), reverse=True)
-            delegations.sort(key=lambda item: bool(item.get('notified')))
             def notification(item):
                 run_id = item.get('notification_run_id') or str(uuid.uuid5(
                     uuid.NAMESPACE_URL, 'workstep-delegation:' + item['id']))
@@ -256,83 +267,222 @@ class DigitalPersonRuntime:
                 'reflection_count': state.get('reflection_count', len(runs)),
                 'reflection_count_lower_bound': state.get('reflection_count_lower_bound', len(all_runs) >= 100),
                 'delegation_total': len(delegations),
-                'delegation_pending': any(not d.get('notified') or notification(d)['notification_state'] == 'notifying' for d in delegations),
-                'delegations': [{**{key: row.get(key) for key in ('id', 'project_id', 'session_id', 'status', 'created_at')},
+                'delegation_pending': any((d.get('followup_state') == 'pending' if d.get('followup_state')
+                                           else not d.get('notified'))
+                                          or notification(d)['notification_state'] == 'notifying' for d in delegations),
+                'delegations': [{**{key: row.get(key) for key in ('id', 'project_id', 'session_id', 'message_id', 'turn_id', 'status', 'followup_state', 'created_at')},
                                  'instruction': str(row.get('instruction') or '')[:120], **notification(row)}
                                 for row in delegations[delegation_offset:delegation_offset + limit]],
                 'runs': [{**{key: row.get(key) for key in ('id', 'status', 'created_at')},
                           'outcome': activity_outcome(row),
-                          'summary': activity_preview(row)}
+                          **activity_record_content(row, preview=True)}
                          for row in runs[run_offset:run_offset + limit]],
             }
-        return await self.projects.run_db(home.id, read)
+        result = await self.projects.run_db(home.id, read)
+        from services.chat_read_state import TERMINAL, is_read
+        groups = {}
+        for row in result['delegations']:
+            row['result_viewed'] = (row['notification_state'] == 'read') if row['status'] in TERMINAL else None
+            if row['project_id'] and row['message_id']:
+                groups.setdefault(row['project_id'], []).append(row)
+
+        async def hydrate(project_id, rows):
+            def status_from_messages(_):
+                messages = ChatMessage.select(ChatMessage.id, ChatMessage.session, ChatMessage.status,
+                                              ChatMessage.created_at).join(ChatSession).where(
+                    ChatSession.project_id == project_id, ChatMessage.role == 'assistant',
+                    ChatMessage.id.in_({row['message_id'] for row in rows}))
+                by_id = {message.id: message for message in messages}
+                projection = []
+                for row in rows:
+                    message = by_id.get(row['message_id'])
+                    if message is None or message.session_id != row['session_id']:
+                        projection.append(('missing', None))
+                    else:
+                        status = message.status
+                        projection.append((status, is_read(project_id, message) if status in TERMINAL else None))
+                return projection
+            try:
+                statuses = await self.projects.run_db(project_id, status_from_messages)
+            except (ValueError, LookupError):
+                statuses = [('missing', None)] * len(rows)
+            for row, (status, viewed) in zip(rows, statuses):
+                if status == 'running' and row['turn_id'] and self.chats.is_turn_queued(row['turn_id']):
+                    status = 'queued'
+                row['status'] = 'completed' if status == 'succeeded' else status
+                row['result_viewed'] = viewed
+
+        await asyncio.gather(*(hydrate(project_id, rows) for project_id, rows in groups.items()))
+        for row in result['delegations']:
+            row.pop('turn_id')
+        return result
+
 
     async def run_detail(self, run_id):
         home = await self.home()
         def read(_):
             row = next((r for r in read_state(home.id).get('runs', []) if r['id'] == run_id), None)
             if row is None:
-                raise ValueError('运行记录已不存在')
-            result={key: row.get(key) for key in ('id', 'status', 'summary', 'error', 'created_at', 'ended_at')}
+                raise ValueError('The run record no longer exists')
+            result={key: row.get(key) for key in ('id', 'status', 'error', 'created_at', 'ended_at')}
+            result.update(activity_record_content(row))
+            message = row.get('notification_message') or (row.get('summary') if is_notification_run(row) else None)
+            result['notification_message'] = redact(message) if message else None
             result['outcome'] = activity_outcome(row)
             result['draft_summary'] = row.get('draft_summary')
             result['failure_reason'] = activity_failure_reason(row)
-            if row.get('activity_summary'):
-                result['summary']=row['activity_summary'].replace('好感度无变化', '好感度 0')+('\n'+row['summary'] if row.get('summary') else '')
             return result
         return await self.projects.run_db(home.id, read)
 
     async def feedback(self, message_id, value):
         if value not in (-1, 0, 1):
-            raise ValueError('反馈只能是 -1、0 或 1')
+            raise ValueError('Feedback can only be -1, 0, or 1')
         home = await self.home()
         def operation(_):
             state = read_state(home.id)
             if not ChatMessage.get_or_none(ChatMessage.id == message_id, ChatMessage.role == 'assistant'):
-                raise ValueError('找不到数字人回复')
+                raise ValueError('Digital reply not found')
             state['feedback'][message_id] = value
             write_state(home.id, state)
         await self.projects.run_db(home.id, operation)
         return await self.overview()
 
-    async def delegate(self, project_id, instruction, origin_session_id='', request_id=''):
+    async def list_delegations(self, project_id, origin_session_id, delegation_id=''):
+        state = await self.state()
+        items = [item for item in reversed(state['delegations'])
+                 if (not project_id or item.get('project_id') == project_id)
+                 and item.get('origin_session_id') == origin_session_id]
+        if delegation_id:
+            item = next((item for item in items if item['id'] == delegation_id), None)
+            if item is None:
+                return {'items': []}
+            snapshot, = await self.delegation_management.read([item], include_content=True)
+            return {'items': [redact({key: snapshot.get(key) for key in (
+                'id', 'project_id', 'session_id', 'message_id', 'instruction', 'status',
+                'followup_state', 'question', 'created_at',
+            )} | {'goal': snapshot.get('root_instruction') or snapshot['instruction'],
+                  'result': snapshot['content']})]}
+        return {'items': [{key: item.get(key) for key in ('id', 'session_id', 'instruction', 'status', 'followup_state', 'created_at')}
+                          for item in items[:20]]}
+
+    async def delegate(self, project_id, instruction, origin_session_id='', request_id='', continuation_of='',
+                       *, automatic_result_id=None, target_session_id=''):
         if not (await asyncio.to_thread(digital_person.get_profile)).enabled:
-            raise ValueError('请先开启数字人')
+            raise ValueError('Please enable the digital human first')
         if not instruction.strip() or len(instruction) > 12000:
-            raise ValueError('请填写有效的执行要求')
+            raise ValueError('Please provide valid execution requirements')
         target = self.projects.get_project_by_id(project_id)
         if not target:
-            raise ValueError('目标项目不存在')
+            raise ValueError('Target project does not exist')
         home = await self.home()
         if project_id == home.id:
-            raise ValueError('请把执行工作交给具体项目')
+            raise ValueError('Please delegate the execution task to the specific project')
         if not request_id:
-            raise ValueError('缺少委派请求标识')
+            raise ValueError('Missing delegation request identifier')
+        if target_session_id and continuation_of:
+            raise ValueError('Choose a target session or a prior delegation')
         # Serialize creation and request deduplication, not the worker execution.
-        if not hasattr(self, '_delegate_lock'):
-            self._delegate_lock = asyncio.Lock()
         async with self._delegate_lock:
             state = await self.state()
-            existing = next((d for d in state['delegations'] if d['request_id'] == request_id), None)
-            if existing:
-                if existing['project_id'] != project_id or existing['instruction'] != instruction:
-                    raise ValueError('请求标识已用于其他委派')
-                return existing
             if not origin_session_id:
                 origin_session_id = (await self.main_session())['id']
-            valid = await self.projects.run_db(home.id, lambda _: ChatSession.get_or_none(ChatSession.id == origin_session_id) is not None)
-            if not valid:
-                raise ValueError('来源会话不属于数字人工作区')
-            def create(_):
-                session = self.chats.create_session(project_id, title=instruction[:60])
-                accepted = self.chats.submit_message(project_id, session['id'], instruction, request_id, schedule=False)
-                return session, accepted
-            session, accepted = await self.projects.run_db(project_id, create)
+            existing = next((d for d in state['delegations'] if d['request_id'] == request_id), None)
+            if existing:
+                existing_target = existing.get('target_session_id', '')
+                if (existing['project_id'], existing['instruction'], existing['origin_session_id'],
+                        existing_target, '' if existing_target else existing.get('continuation_of', '')) != (
+                    project_id, instruction, origin_session_id, target_session_id, continuation_of,
+                ):
+                    raise ValueError('Request identifier already used for another delegation')
+                return existing
+            origin_archived = await self.projects.run_db(home.id, lambda _: ChatSession.select(ChatSession.archived).where(
+                ChatSession.id == origin_session_id, ChatSession.project_id == home.id,
+            ).scalar())
+            if origin_archived is None or (target_session_id and origin_archived):
+                raise ValueError('The source session is archived or does not belong to the digital human workspace')
+            previous = next((item for item in state['delegations'] if item['id'] == continuation_of), None) if continuation_of else None
+            if continuation_of and (not previous or previous['project_id'] != project_id
+                                    or previous['origin_session_id'] != origin_session_id):
+                raise ValueError('The delegation to be continued does not belong to the current source session or target project')
+            if target_session_id:
+                previous = next((item for item in reversed(state['delegations'])
+                                 if item['project_id'] == project_id
+                                 and item['origin_session_id'] == origin_session_id
+                                 and item['session_id'] == target_session_id), None)
+            if automatic_result_id and (not previous or previous.get('followup_state') != 'pending'
+                                        or previous['message_id'] != automatic_result_id):
+                raise ValueError('The delegation has changed')
+
+            def submit(_):
+                busy = False
+                if target_session_id or previous:
+                    session_id = target_session_id or previous['session_id']
+                    row = ChatSession.get_or_none(ChatSession.id == session_id, ChatSession.project_id == project_id)
+                    if row is None or row.archived:
+                        raise ValueError('The original execution session has been deleted or archived, and no further requests can be appended.')
+                    if target_session_id:
+                        from services.channels.session_source import channel_session_source
+                        if channel_session_source(row.id)['source'] != 'chat':
+                            raise ValueError('The target must be an ordinary project conversation')
+                    busy = ChatMessage.select().where(
+                        ChatMessage.session == session_id, ChatMessage.role == 'assistant',
+                        ChatMessage.status.in_(('queued', 'running', 'stopping')),
+                    ).exists()
+                else:
+                    session_id = self.chats.create_session(project_id, title=instruction[:60])['id']
+                if automatic_result_id:
+                    from agent_assistants.chat_session import ChatAccepted
+                    from models.base import db_proxy
+                    from services.digital_person_delegations import NoDelegationProgress, continuation_ids
+                    turn_id, message_id = continuation_ids(request_id)
+                    recovered = ChatMessage.get_or_none(ChatMessage.session == session_id,
+                                                        ChatMessage.id == message_id)
+                    if recovered is not None:
+                        return ChatAccepted(session_id, turn_id, message_id, recovered.status), busy
+                    latest = ChatMessage.select(ChatMessage.id, ChatMessage.content).where(
+                        ChatMessage.session == session_id, ChatMessage.role == 'assistant',
+                    ).order_by(ChatMessage.created_at.desc()).first()
+                    if busy or latest is None or latest.id != automatic_result_id:
+                        raise ValueError('The execution conversation has advanced')
+                    parent = next((row for row in state['delegations']
+                                   if row['id'] == previous.get('continuation_of')), None)
+                    if parent:
+                        earlier = ChatMessage.select(ChatMessage.content).where(
+                            ChatMessage.session == session_id, ChatMessage.id == parent['message_id'],
+                        ).scalar()
+                        if earlier and earlier.split() == latest.content.split():
+                            raise NoDelegationProgress('The execution result is unchanged')
+                    with db_proxy.atomic():
+                        accepted = self.chats.submit_internal_event(
+                            project_id, session_id, 'digital_person.delegation_followup', instruction,
+                            request_id, schedule=False, reserved_message_ids=(turn_id, message_id),
+                        )
+                elif target_session_id:
+                    from services.chat_submission import submit_turn
+                    accepted, _, _ = submit_turn(
+                        self.chats, project_id, session_id, instruction, f'delegation-existing:{request_id}',
+                    )
+                else:
+                    accepted = self.chats.submit_message(project_id, session_id, instruction, request_id, schedule=False)
+                return accepted, busy
+
+            accepted, busy = await self.projects.run_db(project_id, submit)
             item = {'id': str(uuid.uuid4()), 'request_id': request_id, 'project_id': project_id,
-                    'session_id': session['id'], 'origin_session_id': origin_session_id,
+                    'session_id': accepted.session_id, 'origin_session_id': origin_session_id,
                     'message_id': accepted.assistant_message_id, 'instruction': instruction,
-                    'status': 'running', 'created_at': utc_now(), 'notified': False}
-            await self.mutate(lambda s: s['delegations'].append(item))
+                    'turn_id': accepted.turn_id, 'continuation_of': previous['id'] if previous else '',
+                    **({'target_session_id': target_session_id} if target_session_id else {}),
+                    'status': 'queued' if busy else 'running', 'created_at': utc_now(), 'notified': False,
+                    'followup_state': 'pending',
+                    'root_instruction': previous.get('root_instruction', previous['instruction']) if previous else instruction}
+            def record(state):
+                state['delegations'].append(item)
+                if previous and previous.get('followup_state'):
+                    parent = next(row for row in state['delegations'] if row['id'] == previous['id'])
+                    parent['followup_state'] = 'continued'
+                    parent.pop('followup_decision', None)
+            await self.mutate(record)
+            self.delegation_management.track(item)
             self.chats.start_queued_turn(accepted.turn_id)
             return item
 
@@ -394,8 +544,16 @@ class DigitalPersonRuntime:
                     'origin_project_id':pid,'source_kind':kind,'busy':busy,'no_work':True,'reflection_batch':[],'indexed':indexed}
         hits = await memory.read_projects(self.projects, batch) if batch else []
         by_id = {h['id']: h for h in hits}
-        if batch and any(by_id.get('memory:'+str(r['id']),{}).get('source_hash') != r['source_hash'] for r in batch):
-            raise ValueError('待思考来源已变化或不可用，请下轮重试')
+        unavailable = {(r['project_id'],r['source_message_id']) for r in batch
+                       if by_id.get('memory:'+str(r['id']),{}).get('source_hash') != r['source_hash']}
+        if unavailable:
+            # Keep all fragments of an unavailable message out of this assessment.
+            skipped = [r for r in batch if (r['project_id'],r['source_message_id']) in unavailable]
+            await asyncio.to_thread(assessment.defer_unavailable, skipped)
+            batch = [r for r in batch if (r['project_id'],r['source_message_id']) not in unavailable]
+        if not batch:
+            return {'origin_project_id':pid,'origin_session_id':origin,'no_work':True,
+                    'reflection_batch':[],'conversation':[]}
         scope = batch[0]['scope']
         historical = bool(batch and batch[0]['historical'])
         memory_only = bool(batch and not batch[0]['needs_reflection'])
@@ -565,7 +723,7 @@ class DigitalPersonRuntime:
                             continue
                         if access:
                             if not memory_query.assessment_observed(access):
-                                raise ValueError('尚未领取本轮待整理消息，保留待处理状态')
+                                raise ValueError('Unclaimed pending messages for this round; retain pending status')
                             decision['_retrieved_knowledge_ids'] = memory_query.observed_knowledge_versions(access)
                             decision['_read_source_ids'] = memory_query.observed_sources(access, context.get('_read_requirements', []))
                         def confirmed(state):
@@ -576,7 +734,7 @@ class DigitalPersonRuntime:
                         await self.mutate(confirmed)
                         return decision
                     if status in ('failed', 'error', 'stopped'):
-                        raise RuntimeError('主动检查未完成：' + status)
+                        raise RuntimeError('Active check incomplete:' + status)
                     await asyncio.sleep(.25)
         finally:
             if access:
@@ -587,19 +745,21 @@ class DigitalPersonRuntime:
             await self.bus.publish({'type': 'CUSTOM', 'name': 'channel.session_changed',
                                     'channel': 'session_chat', 'project_id': home.id})
 
-    async def _deliver_local(self, sid, text, run_id, *, proactive=False, project_id=''):
+    async def _deliver_local(self, sid, text, run_id, *, proactive=False, reflection=False, project_id=''):
         home = await self.home()
         if project_id:
             home = self.projects.get_project_by_id(project_id)
             if home is None:
-                raise ValueError('通知来源项目不存在')
+                raise ValueError('The source project for the notification does not exist')
         mid = str(uuid.uuid5(uuid.NAMESPACE_URL, run_id + sid))
         def write(_):
             if not ChatSession.get_or_none(ChatSession.id == sid, ChatSession.archived == False):
-                raise ValueError('通知来源会话已归档或删除')
+                raise ValueError('The source session of the notification has been archived or deleted')
             if ChatMessage.get_or_none(ChatMessage.id == mid):
                 return False
-            ChatMessage.insert(id=mid, session=sid, role='assistant', content=text, status='completed', created_at=utc_now(), ended_at=utc_now()).on_conflict_ignore().execute()
+            ChatMessage.insert(id=mid, session=sid, role='assistant', content=text, status='completed',
+                               context_json=json.dumps({'digital_person_proactive': True}) if proactive or reflection else None,
+                               created_at=utc_now(), ended_at=utc_now()).on_conflict_ignore().execute()
             ChatSession.update(updated_at=utc_now()).where(ChatSession.id == sid).execute()
             from services.digital_person_reflection import ignore
             ignore(home.id, mid)
@@ -616,7 +776,6 @@ class DigitalPersonRuntime:
                 'value':{'message_id':mid,'text':text}})
 
     async def _notify(self, text, source_ids, run_id):
-        from services.memory_secrets import redact
         text = redact(text)
         state = await self.state()
         targets = {d['origin_session_id'] for d in state['delegations'] if d['id'] in source_ids}
@@ -627,7 +786,8 @@ class DigitalPersonRuntime:
             targets = {(await self.main_session())['id']}
         routes = await self.bots._load() if self.bots else {'sessions': {}, 'session_sources': {}}
         scope = run.get('sources', {}).get('companion', {}).get('scope') if isinstance(run.get('sources'), dict) else None
-        proactive = run.get('trigger') in ('manual','interval') and scope == 'local' and run.get('origin_session_id') not in routes.get('session_sources', {})
+        reflection = run.get('trigger') in ('manual', 'interval')
+        proactive = reflection and scope == 'local' and run.get('origin_session_id') not in routes.get('session_sources', {})
         if proactive:
             targets = {(await self.main_session())['id']}
         receipts = []
@@ -638,7 +798,7 @@ class DigitalPersonRuntime:
                 if proactive:
                     await self._deliver_local(sid, text, run_id, proactive=True)
                 else:
-                    await self._deliver_local(sid, text, run_id, **local_options)
+                    await self._deliver_local(sid, text, run_id, reflection=reflection or run.get('managed_followup', False), **local_options)
                 receipts.append({'kind':'local','session_id':sid,'status':'delivered','proactive':proactive,**local_options})
             except Exception as exc:
                 receipts.append({'kind':'local','session_id':sid,'status':'failed','error':str(exc)[:500],'proactive':proactive,**local_options})
@@ -663,9 +823,9 @@ class DigitalPersonRuntime:
     async def check(self, manual=True):
         profile = await asyncio.to_thread(digital_person.get_profile)
         if not profile.enabled:
-            raise ValueError('数字人主动检查未开启')
+            raise ValueError('Digital human proactive check is not enabled')
         if self._check_lock.locked():
-            raise ValueError('已有检查正在进行')
+            raise ValueError('An existing check is in progress')
         async with self._check_lock:
             from services.memory_pending_queue import has_pending
             from services.digital_person_memory import allowed_projects
@@ -673,7 +833,11 @@ class DigitalPersonRuntime:
                 await self.follow_delegations(profile)
                 from services.memory_knowledge import ensure_schema
                 await asyncio.to_thread(ensure_schema)
-            if not await asyncio.to_thread(has_pending,allowed_projects(self.projects)):
+            management = self.delegation_management
+            eligible = await management.eligible(await self.state())
+            eligible = await management.recover(eligible, profile)
+            eligible = await management.recover_foreground(eligible, profile)
+            if not eligible and not await asyncio.to_thread(has_pending,allowed_projects(self.projects)):
                 return {'status':'silent','sources':{'no_work':True},'deliveries':[]}
             run = {'id':str(uuid.uuid4()),'created_at':utc_now(),'status':'running','trigger':'manual' if manual else 'interval','sources':[],'deliveries':[],'relationship_updates':[],'memory_updates':[]}
             def start_run(state):
@@ -691,12 +855,14 @@ class DigitalPersonRuntime:
                 async def load_batch():
                     nonlocal claimed
                     prepared = await self._collect()
+                    if eligible:
+                        await management.attach(prepared, eligible)
                     context.clear()
                     context.update(prepared)
                     if prepared.get('no_work'):
                         return
                     if not await asyncio.to_thread(assessment.claim,prepared.get('reflection_batch',[])):
-                        raise ValueError('来源正在处理或已变化，等待下一轮')
+                        raise ValueError('The source is being processed or has changed, waiting for the next round')
                     claimed = True
                     run['sources'] = prepared
                     run['origin_session_id'] = prepared.get('origin_session_id','')
@@ -714,42 +880,45 @@ class DigitalPersonRuntime:
                 from services.memory_secrets import redact
                 run['draft_summary'] = redact(str(decision.get('summary', '')))[:3000]
                 if '_load' in context:
-                    raise ValueError('尚未调用 CLI 获取待整理消息')
+                    raise ValueError('The CLI has not fetched the messages to review')
                 if context.get('no_work'):
                     run.update(status='silent',summary='没有待处理事件')
                     return run
                 if decision.get('decision') not in ('silent','notify'):
-                    raise ValueError('思考结果缺少有效的处理方式。')
+                    raise ValueError('The thinking result lacks a valid processing method.')
                 ids = resolve_check_sources(context, decision.get('source_ids', []))
                 run['summary'] = run.pop('draft_summary', '')
                 run['status'] = decision['decision']
                 run['kind'] = decision.get('kind', 'work')
                 if run['kind'] not in ('work', 'social'):
-                    raise ValueError('主动检查类型无效')
+                    raise ValueError('Invalid proactive check type')
                 if decision['decision'] == 'notify':
                     terminal = {d['id'] for d in context.get('delegations', [])
                                 if d['status'] in ('completed','succeeded','failed','error','stopped','missing')}
                     terminal.update(m['id'] for key in ('conversation','memory','thought_sources')
                                     for m in context.get(key, []))
                     if not ids or not set(ids).issubset(terminal) or not run['summary'].strip():
-                        raise ValueError('尚无可通知的来源或结果')
+                        raise ValueError('No source or result to notify')
                 from services import digital_person_reflection as reflection
                 required={r['id'] for r in context.get('_read_requirements',[])}
                 if not required.issubset(set(decision.get('_read_source_ids',[]))):
-                    raise ValueError('尚未读取本轮长消息原文，保留待思考状态')
+                    raise ValueError('Original long message not yet read, retained in thinking state:')
 
                 if not await asyncio.to_thread(reflection.current, context.get('reflection_batch', [])):
-                    raise ValueError('思考期间来源已变化，未应用旧结论')
+                    raise ValueError('Source changed during thinking; old conclusion not applied')
+                from services.digital_person_delegations import validate_actions
+                actions = decision.get('delegation_actions', [])
+                validate_actions(actions, {item['id']: item for item in eligible})
                 memories = decision.get('memories', [])
                 from services.memory_knowledge import _validate
                 available = {int(r['id']):r for r in context.get('reflection_batch',[]) if r.get('needs_knowledge',True)}
                 if not isinstance(memories,list) or len(memories)>24:
-                    raise ValueError('记忆候选格式无效')
+                    raise ValueError('Invalid memory candidate format')
                 existing_ids = decision.get('_retrieved_knowledge_ids', [])
                 for item in memories:
                     validated = _validate(item,available)
                     if not {f'knowledge:{x}' for x in validated['supersedes']}.issubset(set(existing_ids)):
-                        raise ValueError('记忆纠正未引用本轮查询过的知识')
+                        raise ValueError('Memory correction did not reference knowledge queried in this round')
                 batch_context = context
                 groups = context.get('_groups', [context])
                 relationship_results = []
@@ -764,11 +933,12 @@ class DigitalPersonRuntime:
                 from services import digital_person_affect as affect
                 selected = [group for group in groups if set(ids).intersection(m['id'] for m in group.get('conversation',[]))]
                 if decision['decision']=='notify' and groups[0].get('conversation') and len(selected)!=1:
-                    raise ValueError('主动通知需对应一个明确的来源会话')
+                    raise ValueError('Active notification must correspond to a specific source session')
                 # Validate and atomically commit knowledge before relationship or
                 # delivery effects; a stale replacement must not change affinity.
                 result = await asyncio.to_thread(assessment.commit,batch_context.get('reflection_batch',[]),memories,run['id'],existing_ids)
                 committed = True
+                await management.apply(actions, eligible, profile)
                 run['memory_processing'] = {'status':'idle','mode':'unified','knowledge':result}
                 await asyncio.to_thread(memory_index.mutate_state,'memory_worker',lambda s:s.update(
                     status='idle',mode='unified',error_type=None,retry_at=0,knowledge=result,finished_at=utc_now().isoformat()))
@@ -804,11 +974,13 @@ class DigitalPersonRuntime:
                 if internal_only:
                     run.update(status='silent',summary=run['summary'] or '已完成内部记忆整理')
                     return run
+                if decision['decision'] == 'notify':
+                    run['notification_message'] = redact(run['summary'])
                 if run['kind'] == 'social' and not manual and not profile.proactive_enabled:
                     run.update(status='silent', summary=run['summary'] or '主动交流已关闭，已完成内部思考')
                     return run
                 if context.get('archived_source'):
-                    run.update(status='silent', summary=run['summary'] or '归档来源已完成内部思考')
+                    run.update(status='silent', summary=run['summary'] or 'Archived source processed internally; no notification sent.')
                     return run
                 if run['kind'] == 'social' and run['status'] == 'notify' and not context.get('companion', {}).get('contact_policy', {}).get('allowed', False):
                     run.update(status='silent', summary=context.get('companion', {}).get('contact_policy', {}).get('reason', '主动联系条件不满足'))
@@ -819,12 +991,19 @@ class DigitalPersonRuntime:
                         if context.get('source_kind')=='task':
                             from models import Message
                             return Message.select().where(Message.task==sid,Message.run_status.in_(['queued','running','stopping'])).exists()
+                        session=ChatSession.get_or_none(ChatSession.id==sid)
+                        if session is None or session.archived:
+                            return 'archived'
                         rows=ChatMessage.select().where(ChatMessage.session==sid)
                         if rows.where(ChatMessage.status.in_(['queued','running','stopping'])).exists():
                             return True
                         timestamps=[m['created_at'] for m in context.get('conversation',[]) if m.get('created_at')]
                         return bool(timestamps and rows.where(ChatMessage.created_at>max(datetime.fromisoformat(str(t)) for t in timestamps)).exists())
-                    if await self.projects.run_db(context['origin_project_id'],currently_busy):
+                    source_state=await self.projects.run_db(context['origin_project_id'],currently_busy)
+                    if source_state=='archived':
+                        run.update(status='silent',summary='Archived source processed internally; no notification sent.')
+                        return run
+                    if source_state:
                         run.update(status='silent',summary='来源会话正在执行，已完成记忆整理')
                         return run
                     run['origin_session_id']=context.get('origin_session_id','')
@@ -878,7 +1057,7 @@ class DigitalPersonRuntime:
                 if claimed and not committed:
                     await asyncio.to_thread(assessment.release,run.get('sources',context).get('reflection_batch',[]))
                 if committed:
-                    run['activity_summary']=completed_activity_summary(run)
+                    run['processing']=completed_activity_processing(run)
                 run['ended_at'] = utc_now()
                 def finish(s):
                     saved=dict(run,sources=assessment_audit(run.get('sources') or {}))
@@ -893,16 +1072,31 @@ class DigitalPersonRuntime:
         def recover(state):
             for run in state['runs']:
                 if run['status'] in ('running', 'notifying'):
-                    run.update(status='interrupted', error='服务重启，未自动重发通知')
+                    run.update(status='interrupted', error='The service restarted. The notification was not sent again automatically.')
             _rename_check_session(state.get('check_session_id'))
         await self.mutate(recover)
+        from services.digital_person_delegations import outstanding
+        for item in outstanding((await self.state())['delegations']):
+            self.delegation_management.track(item)
         from services.memory_knowledge import ensure_schema
         await asyncio.to_thread(ensure_schema)
         self._loop_task = asyncio.create_task(self._loop())
 
     async def follow_delegations(self, profile=None):
         profile = profile or await asyncio.to_thread(digital_person.get_profile)
+        if profile.enabled:
+            await self.delegation_management.refresh()
         await self._follower.poll(profile)
+
+    async def trigger_check(self):
+        profile = await asyncio.to_thread(digital_person.get_profile)
+        if not profile.enabled:
+            raise ValueError('Digital human proactive check is not enabled')
+        if self._check_lock.locked() or (self._cycle_task and not self._cycle_task.done()):
+            raise ValueError('An existing check is in progress')
+        self._cycle_task = asyncio.create_task(self.check(manual=True))
+        self._cycle_task.add_done_callback(self._cycle_finished)
+        return {'status': 'accepted'}
 
     async def _tick(self, now=None, *, background=False):
         profile = await asyncio.to_thread(digital_person.get_profile)
@@ -912,6 +1106,8 @@ class DigitalPersonRuntime:
         if self._cycle_task and not self._cycle_task.done():
             return
         state = await self.state()
+        if self._check_lock.locked() or (self._cycle_task and not self._cycle_task.done()):
+            return
         last_at = state.get('last_check') or state.get('reflection_started_at')
         if not last_at and not profile.proactive_enabled:
             # Establish the first due time without shortening the thinking interval.
@@ -939,9 +1135,9 @@ class DigitalPersonRuntime:
             return
         await self.follow_delegations(profile)
         seen = set()
-        # Drain durable pending work in isolated, bounded source batches.
-        # Scheduling time never determines whether an event is eligible.
-        while True:
+        # Bound each scheduled cycle, including messages arriving while it runs.
+        # Remaining durable work waits for the next configured interval.
+        for _ in range(2):
             profile = await asyncio.to_thread(digital_person.get_profile)
             if not profile.enabled or not profile.reflection_enabled:
                 break
@@ -997,15 +1193,15 @@ class DigitalPersonRuntime:
         """Retry failed channel receipts only; never replay successful recipients."""
         from services.digital_person_channels import get_bindings, send_binding
         if self._check_lock.locked():
-            raise ValueError('请等待当前检查完成')
+            raise ValueError('Please wait for the current check to complete')
         async with self._check_lock:
             profile = await asyncio.to_thread(digital_person.get_profile)
             if not profile.enabled:
-                raise ValueError('数字人已关闭')
+                raise ValueError('Digital human is closed')
             state = await self.state()
             run = next((r for r in state['runs'] if r['id']==run_id),None)
             if not run or run['status'] != 'delivery_failed':
-                raise ValueError('没有可重试的投递')
+                raise ValueError('No retryable deliveries')
             bindings = await asyncio.to_thread(get_bindings)
             for receipt in run['deliveries']:
                 if receipt['status'] != 'failed':
@@ -1017,12 +1213,13 @@ class DigitalPersonRuntime:
                             await self._deliver_local(receipt['session_id'], run['summary'], run_id, proactive=True)
                         else:
                             options = {'project_id':receipt['project_id']} if receipt.get('project_id') else {}
-                            await self._deliver_local(receipt['session_id'], run['summary'], run_id, **options)
+                            await self._deliver_local(receipt['session_id'], run['summary'], run_id,
+                                                      reflection=run.get('trigger') in ('manual', 'interval'), **options)
                         result = {}
                     else:
                         binding = next((b for b in bindings if b['id']==receipt.get('binding_id') and b.get('notify')),None)
                         if binding is None:
-                            raise ValueError('通知绑定已解除或关闭，请重新选择接收会话')
+                            raise ValueError('Notification binding has been disconnected or disabled. Please reselect the receiving session.')
                         result = await send_binding(self.bots,binding,run['summary'])
                     receipt.update(status='delivered',message_id=result.get('message_id'))
                     run['notified_at'] = utc_now().isoformat()
@@ -1037,9 +1234,15 @@ class DigitalPersonRuntime:
             return run
 
     async def stop_delegation(self, delegation_id):
-        state=await self.state()
-        item=next((d for d in state['delegations'] if d['id']==delegation_id),None)
-        if not item:
-            raise ValueError('委派不存在')
+        def stop(state):
+            item = next((d for d in state['delegations'] if d['id'] == delegation_id), None)
+            if item is None:
+                raise ValueError('Delegation does not exist')
+            if item.get('followup_state') == 'pending':
+                item['followup_state'] = 'stopped'
+                item.pop('followup_decision', None)
+            return item
+        async with self._delegate_lock:
+            item = await self.mutate(stop)
         await self.chats.stop_current(item['session_id'],item['project_id'],expected_message_id=item['message_id'])
         return {'stopped':True}

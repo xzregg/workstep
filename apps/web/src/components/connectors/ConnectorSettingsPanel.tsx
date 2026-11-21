@@ -1,7 +1,7 @@
 import SettingsHelpButton from '../SettingsHelpButton'
 import { useEffect, useState } from 'react'
 import { connectorApi, type Connector, type DiscoveredConnector } from '../../api/connectors'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
@@ -52,7 +52,7 @@ export default function ConnectorSettingsPanel() {
     <div className="connector-tabs" role="tablist" aria-label={t('connectors.title')}>
       {(['added', 'browse', 'local'] as Tab[]).map(id => <button key={id} id={`connector-tab-${id}`} type="button" role="tab" aria-selected={tab === id} aria-controls="connector-tab-panel" onClick={() => changeTab(id)}>{t(`connectors.tab${id === 'added' ? 'Added' : id === 'browse' ? 'Browse' : 'Local'}`)}{id === 'added' && <span>{items.length}</span>}{id === 'local' && discoveries && <span>{discoveries.length}</span>}</button>)}
     </div>
-    {error && <p role="alert" className="connector-error">{error}</p>}
+    {error && <p role="alert" className="connector-error">{localizeErrorDisplay(error)}</p>}
     <div role="tabpanel" id="connector-tab-panel" aria-labelledby={`connector-tab-${tab}`}>
       {tab !== 'local' && <div className="connector-overview-toolbar"><label className="connector-search"><Icon name="search" size={16} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t('connectors.search')} aria-label={t('connectors.search')} /></label><span>{t('connectors.autoEngines')}</span></div>}
       {tab === 'added' && <>

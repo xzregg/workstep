@@ -4,14 +4,48 @@ import datetime
 import hashlib
 import hmac
 import json
+import socket
+import ssl
 import time
 import uuid
 from urllib.parse import urlencode
 
 import httpx
 import websockets
+from websockets.exceptions import ConnectionClosedError, InvalidStatus
 
 MAX_AUDIO = 24 * 1024 * 1024
+
+
+class SpeechConfigurationError(ValueError):
+    pass
+
+
+def speech_failure_code(error):
+    if isinstance(error, SpeechConfigurationError):
+        return 'configuration'
+    if isinstance(error, (httpx.HTTPStatusError, InvalidStatus)):
+        status = error.response.status_code
+        if status in (401, 403):
+            return 'authentication'
+        if status in (408, 429, 500, 502, 503, 504):
+            return 'temporary'
+        if 400 <= status < 500:
+            return 'configuration'
+    cause = error
+    while cause is not None:
+        if isinstance(cause, ssl.SSLError):
+            return 'configuration'
+        if isinstance(cause, socket.gaierror):
+            return 'temporary' if cause.errno == socket.EAI_AGAIN else 'configuration'
+        cause = cause.__cause__
+    if isinstance(error, ConnectionClosedError):
+        if error.rcvd is None or error.rcvd.code in (1011, 1012, 1013, 1014):
+            return 'temporary'
+    if isinstance(error, (ConnectionError, TimeoutError, httpx.NetworkError,
+                          httpx.TimeoutException, httpx.RemoteProtocolError)):
+        return 'temporary'
+    return 'synthesis'
 
 
 def pcm(data):
@@ -52,7 +86,7 @@ async def remote_audio(settings, text):
                 event = json.loads(message)
                 kind = event.get('type')
                 if kind == 'error':
-                    raise ValueError('云语音服务拒绝了请求，请检查凭证、模型和音色')
+                    raise SpeechConfigurationError('Cloud voice service rejected the request. Please check credentials, model, and voice.')
                 if kind == 'session.created':
                     config = dict(mode='commit', voice=settings['voice'], language_type='Auto',
                                   response_format='pcm', sample_rate=24000)
@@ -68,7 +102,7 @@ async def remote_audio(settings, text):
                 elif kind == 'response.done':
                     await send('session.finish')
                     return
-            raise ValueError('云语音连接提前结束')
+            raise ConnectionError('Cloud voice connection ended prematurely')
         return
 
     async with httpx.AsyncClient(timeout=60, follow_redirects=False) as client:
@@ -80,7 +114,7 @@ async def remote_audio(settings, text):
                 response.raise_for_status()
                 result = response.json()['Response']
                 if 'Error' in result:
-                    raise ValueError('腾讯云语音请求失败，请检查凭证、权限和音色')
+                    raise SpeechConfigurationError('Tencent Cloud voice request failed. Please check credentials, permissions, and voice')
                 yield pcm(base64.b64decode(result['Audio'], validate=True))
             return
         if provider == 'volcengine':
@@ -99,7 +133,7 @@ async def remote_audio(settings, text):
                         continue
                     event = json.loads(line)
                     if event.get('code') not in (0, 20000000):
-                        raise ValueError('火山语音请求失败，请检查凭证、资源 ID 和音色')
+                        raise SpeechConfigurationError('Volcano Speech request failed, please check credentials, resource ID, and voice')
                     if event.get('data'):
                         yield pcm(base64.b64decode(event['data'], validate=True))
             return
@@ -115,9 +149,9 @@ async def remote_audio(settings, text):
                 async for block in response.aiter_bytes():
                     data.extend(block)
                     if len(data) > MAX_AUDIO:
-                        raise ValueError('返回音频过大')
+                        raise ValueError('Audio return is too large')
                 if not data.startswith(b'RIFF'):
-                    raise ValueError('Voicebox 未返回 WAV 音频')
+                    raise ValueError('Voicebox did not return WAV audio')
                 yield dict(audio=base64.b64encode(data).decode(), format='wav', sample_rate=24000)
             return
         # OpenAI speech-compatible services return 24 kHz mono PCM when requested.
@@ -128,5 +162,5 @@ async def remote_audio(settings, text):
             async for block in response.aiter_bytes(16384):
                 total += len(block)
                 if total > MAX_AUDIO:
-                    raise ValueError('返回音频过大')
+                    raise ValueError('Audio return is too large')
                 yield pcm(block)

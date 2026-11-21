@@ -24,6 +24,7 @@ async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch
     assert (Path(result["package_path"]).parent / "skin-contract.json").is_file()
     assert "workstep-cli" in result["prompt"]
     assert "custom-skin.md" in result["prompt"]
+    assert "api.avatar.register" in result["prompt"]
     assert "Always include theme.js" in result["prompt"]
     assert "empty file" in result["prompt"]
     assert "Do not ask the user to choose a skin format version" in result["prompt"]

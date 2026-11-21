@@ -1,4 +1,4 @@
-import { useI18n, type TKey } from '../i18n'
+import { useI18n, type TKey, localizeErrorDisplay } from '../i18n'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { type OnboardingStep } from '../utils/onboarding'
 import Button from './Button'
@@ -99,7 +99,7 @@ export default function OnboardingChecklist({
                 <strong>{t(COPY[step].title)}</strong>
                 {active && <div className="onboarding-step-path">{t(COPY[step].path)}</div>}
                 {active && <p>{t(COPY[step].description)}</p>}
-                {active && error && <div className="onboarding-step-error" role="status">{error}</div>}
+                {active && error && <div className="onboarding-step-error" role="status">{localizeErrorDisplay(error)}</div>}
                 {active && (
                   step === 'provider' ? (
                     <div className="onboarding-setup-actions">

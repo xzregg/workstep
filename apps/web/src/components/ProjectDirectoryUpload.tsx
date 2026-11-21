@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { fsApi } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import Icon from './Icon'
 
@@ -48,6 +48,6 @@ export default function ProjectDirectoryUpload({ projectId, rootPath, parent, di
     <Button variant="icon" className="project-directory-upload-button" loading={busy} disabled={disabled || busy}
       aria-label={t('browser.uploadFiles')} title={t('browser.uploadTarget', { path: parent || t('browser.projectRoot') })}
       onClick={() => inputRef.current?.click()}><Icon name="upload" size={14} /></Button>
-    {error && <div className="project-directory-upload-error" role="alert">{error}</div>}
+    {error && <div className="project-directory-upload-error" role="alert">{localizeErrorDisplay(error)}</div>}
   </div>
 }

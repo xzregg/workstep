@@ -9,9 +9,11 @@ API contract.
 import asyncio
 import json
 import os
-from urllib.parse import urlencode
+import re
+from urllib.parse import quote, urlencode
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import uuid4
 
 import httpx
 from services.local_cli import local_cli_headers, local_origin
@@ -66,11 +68,38 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         query_params=("project_id",),
     ),
     WorkstepTool(
+        name="workstep_send_message",
+        description="Queue a new turn in an existing ordinary project conversation without interrupting its current turn. Returns the acceptance status and message IDs.",
+        method="POST", path="/api/chat-sessions/{session_id}/chat",
+        parameters={
+            **{key: {"type": "string"} for key in ("project_id", "session_id", "content")},
+            "idempotency_key": {"type": "string", "description": "Reuse for a retry of the same instruction"},
+        },
+        required=("project_id", "session_id", "content"), path_params=("session_id",),
+        query_params=("project_id",), body_params=("project_id", "content"),
+        read_only=False, side_effect="Queue a real execution turn in the target conversation",
+    ),
+    WorkstepTool(
         name="workstep_memory_pending",
         description="Step 1 of background assessment: fetch this execution's assigned unprocessed evidence and companion context. Only the active scheduler assessment can provide a batch. Repeated calls return the same batch. Follow read_ids/read_ranges before producing the final structured assessment. This does not mark evidence completed.",
         method="POST", path="/api/memory/pending",
         parameters={},
         required=(), body_params=("project_id", "session_id", "filter_project_id", "filter_session_id", ),
+    ),
+    WorkstepTool(
+        name="workstep_remember_digital_person_rule",
+        description="Save one standing agreement explicitly requested by the user in the host's main conversation. Reminders and time-bound actions use scheduling.",
+        method="POST", path="/api/digital-person/standing-memory",
+        parameters={"rule": {"type": "string", "description": "One enduring rule, on one line."}},
+        required=("rule",), body_params=("rule",),
+        read_only=False, side_effect="Append the rule to the host's standing memory",
+    ),
+    WorkstepTool(
+        name="workstep_check_digital_person",
+        description="Trigger one background digital-person reflection when the user explicitly asks; returns accepted without waiting for results. May update memory, relationships and send notifications under existing policies. Does not enable recurring reflection.",
+        method="POST", path="/api/digital-person/check",
+        parameters={"background": {"type": "boolean"}}, query_params=("background",),
+        read_only=False, side_effect="Run companion reflection and apply its decisions",
     ),
     WorkstepTool(
         name="workstep_stop_digital_person_check",
@@ -80,9 +109,10 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
     ),
     WorkstepTool(
         name="workstep_memory_search",
-        description="Search memory after interpreting user intent and deriving evidence clues from conversation; do not blindly copy the question. Locate typed person/event/object/place/time entities by canonical name or alias, then narrow by relation anchored to the selected person/object. Combine dimensions with AND. Typed filters imply knowledge search; date bounds then constrain knowledge event_time. Supply query for additional text clues. Omit query for authoritative source browsing or complete date-range reviews, independent of index lag. Follow snapshot/next_cursor and report coverage gaps. Inferred clues are hypotheses, not facts. Set include_sources=true to also fetch original message bodies for returned evidence (no event logs); inspect source_coverage and continue with memory_read when truncated.",
+        description="For ordinary recall and date summaries, search organized knowledge first with knowledge_only=true and limit=8. Derive text clues from user intent; exact entity filters combine with AND and also select knowledge. Dates constrain the knowledge event time. If coverage is insufficient, or exact messages or a complete timeline are requested, browse original records in small pages using snapshot/next_cursor. Use include_sources only when original wording is needed.",
         method="POST", path="/api/memory/search",
         parameters={"query": {"type": "string", "description": "Intent-derived text clues; omit for complete source review, optionally bounded by dates."},
+                    "knowledge_only": {"type": "boolean", "description": "Return organized knowledge only, with optional date bounds. No fallback to original records."},
                     **{kind: {"type": "string", "description": "Exact typed entity name or alias; AND across dimensions. time is a stored tag, not a date range."}
                        for kind in ("person", "event", "object", "place", "time")},
                     "relation": {"type": "string", "description": "Literal relationship substring anchored to selected person/object."},
@@ -93,7 +123,7 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
                     "period": {"type": "string", "description": "last_month, this_month, yesterday, today"},
                     "timezone_name": {"type": "string", "description": "IANA timezone; default Asia/Shanghai"}},
         required=(),
-        body_params=("project_id", "session_id", "filter_project_id", "filter_session_id", "query", "cursor", "snapshot", "limit", "since", "before", "period", "timezone_name", "include_sources", "source_chars", "person", "event", "object", "place", "time", "relation"),
+        body_params=("project_id", "session_id", "filter_project_id", "filter_session_id", "query", "cursor", "snapshot", "limit", "since", "before", "period", "timezone_name", "include_sources", "source_chars", "person", "event", "object", "place", "time", "relation", "knowledge_only"),
     ),
     WorkstepTool(
         name="workstep_memory_read",
@@ -104,13 +134,24 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         required=("memory_id",), body_params=("project_id", "session_id", "filter_project_id", "filter_session_id", "memory_id", "offset", "limit", "events"),
     ),
     WorkstepTool(
+        name="workstep_list_digital_person_delegations",
+        description="List recent delegations from the current digital-person conversation by project_id, or use delegation_id to read that delegation's latest status and execution result.",
+        method="GET", path="/api/digital-person/delegations",
+        parameters={"project_id":{"type":"string"},"origin_session_id":{"type":"string"},
+                    "delegation_id":{"type":"string"}},
+        required=("origin_session_id",), query_params=("project_id","origin_session_id","delegation_id"),
+        read_only=True,
+    ),
+    WorkstepTool(
         name="workstep_delegate_digital_person",
-        description="Delegate authorized heavy work to a new conversation in the specified project. Returns immediately; the digital person follows completion. Use the current digital-person session as origin_session_id and a stable unique request_id to avoid duplicate work.",
+        description="Delegate project work. Use target_session_id to send to an existing project chat and track it automatically, or continuation_of to continue a prior delegation. Omit both to create a conversation. Reuse request_id on retry.",
         method="POST", path="/api/digital-person/delegate",
-        parameters={"project_id":{"type":"string"},"instruction":{"type":"string"},"origin_session_id":{"type":"string"},"request_id":{"type":"string"}},
+        parameters={"project_id":{"type":"string"},"instruction":{"type":"string"},"origin_session_id":{"type":"string"},"request_id":{"type":"string"},
+                    "continuation_of":{"type":"string","description":"Prior delegation ID in the same source conversation and project"},
+                    "target_session_id":{"type":"string","description":"Existing ordinary project chat to track as a delegation"}},
         required=("project_id","instruction","origin_session_id","request_id"),
-        body_params=("project_id","instruction","origin_session_id","request_id"),
-        read_only=False, side_effect="Create and start a project execution conversation",
+        body_params=("project_id","instruction","origin_session_id","request_id","continuation_of","target_session_id"),
+        read_only=False, side_effect="Create an execution conversation or submit another turn to an existing delegation",
     ),
     WorkstepTool(
         name="workstep_list_projects",
@@ -345,11 +386,12 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         name="workstep_archive_task",
         description='Archive a non-running task without saving experience. Use archive experience tools when lessons are requested.',
         method='POST', path='/api/task/archive',
-        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}},
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'},
+                    'notify': {'type': 'boolean', 'description': 'Notify the group that originated the current coordinator turn'}},
         required=('project_id', 'task_id'), read_only=False,
         side_effect='Archive a non-running task without saving experience. Use archive experience tools when lessons are requested.',
         path_params=(), query_params=('project_id',),
-        body_params=('task_id',),
+        body_params=('task_id', 'notify'),
     ),
     WorkstepTool(
         name="workstep_unarchive_task",
@@ -425,11 +467,12 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         name="workstep_confirm_archive_experience",
         description='Save supplied experience to project Memory and archive. experience must be supplied; empty is allowed only for a saved no-experience draft. Requires authorization for both saving and archiving.',
         method='POST', path='/api/task/{task_id}/archive-experience/confirm',
-        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}, 'experience': {'type': 'string'}, 'locale': {'type': 'string'}},
+        parameters={'project_id': {'type': 'string'}, 'task_id': {'type': 'string'}, 'experience': {'type': 'string'}, 'locale': {'type': 'string'},
+                    'notify': {'type': 'boolean', 'description': 'Notify the group that originated the current coordinator turn'}},
         required=('project_id', 'task_id', 'experience'), read_only=False,
         side_effect='Save supplied experience to project Memory and archive. experience must be supplied; empty is allowed only for a saved no-experience draft. Requires authorization for both saving and archiving.',
         path_params=('task_id',), query_params=('project_id',),
-        body_params=('experience', 'locale'),
+        body_params=('experience', 'locale', 'notify'),
     ),
     WorkstepTool(
         name="workstep_send_step_message",
@@ -547,6 +590,16 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         required=("session_id", "project_id", "task_id"), read_only=False,
         side_effect="bind the current platform group to a task",
         path_params=("session_id",), body_params=("project_id", "task_id"),
+    ),
+    WorkstepTool(
+        name="workstep_unbind_channel_group",
+        description="Unbind an exact task discussion group. Notify that group only when explicitly requested.",
+        method="DELETE", path="/api/task/{task_id}/discussion-groups/{bot_id}/{group_id}",
+        parameters={key: {"type": "string"} for key in ("project_id", "task_id", "bot_id", "group_id")}
+        | {"notify": {"type": "boolean", "description": "Send a final unbind notice; defaults to false"}},
+        required=("project_id", "task_id", "bot_id", "group_id"), read_only=False,
+        side_effect="remove a task discussion-group binding and optionally notify that group",
+        path_params=("task_id", "bot_id", "group_id"), query_params=("project_id", "notify"),
     ),
     WorkstepTool(
         name="workstep_search_channel_contacts", description="Search a bot's in-memory directory by name, department or ID. Never refreshes the platform directory. Resolve duplicate names by asking the user to choose a contact_id.",
@@ -901,7 +954,7 @@ class WorkstepClient:
     ) -> dict[str, Any]:
         tool = TOOL_BY_NAME.get(operation)
         if tool is None:
-            return {"ok": False, "error": f"未知操作：{operation}"}
+            return {"ok": False, "error": f"Unknown operation: {operation}"}
         args = dict(arguments or {})
         if operation == 'workstep_get_message' and not args.get('project_id'):
             from services.chat_identity import session_project_id
@@ -922,14 +975,14 @@ class WorkstepClient:
         if missing:
             return {
                 "ok": False,
-                "error": f"缺少必填参数：{'、'.join(missing)}",
+                "error": f"Missing required parameter: {', '.join(missing)}",
             }
         if not tool.read_only and args.get("confirm") != "yes":
             return {
                 "ok": False,
                 "error": (
-                    f"{tool.name} 有副作用（{tool.side_effect}），"
-                    "必须携带 confirm='yes' 且仅当用户明确要求时执行"
+                    f"{tool.name} has side effects ({tool.side_effect}). "
+                    "Run it only when explicitly requested by the user and pass confirm='yes'."
                 ),
             }
 
@@ -942,7 +995,7 @@ class WorkstepClient:
                     return proj
             return {
                 "ok": False,
-                "error": f"项目不存在：{args.get('project_id')}",
+                "error": f"Project does not exist: {args.get('project_id')}",
             }
 
         if tool.name == "workstep_create_task" and not args.get("cwd"):
@@ -966,25 +1019,59 @@ class WorkstepClient:
 
         if tool.name == "workstep_update_task":
             if not any(key in args for key in ("title", "description")):
-                return {"ok": False, "error": "至少提供标题或描述"}
+                return {"ok": False, "error": "Please provide at least a title or description"}
             if "description" in args and (not isinstance(args["description"], str) or not args["description"].strip()):
-                return {"ok": False, "error": "任务描述不能为空"}
+                return {"ok": False, "error": "Task description cannot be empty"}
         title_key = "newTitle" if tool.name == "workstep_copy_task" else "title"
         if tool.name in {"workstep_update_task", "workstep_copy_task"} and title_key in args:
             if not isinstance(args[title_key], str) or not args[title_key].strip():
-                return {"ok": False, "error": "任务标题不能为空"}
+                return {"ok": False, "error": "Task title cannot be empty"}
         if tool.name == "workstep_confirm_archive_experience" and not isinstance(args.get("experience"), str):
-            return {"ok": False, "error": "必须提供 experience；无经验草稿可传空字符串"}
+            return {"ok": False, "error": "experience is required; an empty string can be passed for an experience-less draft"}
         if tool.name == "workstep_prepare_archive_experience":
             args["background"] = True
+        if tool.name == "workstep_check_digital_person":
+            args["background"] = True
+
+        request_headers = {}
+        if tool.name == "workstep_send_message":
+            from services.remote_access import has_project_edit_scope
+
+            # Native tools can run under a project actor before using local HTTP.
+            if not has_project_edit_scope(args["project_id"]):
+                return {"ok": False, "error": "Project scope denied"}
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", str(args["session_id"])):
+                return {"ok": False, "error": "Invalid identifier: session_id"}
+            key = args.get("idempotency_key")
+            if key is None:
+                key = str(uuid4())
+            if not isinstance(key, str) or not re.fullmatch(r"[!-~]+", key):
+                return {"ok": False, "error": "Idempotency key must use printable ASCII without spaces"}
+            request_headers["Idempotency-Key"] = key
 
         project_id = args.get("project_id")
 
         url = tool.path
+        if tool.name == "workstep_delegate_digital_person" and "target_session_id" in args:
+            from services.remote_access import get_current_actor
+
+            actor = get_current_actor()
+            if actor is not None and actor.project_id is not None:
+                return {"ok": False, "error": "Project scope denied"}
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", str(args["target_session_id"])):
+                return {"ok": False, "error": "Invalid identifier: target_session_id"}
+            if args.get("continuation_of"):
+                return {"ok": False, "error": "Choose a target session or a prior delegation"}
+            url += "/existing"
         for param in tool.path_params:
-            url = url.replace("{" + param + "}", str(args.pop(param)))
+            value = str(args.pop(param))
+            if tool.name == "workstep_unbind_channel_group":
+                if value in (".", "..") or "/" in value or "\\" in value:
+                    return {"ok": False, "error": f"Invalid identifier: {param}"}
+                value = quote(value, safe="")
+            url = url.replace("{" + param + "}", value)
         query = {
-            key: args.pop(key)
+            key: args[key]
             for key in tool.query_params
             if key in args and args[key] not in (None, "")
         }
@@ -1008,6 +1095,9 @@ class WorkstepClient:
         # Never forward a desktop credential to --url on another machine.
         origin = local_origin(self.base_url)
         daemon_origin = local_origin(os.environ.get('WORKSTEP_DAEMON_URL') or DEFAULT_DAEMON_URL)
+        if (source_turn and origin and origin == daemon_origin and body.get('notify') is True
+                and tool.name in {'workstep_archive_task', 'workstep_confirm_archive_experience'}):
+            headers[COORDINATOR_TURN_HEADER] = source_turn
         if origin and origin == daemon_origin and os.environ.get('WORKSTEP_DESKTOP_TOKEN'):
             headers['X-WorkStep-Desktop-Token'] = os.environ['WORKSTEP_DESKTOP_TOKEN']
         async with httpx.AsyncClient(
@@ -1022,6 +1112,7 @@ class WorkstepClient:
                     url,
                     params=query,
                     json=body or None,
+                    headers=request_headers,
                 )
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
@@ -1040,7 +1131,7 @@ class WorkstepClient:
             except httpx.RequestError as exc:
                 return {
                     "ok": False,
-                    "error": f"无法连接 daemon（{self.base_url}）：{exc}",
+                    "error": f"Unable to connect to daemon ({self.base_url}): {exc}",
                 }
         result = response.json()
         if (tool.name == "workstep_create_task"

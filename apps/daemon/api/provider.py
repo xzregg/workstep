@@ -19,32 +19,15 @@ from services.project import project_manager
 router = APIRouter(prefix="/api/provider")
 
 
-async def _reject_managed_mutation(request: Request, provider_id: str = "", *, deleting: bool = False) -> None:
+async def _reject_managed_mutation(request: Request, provider_id: str = "") -> None:
+    """Require host access and keep Gateway-distributed providers read-only."""
     require_catalog_project("")
     if provider_id and getattr(config_store, 'managed_gateway_id', None):
         managed = await asyncio.to_thread(lambda: any(
             item.get("id") == provider_id and item.get("managed")
             for item in config_store.get_providers(include_unmanaged=True)))
         if managed:
-            raise HTTPException(status_code=403, detail="该供应商由 Gateway 分发，请在网关修改")
-    if deleting:
-        from main import gateway_client
-        from services.remote_access import authenticated_remote_dispatch, get_current_actor
-
-        actor = get_current_actor()
-        policy = gateway_client.policy_cache.current
-        # The authenticated host owner may remove local credentials even when
-        # policy denies using them; project access and distributed entries stay protected.
-        if (actor is not None and actor.source == "managed" and actor.project_id is None
-                and authenticated_remote_dispatch() is None and policy is not None
-                and policy.valid and policy.user_id == actor.actor_id
-                and policy.device_id == actor.device_id):
-            return
-    from services.gateway_client.policy import require_managed_capability
-    try:
-        require_managed_capability("provider.local")
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+            raise HTTPException(status_code=403, detail="This supplier is distributed by Gateway. Please modify it in the gateway:")
 
 
 class ProviderSaveRequest(BaseModel):
@@ -91,6 +74,8 @@ def _public_provider(provider: dict) -> dict:
         protocol: provider_service.provider_basic_url(provider, protocol)
         for protocol in protocols
     }
+    managed = bool(provider.get("managed"))
+    test_success = config_store.managed_provider_test_success(provider) if managed else None
     return {
         "id": provider.get("id", ""),
         "name": provider.get("name", ""),
@@ -102,7 +87,9 @@ def _public_provider(provider: dict) -> dict:
         "api_key": "",
         "has_key": bool(provider.get("api_key")),
         "enabled": bool(provider.get("enabled", True)),
-        "verified": bool(provider.get("verified", False)),
+        "managed": managed,
+        "verified": test_success is True if managed else bool(provider.get("verified", False)),
+        **({"test_success": test_success} if managed else {}),
         "created_at": provider.get("created_at", ""),
         "model_count": len(saved_models) if isinstance(saved_models, list) else 0,
         "models_fetched_at": (
@@ -147,7 +134,7 @@ def _prefill_claude_model_maps(candidate: dict) -> None:
 def _require_provider(provider_id: str) -> dict:
     provider = config_store.get_provider(provider_id)
     if provider is None:
-        raise HTTPException(status_code=404, detail="供应商不存在")
+        raise HTTPException(status_code=404, detail="Provider not found")
     return provider
 
 
@@ -224,7 +211,7 @@ async def save_provider(req: ProviderSaveRequest, request: Request):
     if provider_id and current is not None:
         pass
     elif provider_id:
-        return {"saved": False, "message": "供应商不存在", "provider": None}
+        return {"saved": False, "message": "Provider not found", "provider": None}
     else:
         current = {}
         provider_id = f"prov_{uuid.uuid4().hex[:12]}"
@@ -340,7 +327,7 @@ async def import_cc_switch(req: ProviderImportRequest, request: Request):
             errors.append({
                 "id": provider_id,
                 "name": "",
-                "message": "未找到该供应商",
+                "message": "Provider not found",
             })
             continue
         name = candidate["name"]
@@ -400,31 +387,32 @@ async def import_cc_switch(req: ProviderImportRequest, request: Request):
 
 @router.delete("/{provider_id}")
 async def delete_provider(provider_id: str, request: Request):
-    """Delete a provider; refuse while any engine or project still references it."""
-    await _reject_managed_mutation(request, provider_id, deleting=True)
+    """Delete local providers; enabled entries must first be free of references."""
+    await _reject_managed_mutation(request, provider_id)
     provider = await asyncio.to_thread(config_store.get_provider, provider_id)
     if provider is None:
-        raise HTTPException(status_code=404, detail="供应商不存在")
-    if await asyncio.to_thread(config_store.is_provider_in_use, provider_id):
-        raise HTTPException(
-            status_code=400,
-            detail="该供应商正被引擎或助手使用，请先切换其它供应商",
+        raise HTTPException(status_code=404, detail="Provider not found")
+    if provider.get("enabled", True):
+        if await asyncio.to_thread(config_store.is_provider_in_use, provider_id):
+            raise HTTPException(
+                status_code=400,
+                detail="This supplier is currently in use by the engine or assistant. Please switch to another supplier first.",
+            )
+        references = await asyncio.to_thread(
+            project_manager.provider_references, provider_id
         )
-    references = await asyncio.to_thread(
-        project_manager.provider_references, provider_id
-    )
-    if references:
-        preview = "、".join(
-            f"{item['project_name']}：{item['location']}" for item in references[:3]
-        )
-        suffix = "等" if len(references) > 3 else ""
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"该供应商仍被 {len(references)} 处流程或任务引用，请先切换："
-                f"{preview}{suffix}"
-            ),
-        )
+        if references:
+            preview = ", ".join(
+                f"{item['project_name']}: {item['location']}" for item in references[:3]
+            )
+            if len(references) > 3:
+                preview += ", and more"
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"This provider is still used by {len(references)} workflows or tasks. Switch providers first: {preview}"
+                ),
+            )
     def delete() -> None:
         config_store.delete_provider(provider_id)
         config_store.clear_provider_models(provider_id)
@@ -438,6 +426,7 @@ async def delete_provider(provider_id: str, request: Request):
 @router.post("/{provider_id}/test")
 async def test_provider(provider_id: str, req: ProviderTestRequest, request: Request):
     """Probe connectivity by fetching the provider's model list."""
+    require_catalog_project("")
     provider = await asyncio.to_thread(_require_provider, provider_id)
     try:
         selected_protocol = provider_service.select_provider_protocol(
@@ -475,17 +464,20 @@ async def test_provider(provider_id: str, req: ProviderTestRequest, request: Req
         })
         refresh_registry()
 
-    if not provider.get("managed"):
+    response = {"provider_id": provider_id, **asdict(result)}
+    if provider.get("managed"):
+        response["test_success"] = await asyncio.to_thread(
+            config_store.save_managed_provider_test, provider, selected_protocol, result.success
+        )
+    else:
         await asyncio.to_thread(save_result)
-    return {
-        "provider_id": provider_id,
-        **asdict(result),
-    }
+    return response
 
 
 @router.get("/{provider_id}/models/preview")
-async def provider_models_preview(provider_id: str, protocol: str = ""):
+async def provider_models_preview(provider_id: str, request: Request, protocol: str = ""):
     """Fetch the remote model list without persisting (selection dialog preview)."""
+    await _reject_managed_mutation(request, provider_id)
     provider = await asyncio.to_thread(_require_provider, provider_id)
     try:
         selected_protocol = provider_service.select_provider_protocol(
@@ -501,10 +493,10 @@ async def provider_models_preview(provider_id: str, protocol: str = ""):
         error = None
     except asyncio.TimeoutError:
         models = []
-        error = "读取模型列表超时"
+        error = "Model list request timed out"
     except Exception as exc:
         models = []
-        error = str(exc) or "读取模型列表失败"
+        error = str(exc) or "Failed to load the model list"
     return {
         "provider_id": provider_id,
         "models": [model.to_dict() for model in models],
@@ -540,7 +532,7 @@ async def provider_models_selection(
             "description": item.get("description"),
         })
     if len(cleaned) > 1000:
-        raise HTTPException(status_code=400, detail="模型数量超出上限")
+        raise HTTPException(status_code=400, detail="The number of models exceeds the limit")
     from datetime import datetime, timezone
 
     await asyncio.to_thread(
@@ -608,10 +600,10 @@ async def provider_models(
         error = None
     except asyncio.TimeoutError:
         models = []
-        error = "读取模型列表超时"
+        error = "Model list request timed out"
     except Exception as exc:
         models = []
-        error = str(exc) or "读取模型列表失败"
+        error = str(exc) or "Failed to load the model list"
     return {
         "provider_id": provider_id,
         "models": [model.to_dict() for model in models],

@@ -2,7 +2,7 @@ import { useGitApi, useProjectScopedGit, useGitActionAllowed } from './GitApiCon
 import { useEffect, useState } from 'react'
 import { type GitCredentialStatus } from '../../api/git'
 import { ApiError } from '../../api/client'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
 
@@ -85,6 +85,6 @@ export default function GitRepositorySettings({ id }: { id: string }) {
     <label>{t('git.httpsHost')}<input name="gitAuthHost" list="git-auth-hosts" value={host} placeholder="gitlab.example.com" onChange={event => { setHost(event.target.value); setToken(''); setNotice('') }} /><datalist id="git-auth-hosts">{suggestedHosts.map(value => <option key={value} value={value} />)}</datalist></label>
     <small>{t('git.httpsHostHint')}</small>
     <label>{t('git.authUsername')}<input name="gitAuthUsername" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} /></label><label>{t('git.authToken')}<input name="gitAuthToken" type="password" autoComplete="new-password" value={token} onChange={event => setToken(event.target.value)} /></label><div className="git-repository-settings__actions"><Button variant="primary" loading={busy} disabled={!host.trim() || !username.trim() || !token || busy} onClick={() => void saveCredential()}>{t('git.saveCredentials')}</Button>{configured && <Button disabled={busy} onClick={() => void clearCredential()}>{t('git.clearCredentials')}</Button>}</div>{configured && <small><Icon name="check" size={13} />{t('git.credentialsConfigured')}</small>}</>}
-    {error && <p role="alert" className="git-danger">{error}</p>}{notice && <p role="status">{notice}</p>}
+    {error && <p role="alert" className="git-danger">{localizeErrorDisplay(error)}</p>}{notice && <p role="status">{notice}</p>}
   </section>
 }

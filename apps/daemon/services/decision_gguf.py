@@ -47,11 +47,11 @@ class NativeDecisionWorker:
     async def infer(self,payload):
         async with asyncio.timeout(120 if not self.ready else 20):
             base=await asyncio.shield(self.endpoint)
-            if not base:raise ValueError('原生推理启动失败')
+            if not base:raise ValueError('Native inference startup failed')
             async with httpx.AsyncClient(base_url=base,trust_env=False,
                     headers={'Authorization':'Bearer '+self.key},timeout=15,follow_redirects=False) as client:
                 while not self.ready:
-                    if self.process.returncode is not None:raise ValueError('原生推理进程已退出')
+                    if self.process.returncode is not None:raise ValueError('Native inference process has exited')
                     try:
                         response=await client.get('/health')
                         self.ready=response.status_code==200
@@ -60,7 +60,7 @@ class NativeDecisionWorker:
                 async with client.stream('POST','/v1/systemone',json=payload) as response:
                     response.raise_for_status();data=bytearray()
                     async for chunk in response.aiter_bytes():
-                        if len(data)+len(chunk)>1024*1024:raise ValueError('原生推理响应过大')
+                        if len(data)+len(chunk)>1024*1024:raise ValueError('Native inference response is too large')
                         data.extend(chunk)
                     return await asyncio.to_thread(json.loads,data)
 

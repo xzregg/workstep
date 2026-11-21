@@ -89,3 +89,18 @@ def test_punctuation_runs_only_at_endpoint_and_final_and_never_on_silence():
     recognizer.get_result = lambda stream: ''
     assert decoder.feed('b', [], True) == ''
     assert len(calls) == 2
+
+
+def test_sense_voice_candidate_reuses_identical_audio_and_decodes_resumed_speech():
+    from services.speech_worker import SegmentDecoder
+
+    decoded = []
+    decoder = SegmentDecoder(lambda chunks: decoded.append(tuple(chunks)) or "text")
+    assert decoder.feed("a", [1], False, False) == ""
+    assert decoder.feed("a", [2], False) == "text"
+    assert decoder.feed("a", [], True) == "text"
+    assert decoded == [([1], [2])]
+    assert decoder.feed("b", [3], False) == "text"
+    assert decoder.feed("b", [4], True) == "text"
+    assert decoded[-2:] == [([3],), ([3], [4])]
+    assert decoder.feed("c", [], True) == ""

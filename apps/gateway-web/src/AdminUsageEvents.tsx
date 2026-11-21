@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { Fragment, useEffect, useState } from 'react'
 import { AdminRecordTable } from './AdminRecordTable'
 import { usageCount, usageIdentityName } from './usageStatistics'
@@ -35,11 +36,11 @@ export function AdminUsageEvents({ filters }: { filters: string }) {
     setLoading(true); setError(''); setExpandedId(null)
     void fetch(`/api/admin/usage/events?${params}`, { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error('用量明细加载失败。')
+        if (!response.ok) throw new Error('Failed to load usage details.')
         const data = await response.json()
         if (!controller.signal.aborted) { setEvents(data.events ?? []); setTotal(data.total ?? 0) }
       }).catch(reason => {
-        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '用量明细加载失败。')
+        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load usage details.')
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [filters, page, revision])
@@ -47,7 +48,7 @@ export function AdminUsageEvents({ filters }: { filters: string }) {
   return <section className="gateway-usage-events">
     <h3>计量明细</h3>
     {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true"/> 正在加载用量明细…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && events.length === 0 && <p>当前条件下没有计量事件。</p>}
     {!loading && !error && events.length > 0 && <AdminRecordTable columns={['发生时间','模型','用户','项目','设备','计量来源','输入 Token','输出 Token','缓存读取','缓存写入','总 Token','Token 计量','金额','操作']}>

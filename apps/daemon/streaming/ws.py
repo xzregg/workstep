@@ -66,7 +66,7 @@ async def _local_project_summary(project_id: str) -> dict[str, Any] | None:
 
 _SUBSCRIBE_KEYS = ("task_ids", "status_only_task_ids", "session_ids", "channels", "remote_project_ids")
 _PROJECT_EVENT_CHANNELS = frozenset({
-    "execution", "coordinator", "review", "archive_experience", "session_chat", "channel_chat", "channel_bots", "prototype",
+    "execution", "coordinator", "review", "archive_experience", "session_chat", "channel_chat", "channel_bots", "prototype", "task_board",
 })
 
 
@@ -108,6 +108,9 @@ def parse_subscription(msg: dict[str, Any]) -> WsSubscription:
 
 def matches_subscription(event: dict[str, Any], sub: WsSubscription) -> bool:
     """判断事件是否命中订阅；未激活订阅（全量模式）恒为 True。"""
+    if event.get("channel") == "task_board":
+        selected = sub.project_id or sub.selected_project_id
+        return bool(selected and "task_board" in sub.channels and event.get("project_id") == selected)
     if not sub.active:
         return True
     if event.get("type") == "CUSTOM" and event.get("name") == "workstep.gateway_connection_changed":
@@ -299,9 +302,7 @@ def register_websocket_routes(app: FastAPI) -> None:
         actor = ws.scope.get("managed_actor")
         project_id = actor.project_id if actor is not None else None
         subscription = WsSubscription(project_id=project_id or "", prototype_edit=bool(actor and actor.project_access_level == "edit"))
-        queue = main.event_bus.subscribe(
-            _make_subscription_predicate(subscription) if project_id else None
-        )
+        queue = main.event_bus.subscribe(_make_subscription_predicate(subscription))
         try:
             while True:
                 bus_task, ws_task, done = await _wait_for_stream_input(queue, ws)

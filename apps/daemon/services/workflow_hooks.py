@@ -28,10 +28,10 @@ class WorkflowHookService:
     def load_hook(self, project, hook_id):
         row = WorkflowHook.get_or_none(WorkflowHook.id == hook_id)
         if row is None:
-            raise HookError(404, '钩子不存在')
+            raise HookError(404, 'Hook does not exist')
         workflow = project.workflow_by_id(row.workflow_id)
         if workflow is None or workflow.get('deleted'):
-            raise HookError(404, '流程不存在')
+            raise HookError(404, 'Process does not exist')
         return hook_data(row), workflow
 
     async def resolve(self, hook_id):
@@ -48,14 +48,14 @@ class WorkflowHookService:
                 self._project_ids = project_ids
             project_id = self._index.get(hook_id)
         if not project_id:
-            raise HookError(404, '钩子不存在')
+            raise HookError(404, 'Hook does not exist')
         hook, workflow = await self.manager.run_db(project_id, lambda p: self.load_hook(p, hook_id))
         return project_id, hook, workflow
 
     async def list(self, project_id, workflow_id):
         def load(project):
             if project.workflow_by_id(workflow_id) is None:
-                raise HookError(404, '流程不存在')
+                raise HookError(404, 'Process does not exist')
             return [hook_data(r) for r in WorkflowHook.select().where(WorkflowHook.workflow_id == workflow_id).order_by(WorkflowHook.sort_order)]
         return await self.manager.run_db(project_id, load)
 
@@ -63,7 +63,7 @@ class WorkflowHookService:
         def persist(project):
             workflow = project.workflow_by_id(workflow_id)
             if workflow is None or workflow.get('deleted'):
-                raise HookError(404, '流程不存在')
+                raise HookError(404, 'Process does not exist')
             steps = WorkflowDefinition.load(workflow['steps']).compile().steps
             keys = {s['key'] for s in steps}
             with project.db.atomic():
@@ -71,10 +71,10 @@ class WorkflowHookService:
                 saved = []
                 for index, draft in enumerate(drafts):
                     if draft.step_key and draft.step_key not in keys:
-                        raise HookError(422, '起始阶段不存在')
+                        raise HookError(422, 'No initial stage exists')
                     row = existing.get(draft.id) if draft.id else None
                     if draft.id and row is None:
-                        raise HookError(422, '钩子不属于当前流程')
+                        raise HookError(422, 'The hook does not belong to the current process')
                     row = row or WorkflowHook(id=str(uuid4()), token=secrets.token_urlsafe(32))
                     for key in ('name', 'enabled', 'step_key', 'default_title', 'default_creator', 'execution_mode'):
                         setattr(row, key, getattr(draft, key))

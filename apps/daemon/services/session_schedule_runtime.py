@@ -40,11 +40,11 @@ def channel_destination(session_id):
     route = next((key for key, sid in data.get('sessions', {}).items() if sid == session_id), None)
     if not route:
         if session_id in data.get('session_sources', {}):
-            raise ScheduleValidationError('渠道会话映射已失效')
+            raise ScheduleValidationError('Channel session mapping has expired')
         return None
     bot_id, kind, conversation_id = route.split(':', 2)
     if kind == 'group' and any(row['bot_id'] == bot_id and row['group_id'] == conversation_id for row in data.get('groups', [])):
-        raise ScheduleValidationError('该群已绑定任务，请使用协调任务类型')
+        raise ScheduleValidationError('This group is already bound to a task. Please use the coordination task type:')
     return {'enabled':True, 'target':{'session_id':session_id}, 'route':route}
 
 
@@ -55,7 +55,7 @@ def clear_session_schedules(session_id):
     if not ids:
         return
     Schedule.update(status='deleted', next_run_at=None, updated_at=utc_now()).where(Schedule.id.in_(ids)).execute()
-    ScheduleRun.update(status='stopped', reason='会话已删除或归档', ended_at=utc_now(), notification_status='disabled').where(
+    ScheduleRun.update(status='stopped', reason='The conversation was deleted or archived.', ended_at=utc_now(), notification_status='disabled').where(
         ScheduleRun.schedule.in_(ids) & ScheduleRun.status.in_(['queued','running'])).execute()
 
 
@@ -66,7 +66,7 @@ def reconcile_session_schedules(*, startup, current):
             clear_session_schedules(row.target_session_id)
     if startup:
         ids = Schedule.select(Schedule.id).where(Schedule.target_type == 'session')
-        ScheduleRun.update(status='failed', reason='执行因服务重启中断，未自动重放', ended_at=current).where(
+        ScheduleRun.update(status='failed', reason='A service restart interrupted execution. It did not restart automatically.', ended_at=current).where(
             ScheduleRun.schedule.in_(ids) & (ScheduleRun.status == 'running')).execute()
 
 

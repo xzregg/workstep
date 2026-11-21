@@ -10,6 +10,7 @@ import type { ChatMessageEventsPage } from './conversations'
 // --- Task API ---
 
 export interface Task {
+  is_debug?: boolean
   id: string
   workflow_id?: string | null
   title: string
@@ -591,10 +592,10 @@ export const taskApi = {
       method: 'DELETE',
       body: JSON.stringify({ task_id: taskId, delete_workspace: deleteWorkspace }),
     }),
-  archive: (taskId: string, projectId: string) =>
+  archive: (taskId: string, projectId: string, deleteWorkspace?: boolean) =>
     request<{ archived: boolean }>(`/task/archive?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
-      body: JSON.stringify({ task_id: taskId }),
+      body: JSON.stringify({ task_id: taskId, delete_workspace: deleteWorkspace }),
     }),
   getArchiveExperienceDraft: (taskId: string, projectId: string) =>
     request<{
@@ -630,12 +631,12 @@ export const taskApi = {
       `/task/${encodeURIComponent(taskId)}/archive-experience/stop?project_id=${encodeURIComponent(projectId)}&message_id=${encodeURIComponent(messageId)}`,
       { method: 'POST' },
     ),
-  confirmArchiveExperience: (taskId: string, projectId: string, experience: string) =>
+  confirmArchiveExperience: (taskId: string, projectId: string, experience: string, deleteWorkspace?: boolean) =>
     request<{ archived: boolean; memory_saved: boolean }>(
       `/task/${encodeURIComponent(taskId)}/archive-experience/confirm?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',
-        body: JSON.stringify({ experience, locale: contentLocale() }),
+        body: JSON.stringify({ experience, locale: contentLocale(), delete_workspace: deleteWorkspace }),
       },
     ),
   unarchive: (taskId: string, projectId: string) =>

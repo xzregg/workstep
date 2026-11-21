@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { enterpriseProviderName } from './enterpriseProviders'
 import { useEffect, useState } from 'react'
@@ -33,15 +34,15 @@ function ReconcileDialog({ source, csrf, onComplete, onClose }: {
       const response = await fetch(`/api/admin/identity-sources/${encodeURIComponent(source.id)}/reconcile`, {
         method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
       })
-      if (!response.ok) throw new Error(response.status === 502 ? '身份源暂不可用，请稍后重试。' : '同步失败，请重试。')
+      if (!response.ok) throw new Error(response.status === 502 ? 'Identity source is temporarily unavailable, please try again later.' : 'Sync failed, please retry.')
       onComplete()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '同步失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Sync failed.') }
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="手动对账" message={`从 ${source.provider} · ${source.tenant_id} 重新读取完整目录？`}
     confirmLabel="开始对账" busy={busy} onConfirm={() => void confirm()} onCancel={onClose}>
     <p>同步会更新部门和成员；第三方已删除的条目将标记为已删除。</p>
-    {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
   </GatewayConfirmDialog>
 }
 
@@ -63,10 +64,10 @@ export function AdminIdentitySourcesPanel({ onSourceChange, onReconciled }: {
     const controller = new AbortController()
     void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error('无法加载操作凭据。')
+        if (!response.ok) throw new Error('Unable to load operation credentials.')
         const session = await response.json()
         if (!controller.signal.aborted) setCsrf(session.csrf_token)
-      }).catch(reason => { if (reason?.name !== 'AbortError') setAuthError('无法加载操作凭据。') })
+      }).catch(reason => { if (reason?.name !== 'AbortError') setAuthError('Unable to load operation credentials.') })
     return () => controller.abort()
   }, [])
 
@@ -80,11 +81,11 @@ export function AdminIdentitySourcesPanel({ onSourceChange, onReconciled }: {
     setLoading(true); setError('')
     void fetch(`/api/admin/identity-sources?${params}`, { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error('身份源加载失败。')
+        if (!response.ok) throw new Error('Failed to load identity source.')
         const data = await response.json()
         if (!controller.signal.aborted) { setSources(data.sources ?? []); setTotal(data.total ?? 0) }
       }).catch(reason => {
-        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '身份源加载失败。')
+        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load identity source.')
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [filters, revision])
@@ -119,8 +120,8 @@ export function AdminIdentitySourcesPanel({ onSourceChange, onReconciled }: {
       </Select>
     </div>
     {loading && <p role="status">正在加载身份源…</p>}
-    {authError && <p role="alert" className="gateway-auth-error">{authError}</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
+    {authError && <p role="alert" className="gateway-auth-error">{localizeGatewayError(authError)}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && sources.length === 0 && <p>没有符合条件的身份源。</p>}
     {!loading && !error && <ul className="gateway-device-list">{sources.map(source => <li key={source.id}>

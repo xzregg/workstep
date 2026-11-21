@@ -53,6 +53,7 @@ export default function TaskDetailHeader({ task, locale, activeStep, activeStepC
       <div className="task-detail-header-main">
         <div className="task-detail-header-fields">
           <div className="task-detail-header-primary">
+            {task.is_debug && <span className="task-detail-header-badge task-detail-debug-badge">{t('canvas.debug')}</span>}
             <span className="task-detail-title"><TaskDetailTitle key={task.id} task={task}
               projectId={projectId} editable={titleEditable} /></span>
             <span className="task-detail-header-badge" style={{ '--badge-color': activeStepColor } as CSSProperties}>

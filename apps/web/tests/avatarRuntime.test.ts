@@ -55,3 +55,21 @@ test('affinity is a read-only scoped skin input with unknown distinct from zero'
  const c=createAvatarSnapshot(scope,{phase:'idle',affinity:100},b,2)
  assert.equal(b,c)
 })
+
+test('skins receive wake state changes and microphone frames separately from speech',async()=>{
+ const {window}=installDomEnvironment(),scope={projectId:'p',sessionId:'wake'},source=createAvatarSource(scope)
+ const events:string[]=[]
+ const off=subscribeAvatar(event=>events.push(event.type),scope)
+ try{
+  source.update({phase:'idle'})
+  const wake=source.update({phase:'idle',callState:'waitingForWake'})
+  assert.equal(wake.callState,'waitingForWake')
+  const listening=source.update({phase:'listening',callState:'listening'})
+  const frame=source.update({phase:'listening',callState:'listening',inputLevel:.6})
+  assert.equal(frame.inputLevel,.6)
+  assert.equal(frame.sequence,listening.sequence)
+  assert.deepEqual(events,['state','state','state','audio'])
+  const system=source.update({phase:'speaking',speaking:true,level:.9,metered:false})
+  assert.deepEqual(system.speech,{playing:true,level:0,metered:false})
+ }finally{off();source.dispose();await window.happyDOM.close()}
+})

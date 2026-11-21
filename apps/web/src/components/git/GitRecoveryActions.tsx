@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { type GitMergeOperation, type GitRecoveryPreview, type GitRecoveryRequest, type GitStatus } from '../../api/git'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import { useGitStore } from '../../stores/gitStore'
 import Button from '../Button'
 import ConfirmDialog from '../ConfirmDialog'
@@ -95,7 +95,7 @@ export default function GitRecoveryActions({ status, disabled, request, onCloseR
     {notice && <span role="status" className="git-remote-toast git-remote-toast--success">{notice}{can('pushBranch') && pushTarget && <Button size="sm" loading={busy} disabled={writes.busy} onClick={() => void pushRecoveredTarget()}>{t('git.mergePushTarget', { branch: pushTarget.branch })}</Button>}<Button variant="icon" aria-label={t('git.close')} onClick={() => { setNotice(''); setPushTarget(null) }}><Icon name="x" size={13} /></Button></span>}
     <ConfirmDialog open={open} title={t('git.recoveryTitle')} message={preview ? t('git.recoveryPreviewHint', { branch: preview.request.target, head: preview.head.slice(0, 8) }) : t('git.recoveryChooseHint')} confirmText={t('git.recoveryApply')} loading={busy} confirmDisabled={!preview || busy || writes.busy} onConfirm={() => void apply()} onCancel={close} width={600}>
       {busy && <p><Icon name="loader-circle" className="git-spin" size={14} />{t('git.loading')}</p>}
-      {error && <p className="git-error" role="alert">{error}</p>}
+      {error && <p className="git-error" role="alert">{localizeErrorDisplay(error)}</p>}
       {!preview && !request && <div className="git-recovery-list">
         {merges.length ? merges.map(item => <Button key={item.id} size="sm" onClick={() => void select({ mode: 'undo_merge', target: item.target, operation_id: item.id })}>{t('git.recoveryUndoMerge')} · {item.source} → {item.target} · {item.after.slice(0, 8)}</Button>) : !busy && <p>{t('git.recoveryNoMerges')}</p>}
       </div>}

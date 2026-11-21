@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { channelBotApi, type BotTaskBinding } from '../api/channelBots'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import ResizablePanel from './ResizablePanel'
 import { useOverlay } from '../hooks/useOverlay'
@@ -57,7 +57,7 @@ export default function BotTaskBindings({ bindings, onChanged }: {
       </li>
     })}</ul>}
         </section>
-        {error && <p className="bot-task-bindings-error" role="alert">{error}</p>}
+        {error && <p className="bot-task-bindings-error" role="alert">{localizeErrorDisplay(error)}</p>}
       </ResizablePanel>
     </div>, document.body)}
   </>

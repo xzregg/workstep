@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { OUTPUT_CHANGED, type OutputSettings } from '../api/speechOutput'
 import { loadSpeechOutputSettings, invalidateSpeechOutputSettings } from '../utils/speechOutputSettings'
 import { SpeechOutputPlayer, speechText, takeSpeechSentences } from '../utils/speechOutput'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import Icon from './Icon'
 import Spinner from './Spinner'
@@ -63,6 +63,6 @@ export default function MessageSpeechButton({ content, projectId = '' }: { conte
       disabled={!text} title={error || t(playing ? 'tts.stop' : 'tts.play')} onClick={() => void toggle()}>
       {playing ? <Spinner size={12} /> : <Icon name="volume" size={14} />}
     </Button>
-    {showError && error && <span className="message-speech-error" role="alert">{error}</span>}
+    {showError && error && <span className="message-speech-error" role="alert">{localizeErrorDisplay(error)}</span>}
   </>
 }

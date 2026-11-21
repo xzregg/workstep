@@ -51,7 +51,7 @@ def set_pydantic_ai_engine_config(
     if sandbox not in SANDBOX_MODES:
         sandbox = "workspace-write"
     if permission_mode not in {None, "full", "auto", "read-only"}:
-        raise ValueError("无效的 Pydantic 原生权限模式")
+        raise ValueError("Invalid Pydantic native permission mode")
     store.set(
         "pydantic_ai_engine",
         {

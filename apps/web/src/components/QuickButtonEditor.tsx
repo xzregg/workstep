@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { ChatQuickButton } from '../api/client'
 import { useCompactLayout } from '../hooks/useCompactLayout'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { randomUuid } from '../utils/uuid'
 import ActionButtonFields from './ActionButtonFields'
 import Button from './Button'
@@ -104,7 +104,7 @@ export default function QuickButtonEditor({ projectId, workflowId, buttons, onCh
     <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
       {t('projectSettings.assistant.quickButtonsHint')} {t('projectSettings.assistant.quickButtonsDragHint')}
     </p>
-    {error && <div role="status" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
+    {error && <div role="status" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{localizeErrorDisplay(error)}</div>}
     <div style={{ display: 'flex', flexDirection: compact ? 'column' : 'row', gap: 18, alignItems: 'stretch', minHeight: 300 }}>
       <div data-testid="quick-button-list" style={{ width: compact ? '100%' : 180, maxHeight: compact ? 180 : undefined, overflowY: compact ? 'auto' : undefined, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, paddingRight: compact ? 0 : 14, paddingBottom: compact ? 12 : 0, borderRight: compact ? 0 : '1px solid var(--border-soft)', borderBottom: compact ? '1px solid var(--border-soft)' : 0 }}>
         {buttons.map((button) => {

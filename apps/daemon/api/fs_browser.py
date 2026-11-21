@@ -313,13 +313,13 @@ async def upload_browser_file(req: BrowserUploadRequest):
         if not separator or not header.startswith("data:") or not header.endswith(";base64"):
             raise HTTPException(status_code=400, detail="Invalid data URL format")
         if len(encoded) > 33_333_336:
-            raise HTTPException(status_code=413, detail="文件超过 25MB 上限")
+            raise HTTPException(status_code=413, detail="File exceeds the 25MB limit")
         try:
             content = base64.b64decode(encoded, validate=True)
         except (ValueError, binascii.Error) as exc:
             raise HTTPException(status_code=400, detail="Invalid base64 data") from exc
         if len(content) > 25_000_000:
-            raise HTTPException(status_code=413, detail="文件超过 25MB 上限")
+            raise HTTPException(status_code=413, detail="File exceeds the 25MB limit")
         target = parent / name
         try:
             with target.open("xb") as output:

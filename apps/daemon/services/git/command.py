@@ -61,7 +61,7 @@ async def run_git(path, *args: str, stdin: bytes | None = None, check=True, time
     askpass_dir = None
     if auth:
         if not auth.get('host'):
-            raise GitError('Git 凭据缺少 HTTPS 主机。')
+            raise GitError('Git credentials missing HTTPS host.')
         askpass_dir, script = await asyncio.to_thread(_askpass_script)
         env.update(GIT_ASKPASS=str(script), GIT_ASKPASS_REQUIRE='force',
                    WORKSTEP_GIT_USERNAME=auth['username'], WORKSTEP_GIT_TOKEN=auth['token'],
@@ -79,7 +79,7 @@ async def run_git(path, *args: str, stdin: bytes | None = None, check=True, time
     except FileNotFoundError as exc:
         if askpass_dir is not None:
             await asyncio.to_thread(shutil.rmtree, askpass_dir)
-        raise GitError('未找到 Git，请在本机安装 Git 后重试。', 503) from exc
+        raise GitError('Git not found. Please install Git on your local machine and try again.', 503) from exc
     except BaseException:
         if askpass_dir is not None:
             await asyncio.to_thread(shutil.rmtree, askpass_dir)
@@ -90,7 +90,7 @@ async def run_git(path, *args: str, stdin: bytes | None = None, check=True, time
         while chunk := await stream.read(65536):
             data.extend(chunk)
             if len(data) > limit:
-                raise GitError('Git 输出超过预览限制，请缩小范围后重试。', 413)
+                raise GitError('Git output exceeds preview limit, please narrow the scope and try again.', 413)
         return bytes(data)
 
     async def write():
@@ -124,13 +124,13 @@ async def run_git(path, *args: str, stdin: bytes | None = None, check=True, time
         if askpass_dir is not None:
             await asyncio.to_thread(shutil.rmtree, askpass_dir)
         if isinstance(exc, TimeoutError):
-            raise GitError('Git 操作超时，请刷新状态后重试。', 504) from exc
+            raise GitError('Git operation timed out. Please refresh the status and try again.', 504) from exc
         raise
     if askpass_dir is not None:
         await asyncio.to_thread(shutil.rmtree, askpass_dir)
     if code and check:
         message = stderr.decode('utf-8', 'replace').replace(auth['token'], '[已隐藏]') if auth else stderr.decode('utf-8', 'replace')
-        raise GitError(explain_auth_error(message.strip()) or 'Git 操作失败。')
+        raise GitError(explain_auth_error(message.strip()) or 'Git operation failed.')
     return stdout, code
 
 

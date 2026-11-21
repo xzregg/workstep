@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useAdminSession } from './useAdminSession'
 import { AdminSessionStatus } from './AdminSessionStatus'
@@ -43,11 +44,11 @@ function OperationCreate({ csrf, onCreated }: { csrf: string; onCreated: () => v
     void fetch(`/api/admin/devices?status=active&sort=name&direction=asc&page=${page}&page_size=25`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error('可选设备加载失败。')
+      if (!response.ok) throw new Error('Optional device loading failed.')
       const data = await response.json()
       if (!controller.signal.aborted) { setTargets(data.devices ?? []); setTotal(data.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '可选设备加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Optional device loading failed.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [page, revision])
@@ -65,14 +66,14 @@ function OperationCreate({ csrf, onCreated }: { csrf: string; onCreated: () => v
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const response = await fetch('/api/admin/device-operations', { method: 'POST', credentials: 'same-origin', headers,
         body: JSON.stringify({ action, engine_id: engineId, version: needsVersion ? version : null,
           device_ids: selected.map(target => target.id), max_concurrency: concurrency,
           accept_third_party_terms: termsAccepted }) })
-      if (!response.ok) throw new Error('批量作业创建失败，请检查设备状态和参数。')
+      if (!response.ok) throw new Error('Batch job creation failed. Please check device status and parameters.')
       setConfirming(false); setPassword(''); setChosen({}); onCreated()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '批量作业创建失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Batch job creation failed.') }
     finally { setBusy(false) }
   }
 
@@ -108,14 +109,14 @@ function OperationCreate({ csrf, onCreated }: { csrf: string; onCreated: () => v
       <button type="button" disabled={page >= Math.ceil(total / 25) || loading}
         onClick={() => setPage(value => value + 1)}>下一页</button></div>
     <button type="button" disabled={!canCreate || loading} onClick={() => { setError(''); setConfirming(true) }}>核对并创建作业</button>
-    {error && <p role="alert" className="gateway-auth-error">{error} {!confirming &&
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} {!confirming &&
       <button type="button" onClick={() => setRevision(value => value + 1)}>重试加载</button>}</p>}
     {confirming && <GatewayConfirmDialog title="确认批量作业" message={`目标 ${selected.length} 台 · ${actionNames[action]} ${engineId}${needsVersion ? ` ${version}` : ''} · 并发 ${concurrency} 台 · 预计下载量暂无法估算。确认后目标不会随筛选变化。`}
       confirmLabel="创建作业" busy={busy} disabled={!passwordReady} onConfirm={() => void create()}
       onCancel={() => { setConfirming(false); setPassword('') }}
       passwordConfirmation={<PasswordConfirmation id="operation-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
       <p>第三方安装条款：{termsAccepted ? '已确认' : '未确认'}。目标：{selected.map(target => target.name).join('、')}</p>
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     </GatewayConfirmDialog>}
   </section>
 }
@@ -137,11 +138,11 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
     void fetch(`/api/admin/device-operations?limit=25&offset=${(page - 1) * 25}`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error('批量作业加载失败。')
+      if (!response.ok) throw new Error('Batch job loading failed.')
       const data = await response.json()
       if (!controller.signal.aborted) { setBatches(data.batches ?? []); setTotal(data.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '批量作业加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Batch job loading failed.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [page, refresh, revision])
@@ -151,13 +152,13 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const response = await fetch(`/api/admin/device-operations/${encodeURIComponent(batch.id)}/retry-failed`, {
         method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
       })
-      if (!response.ok) throw new Error('重试失败项未能创建，请刷新状态后重试。')
+      if (!response.ok) throw new Error('Failed to create retry items. Please refresh the status and try again.')
       setRetry(null); setPassword(''); setPage(1); setRefresh(value => value + 1)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '重试失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Retry failed.') }
     finally { setBusy(false) }
   }
 
@@ -165,7 +166,7 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
     <div className="gateway-admin-toolbar"><h3>作业记录</h3><button type="button" disabled={loading}
       onClick={() => setRefresh(value => value + 1)}>刷新状态</button></div>
     {loading && <p role="status">正在加载作业…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error} {!retry &&
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} {!retry &&
       <button type="button" onClick={() => setRefresh(value => value + 1)}>重试</button>}</p>}
     {!loading && !error && batches.length === 0 && <p>暂无批量作业。</p>}
     <AdminRecordTable>{batches.map(batch => <AdminRecordRow key={batch.id}>
@@ -185,7 +186,7 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
       confirmLabel="创建重试作业" busy={busy} disabled={!passwordReady} onConfirm={() => void retryFailed(retry)}
       onCancel={() => { setRetry(null); setPassword('') }}
       passwordConfirmation={<PasswordConfirmation id="retry-operation-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     </GatewayConfirmDialog>}
   </section>
 }

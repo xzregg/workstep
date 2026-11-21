@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { type GitDiscovery, type TaskGitWorkspace as Workspace } from '../../api/git'
 import { useGitStore } from '../../stores/gitStore'
 import { useProjectStore } from '../../stores/projectStore'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import Button from '../Button'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
@@ -217,7 +217,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
       <Button size="sm" loading={loading} onClick={() => void refresh()}>{t('git.refresh')}</Button>
       {!readOnly && workspaceEditable && <Button className="task-git-delete-workspace" size="sm" variant="danger" loading={deleteWorkspaceChecking} disabled={loading} onClick={() => void inspectWorkspaceBeforeDelete()}>{t('git.taskDeleteWorkspace')}</Button>}
     </header>
-    {error && <div className="git-error" role="alert">{error}</div>}
+    {error && <div className="git-error" role="alert">{localizeErrorDisplay(error)}</div>}
     {!loading && !shared && !readOnly && workspaceEditable && discovery && !hasRootRepository && <div className="task-git-initialize">
       <span>{t('git.taskRootNotGit')}</span>
       <Button size="sm" variant="primary" loading={initializing} onClick={() => setInitializeOpen(true)}>{t('git.initialize')}</Button>
@@ -269,7 +269,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
             }} /></label>
           </div>
           {branchLoading && <Icon name="loader-circle" className="git-spin" size={14} />}
-          {branchError && <small className="git-danger" role="alert">{branchError}</small>}
+          {branchError && <small className="git-danger" role="alert">{localizeErrorDisplay(branchError)}</small>}
           <Button variant="primary" loading={adding} disabled={!alias || !baseRef || !branchName || branchLoading} onClick={() => void add()}>{t('git.taskCreateWorktree')}</Button>
         </>}
       </div>}

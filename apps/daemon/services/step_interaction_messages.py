@@ -7,6 +7,7 @@ from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent
 from models import Message
 from services.intervention import intervention_manager, wait_for_interaction_response
+from services.messages import StepEventProgress
 
 
 class StepInteractionMessages:
@@ -50,7 +51,7 @@ class StepInteractionMessages:
         self, *, waiter: asyncio.Task, task_id: str, step_key: str,
         event: InternalEvent, engine: AcpEngineBase,
         message_id: str, journal_ref: JournalRef,
-        events_collected: list[dict], resolved_model: str | None,
+        event_progress: StepEventProgress, resolved_model: str | None,
         engine_id: str,
     ) -> None:
         """Write the response before publishing it to the UI."""
@@ -76,8 +77,9 @@ class StepInteractionMessages:
                 "response": response,
             },
         )
-        events_collected.append(response_event.to_dict())
-        await self._journal.arecord(journal_ref, response_event.to_dict())
+        response_record = response_event.to_dict()
+        event_progress.observe(response_record)
+        await self._journal.arecord(journal_ref, response_record)
         try:
             await self._run_db(
                 lambda: self._persist_projection(message_id, journal_ref)
@@ -89,7 +91,7 @@ class StepInteractionMessages:
             "message_id": message_id,
             "engine": engine_id,
             "model": resolved_model,
-            "event_sequence": len(events_collected),
+            "event_sequence": event_progress.count,
             "type": response_event.type,
             "data": {
                 **response_event.data,

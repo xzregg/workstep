@@ -128,7 +128,7 @@ async def test_custom_config_schema_and_saved_values_reach_worker(custom_environ
         ("light", "轻度"), ("deep", "深度"),
     ]
     assert engine.get_config_values()["mode"] == "light"
-    with pytest.raises(ValueError, match="配置选项无效"):
+    with pytest.raises(ValueError, match='Invalid\\ configuration\\ options'):
         await engine.save_config_values({"mode": "unknown"})
     for mode in ("deep", "light"):
         await engine.save_config_values({"mode": mode})
@@ -153,12 +153,12 @@ async def test_broken_import_isolated_and_health_canary(custom_environment, bad_
 @pytest.mark.asyncio
 async def test_registration_rejects_stale_or_missing_validation(custom_environment):
     from services.custom_engines import custom_engine_manager as manager
-    with pytest.raises(ValueError, match="验收"):
+    with pytest.raises(ValueError, match='[Aa]cceptance'):
         await manager.register(str(custom_environment))
     await manager.run_operation("validate", str(custom_environment))
     with (custom_environment / "engine.py").open("a") as file:
         file.write("\n# changed\n")
-    with pytest.raises(ValueError, match="验收"):
+    with pytest.raises(ValueError, match='[Aa]cceptance'):
         await manager.register(str(custom_environment))
 
 
@@ -207,10 +207,10 @@ async def test_report_tamper_and_config_change_require_revalidation(custom_envir
     file = source / "validation.json"
     original = file.read_text()
     report = json.loads(original); report["version"] = "forged"; file.write_text(json.dumps(report))
-    with pytest.raises(ValueError, match="签名"): await manager.register(str(source))
+    with pytest.raises(ValueError, match='signature'): await manager.register(str(source))
     file.write_text(original)
     await manager.configure(str(source), {"token": "secret"})
-    with pytest.raises(ValueError, match="失效"): await manager.register(str(source))
+    with pytest.raises(ValueError, match='has expired'): await manager.register(str(source))
 
 @pytest.mark.asyncio
 async def test_unlisted_tests_cannot_be_validated(custom_environment):
@@ -565,7 +565,7 @@ async def test_custom_mcp_acceptance_requires_real_worker_tool_call(custom_envir
         assert engine_supports_mcp('example_custom')
     else:
         assert not report['ok']
-        with pytest.raises(ValueError, match='验收'):
+        with pytest.raises(ValueError, match='[Aa]cceptance'):
             await manager.register(str(custom_environment))
 
 

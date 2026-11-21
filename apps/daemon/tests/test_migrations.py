@@ -16,14 +16,22 @@ def test_existing_conversations_gain_reset_boundaries_without_losing_identity(tm
     CoordinatorSession.create(task=task, engine='claude', session_id='old-task-engine', created_at=now, updated_at=now)
     db.execute_sql('ALTER TABLE chat_sessions DROP COLUMN context_reset_at')
     db.execute_sql('ALTER TABLE coordinator_sessions DROP COLUMN context_reset_sequence')
+    for table in ('chat_sessions', 'coordinator_sessions', 'gen_sessions', 'prototype_sessions'):
+        db.execute_sql(f'ALTER TABLE {table} DROP COLUMN session_provider')
     db.close()
     for _ in range(2):
         db = init_db(path)
         try:
-            assert ChatSession.get_by_id('chat').engine_session_id == 'old-chat-engine'
-            assert ChatSession.get_by_id('chat').context_reset_at is None
-            assert CoordinatorSession.get_by_id('task').session_id == 'old-task-engine'
-            assert CoordinatorSession.get_by_id('task').context_reset_sequence == 0
+            chat = ChatSession.get_by_id('chat')
+            coordinator = CoordinatorSession.get_by_id('task')
+            assert chat.engine_session_id == 'old-chat-engine'
+            assert chat.context_reset_at is None
+            assert chat.session_provider is None
+            assert coordinator.session_id == 'old-task-engine'
+            assert coordinator.context_reset_sequence == 0
+            assert coordinator.session_provider is None
+            for table in ('gen_sessions', 'prototype_sessions'):
+                assert 'session_provider' in {column.name for column in db.get_columns(table)}
         finally:
             db.close()
 

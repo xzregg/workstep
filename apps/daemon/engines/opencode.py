@@ -131,7 +131,7 @@ def _ensure_permission_config(mode: str = "ask") -> str:
             json.dump(merged, fh, ensure_ascii=False, indent=2)
         return path
     except OSError as exc:
-        raise RuntimeError("无法写入 OpenCode 权限配置，已阻止启动") from exc
+        raise RuntimeError("Failed to write OpenCode permission configuration, startup blocked") from exc
 
 
 class OpencodeEngine(AcpEngineBase):
@@ -261,9 +261,9 @@ class OpencodeEngine(AcpEngineBase):
     ) -> None:
         mode = str(values.get("permission_mode") or "ask").strip()
         if mode not in OPENCODE_PERMISSION_MODES:
-            raise ValueError("不支持的 OpenCode 权限模式")
+            raise ValueError("Unsupported OpenCode permission mode")
         if mode == "allow" and not (confirmed or {}).get("permission_mode"):
-            raise ValueError("allow 需要明确确认风险")
+            raise ValueError("allow requires explicit risk confirmation")
         await asyncio.to_thread(config_store.set_opencode_config, mode)
 
     # ---------------------------------------------------------------- 能力
@@ -423,19 +423,19 @@ class OpencodeEngine(AcpEngineBase):
         """ACP 标准建连/恢复/配置流程；仅 prompt 等待与插入消费为打断语义."""
         if goal_action and not self.supports_goal_mode:
             yield InternalEvent(type="error", data={
-                "message": f"当前引擎不支持目标模式：{self.ENGINE_ID}",
+                "message": f"Current engine does not support target mode: {self.ENGINE_ID}",
             })
             return
         if prompt.strip() == "/compact":
             if not session_id:
                 yield InternalEvent(type="error", data={
-                    "message": "没有可压缩的 ACP 会话",
+                    "message": "No compressible ACP session",
                 })
                 return
             commands = await self._inspect_acp_commands(cwd)
             if not any(command["name"] == "compact" for command in commands):
                 yield InternalEvent(type="error", data={
-                    "message": "ACP 引擎未声明 /compact 命令",
+                    "message": "ACP engine does not declare the /compact command",
                 })
                 return
 
@@ -461,7 +461,7 @@ class OpencodeEngine(AcpEngineBase):
 
         if self.REQUIRES_PERMISSION_MODE and not permission_mode:
             yield InternalEvent(type="error", data={
-                "message": "Claude Code 权限模式尚未确认，请先在设置中选择权限模式",
+                "message": "Claude Code permission mode is not yet confirmed. Please select a permission mode in settings first.",
             })
             return
 
@@ -501,8 +501,7 @@ class OpencodeEngine(AcpEngineBase):
                     != acp.PROTOCOL_VERSION
                 ):
                     raise RuntimeError(
-                        "ACP 协议版本不兼容："
-                        f"客户端={acp.PROTOCOL_VERSION}，Agent={init_resp.protocol_version}"
+                        f"Incompatible ACP protocol version: client={acp.PROTOCOL_VERSION}, agent={init_resp.protocol_version}"
                     )
 
                 mcp_servers = list(
@@ -536,13 +535,13 @@ class OpencodeEngine(AcpEngineBase):
                             )
                         else:
                             raise RuntimeError(
-                                "ACP Agent 未声明 session/load 或 session/resume 支持"
+                                "ACP Agent does not declare support for session/load or session/resume"
                             )
                         active_session_id = session_id
                     except Exception as exc:
                         logger.warning("Failed to load session %s: %s", session_id, exc)
                         yield InternalEvent(type="error", data={
-                            "message": f"无法恢复 ACP 会话 {session_id}: {exc}",
+                            "message": f"Unable to restore ACP session {session_id}: {exc}",
                             "session_id": session_id,
                         })
                         return
@@ -601,7 +600,7 @@ class OpencodeEngine(AcpEngineBase):
                 if images and not self._agent_capability(
                     init_resp, "prompt_capabilities", "image"
                 ):
-                    raise RuntimeError("ACP Agent 未声明图片 Prompt 支持")
+                    raise RuntimeError("ACP Agent does not declare support for image prompts")
                 prompt_blocks = await asyncio.to_thread(
                     self._acp_prompt_blocks, prompt, images
                 )
@@ -674,7 +673,7 @@ class OpencodeEngine(AcpEngineBase):
                         return
                 if stop_reason in {"max_tokens", "max_turn_requests", "refusal"}:
                     yield InternalEvent(type="error", data={
-                        "message": f"ACP Agent 提前停止：{stop_reason}",
+                        "message": f"ACP Agent stopped prematurely: {stop_reason}",
                         "stop_reason": stop_reason,
                     })
                     return
@@ -728,7 +727,7 @@ class OpencodeEngine(AcpEngineBase):
                             return
                         if stop_reason in {"max_tokens", "max_turn_requests", "refusal"}:
                             yield InternalEvent(type="error", data={
-                                "message": f"ACP Agent 提前停止：{stop_reason}",
+                                "message": f"ACP Agent stopped prematurely: {stop_reason}",
                                 "stop_reason": stop_reason,
                             })
                             return

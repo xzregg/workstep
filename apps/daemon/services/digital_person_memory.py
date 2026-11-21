@@ -160,6 +160,9 @@ def task_source_text(message):
 def capture_task_message(project_id, message):
     if message.run_status not in TASK_TERMINAL or message.role not in ('user', 'assistant'):
         return
+    from services.task_queries import is_debug_task
+    if is_debug_task(message.task_id):
+        return
     index.capture(project_id, message.task_id, 'task:'+message.id, scope_for_task(project_id,message.task_id), message.role,
                   task_source_text(message), message.ended_at or message.created_at, source_kind='task',
                   metadata={'task_id':message.task_id, 'step_key':message.step_key,

@@ -1,5 +1,5 @@
 import SettingsHelpButton from './SettingsHelpButton'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useEffect, useRef, useState } from 'react'
 import Button, { ButtonLink } from './Button'
 import { buildBrowserFeedback } from '../utils/browserDiagnostics'
@@ -46,7 +46,7 @@ export default function ProblemFeedbackSettings() {
         <p className="settings-system-description">{t(bridge ? 'settings.oneClickFeedbackIntro' : 'settings.browserFeedbackIntro')}</p>
         <p className="settings-system-description">{t('settings.feedbackPrivacyHint')}</p>
         {copied && <p role="status" className="settings-system-feedback settings-system-feedback--success">{t('settings.feedbackCopied')}</p>}
-        {error && <p role="alert" className="settings-system-feedback settings-system-feedback--error">{error}</p>}
+        {error && <p role="alert" className="settings-system-feedback settings-system-feedback--error">{localizeErrorDisplay(error)}</p>}
         {report && <>
           <textarea ref={reportRef} className="problem-feedback-report" readOnly value={report} aria-label={t('settings.feedbackReport')} />
           <p className="settings-system-description">{t('settings.feedbackScreenshotHint')}</p>

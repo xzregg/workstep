@@ -4,7 +4,7 @@ import { assistantApi } from '../api/client'
 import Button from '../components/Button'
 import ConcurrencyLimitInput from '../components/ConcurrencyLimitInput'
 import Input from '../components/Input'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import './GlobalConcurrencySettings.css'
 
 const fieldStyle = {
@@ -163,7 +163,7 @@ export default function GlobalConcurrencySettings() {
               {t(invalidRetry ? 'projectSettings.concurrency.taskRetryInvalid' : 'projectSettings.concurrency.positiveInteger')}
             </div>
           )}
-          {error && <div role="alert" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
+          {error && <div role="alert" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{localizeErrorDisplay(error)}</div>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Button variant="primary" loading={saving} disabled={invalid || saving} onClick={() => void save()}>
               {t('common.save')}

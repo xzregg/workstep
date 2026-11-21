@@ -27,7 +27,7 @@ async def test_social_channels_are_discovered_and_send_bounded_plain_text(platfo
     assert all(len(row[key].encode('utf-16-le')) // 2 <= (2000 if platform == 'discord' else 4096) for row in bodies)
     if platform == 'discord':
         assert all(row['allowed_mentions'] == {'parse': []} for row in bodies)
-    with pytest.raises(ValueError, match='不支持发送'):
+    with pytest.raises(ValueError, match='does not support sending'):
         await adapter.send(recipient, OutgoingMessage(attachments=(ChannelAttachment('file', 'a.txt', data=b'a'),)))
 
 

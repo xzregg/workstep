@@ -147,7 +147,7 @@ async def set_system_settings(req: SystemSettingsRequest, request: Request):
     gateway = getattr(request.app.state, 'gateway_client', None)
     if req.user_name is not None and (getattr(request.state, 'managed_actor', None) or (gateway and gateway.managed_config)
                                     or await asyncio.to_thread(_configured_gateway_mode)):
-        raise HTTPException(status_code=403, detail='网关账号由平台管理，不能在本地修改')
+        raise HTTPException(status_code=403, detail='Gateway accounts are managed by the platform and cannot be modified locally')
     directory = req.default_project_directory
     if directory is not None:
         def validate_directory() -> str:
@@ -159,13 +159,13 @@ async def set_system_settings(req: SystemSettingsRequest, request: Request):
                     raise ValueError()
                 return str(assert_within_projects_root(path))
             except (ValueError, OSError, RuntimeError):
-                raise HTTPException(status_code=400, detail="请选择已存在的目录，或输入绝对路径（支持 ~）")
+                raise HTTPException(status_code=400, detail="Please select an existing directory or enter an absolute path (supports ~)")
 
         directory = await asyncio.to_thread(validate_directory)
     if req.user_name is not None:
         user_name = req.user_name.strip()
         if not user_name:
-            raise HTTPException(status_code=400, detail="使用者名称不能为空")
+            raise HTTPException(status_code=400, detail="User name cannot be empty")
         await asyncio.to_thread(config_store.set_user_name, user_name)
     if req.open_mode is not None:
         await asyncio.to_thread(config_store.set_open_mode, req.open_mode)
@@ -205,13 +205,13 @@ async def set_model_settings(req: ModelPricingRequest):
         provider_id = item.provider_id.strip() if item.provider_id else None
         engine_id = item.engine_id.strip() if item.engine_id else None
         if provider_id and engine_id:
-            raise HTTPException(status_code=400, detail="模型不能同时属于供应商和执行引擎")
+            raise HTTPException(status_code=400, detail="The model cannot belong to both the supplier and the execution engine")
         model = item.model.strip()
         if not model:
-            raise HTTPException(status_code=400, detail="模型名称不能为空")
+            raise HTTPException(status_code=400, detail="Model name cannot be empty")
         key = (provider_id, engine_id, model)
         if key in seen:
-            raise HTTPException(status_code=400, detail="供应商与模型组合不能重复")
+            raise HTTPException(status_code=400, detail="The supplier and model combination cannot be duplicated")
         seen.add(key)
         prices.append({
             "provider_id": provider_id,

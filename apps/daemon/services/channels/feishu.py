@@ -103,10 +103,10 @@ class FeishuAdapter(ChannelAdapter):
         try:
             data = response.json()
         except ValueError as exc:
-            raise RuntimeError('飞书接口返回了无效数据') from exc
+            raise RuntimeError('Feishu API returned invalid data') from exc
         if not isinstance(data, dict) or data.get('code', 0) != 0:
             # Do not expose request bodies, access tokens or credential URLs.
-            raise RuntimeError(f'飞书接口失败（错误码 {data.get("code", "unknown") if isinstance(data, dict) else "unknown"}）')
+            raise RuntimeError(f'Feishu API failed (error code {data.get("code", "unknown") if isinstance(data, dict) else "unknown"})')
         return data
 
     async def _access_token(self):
@@ -116,7 +116,7 @@ class FeishuAdapter(ChannelAdapter):
             data = self._checked(await self._client().post(self.DOMAIN + '/open-apis/auth/v3/tenant_access_token/internal',
                 json={'app_id': self._bot['app_id'], 'app_secret': self._bot['secret']}))
             if not data.get('tenant_access_token'):
-                raise RuntimeError('飞书应用凭证缺失')
+                raise RuntimeError('Missing Feishu application credentials')
             self._token = data['tenant_access_token']
             self._expires = time.monotonic() + max(0, float(data.get('expire', 0)) - 60)
             return self._token
@@ -187,12 +187,12 @@ class FeishuAdapter(ChannelAdapter):
                     info = await self._api('GET', '/bot/v3/info')
                     self._bot_open_id = (info.get('bot') or {}).get('open_id') or ''
                     if not self._bot_open_id:
-                        raise RuntimeError('飞书机器人身份缺失，请启用应用机器人能力')
+                        raise RuntimeError('Feishu bot identity is missing. Please enable the application bot capability.')
                     endpoint = self._checked(await self._client().post(self.DOMAIN + '/callback/ws/endpoint',
                         json={'AppID': self._bot['app_id'], 'AppSecret': self._bot['secret']}))['data']
                     uri = endpoint['URL']
                     if urlsplit(uri).scheme != 'wss':
-                        raise RuntimeError('飞书长连接地址无效')
+                        raise RuntimeError('Invalid Feishu long connection address')
                     from lark_oapi.ws.model import ClientConfig
                     if endpoint.get('ClientConfig'):
                         protocol._configure(ClientConfig(endpoint['ClientConfig']))
@@ -203,7 +203,7 @@ class FeishuAdapter(ChannelAdapter):
                         await self._on_state('connected', '')
                         async for raw in socket:
                             await protocol._handle_message(raw)
-                        raise RuntimeError('长连接已断开，正在重试')
+                        raise RuntimeError('Long connection has been disconnected, retrying')
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -359,7 +359,7 @@ class FeishuAdapter(ChannelAdapter):
             else:
                 data = await self._send_message(recipient, 'interactive', self._card_json(card))
             if not data.get('message_id'):
-                raise RuntimeError('飞书卡片消息标识缺失')
+                raise RuntimeError('Missing Feishu card message identifier')
             self._cards[card.id] = card
             self._card_message_ids[card.id] = data['message_id']
             if card.running:
@@ -412,7 +412,7 @@ class FeishuAdapter(ChannelAdapter):
                 files={'image' if image else 'file': (attachment.name, attachment.data, attachment.mime_type)})
             key = 'image_key' if image else 'file_key'
             if not result.get(key):
-                raise RuntimeError('飞书媒体上传标识缺失')
+                raise RuntimeError('Missing Feishu media upload identifier')
             uploaded.append((attachment.kind, {key: result[key]}))
         pieces = list(_chunks(message.text))
         card_id = self._reply_cards.get(self._reply_key(recipient))
@@ -445,14 +445,14 @@ class FeishuAdapter(ChannelAdapter):
             response.raise_for_status()
             limit = self.CAPABILITIES.limit(attachment.kind)
             if int(response.headers.get('content-length', 0)) > limit:
-                raise ValueError('附件超过渠道大小限制')
+                raise ValueError('Attachment exceeds channel size limit')
             data = bytearray()
             async for chunk in response.aiter_bytes():
                 data.extend(chunk)
                 if len(data) > limit:
-                    raise ValueError('附件超过渠道大小限制')
+                    raise ValueError('Attachment exceeds channel size limit')
             if not data or 'application/json' in response.headers.get('content-type', ''):
-                raise ValueError('飞书附件下载失败')
+                raise ValueError('Failed to download Feishu attachment')
             filename = attachment.name or 'attachment.bin'
             if attachment.kind == 'image':
                 suffix = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp'}.get(

@@ -3,7 +3,7 @@ import { useInRouterContext, useNavigate } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useTaskStore } from '../stores/taskStore'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import type { TaskDetailLink } from '../utils/taskDetailLink'
 import Button from './Button'
 import { MarkdownStreamingContext } from './MermaidBlock'
@@ -42,7 +42,7 @@ function TaskButton({ target, children, disabled }: Props) {
   return <span className="markdown-task-link-container">
     <Button className="markdown-task-link chat-message-action" size="sm" loading={loading}
       disabled={disabled || !can('task.read')} onClick={() => void open()}>{children}</Button>
-    {error && <span className="markdown-task-link-error" role="alert">{error}</span>}
+    {error && <span className="markdown-task-link-error" role="alert">{localizeErrorDisplay(error)}</span>}
   </span>
 }
 

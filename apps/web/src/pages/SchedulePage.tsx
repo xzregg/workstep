@@ -27,7 +27,7 @@ import {
   scheduleApi, workflowApi,
   type ProjectSchedule, type SchedulePayload, type ScheduleRule, type ScheduleRun,
 } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import { useTaskStore } from '../stores/taskStore'
 import { useScheduleDraftState, type ScheduleEditorState } from '../hooks/useScheduleDraftState'
@@ -376,7 +376,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
   return (
     <div className={`schedule-page${selected || creating ? ' schedule-page--editing' : ''}${creating ? ' schedule-page--creating' : ''}${testOpen && generation === 'agent' ? ' schedule-page--testing' : ''}`} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
       {headerTarget ? createPortal(header, headerTarget) : header}
-      {error && <div role="alert" style={{ padding: '8px 18px', color: 'var(--danger)', background: 'var(--danger-soft)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
+      {error && <div role="alert" style={{ padding: '8px 18px', color: 'var(--danger)', background: 'var(--danger-soft)', fontSize: 'calc(12px * var(--font-scale))' }}>{localizeErrorDisplay(error)}</div>}
       <div className="schedule-layout" id={tabbed ? `schedule-content-${projectId}` : undefined} role={tabbed ? 'tabpanel' : undefined} aria-labelledby={tabbed ? `schedule-project-${projectId}` : undefined} style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: `${asideWidth}px ${SPLIT_HANDLE_WIDTH}px minmax(0, 1fr) ${SPLIT_HANDLE_WIDTH}px ${sectionWidth}px` }}>
         <aside className="schedule-list" style={{ overflow: 'auto', padding: 10 }}>
           <div className="schedule-list-tabs" role="tablist" aria-label={t('schedules.title')}>

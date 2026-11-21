@@ -58,13 +58,27 @@ def test_validation_and_versions_and_context_settings(faces):
     assert faces.context([p['id']], 0)['text'] == ''
 
 
+def test_face_box_visibility_does_not_change_recognition_context(faces):
+    p = person(faces)
+    assert faces.get_settings()['settings']['show_boxes'] is True
+    faces.save_settings(faces.Settings(enabled=True, show_boxes=False))
+    assert faces.catalog()['settings']['show_boxes'] is False
+    assert faces.catalog()['settings']['show_names'] is True
+    assert faces.context([p['id']], 0)['people'][0]['person_id'] == p['id']
+
+
 def test_person_background_contains_only_known_enabled_people(faces):
     p = person(faces)
-    assert faces.person_prompt([p['id']]) == '人脸识别到用户：用户名：小张；关系：朋友。'
+    other = faces.create(faces.Enrollment(name='小林', relationship='同事', consent=True, embeddings=[sample()] * 3))
+    header = '[Visual Context]\nSource: Camera face recognition\nMatches:'
+    assert faces.person_prompt([p['id']]) == f'{header}\n- Name: 小张; Relationship: 朋友'
+    assert faces.person_prompt([p['id'], other['id'], p['id'], 'missing']) == (
+        f'{header}\n- Name: 小张; Relationship: 朋友\n- Name: 小林; Relationship: 同事'
+    )
     assert faces.person_prompt([]) == ''
     assert faces.person_prompt(['missing']) == ''
     faces.save_settings(faces.Settings(enabled=True, include_relationship=False))
-    assert '朋友' not in faces.person_prompt([p['id']])
+    assert faces.person_prompt([p['id']]) == f'{header}\n- Name: 小张'
     faces.delete(p['id'])
     assert faces.person_prompt([p['id']]) == ''
     from services.digital_person_memory_index import connect

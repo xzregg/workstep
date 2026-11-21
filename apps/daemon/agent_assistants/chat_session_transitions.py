@@ -9,6 +9,7 @@ from typing import Any
 from agent_assistants.base import validate_provider_override
 from agent_assistants.chat_row_persistence import ChatRowPersistence, _from_iso, _load_json
 from agent_assistants.context_handoff import append_handoff_log, compile_handoff
+from agent_assistants.session_state import provider_context_changed
 from engines.core.registry import create_engine
 from models.chat_session import ChatMessage, ChatSession
 from models.fields import utc_now
@@ -24,7 +25,9 @@ class ChatSessionTransitions:
     def get_execution_config(self, project_id: str, session_id: str) -> dict:
         """Read one shared configuration snapshot inside the project DB executor."""
         with self._project_ctx(project_id):
-            row = ChatSession.get_or_none(ChatSession.id == session_id)
+            row = ChatSession.get_or_none(
+                ChatSession.id == session_id, ChatSession.project_id == project_id,
+            )
             if row is None:
                 raise ValueError("Chat session not found")
             return {
@@ -169,18 +172,41 @@ class ChatSessionTransitions:
             if row is None:
                 raise ValueError("Chat session not found")
             provider_changed = (row.provider_id or "") != normalized_provider
+            adapter = create_engine(engine)
+            resolve_provider_id = getattr(adapter, "resolve_provider_id", None)
+            effective_provider = (
+                resolve_provider_id(normalized_provider)
+                if callable(resolve_provider_id) else normalized_provider
+            )
             if ChatMessage.select().where(
                 ChatMessage.session == row,
                 ChatMessage.status == "running",
             ).exists():
                 raise ValueError("Chat session is running")
-            if row.engine == engine and not provider_changed:
+            same_selection = row.engine == engine and not provider_changed
+            if same_selection:
                 # A committed response may have been lost. Repeating the endpoint
                 # request must not rebuild its thread or append another handoff.
                 pending = _load_json(row.fork_context_json, {})
-                if self._handoff_return_state(row) is None or pending.get("mode") == context_mode:
+                if not isinstance(pending, dict):
+                    pending = {}
+                effective_changed = (
+                    provider_context_changed(row.session_provider, effective_provider)
+                    and (row.session_provider is not None or row.engine_session_id or row.engine_state_json
+                         or ChatMessage.select().where(
+                             ChatMessage.session == row, ChatMessage.role == "assistant",
+                             ChatMessage.status.in_(["succeeded", "completed"]),
+                         ).exists())
+                )
+                if pending and pending.get("effective_provider", effective_provider) != effective_provider:
+                    effective_changed = True
+                if not effective_changed and (
+                    self._handoff_return_state(row) is None or pending.get("mode") == context_mode
+                ):
                     return self.get_session(project_id, session_id)
-            if self._restore_handoff_endpoint(project_id, row, engine, normalized_provider, permission_mode):
+            if not same_selection and self._restore_handoff_endpoint(
+                project_id, row, engine, normalized_provider, permission_mode,
+            ):
                 return self.get_session(project_id, session_id)
             return_state = self._handoff_return_state(row)
             if return_state is None:
@@ -189,12 +215,13 @@ class ChatSessionTransitions:
                     for field in (
                         "engine", "provider_id", "model", "fast_model", "vision_model",
                         "thinking_effort", "service_tier", "permission_mode",
-                        "engine_session_id", "engine_state_json", "fork_context_mode", "fork_context_json",
+                        "engine_session_id", "engine_state_json", "session_provider",
+                        "fork_context_mode", "fork_context_json",
                     )
                 }
                 return_state["message_count"] = ChatMessage.select().where(ChatMessage.session == row).count()
             source_engine = row.engine
-            source_provider = row.provider_id or ""
+            source_provider = row.session_provider if row.session_provider is not None else (row.provider_id or "")
             messages = ChatRowPersistence()._load_messages(row, context_only=True)
             metadata = append_handoff_log(
                 project.workstep_dir,
@@ -204,9 +231,11 @@ class ChatSessionTransitions:
                 target_engine=engine,
                 mode=context_mode,
                 source_provider=source_provider,
-                target_provider=normalized_provider,
+                target_provider=effective_provider,
             )
-            metadata["return_state"] = return_state
+            metadata["effective_provider"] = effective_provider
+            if not same_selection:
+                metadata["return_state"] = return_state
             row.engine = engine
             row.model = model or None
             row.fast_model = fast_model or None
@@ -219,6 +248,7 @@ class ChatSessionTransitions:
                 row.permission_mode = permission_mode or None
             row.engine_session_id = None
             row.engine_state_json = None
+            row.session_provider = None
             row.fork_context_mode = context_mode
             row.fork_context_json = json.dumps(metadata, ensure_ascii=False)
             row.updated_at = utc_now()
@@ -233,6 +263,7 @@ class ChatSessionTransitions:
             session.vision_model = vision_model or None
             session.resolved_session_id = None
             session.engine_state = None
+            session.session_provider = None
             session.extra["pending_handoff"] = metadata
         result = self.get_session(project_id, session_id)
         if result is None:
@@ -313,6 +344,7 @@ class ChatSessionTransitions:
                 "fork_point": fork_point,
                 "engine": source_engine,
                 "engine_session_id": source_engine_session_id,
+                "session_provider": source.session_provider,
                 "workflow_id": source_workflow_id,
                 "model": source_model,
                 "fast_model": source_fast_model,
@@ -390,6 +422,15 @@ class ChatSessionTransitions:
         )
         new_session_id = created["id"]
         try:
+            if package and effective_context_mode != "none":
+                target_adapter = await asyncio.to_thread(create_engine, engine)
+                resolve_provider_id = getattr(target_adapter, "resolve_provider_id", None)
+                configured_provider = created.get("provider_id") or ""
+                package["effective_provider"] = (
+                    await asyncio.to_thread(resolve_provider_id, configured_provider)
+                    if callable(resolve_provider_id) else configured_provider
+                )
+
             def persist_fork():
                 with ChatSession._meta.database.atomic():
                     target = ChatSession.get_by_id(new_session_id)
@@ -432,18 +473,26 @@ class ChatSessionTransitions:
                 project_id, lambda _project: persist_fork()
             )
             if effective_context_mode == "native" and source_engine_session_id:
+                resolve_provider_id = getattr(adapter, "resolve_provider_id", None)
+                native_provider = (
+                    await asyncio.to_thread(resolve_provider_id, provider_id)
+                    if callable(resolve_provider_id) else (provider_id or "")
+                )
+                if source_data["session_provider"] not in (None, native_provider):
+                    raise ValueError("Native fork requires the same provider; use smart handoff")
                 native_engine_session_id = await adapter.fork_session(
                     source_engine_session_id,
                     await asyncio.to_thread(self._cwd, project_id),
                     fork_point=fork_point,
                     model=model,
-                    provider_id=provider_id,
+                    provider_id=native_provider or None,
                 )
                 if not native_engine_session_id:
                     raise ValueError("Native session fork failed")
                 def mark_ready():
                     ChatSession.update(
                         engine_session_id=native_engine_session_id,
+                        session_provider=native_provider,
                         fork_status="ready",
                     ).where(ChatSession.id == new_session_id).execute()
                 await self._project_manager.run_db(

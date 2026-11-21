@@ -256,7 +256,7 @@ async def test_compact_codex_thread_requires_native_notification():
         def unregister_goal_operation(self, route):
             return None
 
-    with pytest.raises(TimeoutError, match="压缩完成事件"):
+    with pytest.raises(TimeoutError, match='compression completion event'):
         await compact_codex_thread(
             SimpleNamespace(_client=Notifications()), Thread(), timeout=0.01,
         )
@@ -388,7 +388,7 @@ async def test_engine_without_resumable_compaction_rejects_command_before_spawn(
 
     assert len(events) == 1
     assert events[0].type == "error"
-    assert "不支持" in events[0].data["message"]
+    assert 'not currently supported' in events[0].data["message"]
 
 
 @pytest.mark.anyio
@@ -475,4 +475,4 @@ async def test_slash_transport_requires_compaction_receipt():
     )]
 
     assert events[-1].type == "error"
-    assert "无法确认" in events[-1].data["message"]
+    assert 'unable to confirm' in events[-1].data["message"]

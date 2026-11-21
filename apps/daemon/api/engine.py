@@ -137,7 +137,7 @@ async def set_engine_visibility(engine_id: str, request: EngineVisibilityRequest
 
     def update():
         if engine_id not in list_all_engines():
-            raise HTTPException(status_code=404, detail="引擎不存在")
+            raise HTTPException(status_code=404, detail="Engine does not exist")
         config_store.set_engine_enabled(engine_id, request.enabled)
         return {"engines": _refresh_and_summaries()}
 
@@ -167,11 +167,11 @@ def _coordinator_engine_options() -> list[dict]:
 def _validate_engine(engine_id: str, *, coordinator: bool = False):
     engine = create_engine(engine_id)
     if engine is None or not engine.is_configured():
-        raise HTTPException(status_code=400, detail="引擎未安装或尚未配置")
+        raise HTTPException(status_code=400, detail="Engine not installed or not configured")
     if coordinator and not engine.capabilities.supports_coordinator:
-        raise HTTPException(status_code=400, detail="该引擎不支持协调模式")
+        raise HTTPException(status_code=400, detail="This engine does not support coordination mode")
     if not config_store.is_engine_verified(engine_id):
-        raise HTTPException(status_code=400, detail="请先在设置中完成引擎测试")
+        raise HTTPException(status_code=400, detail="Please complete the engine test in Settings first")
     return engine
 
 
@@ -225,11 +225,11 @@ async def set_coordinator_default_config(req: CoordinatorDefaultsRequest):
     vision_model = req.vision_model.strip()
     thinking_effort = req.thinking_effort.strip()
     if not await asyncio.to_thread(is_supported_effort, thinking_effort, engine_id, model, "task_coordinator"):
-        raise HTTPException(status_code=400, detail="不支持的思考强度")
+        raise HTTPException(status_code=400, detail="Unsupported thinking intensity")
     if engine_id:
         await asyncio.to_thread(_validate_engine, engine_id, coordinator=True)
     elif model or fast_model or vision_model:
-        raise HTTPException(status_code=400, detail="默认模型需要先选择协调引擎")
+        raise HTTPException(status_code=400, detail="The default model requires selecting a coordination engine first")
     await asyncio.to_thread(
         config_store.set_coordinator_defaults,
         engine_id,
@@ -309,7 +309,7 @@ async def _install_engine(engine_id: str, req: EngineInstallRequest | None):
     """Compatibility endpoint for clients predating version selection."""
     cls = list_all_engines().get(engine_id)
     if cls is None:
-        raise HTTPException(status_code=404, detail="未知引擎")
+        raise HTTPException(status_code=404, detail="Unknown engine")
     engine = cls()
     if (
         engine.requires_third_party_terms_acceptance()
@@ -317,7 +317,7 @@ async def _install_engine(engine_id: str, req: EngineInstallRequest | None):
     ):
         raise HTTPException(
             status_code=400,
-            detail="安装此前请先阅读并明确接受第三方服务条款",
+            detail="Before installation, please read and explicitly accept the third-party service terms",
         )
     if await asyncio.to_thread(engine.is_installed):
         return {
@@ -330,7 +330,7 @@ async def _install_engine(engine_id: str, req: EngineInstallRequest | None):
     if engine.install_command() is None:
         raise HTTPException(
             status_code=400,
-            detail="该引擎不支持自动安装，请手动安装后重新扫描",
+            detail="This engine does not support automatic installation. Please install manually and rescan.",
         )
     result = await engine.install()
     engine_info = None
@@ -361,12 +361,12 @@ async def _update_engine(engine_id: str):
     """Compatibility endpoint for clients predating version selection."""
     cls = list_all_engines().get(engine_id)
     if cls is None:
-        raise HTTPException(status_code=404, detail="未知引擎")
+        raise HTTPException(status_code=404, detail="Unknown engine")
     engine = cls()
     if not await asyncio.to_thread(engine.is_installed):
-        raise HTTPException(status_code=400, detail="引擎尚未安装，请先安装")
+        raise HTTPException(status_code=400, detail="Engine not installed, please install first")
     if engine.update_command() is None:
-        raise HTTPException(status_code=400, detail="该引擎不支持自动更新")
+        raise HTTPException(status_code=400, detail="This engine does not support automatic updates")
     result = await engine.update()
     engine_info = None
     if result.success:
@@ -394,14 +394,14 @@ async def inspect_engine(
     """Return what the engine loads for a project (skills / MCP servers)."""
     cls = list_all_engines().get(engine_id)
     if cls is None:
-        raise HTTPException(status_code=404, detail="未知引擎")
+        raise HTTPException(status_code=404, detail="Unknown engine")
     root = project_root.strip() or None
     if not root and project_id.strip():
         project = project_manager.get_project_by_id(project_id.strip())
         root = str(project.path) if project else None
     result = await cls().inspect_capabilities(project_root=root)
     if result is None:
-        raise HTTPException(status_code=400, detail="该引擎不支持查看加载能力")
+        raise HTTPException(status_code=400, detail="This engine does not support viewing load capacity")
     return result
 
 
@@ -442,7 +442,7 @@ async def list_engine_models(
     """Return native models or the selected provider's cached model list."""
     scoped = require_catalog_project(project_id)
     if scoped and refresh:
-        raise HTTPException(status_code=403, detail="项目会话不能刷新宿主模型目录")
+        raise HTTPException(status_code=403, detail="Project session cannot refresh the host model directory")
     engine = await asyncio.to_thread(
         lambda: (refresh_registry(invalidate_scan=False), create_engine(engine_id))[1]
     )
@@ -451,34 +451,34 @@ async def list_engine_models(
             "engine_id": engine_id,
             "models": [],
             "default_model": "",
-            "error": "引擎未安装或当前不可用",
+            "error": "Engine not installed or currently unavailable",
         }
     fetched_at = None
     try:
         project = project_manager.get_project_by_id(project_id.strip()) if project_id.strip() else None
         models_kwargs: dict = {"cwd": str(project.path) if project else str(Path.cwd())}
-        resolve_provider = getattr(engine, "resolve_provider_runtime", None)
-        provider_runtime = (
+        resolve_provider = getattr(engine, "resolve_provider_catalog", None)
+        provider_catalog = (
             await asyncio.to_thread(
                 resolve_provider, provider_id=provider_id.strip()
             )
             if callable(resolve_provider)
             else None
         )
-        effective_provider = provider_runtime.provider_id if provider_runtime else ""
-        if effective_provider:
+        if provider_catalog:
+            effective_provider, protocol = provider_catalog
             # Provider catalogs contain the user's saved selection. Refresh
             # only rereads it; model discovery belongs to provider settings.
             models = await asyncio.to_thread(
                 provider_service.saved_models,
                 effective_provider,
-                provider_runtime.protocol,
+                protocol,
             )
             fetched_at = (
                 await asyncio.to_thread(
                     config_store.get_provider_models,
                     effective_provider,
-                    provider_runtime.protocol,
+                    protocol,
                 )
             ).get("fetched_at")
         else:
@@ -517,10 +517,10 @@ async def list_engine_models(
         error = None
     except asyncio.TimeoutError:
         models = []
-        error = "读取模型列表超时"
+        error = "Model list request timed out"
     except Exception as exc:
         models = []
-        error = "读取模型列表失败" if scoped else (str(exc) or "读取模型列表失败")
+        error = "Failed to load the model list" if scoped else (str(exc) or "Failed to load the model list")
     return {
         "engine_id": engine_id,
         "models": [model.to_dict() for model in models],
@@ -544,7 +544,7 @@ async def set_default_model(engine_id: str, req: DefaultModelRequest):
             "engine_id": engine_id,
             "default_model": "",
             "saved": False,
-            "message": "引擎未安装或当前不可用",
+            "message": "Engine not installed or currently unavailable",
         }
     model = req.model.strip()
     await asyncio.to_thread(config_store.set_engine_default_model, engine_id, model)
@@ -566,7 +566,7 @@ async def set_binary_path(engine_id: str, req: BinaryPathRequest):
         return {
             "engine_id": engine_id,
             "saved": False,
-            "message": "该引擎不支持可执行文件路径配置",
+            "message": "This engine does not support executable path configuration",
         }
 
     raw_path = req.path.strip()
@@ -576,13 +576,13 @@ async def set_binary_path(engine_id: str, req: BinaryPathRequest):
             return {
                 "engine_id": engine_id,
                 "saved": False,
-                "message": "请输入可执行文件的绝对路径",
+                "message": "Please enter the absolute path of the executable file",
             }
         if not await asyncio.to_thread(path.is_file):
             return {
                 "engine_id": engine_id,
                 "saved": False,
-                "message": "指定的可执行文件不存在",
+                "message": "The specified executable does not exist",
             }
         normalized = str(await asyncio.to_thread(path.resolve))
     else:
@@ -613,7 +613,7 @@ async def get_engine_config(engine_id: str):
     engine_id = engine_id.replace("-", "_")
     cls = list_all_engines().get(engine_id)
     if cls is None:
-        raise HTTPException(status_code=404, detail="未知引擎")
+        raise HTTPException(status_code=404, detail="Unknown engine")
     engine = cls()
     return await asyncio.to_thread(_engine_config_response, engine_id, engine)
 
@@ -625,7 +625,7 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
     engine_id = engine_id.replace("-", "_")
     cls = list_all_engines().get(engine_id)
     if cls is None:
-        return {"engine_id": engine_id, "saved": False, "message": "未知引擎"}
+        return {"engine_id": engine_id, "saved": False, "message": "Unknown engine"}
     engine = cls()
     previous_config = await asyncio.to_thread(_engine_config_snapshot, engine)
     try:
@@ -640,7 +640,7 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
         return {
             "engine_id": engine_id,
             "saved": False,
-            "message": str(exc) or "保存失败",
+            "message": str(exc) or "Save failed",
         }
     def finish_save() -> tuple[dict, dict | None]:
         current_config = _engine_config_snapshot(engine)
@@ -669,7 +669,7 @@ async def reveal_engine_config(engine_id: str, req: EngineConfigRevealRequest):
     engine_id = engine_id.replace("-", "_")
     cls = list_all_engines().get(engine_id)
     if cls is None:
-        raise HTTPException(status_code=404, detail="未知引擎")
+        raise HTTPException(status_code=404, detail="Unknown engine")
     engine = cls()
     value = await asyncio.to_thread(engine.reveal_config_value, req.key)
     return JSONResponse(

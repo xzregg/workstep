@@ -1,3 +1,4 @@
+import { localizeErrorDisplay } from '../../i18n'
 import {useEffect,useRef,useState} from 'react'
 import {digitalBrowserApi,type DigitalBrowserStatus} from '../../api/digitalPersonBrowser'
 import {useI18n} from '../../i18n'
@@ -41,7 +42,7 @@ export default function DigitalPersonOperations(){
   <div className="digital-person-operation-heading settings-heading-row"><h3>{t('digitalPerson.browserControl')}</h3>
    <Button variant="ghost" data-scan-browser disabled={busy||loading} loading={loading} onClick={()=>refresh(n=>n+1)}>{t('digitalPerson.browserScan')}</Button>
   </div>
-  {error&&<p className="digital-person-error" role="alert">{error}</p>}
+  {error&&<p className="digital-person-error" role="alert">{localizeErrorDisplay(error)}</p>}
   {!data&&loading&&<Spinner/>}
   {data&&<article className="digital-person-browser-card" aria-busy={installing}>
    <div className="digital-person-browser-title"><div><strong>Playwright</strong>{data.version&&<span>v{data.version}</span>}</div>
@@ -51,7 +52,7 @@ export default function DigitalPersonOperations(){
     <div><dt>{t('digitalPerson.browserComponent')}</dt><dd>{t(data.driver?'digitalPerson.browserDetected':'digitalPerson.browserNotDetected')}</dd></div>
     <div><dt>{t('digitalPerson.browserRuntime')}</dt><dd>{t(data.browser?(data.builtin?'digitalPerson.browserBuiltin':'digitalPerson.browserDetected'):'digitalPerson.browserNotDetected')}</dd></div>
    </dl>
-   {data.error&&<p className="digital-person-error" role="alert">{data.error}</p>}
+   {data.error&&<p className="digital-person-error" role="alert">{localizeErrorDisplay(data.error)}</p>}
    {data.engine_compatible===false&&<p className="digital-person-error">{t('digitalPerson.browserEngineUnsupported')}</p>}
    {data.ready?<label className="digital-person-browser-enable"><span>{t('digitalPerson.browserEnable')}</span>
     <button type="button" role="switch" className="settings-switch" aria-checked={data.enabled} aria-label={t('digitalPerson.browserEnable')} disabled={busy||installing||(data.engine_compatible===false&&!data.enabled)} onClick={()=>void action(()=>digitalBrowserApi.enable(!data.enabled))}><span className="settings-switch-thumb"/></button>

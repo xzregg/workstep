@@ -47,7 +47,7 @@ def _project_task_response(pid: str, task: dict) -> dict:
 @router.post("/create")
 async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="project_id")):
     """Create a new task."""
-    from main import task_service
+    from main import event_bus, task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     try:
@@ -69,6 +69,10 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
         default_engine = await asyncio.to_thread(
             config_store.get_execution_default_engine
         )
+        if req.workflow_id:
+            source = _project(pid).workflow_by_id(req.workflow_id)
+            if source and source.get("debug_source_id"):
+                raise HTTPException(404, "Workflow not found")
         creator_fields = current_actor_task_fields()
         result = await create_project_task(
             project_manager=project_manager,
@@ -90,6 +94,15 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
             scheduled_start_at=req.scheduled_start_at,
             creator_fields=creator_fields,
         )
+        # Project subscribers receive a list snapshot without the host cwd.
+        snapshot = {key: value for key, value in result.task.items() if key != "cwd"}
+        await event_bus.publish({
+            "type": "CUSTOM",
+            "name": "workstep.task_created",
+            "channel": "task_board",
+            "project_id": pid,
+            "value": {"task": snapshot},
+        })
         return _project_task_response(pid, result.task)
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -746,51 +759,23 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
         raise HTTPException(status_code=503, detail="Service not initialized")
     await _require_scoped_task(pid, req.task_id)
     project = _project(pid)
-    from services.task_queries import task_workspace_state
-    task = await _run_db(pid, lambda: task_workspace_state(req.task_id))
-    if task is None:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task["has_active_execution"]:
-        raise HTTPException(status_code=409, detail="Running tasks cannot be deleted")
-    workflow_id = task["workflow_id"]
-    workspace_roots = [project.workstep_dir / "worktrees" / req.task_id]
-    if workflow_id:
-        workspace_roots.append(project.workstep_dir / "artifacts" / workflow_id / req.task_id / ".worktrees")
-    has_workspace = await asyncio.to_thread(lambda: any(root.is_dir() and any(root.iterdir()) for root in workspace_roots))
-    if has_workspace and req.delete_workspace is None:
-        raise HTTPException(status_code=409, detail="请先在任务 Git 标签中移除 Worktree，再删除任务。")
-    if has_workspace and req.delete_workspace:
-        from api.git import git_service
-        from services.git.command import GitError
-        from services.git.task_workspace import TaskGitWorkspace
+    from api.task_workspace_cleanup import clean_task_workspaces
 
-        workspace = TaskGitWorkspace(git_service, workflow_id)
-        try:
-            for _ in workspace_roots:
-                if await asyncio.to_thread(lambda: any(root.is_dir() and any(root.iterdir()) for root in workspace_roots)):
-                    result = await workspace.delete(project.path, req.task_id, force=True)
-                    if result["outcome"] == "partial":
-                        raise GitError("Git 工作区仅部分删除：" + result["failure"], 409)
-        except GitError as exc:
-            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    await clean_task_workspaces(pid, req.task_id, req.delete_workspace, force=True)
     try:
         deleted = await _run_db(
             pid,
-            lambda: task_service.delete_task(req.task_id, pid, workstep_dir=project.workstep_dir),
+            lambda: task_service.delete_task(
+                req.task_id, pid, workstep_dir=project.workstep_dir,
+                keep_worktrees=req.delete_workspace is False,
+            ),
         )
-    except RuntimeError as exc:
+    except (RuntimeError, OSError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
     from api.task_context import _release_task_channel_bindings
     await _release_task_channel_bindings(pid, req.task_id)
-    if req.delete_workspace is not False:
-        for workspace_root in workspace_roots:
-            if await asyncio.to_thread(workspace_root.is_dir):
-                try:
-                    await asyncio.to_thread(workspace_root.rmdir)
-                except OSError:
-                    pass
     return {"deleted": deleted}
 
 

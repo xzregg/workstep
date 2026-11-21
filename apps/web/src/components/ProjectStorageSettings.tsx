@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { projectApi } from '../api/project'
 import { useProjectStore } from '../stores/projectStore'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import ProjectStorageField from './ProjectStorageField'
 import ConfirmDialog from './ConfirmDialog'
 import Button from './Button'
@@ -37,11 +37,11 @@ export default function ProjectStorageSettings({ projectId }: { projectId: strin
   return <div>
     {storage ? <ProjectStorageField value={storage.follow_project} path={storage.data_path} disabled={saving} onChange={value => { setError(''); setPending(value) }} />
       : !error && <Button loading disabled>{t('common.loading')}</Button>}
-    {error && <p role="alert" className="project-storage-error">{error}</p>}
+    {error && <p role="alert" className="project-storage-error">{localizeErrorDisplay(error)}</p>}
     <ConfirmDialog open={pending !== null} title={t('projectStorage.confirmTitle')} message={t('projectStorage.confirmHint')}
       loading={saving} confirmDisabled={saving} onCancel={() => { if (!saving) setPending(null) }} onConfirm={() => void save()}>
       {pending !== null && <ProjectStorageField value={pending} disabled onChange={() => {}} />}
-      {error && <p role="alert" className="project-storage-error">{error}</p>}
+      {error && <p role="alert" className="project-storage-error">{localizeErrorDisplay(error)}</p>}
     </ConfirmDialog>
   </div>
 }

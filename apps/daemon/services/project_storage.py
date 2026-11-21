@@ -14,23 +14,23 @@ def identity_file(root: str | Path) -> Path:
 def read_identity(root: str | Path) -> dict:
     marker = identity_file(root)
     if marker.is_symlink() or marker.parent.is_symlink():
-        raise ValueError("项目身份目录不能是符号链接")
+        raise ValueError("Project identity directory cannot be a symbolic link")
     if not marker.exists():
         return {}
     payload = json.loads(marker.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
-        raise ValueError("项目身份文件无效")
+        raise ValueError("Invalid project identity file")
     project_id = payload.get("id")
     if project_id is not None and not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", str(project_id)):
-        raise ValueError("项目 ID 无效")
+        raise ValueError("Invalid project ID")
     if type(payload.get("follow_project", True)) is not bool:
-        raise ValueError("项目存储设置无效")
+        raise ValueError("Invalid project storage settings")
     return payload
 
 
 def external_directory(project_id: str) -> Path:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", project_id):
-        raise ValueError("项目 ID 无效")
+        raise ValueError("Invalid project ID")
     return config.CONFIG_DIR / "projects" / project_id
 
 
@@ -43,7 +43,7 @@ def data_directory(root: str | Path) -> Path:
     if identity.get("follow_project", True):
         return Path(root) / settings.workstep_dir
     if not identity.get("id"):
-        raise ValueError("外置项目缺少项目 ID")
+        raise ValueError("External project missing project ID")
     return external_directory(identity["id"])
 
 
@@ -52,7 +52,7 @@ def write_identity(root: str | Path, project_id: str, follow_project: bool) -> N
     marker.parent.mkdir(parents=True, exist_ok=True)
     temporary = marker.with_suffix(".json.tmp")
     if temporary.is_symlink():
-        raise ValueError("项目身份临时文件不能是符号链接")
+        raise ValueError("Project identity temporary file cannot be a symbolic link")
     temporary.write_text(json.dumps({"id": project_id, "follow_project": follow_project}) + "\n", encoding="utf-8")
     temporary.replace(marker)
 

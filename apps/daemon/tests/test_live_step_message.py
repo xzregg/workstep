@@ -320,9 +320,13 @@ async def test_pydantic_ai_new_session_uses_response_message_id(tmp_path):
     from engines.core.registry import ENGINE_REGISTRY
     from services.task_runner import TaskRunner
 
-    ENGINE_REGISTRY["pydantic_ai"] = ResumablePromptFakeEngine
+    class PydanticSessionEngine(ResumablePromptFakeEngine):
+        SUPPORTS_HOST_SESSION_IDS = True
+        prompts = []
+        sessions = []
+
+    ENGINE_REGISTRY["pydantic_ai"] = PydanticSessionEngine
     steps_config["steps"][0]["engine"] = "pydantic_ai"
-    ResumablePromptFakeEngine.sessions = []
     runner = TaskRunner(bus)
     try:
         await runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
@@ -335,7 +339,7 @@ async def test_pydantic_ai_new_session_uses_response_message_id(tmp_path):
         step = TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "do")
         )
-        assert ResumablePromptFakeEngine.sessions == [response.id]
+        assert PydanticSessionEngine.sessions == [response.id]
         assert step.session_id == response.id
         assert response.event_log_path == (
             f"event_logs/task-{task.id}/{response.id}/{response.id}.jsonl"
@@ -432,7 +436,7 @@ async def test_runner_rejects_live_message_for_unsupported_engine(tmp_path):
             runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
         )
         await _wait_for_running_engine(runner, task.id, "do")
-        with pytest.raises(ValueError, match="不支持执行中消息注入"):
+        with pytest.raises(ValueError, match='does not support message injection during execution'):
             await runner.send_live_message(task.id, "do", "x")
         await pipeline
     finally:
@@ -447,7 +451,7 @@ async def test_runner_rejects_live_message_for_unsupported_engine(tmp_path):
 async def test_runner_rejects_live_message_when_step_not_running(tmp_path):
     db, task, steps_config, bus, runner, original = _make_runner_task(tmp_path, LiveFakeEngine)
     try:
-        with pytest.raises(ValueError, match="未在运行"):
+        with pytest.raises(ValueError, match='not running'):
             await runner.send_live_message(task.id, "do", "x")
     finally:
         await bus.close()
@@ -475,7 +479,7 @@ async def test_runner_cancel_stops_running_step(tmp_path):
 
         step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
         assert step.status == "cancelled"
-        assert step.error == "手动停止"
+        assert step.error == 'Stopped manually'
         message = Message.get((Message.task == task) & (Message.step_key == "do"))
         assert message.run_status == "cancelled"
         assert message.ended_at is not None
@@ -506,7 +510,7 @@ async def test_runner_cancel_step_is_idempotent_and_swallows_stop_errors(tmp_pat
         assert StopRaisesEngine.stop_calls == 1
         step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
         assert step.status == "cancelled"
-        assert step.error == "手动停止"
+        assert step.error == 'Stopped manually'
     finally:
         await bus.close()
         from engines.core.registry import ENGINE_REGISTRY
@@ -801,7 +805,7 @@ async def test_runner_idle_timeout_fails_step_and_keeps_session(tmp_path, monkey
 
         ts = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
         assert ts.status == "failed"
-        assert "空闲超时" in (ts.error or "")
+        assert 'seconds without output' in (ts.error or "")
         assert ts.session_id == "session-idle-1"
         assert IdleHangEngine.closed is True
         assert IdleHangEngine.stop_calls == 1
@@ -810,7 +814,7 @@ async def test_runner_idle_timeout_fails_step_and_keeps_session(tmp_path, monkey
         assert message.run_status == "failed"
         events = json.loads(message.events_json or "[]")
         assert any(
-            "空闲超时" in str(event.get("data", {}).get("message", ""))
+            'seconds without output' in str(event.get("data", {}).get("message", ""))
             for event in events
         )
     finally:

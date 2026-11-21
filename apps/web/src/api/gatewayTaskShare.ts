@@ -43,7 +43,7 @@ export function createGatewayTaskShareApi(platformProjectId: string, local = fal
       return info(result, taskId)
     },
     revoke: async (_taskId: string, _projectId: string) => {
-      if (!currentId) throw new Error('分享记录不可用')
+      if (!currentId) throw new Error('Share record is unavailable')
       await mutation(`${basePath}/${encodeURIComponent(currentId)}/revoke${local ? `?project_id=${encodeURIComponent(platformProjectId)}` : ''}`)
       urls.delete(currentId)
       currentId = null

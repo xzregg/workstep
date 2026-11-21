@@ -143,7 +143,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const loading = (async () => {
       try {
         const project = await remoteProjectApi.summary(projectId)
-        if (project.id !== projectId || project.type !== 'remote') throw new Error('远程项目响应与请求不匹配')
+        if (project.id !== projectId || project.type !== 'remote') throw new Error('Remote project response does not match request')
         if ((remoteSnapshots.get(projectId)?.revision ?? 0) <= revision) get().applyRemoteProject(project)
       } catch (error) {
         if ((remoteSnapshots.get(projectId)?.revision ?? 0) <= revision) {

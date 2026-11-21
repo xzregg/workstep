@@ -202,7 +202,7 @@ def test_permission_config_write_failure_stops_spawn(monkeypatch, tmp_path):
         "engines.opencode._managed_config_path", lambda: str(tmp_path / "missing" / "config.json")
     )
     monkeypatch.setattr("engines.opencode.os.makedirs", mock.Mock(side_effect=OSError("readonly")))
-    with pytest.raises(RuntimeError, match="权限配置"):
+    with pytest.raises(RuntimeError, match='permission configuration'):
         OpencodeEngine().project_skill_env("/tmp")
 
 

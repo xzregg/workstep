@@ -4,7 +4,7 @@ import { gatewayFetch, gatewayWorkspacePath } from '../utils/gatewayWorkspacePat
 /** REST API client for the WorkStep daemon. */
 
 import { browserActorHeaders } from '../utils/browserActor'
-import { zhCNT } from '../i18n'
+import { localizeError, zhCNT } from '../i18n'
 import { browserDiagnostics } from '../utils/browserDiagnostics'
 
 export const BASE = gatewayWorkspacePath() + '/api'
@@ -21,23 +21,44 @@ export function registerTaskShareTransport(scope: string, send: TaskShareTranspo
 
 export class ApiError extends Error {
   status: number
+  rawMessage: string
 
   constructor(message: string, status: number) {
-    super(message)
+    super(localizeError(message))
     this.name = 'ApiError'
     this.status = status
+    this.rawMessage = message
   }
 }
 
-function errorDetailMessage(detail: unknown, status: number): string {
-  if (typeof detail === 'string' && detail) return detail
+function errorDetailMessage(detail: unknown, status: number, translate = false): string {
+  const text = translate ? localizeError : (value: string) => value
+  if (typeof detail === 'string' && detail) return text(detail)
   if (Array.isArray(detail)) {
-    return detail.map((item) => errorDetailMessage(item, status)).join('; ') || `HTTP ${status}`
+    return detail.map((item) => errorDetailMessage(item, status, translate)).join('; ') || `HTTP ${status}`
   }
   if (detail && typeof detail === 'object' && 'msg' in detail && typeof detail.msg === 'string') {
-    return detail.msg || `HTTP ${status}`
+    if (translate && 'type' in detail && detail.type === 'value_error' && detail.msg.startsWith('Value error, ')) {
+      return text(detail.msg.slice('Value error, '.length))
+    }
+    return detail.msg ? text(detail.msg) : `HTTP ${status}`
+  }
+  if (detail && typeof detail === 'object' && 'message' in detail && typeof detail.message === 'string') {
+    return detail.message ? text(detail.message) : `HTTP ${status}`
   }
   return `HTTP ${status}`
+}
+
+function localizeFailure<T>(body: T): T {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body
+  const result = body as Record<string, unknown>
+  const failed = result.ok === false || result.saved === false || result.success === false
+    || result.status === 'failed' || result.status === 'error'
+  if (!failed && typeof result.error !== 'string') return body
+  const fields = failed ? ['error', 'message', 'detail'] : ['error']
+  return Object.assign({}, result, Object.fromEntries(fields
+    .filter((field) => typeof result[field] === 'string')
+    .map((field) => [field, localizeError(result[field] as string)]))) as T
 }
 
 async function readApiResponse<T>(res: Response, path: string): Promise<T> {
@@ -45,10 +66,13 @@ async function readApiResponse<T>(res: Response, path: string): Promise<T> {
     throw new ApiError(zhCNT('api.htmlResponse', { path: `${BASE}${path.split('?')[0]}` }), res.status)
   }
   if (!res.ok) {
-    const detail = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new ApiError(errorDetailMessage(detail.detail, res.status), res.status)
+    const result = await res.json().catch(() => ({ detail: res.statusText }))
+    const detail = result?.detail ?? result?.error
+    const error = new ApiError(errorDetailMessage(detail, res.status), res.status)
+    if (detail && typeof detail === 'object') error.message = errorDetailMessage(detail, res.status, true)
+    throw error
   }
-  return res.json() as Promise<T>
+  return localizeFailure(await res.json() as T)
 }
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -56,7 +80,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     && !path.startsWith('/task-share/public/')) {
     if (!taskShareTransport) throw new ApiError('Share task transport is not available', 403)
     const { scope, send } = taskShareTransport
-    return (options?.method || 'GET').toUpperCase() === 'GET'
+    return (options?.method || 'GET').toUpperCase() === 'GET' && !options?.signal
       ? singleFlight(`TASK SHARE ${scope} ${path}`, () => send<T>(path, options)) : send<T>(path, options)
   }
   if (isGatewayRemoteBrowser() && options?.body && typeof options.body === 'string') {
@@ -89,11 +113,10 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   }
 
   const method = (options?.method || 'GET').toUpperCase()
-  return method === 'GET' ? singleFlight(`GET ${path}`, run) : run()
+  return method === 'GET' && !options?.signal ? singleFlight(`GET ${path}`, run) : run()
 }
 
-// Dedupe concurrent in-flight reads: React StrictMode double-mounts effects in
-// dev, so mount-time fetches would otherwise fire twice (first result discarded).
+// Dedupe concurrent reads without a caller-owned cancellation signal.
 const inFlightReads = new Map<string, Promise<unknown>>()
 export function singleFlight<T>(key: string, run: () => Promise<T>): Promise<T> {
   const pending = inFlightReads.get(key)

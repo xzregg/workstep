@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useId, useRef, useState } from 'react'
 
 export function ApplicationSecretField({ value, onChange, sourceId, configured, csrf, disabled }: {
@@ -25,19 +26,19 @@ export function ApplicationSecretField({ value, onChange, sourceId, configured, 
         const response = await fetch(`/api/admin/identity-sources/${encodeURIComponent(sourceId!)}/secret/reveal`, {
           method: 'POST', credentials: 'same-origin', headers: {'X-CSRF-Token': csrf}, signal: request.signal,
         })
-        if (!response.ok) throw Error('读取密钥失败，请检查权限或密钥配置后重试。')
+        if (!response.ok) throw Error('Failed to read the key. Please check permissions or key configuration and try again.')
         secret = (await response.json()).client_secret
-        if (typeof secret !== 'string' || !secret) throw Error('该应用没有可读取的密钥，请重新配置。')
+        if (typeof secret !== 'string' || !secret) throw Error('The application has no readable key, please reconfigure.')
         if (request.signal.aborted) return
         setSaved(secret)
       }
       if (copy) {
         try { await navigator.clipboard.writeText(secret) }
-        catch { throw Error('复制失败，请显示密钥后手动复制。') }
+        catch { throw Error('Copy failed. Please reveal the key and copy manually.') }
         if (!request.signal.aborted) setNotice('密钥已复制')
       } else setVisible(true)
     } catch (reason) {
-      if (!request.signal.aborted) setError(reason instanceof Error ? reason.message : '读取密钥失败，请重试。')
+      if (!request.signal.aborted) setError(reason instanceof Error ? reason.message : 'Failed to read the key, please try again.')
     } finally {
       pending.current = false
       if (!request.signal.aborted) setBusy(false)
@@ -54,6 +55,6 @@ export function ApplicationSecretField({ value, onChange, sourceId, configured, 
     </div>
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" />正在处理密钥…</p>}
     {notice && <p role="status">{notice}</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   </div>
 }

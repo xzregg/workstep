@@ -450,7 +450,7 @@ def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
     assert f"Edit code in .workstep/worktrees/{task.id}" in prompt
     assert "Attached repositories: B." in prompt
     assert "Attached repositories: B, unrelated" not in prompt
-    assert "The engine still starts in the project root" in prompt
+    assert "Work from the project root" in prompt
     assert "project-relative paths" in prompt
     assert "git worktree add --relative-paths" in prompt
     from services.prompt import SYSTEM_PROMPT
@@ -461,6 +461,7 @@ def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
     assert "git worktree add --relative-paths" not in body
     assert "Run Git commands" not in body
     assert "git worktree add --relative-paths" in SYSTEM_PROMPT
+    assert "If creating a worktree" in SYSTEM_PROMPT
     assert "project-relative paths" in SYSTEM_PROMPT
     assert task.id not in SYSTEM_PROMPT
     from services.prompt import assemble_step_system_prompt
@@ -1498,14 +1499,23 @@ class PipelinePlanEngine(PipelineFakeEngine):
 
 class PipelineJournalEngine(PipelineFakeEngine):
     async def spawn(self, prompt, cwd, **kwargs):
+        import weakref
+
+        class ThoughtData(dict):
+            pass
+
+        thought = ThoughtData(content={"text": "先分析"})
+        retained = weakref.ref(thought)
         yield InternalEvent(
             type="agent_thought_chunk",
-            data={"content": {"text": "先分析"}},
+            data=thought,
         )
+        del thought
         yield InternalEvent(
             type="tool_call",
             data={"tool_call_id": "read-1", "title": "Read"},
         )
+        assert retained() is None, "execution retained payload after writing it to the journal"
         yield InternalEvent(
             type="agent_message_chunk",
             data={"content": {"text": "最终回复"}},
@@ -2607,7 +2617,7 @@ async def test_task_runner_cancel_step_finalizes_pipeline_records(tmp_path):
         assert task.status == "stopped"
         assert task.status_reason == "user_stop"
         assert step.status == "cancelled"
-        assert step.error == "手动停止"
+        assert step.error == 'Stopped manually'
         assert message.run_status == "cancelled"
         assert not runner._live.has_running_engine(f"{task.id}:a")
         assert any(event.get('type') == 'RUN_ERROR' and event.get('status') == 'cancelled' for event in events)

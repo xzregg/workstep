@@ -47,7 +47,7 @@ def persist_review_decision(
         or review.status in {'cancelled', 'skipped'}
         or review.workflow_run.status == 'superseded'
     ):
-        raise RuntimeError('审核不属于当前有效执行轮次')
+        raise RuntimeError('Audit does not belong to the current valid execution round')
     if not setting_complete and (latest is None or latest.id != review.id):
         raise RuntimeError("Review has been superseded by a newer attempt")
     if review.decision:
@@ -73,7 +73,7 @@ def persist_review_decision(
         )
         stopped_auto_review = (
             review.mode == "auto" and review.status == "failed"
-            and review.error == "手动停止"
+            and review.error in {"Stopped manually", "手动停止"}
             and review.step_run.status == "succeeded"
         )
         pending_manual_review = (
@@ -92,7 +92,7 @@ def persist_review_decision(
             or current_step.status not in {"cancelled", "failed", "pending", "awaiting_review"}
             or task_id in active_runners
         ):
-            raise RuntimeError("只有待处理或已停止的审核，且任务已暂停、步骤未完成时才能设置完成")
+            raise RuntimeError("Only pending or stopped reviews with paused tasks and incomplete steps can be marked as complete:")
         if schedule_downstream and TaskStep.select().where(
             (TaskStep.task == task)
             & (TaskStep.step_key != step_key)
@@ -100,7 +100,7 @@ def persist_review_decision(
                 "running", "retrying", "rework", "reviewing", "awaiting_review",
             ]))
         ).exists():
-            raise RuntimeError("其他步骤正在执行或等待审核，暂不能调度下游；可选择只设置完成当前步骤")
+            raise RuntimeError("Other steps are executing or awaiting approval; downstream scheduling is temporarily unavailable. You can choose to complete only the current step.")
         from services.artifacts import list_task_artifacts
 
         if not pending_manual_review and (
@@ -110,30 +110,30 @@ def persist_review_decision(
                 for artifact in list_task_artifacts(project, task_id)
             )
         ):
-            raise RuntimeError("该审核轮次没有已产生的产物，不能设置完成")
+            raise RuntimeError("No artifacts have been generated for this review round, so it cannot be marked as complete.")
     elif not review.decision and (
         review.status not in {'pending', 'rejected'}
         or task.status in {'stopped', 'completed'}
         or workflow_run.status in {'stopped', 'succeeded'}
     ):
-        raise RuntimeError('当前审核已结束或任务已停止')
+        raise RuntimeError('Current review has ended or task has stopped')
     if completed_task:
         if review.mode != "manual" or review.status not in {"pending", "rejected"}:
-            raise RuntimeError("只有待处理的人工审核可以完成任务")
+            raise RuntimeError("Only pending manual reviews can complete the task")
         if task.active_workflow_run_id != workflow_run.id:
-            raise RuntimeError("审核不属于当前执行轮次")
+            raise RuntimeError("Audit does not belong to the current execution round")
         current_step = TaskStep.get_or_none(
             (TaskStep.task == task) & (TaskStep.step_key == step_key)
         )
         if current_step is None or current_step.status != "awaiting_review":
-            raise RuntimeError("当前阶段已不再等待人工审核")
+            raise RuntimeError("Current stage no longer waiting for manual review")
         other_running = TaskStep.select().where(
             (TaskStep.task == task)
             & (TaskStep.step_key != step_key)
             & (TaskStep.status.in_(["running", "retrying", "rework", "reviewing"]))
         )
         if other_running.exists() or task_id in active_runners:
-            raise RuntimeError("其他阶段仍在执行，不能完成任务")
+            raise RuntimeError("Other stages are still executing, unable to complete the task")
     steps_config = None
     if not terminated and not completed_task:
         steps_config = (
@@ -191,7 +191,7 @@ def persist_review_decision(
     )
     if terminated:
         task_step.status = "cancelled"
-        task_step.error = comment or "用户终止"
+        task_step.error = comment or "User terminated"
         task_step.ended_at = now
         task_step.review_feedback = None
     elif approved:
@@ -202,7 +202,7 @@ def persist_review_decision(
     else:
         # 人工审核不通过：保存原因，带反馈自动重跑当前步骤。
         task_step.status = "retrying"
-        task_step.error = comment or "用户驳回审核"
+        task_step.error = comment or "User rejected review"
         task_step.review_feedback = comment or ""
         task_step.ended_at = None
     task_step.save()
@@ -359,9 +359,9 @@ def persist_review_decision(
                 halt_after_routing = True
                 task_step.status = "failed"
                 task_step.error = (
-                    "同一轮同时产生了正常输出和返回输出，路由冲突"
+                    "Normal output and return output were generated in the same round, causing a routing conflict:"
                     if result.conflict else
-                    f"返回线已达到配置上限 {routed_step.max_return_rounds} 次"
+                    f"Return line has reached the configured limit {routed_step.max_return_rounds} times"
                 )
                 task_step.ended_at = now
                 task_step.save()

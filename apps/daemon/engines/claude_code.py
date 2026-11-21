@@ -284,11 +284,11 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
     ) -> None:
         mode = str(values.get("permission_mode") or "").strip()
         if mode not in CLAUDE_PERMISSION_MODES:
-            raise ValueError("不支持的 Claude Code 权限模式")
+            raise ValueError("Unsupported Claude Code permission mode")
         if mode == "bypassPermissions" and not (confirmed or {}).get(
             "permission_mode"
         ):
-            raise ValueError("bypassPermissions 需要明确确认风险")
+            raise ValueError("bypassPermissions requires explicit confirmation of the risk")
         # 先校验映射与自定义配置再落盘，避免非法输入时其它字段已写一半。
         model_map = normalize_claude_model_map(values.get("model_map"))
         custom_settings = normalize_claude_custom_settings(
@@ -388,7 +388,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
         model = provider_runtime.model
         if not permission_mode:
             yield InternalEvent(type="error", data={
-                "message": "Claude Code 权限模式尚未确认，请先在设置中选择权限模式",
+                "message": "Claude Code permission mode is not yet confirmed. Please select a permission mode in settings first.",
             })
             return
 
@@ -531,7 +531,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
 
 
             if not self._turn_done:
-                yield InternalEvent(type="error", data={"message": "Claude CLI 在返回轮次结果前退出"})
+                yield InternalEvent(type="error", data={"message": "Claude CLI exits before returning round results"})
             elif self._process.returncode not in (None, 0):
                 yield InternalEvent(type="error", data={"message": f"Process exited with code {self._process.returncode}",
                     "stderr": b"".join(transport.stderr).decode(errors="replace")})
@@ -658,7 +658,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
             or self._process.stdin is None
             or self._process.stdin.is_closing()
         ):
-            raise RuntimeError("Claude Code 当前会话不支持交互响应")
+            raise RuntimeError("Interactive responses are not supported in the current session")
         message = {
             "type": "user",
             "message": {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { prototypeApi, type PrototypeState, type PrototypeDiff } from '../../api/prototype'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import { createPortal } from 'react-dom'
 import { useOverlay } from '../../hooks/useOverlay'
 import { useCompactLayout } from '../../hooks/useCompactLayout'
@@ -63,7 +63,7 @@ export default function PrototypeHistory({projectId, work, onClean, onClose}: {
           </div>
           {split&&<div className="git-diff-labels"><span>{t('git.before')}</span><span>{t('git.after')}</span></div>}
           <div className="git-diff-scroll">
-            {loading?<div className="prototype-history-empty"><Spinner/></div>:error?<div className="prototype-history-empty" role="alert">{error}<Button onClick={()=>setRetry(value=>value+1)}>{t('git.retry')}</Button></div>:hunks.length?<GitDiffHunks hunks={hunks} split={split} idPrefix="prototype-history-hunk"/>:<p className="prototype-history-empty">{t('prototype.noDiff')}</p>}
+            {loading?<div className="prototype-history-empty"><Spinner/></div>:error?<div className="prototype-history-empty" role="alert">{localizeErrorDisplay(error)}<Button onClick={()=>setRetry(value=>value+1)}>{t('git.retry')}</Button></div>:hunks.length?<GitDiffHunks hunks={hunks} split={split} idPrefix="prototype-history-hunk"/>:<p className="prototype-history-empty">{t('prototype.noDiff')}</p>}
           </div>
         </div>
       </div>

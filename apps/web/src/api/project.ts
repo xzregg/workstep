@@ -59,7 +59,7 @@ export const projectApi = {
         const ids = session.projects?.map(project => project.host_project_id) ?? [session.host_project_id]
         const projects = await Promise.all(ids.map(async id => {
           const project = await request<Project>(`/project/${encodeURIComponent(id)}/summary`)
-          if (project.id !== id) throw new Error('远程项目响应与当前授权不匹配。')
+          if (project.id !== id) throw new Error('Remote project response does not match current authorization.')
           return { ...project, path: '' }
         }))
         return { projects }
@@ -100,7 +100,7 @@ export const projectApi = {
     if (session?.host_project_id) {
       const scope = session.projects?.find(project => project.host_project_id === projectId)
         ?? (session.host_project_id === projectId ? session : null)
-      if (!scope) throw new Error('项目不在当前授权范围内。')
+      if (!scope) throw new Error('The project is not within the current authorization scope.')
       const result = await request<Pick<ProjectPublicationStatus, 'grants' | 'can_invite'>>('/remote/project-grants' + (session.projects ? '?project_id=' + encodeURIComponent(projectId) : ''))
       return { ...result, project_id: scope.project_id, status: 'published',
         can_publish: false, can_manage: !!session.can_manage_project_access,

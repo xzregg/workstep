@@ -83,3 +83,17 @@
   justify-content: flex-end;
   gap: 8px;
 }
+
+@media (max-width: 600px) {
+  .provider-models-dialog-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .provider-models-dialog-search {
+    flex-basis: 100%;
+  }
+
+  .provider-models-dialog-count {
+    margin-left: auto;
+  }
+}

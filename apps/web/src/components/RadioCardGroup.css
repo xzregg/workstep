@@ -1,5 +1,6 @@
 .radio-card-group.radio-card-group { width: 100%; min-width: 0; border: 0; padding: 0; margin: 0; }
-.radio-card-group > legend { padding: 0; margin-bottom: var(--space-2); font-size: var(--text-body); font-weight: 600; color: var(--text-primary); }
+.radio-card-group > legend { padding: 0; }
+.radio-card-group > legend:not(.field-label) { margin-bottom: var(--space-2); font-size: var(--text-body); font-weight: 600; color: var(--text-primary); }
 .radio-card-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); min-width: 0; }
 .radio-card-group[data-count="4"] .radio-card-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .radio-card-group .radio-card-option { display: flex; flex-direction: row; align-items: flex-start; gap: var(--space-3); min-width: 0; padding: var(--space-3); margin: 0; border: .5px solid var(--border); border-radius: var(--radius-md); background: var(--bg); text-align: start; cursor: pointer; }
@@ -11,3 +12,36 @@
 .radio-card-description { display: block; margin-top: var(--space-1); font-size: var(--text-body); color: var(--text-muted); line-height: 1.5; overflow-wrap: anywhere; }
 .radio-card-group:disabled .radio-card-option { opacity: .5; cursor: not-allowed; }
 @media (max-width: 1023px) { .radio-card-options, .radio-card-group[data-count="4"] .radio-card-options { grid-template-columns: minmax(0, 1fr); } }
+
+.radio-card-group[data-variant="compact"] > legend {
+  margin-block-end: var(--space-1);
+}
+
+.radio-card-group[data-variant="compact"] > .radio-card-options {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.radio-card-group[data-variant="compact"] .radio-card-option {
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+}
+
+.radio-card-group[data-variant="compact"] input[type="radio"] {
+  margin: 0;
+}
+
+.radio-card-group[data-variant="compact"] .radio-card-option strong {
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1023px) {
+  .radio-card-group[data-variant="compact"] .radio-card-option {
+    min-height: var(--mobile-control-regular);
+  }
+}

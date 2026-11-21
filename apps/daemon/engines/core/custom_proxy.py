@@ -104,7 +104,7 @@ class CustomEngineProxy(AcpEngineBase):
                 previous = raw_config(self.ENGINE_ID)
                 declared = {field.key: field for field in self.config_schema()}
                 if set(values) - declared.keys():
-                    raise ValueError("未知引擎配置字段")
+                    raise ValueError("Unknown engine configuration field")
                 for key, field in declared.items():
                     if (clear or {}).get(key):
                         previous.pop(key, None)
@@ -113,20 +113,20 @@ class CustomEngineProxy(AcpEngineBase):
                         continue
                     value = values[key]
                     if field.confirm_values and value in field.confirm_values and not (confirmed or {}).get(key):
-                        raise ValueError("此配置值需要确认")
+                        raise ValueError("This configuration value requires confirmation")
                     if field.options and value not in {option.value for option in field.options}:
-                        raise ValueError("配置选项无效")
+                        raise ValueError("Invalid configuration options")
                     if field.type == "number":
                         value = float(value)
                     elif field.type == "checkbox":
                         if value not in {True, False, "true", "false"}:
-                            raise ValueError("复选框配置无效")
+                            raise ValueError("Invalid checkbox configuration")
                         value = value is True or value == "true"
                     elif field.type == "json" and isinstance(value, str) and value:
                         json.loads(value)
                     previous[key] = value
                 if any(field.required and not previous.get(field.key, field.default) for field in declared.values()):
-                    raise ValueError("请补全必填配置")
+                    raise ValueError("Please complete the required configuration")
                 all_values = dict(config_store.get("custom_engine_config", {}))
                 all_values[self.ENGINE_ID] = previous
                 config_store.set("custom_engine_config", all_values)
@@ -152,14 +152,14 @@ class CustomEngineProxy(AcpEngineBase):
             self._idle_cleanup = None
         async with self._worker_lock:
             if not await asyncio.to_thread(self.is_installed):
-                raise RuntimeError("自定义引擎未安装或已停用")
+                raise RuntimeError("Custom engine is not installed or has been disabled")
             if self._worker is None or self._worker.closed:
                 expected = self._metadata.get("package_digest")
                 if expected:
                     from engines.core.custom_package import digest
                     actual = await asyncio.to_thread(lambda: digest(self._root, load_manifest(self._root), dependencies=True))
                     if actual != expected:
-                        raise RuntimeError("引擎文件或依赖已变化，请重新验收注册")
+                        raise RuntimeError("Engine file or dependency has changed, please re-verify and register")
                 self._worker = CustomWorkerClient(self._root)
             return self._worker
 
@@ -175,7 +175,7 @@ class CustomEngineProxy(AcpEngineBase):
     @exclusive_engine_run
     async def _stream(self, method, kwargs):
         if self._running:
-            raise RuntimeError('同一引擎实例正在执行，请等待当前回复完成')
+            raise RuntimeError('A same engine instance is already running, please wait for the current reply to complete:')
         client = await self._client()
         lease = None
         pool = None
@@ -227,7 +227,7 @@ class CustomEngineProxy(AcpEngineBase):
                 if "event" in message:
                     item = message["event"]
                     if not isinstance(item, dict) or item.get("type") not in declared_events(self):
-                        raise ValueError("工作进程产生无效或未声明事件")
+                        raise ValueError("Work process generated an invalid or undeclared event")
                     event = InternalEvent(type=item["type"], data=item.get("data", {}), timestamp=item.get("timestamp", 0))
                     from engines.core.custom_validation import check_event
                     check_event(event, declared_events(self))
@@ -240,7 +240,7 @@ class CustomEngineProxy(AcpEngineBase):
         except Exception:
             await client.close()
             self._worker = None
-            yield InternalEvent("error", {"message": "自定义引擎工作进程执行失败，请查看接入验收结果"})
+            yield InternalEvent("error", {"message": "Custom engine worker execution failed, please check the integration acceptance results"})
         finally:
             self._running = False
             if pump:
@@ -359,23 +359,23 @@ def discover_custom_engines():
         try:
             manifest = load_manifest(target)
             if manifest["id"] != target.name:
-                raise ValueError("目录与引擎 ID 不一致")
+                raise ValueError("Directory and engine ID mismatch")
             receipt = target / "installation.json"
             metadata = json.loads(receipt.read_text()) if receipt.is_file() and receipt.stat().st_size <= 256 * 1024 else {}
             if not isinstance(metadata, dict):
-                raise ValueError("安装元数据无效")
+                raise ValueError("Invalid installation metadata")
             if metadata.get("installed") and (not isinstance(metadata.get("package_digest"), str) or len(metadata["package_digest"]) != 64):
-                raise ValueError("缺少安装指纹")
+                raise ValueError("Missing installation fingerprint")
             if not isinstance(metadata.get("version"), (str, type(None))):
-                raise ValueError("版本元数据无效")
+                raise ValueError("Invalid version metadata")
             if not isinstance(metadata.get("provider_protocols", []), list) or not all(isinstance(item, str) for item in metadata.get("provider_protocols", [])):
-                raise ValueError("供应商元数据无效")
+                raise ValueError("Invalid supplier metadata")
             metadata.update(id=manifest["id"], mode=manifest["mode"], name=manifest["name"], description=manifest.get("description", ""), custom=True)
             # Invalid/incomplete installs still have an unavailable settings card.
             metadata.setdefault("installed", False)
             cls = make_custom_engine(target, metadata)
             if not cls.workstep_events <= EXTENSION_EVENTS:
-                raise ValueError("扩展事件元数据无效")
+                raise ValueError("Invalid extended event metadata")
             cls.config_schema()
             cls().capabilities
             found[manifest["id"]] = cls

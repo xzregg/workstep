@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { passwordRequirements, validPortalPassword } from './portalAccount'
 import { useEffect, useState } from 'react'
 import { GatewayModal } from './GatewayModal'
@@ -22,13 +23,13 @@ export function AdminEditUserDialog({ user, csrf, onSaved, onClose }: {
   setGroupsError(''); setGroupsReady(false)
   void fetch(`/api/admin/users/${encodeURIComponent(user.id)}/groups`, { credentials: 'same-origin', signal: controller.signal })
    .then(async response => {
-    if (!response.ok) throw Error('用户组加载失败。')
+    if (!response.ok) throw Error('Failed to load user group.')
     const data = await response.json()
-    if (!Array.isArray(data.groups)) throw Error('用户组加载失败。')
+    if (!Array.isArray(data.groups)) throw Error('Failed to load user group.')
     if (!controller.signal.aborted) {
      setGroups(data.groups); setSelectedGroups(data.groups.filter((group: UserGroupChoice) => group.selected).map((group: UserGroupChoice) => group.id)); setGroupsReady(true)
     }
-   }).catch(reason => { if (!controller.signal.aborted) setGroupsError(reason instanceof Error ? reason.message : '用户组加载失败。') })
+   }).catch(reason => { if (!controller.signal.aborted) setGroupsError(reason instanceof Error ? reason.message : 'Failed to load user group.') })
   return () => controller.abort()
  }, [user.id, groupsRevision])
  const groupsChanged = groupsReady && groups.some(group => group.selected !== selectedGroups.includes(group.id))
@@ -55,16 +56,16 @@ export function AdminEditUserDialog({ user, csrf, onSaved, onClose }: {
   try {
    if (credentialsChanged) {
     const step = await confirmStepUp(csrf, password, passwordRequired)
-    if (!step.ok) throw Error('管理员密码验证失败。')
+    if (!step.ok) throw Error('Administrator password verification failed.')
    }
    const response = await fetch(`/api/admin/users/${encodeURIComponent(user.id)}`, {
     method: 'PATCH', credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
     body: JSON.stringify({ display_name: name.trim(), ...(groupsChanged ? { group_ids: groups.filter(group => selectedGroups.includes(group.id)).map(group => group.id) } : {}), ...(username !== initialUsername ? {username} : {}), ...(newPassword ? { new_password: newPassword } : {}) }),
    })
-   if (!response.ok) throw Error(response.status === 409 ? (groupsChanged ? '用户组关系或登录用户名发生冲突，请重新打开编辑并确认。' : '登录用户名已被使用，请更换。') : response.status === 403 ? '没有编辑该用户的权限，或操作凭据已失效。' : '保存失败，请重试。')
+   if (!response.ok) throw Error(response.status === 409 ? (groupsChanged ? 'User group relationship or login username conflict. Please reopen the editor and confirm.' : 'The login username is already in use. Please choose another.') : response.status === 403 ? 'No permission to edit this user, or the operation credentials have expired.' : 'Save failed, please try again.')
    onSaved()
-  } catch (reason) { setError(reason instanceof Error ? reason.message : '保存失败。') }
+  } catch (reason) { setError(reason instanceof Error ? reason.message : 'Save failed.') }
   finally { setBusy(false) }
  }
  return <>
@@ -118,7 +119,7 @@ export function AdminEditUserDialog({ user, csrf, onSaved, onClose }: {
         note: !group.editable ? (group.synced ? '企业同步 · 只读' : '只读') : undefined}))} />}
      </div>
     </section>
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
    </div>
   </GatewayModal>
   {discard && <GatewayConfirmDialog title="放弃修改" message="未保存的修改将丢失。" confirmLabel="放弃并关闭" onConfirm={onClose} onCancel={() => setDiscard(false)} />}

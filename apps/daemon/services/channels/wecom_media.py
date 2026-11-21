@@ -12,7 +12,7 @@ async def upload_media(client, attachment) -> str:
     async def command(name, body):
         result = await client.reply({'headers': {'req_id': uuid.uuid4().hex}}, body, name)
         if result.get('errcode') not in (None, 0):
-            raise RuntimeError('企业微信附件上传失败')
+            raise RuntimeError('WeCom attachment upload failed')
         return result.get('body') or {}
     chunk_size = 512 * 1024
     count = (len(attachment.data) + chunk_size - 1) // chunk_size
@@ -23,7 +23,7 @@ async def upload_media(client, attachment) -> str:
     })
     upload_id = result.get('upload_id')
     if not upload_id:
-        raise RuntimeError('企业微信上传缺少 upload_id')
+        raise RuntimeError('WeChat Work upload missing upload_id')
     for index in range(count):
         chunk = attachment.data[index*chunk_size:(index+1)*chunk_size]
         encoded = await asyncio.to_thread(lambda: base64.b64encode(chunk).decode('ascii'))
@@ -36,5 +36,5 @@ async def upload_media(client, attachment) -> str:
                 await asyncio.sleep(.5 * (attempt+1))
     result = await command('aibot_upload_media_finish', {'upload_id':upload_id})
     if not result.get('media_id'):
-        raise RuntimeError('企业微信上传缺少 media_id')
+        raise RuntimeError('WeChat Work upload missing media_id')
     return result['media_id']

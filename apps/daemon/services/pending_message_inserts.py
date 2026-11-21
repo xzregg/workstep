@@ -41,7 +41,7 @@ def create_pending_insert(
     if not target_message_id.strip():
         raise ValueError("Target message id is required")
     if not normalized:
-        raise ValueError("消息内容不能为空")
+        raise ValueError("Message content cannot be empty")
     last = (
         PendingMessageInsert.select(PendingMessageInsert.position)
         .where(PendingMessageInsert.target_message_id == target_message_id)
@@ -80,10 +80,10 @@ def create_pending_insert(
 def update_pending_insert(insert_id: str, content: str) -> dict:
     normalized = content.strip()
     if not normalized:
-        raise ValueError("消息内容不能为空")
+        raise ValueError("Message content cannot be empty")
     row = PendingMessageInsert.get_or_none(PendingMessageInsert.id == insert_id)
     if row is None:
-        raise ValueError("待插入消息不存在")
+        raise LookupError("Pending message not found")
     row.content = normalized
     row.updated_at = utc_now()
     row.save()
@@ -98,7 +98,7 @@ def reorder_pending_inserts(target_message_id: str, ids: list[str]) -> list[dict
     )
     existing = {row.id: row for row in rows}
     if len(ids) != len(rows) or set(ids) != set(existing):
-        raise ValueError("待插入消息顺序与当前队列不一致")
+        raise ValueError("The order of the message to be inserted does not match the current queue")
     now = utc_now()
     with PendingMessageInsert._meta.database.atomic():
         for position, insert_id in enumerate(ids):

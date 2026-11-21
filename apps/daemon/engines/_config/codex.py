@@ -97,10 +97,10 @@ def normalize_codex_custom_config(raw: Any) -> str:
         if not stripped or stripped.startswith("#"):
             continue
         if "=" not in stripped:
-            raise ValueError(f"第 {index} 行不是 key=value 格式")
+            raise ValueError(f"Line {index} is not in key=value format")
         key, _value = stripped.split("=", 1)
         if not key.strip():
-            raise ValueError(f"第 {index} 行缺少配置键")
+            raise ValueError(f"Missing configuration key on line {index}")
     return text
 
 
@@ -142,13 +142,13 @@ def set_codex_config(
 ) -> None:
     sandbox_mode = str(sandbox_mode or "").strip() or "workspace-write"
     if sandbox_mode not in CODEX_SANDBOX_MODES:
-        raise ValueError("不支持的沙箱模式")
+        raise ValueError("Unsupported sandbox mode")
     effort = str(model_reasoning_effort or "").strip()
     if not _valid_effort(store, "codex", effort):
-        raise ValueError("不支持的推理强度")
+        raise ValueError("Unsupported inference intensity")
     policy = str(approval_policy or "").strip()
     if policy and policy not in CODEX_APPROVAL_POLICIES:
-        raise ValueError("不支持的审批策略")
+        raise ValueError("Unsupported approval policy")
     custom = normalize_codex_custom_config(custom_config)
     store.set("codex_engine", {
         "sandbox_mode": sandbox_mode,
@@ -181,13 +181,13 @@ def set_codex_sdk_config(
 ) -> None:
     effort = str(model_reasoning_effort or "").strip()
     if not _valid_effort(store, "codex_sdk", effort):
-        raise ValueError("不支持的推理强度")
+        raise ValueError("Unsupported inference intensity")
     mode = str(approval_mode or "").strip()
     if mode and mode not in CODEX_SDK_APPROVAL_MODES:
-        raise ValueError("不支持的审批模式")
+        raise ValueError("Unsupported approval mode")
     sandbox = str(sandbox or "").strip() or "workspace-write"
     if sandbox not in CODEX_SANDBOX_MODES:
-        raise ValueError("不支持的沙箱模式")
+        raise ValueError("Unsupported sandbox mode")
     custom = normalize_codex_custom_config(custom_config)
     store.set("codex_sdk_engine", {
         "model_reasoning_effort": effort,

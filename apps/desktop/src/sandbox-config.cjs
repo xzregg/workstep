@@ -87,11 +87,11 @@ function migrateConfig(source, target, options) {
 async function readConfig(file) {
   try {
     const stat = await fs.lstat(file)
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024 * 1024) throw new Error('配置文件无效')
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024 * 1024) throw new Error('Invalid configuration file')
     const value = JSON.parse(await fs.readFile(file, 'utf8'))
-    if (!object(value)) throw new Error('配置格式无效')
+    if (!object(value)) throw new Error('Invalid configuration format')
     return value
-  } catch (error) { if (error.code === 'ENOENT') return {}; if (error instanceof SyntaxError) throw new Error('配置文件无法解析，请检查原配置文件'); throw error }
+  } catch (error) { if (error.code === 'ENOENT') return {}; if (error instanceof SyntaxError) throw new Error('Failed to parse the configuration file. Please check the original configuration file:'); throw error }
 }
 function projectCatalog(config) {
   return (Array.isArray(config.projects) ? config.projects : []).flatMap(item => {
@@ -101,15 +101,15 @@ function projectCatalog(config) {
   })
 }
 async function mapProjects(config, catalog, selected) {
-  if (!Array.isArray(selected) || selected.length > 32 || selected.some(value => typeof value !== 'string')) throw new Error('项目关联配置无效')
+  if (!Array.isArray(selected) || selected.length > 32 || selected.some(value => typeof value !== 'string')) throw new Error('Project association configuration is invalid')
   const mounts = await Promise.all([{ source: config.project, target: '/data/projects' }, ...config.mounts].map(async item => ({ ...item, source: await fs.realpath(item.source) })))
   const entries = []
   for (const source of new Set(selected)) {
     const resolved = await fs.realpath(source)
     const match = mounts.filter(mount => { const relative = path.relative(mount.source, resolved); return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative)) }).sort((a, b) => b.source.length - a.source.length)[0]
-    if (!match) throw new Error('关联项目必须位于已授权的项目挂载内')
-    const db = await fs.lstat(path.join(resolved, '.workstep/workstep.db')).catch(error => { if (error.code === 'ENOENT') throw new Error('请选择已有 WorkStep 项目；空目录请使用新的项目目录选项'); throw error })
-    if (!db.isFile() || db.isSymbolicLink()) throw new Error('请选择已有 WorkStep 项目')
+    if (!match) throw new Error('The associated project must be within an authorized project mount.')
+    const db = await fs.lstat(path.join(resolved, '.workstep/workstep.db')).catch(error => { if (error.code === 'ENOENT') throw new Error('Please select an existing WorkStep project; for an empty directory, use the new project directory option'); throw error })
+    if (!db.isFile() || db.isSymbolicLink()) throw new Error('Please select an existing WorkStep project')
     const original = catalog.find(item => path.resolve(item.path) === path.resolve(source))
     const relative = path.relative(match.source, resolved).split(path.sep).join('/')
     entries.push({ path: path.posix.join(match.target, relative), ...(original?.id ? { id: original.id } : {}), name: original?.name || path.basename(resolved), sort_order: entries.length })

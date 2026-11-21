@@ -108,7 +108,7 @@ async def test_step_restart_does_not_replace_a_queued_start(scenario):
         async with asyncio.timeout(5):
             while await s.db(lambda _p: Task.get_by_id(s.task_id).status) != 'queued':
                 await asyncio.sleep(.01)
-        with pytest.raises(RuntimeError, match='排队|启动'):
+        with pytest.raises(RuntimeError, match='queued|preparing to start'):
             await s.runtime.restart_from_step(s.pid, s.task_id, 'requirements')
         assert not await s.db(lambda _p: WorkflowRun.select().where(WorkflowRun.task == s.task_id).exists())
         assert await s.db(lambda _p: Task.get_by_id(s.task_id).status) == 'queued'

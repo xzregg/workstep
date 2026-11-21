@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useState } from 'react'
 import { AdminRecordTable } from './AdminRecordTable'
 import { LedgerExportButton } from './LedgerExportButton'
@@ -26,11 +27,11 @@ export function AdminUsageSummary({ filters, groupBy = 'day', overview = false, 
   setLoading(true); setError('')
   void fetch(`/api/admin/usage?${params}`, { credentials: 'same-origin', signal: controller.signal })
    .then(async response => {
-    if (!response.ok) throw new Error('用量汇总加载失败。')
+    if (!response.ok) throw new Error('Failed to load usage summary.')
     const data = await response.json()
     if (!controller.signal.aborted) setSummary(data)
    }).catch(reason => {
-    if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '用量汇总加载失败。')
+    if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Failed to load usage summary.')
    }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
   return () => controller.abort()
  }, [filters, effectiveGroup, page, pageSize, revision])
@@ -39,7 +40,7 @@ export function AdminUsageSummary({ filters, groupBy = 'day', overview = false, 
  const pages = Math.max(1, Math.ceil((summary?.group_total ?? 0) / pageSize))
  return <section className="gateway-usage-report" aria-label={overview ? '用量总览' : dimension.label+'统计'}>
   {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true"/> 正在加载用量汇总…</p>}
-  {error && <p role="alert" className="gateway-auth-error">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>重试</button></p>}
+  {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button" onClick={() => setRevision(value => value + 1)}>重试</button></p>}
   {summary && !error && !loading && <>
    <p>{summary.event_count} 条计量事件 · {summary.unmetered_count} 条未完成计量</p>
    <UsageMetricStrip summary={summary} filters={filters} overview={overview}/>

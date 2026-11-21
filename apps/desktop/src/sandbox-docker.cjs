@@ -10,7 +10,7 @@ async function dockerExecutable(execute, platform) {
   for (const candidate of candidates) {
     try { await execute(candidate, ['--version'], { timeout: 10000 }); return candidate } catch { /* try next installation */ }
   }
-  throw new Error('未找到 Docker，请安装并启动 Docker 后重试')
+  throw new Error('Docker not found. Please install and start Docker, then try again.')
 }
 function compatible(image, arch) {
   return image.Os === 'linux' && image.Architecture === (arch === 'x64' ? 'amd64' : arch)
@@ -29,10 +29,10 @@ async function listDockerImages(execute, platform, arch) {
   } catch (error) { return { images: [], error: error.message } }
 }
 async function importDockerImage({ root, id, execute, command, platform, arch }) {
-  if (!/^sha256:[a-f0-9]{64}$/.test(id || '')) throw new Error('无效的 Docker 镜像 ID')
+  if (!/^sha256:[a-f0-9]{64}$/.test(id || '')) throw new Error('Invalid Docker image ID')
   const docker = await dockerExecutable(execute, platform)
   const [image] = JSON.parse(await execute(docker, ['image', 'inspect', id], { timeout: 15000 }))
-  if (image?.Id !== id || !compatible(image, arch)) throw new Error('请选择与当前架构兼容的 WorkStep Home 运行时镜像')
+  if (image?.Id !== id || !compatible(image, arch)) throw new Error('Please select a WorkStep Home runtime image compatible with the current architecture')
   const directory = path.join(root, 'desktop')
   await fs.mkdir(directory, { recursive: true })
   const temporary = await fs.mkdtemp(path.join(directory, 'docker-image-'))
@@ -42,9 +42,9 @@ async function importDockerImage({ root, id, execute, command, platform, arch })
     // Docker's containerd store exposes a manifest ID; Podman uses the
     // config digest. Derive that identity from the exported bytes.
     const manifests = JSON.parse(await execute('tar', ['-xOf', archive, 'manifest.json']))
-    if (manifests.length !== 1) throw new Error('请选择单一架构的本地镜像')
+    if (manifests.length !== 1) throw new Error('Please select a local image with a single architecture')
     const config = manifests[0].Config
-    if (typeof config !== 'string' || !/^[a-zA-Z0-9_./-]+$/.test(config) || config.startsWith('/') || config.split('/').includes('..')) throw new Error('Docker 镜像清单路径无效')
+    if (typeof config !== 'string' || !/^[a-zA-Z0-9_./-]+$/.test(config) || config.startsWith('/') || config.split('/').includes('..')) throw new Error('Invalid Docker image manifest path')
     await execute('tar', ['-xf', archive, '-C', temporary, config])
     const importedId = 'sha256:' + createHash('sha256').update(await fs.readFile(path.join(temporary, config))).digest('hex')
     let existing
@@ -52,7 +52,7 @@ async function importDockerImage({ root, id, execute, command, platform, arch })
     if (existing?.trim().replace(/^sha256:/, '') === importedId.slice(7)) return importedId
     await command(['load', '--input', archive])
     const imported = await command(['image', 'inspect', '--format={{.Id}}', importedId])
-    if (imported.trim().replace(/^sha256:/, '') !== importedId.slice(7)) throw new Error('导入后的镜像 ID 校验失败')
+    if (imported.trim().replace(/^sha256:/, '') !== importedId.slice(7)) throw new Error('Post-import image ID validation failed')
     return importedId
   } finally { await fs.rm(temporary, { recursive: true, force: true }) }
 }

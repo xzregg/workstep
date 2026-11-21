@@ -40,6 +40,7 @@ async def run_engine_turn(
     goal_mode: bool | None = None,
     workstep_tools: bool = False,
     config_overrides: dict | None = None,
+    resolved_provider_id: str | None = None,
     live_message_queue: asyncio.Queue | None = None,
     system_prompt: str | None = None,
     system_prompt_each_turn: bool = False,
@@ -64,6 +65,9 @@ async def run_engine_turn(
     engine = await asyncio.to_thread(engine_factory, engine_id)
     if engine is None:
         raise RuntimeError(f"{error_prefix} is unavailable: {engine_id}")
+    pin_provider_id = getattr(engine, "pin_provider_id", None)
+    if resolved_provider_id is not None and callable(pin_provider_id):
+        pin_provider_id(resolved_provider_id)
     permission_overrides = await asyncio.to_thread(engine.permission_config_overrides, permission_mode) if permission_mode else {}
     setter = getattr(engine, "set_permission_mode", None)
     if callable(setter):
@@ -76,23 +80,23 @@ async def run_engine_turn(
         goal_command = ("start", prompt)
     if goal_command:
         if plan_mode:
-            raise ValueError("目标模式不能与计划模式同时启用")
+            raise ValueError("Target mode cannot be enabled simultaneously with planned mode")
         if not getattr(getattr(engine, "capabilities", None), "supports_goal_mode", False):
             # 无原生 goal 语义的引擎：仅支持 start，经提示词级目标指令
             # 兜底（pause/resume/clear/status 无可操作对象，仍拒绝）。
             goal_action, goal_prompt = goal_command
             if goal_action != "start":
-                raise ValueError(f"当前引擎不支持目标模式：{engine_id}")
+                raise ValueError(f"Current engine does not support target mode: {engine_id}")
             if not goal_prompt.strip():
-                raise ValueError("目标内容不能为空")
+                raise ValueError("Target content cannot be empty")
             prompt = f"{goal_prompt}\n\n{GOAL_MODE_INSTRUCTION}"
             goal_command = None
         else:
             goal_action, prompt = goal_command
             if goal_action != "start" and not session_id:
-                raise ValueError("当前会话还没有可操作的目标")
+                raise ValueError("No actionable target in the current session")
             if goal_action == "start" and not prompt.strip():
-                raise ValueError("目标内容不能为空")
+                raise ValueError("Target content cannot be empty")
     if plan_mode and not supports_native_plan_mode and prompt.strip() != "/compact":
         prompt = f"{prompt}\n\n{PLAN_MODE_INSTRUCTION}"
     content: list[str] = []

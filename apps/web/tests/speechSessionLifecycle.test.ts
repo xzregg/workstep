@@ -86,6 +86,22 @@ test('new backend capacity and permission failures retain their actual cause', a
   } finally { globalThis.fetch = original; await window.happyDOM.close() }
 })
 
+test('speech session start explains an unavailable host without replaying creation', async () => {
+  const { window } = installDomEnvironment()
+  const original = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = async () => {
+    calls++
+    return new Response(JSON.stringify({error:{message:'Device data connection unavailable'}}), {
+      status: 502, headers: {'Content-Type':'application/json'},
+    })
+  }
+  try {
+    await assert.rejects(speechApi.start('p'), {message:'speech.serviceUnavailable'})
+    assert.equal(calls, 1)
+  } finally { globalThis.fetch = original; await window.happyDOM.close() }
+})
+
 
 test('successful speech setting saves notify composers, rejected saves do not', async () => {
   const { window } = installDomEnvironment()

@@ -4,7 +4,7 @@ import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { I18nProvider } from '../src/i18n'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 import ProviderSavedModels from '../src/components/ProviderSavedModels'
 import ProviderSettings from '../src/pages/ProviderSettings'
 import { providerApi, type ProviderInfo } from '../src/api/client'
@@ -192,12 +192,127 @@ test('provider page opens saved details without refreshing models or changing di
       .find((button) => button.textContent?.includes('获取模型'))
     assert.ok(fetch)
     await act(async () => fetch.click())
-    assert.equal(previews, 1)
+    assert.equal(previews, 2)
     assert.ok(document.body.querySelector('input[type="checkbox"]'), 'discovery still offers the original selection dialog')
   } finally {
     providerApi.list = originalList
     providerApi.models = originalModels
     providerApi.previewModels = originalPreview
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
+test('managed provider badge follows the latest multi-protocol connection test', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const original = { list: providerApi.list, models: providerApi.models, test: providerApi.test }
+  const provider: ProviderInfo = {
+    id: 'managed-test', name: 'Managed Demo', type: 'custom', protocol: 'openai_chat_completions',
+    protocols: groups.map((group) => group.protocol), base_url: 'https://example.test/v1',
+    api_key: '', has_key: true, enabled: true, verified: false, managed: true, created_at: '',
+    model_count: 0, models_fetched_at: null, test_success: null,
+  }
+  let failedProtocol = ''
+  const results = new Map<string, boolean>()
+  const protocols: string[] = []
+  let listReads = 0
+  providerApi.list = async () => {
+    listReads++
+    return { providers: [{ ...provider }], types: [] }
+  }
+  providerApi.models = async () => ({ provider_id: provider.id, models: [], fetched_at: null })
+  providerApi.test = async (id, protocol) => {
+    assert.equal(id, provider.id)
+    protocols.push(protocol ?? '')
+    const success = protocol !== failedProtocol
+    results.set(protocol ?? '', success)
+    const test_success = [...results.values()].includes(false) ? false : results.size === provider.protocols.length ? true : null
+    provider.test_success = test_success
+    provider.verified = test_success === true
+    return { provider_id: id, success, test_success, message: success ? '连接成功' : '连接失败', duration_ms: 1 }
+  }
+  const locale = useLocaleStore.getState().locale
+  try {
+    useLocaleStore.getState().setLocale('zh-CN')
+    await act(async () => root.render(<I18nProvider><ProviderSettings /></I18nProvider>))
+    const card = container.querySelector('[data-provider-id="managed-test"]')!
+    const badge = () => card.querySelector('.provider-settings-badge')?.textContent
+    const testButton = Array.from(card.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('测试连接'))!
+    assert.equal(badge(), '待测试')
+    await act(async () => testButton.click())
+    assert.equal(badge(), '已验证')
+    assert.deepEqual(protocols, provider.protocols)
+    assert.match(card.querySelector('[role="status"]')?.textContent ?? '', /连接成功/)
+
+    failedProtocol = 'openai_responses'
+    await act(async () => testButton.click())
+    assert.equal(badge(), '测试失败')
+    assert.match(card.querySelector('[role="status"]')?.textContent ?? '', /连接失败/)
+    assert.equal(listReads, 1)
+    await act(async () => root.render(null))
+    await act(async () => root.render(<I18nProvider><ProviderSettings /></I18nProvider>))
+    assert.equal(container.querySelector('.provider-settings-badge')?.textContent, '测试失败')
+    assert.equal(listReads, 2)
+  } finally {
+    Object.assign(providerApi, original)
+    await act(async () => root.unmount())
+    useLocaleStore.getState().setLocale(locale)
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
+test('model discovery selects once across protocols and saves each protocol subset', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originals = { list: providerApi.list, models: providerApi.models,
+    previewModels: providerApi.previewModels, saveModelSelection: providerApi.saveModelSelection }
+  const provider: ProviderInfo = {
+    id: 'demo', name: 'Demo', type: 'custom', protocol: groups[0].protocol,
+    protocols: groups.map((group) => group.protocol), base_url: 'https://example.test/v1',
+    api_key: '', has_key: true, enabled: true, verified: false, created_at: '',
+    model_count: 0, models_fetched_at: null,
+  }
+  const previews: string[] = []
+  const saves: { protocol: string; ids: string[] }[] = []
+  providerApi.list = async () => ({ providers: [provider], types: [] })
+  providerApi.models = async () => ({ provider_id: provider.id, models: [], fetched_at: null })
+  providerApi.previewModels = async (_id, protocol) => {
+    previews.push(protocol!)
+    return { provider_id: provider.id, models: groups.find((group) => group.protocol === protocol)!.models, fetched_at: null }
+  }
+  providerApi.saveModelSelection = async (_id, protocol, models) => {
+    saves.push({ protocol, ids: models.map((model) => model.id) })
+    return { provider_id: provider.id, count: models.length }
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><ProviderSettings /></I18nProvider>))
+    const fetch = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.includes('获取模型'))!
+    await act(async () => fetch.click())
+    assert.deepEqual(previews, groups.map((group) => group.protocol))
+    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!
+    assert.ok(dialog)
+    const checkboxes = [...dialog.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    assert.equal(checkboxes.length, 3, 'shared model appears once across protocols')
+    await act(async () => {
+      for (const input of checkboxes) {
+        if (input !== checkboxes[0]) input.click()
+      }
+    })
+    const confirm = [...dialog.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.classList.contains('btn-primary'))!
+    await act(async () => confirm.click())
+    assert.deepEqual(saves, groups.map((group) => ({ protocol: group.protocol, ids: ['shared'] })))
+    assert.equal(document.body.querySelector('[role="dialog"]'), null, 'confirm closes without reopening for another protocol')
+    assert.equal(previews.length, 2, 'confirm never fetches another preview')
+  } finally {
+    Object.assign(providerApi, originals)
     await act(async () => root.unmount())
     container.remove()
     await window.happyDOM.close()

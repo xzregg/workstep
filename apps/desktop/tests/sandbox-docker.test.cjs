@@ -41,6 +41,6 @@ test('Docker import saves by ID, verifies Podman identity and removes temporary 
       throw new Error('image not found')
     } }), /no space left/)
     assert.deepEqual(await fs.readdir(path.join(root, 'desktop')), [], 'failed imports remove their exported archives too')
-    await assert.rejects(importDockerImage({ root, id: '--bad', execute }), /镜像 ID/)
+    await assert.rejects(importDockerImage({ root, id: '--bad', execute }), /Invalid Docker image ID/)
   } finally { await fs.rm(root, { recursive: true, force: true }) }
 })

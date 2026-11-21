@@ -21,7 +21,7 @@ public final class ServerAddress {
                     || uri.getRawUserInfo() != null || uri.getRawQuery() != null
                     || uri.getRawFragment() != null || !(path.isEmpty() || "/".equals(path))
                     || uri.getPort() == 0 || uri.getPort() > 65535) {
-                throw new IllegalArgumentException("请输入 HTTP 或 HTTPS 服务根地址");
+                throw new IllegalArgumentException("Enter the HTTP or HTTPS server address");
             }
             String host = uri.getHost().toLowerCase(Locale.ROOT);
             if (host.contains(":")) host = "[" + host + "]";
@@ -29,7 +29,7 @@ public final class ServerAddress {
             int defaultPort = "https".equals(scheme) ? 443 : 80;
             return new ServerAddress(scheme + "://" + host + (port < 0 || port == defaultPort ? "" : ":" + port));
         } catch (NullPointerException | URISyntaxException error) {
-            throw new IllegalArgumentException("请输入有效的 HTTP 或 HTTPS 服务根地址", error);
+            throw new IllegalArgumentException("Enter a valid HTTP or HTTPS server address", error);
         }
     }
 
@@ -60,13 +60,13 @@ public final class ServerAddress {
 
     public String resolveSameOrigin(String current, String location) {
         try {
-            if (!contains(current)) throw new IllegalArgumentException("下载地址不属于当前服务");
+            if (!contains(current)) throw new IllegalArgumentException("The download URL does not belong to the current server");
             URI resolved = new URI(current).resolve(new URI(location));
             String destination = resolved.toString();
-            if (!contains(destination)) throw new IllegalArgumentException("下载重定向离开当前服务");
+            if (!contains(destination)) throw new IllegalArgumentException("The download redirected away from the current server");
             return destination;
         } catch (URISyntaxException error) {
-            throw new IllegalArgumentException("无效的下载重定向地址", error);
+            throw new IllegalArgumentException("Invalid download redirect URL", error);
         }
     }
 }

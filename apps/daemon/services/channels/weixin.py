@@ -120,9 +120,9 @@ class WeixinAdapter(SocialAdapter):
 
     def _context(self, recipient):
         if recipient.conversation_type != 'single':
-            raise ValueError('微信 ClawBot 仅支持私聊')
+            raise ValueError('WeChat ClawBot only supports private chats')
         if recipient.conversation_id != self._bot.get('weixin_user_id'):
-            raise ValueError('微信 ClawBot 只能发送给扫码绑定的用户')
+            raise ValueError('WeChat ClawBot can only be sent to users who have scanned the QR code to bind')
         return ((recipient.reply_context or {}).get('context_token') if isinstance(recipient.reply_context, dict) else None) or self._state.tokens.get(recipient.conversation_id)
 
     async def send(self, recipient, message):

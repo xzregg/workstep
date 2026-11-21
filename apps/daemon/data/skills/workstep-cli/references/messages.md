@@ -1,4 +1,33 @@
-# Original chat messages
+# Project chat messages
+
+## Send an instruction
+
+For the digital person, use [tracked delegation](digital-person.md)
+with `--target-session` to send and follow up.
+
+With explicit user authorization and both WorkStep IDs, submit a new turn to an
+existing ordinary project chat:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli message send --project <project_id> --session <session_id> --content "Instruction to execute" --json
+```
+
+Native operation: `workstep_send_message` with `project_id`, `session_id`,
+`content`, and `confirm: "yes"`. Use the target IDs and the usual daemon
+authentication. Project-scoped callers need edit access to the target project.
+
+`queued` means the daemon accepted the turn. A busy conversation finishes its
+current turn first, and the new turn uses the same conversation history and saved
+execution settings. The response includes `session_id`, `turn_id`, and
+`assistant_message_id`. Check the target conversation or use `message get` with
+`assistant_message_id` for the saved result.
+
+For a possible retry, supply `--idempotency-key` (native `idempotency_key`) on the
+first attempt and reuse it for the same instruction while the daemon retains
+the turn. Omit it to generate a fresh key. Report `ok: false` or a nonzero exit
+as a failed request. A timeout can occur after acceptance, so check before retrying.
+
+## Read a saved message
 
 When given a WorkStep session ID and message ID, read that message directly:
 

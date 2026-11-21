@@ -37,14 +37,14 @@ async def prepare(engine, kwargs):
         cls = await asyncio.to_thread(lambda: list_all_engines().get(engine))
         engine = await asyncio.to_thread(cls) if cls else None
     if engine is None or not engine.supports_mcp:
-        raise ValueError('当前引擎尚未支持连接器，请关闭连接器或切换引擎')
+        raise ValueError('The current engine does not yet support connectors. Please disable the connector or switch the engine.')
     servers = [bridge_server(connector_store, item, identity['project_id'], identity['session_id']) for item in selected]
     for server in servers:
         if kwargs.get('cwd'):
             server['env']['WORKSTEP_CONNECTOR_CWD'] = str(kwargs['cwd'])
     overrides = await engine.configure_mcp_servers(servers, kwargs.get('config_overrides'))
     if not isinstance(overrides, dict):
-        raise ValueError('引擎 configure_mcp_servers 必须返回配置字典')
+        raise ValueError('The engine\'s configure_mcp_servers must return a configuration dictionary')
     return {**kwargs, 'config_overrides': overrides}
 
 

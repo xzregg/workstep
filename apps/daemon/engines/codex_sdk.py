@@ -465,7 +465,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     async def _spawn_with_sandbox(self, **kwargs) -> AsyncIterator[InternalEvent]:
         # Engine-local stream/stop/approval state cannot serve two turns at once.
         if self._spawn_active:
-            yield InternalEvent(type="error", data={"message": "Codex 引擎正在执行，请等待当前回复完成"})
+            yield InternalEvent(type="error", data={"message": "Codex engine is executing, please wait for the current response to complete"})
             return
         self._spawn_active = True
         self._stop_requested = False
@@ -494,7 +494,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         """Internal spawn with an explicit codex sandbox policy."""
         if not CodexSDKEngine._sdk_available():
             yield InternalEvent(
-                type="error", data={"message": "openai-codex SDK 未安装"}
+                type="error", data={"message": "openai-codex SDK not installed"}
             )
             return
         try:
@@ -508,7 +508,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         except Exception as exc:
             yield InternalEvent(
                 type="error",
-                data={"message": f"openai-codex SDK 未安装：{exc}"},
+                data={"message": f"openai-codex SDK not installed: {exc}"},
             )
             return
 
@@ -566,7 +566,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         if connector_servers:
             existing = dict(thread_config.get("mcp_servers") or {})
             if existing.keys() & connector_servers.keys():
-                raise ValueError("连接器 MCP 名称冲突")
+                raise ValueError("Connector MCP name conflict")
             thread_config["mcp_servers"] = {**existing, **connector_servers}
         thread_kwargs: dict[str, Any] = {
             "cwd": cwd,
@@ -672,7 +672,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                                         data={
                                             "message_id": message_id,
                                             "status": "failed",
-                                            "detail": str(exc) or "插入消息失败",
+                                            "detail": str(exc) or "Failed to insert message",
                                         },
                                     ))
                             else:
@@ -742,7 +742,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             async def pump() -> None:
                 try:
                     if prompt.strip() == "/compact" and not session_id:
-                        raise ValueError("没有可压缩的 Codex 会话")
+                        raise ValueError("No compressible Codex session")
                     if lease.thread is not None:
                         thread = lease.thread
                     elif session_id:
@@ -909,7 +909,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
 
         if action == "start":
             if not model:
-                raise RuntimeError("Codex 目标模式需要明确的模型")
+                raise RuntimeError("Codex target mode requires an explicit model")
             goal_state = raw.register_goal_operation(thread.id)
             started_turn_id: str | None = None
             try:
@@ -955,7 +955,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 await raw.thread_goal_set(thread.id, status=ThreadGoalStatus.active)
                 started = await asyncio.to_thread(goal_state.wait_for_start, 30)
                 if started is None:
-                    raise RuntimeError("等待 Codex 目标恢复超时")
+                    raise RuntimeError("Waiting for Codex target recovery timed out")
             except BaseException:
                 raw.unregister_goal_operation(goal_state)
                 raise
@@ -1037,7 +1037,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         the SDK's raw turn-start seam while preserving its early subscription.
         """
         if not model:
-            raise RuntimeError("Codex SDK 原生计划模式需要明确的模型")
+            raise RuntimeError("Codex SDK native plan mode requires an explicit model")
         mode = {
             "mode": "plan" if plan_mode else "default",
             "settings": {
@@ -1059,7 +1059,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
 
         async_client = getattr(client, "_client", None)
         if async_client is None:
-            raise RuntimeError("当前 openai-codex SDK 不支持原生计划模式")
+            raise RuntimeError("The current openai-codex SDK does not support native plan mode")
         params = {"collaborationMode": mode}
         start_with_subscription = getattr(async_client, "_start_turn", None)
         if callable(start_with_subscription):
@@ -1078,7 +1078,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
 
         start_turn = getattr(async_client, "turn_start", None)
         if not callable(start_turn):
-            raise RuntimeError("当前 openai-codex SDK 不支持原生计划模式")
+            raise RuntimeError("The current openai-codex SDK does not support native plan mode")
         started = await start_turn(thread.id, codex_wire_input(prompt, images), params=params)
         return turn_handle_type(client, thread.id, str(started.turn.id))
 

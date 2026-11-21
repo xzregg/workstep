@@ -217,12 +217,13 @@ export interface ChatInputWorkflowSkill {
 }
 
 export interface ChatInputProps {
+  externalVoiceActive?: boolean
   connectorsEnabled?: boolean
   workflowSkill?: ChatInputWorkflowSkill
   roleBinding?: ChatInputRoleBinding
   value: string
   onChange: (value: string) => void
-  onSend: (content?: string, facePersonIds?:string[]) => void
+  onSend: (content?: string, facePersonIds?:string[], recentFaces?:boolean) => void
   /** Session owner for the composer draft. */
   sessionId?: string | null
   /** Task owner for the composer draft. Takes precedence over sessionId. */
@@ -293,6 +294,7 @@ function ChatInput({
   skillEngine,
   availableCommands,
   placeholder,
+  externalVoiceActive = false,
   disabled = false,
   running = false,
   allowSendWhileRunning = false,
@@ -376,7 +378,7 @@ function ChatInput({
   const attachFileInputRef = useRef<HTMLInputElement>(null)
   const valueRef = useChatInputDraft({ sessionId, taskId, value, onChange })
   const voicePermitted = can('task.edit') && (typeof window === 'undefined' || !window.location.pathname.startsWith('/share/'))
-  const voiceAllowed = useSpeechEnabled(projectId || imageAttach?.projectId || '', voicePermitted)
+  const voiceAllowed = useSpeechEnabled(projectId || imageAttach?.projectId || '', voicePermitted) && !externalVoiceActive
   const voiceDisabled = disabled || stopping || (running && !allowSendWhileRunning) || !voiceAllowed
   const voice = useVoiceInput({
     ownerKey: `${projectId || imageAttach?.projectId || ''}:${taskId || sessionId || ''}`,
@@ -1422,7 +1424,7 @@ function ChatInput({
               )
             )}
           </div>
-          {voiceAllowed && !isCompact && <VoiceMicrophone voice={voice} disabled={voiceDisabled} />}
+          {voiceAllowed && (!isCompact || (running && allowSendWhileRunning)) && <VoiceMicrophone voice={voice} disabled={voiceDisabled} />}
           <button
             type="button"
             className="chat-input-send"

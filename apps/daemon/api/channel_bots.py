@@ -35,12 +35,12 @@ class CreateBotRequest(BaseModel):
     @model_validator(mode='after')
     def require_project(self):
         if not self.default_project_id.strip():
-            raise ValueError('请选择默认项目')
+            raise ValueError('Please select a default project')
         if self.platform == 'weixin':
             if not self.login_id:
-                raise ValueError('请先扫码授权微信 ClawBot')
+                raise ValueError('Please scan the QR code to authorize WeChat ClawBot')
         elif not self.secret.strip():
-            raise ValueError('请填写机器人凭证')
+            raise ValueError('Please provide the robot credentials')
         return self
 
 
@@ -66,7 +66,7 @@ class UpdateBotRequest(BaseModel):
         if ('default_project_id' in self.model_fields_set and not (self.default_project_id or '').strip()) or (
             'default_target_type' in self.model_fields_set and not self.default_target_type
         ):
-            raise ValueError('请选择默认项目')
+            raise ValueError('Please select a default project')
         return self
 
 
@@ -101,15 +101,15 @@ class SendChannelMessageRequest(BaseModel):
     @model_validator(mode="after")
     def validate_recipient(self):
         if (not self.text.strip() and not self.attachments) or not self.project_id.strip():
-            raise ValueError("消息和项目不能为空")
+            raise ValueError("Message and project cannot be empty")
         for value in (self.session_id, self.bot_id, self.user_id, self.group_id, self.user_name, self.contact_id):
             if value is not None and not value.strip():
-                raise ValueError("目标标识不能为空")
+                raise ValueError("Target identifier cannot be empty")
         if self.session_id:
             if any((self.bot_id, self.user_id, self.group_id, self.user_name, self.contact_id)):
-                raise ValueError("会话目标不能同时指定机器人或收件人")
+                raise ValueError("Conversation target cannot specify both a bot and a recipient")
         elif not self.bot_id or sum(bool(value) for value in (self.user_id, self.group_id, self.user_name, self.contact_id)) != 1:
-            raise ValueError("必须指定会话，或者机器人和唯一的用户/群")
+            raise ValueError("A session must be specified, or a bot and a unique user/group")
         return self
 
 
@@ -133,7 +133,7 @@ def _directory_admin():
     from services.remote_access import get_current_actor
     actor = get_current_actor()
     if actor is not None and actor.project_id is not None:
-        raise HTTPException(status_code=403, detail='通讯录配置需要设备设置权限')
+        raise HTTPException(status_code=403, detail='Contacts configuration requires device settings permission')
 
 
 async def _directory_bot(bot_id, project_id=None):
@@ -209,26 +209,28 @@ async def send_channel_message(request: SendChannelMessageRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
-        if str(exc) in {"渠道会话已归档", "机器人未启用或尚未连接"}:
+        if str(exc) in {"Channel conversation is archived", "The bot is disabled or disconnected"}:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         logger.exception("Channel notification delivery failed")
-        raise HTTPException(status_code=502, detail="渠道消息发送失败，请检查机器人连接及发送权限") from exc
+        raise HTTPException(status_code=502, detail="Channel message sending failed. Please check the bot connection and send permissions:") from exc
     except Exception as exc:
         logger.exception("Channel notification delivery failed")
-        raise HTTPException(status_code=502, detail="渠道消息发送失败，请检查机器人连接及发送权限") from exc
+        raise HTTPException(status_code=502, detail="Channel message sending failed. Please check the bot connection and send permissions:") from exc
 
 
 def _manager():
     from main import channel_bot_manager
     if channel_bot_manager is None:
-        raise HTTPException(status_code=503, detail="渠道机器人尚未初始化")
+        raise HTTPException(status_code=503, detail="Channel bot has not been initialized")
     return channel_bot_manager
 
 
 def _raise_error(exc: Exception):
     if isinstance(exc, LookupError):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    status = 409 if "已绑定" in str(exc) or "已经添加" in str(exc) else 400
+    status = 409 if str(exc) in {
+        "A bot for this platform has already been added", "This bot group is already linked to another task",
+    } else 400
     raise HTTPException(status_code=status, detail=str(exc)) from exc
 
 
@@ -245,7 +247,7 @@ def _login_manager():
     from services.remote_access import get_current_actor
     actor = get_current_actor()
     if actor is not None and actor.project_id is not None:
-        raise HTTPException(status_code=403, detail='扫码登录需要设备设置权限')
+        raise HTTPException(status_code=403, detail='Scanning to log in requires device permissions')
     return _manager()
 
 
@@ -255,7 +257,7 @@ async def start_weixin_login(request: WeixinLoginRequest):
     if request.bot_id:
         bots = await manager.list_bots()
         if not any(bot['id'] == request.bot_id and bot['platform'] == 'weixin' for bot in bots):
-            raise HTTPException(status_code=404, detail='微信 ClawBot 机器人不存在')
+            raise HTTPException(status_code=404, detail='WeChat ClawBot bot does not exist')
     try:
         return await manager.weixin_login.start(request.bot_id)
     except ValueError as exc:
@@ -328,9 +330,10 @@ async def bind_task_group(task_id: str, request: BindGroupRequest):
 
 
 @task_group_router.delete("/{task_id}/discussion-groups/{bot_id}/{group_id}")
-async def unbind_task_group(task_id: str, bot_id: str, group_id: str, project_id: str = Query(...)):
-    await _manager().unbind_group(project_id, task_id, bot_id, group_id)
-    return {"deleted": True}
+async def unbind_task_group(task_id: str, bot_id: str, group_id: str, project_id: str = Query(...), notify: bool = False):
+    _enforce_project_scope(project_id)
+    notification = await _manager().unbind_group(project_id, task_id, bot_id, group_id, notify=notify)
+    return {"deleted": True, "notification": notification} if notify else {"deleted": True}
 
 
 class PrivateWhitelistUser(BaseModel):

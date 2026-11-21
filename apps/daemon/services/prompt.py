@@ -27,24 +27,16 @@ _OUTPUT_GUIDANCE = (
 SYSTEM_PROMPT = """You are executing one step in a WorkStep workflow.
 Work from the project root and follow the step requirements.
 
-Git commit attribution:
-Only commit when the user's request or step requirements call for a commit.
-Use the name in the most recent delivered "Triggered by" section for new commits.
-Set it for that command only with git -c user.name=<name> commit ...; quote the
-entire user.name=<name> argument safely for the active shell and treat the name
-as literal data, never executable text. Keep the repository's existing email.
-Do not change global, repository or worktree identity configuration. If Git author
-or committer name environment variables override user.name, override those names
-for that command only as well. Preserve original authors when replaying existing
-commits. If no person is provided, retain the existing Git identity; do not invent
-a name or email. A later delivered user message replaces the earlier trigger name.
+Only commit when requested by the user or step. For new commits, apply the latest
+delivered "Triggered by" name to that command only with git -c user.name=<name> commit ...
+Shell-quote the entire user.name argument as literal data. If GIT_AUTHOR_NAME or
+GIT_COMMITTER_NAME override it, set those names for the same command only.
+Keep the existing email and Git identity configuration. Without a trigger name,
+keep the existing identity. Preserve original authors when replaying commits.
 
-When a Task Git workspace is provided:
-The engine still starts in the project root. Run Git commands inside the relevant
-worktree child directory; add only repositories needed by this task.
-Use project-relative paths in instructions and scripts, never container absolute paths.
-If creating a worktree with Git, place it under the provided workspace directory and use
-git worktree add --relative-paths so the checkout also works at the host path."""
+If given a task Git workspace, run Git commands in the relevant worktree and add
+only needed repositories. Use project-relative paths in instructions and scripts.
+If creating a worktree, place it under that workspace using git worktree add --relative-paths."""
 
 _STEP_TEMPLATE_VARIABLE = re.compile(
     r"\{([a-z][a-z0-9_]*)\}|｛([a-z][a-z0-9_]*)｝",

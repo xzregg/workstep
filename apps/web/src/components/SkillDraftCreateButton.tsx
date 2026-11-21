@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { skillApi } from '../api/client'
 import { useProjectStore } from '../stores/projectStore'
 import { saveDraft } from '../utils/chatDraft'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import Button from './Button'
 import Icon from './Icon'
@@ -25,5 +25,5 @@ export default function SkillDraftCreateButton({ onStarted }: { onStarted?: () =
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setBusy(false) }
   }
-  return <div className="skill-draft-create"><Button onClick={() => void start()} loading={busy} disabled={busy}><Icon name="sparkles" size={14} />{t('skillCenter.createDraft')}</Button>{error && <p role="alert" className="skill-draft-error">{error}</p>}</div>
+  return <div className="skill-draft-create"><Button onClick={() => void start()} loading={busy} disabled={busy}><Icon name="sparkles" size={14} />{t('skillCenter.createDraft')}</Button>{error && <p role="alert" className="skill-draft-error">{localizeErrorDisplay(error)}</p>}</div>
 }

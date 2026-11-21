@@ -109,16 +109,16 @@ def collect_resources(root: Path, entries, *, max_file: int, max_total: int, inc
         for part in relative.parts:
             target /= part
             if target.is_symlink():
-                raise ValueError(f'原型资源不能包含符号链接：{relative.as_posix()}')
+                raise ValueError(f'Prototype resources cannot contain symbolic links: {relative.as_posix()}')
         if not path.is_file():
             continue
         if path not in paths:
             size = path.stat().st_size
             total += size
             if size > max_file:
-                raise ValueError(f'原型资源超过单文件限制：{relative.as_posix()}（{size / 1024 / 1024:.1f} MiB，上限 {max_file / 1024 / 1024:g} MiB）')
+                raise ValueError(f'Prototype resource exceeds single-file limit: {relative.as_posix()} ({size / 1024 / 1024:.1f} MiB, max {max_file / 1024 / 1024:g} MiB)')
             if total > max_total:
-                raise ValueError(f'原型引用资源总量超过 {max_total / 1024 / 1024:g} MiB：{relative.as_posix()}')
+                raise ValueError(f'Total prototype reference resources exceed {max_total / 1024 / 1024:g} MiB: {relative.as_posix()}')
             paths[path] = None
         suffix = path.suffix.lower()
         if suffix not in EDITABLE:

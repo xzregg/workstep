@@ -35,7 +35,20 @@ def _key(value, project_root):
 
 def _merge_call(call, data):
     previous = call.get("raw_input")
-    call.update(data)
+    for key in ("kind", "title", "name", "status", "raw_input", "locations"):
+        if key in data:
+            call[key] = data[key]
+    if "content" in data:
+        content = data["content"]
+        call["content"] = [
+            item for item in content if isinstance(item, dict) and item.get("type") == "diff"
+        ] if isinstance(content, list) else []
+    if "raw_output" in data:
+        output = data["raw_output"]
+        if isinstance(output, list):
+            call["raw_output"] = output
+        else:
+            call.pop("raw_output", None)
     current = data.get("raw_input")
     if isinstance(previous, str) and isinstance(current, str):
         call["raw_input"] = previous + current

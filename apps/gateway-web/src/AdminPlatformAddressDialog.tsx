@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useRef, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -33,11 +34,11 @@ export function AdminPlatformAddressDialog({address, allowedOrigins = [], csrf, 
     try {
       const headers = {'Content-Type': 'application/json', 'X-CSRF-Token': csrf}
       const proof = await confirmStepUp(csrf, password, passwordRequired)
-      if (!proof.ok) throw Error('管理员密码验证失败。')
+      if (!proof.ok) throw Error('Administrator password verification failed.')
       const response = await fetch('/api/admin/platform-address', {method: 'PUT', credentials: 'same-origin', headers, body: JSON.stringify({public_origin: normalized, allowed_origins: origins})})
-      if (!response.ok) throw Error(response.status === 422 ? '地址无效：请使用 HTTPS 域名或本地、内网 HTTP 地址，不包含路径。' : '平台地址保存失败，请重试。')
+      if (!response.ok) throw Error(response.status === 422 ? 'Invalid address: Use an HTTPS domain or a local/intranet HTTP address without a path.' : 'Failed to save platform address. Please try again.')
       onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '平台地址保存失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to save platform address.') }
     finally { pending.current = false; setBusy(false) }
   }
   return <>
@@ -64,7 +65,7 @@ export function AdminPlatformAddressDialog({address, allowedOrigins = [], csrf, 
         </div>
       </div>
       {busy && <p role="status"><span className="gateway-spinner"/>正在保存平台地址…</p>}
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     </GatewayConfirmDialog>
     {discard && <GatewayConfirmDialog title="放弃平台地址修改" message="平台地址尚未保存。" confirmLabel="放弃并关闭" onConfirm={onClose} onCancel={() => setDiscard(false)}/>}
   </>

@@ -34,7 +34,7 @@ def test_codex_settings_use_generic_storage_and_keep_legacy_sections():
     assert get_codex_sdk_config(store)["model_reasoning_effort"] == "none"
     assert store.values["codex_sdk_engine"]["sandbox"] == "read-only"
     assert store.values["unrelated"] == {"keep": True}
-    with pytest.raises(ValueError, match="不支持的推理强度"):
+    with pytest.raises(ValueError, match='Unsupported\\ inference\\ intensity'):
         set_codex_sdk_config(store, model_reasoning_effort="invalid")
     store.values["engine_models"] = {"codex_sdk": {"models": [{
         "id": "official-new", "is_default": True,

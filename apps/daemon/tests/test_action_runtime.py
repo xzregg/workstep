@@ -118,7 +118,7 @@ async def test_action_requires_named_user_before_creating_messages(action_client
         json={"button_id": "restart", "source": "project", "confirmed": True},
     )
     assert response.status_code == 409
-    assert "用户名" in response.json()["detail"]
+    assert 'username' in response.json()["detail"]
     assert not action_runtime.tasks
     assert await manager.run_db(project.id, lambda _project: Task.get_by_id("task-action").messages.count()) == 0
 

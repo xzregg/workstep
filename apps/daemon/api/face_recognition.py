@@ -16,7 +16,7 @@ async def call(operation, *args):
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except (OSError, sqlite3.Error) as exc:
-        raise HTTPException(503, '人脸库暂时不可用，请重试') from exc
+        raise HTTPException(503, 'The face library is temporarily unavailable, please try again') from exc
 
 
 @router.get('/settings')

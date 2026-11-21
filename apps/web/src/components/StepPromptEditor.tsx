@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import type { Project } from '../api/client'
 import { workflowApi } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import type { StepData } from './TaskDetailView'
 import Button from './Button'
 import MarkdownEditor from './MarkdownEditor'
@@ -131,7 +131,7 @@ export default function StepPromptEditor({ project, step, projectId, workflowId,
           ariaLabel={t('taskDetail.stepPromptAria', { step: step.label })}
         />
         <StepPromptVariablesHint />
-        {error && <div role="alert" className="step-prompt-editor-error">{error}</div>}
+        {error && <div role="alert" className="step-prompt-editor-error">{localizeErrorDisplay(error)}</div>}
       </div>
       <div className="dialog-footer">
         <Button variant="ghost" disabled={saving} onClick={close}>{t('common.cancel')}</Button>

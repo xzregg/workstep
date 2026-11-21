@@ -1,5 +1,6 @@
+import { useProjectProviders } from './useProjectProviders'
 import { useEffect, useRef, useState } from 'react'
-import { providerApi, taskApi, type CoordinatorConfig, type ProviderInfo } from '../api/client'
+import { taskApi, type CoordinatorConfig } from '../api/client'
 import { useI18n, type TKey } from '../i18n'
 import { publishEngineCatalog } from '../stores/engineAvailabilityStore'
 
@@ -18,7 +19,7 @@ const ERROR_KEYS: Record<ConfigField, TKey> = {
 export function useTaskCoordinatorConfig(taskId: string, projectId: string) {
   const { t } = useI18n()
   const [config, setConfig] = useState<CoordinatorConfig | null>(null)
-  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const providers = useProjectProviders(projectId)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -40,18 +41,6 @@ export function useTaskCoordinatorConfig(taskId: string, projectId: string) {
     })
     return () => { active = false }
   }, [taskId, projectId, t])
-
-  useEffect(() => {
-    let active = true
-    if (!projectId) {
-      setProviders([])
-      return () => { active = false }
-    }
-    void providerApi.list(projectId).then((result) => {
-      if (active) setProviders(result.providers.filter((provider) => provider.enabled))
-    }).catch(() => { /* provider list is optional for the engine picker */ })
-    return () => { active = false }
-  }, [projectId])
 
   const save = async (field: ConfigField, value: string) => {
     if (!taskId || !projectId || saveInFlight.current || (field !== 'engine' && !config)) return

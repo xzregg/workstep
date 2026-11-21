@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
@@ -43,14 +44,14 @@ export function ProjectInvitationRecords({ projectId, csrf, admin = false, revis
     if (!operation || busy) return
     setBusy(true); setError('')
     try {
-      if (admin && !(await confirmStepUp(csrf, password, passwordRequired)).ok) throw Error('管理员身份确认失败，请重试。')
+      if (admin && !(await confirmStepUp(csrf, password, passwordRequired)).ok) throw Error('Administrator identity confirmation failed, please try again.')
       const policy = operation.action === 'policy'
       await invitationResponse(await fetch(policy ? base + '/invitation-policy' : base + `/invitations/${operation.id}/${operation.action}`, {
         method: policy ? 'PUT' : 'POST', headers: invitationHeaders(csrf),
         ...(policy ? { body: JSON.stringify({ enabled: operation.enabled }) } : {}),
       }))
       setOperation(null); setPassword(''); saved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '保存失败，请重试。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Save failed, please try again.') }
     finally { setBusy(false) }
   }
 
@@ -67,7 +68,7 @@ export function ProjectInvitationRecords({ projectId, csrf, admin = false, revis
   return <section className="gateway-project-invitation-records">
     <h3>{admin ? '项目邀请与加入记录' : '我创建的项目邀请'}</h3>
     {loading && <p role="status"><span className="gateway-spinner" /> 正在加载邀请记录…</p>}
-    {loadError && <p role="alert">{loadError} <button onClick={() => setLocalRevision(v => v + 1)}>重试加载</button></p>}
+    {loadError && <p role="alert">{localizeGatewayError(loadError)} <button onClick={() => setLocalRevision(v => v + 1)}>重试加载</button></p>}
     {listing && <>
       <p>邀请加入：{listing.invitations_enabled ? '允许' : '已禁止'}。链接只在生成时显示，请及时保存。</p>
       {admin && <button type="button" onClick={() => choose({ action: 'policy', enabled: !listing.invitations_enabled })}>
@@ -94,7 +95,7 @@ export function ProjectInvitationRecords({ projectId, csrf, admin = false, revis
       busy={busy} disabled={admin && !passwordReady} onCancel={() => setOperation(null)} onConfirm={() => void change()}
       passwordConfirmation={admin && <PasswordConfirmation label="输入管理员密码确认" value={password} onChange={setPassword} />}>
       {busy && <span className="gateway-spinner" />}
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     </GatewayConfirmDialog>}
     {revoke && <AdminProjectRevokeDialog projectId={projectId} grant={revoke} csrf={csrf} onClose={() => setRevoke(null)} onSaved={saved} />}
     {restore && <AdminProjectGrantDialog projectId={projectId} grant={restore} csrf={csrf} onClose={() => setRestore(null)} onSaved={saved} />}

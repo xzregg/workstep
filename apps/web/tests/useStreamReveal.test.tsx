@@ -315,12 +315,14 @@ test('a thousand-character live burst accelerates without paragraph-sized parse 
   assert.ok(frames*MIN_REVEAL_FRAME_MS<=3000,'live backlog must not take eleven seconds to drain')
 })
 
-test('the first small chunk enters Markdown immediately without waiting to fill a batch', async () => {
+test('a tiny first chunk gets a bounded buffer instead of flashing before the next packet', async () => {
   outputs=[]
   const h=await renderHarness({content:'',streaming:true})
   try {
     await h.set({content:'你好'})
-    assert.equal(outputs.at(-1),'你好','first chunk must not wait for the parse interval')
+    assert.equal(outputs.at(-1),'','buffer the tiny opening')
+    await act(async()=>{await sleep(230)})
+    assert.equal(outputs.at(-1),'你好','a short reply must not wait indefinitely')
   } finally {await h.unmount()}
 })
 
@@ -339,4 +341,15 @@ test('engine completion drains a thousand-character backlog within the catch-up 
 
 test('selected slow rate stays near 90 characters per second after frame rounding', () => {
   assert.ok(Math.abs(REVEAL_STEP_CHARS / MIN_REVEAL_FRAME_MS * 1000 - 90) < 2)
+})
+
+
+test('live pacing can slow down after a burst instead of retaining its peak speed', () => {
+  assert.ok(revealStepFor(40, 32, {}, true, 50) < 32, 'do not drain a small follow-up at the previous burst speed')
+})
+
+test('live pacing follows slow packet delivery but completion bypasses that limit', () => {
+  const live = revealStepFor(12, 8, {}, true, 30)
+  assert.ok(live <= 3, 'leave enough buffered text between slow packets')
+  assert.ok(revealStepFor(100, live, {}, false, 30) >= 20)
 })

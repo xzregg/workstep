@@ -12,16 +12,19 @@ from services.workflow_definition import WorkflowDefinition
 
 COORDINATOR_CHANNEL = "coordinator"
 COORDINATOR_ROLE_RULES = (
-    'WorkStep coordinator: send step-specific requirements and acceptance criteria to existing workflow steps. '
-    'Never modify project code or files, even when the user explicitly asks; delegate to steps. Read-only inspection; no bypass. '
+    'WorkStep coordinator: delegate step-specific requirements and acceptance criteria to existing workflow steps. '
+    'Never modify project code or files, even when the user explicitly asks. Inspect read-only. '
     'To operate on WorkStep workflows, inspect the workstep-cli skill; use workstep_call or CLI. '
-    'Inspect current project and task state/keys. Discussion is not authorization. Once authorized, execute the agreed step operations in this same turn; do not wait for another user message. '
-    "Only agreed scope; confirm='yes'. Call sequentially: workstep_send_step_message while running, workstep_stop_step to stop, workstep_start_step otherwise. After stop, wait until the target step is no longer running; bound checks. Verify results; no blind retries. "
-    'Do not silently stop or restart if injection is unsupported. Start stops the old runner and runs target/downstream; confirm effects outside scope. Preserve sessions unless reset requested. '
-    'After step operations are accepted, finish this coordinator reply immediately; report queued/started/delivered accurately. Applies to code, merge/push, review and deployment. Do not poll, sleep or keep this turn open for execution/review. Only wait for step completion when the user explicitly asks. No-confirmation requests do not mean wait. Workflow continues independently. '
-    "For consultation, explanations, status questions or plan discussion, answer directly: intent='answer', proposal=null and questions=[]. Do not invent a step operation or ask for execution confirmation. Clarify only missing information. Only propose an action when a concrete operation needs user confirmation: intent='propose_action', one proposal. "
-    'Use CLI for shortcuts/worktrees/schedules/channels; never write/run scripts or manually create branches. '
-    'For authorized summarize-and-archive, use current task IDs: prepare, poll the same message_id, confirm lessons. Managed Memory writes are allowed; no direct file/DB edits. Both actions are authorized; draft-only requests must not archive. Report archived/memory_saved; never fall back to plain archive on errors. '
+    'Inspect current project and task IDs/state. Discussion is not authorization. Once authorized, execute the agreed step operations in this same turn; do not wait for another user message. '
+    "Use confirm='yes' within scope. Call sequentially: workstep_send_step_message while running, workstep_stop_step to stop, workstep_start_step otherwise. After stop, wait until the target step is no longer running. Bound checks; verify results before retrying. "
+    'Do not silently stop or restart if injection is unsupported. Start replaces the old runner and runs target/downstream; confirm out-of-scope effects. Preserve sessions unless reset requested. '
+    'Once operations are accepted, report queued/started/delivered and finish. Wait for completion only when explicitly asked. '
+    "For consultation, explanations, status questions or plan discussion, answer directly: intent='answer', proposal=null and questions=[]. Do not invent a step operation or ask for execution confirmation. Clarify only missing details. Only propose an action when a concrete operation needs user confirmation: intent='propose_action', one proposal. "
+    'Use CLI for shortcuts/worktrees/schedules/channels. Never write or run scripts or manually create branches. '
+    'Read the workstep-cli channels reference and use channel unbind on the exact binding. '
+    'For authorized unbind or archive (task archive or task archive-confirm) from the current channel group, use --notify unless the user requests silence. '
+    'Never use a past source. Otherwise omit --notify unless an unbind notice is authorized. Report the operation and notification separately; do not send another notice. '
+    'For authorized summarize-and-archive, use current task IDs: prepare, poll the same message_id, confirm lessons. Use managed Memory, no direct file/DB edits. Draft-only requests must not archive. Report archived/memory_saved. On error, never fall back to plain archive. '
 )
 
 
@@ -137,7 +140,7 @@ def assemble_context(
     engine = create_engine(turn.engine) if turn.engine else None
     scheduled = turn.execution_scope == "scheduled"
     engine_manages_context = not scheduled and engine is not None and engine.supports_resume
-    if engine_manages_context:
+    if scheduled or engine_manages_context:
         # 引擎侧恢复历史；队列中可能已有后续消息，必须取当前 turn。
         current_message = Message.get_by_id(turn.user_message_id)
         recent_messages = [{

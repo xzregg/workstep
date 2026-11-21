@@ -15,6 +15,7 @@ Object.assign(globalThis, { window: dom.window, document: dom.window.document,
   HTMLElement: dom.window.HTMLElement, MutationObserver: dom.window.MutationObserver,
   Event: dom.window.Event })
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
+Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' })
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import('@testing-library/react')
 const originalFetch = globalThis.fetch
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch })
@@ -91,6 +92,11 @@ test('provider directory pages on the server and shows PC application state', as
   await waitFor(() => assert.ok(urls.some(url => url.includes('q=Alpha'))))
   fireEvent.click(screen.getByRole('button', { name: '下一页' }))
   await screen.findByText('Beta API')
+  assert.ok(!screen.queryByRole('button', { name: '获取模型' }))
+  fireEvent.click(screen.getByRole('button', { name: '编辑 / 轮换凭据' }))
+  const editor = screen.getByRole('dialog', { name: '编辑供应商' })
+  assert.ok(within(editor).getByRole('button', { name: '获取模型' }))
+  fireEvent.click(within(editor).getByRole('button', { name: '取消' }))
   assert.ok(urls.some(url => url.includes('page=2')))
   fireEvent.click(screen.getByRole('button', { name: '查看 PC 应用状态' }))
   await screen.findByText(/设备应用状态加载失败/)
@@ -104,6 +110,48 @@ test('provider directory pages on the server and shows PC application state', as
   fireEvent.click(screen.getByRole('button',{name:'管理分配'}))
   await screen.findByRole('dialog',{name:'Beta API · 管理分配'})
   assert.equal((screen.getByLabelText('搜索名称或类型') as HTMLInputElement).value,'Alpha')
+})
+
+test('the editor applies fetched models locally and distributes them with the edited configuration', async () => {
+  const writes: { url: string; body: unknown }[] = []
+  globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    if (url === '/api/auth/step-up') return Response.json({})
+    if (url === '/api/admin/providers/company/models/preview') return Response.json({
+      revision: 3, models: [{ id: 'model-a' }, { id: 'model-b' }], errors: [],
+    })
+    if (init?.method === 'PUT') {
+      writes.push({ url, body: JSON.parse(String(init.body)) })
+      return Response.json({})
+    }
+    throw Error(`Unexpected fetch: ${url}`)
+  }
+  let saved = 0
+  render(<AdminProviderEditorDialog provider={{ id: 'company', name: 'Company', type: 'custom', enabled: true,
+    revision: 3, protocols: ['openai_responses'], protocol_base_urls: { openai_responses: 'https://api.example.test/v1' },
+    models: ['model-a'], prices: {}, has_key: true }} csrf="csrf" onClose={() => {}} onSaved={() => { saved++ }} />)
+  const editor = within(screen.getByRole('dialog', { name: '编辑供应商' }))
+  fireEvent.change(editor.getByLabelText('供应商名称'), { target: { value: 'Updated' } })
+  fireEvent.click(editor.getByRole('button', { name: '获取模型' }))
+  const picker = within(screen.getByRole('dialog', { name: 'Company · 获取模型' }))
+  const search = picker.getByRole('searchbox', { name: '搜索模型' }) as HTMLInputElement
+  assert.equal(search.autocomplete, 'off')
+  fireEvent.change(search, { target: { value: 'saved-login-name' } })
+  fireEvent.change(picker.getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
+  fireEvent.click(picker.getByRole('button', { name: '获取模型' }))
+  fireEvent.click(await picker.findByRole('checkbox', { name: 'model-b' }))
+  assert.equal(search.value, '')
+  fireEvent.click(picker.getByRole('checkbox', { name: 'model-a' }))
+  fireEvent.click(picker.getByRole('button', { name: /应用到表单/ }))
+  assert.equal((editor.getByLabelText('允许模型（每行一个）') as HTMLTextAreaElement).value, 'model-b')
+  assert.deepEqual(writes, [])
+  fireEvent.click(editor.getByRole('button', { name: '保存供应商' }))
+  await waitFor(() => assert.equal(saved, 1))
+  assert.deepEqual(writes, [{ url: '/api/admin/providers/company', body: {
+    name: 'Updated', type: 'custom', protocols: ['openai_responses'],
+    protocol_base_urls: { openai_responses: 'https://api.example.test/v1' },
+    models: ['model-b'], price_version: 'v1', prices: {},
+  } }])
 })
 
 test('provider editor protects changes and submits configuration with step-up', async () => {
@@ -126,14 +174,28 @@ test('provider editor protects changes and submits configuration with step-up', 
   fireEvent.change(within(dialog).getByLabelText('OpenAI Responses 地址'), {
     target: { value: 'http://127.0.0.1:8080/v1' },
   })
+  const basicTab = within(dialog).getByRole('tab', { name: '基本设置', selected: true })
+  const priceTab = within(dialog).getByRole('tab', { name: '价格设置' })
+  assert.equal(within(dialog).queryByLabelText('价格版本'), null)
   fireEvent.change(within(dialog).getByLabelText('允许模型（每行一个）'), { target: { value: 'model-a' } })
-  fireEvent.change(within(dialog).getByLabelText('model-a 输入单价'), { target: { value: '1' } })
-  assert.equal((within(dialog).getByRole('button', { name: '保存供应商' }) as HTMLButtonElement).disabled, true)
-  for (const label of ['输出', '缓存读取', '缓存写入']) {
-    fireEvent.change(within(dialog).getByLabelText(`model-a ${label}单价`), { target: { value: '2' } })
-  }
   fireEvent.change(within(dialog).getByLabelText('供应商凭据'), { target: { value: 'secret-key' } })
   fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
+  const save = within(dialog).getByRole<HTMLButtonElement>('button', { name: '保存供应商' })
+  assert.equal(save.disabled, false)
+  fireEvent.keyDown(basicTab, { key: 'ArrowRight' })
+  const pricePanel = within(dialog).getByRole('tabpanel', { name: '价格设置' })
+  assert.equal(document.activeElement, priceTab)
+  fireEvent.change(within(pricePanel).getByLabelText('model-a 输入单价'), { target: { value: '1' } })
+  fireEvent.click(basicTab)
+  assert.equal(save.disabled, true)
+  assert.ok(within(dialog).getByText(/请在「价格设置」/))
+  fireEvent.click(priceTab)
+  assert.equal(within(pricePanel).getByLabelText<HTMLInputElement>('model-a 输入单价').value, '1')
+  for (const label of ['输出', '缓存读取', '缓存写入']) {
+    fireEvent.change(within(pricePanel).getByLabelText(`model-a ${label}单价`), { target: { value: '2' } })
+  }
+  assert.equal(save.disabled, false)
+  assert.equal(requests.length, 0)
   fireEvent.click(within(dialog).getByRole('button', { name: '取消' }))
   const discard = screen.getByRole('dialog', { name: '放弃供应商修改' })
   fireEvent.click(within(discard).getByRole('button', { name: '取消' }))
@@ -158,7 +220,9 @@ test('provider editor protects changes and submits configuration with step-up', 
   render(<AdminProviderEditorDialog provider={provider} csrf="csrf" onClose={() => {}}
     onSaved={() => { saved++ }} />)
   const edit = screen.getByRole('dialog', { name: '编辑供应商' })
+  fireEvent.click(within(edit).getByRole('tab', { name: '价格设置' }))
   fireEvent.change(within(edit).getByLabelText('价格版本'), { target: { value: 'v2' } })
+  fireEvent.click(within(edit).getByRole('tab', { name: '基本设置' }))
   fireEvent.change(within(edit).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
   assert.equal(requests.some(request => request.url.endsWith('/credential')), false)
   fireEvent.click(within(edit).getByRole('button', { name: '显示当前凭据' }))
@@ -170,6 +234,7 @@ test('provider editor protects changes and submits configuration with step-up', 
   await waitFor(() => assert.equal(saved, 2))
   const update = requests.find(request => request.url === '/api/admin/providers/provider-1')
   assert.equal(update?.init?.method, 'PUT')
+  assert.equal(JSON.parse(String(update?.init?.body)).price_version, 'v2')
   assert.equal('api_key' in JSON.parse(String(update?.init?.body)), false)
   cleanup()
   render(<AdminProviderDisableDialog provider={provider} csrf="csrf" onClose={() => {}}

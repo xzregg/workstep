@@ -1660,16 +1660,28 @@ async def test_ephemeral_chat_never_writes_gen_sessions(gen_module, monkeypatch)
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("switch_provider", [False, True])
 async def test_workflow_session_history_survives_module_restart(
-    gen_module, monkeypatch
+    gen_module, monkeypatch, switch_provider,
 ):
     """Reconstructing the module (daemon restart) resumes the same workflow chat."""
     module, bus, manager, project, _ = gen_module
-    seen: list[tuple[str, str]] = []
+    seen = []
+    selected = "provider-a"
+    if switch_provider:
+        class ResumeEngine(FakeEngine):
+            supports_resume = True
+
+            def resolve_provider_id(self, provider_id):
+                return provider_id or selected
+
+        monkeypatch.setattr("agent_assistants.base.config_store.get_provider", lambda _: None, raising=False)
+        for name in ("base", "workflow_gen"):
+            monkeypatch.setattr(f"agent_assistants.{name}.create_engine", lambda _: ResumeEngine())
 
     async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
-        seen.append((cwd, prompt))
-        return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
+        seen.append((session_id, prompt))
+        return json.dumps({"reply": "ok", "flow_proposals": []}), [], f"{selected}-thread" if switch_provider else None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
 
@@ -1680,6 +1692,7 @@ async def test_workflow_session_history_survives_module_restart(
     await _wait_turn(module, first.turn_id)
     await module.shutdown()
 
+    selected = "provider-b"
     bus2 = EventBus()
     restarted = WorkflowGenModule(bus2, manager)
     monkeypatch.setattr(restarted, "_invoke", fake_invoke)
@@ -1703,7 +1716,12 @@ async def test_workflow_session_history_survives_module_restart(
             workflow_id=workflow_id,
         )
         assert follow.session_id == first.session_id
+        if switch_provider:
+            assert await _wait_turn(restarted, follow.turn_id) == "error"
+            assert len(seen) == 1
+            return
         assert await _wait_turn(restarted, follow.turn_id) == "completed"
+        assert seen[-1][0] is None
         # The restored history is injected into the new turn's prompt.
         assert "设计一个流程" in seen[-1][1]
     finally:

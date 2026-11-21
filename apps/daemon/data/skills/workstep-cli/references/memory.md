@@ -37,6 +37,14 @@ desktop, use the bundled interpreter instead of uv, retaining the action flags:
 
 ## Small output first
 
+For ordinary recall and date summaries, start with organized knowledge and `--limit 8`. Use `--knowledge-only` with date bounds, even without a specific search term. For weeks or custom ranges, use `--since` and `--before`.
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli memory search --knowledge-only --since 2026-11-09 --before 2026-11-16 --limit 8
+```
+
+If knowledge coverage is insufficient, check a targeted page of up to 12 source records first. Use source history from the start for exact messages or a complete timeline, and paginate when completeness is requested.
+
 For overviews, omit `--with-sources`, including date-range questions such as
 “我昨天问了啥？”. Start with titles and compact summaries; do not expand every result.
 Reuse already returned evidence. Once it is sufficient to answer at the requested
@@ -139,7 +147,7 @@ For original-message review, including the context of a short answer, omit typed
 For complete chronological review, omit typed/relation filters and use the date
 review below; discover actual entities before follow-up dimensional searches.
 
-For time-based investigative questions, use this sequence:
+For investigations that require original records, use this sequence:
 
 1. Establish the time range and the subject. When concrete incidents and service
    names are unknown, first review source messages for that period. Start with
@@ -179,18 +187,19 @@ For a specific question without a time review, identify the known entity dimensi
 first, narrow by relationships, then add targeted text clues and expand evidence as needed.
 
 One entrypoint handles both relevant recall and complete source review:
+- With `--knowledge-only`: return organized knowledge, optionally bounded by event dates. No original-record fallback.
 - With `--query` and no date bounds: search extracted knowledge summaries,
   entities, aliases and relationship text. A relevance result does not establish
   complete historical coverage.
-- With date bounds and no typed/relation filters: review authoritative source messages for that period;
+- With date bounds and neither `--knowledge-only` nor typed/relation filters: review authoritative source messages for that period;
   an optional query filters them by any supplied literal term.
-- Without `--query` or typed/relation filters: page authoritative eligible source messages, optionally
+- Without `--knowledge-only`, `--query`, or typed/relation filters: page authoritative eligible source messages, optionally
   bounded by `--since/--before` or `--period`. This works despite index lag.
   Continue with snapshot/cursor, including when an intermediate page is empty.
   Without text or dates this browses all accessible eligible history; use bounds
   when the user's intent permits them.
 
-There is no separate mode argument or model-facing history tool. The old CLI
+There is no separate model-facing history tool. The old CLI
 `memory history` is a compatibility alias for search; the old HTTP route and
 operation remain for existing callers, not new model instructions. Keep query/date
 conditions unchanged while paging source history.
@@ -234,4 +243,4 @@ The global source index stores one metadata record per project/message ID, not r
 
 ## Time range plus keywords
 
-`memory search --period last_month --query '部署 发布 上线'` reviews original source messages in that period and matches any whitespace-separated literal term, case-insensitively. The model derives related words from user intent; the engine does not invent synonyms. Time ranges (since/before/period) select history mode even with query; query without a time range searches extracted knowledge. Continue snapshot/cursor with identical keywords and time parameters, even when a page is empty. `complete_filtered_history` refers only to matching messages; do not claim a complete review of all activity. Sources are read in bounded batches in project database executors, without storing raw text in the global index.
+`memory search --period last_month --query '部署 发布 上线'` reviews original source messages in that period and matches any whitespace-separated literal term, case-insensitively. The model derives related words from user intent; the engine does not invent synonyms. Without `--knowledge-only` or typed filters, time ranges (since/before/period) select history mode even with query; query without a time range searches extracted knowledge. Continue snapshot/cursor with identical keywords and time parameters, even when a page is empty. `complete_filtered_history` refers only to matching messages; do not claim a complete review of all activity. Sources are read in bounded batches in project database executors, without storing raw text in the global index.

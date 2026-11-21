@@ -225,7 +225,7 @@ class SkillCenter:
                 try:
                     item.resolve(strict=True).relative_to(resolved_root)
                 except (OSError, ValueError):
-                    raise ValueError(f"技能包含越出根目录的符号链接：{item}") from None
+                    raise ValueError(f"Skill contains a symbolic link that escapes the root directory: {item}") from None
             yield current_path, sorted(dirs), sorted(files)
 
     @classmethod
@@ -431,17 +431,17 @@ class SkillCenter:
             discovered = {item.skill_id: item for item in discovered_list}
             entry = manifest["entries"].get(skill_id)
             if entry is None:
-                raise KeyError("未知技能")
+                raise KeyError("Unknown skill")
             if entry.get("source") == "gateway":
-                raise PermissionError("受管技能由 Gateway 管理")
+                raise PermissionError("Managed skills are managed by Gateway")
             if enabled and not entry.get("valid"):
-                raise ValueError("无效技能不能启用")
+                raise ValueError("Invalid skill cannot be enabled")
             skills_root, manifest_path, disabled_root = self._paths(root)
             name = str(entry.get("name") or "")
             if enabled:
                 descriptor = discovered.get(skill_id)
                 if entry.get("source") != "project" and descriptor is None:
-                    raise ValueError("技能来源已不存在")
+                    raise ValueError("The skill source no longer exists")
                 # Prepare the selected version first. Only after a successful
                 # copy do we commit the same-name selection change.
                 if entry.get("source") != "project":
@@ -515,24 +515,24 @@ class SkillCenter:
         root = Path(project_root).expanduser().resolve()
         ordered_ids = list(dict.fromkeys(skill_ids))
         if not ordered_ids:
-            raise ValueError("请至少选择一个技能")
+            raise ValueError("Please select at least one skill")
         with self._lock_for(root):
             manifest, discovered_list = self._rescan_locked(root)
             discovered = {item.skill_id: item for item in discovered_list}
             for skill_id in ordered_ids:
                 entry = manifest["entries"].get(skill_id)
                 if entry is None:
-                    raise KeyError(f"未知技能：{skill_id}")
+                    raise KeyError(f"Unknown skill: {skill_id}")
                 if entry.get("source") == "gateway":
-                    raise PermissionError("受管技能由 Gateway 管理")
+                    raise PermissionError("Managed skills are managed by Gateway")
                 if enabled and not entry.get("valid"):
-                    raise ValueError(f"无效技能不能启用：{entry.get('name') or skill_id}")
+                    raise ValueError(f"Invalid skill cannot be enabled: {entry.get('name') or skill_id}")
                 if (
                     enabled
                     and entry.get("source") != "project"
                     and skill_id not in discovered
                 ):
-                    raise ValueError(f"技能来源已不存在：{entry.get('name') or skill_id}")
+                    raise ValueError(f"Skill source no longer exists: {entry.get('name') or skill_id}")
             for skill_id in ordered_ids:
                 self.set_enabled(root, skill_id, enabled)
         return self.list_project(root)

@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { subtreeIds, TreeCheckbox } from './TreeSelection'
@@ -17,7 +18,7 @@ export function AdminUserGroupTree({ selected = '', onSelect, revision = 0, endp
   if (nodes !== undefined) return
   const controller = new AbortController(); setLoading(true); setError('')
   void fetch(endpoint, { signal: controller.signal, credentials: 'same-origin' }).then(async response => {
-   if (!response.ok) throw Error('用户组加载失败。')
+   if (!response.ok) throw Error('Failed to load user group.')
    const result = await response.json()
    if (!controller.signal.aborted) setGroups(result.groups ?? [])
   }).catch(reason => { if (!controller.signal.aborted) setError(reason.message) })
@@ -73,7 +74,7 @@ export function AdminUserGroupTree({ selected = '', onSelect, revision = 0, endp
    {!!query.trim() && <button type="button" disabled={unavailable || !selectable.some(matches)} onClick={()=>onCheck([...change(groups.filter(matches).flatMap(group=>selectionMode === 'independent' ? [group.id] : descendants(group.id)), true)])}>勾选搜索结果</button>}
   </div>}
   {loading && <p role="status"><span className="gateway-spinner" /> 加载用户组…</p>}
-  {error && <p role="alert">{error}<button type="button" onClick={() => setRetry(value => value+1)}>重试</button></p>}
+  {error && <p role="alert">{localizeGatewayError(error)}<button type="button" onClick={() => setRetry(value => value+1)}>重试</button></p>}
   <div className="gateway-tree-scroll"><ul role="tree" aria-label="用户组">{allUsers && <li role="treeitem" aria-selected={!selected}><button type="button" className={!selected ? 'gateway-group-selected' : ''} onClick={() => onSelect?.('')}>全部用户</button></li>}{branch(groups.filter(node => !node.parent_id || !ids.has(node.parent_id)))}</ul></div>
   {!loading && !error && !!groups.length && !groups.some(matches) && <p>没有匹配的用户组。</p>}
   {!loading && !error && !groups.length && <p>尚无用户组，可创建或同步组织。</p>}

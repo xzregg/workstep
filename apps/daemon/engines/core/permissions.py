@@ -19,17 +19,17 @@ def decode_permission_selection(value: str) -> dict | None:
     if not value.startswith(NATIVE_PERMISSION_PREFIX):
         return None
     if len(value) > 16384:
-        raise ValueError("权限配置过长")
+        raise ValueError("Permission configuration is too long")
     try:
         selection = json.loads(value[len(NATIVE_PERMISSION_PREFIX):])
     except (ValueError, TypeError) as exc:
-        raise ValueError("权限配置格式无效") from exc
+        raise ValueError("Invalid permission configuration format") from exc
     if (not isinstance(selection, dict) or set(selection) != {"engine", "values"}
             or not isinstance(selection["engine"], str) or not selection["engine"]
             or not isinstance(selection["values"], dict)
             or any(not isinstance(key, str) or type(item) not in (str, bool)
                    for key, item in selection["values"].items())):
-        raise ValueError("权限配置格式无效")
+        raise ValueError("Invalid permission configuration format")
     return selection
 
 
@@ -55,24 +55,24 @@ class EnginePermissionPolicy:
 
     def __post_init__(self):
         if not isinstance(self.overrides, dict) or any(not isinstance(key, str) or not key for key in self.overrides):
-            raise ValueError("权限映射必须使用非空模式名")
+            raise ValueError("Permission mapping must use a non-empty schema name")
         if any(not isinstance(value, dict) for value in self.overrides.values()):
-            raise ValueError("权限映射必须返回配置对象")
+            raise ValueError("Permission mapping must return a configuration object")
         if not isinstance(self.plan_overrides, dict):
-            raise ValueError("计划模式映射必须为配置对象")
+            raise ValueError("Plan mode mapping must be a configuration object")
         if self.consent_key is not None and not isinstance(self.consent_key, str):
-            raise ValueError("审批配置字段必须为字符串")
+            raise ValueError("Approval configuration fields must be strings")
         if not isinstance(self.consent_values, dict) or any(
             not isinstance(key, str) or (value is not None and type(value) is not bool)
             for key, value in self.consent_values.items()
         ):
-            raise ValueError("审批配置映射必须为布尔值或 null")
+            raise ValueError("Approval configuration mapping must be a boolean or null")
 
     def permission_overrides(self, mode: str) -> dict:
         if not mode:
             return {}
         if mode not in self.overrides:
-            raise ValueError(f"当前引擎未声明支持权限模式：{mode}")
+            raise ValueError(f"Current engine does not declare support for permission mode: {mode}")
         return deepcopy(self.overrides[mode])
 
     def configured_consent(self, config: dict) -> bool | None:

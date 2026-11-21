@@ -213,7 +213,7 @@ async def test_stale_selection_is_rejected_off_loop_before_starting_engine(edito
     assert time.monotonic() - start < .08
     response = await request
     assert response.status_code == 409, response.text
-    assert '重新选择' in response.json()['detail']
+    assert 'reselect' in response.json()['detail']
 
 
 async def test_history_file_patches_and_times_keep_health_responsive(editor, monkeypatch):

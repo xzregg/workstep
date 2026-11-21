@@ -1,4 +1,5 @@
 import SettingsHelpButton from '../components/SettingsHelpButton'
+import { notifyProvidersChanged } from '../hooks/useProjectProviders'
 import ProviderImportDialog from '../components/ProviderImportDialog'
 import ProviderModelsDialog from '../components/ProviderModelsDialog'
 import ProviderSavedModels from '../components/ProviderSavedModels'
@@ -7,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Icon from '../components/Icon'
+import Spinner from '../components/Spinner'
 import {
   providerApi,
   type EngineModel,
@@ -14,7 +16,7 @@ import {
   type ProviderTestResult,
   type ProviderTypeMeta,
 } from '../api/client'
-import { useI18n, type TKey } from '../i18n'
+import { useI18n, type TKey, localizeErrorDisplay } from '../i18n'
 import './ProviderSettings.css'
 import {
   summarizeProviderProtocolModels,
@@ -33,23 +35,27 @@ const ALL_PROTOCOLS: { value: string; labelKey: TKey }[] = [
   { value: 'openai_chat_completions', labelKey: 'providerSettings.protocolChat' },
 ]
 
-function ProviderBadge({ verified, enabled }: { verified: boolean; enabled: boolean }) {
+function ProviderBadge({ verified, enabled, testSuccess }: {
+  verified: boolean; enabled: boolean; testSuccess?: boolean
+}) {
   const { t } = useI18n()
-  if (!enabled) {
-    return (
-      <span className="provider-settings-badge provider-settings-badge--disabled">
-        {t('providerSettings.disabledBadge')}
-      </span>
-    )
-  }
+  const status = !enabled ? 'disabled' : testSuccess === false ? 'failed'
+    : (testSuccess ?? verified) ? 'verified' : 'unverified'
+  const label = {
+    disabled: 'providerSettings.disabledBadge',
+    failed: 'providerSettings.testFailed',
+    verified: 'providerSettings.verified',
+    unverified: 'providerSettings.notVerified',
+  } as const
   return (
-    <span className={`provider-settings-badge provider-settings-badge--${verified ? 'verified' : 'unverified'}`}>
-      {verified ? t('providerSettings.verified') : t('providerSettings.notVerified')}
+    <span className={`provider-settings-badge provider-settings-badge--${status}`}>
+      {t(label[status])}
     </span>
   )
 }
 
-export default function ProviderSettings({ onChanged, autoCreate = false }: Props) {
+export default function ProviderSettings({ onChanged: onCatalogChanged, autoCreate = false }: Props) {
+  const onChanged = () => { notifyProvidersChanged(); onCatalogChanged?.() }
   const { t } = useI18n()
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [types, setTypes] = useState<ProviderTypeMeta[]>([])
@@ -182,7 +188,15 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
             .join('；'),
         },
       }))
-      await refresh()
+      if (provider.managed) {
+        const savedStatus = results.at(-1)?.test_success
+        if (savedStatus !== undefined) {
+          setProviders((current) => current.map((item) => item.id === provider.id
+            ? { ...item, test_success: savedStatus, verified: savedStatus === true } : item))
+        }
+      } else {
+        await refresh()
+      }
     } catch (reason) {
       setTestResults((current) => ({
         ...current,
@@ -195,8 +209,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
 
   const [modelsDialog, setModelsDialog] = useState<{
     provider: ProviderInfo
-    protocol: string
-    queue: string[]
+    groups: ProviderProtocolModels[]
     preview: EngineModel[]
     selected: string[]
     saving: boolean
@@ -208,34 +221,46 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
     return option ? t(option.labelKey) : protocol
   }
 
-  const openModelsPreview = async (provider: ProviderInfo, protocols: string[]) => {
-    const [protocol, ...rest] = protocols
-    if (!protocol) {
-      await refresh()
-      onChanged?.()
-      return
-    }
+  const loadModels = async (provider: ProviderInfo) => {
+    if (modelsLoadingId !== null || modelsDialog) return
+    setModelErrors((current) => {
+      const next = { ...current }
+      delete next[provider.id]
+      return next
+    })
     setModelsLoadingId(provider.id)
     try {
-      const preview = await providerApi.previewModels(provider.id, protocol)
-      if (preview.error) {
+      const protocols = [...new Set(provider.protocols?.length ? provider.protocols : [provider.protocol])]
+      const results = await Promise.all(protocols.map(async (protocol) => {
+        try {
+          const preview = await providerApi.previewModels(provider.id, protocol)
+          if (preview.error) return { protocol, error: preview.error }
+          const saved = await providerApi.models(provider.id, false, protocol).catch(() => null)
+          const savedIds = new Set((saved?.models || []).map((item) => item.id))
+          const initial = preview.models.filter((item) => savedIds.has(item.id)).map((item) => item.id)
+          return { protocol, models: preview.models, fetchedAt: null,
+            selected: initial.length ? initial : preview.models.map((item) => item.id) }
+        } catch (reason) {
+          return { protocol, error: reason instanceof Error ? reason.message : t('providerSettings.modelsFailed') }
+        }
+      }))
+      const errors = results.filter((result) => 'error' in result)
+      if (errors.length) {
         setModelErrors((current) => ({
           ...current,
-          [provider.id]: `${protocolLabel(protocol)}: ${preview.error}`,
+          [provider.id]: errors.map((result) => `${protocolLabel(result.protocol)}: ${result.error}`).join('；'),
         }))
-        await openModelsPreview(provider, rest)
-        return
       }
-      const saved = await providerApi.models(provider.id, false, protocol).catch(() => null)
-      const savedIds = new Set((saved?.models || []).map((item) => item.id))
-      const initial = preview.models.filter((item) => savedIds.has(item.id)).map((item) => item.id)
+      const successful = results.filter(
+        (result): result is Extract<typeof result, { models: EngineModel[] }> => result.models !== undefined,
+      )
+      if (!successful.length) return
+      const { groups } = summarizeProviderProtocolModels(successful)
       setModelsDialog({
         provider,
-        protocol,
-        queue: rest,
-        preview: preview.models,
-        // 默认全选预览结果，已入库的保持勾选；用户取消勾选即不入库。
-        selected: initial.length ? initial : preview.models.map((item) => item.id),
+        groups,
+        preview: [...new Map(groups.flatMap((group) => group.models).map((model) => [model.id, model])).values()],
+        selected: [...new Set(successful.flatMap((result) => result.selected))],
         saving: false,
         error: '',
       })
@@ -249,25 +274,19 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
     }
   }
 
-  const loadModels = async (provider: ProviderInfo) => {
-    setModelErrors((current) => {
-      const next = { ...current }
-      delete next[provider.id]
-      return next
-    })
-    const protocols = provider.protocols?.length ? provider.protocols : [provider.protocol]
-    await openModelsPreview(provider, protocols)
-  }
-
   const confirmModelsSelection = async () => {
-    if (!modelsDialog) return
-    const { provider, protocol, queue, preview, selected } = modelsDialog
+    if (!modelsDialog || modelsDialog.saving) return
+    const { provider, groups, selected } = modelsDialog
     setModelsDialog((current) => (current ? { ...current, saving: true, error: '' } : current))
     try {
-      const chosen = preview.filter((item) => selected.includes(item.id))
-      await providerApi.saveModelSelection(provider.id, protocol, chosen)
+      for (const group of groups) {
+        await providerApi.saveModelSelection(
+          provider.id, group.protocol, group.models.filter((item) => selected.includes(item.id)),
+        )
+      }
       setModelsDialog(null)
-      await openModelsPreview(provider, queue)
+      await refresh()
+      onChanged?.()
     } catch (reason) {
       setModelsDialog((current) => (current
         ? { ...current, saving: false, error: reason instanceof Error ? reason.message : t('providerSettings.modelsFailed') }
@@ -310,7 +329,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
 
       {error && (
         <div role="alert" className="provider-settings-alert">
-          {error}
+          {localizeErrorDisplay(error)}
         </div>
       )}
 
@@ -383,6 +402,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                       groups={providerModelGroups}
                       protocolLabel={protocolLabel}
                     />
+                    {provider.managed && <p className="provider-settings-card-detail">{t('providerSettings.managedHint')}</p>}
                   </div>
                   <div className="provider-settings-card-actions">
                     <Button
@@ -394,6 +414,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                     >
                       {t('providerSettings.test')}
                     </Button>
+                    {!provider.managed && <>
                     <Button
                       variant="ghost"
                       className="provider-settings-action provider-settings-action--wide"
@@ -406,16 +427,21 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                         <span className="provider-settings-model-count">{modelCount}</span>
                       )}
                     </Button>
-                    <Button
-                      variant="ghost"
-                      className="provider-settings-action"
-                      disabled={togglingId !== null}
-                      loading={togglingId === provider.id}
-                      title={t('providerSettings.enabledHint')}
-                      onClick={() => void toggleEnabled(provider)}
-                    >
-                      {provider.enabled ? t('providerSettings.disable') : t('providerSettings.enable')}
-                    </Button>
+                    <span className="provider-settings-toggle" title={t('providerSettings.enabledHint')}>
+                      <button
+                        type="button"
+                        className="settings-switch"
+                        role="switch"
+                        aria-label={`${provider.name} · ${t('providerSettings.enable')}`}
+                        aria-checked={provider.enabled}
+                        aria-busy={togglingId === provider.id}
+                        disabled={togglingId !== null}
+                        onClick={() => void toggleEnabled(provider)}
+                      >
+                        <span className="settings-switch-thumb" />
+                      </button>
+                      {togglingId === provider.id && <Spinner />}
+                    </span>
                     <Button
                       variant="ghost"
                       className="provider-settings-action"
@@ -441,7 +467,11 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                     >
                       <Icon name="trash" size={15} strokeWidth={2} />
                     </Button>
-                    <ProviderBadge verified={provider.verified} enabled={provider.enabled} />
+                    </>}
+                    <ProviderBadge verified={provider.verified} enabled={provider.enabled}
+                      testSuccess={provider.managed
+                        ? (provider.test_success === undefined ? testResult?.success : provider.test_success ?? undefined)
+                        : undefined} />
                   </div>
                 </div>
               </div>
@@ -465,7 +495,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
 
       {modelsDialog && <ProviderModelsDialog
         providerName={modelsDialog.provider.name}
-        protocolLabel={protocolLabel(modelsDialog.protocol)}
+        protocolLabel={t('providerSettings.models')}
         models={modelsDialog.preview}
         initialSelected={modelsDialog.selected}
         saving={modelsDialog.saving}
@@ -507,7 +537,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
       />
       {deleteError && (
         <div role="alert" className="provider-settings-alert provider-settings-alert--delete">
-          {deleteError}
+          {localizeErrorDisplay(deleteError)}
         </div>
       )}
     </div>

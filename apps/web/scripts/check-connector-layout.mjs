@@ -30,7 +30,7 @@ try {
       const props = { projectId: 'demo', sessionId: 'demo', engineId: 'codex', onClose() {}, initialItems: Array.from({ length: 12 }, (_, index) => ({ id: String(index), name: ['GitHub', 'Figma', '钉钉 CLI'][index % 3], description: '读取文件、查询内容与执行已授权操作，这是较长的示例描述', kind: 'mcp', selected: index === 0, available: index !== 1 })) }
       const diagnostic = mode === 'editor-test' || mode === 'editor-auth'
       connectorApi.diagnose = async () => mode === 'editor-auth'
-        ? { ok: false, status: 'auth_required', tool_count: 0, tools: [], message: '需要认证或凭据已过期，请配置认证后重试' }
+        ? { ok: false, status: 'auth_required', tool_count: 0, tools: [], message: 'Authentication required or credentials expired. Please configure authentication and retry:' }
         : { ok: true, status: 'connected', tool_count: 3, message: '已连接 MCP 服务', tools: ['echo', 'add', 'get_demo_info'].map(name => ({ name, description: '本地测试工具，支持查看参数和手动执行', input_schema: { type: 'object', properties: { text: { type: 'string' } } } })) }
       await act(async () => root.render(React.createElement(I18nProvider, null, mode === 'picker' ? React.createElement(ConnectorPicker, props) : React.createElement(ConnectorEditor, { initialTab: diagnostic ? 'test' : 'config', initial: mode === 'editor-local' ? { name: '本地工具', kind: 'mcp', transport: 'stdio', command: 'npx', args: ['-y', 'example-server', '/path/to/project with spaces'] } : diagnostic ? { name: 'MCP 测试服务', url: 'https://example.com/mcp' } : {}, onClose() {}, onSaved() {} }))))
       if (diagnostic) await act(async () => document.querySelector('[data-connector-diagnose]').click())

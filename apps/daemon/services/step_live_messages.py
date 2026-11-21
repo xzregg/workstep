@@ -10,7 +10,7 @@ from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from models import Message, StepRun, StepSupplement, Task
 from models.fields import utc_now
 from services.intervention import intervention_manager
-from services.messages import create_task_message, extract_usage_json, new_message_id
+from services.messages import StepEventProgress, create_task_message, new_message_id
 from services.pipeline import Step
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ class StepLiveMessages:
         self, *, task: Task, step: Step, step_run: StepRun | None,
         artifacts_dir: Path, data: dict, message_id: str,
         journal_ref: JournalRef, session_id: str | None,
-        resolved_model: str | None, events_collected: list[dict],
+        resolved_model: str | None, event_progress: StepEventProgress,
     ) -> tuple[str, JournalRef]:
         """Acknowledge an injected message and split delivered execution output."""
         inserted_id = data.get("message_id")
@@ -115,7 +115,7 @@ class StepLiveMessages:
             sealed.event_summary_json = snapshot["event_summary_json"]
             sealed.event_count = snapshot["event_count"]
             sealed.last_event_seq = snapshot["last_event_seq"]
-            sealed.usage_json = extract_usage_json(events_collected)
+            sealed.usage_json = event_progress.usage_json()
             sealed.run_status = "succeeded"
             sealed.ended_at = seal_time
             sealed.save()
@@ -126,7 +126,7 @@ class StepLiveMessages:
             await self._publish(task.id, step.key, {
                 "channel": "execution", "message_id": message_id,
                 "engine": sealed_engine, "model": sealed_model,
-                "event_sequence": len(events_collected) + 1,
+                "event_sequence": event_progress.count + 1,
                 "type": "message_completed", "data": {"status": "succeeded"},
             })
         except Message.DoesNotExist:
@@ -308,17 +308,17 @@ class StepLiveMessages:
         """Persist and queue a user message for the running execution/review."""
         normalized = content.strip()
         if not normalized:
-            raise ValueError("消息内容不能为空")
+            raise ValueError("Message content cannot be empty")
         run_key = f"{task_id}:{step_key}"
         engine = self._running_engines.get(run_key)
         if engine is None:
-            raise ValueError(f"步骤未在运行: {step_key}")
+            raise ValueError(f"Step not running: {step_key}")
         capabilities = getattr(engine, "capabilities", None)
         if capabilities is None or not capabilities.supports_live_step_message:
-            raise ValueError("该引擎不支持执行中消息注入")
+            raise ValueError("This engine does not support message injection during execution")
         queue = self._queues.get(run_key)
         if queue is None:
-            raise ValueError("步骤消息队列不可用")
+            raise ValueError("Step message queue unavailable")
         channel = self._channels.get(run_key, "execution")
         now = utc_now()
         message_id = new_message_id()
@@ -327,7 +327,7 @@ class StepLiveMessages:
             try:
                 task = Task.get_by_id(task_id)
             except Task.DoesNotExist:
-                raise ValueError(f"任务不存在: {task_id}")
+                raise ValueError(f"Task not found: {task_id}")
             message = create_task_message(
                 id=message_id, task=task, channel=channel, step_key=step_key,
                 role="user", content=normalized, run_id=message_id,

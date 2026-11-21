@@ -1,12 +1,98 @@
 """Turn event journal behavior through its public interface."""
 
 import asyncio
+import json
 import time
+import tracemalloc
 
 import pytest
 
 from agent_assistants.event_journal import TurnEventJournal
 from engines.core.agui import to_agui_events
+
+
+@pytest.mark.parametrize("operation", ["start", "record", "finish", "snapshot", "timeline"])
+def test_large_journal_operations_do_not_hold_full_tool_output(tmp_path, operation):
+    journal = TurnEventJournal()
+    ref = journal.start(tmp_path, "large", "message")
+    journal.close()
+    with (tmp_path / ref.relative_path).open("w", encoding="utf-8") as handle:
+        for seq in range(1, 1025):
+            event = {"type": "tool_call_update", "seq": seq, "data": {
+                "tool_call_id": str(seq), "status": "completed", "kind": "execute",
+                "raw_output": "x" * 8192,
+            }}
+            handle.write(json.dumps(event) + "\n")
+    journal = TurnEventJournal()
+    operations = {
+        "start": lambda: journal.start(tmp_path, "large", "message"),
+        "record": lambda: journal.record(ref, {"type": "status"}),
+        "finish": lambda: journal.finish(ref),
+        "snapshot": lambda: journal.snapshot(ref),
+        "timeline": lambda: journal.timeline(ref, cursor=500, limit=10),
+    }
+    try:
+        tracemalloc.start()
+        operations[operation]()
+        _, peak = tracemalloc.get_traced_memory()
+        assert peak < 4 * 1024 * 1024
+    finally:
+        tracemalloc.stop()
+        journal.close()
+
+
+def test_journal_legacy_order_missing_sequences_and_early_response(tmp_path):
+    journal = TurnEventJournal()
+    ref = journal.start(tmp_path, "legacy", "message")
+    journal.close()
+    records = [
+        {"type": "interaction_response", "seq": 8, "data": {"interaction_id": "answered"}},
+        {"type": "interaction_request", "seq": 4, "data": {"interaction_id": "answered"}},
+        {"type": "interaction_request", "seq": 5, "data": {"interaction_id": "open", "method": "session/request_permission"}},
+        {"type": "interaction_request", "seq": 6, "data": {"interaction_id": "open", "method": "other"}},
+        {"type": "status"},
+    ]
+    (tmp_path / ref.relative_path).write_text(
+        "\n".join(json.dumps(event) for event in records) + "\n", encoding="utf-8",
+    )
+    journal = TurnEventJournal()
+    try:
+        assert journal.snapshot(ref)["summary"]["last_event_seq"] == 0
+        assert journal.timeline(ref, cursor=4, limit=2) == {
+            "events": [records[0], records[2]], "event_count": 5,
+            "last_event_seq": 5, "next_cursor": 5, "complete": False,
+        }
+        journal.finish(ref)
+        events = journal.timeline(ref)["events"]
+        assert len(events) == 5
+        assert events[-1]["seq"] == 9
+        assert events[-1]["data"] == {
+            "interaction_id": "open", "method": "session/request_permission",
+            "response": {"outcome": {"outcome": "cancelled"}},
+        }
+    finally:
+        journal.close()
+
+
+@pytest.mark.parametrize("output_field", ["raw_output", "content"])
+def test_live_journal_does_not_keep_large_tool_output_in_file_index(tmp_path, output_field):
+    journal = TurnEventJournal(flush_bytes=1)
+    ref = journal.start(tmp_path, "live", "message")
+    try:
+        tracemalloc.start()
+        for index in range(128):
+            output = str(index) + "x" * 65536
+            journal.record(ref, {"type": "tool_call_update", "data": {
+                "tool_call_id": str(index), "status": "in_progress", "kind": "execute",
+                output_field: output if output_field == "raw_output" else [
+                    {"type": "content", "content": {"type": "text", "text": output}},
+                ],
+            }})
+        current, _ = tracemalloc.get_traced_memory()
+        assert current < 4 * 1024 * 1024
+    finally:
+        tracemalloc.stop()
+        journal.close()
 
 
 def test_delete_session_removes_nested_logs_and_indexes_without_recreating_them(tmp_path):
@@ -93,11 +179,11 @@ def test_journal_summary_identifies_successful_file_edits_without_loading_detail
 async def test_file_edit_summary_snapshot_keeps_slow_storage_off_the_event_loop(tmp_path, monkeypatch):
     journal = TurnEventJournal()
     ref = await journal.astart(tmp_path, "session-edit-slow", "message-edit-slow")
-    original = journal._read
+    original = journal._iter_events
     def slow_read(ref):
         time.sleep(0.25)
         return original(ref)
-    monkeypatch.setattr(journal, "_read", slow_read)
+    monkeypatch.setattr(journal, "_iter_events", slow_read)
     started = time.perf_counter()
     snapshot = asyncio.create_task(journal.asnapshot(ref))
     try:
@@ -111,13 +197,13 @@ async def test_file_edit_summary_snapshot_keeps_slow_storage_off_the_event_loop(
 async def test_async_journal_io_does_not_block_the_event_loop(tmp_path, monkeypatch):
     """Slow journal storage must not delay unrelated daemon coroutines."""
     journal = TurnEventJournal()
-    original_read = journal._read
+    original_read = journal._iter_events
 
     def slow_read(ref):
         time.sleep(0.25)
         return original_read(ref)
 
-    monkeypatch.setattr(journal, "_read", slow_read)
+    monkeypatch.setattr(journal, "_iter_events", slow_read)
     started = time.perf_counter()
 
     async def canary():

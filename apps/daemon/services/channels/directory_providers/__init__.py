@@ -29,10 +29,10 @@ class ChannelDirectoryProvider(ABC):
                 async for chunk in response.aiter_bytes():
                     body.extend(chunk)
                     if len(body) > 16 * 1024 * 1024:
-                        raise DirectoryError('directory_too_large', '通讯录响应过大，请缩小应用授权范围')
+                        raise DirectoryError('directory_too_large', 'The address book response is too large. Please reduce the application\'s authorization scope.')
             data = await self.work(json.loads, body)
             if data.get('errcode', data.get('code', 0)) not in (0, '0', None):
-                raise DirectoryError('directory_permission', '通讯录接口拒绝请求，请检查应用凭证、权限及可见范围')
+                raise DirectoryError('directory_permission', 'Contacts API rejected the request. Please check the application credentials, permissions, and visibility scope.')
             return data
         raise RuntimeError('Directory request exhausted')
 
@@ -43,13 +43,13 @@ class ChannelDirectoryProvider(ABC):
     @staticmethod
     def add(people, id, name, departments, *, send=True):
         if not id or not name:
-            raise DirectoryError('directory_incomplete', '通讯录缺少姓名或用户 ID，请检查读取权限')
+            raise DirectoryError('directory_incomplete', 'Contacts are missing a name or user ID; please check read permissions')
         key = str(id)
         old = people.get(key, {})
         people[key] = {'contact_id':key, 'name':str(name), 'user_id':key if send else '',
             'departments':sorted(set(old.get('departments', [])) | set(departments))}
         if len(people) > 50000:
-            raise DirectoryError('directory_too_large', '通讯录超过 50000 人，请缩小应用授权范围')
+            raise DirectoryError('directory_too_large', 'Address book exceeds 50,000 contacts. Please narrow the app\'s authorization scope.')
 
     @staticmethod
     def next_page(data, seen, key='page_token'):
@@ -57,6 +57,6 @@ class ChannelDirectoryProvider(ABC):
             return None
         token = data.get(key)
         if token is None or str(token) in seen:
-            raise DirectoryError('directory_incomplete', '通讯录分页异常，请稍后重试')
+            raise DirectoryError('directory_incomplete', 'Contact list pagination error, please try again later')
         seen.add(str(token))
         return token

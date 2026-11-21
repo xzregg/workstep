@@ -69,10 +69,11 @@ test('an empty saved archive draft can be archived without adding experience', a
     assert.deepEqual(calls[0], ['load', 'task', 'project'])
     const dialog = container.querySelector('[role="dialog"]')!
     assert.ok(dialog.textContent?.length)
+    assert.equal(dialog.querySelector<HTMLInputElement>('input[type=checkbox]')?.checked, true)
     const confirm = [...dialog.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => /Archive directly|直接归档/.test(button.textContent || '') && !button.disabled)!
     await act(async () => confirm.click())
-    assert.deepEqual(calls[1], ['confirm', 'task', 'project', ''])
+    assert.deepEqual(calls[1], ['confirm', 'task', 'project', '', true])
     assert.equal(archived, 1)
   } finally {
     await act(async () => root.unmount())

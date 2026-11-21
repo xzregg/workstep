@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { providerApi, type ProviderInfo, type ProviderTypeMeta } from '../api/client'
-import { useI18n, type TKey } from '../i18n'
+import { useI18n, type TKey, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Field from './Field'
@@ -243,10 +243,9 @@ export default function ProviderEditorDialog({ target, types, onClose, onSaved }
                 const enabled = form.protocols.includes(option.value)
                 return (
                   <div className="provider-protocol-setting" key={option.value}>
-                    <label className="provider-protocol-toggle">
+                    <label className="provider-protocol-choice">
+                      <input type="checkbox" checked={enabled} onChange={() => toggleProtocol(option.value)} />
                       <span>{t(option.labelKey)}</span>
-                      <input type="checkbox" role="switch" checked={enabled} onChange={() => toggleProtocol(option.value)} />
-                      <span className="provider-protocol-switch" aria-hidden="true" />
                     </label>
                     {enabled && <Field className="provider-protocol-address" label={t('providerSettings.baseUrl')}
                       htmlFor={`provider-base-url-${option.value}`} required>
@@ -285,8 +284,8 @@ export default function ProviderEditorDialog({ target, types, onClose, onSaved }
           </Field>
           <div className="field-hint provider-editor-feedback" aria-live="polite">
             {copyLoading && <span>{t('settings.readingEngines')}</span>}
-            {copyError && <span className="provider-editor-error">{copyError}</span>}
-            {formError && <span className="provider-editor-error">{formError}</span>}
+            {copyError && <span className="provider-editor-error">{localizeErrorDisplay(copyError)}</span>}
+            {formError && <span className="provider-editor-error">{localizeErrorDisplay(formError)}</span>}
           </div>
           <div className="provider-editor-actions">
             <Button variant="ghost" disabled={formSaving} onClick={requestClose}>{t('common.cancel')}</Button>

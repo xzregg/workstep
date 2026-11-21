@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { roleCenterApi, type RoleCatalog, type RoleDocument, type TeamDocument, type TeamMember } from '../../api/roleCenter'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import { useCompactLayout } from '../../hooks/useCompactLayout'
 import { useOverlay } from '../../hooks/useOverlay'
 import Button from '../Button'
@@ -80,7 +80,7 @@ export default function PromptAssetEditor({ kind, id, catalog, onSaved, onClose,
         <Button variant="icon" disabled={saving} aria-label={t(kind === 'role' ? 'roleCenter.closeRole' : 'roleCenter.closeTeam')} onClick={close}>✕</Button>
       </header>
       {loading ? <div className="role-center-loading"><Spinner />{t('roleCenter.loading')}</div>
-        : id && !record ? <div className="role-center-load-error"><p className="role-center-editor-error" role="alert">{error}</p>
+        : id && !record ? <div className="role-center-load-error"><p className="role-center-editor-error" role="alert">{localizeErrorDisplay(error)}</p>
           <Button onClick={() => setRetry(r => r + 1)}>{t('roleCenter.retry')}</Button></div>
         : <div className="role-center-editor-body">
           <div className="role-center-editor-meta">

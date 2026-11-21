@@ -1090,7 +1090,7 @@ async def test_reconcile_abandoned_executing_coordinator_action(api_context):
             ActionProposal.get_by_id("action-orphan-proposal").error,
         ),
     )
-    assert state == ("failed", "协调助手操作中断，请重新发起")
+    assert state == ("failed", 'Coordination assistant operation interrupted, please restart')
 
 
 @pytest.mark.anyio
@@ -1425,7 +1425,7 @@ async def test_archive_rejects_verbose_generated_lessons(api_context, monkeypatc
         f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
     )
     assert prepared.status_code == 502
-    assert "每条不超过 50 字" in prepared.json()["detail"]
+    assert 'not exceeding 50 characters' in prepared.json()["detail"]
 
 
 @pytest.mark.anyio
@@ -2066,9 +2066,9 @@ def test_normalize_input_rounds_rejects_invalid_and_ignores_target():
         {"req": "2", "ui": 1, "build": 3},
         "build",
     ) == {"req": 2, "ui": 1}
-    with pytest.raises(ValueError, match="非法产物轮次"):
+    with pytest.raises(ValueError, match='Invalid artifact round'):
         CoordinatorActionService._normalize_input_rounds({"req": "bad"}, "build")
-    with pytest.raises(ValueError, match="非法产物轮次"):
+    with pytest.raises(ValueError, match='Invalid artifact round'):
         CoordinatorActionService._normalize_input_rounds({"req": 0}, "build")
 
 
@@ -2210,6 +2210,14 @@ def test_assemble_context_includes_coordinator_root_dir(tmp_path):
             assert "proposal=null and questions=[]" in rules
             assert "Do not invent a step operation or ask for execution confirmation" in rules
             assert "Only propose an action when a concrete operation needs user confirmation" in rules
+            assert "workstep-cli channels reference" in rules
+            assert "channel unbind" in rules
+            assert "current channel group" in rules
+            assert "task archive or task archive-confirm" in rules
+            assert "use --notify unless the user requests silence" in rules
+            assert "Never use a past source" in rules
+            assert "Report the operation and notification separately" in rules
+            assert "do not send another notice" in rules
         assert "Use a proposal for an executable stage action;" not in instructions
         assert "create task worktrees" not in instructions
         assert len(instructions) < 5200
@@ -2403,9 +2411,11 @@ async def test_slow_coordinator_artifact_discovery_keeps_health_responsive(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("switch_provider", [False, True])
 async def test_coordinator_resume_engine_keeps_history_engine_side(
     api_context,
     monkeypatch,
+    switch_provider,
 ):
     """任务协调走 resume 引擎：prompt 不带历史，引擎状态跨轮传递并持久化。"""
     from engines.core.registry import ENGINE_REGISTRY
@@ -2413,6 +2423,11 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     client, tmp_path = api_context
     ResumeCoordinatorFakeEngine.calls.clear()
     monkeypatch.setitem(ENGINE_REGISTRY, "claude", ResumeCoordinatorFakeEngine)
+    selected = "provider-a"
+    if switch_provider:
+        monkeypatch.setattr(
+            ResumeCoordinatorFakeEngine, "resolve_provider_id", lambda self, provider_id=None: provider_id or selected,
+        )
     project_id, task_id = await _create_task(client, tmp_path)
 
     sent = await client.post(
@@ -2441,24 +2456,27 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     assert "workstep-cli" in ResumeCoordinatorFakeEngine.calls[0]["prompt"]
     assert first_context["coordinator_summary"] is None
 
+    selected = "provider-b"
     second = await client.post(
         f"/api/task/{task_id}/chat?project_id={project_id}",
         headers={"Idempotency-Key": "chat-r2"},
         json={"content": "第二问"},
     )
     assert second.status_code == 200
-    await _wait_for_reply(
+    reply = await _wait_for_reply(
         client,
         project_id,
         task_id,
         assistant_message_id=second.json()["assistant_message_id"],
     )
 
+    if switch_provider:
+        assert reply["run_status"] == "failed"
+        assert "智能交接" in reply["content"]
+        assert len(ResumeCoordinatorFakeEngine.calls) == 1
+        return
     # 第二轮：引擎状态被传回，会话 id 保持稳定，prompt 依旧只带当前用户消息。
-    assert ResumeCoordinatorFakeEngine.calls[1]["message_history"] == {
-        "round": 1
-    }
-    # 第二轮复用第一轮建立的引擎会话 id。
+    assert ResumeCoordinatorFakeEngine.calls[1]["message_history"] == {"round": 1}
     assert ResumeCoordinatorFakeEngine.calls[1]["session_id"] == "engine-session-1"
     resumed_context = json.loads(ResumeCoordinatorFakeEngine.calls[1]["prompt"].split("Context:\n", 1)[1])
     assert [m["content"] for m in resumed_context["recent_coordinator_messages"]] == ["第二问"]

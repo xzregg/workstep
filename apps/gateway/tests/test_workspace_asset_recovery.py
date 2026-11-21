@@ -158,10 +158,18 @@ async def test_buffer_limit_and_non_asset_writes_are_not_retried(monkeypatch):
         await proxy_workspace_asset(asset_call(), connect)
     assert attempts == 1
     call = asset_call()
+    call.target = urlsplit('https://gateway.test/assets/ort-wasm-simd-threaded-AbC123.wasm')
+    monkeypatch.setattr(workspace_assets, 'MAX_VOICE_WASM_BYTES', 5)
+    response = await proxy_workspace_asset(call, connect)
+    assert b''.join([chunk async for chunk in response.chunks]) == b'large'
+    monkeypatch.setattr(workspace_assets, 'MAX_VOICE_WASM_BYTES', 4)
+    with pytest.raises(GatewayError):
+        await proxy_workspace_asset(call, connect)
+    call = asset_call()
     call.operation = 'POST'
     with pytest.raises(ValueError):
         await proxy_workspace_asset(call, connect)
-    assert attempts == 1
+    assert attempts == 3
 
 
 @pytest.mark.asyncio
@@ -205,6 +213,33 @@ async def test_remote_service_recovers_assets_and_does_not_replay_api_requests(m
         await remote.proxy_remote_request(call)
     assert attempts == 3, 'A failed API write must be dispatched only once'
 
+    connects = 0
+    async def reconnecting(device_id):
+        nonlocal connects
+        connects += 1
+        if connects == 1:
+            raise ConnectionError('Device is offline')
+        return connection
+
+    call.control_connections = SimpleNamespace(request_data=reconnecting)
+    call.target = urlsplit('https://gateway.test/api/speech/sessions')
+    async def open_speech(call, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        await kwargs['authorization_check']()
+        return StreamPayload(chunks())
+    connection.proxy_http = open_speech
+    response = await remote.proxy_remote_request(call)
+    assert response.status == 200
+    assert connects == 2, 'First recording waits for reconnect before forwarding'
+    assert attempts == 4
+
+    connection.proxy_http = proxy
+    with pytest.raises(GatewayError):
+        await remote.proxy_remote_request(call)
+    assert connects == 3
+    assert attempts == 5, 'Once forwarded, even a speech session must never be replayed'
+
 
 @pytest.mark.asyncio
 async def test_error_response_is_drained_before_retry_to_release_upstream_stream():
@@ -227,3 +262,32 @@ async def test_error_response_is_drained_before_retry_to_release_upstream_stream
     response = await proxy_workspace_asset(asset_call(), connect)
     assert response.status == 200
     assert attempts == closed == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('name,allowed', [('kws-BEP1Bb78.wasm', True), ('unrelated-BEP1Bb78.wasm', False)])
+async def test_wake_runtime_has_the_bounded_voice_asset_limit(monkeypatch, name, allowed):
+    from gateway.services import workspace_assets
+    from gateway.services.errors import GatewayError
+
+    monkeypatch.setattr(workspace_assets, 'MAX_ASSET_BYTES', 3)
+    monkeypatch.setattr(workspace_assets, 'MAX_VOICE_WASM_BYTES', 5)
+    connection = DataConnection('device', None)
+
+    async def proxy(_call, **kwargs):
+        async def chunks():
+            yield b'12345'
+        return StreamPayload(chunks())
+
+    async def connect():
+        return connection
+
+    connection.proxy_http = proxy
+    call = asset_call()
+    call.target = urlsplit(f'https://gateway.test/assets/{name}')
+    if allowed:
+        response = await proxy_workspace_asset(call, connect)
+        assert b''.join([chunk async for chunk in response.chunks]) == b'12345'
+    else:
+        with pytest.raises(GatewayError, match='Workspace asset exceeds buffer limit'):
+            await proxy_workspace_asset(call, connect)

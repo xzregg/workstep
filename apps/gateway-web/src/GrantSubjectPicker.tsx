@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useId, useState } from 'react'
 import { AdminUserGroupTree } from './AdminUserGroupTree'
 
@@ -22,7 +23,7 @@ export function GrantSubjectPicker({ subjectType, selected, onChange, disabled =
   setLoading(true); setError('')
   void fetch(`/api/admin/project-grant-subjects?${params}`, { credentials: 'same-origin', signal: controller.signal })
    .then(async response => {
-    if (!response.ok) throw Error('授权对象加载失败。')
+    if (!response.ok) throw Error('Failed to load authorization object.')
     const data = await response.json()
     if (!controller.signal.aborted) { setSubjects(data.subjects ?? []); setTotal(data.total ?? 0) }
    }).catch(reason => { if (!controller.signal.aborted) setError(reason.message) })
@@ -54,7 +55,7 @@ export function GrantSubjectPicker({ subjectType, selected, onChange, disabled =
      <button type="button" disabled={disabled || loading || page * 25 >= total} onClick={() => setPage(value => value + 1)}>下一页</button></>}
    </div>
    {loading && <p role="status"><span className="gateway-spinner" /> 正在加载授权对象…</p>}
-   {error && <p role="alert">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>重试加载</button></p>}
+   {error && <p role="alert">{localizeGatewayError(error)} <button type="button" onClick={() => setRevision(value => value + 1)}>重试加载</button></p>}
   </div>
  </div>
 }

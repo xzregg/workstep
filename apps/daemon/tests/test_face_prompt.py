@@ -30,12 +30,13 @@ async def test_camera_context_reaches_engine_system_prompt_and_clears_next_turn(
     sid = module.create_session(project.id)['id']
     body = f'我叫什么名啊\n\n![camera.jpg]({image})'
     messages = [body, '下一轮没有摄像头', f'看到了谁？\n\n![]({unknown_image})',
-                '没有登记的图片\n\n![](.workstep/uploads/digital-person-camera-missing.jpg)']
+                '没有登记的图片\n\n![](.workstep/uploads/digital-person-camera-missing.jpg)',
+                f'刚才是谁？\n\n![]({unknown_image})', '近期结果也不继承']
     for index, text in enumerate(messages):
         async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
             response = await client.post(f'/api/chat-sessions/{sid}/chat',
                 headers={'Idempotency-Key':f'face-{index}'},
-                json={'project_id':project.id,'content':text,'face_person_ids':[person['id']] if index==0 else []})
+                json={'project_id':project.id,'content':text,'face_person_ids':[person['id']] if index in {0, 4} else [], 'face_context_recent': index == 4})
             assert response.status_code == 200, response.text
             turn_id = response.json()['turn_id']
         if index == 0:
@@ -50,15 +51,20 @@ async def test_camera_context_reaches_engine_system_prompt_and_clears_next_turn(
             for session in module._sessions.values():
                 session.extra.pop('camera_context_each_turn', None)
                 session.extra.pop('camera_frame_prompt', None)
-    assert len(calls) == 4
+    assert len(calls) == 6
     assert '小谢' in calls[0][1]['system_prompt'] and '主人' in calls[0][1]['system_prompt']
     assert '小谢' not in calls[0][0]
+    assert image in calls[0][0]
     assert calls[0][1]['system_prompt_each_turn'] is True
-    assert '人脸识别到用户：用户名：小谢；关系：主人。' in calls[0][1]['system_prompt']
+    expected_prompt = '[Visual Context]\nSource: Camera face recognition\nMatches:\n- Name: 小谢; Relationship: 主人'
+    assert expected_prompt in calls[0][1]['system_prompt']
     assert 'Camera observation' not in calls[0][1]['system_prompt']
-    for _, options in calls[1:]:
+    recent_prompt = calls[4][1]['system_prompt']
+    assert expected_prompt in recent_prompt
+    assert 'Seen shortly before capture' not in recent_prompt and '小谢' not in calls[4][0]
+    for _, options in calls[1:4] + calls[5:]:
         system = options.get('system_prompt', '')
-        assert all(text not in system for text in ['人脸识别', 'Camera observation', '小谢', 'No camera observation', 'unknown_face_count'])
+        assert all(text not in system for text in ['[Visual Context]', 'Camera observation', '小谢', 'No camera observation', 'unknown_face_count'])
     assert calls[1][1]['system_prompt_each_turn'] is True
     detail = await manager.run_db(project.id, lambda _: module.get_session(project.id, sid))
     assert [m['content'] for m in detail['messages'] if m['role'] == 'user'] == messages
@@ -66,7 +72,7 @@ async def test_camera_context_reaches_engine_system_prompt_and_clears_next_turn(
     import json
     stored = await manager.run_db(project.id, lambda _: [json.loads(m.context_json or '{}') for m in ChatMessage.select().where(ChatMessage.session == sid, ChatMessage.role == 'user').order_by(ChatMessage.created_at)])
     assert stored[0] == {'face_person_ids':[person['id']]}
-    assert stored[1:] == [{}, {}, {}]
+    assert stored[1:] == [{}, {}, {}, {'face_person_ids':[person['id']], 'face_context_recent':True}, {}]
     from services.remote_access import ActorSnapshot, actor_context
     actor = ActorSnapshot(actor_id='u', user_name='u', device_id='d', device_name='d', source='remote_project', project_id=project.id, access_level='edit')
     with actor_context(actor):

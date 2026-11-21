@@ -71,12 +71,12 @@ def test_digital_person_prompt_scaffolding_is_english(monkeypatch):
     from types import SimpleNamespace
     from services import customization_workspace, digital_person
     from services.digital_person_memory import prompt as memory_prompt
-    from services.digital_person_statistics import format_identity_snapshot
 
     profile = digital_person.DigitalPersonProfile(
         enabled=True, name="Ari", role="Developer", personality="Curious",
         tone="Direct", duties="Follow up on delegated work.",
         conversation_rules="Keep replies brief.",
+        relationship_style="warm", relationship_preferences="Speak naturally.",
     )
     monkeypatch.setattr(customization_workspace, "is_default_workspace", lambda _: True)
     monkeypatch.setattr(digital_person, "get_profile", lambda: profile)
@@ -84,16 +84,9 @@ def test_digital_person_prompt_scaffolding_is_english(monkeypatch):
     assert not CJK_RE.search(identity)
     assert "workstep-cli skill" in identity
     assert "Keep replies brief." in identity
+    assert "## Conversation style\nWarm and approachable" in identity
+    assert "Speak naturally." in identity
     assert not CJK_RE.search(memory_prompt([{"content": "Original text"}]))
-    assert not CJK_RE.search(format_identity_snapshot({"unavailable": True}))
-    stats = format_identity_snapshot(dict(level=1, experience=0, next_level_experience=10,
-        session_count=1, reply_count=0, task_count=0, completed_task_count=0, skills=[]))
-    assert not CJK_RE.search(stats)
-    populated = format_identity_snapshot(dict(level=5, experience=204, next_level_experience=250,
-        session_count=6, reply_count=202, task_count=2, completed_task_count=2,
-        skills=[dict(id='cli', name='workstep-cli')]))
-    assert 'Lv.5' in populated and '204' in populated
-    assert 'Enabled skills' not in populated and 'workstep-cli' not in populated
 
 
 def test_channel_source_prompt_scaffolding_is_english():

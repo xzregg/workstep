@@ -3,15 +3,16 @@ import { createPortal } from 'react-dom'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useI18n } from '../i18n'
 import { appearanceStorage, appearanceStorageKey } from '../utils/appearanceStorage'
+import Button from './Button'
 import Icon from './Icon'
 import RecentConversations from './RecentConversations'
 
 type Section = 'projects' | 'recent'
-interface Preferences { order: Section[]; collapsed: Record<Section, boolean>; recentShare: number }
+interface Preferences { order: Section[]; collapsed: Record<Section, boolean>; recentShare: number; recentClosed: boolean }
 interface DragPreview { section: Section; x: number; y: number; target: Section | null }
 const KEY = 'workstep.sidebar-panels.v1'
 const clampShare = (value: number) => Math.min(0.85, Math.max(0.15, value))
-const initial = (): Preferences => ({ order: ['projects', 'recent'], collapsed: { projects: false, recent: false }, recentShare: 1 / 3 })
+const initial = (): Preferences => ({ order: ['projects', 'recent'], collapsed: { projects: false, recent: false }, recentShare: 1 / 3, recentClosed: false })
 function read(): Preferences {
   try {
     const saved = JSON.parse(appearanceStorage.getItem(KEY) || 'null')
@@ -19,6 +20,7 @@ function read(): Preferences {
       order: saved?.order?.length === 2 && saved.order.includes('projects') && saved.order.includes('recent') ? saved.order : initial().order,
       collapsed: { projects: saved?.collapsed?.projects === true, recent: saved?.collapsed?.recent === true },
       recentShare: typeof saved?.recentShare === 'number' && Number.isFinite(saved.recentShare) ? clampShare(saved.recentShare) : 1 / 3,
+      recentClosed: saved?.recentClosed === true,
     }
   } catch { return initial() }
 }
@@ -34,12 +36,15 @@ export default function WorkspaceSidebarSections({ projectActions, projects, now
   const compact = useCompactLayout()
   const scope = appearanceStorageKey(KEY)
   const [preferences, setPreferences] = useState(read)
+  const { recentClosed } = preferences
   const [dragging, setDragging] = useState<DragPreview | null>(null)
   const [resizing, setResizing] = useState(false)
   const body = useRef<HTMLDivElement>(null)
   const previousPositions = useRef(new Map<Element, number>())
   const stopDrag = useRef<(() => void) | null>(null)
   const suppressClick = useRef(false)
+  const recentAction = useRef<HTMLButtonElement>(null)
+  const focusRecentAction = useRef(false)
   useEffect(() => { setPreferences(read()); setDragging(null) }, [scope])
   useEffect(() => () => stopDrag.current?.(), [compact, scope])
   const collapsed = (section: Section) => !compact && preferences.collapsed[section]
@@ -49,6 +54,15 @@ export default function WorkspaceSidebarSections({ projectActions, projects, now
     setPreferences(next)
     appearanceStorage.setItem(KEY, JSON.stringify(next))
   }
+  const setRecentClosed = (closed: boolean) => {
+    focusRecentAction.current = true
+    save({ ...preferences, recentClosed: closed, collapsed: { ...preferences.collapsed, recent: false } })
+  }
+  useLayoutEffect(() => {
+    if (!focusRecentAction.current) return
+    focusRecentAction.current = false
+    recentAction.current?.focus()
+  }, [recentClosed])
   useLayoutEffect(() => {
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       for (const [element, top] of previousPositions.current) {
@@ -72,7 +86,7 @@ export default function WorkspaceSidebarSections({ projectActions, projects, now
   const heading = (section: Section) => {
     const title = t(section === 'projects' ? 'layout.projects' : 'layout.recentConversations')
     const start = (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (compact || (event.target as HTMLElement).closest('input, .layout-sidebar-search-button')) return
+      if (compact || (event.target as HTMLElement).closest('input, .layout-sidebar-search-button, .layout-sidebar-recent-button')) return
       if (event.button !== 0) return
       stopDrag.current?.()
       const startX = event.clientX, startY = event.clientY
@@ -120,11 +134,18 @@ export default function WorkspaceSidebarSections({ projectActions, projects, now
         onKeyDown={event => { if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); swap() } }}>
         <span>{title}</span><Icon name={collapsed(section) ? 'chevron-right' : 'chevron-down'} size={12} />
       </button>}
+      {section === (recentClosed ? 'projects' : 'recent') && <Button ref={recentAction}
+        type="button" variant="icon" className="layout-sidebar-recent-button"
+        aria-label={t(recentClosed ? 'layout.recentConversations' : 'layout.closeRecentConversations')}
+        title={t(recentClosed ? 'layout.recentConversations' : 'layout.closeRecentConversations')}
+        aria-controls="workspace-recent-content" onClick={() => setRecentClosed(!recentClosed)}>
+        <Icon name={recentClosed ? 'messages-square' : 'x'} size={14} />
+      </Button>}
       {section === 'projects' && projectActions}
     </div>
   }
   const order = compact ? initial().order : preferences.order
-  const resizable = !compact && !order.some(section => collapsed(section))
+  const resizable = !recentClosed && !compact && !order.some(section => collapsed(section))
   const resize = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !resizable || !body.current) return
     event.preventDefault(); event.stopPropagation(); stopDrag.current?.()
@@ -153,14 +174,15 @@ export default function WorkspaceSidebarSections({ projectActions, projects, now
     document.addEventListener('pointercancel', cancel); document.addEventListener('keydown', key)
     window.addEventListener('blur', finish)
   }
-  const rows = order.map(section => collapsed(section) ? '32px' : `minmax(0, ${resizable ? section === 'recent' ? preferences.recentShare : 1 - preferences.recentShare : 1}fr)`).join(resizable ? ' 6px ' : ' ')
+  const rows = order.filter(section => section !== 'recent' || !recentClosed)
+    .map(section => collapsed(section) ? 'max-content' : `minmax(0, ${resizable ? section === 'recent' ? preferences.recentShare : 1 - preferences.recentShare : 1}fr)`).join(resizable ? ' 6px ' : ' ')
   const panels = order.map(section => section === 'projects'
       ? <section key={section} id="layout-project-panel" tabIndex={-1} className="layout-sidebar-project-panel" aria-label={t('layout.projects')}>
         {heading(section)}
         <div id="workspace-projects-content" className="layout-sidebar-section-content" hidden={collapsed(section)}>{projects}</div>
       </section>
-      : <RecentConversations key={section} now={now} heading={heading(section)} collapsed={collapsed(section)} />)
-  return <><div ref={body} className="layout-sidebar-body" data-section-dragging={!!dragging || undefined} data-section-resizing={resizing || undefined} style={compact ? undefined : { gridTemplateRows: rows }}
+      : <RecentConversations key={section} now={now} heading={heading(section)} collapsed={collapsed(section)} hidden={recentClosed} />)
+  return <><div ref={body} className="layout-sidebar-body" data-recent-closed={recentClosed || undefined} data-section-dragging={!!dragging || undefined} data-section-resizing={resizing || undefined} style={compact ? undefined : { gridTemplateRows: rows }}
     onPointerDownCapture={() => { suppressClick.current = false }}
     onClickCapture={event => { if (suppressClick.current && event.detail > 0) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false } }}>
     {panels[0]}

@@ -20,7 +20,7 @@ import {
 } from '../api/client'
 import Button from '../components/Button'
 import Icon from '../components/Icon'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useTaskStore } from '../stores/taskStore'
 import { formatDuration } from '../utils/datetime'
 import { formatCompactMetric, formatRate, seriesPoints, trendTooltipContent } from '../utils/statistics'
@@ -436,7 +436,7 @@ function BusinessStatistics() {
         <div className="statistics-state"><span className="task-status-spinner" />{t('common.loading')}</div>
       ) : error ? (
         <div className="statistics-state statistics-error">
-          <span>{t('statistics.loadFailed')} · {error}</span>
+          <span>{t('statistics.loadFailed')} · {localizeErrorDisplay(error)}</span>
           <Button variant="ghost" onClick={() => setRefreshKey((value) => value + 1)}>{t('common.retry')}</Button>
         </div>
       ) : report ? (

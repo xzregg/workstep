@@ -31,7 +31,7 @@ export const skinActionEnabled = (id: string) => {
 }
 export async function executeSkinAction(id: string, args?: Record<string, unknown>) {
   const action = actions.get(id)?.at(-1)?.action
-  if (!action || !skinActionEnabled(id)) throw new Error('当前上下文不支持此操作')
+  if (!action || !skinActionEnabled(id)) throw new Error('This operation is not supported in the current context')
   return action.run(args)
 }
 export function useSkinActions(entries: Record<string, SkinAction>, context?: SkinContext) {

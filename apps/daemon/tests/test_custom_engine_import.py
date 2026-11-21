@@ -79,14 +79,14 @@ def test_import_rejects_symlinks_and_expanded_size_limit(tmp_path, monkeypatch):
         link = zipfile.ZipInfo('engine.py')
         link.external_attr = 0o120777 << 16
         archive.writestr(link, '/outside')
-    with pytest.raises(ValueError, match='特殊文件'):
+    with pytest.raises(ValueError, match='special file'):
         importer.stage_package(output.getvalue(), tmp_path)
     monkeypatch.setattr(importer, 'MAX_PACKAGE', 1024)
     output = io.BytesIO()
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('resource.txt', 'a' * 2048)
     assert len(output.getvalue()) < 1024
-    with pytest.raises(ValueError, match='解压后过大'):
+    with pytest.raises(ValueError, match='too large.*after extraction'):
         importer.stage_package(output.getvalue(), tmp_path)
     assert not list(tmp_path.iterdir())
 

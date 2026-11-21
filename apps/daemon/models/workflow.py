@@ -9,6 +9,7 @@ class Workflow(BaseModel):
     id = pw.TextField(primary_key=True)
     name = pw.TextField()
     steps_json = pw.TextField()
+    debug_source_id = pw.TextField(null=True, unique=True)
     is_default = pw.IntegerField(default=0)
     deleted = pw.IntegerField(default=0)
     sort_order = pw.IntegerField(default=0)

@@ -42,7 +42,7 @@ def validate_restart_input_rounds(
     for dep_key, requested_round in input_rounds.items():
         if dep_key not in dependencies and dep_key not in feedback_connections:
             raise ValueError(
-                f"产物轮次 {dep_key} 不是目标步骤 {step_key} 的输入来源"
+                f"Build round {dep_key} is not an input source for target step {step_key}"
             )
         rounds = iter_artifact_rounds(
             artifacts_root, task.workflow_id, task.id, dep_key,
@@ -53,7 +53,7 @@ def validate_restart_input_rounds(
         )
         if selected is None or not selected.eligible_for_downstream:
             raise ValueError(
-                f"产物轮次 {dep_key} 第 {requested_round} 轮不可沿用"
+                f"Build round {dep_key} round {requested_round} cannot be reused"
             )
         if dep_key in feedback_connections:
             for connection in feedback_connections[dep_key]:
@@ -67,7 +67,7 @@ def validate_restart_input_rounds(
                 for connection in feedback_connections[dep_key]
             ):
                 raise ValueError(
-                    f"产物轮次 {dep_key} 第 {requested_round} 轮没有可用的返工产物"
+                    f"No available rework artifacts for artifact round {dep_key}, round {requested_round}"
                 )
     return feedback_inputs
 
@@ -103,7 +103,7 @@ def inspect_restart_run(
             task_id, expected_failed_message_id, active_runner,
         )
         if retry_step_key != step_key or retry_run_id != parent_run_id:
-            raise ValueError("失败消息已不属于当前阶段")
+            raise ValueError("Failure message no longer belongs to the current stage")
     workflow_data = current_workflow_steps(project, task)
     compiled = WorkflowDefinition.load(workflow_data).compile()
     steps_config = compiled.to_steps_config()
@@ -152,7 +152,7 @@ def create_restart_run(
         ReviewRun.update(
             status="cancelled",
             ended_at=now,
-            error="流程运行已被新的入口替代",
+            error="The workflow run was replaced by a new entry point.",
         ).where(
             (ReviewRun.workflow_run == parent)
             & (ReviewRun.status.in_(["pending", "running"]))
@@ -281,7 +281,7 @@ def create_restart_run(
         TaskStep.update(
             status="cancelled",
             ended_at=now,
-            error="已切换到其他流程入口",
+            error="The workflow switched to another entry point.",
         ).where(
             (TaskStep.task == task)
             & (~(TaskStep.step_key.in_(execution_keys)))

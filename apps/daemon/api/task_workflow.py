@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/task")
 class TaskWorkflowSave(BaseSchema):
     workflow: dict
     revision: str = Field(min_length=1)
-    context_mode: Literal["smart", "full", "none"] = "smart"
+    context_mode: Literal["smart", "full", "none"] | None = None
 
 
 class TaskWorkflowSync(BaseSchema):
@@ -41,7 +41,7 @@ async def _configuration(pid: str, task_id: str, *, request=None, sync=False):
             result = await project_manager.run_db(pid, lambda project:
                 save_task_workflow(project, task_id, None if sync else request.workflow,
                                    request.revision, active_runner=active,
-                                   context_mode=getattr(request, "context_mode", "smart")))
+                                   context_mode=getattr(request, "context_mode", None)))
         await event_bus.publish({"type": "CUSTOM", "name": "workstep.task_updated",
                                  "task_id": task_id, "project_id": pid, "value": {}})
         return result

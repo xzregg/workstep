@@ -329,9 +329,8 @@ class HermesEngine(AcpEngineBase):
                     event = InternalEvent(type="error", data={
                         **event.data,
                         "message": (
-                            "Hermes 内部错误（Internal error）：可能是 Hermes 自身未配置"
-                            "可用的模型供应商（与 WorkStep 供应商配置无关），请在终端运行"
-                            " `hermes model` 选择供应商，或 `hermes setup` 完成首次配置"
+                            "Hermes returned an internal error. It may need its own model provider. "
+                            "Run `hermes model` in a terminal to select one, or `hermes setup` to complete setup."
                         ),
                     })
                 yield event

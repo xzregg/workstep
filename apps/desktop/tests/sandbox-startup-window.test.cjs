@@ -74,11 +74,11 @@ test('sandbox startup view exposes useful progress and failure details', () => {
     phase: 'switching', label: '正在切换到 workstep:latest', progress: 10, error: null,
   })
   assert.deepEqual(startupViewState({ phase: 'error', error: 'health timeout' }), {
-    phase: 'error', label: '沙箱启动失败', progress: null, error: 'health timeout',
+    phase: 'error', label: 'Sandbox startup failed', progress: null, error: 'health timeout',
   })
   assert.match(formatSandboxFailure(new Error('health timeout'), {
     phase: 'error', hostPort: 8766, logDirectory: '/sandbox/desktop',
-  }), /当前阶段：沙箱启动失败[\s\S]*后台端口：8766[\s\S]*日志目录：\/sandbox\/desktop/)
+  }), /Stage: error[\s\S]*Backend port: 8766[\s\S]*Log directory: \/sandbox\/desktop/)
 })
 
 test('sandbox startup window loads packaged markup through a data URL', () => {
@@ -93,17 +93,15 @@ test('sandbox startup window loads packaged markup through a data URL', () => {
   }
   createSandboxStartupWindow(FakeWindow)
   assert.match(loadedUrl, /^data:text\/html;charset=UTF-8,/)
-  assert.match(decodeURIComponent(loadedUrl.split(',')[1]), /正在启动沙箱/)
-  assert.match(decodeURIComponent(loadedUrl.split(',')[1]), /更换镜像/)
-  assert.match(decodeURIComponent(loadedUrl.split(',')[1]), /复制日志/)
-  assert.match(decodeURIComponent(loadedUrl.split(',')[1]), /\.startup-actions \{ display: flex/)
-  assert.match(decodeURIComponent(loadedUrl.split(',')[1]), /overflow-y: auto/)
-  assert.ok(options.height >= 680)
-  assert.match(options.webPreferences.preload, /sandbox-startup-preload\.cjs$/)
-  const preload = require('node:fs').readFileSync(options.webPreferences.preload, 'utf8')
-  assert.match(preload, /正在切换…/)
-  assert.match(preload, /invoke\('dockerImages'\)/)
-  assert.match(preload, /startup:switchImage/)
+  const markup = decodeURIComponent(loadedUrl.split(',')[1])
+  for (const label of ['启动步骤', '更换镜像', '复制日志', '查看日志', '返回启动进度']) {
+    assert.ok(markup.includes(label), label)
+  }
+  assert.doesNotMatch(markup, /overflow(?:-y)?:\s*(auto|scroll)/)
+  assert.equal(options.height, 680)
+  assert.equal(options.minHeight, 520)
+  assert.equal(options.webPreferences.contextIsolation, true)
+  assert.equal(options.webPreferences.sandbox, true)
 })
 
 test('closing the sandbox startup window distinguishes user hide from internal close', () => {
@@ -123,4 +121,40 @@ test('closing the sandbox startup window distinguishes user hide from internal c
 
   startup.close()
   assert.equal(exits, 1)
+})
+
+
+test('startup keeps the failing step and provides one-shot recovery in the same window', async () => {
+  let load, view
+  class FakeWindow {
+    constructor() {
+      this.webContents = { once: (_event, callback) => { load = callback }, send: (_channel, state) => { view = state } }
+    }
+    on() {}
+    once() {}
+    isDestroyed() { return false }
+    loadURL() { return Promise.resolve() }
+  }
+  const startup = createSandboxStartupWindow(FakeWindow, { image: { id: 'sha256:local', label: 'workstep:stable' } })
+  load()
+  assert.equal(view.step, 'config')
+  assert.equal(view.image.label, 'workstep:stable')
+  startup.update({ phase: 'machine' })
+  startup.update({ phase: 'error', error: 'VM timed out' })
+  assert.equal(view.step, 'machine')
+  assert.equal(view.error, 'VM timed out')
+  assert.equal(startup.recover('retry'), false)
+
+  const response = startup.waitForRecovery({ phase: 'error', error: 'VM timed out' })
+  assert.equal(view.recovery, true)
+  assert.equal(startup.recover('invalid'), false)
+  assert.equal(startup.recover('retry'), true)
+  assert.equal(startup.recover('quit'), false)
+  assert.equal(await response, 'retry')
+  assert.equal(view.recovery, false)
+
+  startup.update({ phase: 'starting' })
+  assert.equal(view.step, 'container')
+  startup.update({ phase: 'running' })
+  assert.equal(view.phase, 'running')
 })

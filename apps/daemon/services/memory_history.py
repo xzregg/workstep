@@ -99,20 +99,20 @@ async def page(projects, scope, project_ids, token, *, cursor=0, limit=20, since
     from services.memory_query import time_range
     query=query.strip()
     if cursor < 0 or not 1 <= limit <= 100 or len(query)>1000:
-        raise ValueError('无效分页参数')
+        raise ValueError('Invalid pagination parameters')
     fingerprint = (token, scope, tuple(project_ids), str(since), str(before), period, timezone_name, query,session_id)
     if snapshot:
         with _lock:
             saved = _snapshots.get(snapshot)
             if not saved or saved['expires'] <= time.monotonic() or saved['fingerprint'] != fingerprint:
-                raise ValueError('记忆历史快照已过期或查询范围已变化，请从头查询')
+                raise ValueError('The memory history snapshot has expired or the query range has changed. Please start querying from the beginning.')
             if cursor not in saved['positions']:
-                raise ValueError('请使用返回的 next_cursor 继续读取历史')
+                raise ValueError('Please use the returned next_cursor to continue reading history')
             state = copy.deepcopy(saved['positions'][cursor])
             bounds, cutoff = saved['bounds'], saved['cutoff']
     else:
         if cursor:
-            raise ValueError('历史分页必须携带 snapshot 和 next_cursor')
+            raise ValueError('Historical pagination must include snapshot and next_cursor')
         bounds = time_range(since=since, before=before, period=period, timezone_name=timezone_name)
         cutoff = datetime.now(timezone.utc).isoformat()
         state = {'project': 0, 'kind': 0, 'after': None, 'scanned': 0, 'excluded': 0, 'unavailable_projects': []}

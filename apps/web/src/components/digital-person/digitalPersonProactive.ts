@@ -2,7 +2,7 @@ import type { DigitalPersonProfile } from '../../api/digitalPerson'
 export const PROACTIVE_MESSAGE = 'workstep:digital-person-proactive-message'
 export const PROACTIVE_SPEECH_CHANGED = 'workstep:digital-person-proactive-speech-changed'
 export interface ProactiveMessage { projectId:string; sessionId:string; messageId:string; text:string }
-export interface ProactiveSpeechContext { projectId:string; sessionId:string; profile:DigitalPersonProfile; muted:boolean }
+export interface ProactiveSpeechContext { projectId:string; sessionId:string; profile:DigitalPersonProfile; muted:boolean; blockNew?:boolean }
 let context:ProactiveSpeechContext|null=null
 export function setProactiveSpeechContext(value:ProactiveSpeechContext|null) {
  context=value

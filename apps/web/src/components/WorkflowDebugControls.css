@@ -1,0 +1,66 @@
+.workflow-debug-fields,
+.workflow-debug-samples {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workflow-debug-fields {
+  margin-block: 4px;
+}
+
+.workflow-debug-fields .field-hint:empty {
+  display: none;
+}
+
+.workflow-debug-actions,
+.workflow-debug-record,
+.workflow-debug-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.workflow-debug-actions {
+  justify-content: flex-end;
+}
+
+.workflow-debug-record {
+  border-bottom: 1px solid var(--border-soft);
+  padding: 8px 0;
+}
+
+.workflow-debug-record time {
+  margin-inline-start: auto;
+  color: var(--text-secondary);
+}
+
+.workflow-debug-editor {
+  display: flex;
+  flex-direction: column;
+  height: min(60dvh, 620px);
+  min-height: 280px;
+}
+
+.workflow-debug-actions {
+  align-items: stretch;
+}
+
+@media (max-width: 1023px) {
+  .confirm-dialog-panel:has(.workflow-debug-fields),
+  .confirm-dialog-panel:has(.workflow-debug-editor) {
+    box-shadow: 0 0 0 1px var(--border-soft);
+  }
+}
+
+@media (max-width: 599px) {
+  .task-detail-primary-tabs-row:has(.workflow-debug-tools) {
+    flex-wrap: wrap;
+    padding-block-end: 4px;
+  }
+
+  .task-detail-primary-tabs-row:has(.workflow-debug-tools) > .task-detail-primary-tabs {
+    flex-basis: 100%;
+  }
+}

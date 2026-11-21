@@ -85,6 +85,7 @@ async def test_execution_finish_indexes_directly_in_worker_without_blocking_loop
     import threading
     from types import SimpleNamespace
     from models import Message,Task
+    from services.messages import StepEventProgress
     from services.step_execution_messages import StepExecutionMessages
     current,project,_=runtime
     def seed(_):
@@ -104,7 +105,7 @@ async def test_execution_finish_indexes_directly_in_worker_without_blocking_loop
     snapshot={'content':'完整任务结果','events_json':'[]','event_summary_json':'{}','event_count':0,'last_event_seq':0}
     service=StepExecutionMessages(SimpleNamespace(finish=lambda _:None),run_db,None,lambda _:snapshot,None,
                                   {},{},None,{},project_id=project.id)
-    task=asyncio.create_task(service.finish(message_id='result',journal_ref=None,events_collected=[],
+    task=asyncio.create_task(service.finish(message_id='result',journal_ref=None,event_progress=StepEventProgress(),
                                           succeeded=True,cancelled=False,ended_at=utc_now()))
     try:
         assert await asyncio.to_thread(entered.wait,2)

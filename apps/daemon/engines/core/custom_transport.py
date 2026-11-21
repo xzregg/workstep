@@ -51,10 +51,10 @@ class CustomWorkerClient:
     async def start(self):
         async with self.start_lock:
             if self.closed:
-                raise RuntimeError("引擎工作进程已关闭")
+                raise RuntimeError("Engine worker process has been closed")
             if self.process is not None:
                 if self.process.returncode is not None:
-                    raise RuntimeError("引擎工作进程已退出")
+                    raise RuntimeError("Engine worker process has exited")
                 return
             worker = Path(__file__).with_name("custom_worker.py")
             from services.conversation_context import execution_env
@@ -88,20 +88,20 @@ class CustomWorkerClient:
             pass
 
     async def _read(self):
-        error = "引擎工作进程已退出"
+        error = "Engine worker process has exited"
         try:
             async for line in ChunkedLineReader(self.process.stdout, max_line_bytes=MAX_RESPONSE_BYTES):
                 if len(line) > MAX_RESPONSE_BYTES:
-                    raise ValueError("响应过大")
+                    raise ValueError("Response too large")
                 message = json.loads(line)
                 if not isinstance(message, dict) or message.get("id") not in self.pending:
-                    raise ValueError("响应协议无效")
+                    raise ValueError("Invalid response protocol")
                 queue = self.pending[message["id"]]
                 if queue.qsize() >= 1024:
-                    raise ValueError("引擎输出超过接收能力")
+                    raise ValueError("Engine output exceeds receiving capacity")
                 queue.put_nowait(message)
         except Exception:
-            error = "引擎工作进程响应协议无效"
+            error = "Engine worker process response protocol is invalid"
         finally:
             for key, queue in self.pending.items():
                 queue.put_nowait({"id": key, "error": error})
@@ -118,7 +118,7 @@ class CustomWorkerClient:
                        "args": serialize(args), "kwargs": serialize(kwargs or {}), "config": snapshot}
             payload = (json.dumps(request, ensure_ascii=False, allow_nan=False) + "\n").encode()
             if len(payload) > 8 * 1024 * 1024:
-                raise ValueError("引擎请求过大")
+                raise ValueError("Engine request too large")
             async with self.write_lock:
                 self.process.stdin.write(payload)
                 await self.process.stdin.drain()
@@ -131,7 +131,7 @@ class CustomWorkerClient:
                         kind = "worker error"
                     if len(kind) > 80 or any(c in kind for c in "\n\r"):
                         kind = "worker error"
-                    raise RuntimeError(f"自定义引擎 {method} 失败（{kind}）")
+                    raise RuntimeError(f"Custom engine {method} failed ({kind})")
                 yield message
                 if "result" in message:
                     break
@@ -166,4 +166,4 @@ class CustomWorkerClient:
                 with suppress(asyncio.CancelledError, Exception):
                     await task
         for key, queue in self.pending.items():
-            queue.put_nowait({"id": key, "error": "工作进程已停止"})
+            queue.put_nowait({"id": key, "error": "The worker process has stopped"})

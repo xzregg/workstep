@@ -1,9 +1,9 @@
 import type { CSSProperties, ReactNode } from 'react'
 import {
-  Heart, CircleAlert, AudioLines, Keyboard, MicOff, PhoneOff, Camera, SwitchCamera, ScanFace, ThumbsUp, ThumbsDown, Volume2, VolumeX, Square, ScanLine, Plug, Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock, Copy, Download, Drama, Ellipsis, Eye,
+  Heart, CircleAlert, AudioLines, Keyboard, MicOff, Phone, PhoneOff, Camera, SwitchCamera, ScanFace, ThumbsUp, ThumbsDown, Volume2, VolumeX, Square, ScanLine, Plug, Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock, Copy, Download, Drama, Ellipsis, Eye,
   ExternalLink, FileText, Folder, FolderOpen, GitFork, GripVertical, Image as ImageIcon, Layers, LayoutGrid, List, Monitor, Smartphone, MousePointer2, PanelTop,
   CircleHelp, Crosshair, Maximize2, Menu, Mic, Lightbulb, LoaderCircle, Minimize2, Minus, Paperclip, Pencil, Play, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
-  MessageCircleHeart, PanelLeftClose, PanelLeftOpen, Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
+  MessageCircleHeart, MessagesSquare, PanelLeftClose, PanelLeftOpen, Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
 } from 'lucide-react'
 
 import {composerSendGlyphs} from '../skins/composerSendGlyphs'
@@ -21,9 +21,11 @@ const glyphs = {
   plug: Plug,
   menu: Menu,
   'message-circle-heart': MessageCircleHeart,
+  'messages-square': MessagesSquare,
   mic: Mic,
   'mic-off': MicOff,
   'audio-lines': AudioLines,
+  phone: Phone,
   'phone-off': PhoneOff,
   keyboard: Keyboard,
   camera: Camera,

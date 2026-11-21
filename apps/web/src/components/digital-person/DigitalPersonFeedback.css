@@ -1,5 +1,5 @@
 .digital-person-feedback { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.digital-person-feedback .digital-person-feedback-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--muted); background: transparent; }
+.digital-person-feedback .digital-person-feedback-button, .digital-home-reply-actions > .digital-person-feedback-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--muted); background: transparent; }
 .digital-person-feedback .digital-person-feedback-button[aria-pressed=true] { color: var(--accent); background: var(--accent-light); }
-.digital-person-feedback .digital-person-feedback-button:hover { color: var(--fg); background: var(--surface); }
+.digital-person-feedback .digital-person-feedback-button:hover, .digital-home-reply-actions > .digital-person-feedback-button:hover { color: var(--fg); background: var(--surface); }
 .digital-person-feedback-error { color: var(--danger); font-size: var(--text-caption); }

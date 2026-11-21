@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import io
 import json
 import logging
 import os
@@ -21,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from engines.core.tool_inputs import edited_file_paths
+from engines.core.tool_inputs import EditedFilePaths
 from agent_assistants.output_rate import OutputRateSampler
 from agent_assistants.file_change_index import IndexBuilder, build_index, read_changes, save_index
 
@@ -175,12 +176,9 @@ class TurnEventJournal:
         path = self.resolve(root, ref)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch(exist_ok=True)
-        next_seq = 1
-        existing = self._read(ref)
-        if existing:
-            next_seq = max(int(item.get("seq") or 0) for item in existing) + 1
-        self._states[path] = _WriterState(ref=ref, next_seq=next_seq,
-                                        file_index=build_index(path) if existing else IndexBuilder())
+        last_seq = self._max_seq(ref)
+        self._states[path] = _WriterState(ref=ref, next_seq=(last_seq or 0) + 1,
+                                        file_index=build_index(path) if last_seq is not None else IndexBuilder())
         return ref
 
     @_storage_operation
@@ -235,10 +233,8 @@ class TurnEventJournal:
         path = self.resolve(ref.root, ref)
         state = self._states.get(path)
         if state is None:
-            state = _WriterState(ref=ref, file_index=build_index(path))
-            existing = self._read(ref)
-            if existing:
-                state.next_seq = max(int(item.get("seq") or 0) for item in existing) + 1
+            last_seq = self._max_seq(ref)
+            state = _WriterState(ref=ref, next_seq=(last_seq or 0) + 1, file_index=build_index(path))
             self._states[path] = state
         record = {
             "v": 1,
@@ -324,20 +320,22 @@ class TurnEventJournal:
     @_storage_operation
     def finish(self, ref: JournalRef, event: dict[str, Any] | None = None) -> None:
         self.sync(ref)
-        events = self._read(ref)
-        answered = {
-            str((item.get("data") or {}).get("interaction_id") or "")
-            for item in events
-            if item.get("type") == "interaction_response"
-        }
-        for item in events:
-            if item.get("type") != "interaction_request":
+        answered: set[str] = set()
+        pending: dict[str, Any] = {}
+        for item in self._iter_events(ref):
+            kind = item.get("type")
+            if kind not in {"interaction_request", "interaction_response"}:
                 continue
             data = item.get("data") or {}
             interaction_id = str(data.get("interaction_id") or "")
-            if not interaction_id or interaction_id in answered:
+            if not interaction_id:
                 continue
-            method = data.get("method")
+            if kind == "interaction_response":
+                answered.add(interaction_id)
+                pending.pop(interaction_id, None)
+            elif interaction_id not in answered:
+                pending.setdefault(interaction_id, data.get("method"))
+        for interaction_id, method in pending.items():
             response = (
                 {"outcome": {"outcome": "cancelled"}}
                 if method == "session/request_permission"
@@ -351,7 +349,6 @@ class TurnEventJournal:
                     "response": response,
                 },
             })
-            answered.add(interaction_id)
         if event is not None:
             self.record(ref, event, force=True)
         else:
@@ -361,19 +358,23 @@ class TurnEventJournal:
     @_storage_operation
     def snapshot(self, ref: JournalRef) -> dict[str, Any]:
         self.sync(ref)
-        events = self._read(ref)
         from services.memory_secrets import redact
-        content_parts: list[str] = []
+        content = io.StringIO()
+        event_count = 0
+        last_seq = None
         thought_characters = 0
         commentary_characters = 0
         tool_ids: set[str] = set()
+        edited_files = EditedFilePaths()
         summary_events: list[dict[str, Any]] = []
         latest_usage: dict[str, Any] | None = None
         first_event_ms: int | None = None
         output_rate = OutputRateSampler()
         first_output_at: str | None = None
         last_event_ms: int | None = None
-        for event in events:
+        for event in self._iter_events(ref):
+            event_count += 1
+            last_seq = event.get("seq")
             event_type = event.get("type")
             data = event.get("data") or {}
             event_ms = _event_time_ms(event.get("timestamp"))
@@ -390,13 +391,14 @@ class TurnEventJournal:
                 if data.get("phase") == "commentary":
                     commentary_characters += len(text)
                 else:
-                    content_parts.append(text)
+                    content.write(text)
             elif event_type == "agent_thought_chunk":
                 text = str((data.get("content") or {}).get("text", ""))
                 if text and first_output_at is None and event_ms is not None:
                     first_output_at = event.get("timestamp")
                 thought_characters += len(text)
             elif event_type in {"tool_call", "tool_call_update"}:
+                edited_files.observe(event_type, data)
                 if (event_type == "tool_call" and (data.get("title") or data.get("raw_input"))
                         and first_output_at is None and event_ms is not None):
                     first_output_at = event.get("timestamp")
@@ -418,12 +420,12 @@ class TurnEventJournal:
         if latest_usage is not None:
             summary_events.append(latest_usage)
         summary: dict[str, Any] = {
-            "event_count": len(events),
-            "last_event_seq": int(events[-1].get("seq") or 0) if events else 0,
+            "event_count": event_count,
+            "last_event_seq": int(last_seq or 0),
             "thought_characters": thought_characters,
             "commentary_characters": commentary_characters,
             "tool_count": len(tool_ids),
-            "edited_files": edited_file_paths(events),
+            "edited_files": edited_files.paths(),
         }
         if output_rate.last_sample is not None:
             summary["output_rate_sample"] = output_rate.last_sample
@@ -432,7 +434,7 @@ class TurnEventJournal:
         if first_event_ms is not None and last_event_ms is not None:
             summary["elapsed_ms"] = last_event_ms - first_event_ms
         return {
-            "content": redact("".join(content_parts)),
+            "content": redact(content.getvalue()),
             "summary": summary,
             "events": summary_events,
         }
@@ -446,20 +448,26 @@ class TurnEventJournal:
         limit: int = 30000,
     ) -> dict[str, Any]:
         self.sync(ref)
-        all_events = self._read(ref)
-        available = [
-            event for event in all_events
-            if int(event.get("seq") or 0) > max(0, cursor)
-        ]
         bounded_limit = min(max(1, limit), 30000)
-        events = available[:bounded_limit]
+        after = max(0, cursor)
+        events = []
+        event_count = 0
+        complete = True
+        for event in self._iter_events(ref):
+            event_count += 1
+            if int(event.get("seq") or 0) <= after:
+                continue
+            if len(events) < bounded_limit:
+                events.append(event)
+            else:
+                complete = False
         last_seq = int(events[-1].get("seq") or cursor) if events else cursor
         return {
             "events": events,
-            "event_count": len(all_events),
+            "event_count": event_count,
             "last_event_seq": last_seq,
-            "next_cursor": last_seq if len(available) > len(events) else None,
-            "complete": len(available) <= len(events),
+            "next_cursor": None if complete else last_seq,
+            "complete": complete,
         }
 
     @_storage_operation
@@ -507,9 +515,8 @@ class TurnEventJournal:
         self._io_closed = True
         self._io_executor.shutdown(wait=True)
 
-    @_storage_operation
-    def _read(self, ref: JournalRef) -> list[dict[str, Any]]:
-        return list(self._iter_events(ref))
+    def _max_seq(self, ref: JournalRef) -> int | None:
+        return max((int(item.get("seq") or 0) for item in self._iter_events(ref)), default=None)
 
     def _iter_events(self, ref: JournalRef):
         path = self.resolve(ref.root, ref)

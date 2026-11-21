@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useState } from 'react'
 import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { AdminProjectGrantDialog, AdminProjectRevokeDialog } from './AdminProjectGrantDialog'
@@ -18,11 +19,11 @@ export function AdminAccessGrants({ id, name, kind = 'projects', csrf, onChanged
     void fetch(`/api/admin/${kind}/${encodeURIComponent(id)}/grants`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error('授权加载失败。')
+      if (!response.ok) throw new Error('Authorization loading failed.')
       const data = await response.json()
       if (!controller.signal.aborted) setGrants(data.grants ?? [])
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '授权加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Authorization loading failed.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [id, kind, revision])
@@ -41,7 +42,7 @@ export function AdminAccessGrants({ id, name, kind = 'projects', csrf, onChanged
     {kind === 'projects' && canConfigurePermissions && <p>统一选择授权对象与任务、流程、对话、文件、Git 等操作权限，保存后同时授予项目访问。</p>}
     <p>设备授权优先于项目授权。拥有整台设备访问时，可新建项目并访问设备内全部项目；撤销设备授权后，仍有效的项目授权继续生效。</p>
     {loading && <p role="status"><span className="gateway-spinner"/> 正在加载授权…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && grants.length === 0 && <p>尚无访问授权。</p>}
     <AdminRecordTable>{grants.map(grant => <AdminRecordRow key={grant.id}>

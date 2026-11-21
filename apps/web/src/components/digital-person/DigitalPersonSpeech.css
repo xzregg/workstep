@@ -1,1 +1,17 @@
+.digital-person-speech-failure { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--space-2); max-width: 100%; min-width: 0; text-align: center; }
 .digital-person-speech-error { color: var(--danger); font-size: var(--text-caption); min-width: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 1023px) {
+  .digital-home .digital-person-speech-error { color: color-mix(in srgb, var(--danger) 65%, var(--home-ink)); }
+  .digital-home .digital-person-speech-failure > .btn {
+    min-height: var(--mobile-control-touch);
+    color: var(--home-ink);
+    border-color: color-mix(in srgb, var(--home-ink) 35%, transparent);
+  }
+  .digital-home .digital-person-speech-failure > .btn:hover { background: color-mix(in srgb, var(--home-ink) 12%, transparent); }
+}
+
+@media (max-height: 500px) and (min-width: 600px) and (max-width: 1023px) {
+  .digital-home-footer:has(> .digital-person-speech-failure) { flex-wrap: wrap; }
+  .digital-home-footer > .digital-person-speech-failure { flex-basis: 100%; }
+}

@@ -56,7 +56,7 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
     callback()
   }
   return <>
-    <button type="button" className="mobile-task-row" aria-haspopup="dialog"
+    <button type="button" className="mobile-task-row" aria-haspopup="dialog" data-board-task-id={taskId}
       onPointerDown={start}
       onPointerMove={event => {
         if (pending.current && Math.hypot(event.clientX - pending.current.x, event.clientY - pending.current.y) > 10) cancel()

@@ -48,7 +48,7 @@ class SocialAdapter(ChannelAdapter):
                 raise ValueError('invalid response')
             return data
         except (httpx.HTTPError, ValueError):
-            raise RuntimeError(f'{self.DISPLAY_NAME} 接口请求失败，请检查凭证、权限及网络') from None
+            raise RuntimeError(f'{self.DISPLAY_NAME} API request failed. Please check credentials, permissions, and network.') from None
 
     async def start(self):
         if self._task is None:

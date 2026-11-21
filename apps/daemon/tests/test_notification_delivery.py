@@ -95,7 +95,7 @@ async def test_http_failures_are_classified_without_following_redirects(status, 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('exception,message', [(httpx.ReadTimeout, '连接超时'), (httpx.ConnectError, '网络连接失败')])
+@pytest.mark.parametrize('exception,message', [(httpx.ReadTimeout, 'Connection timed out)'), (httpx.ConnectError, 'Network connection failed)')])
 async def test_network_errors_do_not_leak_request_or_exception(exception, message):
     def receiver(request):
         raise exception('credential echoed https://private.example/token', request=request)
@@ -140,4 +140,4 @@ async def test_platform_business_failures_are_not_http_success(code, retryable):
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json={'errcode':code,'errmsg':'secret echoed'}))) as client:
         with pytest.raises(DeliveryError) as error:
             await send_notification({'platform':'wecom','url':'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=demo'}, {}, client=client)
-    assert str(error.value) == f'平台错误码 {code}' and error.value.retryable is retryable
+    assert str(error.value) == f'Platform error code {code}' and error.value.retryable is retryable

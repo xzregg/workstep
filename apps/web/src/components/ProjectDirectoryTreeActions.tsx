@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { fsApi, type DirectoryEntry } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import ConfirmDialog from './ConfirmDialog'
 
 export interface BrowserActionTarget {
@@ -141,7 +141,7 @@ export default function ProjectDirectoryTreeActions({
               onKeyDown={(event) => { if (event.key === 'Enter' && !invalidName) void commit() }} />
           </label>
         )}
-        {error && <div className="project-directory-editor-error" role="alert">{error}</div>}
+        {error && <div className="project-directory-editor-error" role="alert">{localizeErrorDisplay(error)}</div>}
       </ConfirmDialog>
     </>,
     document.body,

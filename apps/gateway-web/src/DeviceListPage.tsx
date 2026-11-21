@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
@@ -28,7 +29,7 @@ export function DeviceListPage() {
     void fetch('/api/devices', { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
         if (response.status === 401) { navigate('/auth?next=%2Fdevices', { replace: true }); return }
-        if (!response.ok) throw new Error('电脑列表加载失败。')
+        if (!response.ok) throw new Error('Failed to load the computer list.')
         const result = await response.json()
         if (controller.signal.aborted) return
         const assigned: Device[] = result.devices ?? []
@@ -48,10 +49,10 @@ export function DeviceListPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       })
-      if (!response.ok) throw new Error('登录失败，请检查账号和密码。')
+      if (!response.ok) throw new Error('Login failed, please check your account and password.')
       setStatus('ready')
       window.dispatchEvent(new Event('gateway-auth-changed'))
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '登录失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Login failed.') }
     finally { setBusy(false) }
   }
 
@@ -62,11 +63,11 @@ export function DeviceListPage() {
         credentials: 'same-origin',
       })
       if (response.status === 401) { navigate('/auth?next=%2Fdevices'); return }
-      if (!response.ok) throw new Error(response.status === 409 ? '电脑当前离线。' : '无法打开这台电脑。')
+      if (!response.ok) throw new Error(response.status === 409 ? 'The computer is currently offline.' : 'Unable to open this computer.')
       const access: { url: string; ticket: string } = await response.json()
       openRemoteAccess(access)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '无法打开这台电脑。')
+      setError(reason instanceof Error ? reason.message : 'Unable to open this computer.')
       setOpeningDevice(null)
     }
   }
@@ -93,6 +94,6 @@ export function DeviceListPage() {
         </button>
       </li>)}</ul>
     </>}
-    {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
   </section>
 }

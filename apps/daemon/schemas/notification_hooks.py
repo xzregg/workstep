@@ -32,7 +32,7 @@ class NotificationHookDraft(BaseSchema):
     @field_validator('name')
     @classmethod
     def name_required(cls, value):
-        if not value.strip(): raise ValueError('名称不能为空')
+        if not value.strip(): raise ValueError('Name cannot be empty')
         return value.strip()
 
     @model_validator(mode='after')
@@ -42,18 +42,18 @@ class NotificationHookDraft(BaseSchema):
             url = urlsplit(self.url)
             port = url.port
         except ValueError as exc:
-            raise ValueError('Webhook 地址无效') from exc
+            raise ValueError('Invalid webhook address') from exc
         if url.scheme not in {'http','https'} or not url.hostname or url.username or url.password or url.fragment:
-            raise ValueError('请输入无用户名和片段的 HTTP(S) 地址')
-        if any(ord(c) < 33 for c in self.url): raise ValueError('地址不能包含空白或控制字符')
+            raise ValueError('Please enter an HTTP(S) address without a username and fragment')
+        if any(ord(c) < 33 for c in self.url): raise ValueError('Address cannot contain whitespace or control characters')
         if self.platform in {'feishu', 'lark'}:
             host = 'open.feishu.cn' if self.platform == 'feishu' else 'open.larksuite.com'
             if url.scheme != 'https' or url.hostname != host or port not in (None,443) or not re.fullmatch(r'/open-apis/bot/v2/hook/[A-Za-z0-9_-]+', url.path):
-                raise ValueError('请输入所选平台的群自定义机器人 Webhook 地址')
+                raise ValueError('Please enter the Webhook address for the group custom bot of the selected platform')
         elif self.platform != 'generic':
             host, path, token = ('oapi.dingtalk.com','/robot/send','access_token') if self.platform == 'dingtalk' else ('qyapi.weixin.qq.com','/cgi-bin/webhook/send','key')
             if url.scheme != 'https' or url.hostname != host or url.path != path or port not in (None,443) or not parse_qs(url.query).get(token):
-                raise ValueError('请输入所选平台的机器人 Webhook 地址')
+                raise ValueError('Please enter the robot Webhook address for the selected platform')
         if self.platform not in {'dingtalk', 'feishu', 'lark'}: self.secret = ''
         self.events = list(dict.fromkeys(self.events))
         return self

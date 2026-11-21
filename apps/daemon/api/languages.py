@@ -39,7 +39,7 @@ async def invoke(awaitable):
     except LanguageConflict as exc:
         raise HTTPException(409, str(exc)) from exc
     except FileNotFoundError as exc:
-        raise HTTPException(404, "语言包或资源不存在") from exc
+        raise HTTPException(404, "Language pack or resource does not exist") from exc
     except (ValueError, OSError) as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -71,7 +71,7 @@ async def import_pack(request: Request, replace: bool = False):
     data = bytearray()
     async for chunk in request.stream():
         data.extend(chunk)
-        if len(data) > MAX_PACKAGE: raise HTTPException(413, "语言包过大")
+        if len(data) > MAX_PACKAGE: raise HTTPException(413, "Language pack is too large")
     return await invoke(manager.import_zip(bytes(data), replace=replace))
 
 
@@ -79,7 +79,7 @@ async def import_pack(request: Request, replace: bool = False):
 async def export_to_path(request: ExportRequest):
     target = Path(request.output).expanduser()
     if not target.is_absolute() or target.suffix.lower() != ".zip":
-        raise HTTPException(400, "导出路径必须是绝对路径的 ZIP 文件")
+        raise HTTPException(400, "The export path must be an absolute path ZIP file")
     target = await asyncio.to_thread(_assert_preview_path, target)
     data = await invoke(manager.export(request.pack_id))
     await asyncio.to_thread(target.write_bytes, data)

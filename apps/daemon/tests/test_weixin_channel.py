@@ -38,7 +38,7 @@ async def test_weixin_direct_http_headers_and_context_reply(tmp_path):
         assert body['msg']['message_type'] == 2
         assert body['msg']['item_list'] == [{'type': 1, 'text_item': {'text': '你好'}}]
         assert body['base_info']['channel_version']
-        with pytest.raises(ValueError, match='私聊'):
+        with pytest.raises(ValueError, match='private chats'):
             await channel.send_text(IncomingMessage('b', '', 'group', 'g', 'owner', ''), '群')
     finally:
         await channel.stop()
@@ -90,7 +90,7 @@ async def test_weixin_qr_lifecycle_never_returns_token_and_checks_redirects():
     login.api.request = AsyncMock(side_effect=[{'qrcode': 'qr', 'qrcode_img_content': 'content'},
         {'status': 'scaned_but_redirect', 'redirect_host': '127.0.0.1'}])
     first = await login.start()
-    with pytest.raises(ValueError, match='地址'):
+    with pytest.raises(ValueError, match='API endpoint'):
         await login.poll(first['login_id'])
     await login.close()
 
@@ -329,7 +329,7 @@ async def test_weixin_qr_expiry_cancellation_and_same_bot_receipt():
         login.credentials(second['login_id'], 'other')
     assert login.credentials(second['login_id'], 'bot')['secret'] == 'private'
     login._sessions[second['login_id']]['expires'] = 0
-    with pytest.raises(ValueError, match='失效'):
+    with pytest.raises(ValueError, match='has expired'):
         login.credentials(second['login_id'], 'bot')
     await login.close()
 
@@ -378,7 +378,7 @@ async def test_weixin_download_decrypts_hex_base64_and_enforces_size(tmp_path):
     try:
         assert await channel.download(attachment) == (raw, 'image.jpg')
         from services.channels.weixin_media import download
-        with pytest.raises(ValueError, match='超过'):
+        with pytest.raises(ValueError, match='exceeds'):
             await download(channel._api, attachment, 3)
     finally:
         await channel.stop()
@@ -398,7 +398,7 @@ async def test_weixin_relogin_preserves_identity_and_delete_cleans_state(bots):
     bot = await manager.create_bot({'platform': 'weixin', 'name': '微信', 'login_id': receipt,
         'default_project_id': project.id, 'default_target_type': 'project'})
     bad = await authorize('other', 'stranger', bot['id'])
-    with pytest.raises(ValueError, match='原绑定'):
+    with pytest.raises(ValueError, match='originally bound'):
         await manager.update_bot(bot['id'], {'login_id': bad})
     good = await authorize('account', 'owner', bot['id'])
     updated = await manager.update_bot(bot['id'], {'login_id': good, 'secret': 'injected'})
@@ -407,7 +407,7 @@ async def test_weixin_relogin_preserves_identity_and_delete_cleans_state(bots):
     from services.channels.weixin_state import WeixinState
     state = WeixinState({'id': bot['id'], 'app_id': 'account'})
     await state.save()
-    with pytest.raises(ValueError, match='私聊'):
+    with pytest.raises(ValueError, match='private chats'):
         await manager.bind_group(project.id, 'task-1', bot['id'], 'group')
     await manager.delete_bot(bot['id'])
     assert not state.path.exists()

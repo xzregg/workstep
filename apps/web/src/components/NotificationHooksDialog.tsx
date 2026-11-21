@@ -2,7 +2,7 @@ import Select from './Select'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { notificationHooksApi, notificationEvents, type NotificationConfiguration, type NotificationEvent, type NotificationHook, type NotificationPreview, type NotificationRecord } from '../api/notificationHooks'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useOverlay } from '../hooks/useOverlay'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import Button from './Button'
@@ -146,7 +146,7 @@ export default function NotificationHooksDialog({projectId,workflowId,workflowNa
           {tab==='history'&&<div className="notification-hooks-history"><div className="notification-hooks-actions"><h3>{t('notificationHooks.tabs.history')}</h3><Button disabled={history.loading} onClick={()=>setHistory(h=>({...h,revision:h.revision+1}))}>{t('notificationHooks.refresh')}</Button></div>
             {!hook.id?<p>{t('notificationHooks.saveFirst')}</p>:<><div className="notification-hooks-table"><table><thead><tr>{(['time','taskTitle','event','state','attempts','result','action'] as const).map(key=><th key={key}>{t(`notificationHooks.${key}`)}</th>)}</tr></thead><tbody>{history.items.map(record=><tr key={record.id}><td>{new Date(record.created_at*1000).toLocaleString()}</td><td>{record.title}</td><td>{eventLabel(record.event)}</td><td><span className={`notification-hook-state notification-hook-state--${record.status}`}>{(record.status==='pending'||record.status==='sending')&&<Icon name="loader-circle" size={12} className="git-spin"/>}{t(`notificationHooks.states.${record.status}`)}</span></td><td>{record.attempts}</td><td>{record.result||'—'}</td><td>{record.status==='failed'&&<Button disabled={!!busy||!ready||!hook.enabled} onClick={()=>void retry(record.id)}>{t('notificationHooks.retry')}</Button>}</td></tr>)}</tbody></table></div>
               {history.loading&&<div className="workflow-hooks-loading"><Icon name="loader-circle" size={16} className="git-spin"/>{t('workflowHooks.processing')}</div>}
-              {history.error&&<p role="alert">{history.error}</p>}{!history.loading&&!history.error&&!history.items.length&&<p>{t('notificationHooks.noRecords')}</p>}
+              {history.error&&<p role="alert">{localizeErrorDisplay(history.error)}</p>}{!history.loading&&!history.error&&!history.items.length&&<p>{t('notificationHooks.noRecords')}</p>}
               <div className="notification-hooks-actions"><Button disabled={history.loading||history.offset===0} onClick={()=>setHistory(h=>({...h,offset:Math.max(0,h.offset-50)}))}>{t('notificationHooks.previous')}</Button><Button disabled={history.loading||history.items.length<50} onClick={()=>setHistory(h=>({...h,offset:h.offset+50}))}>{t('notificationHooks.next')}</Button></div></>}
           </div>}
         </div>}</div>}

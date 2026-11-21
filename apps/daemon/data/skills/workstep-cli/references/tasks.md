@@ -170,12 +170,12 @@ All accept `--project <project_id> --task <task_id> --json`.
 | `task retry` | `--message <failed_message_id>` | `workstep_retry_task_message` |
 | `task review-approve` | `--step <key> --review <review_run_id> [--comment "Feedback"]` | `workstep_approve_task_review` |
 | `task review-reject` | same review arguments | `workstep_reject_task_review` |
-| `task archive` | none; archives without saving lessons | `workstep_archive_task` |
+| `task archive` | `[--notify]`; archives without saving lessons | `workstep_archive_task` |
 | `task unarchive` | none | `workstep_unarchive_task` |
 | `task archive-draft` | none; reads the saved draft | `workstep_get_archive_experience` |
 | `task archive-prepare` | `--message <new_uuid> [--locale zh-CN]` | `workstep_prepare_archive_experience` |
 | `task archive-stop` | `--message <draft_uuid>` | `workstep_stop_archive_experience` |
-| `task archive-confirm` | `--experience "Reviewed lessons" [--locale zh-CN]` | `workstep_confirm_archive_experience` |
+| `task archive-confirm` | `--experience "Reviewed lessons" [--locale zh-CN] [--notify]` | `workstep_confirm_archive_experience` |
 
 Native mutations require `confirm="yes"`; IDs use `project_id`, `task_id`,
 `message_id`, `step_key`, and `review_run_id` as applicable. Read operations do not.
@@ -186,6 +186,17 @@ a workspace option preserves the server's refusal when worktrees exist. Only use
 Stop/pause affects the workflow, not the coordinator conversation. Review decisions
 must use the current round from `task reviews`; approval may resume execution.
 Retry targets a failed message from `task history`, not an arbitrary step reset.
+
+If the current coordinator request to archive this task came from a channel
+group, add `--notify` to `task archive` or the final `task archive-confirm`,
+unless the user asks for silence. Native callers pass `notify: true`. Do not
+use `--notify` on draft preparation, from private chats, web requests or
+scheduled turns, or based on a previous request's group. The daemon resolves
+the destination from the current coordinator turn, archives and releases the
+task's bindings, then sends a fixed receipt only to the original group if it
+was still routed to that task. Report `notification` (`sent`, `failed` or
+`skipped`) separately from `archived` or `memory_saved`. Do not send an extra
+confirmation or retry the archive to resend a notice.
 
 For “extract lessons and archive this task”:
 

@@ -12,6 +12,7 @@ export interface PendingMessageInsert {
 
 interface PendingMessageInsertsProps {
   projectId?: string
+  disabled?: boolean
   items: PendingMessageInsert[]
   title: string
   titleTooltip: string
@@ -34,6 +35,7 @@ interface PendingMessageInsertsProps {
 
 export default function PendingMessageInserts({
   projectId,
+  disabled = false,
   items,
   title,
   titleTooltip,
@@ -60,7 +62,7 @@ export default function PendingMessageInserts({
 
   const sending = new Set(sendingIds)
   const allSending = items.every((item) => sending.has(item.id))
-  const reorderable = Boolean(onReorder) && items.length > 1 && sendingIds.length === 0
+  const reorderable = !disabled && Boolean(onReorder) && items.length > 1 && sendingIds.length === 0
 
   const handleDragStart = (event: DragEvent<HTMLDivElement>, index: number) => {
     event.stopPropagation()
@@ -146,6 +148,7 @@ export default function PendingMessageInserts({
             {isEditing ? (
               <Textarea
                 autoFocus
+                disabled={disabled}
                 value={editingContent}
                 onChange={(event) => onEditingContentChange?.(event.target.value)}
                 onKeyDown={(event) => {
@@ -187,7 +190,7 @@ export default function PendingMessageInserts({
                   <button
                     type="button"
                     onClick={() => onEditSave?.(item.id)}
-                    disabled={!editingContent.trim()}
+                    disabled={disabled || !editingContent.trim()}
                     title={t('taskDetail.saveEditTitle')}
                     className="pending-insert-button pending-insert-button--primary"
                   >
@@ -196,6 +199,7 @@ export default function PendingMessageInserts({
                   <button
                     type="button"
                     onClick={onEditCancel}
+                    disabled={disabled}
                     title={t('taskDetail.cancelEditTitle')}
                     className="pending-insert-button pending-insert-button--outline"
                   >
@@ -208,7 +212,7 @@ export default function PendingMessageInserts({
                     <button
                       type="button"
                       onClick={() => onSend(item)}
-                      disabled={isSending}
+                      disabled={disabled || isSending}
                       title={t('taskDetail.sendInsertTitle')}
                       className="pending-insert-button pending-insert-button--send"
                     >
@@ -218,7 +222,7 @@ export default function PendingMessageInserts({
                   <button
                     type="button"
                     onClick={() => onEditStart?.(item)}
-                    disabled={isSending}
+                    disabled={disabled || isSending}
                     title={t('taskDetail.editInsertTitle')}
                     className="pending-insert-button pending-insert-button--icon"
                   >
@@ -227,7 +231,7 @@ export default function PendingMessageInserts({
                   <button
                     type="button"
                     onClick={() => onRemove?.(item.id)}
-                    disabled={isSending}
+                    disabled={disabled || isSending}
                     title={t('taskDetail.deleteInsertTitle')}
                     className="pending-insert-button pending-insert-button--icon"
                   >
@@ -246,7 +250,7 @@ export default function PendingMessageInserts({
             <button
               type="button"
               onClick={onSendAll}
-              disabled={sendingIds.length > 0}
+              disabled={disabled || sendingIds.length > 0}
               title={t('taskDetail.sendAllTitle')}
               className="pending-insert-button pending-insert-button--primary"
             >
@@ -257,7 +261,7 @@ export default function PendingMessageInserts({
             <button
               type="button"
               onClick={onClear}
-              disabled={sendingIds.length > 0}
+              disabled={disabled || sendingIds.length > 0}
               title={t('taskDetail.clearAllTitle')}
               className="pending-insert-button pending-insert-button--outline"
             >

@@ -75,7 +75,7 @@ export const gatewayShareApi: SharedTaskApi = {
   },
   previewFile: (token, csrf, path) => {
     if (path.startsWith('workspace:') || /^artifact:[0-9a-f]{64}\//.test(path)) return read(token, gitReadPath('preview', { path }), csrf)
-    if (!/^artifact:[0-9a-f]{64}$/.test(path)) return Promise.reject(new Error('文件不在分享范围内'))
+    if (!/^artifact:[0-9a-f]{64}$/.test(path)) return Promise.reject(new Error('File is not within the shared scope'))
     return read(token, `/artifacts/${path.slice(9)}/preview`, csrf)
   },
   fileUrl: (token, _csrf, path) => path.startsWith('workspace:') || /^artifact:[0-9a-f]{64}\//.test(path)
@@ -104,15 +104,15 @@ export const gatewayShareApi: SharedTaskApi = {
     if (view && method === 'GET') {
       const params = Object.fromEntries(parsed.searchParams)
       const allowed: Record<string, string[]> = { history: ['ref', 'offset'], changes: ['ref', 'commit'], diff: ['path', 'ref', 'commit'], blame: ['path', 'ref'], remotes: [] }
-      if (Object.keys(params).some(key => !allowed[view[2]].includes(key))) return Promise.reject(new Error('Git 查询不在分享范围内'))
+      if (Object.keys(params).some(key => !allowed[view[2]].includes(key))) return Promise.reject(new Error('Git query not within the sharing scope'))
       return read(token, gitReadPath(view[2], { ...params, tree_id: view[1] }), csrf)
     }
     if (/^\/git\/projects\/[^/]+\/tasks\/[^/]+\/workspace$/.test(path)) {
-      if (options?.method && options.method !== 'GET') return Promise.reject(new Error('分享不能更改任务工作区'))
+      if (options?.method && options.method !== 'GET') return Promise.reject(new Error('Sharing cannot change the task workspace'))
       return read(token, '/git/workspace', csrf)
     }
     if (!/^\/git\/worktrees\/[0-9a-f]{24}\/(?:status|branches|branches\/delete|commit|switch|fetch|pull|push)$/.test(path)) {
-      return Promise.reject(new Error('Git 请求不在分享范围内'))
+      return Promise.reject(new Error('Git request is not within the sharing scope'))
     }
     return read(token, path, csrf, options)
   },

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import ResizablePanel from './ResizablePanel'
 import Button from './Button'
 import type { EngineModel } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import './ProviderModelsDialog.css'
 
 interface Props {
@@ -110,7 +110,7 @@ export default function ProviderModelsDialog({
             )}
           </div>
           {saveError && (
-            <div role="alert" className="provider-models-dialog-error">{saveError}</div>
+            <div role="alert" className="provider-models-dialog-error">{localizeErrorDisplay(saveError)}</div>
           )}
           <div className="provider-models-dialog-footer">
             <Button variant="ghost" disabled={saving} onClick={onClose}>

@@ -153,10 +153,10 @@ async def set_enhance_config(req: EnhanceConfigRequest):
     protocol = req.protocol.strip()
     if provider_id or model:
         if not provider_id or not model:
-            raise HTTPException(status_code=400, detail="供应商与模型需同时填写")
+            raise HTTPException(status_code=400, detail="Specify both a provider and a model")
         provider = await asyncio.to_thread(config_store.get_provider, provider_id)
         if provider is None:
-            raise HTTPException(status_code=404, detail=f"供应商不存在：{provider_id}")
+            raise HTTPException(status_code=404, detail=f"Provider not found: {provider_id}")
         try:
             protocol = provider_service.select_provider_protocol(provider, protocol or None)
         except ValueError as exc:
@@ -227,23 +227,23 @@ async def set_assistant_config(name: str, req: AssistantConfigRequest):
         or DEFAULT_EXECUTION_ENGINE
     )
     if not await asyncio.to_thread(is_supported_effort, thinking_effort, effective_engine, model, name):
-        raise HTTPException(status_code=400, detail="不支持的思考强度")
+        raise HTTPException(status_code=400, detail="Unsupported thinking intensity")
     if engine or model or fast_model or vision_model or provider_id:
         candidate = await asyncio.to_thread(create_engine, effective_engine)
         if candidate is None or not (
             candidate.capabilities.supports_coordinator
             or effective_engine == "pydantic_ai"
         ):
-            raise HTTPException(status_code=400, detail=f"助手引擎不可用：{effective_engine}")
+            raise HTTPException(status_code=400, detail=f"Assistant engine unavailable: {effective_engine}")
     if provider_id:
         provider = await asyncio.to_thread(config_store.get_provider, provider_id)
         if provider is None:
-            raise HTTPException(status_code=404, detail=f"供应商不存在：{provider_id}")
+            raise HTTPException(status_code=404, detail=f"Provider not found: {provider_id}")
         if not provider.get("enabled", True):
-            raise HTTPException(status_code=400, detail="所选供应商已停用")
+            raise HTTPException(status_code=400, detail="Selected provider is disabled")
         candidate = await asyncio.to_thread(create_engine, effective_engine)
         if candidate is None or not candidate.supports_provider(provider):
-            raise HTTPException(status_code=400, detail="供应商协议与助手引擎不兼容")
+            raise HTTPException(status_code=400, detail="Provider protocol is incompatible with the assistant engine")
     def save() -> dict:
         config_store.set_assistant_defaults(
             name,

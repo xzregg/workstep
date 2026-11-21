@@ -53,9 +53,9 @@ class EngineRuntimeManager:
     def package(self, engine_id: str) -> RuntimePackage:
         engine = list_all_engines().get(engine_id)
         if engine is None:
-            raise ValueError("未知引擎")
+            raise ValueError("Unknown engine")
         if engine.RUNTIME_PACKAGE is None:
-            raise ValueError("该引擎的版本由外部安装或项目依赖管理")
+            raise ValueError("The engine version is managed by external installation or project dependency management")
         return engine.RUNTIME_PACKAGE
 
     def installed_version(self, spec: RuntimePackage) -> str | None:
@@ -131,7 +131,7 @@ class EngineRuntimeManager:
             entries, default = await self.releases(spec)
         except (httpx.HTTPError, ValueError) as exc:
             entries, default = [], None
-            error = f"读取版本列表失败，请重试：{exc}"
+            error = f"Failed to read version list, please retry: {exc}"
         record = await asyncio.to_thread(self._read, engine_id)
         cls = list_all_engines()[engine_id]
         override = await asyncio.to_thread(cls.get_binary_override)
@@ -166,7 +166,7 @@ class EngineRuntimeManager:
         state = record.get("operation")
         if state and state["status"] in ("queued", "running"):
             state.update(status="failed", stage="failed", interrupted=True,
-                         message="后台服务已重启，安装中断；请重试或回退")
+                         message="A backend restart interrupted installation. Retry or roll back.")
             await asyncio.to_thread(self._save, engine_id, record)
         return state
 
@@ -177,7 +177,7 @@ class EngineRuntimeManager:
         if state is not None:
             return dict(state) if state.get("managed_command") == command_scope else None
         if self._busy:
-            raise RuntimeError("已有引擎安装任务正在执行，请等待完成")
+            raise RuntimeError("An engine installation task is already in progress. Please wait for it to complete.")
         self._busy = True
         try:
             record = await asyncio.to_thread(self._read, engine_id)
@@ -202,9 +202,9 @@ class EngineRuntimeManager:
             cls = list_all_engines()[engine_id]
             if (cls.requires_third_party_terms_acceptance()
                     and not command_scope.get("accept_third_party_terms")):
-                raise ValueError("请先阅读并接受第三方服务条款")
+                raise ValueError("Please read and accept the third-party service terms")
             if await asyncio.to_thread(cls.get_binary_override):
-                raise ValueError("当前使用自定义可执行文件路径，请先清除路径配置再管理版本")
+                raise ValueError("A custom executable path is currently in use. Please clear the path configuration before managing versions:")
             state.pop("interrupted", None)
             state.update(status="queued", stage="preparing", message="",
                          downloaded_bytes=0, total_bytes=None)
@@ -220,21 +220,21 @@ class EngineRuntimeManager:
                     managed_command: dict | None = None) -> dict:
         spec = self.package(engine_id)
         if self._busy:
-            raise RuntimeError("已有引擎安装任务正在执行，请等待完成")
+            raise RuntimeError("An engine installation task is already in progress. Please wait for it to complete.")
         self._busy = True
         try:
             cls = list_all_engines()[engine_id]
             if cls.requires_third_party_terms_acceptance() and not accept_terms:
-                raise ValueError("请先阅读并接受第三方服务条款")
+                raise ValueError("Please read and accept the third-party service terms")
             if await asyncio.to_thread(cls.get_binary_override):
-                raise ValueError("当前使用自定义可执行文件路径，请先清除路径配置再管理版本")
+                raise ValueError("A custom executable path is currently in use. Please clear the path configuration before managing versions:")
             record = await asyncio.to_thread(self._read, engine_id)
             if rollback:
                 version = record.get("rollback_version")
                 if not version:
-                    raise ValueError("没有可回退的版本")
+                    raise ValueError("No rollback version available")
             if not version or not re.fullmatch(r"[0-9][0-9A-Za-z.+-]{0,99}", version):
-                raise ValueError("请选择确切的版本号")
+                raise ValueError("Please select the exact version number")
             previous = await asyncio.to_thread(self.installed_version, spec)
             state = {"id": uuid.uuid4().hex, "engine_id": engine_id,
                      "action": "rollback" if rollback else "install", "target_version": version,
@@ -260,7 +260,7 @@ class EngineRuntimeManager:
     async def _download(self, entry: dict, destination: Path, state: dict):
         url = httpx.URL(entry["url"])
         if url.scheme != "https" or url.host not in {"files.pythonhosted.org", "registry.npmjs.org"}:
-            raise ValueError("安装包地址不属于官方包仓库")
+            raise ValueError("The installation package address does not belong to the official package repository")
         expected = entry.get("sha256")
         algorithm = "sha256"
         if not expected and entry.get("integrity"):
@@ -271,7 +271,7 @@ class EngineRuntimeManager:
         if not expected and entry.get("shasum"):
             algorithm, expected = "sha1", entry["shasum"]
         if not expected:
-            raise ValueError("包仓库未提供校验摘要，无法验证安装包")
+            raise ValueError("Package repository did not provide checksums; unable to verify the installation package")
         digest = hashlib.new(algorithm)
         state.update(stage="downloading", total_bytes=entry.get("size_bytes"))
         async with httpx.AsyncClient(transport=self.transport, timeout=60, headers={"Accept-Encoding": "identity"}) as client:
@@ -289,9 +289,9 @@ class EngineRuntimeManager:
                 finally:
                     await asyncio.to_thread(file.close)
         if state["total_bytes"] is not None and state["total_bytes"] != state["downloaded_bytes"]:
-            raise ValueError("安装包下载不完整，请重试")
+            raise ValueError("Installation package download incomplete, please retry")
         if digest.hexdigest() != expected:
-            raise ValueError("安装包校验失败，请重试")
+            raise ValueError("Installation package verification failed, please try again")
         state["total_bytes"] = state["downloaded_bytes"]
 
     async def _install_python_archive(self, spec: RuntimePackage, archive: Path, version: str):
@@ -317,7 +317,7 @@ class EngineRuntimeManager:
             elif await asyncio.to_thread(shutil.which, "uv"):
                 command = ["uv", "pip", "install", "--upgrade", "--target", str(stage), str(archive)]
             else:
-                raise ValueError("未找到 uv 或 pip，无法安装 Python SDK 包")
+                raise ValueError("uv or pip not found, unable to install Python SDK package")
             result = await install_with_command(command, display=spec.name)
             if not result.success:
                 return result
@@ -338,7 +338,7 @@ class EngineRuntimeManager:
                 current = next((d.version for d in importlib.metadata.distributions(path=[str(stage)])
                                 if canonicalize_name(d.metadata.get("Name", "")) == canonicalize_name(spec.name)), None)
                 if current != version:
-                    raise ValueError("临时安装目录版本校验失败，原安装保持不变")
+                    raise ValueError("Temporary installation directory version check failed, original installation remains unchanged")
                 backup = temporary / "previous"
                 had_target = target.exists()
                 if had_target:
@@ -361,11 +361,11 @@ class EngineRuntimeManager:
                 entries, _ = await self.releases(release_spec)
                 entry = next((e for e in entries if e["version"] == state["target_version"]), None)
                 if entry is None:
-                    raise ValueError("该版本不可用或不满足当前平台和最低版本要求，请刷新版本列表")
+                    raise ValueError("This version is unavailable or does not meet the current platform and minimum version requirements. Please refresh the version list:")
                 async with _temporary_directory(prefix="workstep-engine-") as directory:
                     destination = directory / entry["filename"]
                     if destination.parent != directory:
-                        raise ValueError("无效的安装包文件名")
+                        raise ValueError("Invalid installer file name")
                     await self._download(entry, destination, state)
                     state["stage"] = "installing"
                     await asyncio.to_thread(self._save, engine_id, record)
@@ -378,7 +378,7 @@ class EngineRuntimeManager:
                     state["stage"] = "verifying"
                     current = await asyncio.to_thread(self.installed_version, spec)
                     if current != state["target_version"]:
-                        raise ValueError(f"安装后版本校验未通过：期望 {state['target_version']}，实际 {current or '未找到'}；可重试或回退")
+                        raise ValueError(f"Post-installation version check failed: expected {state['target_version']}, actual {current or 'not found'}; retry or rollback")
             await asyncio.to_thread(config_store.set_engine_verified, engine_id, False)
             from engines.core.registry import refresh_registry
             await asyncio.to_thread(refresh_registry)
@@ -392,17 +392,17 @@ class EngineRuntimeManager:
                 "版本切换完成，请重启后台服务后重新扫描和测试引擎" if spec.kind == "pypi"
                 else "版本切换完成，请重新测试引擎"))
         except asyncio.CancelledError:
-            terminal = dict(status="failed", stage="failed", message="安装已中断，可重试或回退")
+            terminal = dict(status="failed", stage="failed", message="Installation was interrupted. Retry or roll back.")
             raise
         except Exception as exc:
-            terminal = dict(status="failed", stage="failed", message=str(exc) or "安装失败或超时，可重试或回退")
+            terminal = dict(status="failed", stage="failed", message=str(exc) or "Installation failed or timed out. Retry or roll back.")
         finally:
             # Publish completion only after the recovery record is durable.
             record["operation"] = {**state, **terminal}
             try:
                 await asyncio.to_thread(self._save, engine_id, record)
             except Exception as exc:
-                state.update(status="failed", stage="failed", message=f"安装结果保存失败，请检查磁盘后重新扫描：{exc}")
+                state.update(status="failed", stage="failed", message=f"Could not save the installation result. Check the disk and scan again: {exc}")
             else:
                 state.update(terminal)
             finally:
@@ -411,7 +411,7 @@ class EngineRuntimeManager:
     @asynccontextmanager
     async def legacy_operation(self):
         if self._busy:
-            raise RuntimeError("已有引擎安装任务正在执行，请等待完成")
+            raise RuntimeError("An engine installation task is already in progress. Please wait for it to complete.")
         self._busy = True
         try:
             yield

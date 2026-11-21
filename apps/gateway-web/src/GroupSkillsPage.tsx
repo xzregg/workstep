@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -13,7 +14,7 @@ type ProjectSkills = { desired_revision: number; applied_revision: number | null
 async function loadJson<T>(url: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(url, { credentials: 'same-origin', signal })
   if (!response.ok) throw new Error(response.status === 403
-    ? '当前账号无权管理该用户组。' : '用户组 Skill 数据加载失败。')
+    ? 'Current account has no permission to manage this user group.' : 'Failed to load user group Skill data.')
   return response.json() as Promise<T>
 }
 
@@ -40,7 +41,7 @@ export function GroupSkillsPage() {
       if (controller.signal.aborted) return
       setGroups(listing.groups); setCsrf(session.csrf_token)
     }).catch(reason => {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '加载失败。')
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Load failed.')
     })
     return () => controller.abort()
   }, [])
@@ -55,7 +56,7 @@ export function GroupSkillsPage() {
       if (controller.signal.aborted) return
       setProjects(linked.projects); setAvailable(catalog.skills)
     }).catch(reason => {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '加载失败。')
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Load failed.')
     })
     return () => controller.abort()
   }, [groupId])
@@ -67,7 +68,7 @@ export function GroupSkillsPage() {
       controller.signal).then(data => {
       if (!controller.signal.aborted) setAssignment(data)
     }).catch(reason => {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '加载失败。')
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Load failed.')
     })
     return () => controller.abort()
   }, [groupId, projectId, revision])
@@ -82,11 +83,11 @@ export function GroupSkillsPage() {
         'Content-Type': 'application/json', 'X-CSRF-Token': csrf,
       }, body: method === 'POST' ? JSON.stringify({ skill_version_id: versionId }) : undefined })
       if (!response.ok) throw new Error(response.status === 409
-        ? '版本冲突：请检查其他用户组对该项目的分配。' : '项目 Skill 操作失败。')
+        ? 'Version conflict: Please check the allocation of this project to other user groups.' : 'Project Skill operation failed.')
       setRevoke(null)
       setRevision(value => value + 1)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '项目 Skill 操作失败。')
+      setError(reason instanceof Error ? reason.message : 'Project Skill operation failed.')
     } finally { setBusy(false) }
   }
 
@@ -115,7 +116,7 @@ export function GroupSkillsPage() {
     {groupId && projects.length === 0 && !error && <p>本组尚无关联项目。</p>}
     {groupId && available.length === 0 && !error && <p>本组尚无已授权 Skill。</p>}
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在保存 Skill 分配…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     {assignment && <section className="gateway-overview-card">
       <h3>项目已分配 Skill</h3>
       <p>期望修订 {assignment.desired_revision} · 已应用修订 {

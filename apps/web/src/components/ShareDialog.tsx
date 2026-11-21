@@ -7,7 +7,7 @@ import Icon from './Icon'
 import ConfirmDialog from './ConfirmDialog'
 import SegmentedControl from './SegmentedControl'
 import { taskApi, type ShareInfo } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { copyText } from '../utils/clipboard'
 import { useProjectStore } from '../stores/projectStore'
 import { taskShareUrl } from '../utils/taskShareUrl'
@@ -391,7 +391,7 @@ export default function ShareDialog({
                 background: 'color-mix(in oklab, var(--danger), transparent 92%)',
                 border: '1px solid color-mix(in oklab, var(--danger), transparent 80%)',
               }}>
-                {error}
+                {localizeErrorDisplay(error)}
               </div>
             )}
           </div>

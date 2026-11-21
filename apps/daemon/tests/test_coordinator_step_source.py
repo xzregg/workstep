@@ -141,7 +141,7 @@ async def test_coordinator_dispatch_preserves_source_and_does_not_block_health(a
                               headers={"X-WorkStep-Coordinator-Turn": source_turn_id},
                               json={"content": "失效来源不能冒充协调"})
     assert stale.status_code == 409
-    assert "来源" in stale.json()["detail"]
+    assert 'message source' in stale.json()["detail"]
     manual = await client.post(f"/api/task/{task_id}/step/{step_key}/resume?project_id={project_id}",
                                json={"content": "人工补充要求"})
     assert manual.status_code == 200, manual.text

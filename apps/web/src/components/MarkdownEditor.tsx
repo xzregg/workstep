@@ -1,13 +1,15 @@
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useEffect, useRef, useState } from 'react'
 import { fsApi } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { formatMarkdownAttachment } from '../utils/markdownAttachment'
 import Icon from './Icon'
 import MarkdownMessage from './MarkdownMessage'
 import Textarea from './Textarea'
 
 interface MarkdownEditorProps {
+  /** Input id for a surrounding Field label. */
+  id?: string
   value: string
   onChange: (value: string) => void
   /** Project id — used to upload attachments and preview `.workstep/uploads/...` paths. */
@@ -39,6 +41,7 @@ function readAsDataUrl(file: File): Promise<string> {
 
 /** Shared compact Markdown editor with attachment upload and preview. */
 export default function MarkdownEditor({
+  id,
   value,
   onChange,
   projectId,
@@ -191,10 +194,11 @@ export default function MarkdownEditor({
       >
         {mode === 'edit' ? (
           <Textarea
+            id={id}
             ref={textareaRef}
             className="markdown-editor-input"
             readOnly={readOnly}
-            aria-label={ariaLabel ?? t('md.ariaLabel')}
+            aria-label={ariaLabel ?? (id ? undefined : t('md.ariaLabel'))}
             value={value}
             maxLength={maxLength}
             disabled={disabled}
@@ -267,7 +271,7 @@ export default function MarkdownEditor({
           <div className="markdown-editor-drop-overlay">{t('md.dropHint')}</div>
         )}
       </div>
-      {uploadError && <div className="markdown-editor-error" role="alert">{uploadError}</div>}
+      {uploadError && <div className="markdown-editor-error" role="alert">{localizeErrorDisplay(uploadError)}</div>}
     </div>
   )
 }

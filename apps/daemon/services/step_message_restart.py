@@ -32,7 +32,7 @@ def persist_step_followup(task_id, step_key, normalized, author_name, pending_in
         "rework_waiting",
     ):
         raise ValueError(
-            f"步骤当前不可重新执行: {step_key}（当前状态 {step.status}）"
+            f"Step cannot be re-executed at this time: {step_key} (current status {step.status})"
         )
     # `pending` 通常代表从未启动；但只要有执行历史（曾经跑过又回到
     # 待执行，例如上游重跑把下游重置），就按「执行过一次」处理，允许 @。
@@ -49,7 +49,7 @@ def persist_step_followup(task_id, step_key, normalized, author_name, pending_in
     )
     if step.status not in allowed_statuses and not has_history:
         raise ValueError(
-            f"步骤当前不可重新执行: {step_key}（当前状态 {step.status}）"
+            f"Step cannot be re-executed at this time: {step_key} (current status {step.status})"
         )
     pending_review = None
     if step.status == "awaiting_review":
@@ -67,7 +67,7 @@ def persist_step_followup(task_id, step_key, normalized, author_name, pending_in
             or pending_review.mode != "manual"
             or pending_review.status != "pending"
         ):
-            raise ValueError("步骤没有可跳过的人工审核")
+            raise ValueError("Step has no skippable manual review")
     now = utc_now()
     message_id = new_message_id()
     user_message = create_task_message(
@@ -106,14 +106,14 @@ def inspect_failed_message_retry(task_id: str, message_id: str, active_runner: b
     task = Task.get_or_none(Task.id == task_id)
     message = Message.get_or_none(Message.id == message_id)
     if task is None or message is None or message.task_id != task_id:
-        raise ValueError("失败消息不存在")
+        raise ValueError("Failure message does not exist")
     if (
         message.role != "assistant"
         or message.channel != "execution"
         or message.run_status != "failed"
         or not message.step_run_id
     ):
-        raise ValueError("只能重启失败的阶段执行消息")
+        raise ValueError("Only restart failed stage execution messages")
     step_run = StepRun.get_or_none(StepRun.id == message.step_run_id)
     if (
         step_run is None
@@ -121,7 +121,7 @@ def inspect_failed_message_retry(task_id: str, message_id: str, active_runner: b
         or step_run.status != "failed"
         or step_run.run_id != task.active_workflow_run_id
     ):
-        raise ValueError("只能重启当前流程的最新失败消息")
+        raise ValueError("Only the latest failure message of the current process can be restarted")
     latest_step_message = (
         Message.select()
         .where((Message.task == task) & (Message.step_key == step_run.step_key))
@@ -129,9 +129,9 @@ def inspect_failed_message_retry(task_id: str, message_id: str, active_runner: b
         .first()
     )
     if latest_step_message is None or latest_step_message.id != message_id:
-        raise ValueError("只能重启该步骤最后一条失败消息")
+        raise ValueError("Only the last failed message of this step can be restarted")
     if not (step_run.error or "").strip():
-        raise ValueError("只有异常错误导致的失败消息可以重启")
+        raise ValueError("Only failure messages caused by exceptional errors can be restarted")
     latest_step_run = (
         StepRun.select()
         .where(
@@ -160,7 +160,7 @@ def inspect_failed_message_retry(task_id: str, message_id: str, active_runner: b
         or latest_message is None or latest_message.id != message_id
         or step is None or step.status != "failed"
     ):
-        raise ValueError("只能重启当前阶段最新的失败消息")
+        raise ValueError("Only the latest failure message of the current phase can be restarted")
     active_steps = TaskStep.select().where(
         (TaskStep.task == task)
         & (TaskStep.status.in_([
@@ -169,5 +169,5 @@ def inspect_failed_message_retry(task_id: str, message_id: str, active_runner: b
         ]))
     )
     if active_steps.exists() or active_runner:
-        raise ValueError("其他步骤正在执行或等待审核，请先处理后再重启")
+        raise ValueError("Other steps are executing or pending review. Please handle them before restarting.")
     return step_run.step_key, step_run.run_id

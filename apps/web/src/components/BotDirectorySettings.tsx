@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { channelBotApi, type ChannelBot, type DirectoryStatus, type DirectoryContact } from '../api/channelBots'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import Input from './Input'
 import Spinner from './Spinner'
@@ -84,7 +84,7 @@ export default function BotDirectorySettings({ bot, onDirtyChange, onBusyChange 
         <Button disabled={dirty || busy || !bot.enabled || status?.status === 'loading'} onClick={() => void refresh()}>{t('channelDirectory.refresh')}</Button>
       </div>
       {status?.updated_at && <p className="bot-settings-hint">{t('channelDirectory.updated')}{new Date(status.updated_at).toLocaleString()}</p>}
-      {status?.error && <p role="alert" className="bot-settings-error">{status.error}</p>}
+      {status?.error && <p role="alert" className="bot-settings-error">{localizeErrorDisplay(status.error)}</p>}
       <Input aria-label={t('channelDirectory.search')} placeholder={t('channelDirectory.search')} value={query}
         onChange={event => { setQuery(event.target.value); setOffset(0) }} />
       <div className="bot-directory-table"><table><thead><tr><th>{t('channelDirectory.name')}</th><th>{t('channelDirectory.department')}</th><th>{t('channelDirectory.userId')}</th></tr></thead>
@@ -92,6 +92,6 @@ export default function BotDirectorySettings({ bot, onDirtyChange, onBusyChange 
       {!contacts.length && status?.status !== 'loading' && <p className="bot-settings-hint">{t('channelDirectory.empty')}</p>}
       {total > 50 && <div className="bot-directory-pagination"><Button disabled={offset === 0} onClick={() => setOffset(value => Math.max(0, value - 50))}>{t('channelDirectory.previous')}</Button><span>{offset + 1}–{Math.min(offset + 50, total)} / {total}</span><Button disabled={offset + 50 >= total} onClick={() => setOffset(value => value + 50)}>{t('channelDirectory.next')}</Button></div>}
     </>}
-    {error && <p role="alert" className="bot-settings-error">{error}</p>}
+    {error && <p role="alert" className="bot-settings-error">{localizeErrorDisplay(error)}</p>}
   </section>
 }

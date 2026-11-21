@@ -36,38 +36,38 @@ export function defaultSkin(): SkinDocument {
 
 const badCss = /[;{}<>@!\\]|url\s*\(|expression\s*\(|(?:https?|data|javascript):/i
 export function validateCssValue(value: string, kind = 'value') {
-  if (typeof value !== 'string' || !value || value.length > 512 || badCss.test(value) || [...value].some(char => char.charCodeAt(0) < 32)) throw new Error('样式值无效或包含不允许的内容')
-  if (skinContract.value_patterns[kind] && !new RegExp('^(?:' + skinContract.value_patterns[kind] + ')$').test(value)) throw new Error('样式值不符合属性类型')
-  if (kind === 'asset' && !/^assets\/[A-Za-z0-9_./-]+\.(png|jpe?g|webp)$/i.test(value)) throw new Error('背景图必须引用 assets 内的本地图片')
-  if (kind === 'asset' && value.split('/').includes('..')) throw new Error('背景资源路径无效')
+  if (typeof value !== 'string' || !value || value.length > 512 || badCss.test(value) || [...value].some(char => char.charCodeAt(0) < 32)) throw new Error('Invalid style value or contains disallowed content')
+  if (skinContract.value_patterns[kind] && !new RegExp('^(?:' + skinContract.value_patterns[kind] + ')$').test(value)) throw new Error('Style value does not match the attribute type')
+  if (kind === 'asset' && !/^assets\/[A-Za-z0-9_./-]+\.(png|jpe?g|webp)$/i.test(value)) throw new Error('Background image must reference a local image within the assets')
+  if (kind === 'asset' && value.split('/').includes('..')) throw new Error('Invalid background resource path')
   if (kind === 'length') {
-    if (!/^(?:0|(?:\d+(?:\.\d+)?)(?:px|rem|em|%)|var\(--[a-z][a-z0-9-]*\))(?: (?:0|\d+(?:\.\d+)?(?:px|rem|em|%))){0,3}$/.test(value)) throw new Error('组件尺寸无效')
-    if ([...value.matchAll(/(\d+(?:\.\d+)?)px/g)].some(m => Number(m[1]) > 256)) throw new Error('组件尺寸超出范围')
+    if (!/^(?:0|(?:\d+(?:\.\d+)?)(?:px|rem|em|%)|var\(--[a-z][a-z0-9-]*\))(?: (?:0|\d+(?:\.\d+)?(?:px|rem|em|%))){0,3}$/.test(value)) throw new Error('Invalid component size')
+    if ([...value.matchAll(/(\d+(?:\.\d+)?)px/g)].some(m => Number(m[1]) > 256)) throw new Error('Component size out of range')
   }
-  if (kind === 'weight' && !/^(normal|bold|[1-9]00)$/.test(value)) throw new Error('字体粗细无效')
-  if (kind === 'background-repeat' && !['repeat', 'no-repeat', 'repeat-x', 'repeat-y'].includes(value)) throw new Error('背景重复方式无效')
+  if (kind === 'weight' && !/^(normal|bold|[1-9]00)$/.test(value)) throw new Error('Invalid font weight')
+  if (kind === 'background-repeat' && !['repeat', 'no-repeat', 'repeat-x', 'repeat-y'].includes(value)) throw new Error('Invalid background repeat mode')
 }
 
 const cssProperty = (name: string) => name.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase())
 export function compileSkin(skin: SkinDocument): string {
-  if (!skin || ![1, 2].includes(skin.manifest?.schema_version) || !/^[a-z][a-z0-9_-]{0,63}$/.test(skin.manifest.id) || !['light', 'dark'].includes(skin.manifest.color_scheme)) throw new Error('皮肤清单无效')
+  if (!skin || ![1, 2].includes(skin.manifest?.schema_version) || !/^[a-z][a-z0-9_-]{0,63}$/.test(skin.manifest.id) || !['light', 'dark'].includes(skin.manifest.color_scheme)) throw new Error('Invalid skin list')
   const important = skin.manifest.schema_version === 1 ? ' !important' : ''
   const scope = `html[data-skin-id="${skin.manifest.id}"]`
   const tokens = (values: Record<string, string> = {}) => Object.entries(values).map(([name, value]) => {
-    if (!Object.hasOwn(skinContract.tokens, name)) throw new Error('未知或受保护的样式变量')
+    if (!Object.hasOwn(skinContract.tokens, name)) throw new Error('Unknown or protected style variable')
     validateCssValue(value, skinContract.token_kinds[name])
     return `--${name}:${value}${important};`
   }).join('')
   const rules = (styles: SkinStyles = {}) => Object.entries(styles).flatMap(([part, states]) => {
-    if (!Object.hasOwn(skinContract.parts, part)) throw new Error('未知组件部位')
+    if (!Object.hasOwn(skinContract.parts, part)) throw new Error('Unknown component part')
     return Object.entries(states).map(([state, properties]) => {
-      if (!Object.hasOwn(skinContract.states, state)) throw new Error('未知组件状态')
+      if (!Object.hasOwn(skinContract.states, state)) throw new Error('Unknown component status')
       const declarations = Object.entries(properties).map(([name, value]) => {
-        if (!Object.hasOwn(skinContract.properties, name)) throw new Error('未知或受保护的样式属性')
-        if (/(handle|resize)/.test(part) && ['padding', 'paddingInline', 'paddingBlock', 'borderWidth'].includes(name)) throw new Error('拖动部位尺寸由布局配置控制')
+        if (!Object.hasOwn(skinContract.properties, name)) throw new Error('Unknown or protected style attribute')
+        if (/(handle|resize)/.test(part) && ['padding', 'paddingInline', 'paddingBlock', 'borderWidth'].includes(name)) throw new Error('The size of the dragged part is controlled by the layout configuration')
         validateCssValue(value, skinContract.properties[name])
         if (name === 'backgroundImage') {
-          if (!/^\/[A-Za-z0-9_./%-]*api\/skins\/assets\/[a-zA-Z0-9]+(?:\?project_id=[A-Za-z0-9_%.-]+)?$/.test(skin.asset_base)) throw new Error('背景资源地址无效')
+          if (!/^\/[A-Za-z0-9_./%-]*api\/skins\/assets\/[a-zA-Z0-9]+(?:\?project_id=[A-Za-z0-9_%.-]+)?$/.test(skin.asset_base)) throw new Error('Invalid background resource address')
           const [base, query] = skin.asset_base.split('?')
           value = `url("${base}/${value.slice(7)}${query ? '?' + query : ''}")`
         }
@@ -85,11 +85,11 @@ export function compileSkin(skin: SkinDocument): string {
     for (const [name, value] of Object.entries(layout)) {
       if (name === 'composerSendIcon') { validateComposerSendGlyph(value); continue }
       const spec = Object.hasOwn(skinContract.layout, name) ? skinContract.layout[name] : undefined
-      if (!spec || (spec.values ? !spec.values.includes(String(value)) : typeof value !== 'number' || !Number.isFinite(value) || value < spec.min! || value > spec.max!)) throw new Error('布局配置无效')
+      if (!spec || (spec.values ? !spec.values.includes(String(value)) : typeof value !== 'number' || !Number.isFinite(value) || value < spec.min! || value > spec.max!)) throw new Error('Invalid layout configuration')
     }
   }
   for (const [name, value] of Object.entries(skin.effects ?? {})) {
-    if (name === 'reveal' ? typeof value !== 'boolean' : !['charsPerSecond', 'maxDurationMs'].includes(name) || typeof value !== 'number' || !Number.isFinite(value) || value < 10 || value > (name === 'charsPerSecond' ? 1000 : 10000)) throw new Error('消息动效配置无效')
+    if (name === 'reveal' ? typeof value !== 'boolean' : !['charsPerSecond', 'maxDurationMs'].includes(name) || typeof value !== 'number' || !Number.isFinite(value) || value < 10 || value > (name === 'charsPerSecond' ? 1000 : 10000)) throw new Error('Invalid message animation configuration')
   }
   return `${scope}{${tokens(skin.tokens)}}\n${rules(skin.styles)}\n` +
     `@media (min-width: 1024px){${scope}{${tokens(skin.desktop?.tokens)}}${rules(skin.desktop?.styles)}}\n` +

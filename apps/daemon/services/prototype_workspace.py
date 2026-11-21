@@ -25,7 +25,7 @@ def digest(content: bytes):
 
 def atomic_write(path: Path, content: bytes):
     if path.is_symlink():
-        raise ValueError('不允许符号链接')
+        raise ValueError('Symbolic links are not allowed')
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f'.{path.name}.{uuid.uuid4().hex}.tmp')
     try:
@@ -41,14 +41,14 @@ def atomic_write(path: Path, content: bytes):
 def safe_path(root: Path, relative: str, *, allow_hidden=False):
     candidate = Path(relative)
     if candidate.is_absolute() or not candidate.parts or any(part in {'.', '..'} or (part.startswith('.') and not allow_hidden) for part in candidate.parts):
-        raise ValueError('文件路径无效')
+        raise ValueError('Invalid file path')
     target = root
     for part in candidate.parts:
         target = target / part
         if target.is_symlink():
-            raise ValueError('不允许符号链接')
+            raise ValueError('Symbolic links are not allowed')
     if not target.resolve().is_relative_to(root.resolve()):
-        raise ValueError('文件超出工作区')
+        raise ValueError('File exceeds workspace')
     return target
 
 
@@ -68,11 +68,11 @@ def resource_paths(root):
             if name.startswith('.') or path.suffix.lower() not in RESOURCES:
                 continue
             if path.is_symlink():
-                raise ValueError('原型资源不能包含符号链接')
+                raise ValueError('Prototype resources cannot contain symbolic links')
             size = path.stat().st_size
             total += size
             if size > MAX_FILE or total > MAX_TOTAL:
-                raise ValueError('原型资源超过限制（单文件 25 MB，工作区 500 MB）')
+                raise ValueError('Prototype resources exceed the limit (single file 25 MB, workspace 500 MB)')
             paths.append(path)
     return paths
 
@@ -80,7 +80,7 @@ def resource_paths(root):
 class PrototypeWorkspace:
     def __init__(self, project_root: Path, data_root: Path, workspace_id: str):
         if len(workspace_id) != 32 or any(c not in '0123456789abcdef' for c in workspace_id):
-            raise ValueError('工作区标识无效')
+            raise ValueError('Invalid workspace identifier')
         self.project_root = project_root.resolve()
         self.data_root = data_root.resolve()
         self.id = workspace_id
@@ -100,13 +100,13 @@ class PrototypeWorkspace:
         data_root = data_root.resolve()
         domain = project_root if entry.is_relative_to(project_root) else data_root
         if not entry.is_relative_to(domain) or entry.suffix.lower() not in {'.html', '.htm'} or entry.is_relative_to(data_root / 'prototype-editor'):
-            raise ValueError('请选择项目内的 HTML 文件')
+            raise ValueError('Please select an HTML file within the project')
         safe_path(domain, entry.relative_to(domain).as_posix(), allow_hidden=True)
         if not entry.is_file():
             raise FileNotFoundError(entry)
         root = (root or entry.parent).resolve()
         if not root.is_relative_to(domain) or not entry.is_relative_to(root):
-            raise ValueError('原型目录必须位于项目内并包含当前文件')
+            raise ValueError('The prototype directory must be located within the project and contain the current file')
         base = data_root / 'prototype-editor'
         with _guard:
             for record in base.glob('*/journal.json'):
@@ -116,10 +116,10 @@ class PrototypeWorkspace:
                     work = cls(project_root, data_root, record.parent.name)
                     work.refresh_sources(entry.relative_to(registered).as_posix())
                     if entry.relative_to(registered).as_posix() not in work.load()['documents']:
-                        raise SourceConflict('工作区有未完成修改，请处理后再打开新文件')
+                        raise SourceConflict('Workspace has uncommitted changes; please resolve them before opening a new file')
                     return work
                 if resource_contains(root, registered):
-                    raise ValueError('原型目录与已有工作区重叠')
+                    raise ValueError('Prototype directory overlaps with existing workspace')
             workspace_id = uuid.uuid4().hex
         work = cls(project_root, data_root, workspace_id)
         selected_entry = entry.relative_to(root).as_posix()
@@ -133,7 +133,7 @@ class PrototypeWorkspace:
                     files[relative] = work.store_blob(content)
                     atomic_write(work.directory / 'workspace' / relative, content)
                 if entry.relative_to(root).as_posix() not in files:
-                    raise ValueError('HTML 文件不存在')
+                    raise ValueError('HTML file does not exist')
                 work.save({'entries': [selected_entry], 'root': root.relative_to(domain).as_posix(), 'root_kind': 'project' if domain == project_root else 'data', 'files': files,
                            'documents': {path: uuid.uuid4().hex for path in files if Path(path).suffix.lower() in {'.html', '.htm'}},
                            'status': 'idle', 'history': [], 'pending': None})
@@ -147,7 +147,7 @@ class PrototypeWorkspace:
         with self.lock:
             data = json.loads((self.directory / 'journal.json').read_text())
             if data['status'] == 'running' and data.get('process_id') != PROCESS_ID:
-                data.update(status='interrupted', error='服务中断，工作副本已保留')
+                data.update(status='interrupted', error='The service stopped unexpectedly. The working copy was kept.')
                 self.save(data)
             return data
 
@@ -182,10 +182,10 @@ class PrototypeWorkspace:
     def document(self, path):
         data = self.load()
         if path not in data['documents']:
-            raise ValueError('HTML 未登记')
+            raise ValueError('HTML not registered')
         target = safe_path(self.directory / 'workspace', path)
         if target.stat().st_size > MAX_FILE:
-            raise ValueError('文件过大')
+            raise ValueError('File too large')
         return HtmlSource(target.read_bytes().decode('utf-8'))
 
     def refresh_sources(self, entry=None):
@@ -219,13 +219,13 @@ class PrototypeWorkspace:
         with self.lock:
             data = self.load()
             if data['status'] != 'idle':
-                raise SourceConflict('工作区有运行中或未处理的修改')
+                raise SourceConflict('Workspace has running or unprocessed modifications')
             self.refresh_sources()
             data = self.load()
             data.update(status='running', process_id=PROCESS_ID, pending={'label': label, 'before': dict(data['files']), 'changes': {}}, error='')
             self.save(data)
 
-    def interrupt(self, message='执行中断，工作副本已保留'):
+    def interrupt(self, message='Execution was interrupted. The working copy was kept.'):
         with self.lock:
             data = self.load()
             if data['status'] == 'running':
@@ -256,24 +256,24 @@ class PrototypeWorkspace:
                 copied = {p.relative_to(self.directory / 'workspace').as_posix()
                           for p in resource_paths(self.directory / 'workspace')}
                 if copied != set(pending['before']):
-                    data.update(status='conflict', error='工作副本新增或删除了文件；本版仅支持修改已有文件，请保留副本检查或放弃修改')
+                    data.update(status='conflict', error='The working copy contains new or deleted files. Keep it for inspection or discard the changes. This version can only edit existing files.')
                     self.save(data)
                     raise SourceConflict(data['error'])
                 for path, before in pending['before'].items():
                     target = safe_path(self.directory / 'workspace', path)
                     if not target.is_file():
-                        raise SourceConflict('工作副本删除了文件，请处理后再保存')
+                        raise SourceConflict('The working copy has deleted the file. Please handle it before saving.')
                     if target.stat().st_size > MAX_FILE:
-                        raise ValueError('文件过大')
+                        raise ValueError('File too large')
                     content = target.read_bytes()
                     after = digest(content)
                     if after != before:
                         if Path(path).suffix.lower() not in EDITABLE:
-                            data.update(status='conflict', error='本版只发布 HTML、CSS 和 JS 修改')
+                            data.update(status='conflict', error='This version only publishes changes to HTML, CSS, and JavaScript.')
                             self.save(data)
                             raise SourceConflict(data['error'])
                         if digest(safe_path(original, path).read_bytes()) != before:
-                            data.update(status='conflict', error=f'原文件已变化：{path}')
+                            data.update(status='conflict', error=f'The original file has changed: {path}')
                             self.save(data)
                             raise SourceConflict(data['error'])
                         changes[path] = {'before': before, 'after': self.store_blob(content)}
@@ -284,7 +284,7 @@ class PrototypeWorkspace:
                 destination = safe_path(original, path)
                 current = digest(destination.read_bytes())
                 if current not in {change['before'], change['after']}:
-                    raise SourceConflict(f'回写冲突：{path}')
+                    raise SourceConflict(f'Write-back conflict: {path}')
                 if current != change['after']:
                     atomic_write(destination, self.blob(change['after']))
                 data['files'][path] = change['after']
@@ -305,13 +305,13 @@ class PrototypeWorkspace:
         with self.lock:
             document = self.document(path)
             if document.runtime_rendered:
-                raise ValueError('动态页面请通过原型助手修改生成脚本')
+                raise ValueError('Please modify and generate scripts for dynamic pages through the prototype assistant')
             result = document.edit(node_id, operation, values, version)
             self.begin(f'{operation}: {path}')
             # begin refreshed external state: never apply an old source range.
             if self.document(path).version != version:
                 self.discard()
-                raise SourceConflict('原文件已更新，请刷新预览')
+                raise SourceConflict('The original file has been updated. Please refresh the preview.')
             atomic_write(safe_path(self.directory / 'workspace', path), result.encode())
             return self.publish()
 
@@ -319,7 +319,7 @@ class PrototypeWorkspace:
         with self.lock:
             data = self.load()
             if data['status'] == 'publishing':
-                raise SourceConflict('回写未完成，请先恢复回写')
+                raise SourceConflict('Write-back incomplete, please restore write-back first')
             copied = self.directory / 'workspace'
             for extra in copied.rglob('*'):
                 if (extra.is_file() or extra.is_symlink()) and extra.relative_to(copied).as_posix() not in data['files']:
@@ -336,14 +336,14 @@ class PrototypeWorkspace:
         with self.lock:
             data = self.load()
             if data['status'] != 'idle' or not data['history']:
-                raise SourceConflict('当前无法撤销')
+                raise SourceConflict('Cannot undo')
             item = next((item for item in reversed(data['history']) if not item.get('undone') and not item.get('undo_id')), None)
             if item is None:
-                raise SourceConflict('没有可撤销的修改')
+                raise SourceConflict('No modifications to revert')
             original = self.original(data)
             for path, change in item['changes'].items():
                 if digest(safe_path(original, path).read_bytes()) != change['after']:
-                    raise SourceConflict('文件已有其他修改，不能覆盖撤销')
+                    raise SourceConflict('The file has other modifications and cannot be overwritten or reverted.')
             self.begin('撤销：' + item['label'])
             data = self.load()
             data['pending']['undo_id'] = item['id']
@@ -356,7 +356,7 @@ class PrototypeWorkspace:
         with self.lock:
             data = self.load()
             if data['status'] != 'idle':
-                raise SourceConflict('有未完成的修改，不能清理')
+                raise SourceConflict('Unsaved changes, cannot clean')
             data['history'] = []
             self.save(data)
             self.prune()
@@ -376,7 +376,7 @@ class PrototypeWorkspace:
             else:
                 item = next((item for item in data['history'] if item['id'] == revision), None)
                 if item is None:
-                    raise ValueError('历史版本不存在')
+                    raise ValueError('Historical version does not exist')
                 changes = {path: (self.blob(change['before']), self.blob(change['after'])) for path, change in item['changes'].items()}
             output, files, remaining = [], [], 200000
             for path, (before, after) in changes.items():

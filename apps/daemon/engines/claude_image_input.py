@@ -18,7 +18,7 @@ def build_claude_user_content(
         if reference.startswith("data:"):
             header, data = reference.split(",", 1)
             if not header.endswith(";base64"):
-                raise ValueError("Claude 图片 data URL 必须使用 base64 编码")
+                raise ValueError("Claude image data URL must use base64 encoding")
             source = {
                 "type": "base64",
                 "media_type": header[5:-7],

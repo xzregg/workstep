@@ -14,8 +14,9 @@ from models.fields import utc_now
 from services.artifact_rounds import step_round_dir
 from services.intervention import seal_unanswered_interactions
 from services.messages import (
+    StepEventProgress,
     attributed_actor_display_name, attributed_actor_message_fields,
-    create_task_message, extract_usage_json, new_message_id,
+    create_task_message, new_message_id,
 )
 from services.pipeline import Step
 from services.prompt import (
@@ -250,7 +251,7 @@ class StepExecutionMessages:
 
     async def finish(
         self, *, message_id: str,
-        journal_ref: JournalRef, events_collected: list[dict],
+        journal_ref: JournalRef, event_progress: StepEventProgress,
         succeeded: bool, cancelled: bool, ended_at,
     ) -> CompletedExecution:
         """Seal the execution trace in the project database worker."""
@@ -264,7 +265,7 @@ class StepExecutionMessages:
             message.event_summary_json = projection["event_summary_json"]
             message.event_count = projection["event_count"]
             message.last_event_seq = projection["last_event_seq"]
-            message.usage_json = extract_usage_json(events_collected)
+            message.usage_json = event_progress.usage_json()
             message.content = projection["content"]
             message.run_status = (
                 "cancelled" if cancelled else "succeeded" if succeeded else "failed"

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ChatRoleReference } from '../../api/chatRoles'
 import { roleCenterApi, type RoleCatalog } from '../../api/roleCenter'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import { useOverlay } from '../../hooks/useOverlay'
 import { useCompactLayout } from '../../hooks/useCompactLayout'
 import ResizablePanel from '../ResizablePanel'
@@ -83,7 +83,7 @@ export default function RoleAssetPicker({ binding, busy, error, onSelect, onClos
       <div className="chat-role-picker-body">
         <div className="chat-role-picker-list">
           {!catalog && !loadError && <div className="chat-role-picker-loading"><Spinner />{t('roleCenter.loading')}</div>}
-          {loadError && <p role="alert">{loadError}</p>}
+          {loadError && <p role="alert">{localizeErrorDisplay(loadError)}</p>}
           {catalog && filtered.length === 0 && <p>{t('roleCenter.empty')}</p>}
           {filtered.map(record => <button type="button" className="chat-role-picker-item" key={record.id} disabled={busy}
             aria-label={t(kind === 'role' ? 'roleCenter.selectRoleLabel' : 'roleCenter.selectTeamLabel', { name: record.name })}
@@ -94,12 +94,12 @@ export default function RoleAssetPicker({ binding, busy, error, onSelect, onClos
         </div>
         <div className="chat-role-picker-preview">
           {loading ? <div className="chat-role-picker-loading"><Spinner />{t('roleCenter.loading')}</div>
-            : previewError ? <p role="alert">{previewError}</p>
+            : previewError ? <p role="alert">{localizeErrorDisplay(previewError)}</p>
             : preview ? <MarkdownMessage content={preview} /> : <p>{t('roleCenter.selectToPreview')}</p>}
         </div>
       </div>
       <footer className="chat-role-picker-footer">
-        <div role="alert" className="chat-role-picker-error">{error}</div>
+        <div role="alert" className="chat-role-picker-error">{localizeErrorDisplay(error)}</div>
         <p>{t('roleCenter.chatBindingHint')}</p>
         <div>{(loadError || previewError) && <Button onClick={() => setRetry(value => value + 1)}>{t('roleCenter.retry')}</Button>}
           <Button onClick={close} disabled={busy}>{t('common.cancel')}</Button>

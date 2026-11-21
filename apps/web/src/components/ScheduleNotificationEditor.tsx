@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { scheduleApi, type ScheduleNotification, type ScheduleNotificationOptions } from '../api/schedule'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Select from './Select'
 import Field from './Field'
 import Button from './Button'
@@ -57,6 +57,6 @@ export default function ScheduleNotificationEditor({ projectId, taskId, initialV
       </Select></Field>
       {!selected && <div role="alert" className="schedule-notification-hint">{t('schedules.notifyMissingTarget')}</div>}
     </div>}
-    {error && <div role="alert" className="schedule-notification-hint">{error}<Button onClick={() => setReload(value => value + 1)}>{t('schedules.notificationReload')}</Button></div>}
+    {error && <div role="alert" className="schedule-notification-hint">{localizeErrorDisplay(error)}<Button onClick={() => setReload(value => value + 1)}>{t('schedules.notificationReload')}</Button></div>}
   </div>
 }

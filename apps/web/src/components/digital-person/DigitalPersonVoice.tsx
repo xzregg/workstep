@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Button from '../Button'
 import Select from '../Select'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import DigitalPersonAvatar from './DigitalPersonAvatar'
 import type { DigitalPersonProfile } from '../../api/digitalPerson'
 
@@ -40,6 +40,6 @@ export default function DigitalPersonVoice({ profile, onChange, preview = true }
     <label>{t('digitalPerson.expression')}<Select value={profile.expression || 'neutral'} onChange={e=>onChange({expression:e.target.value as DigitalPersonProfile['expression']})}>{(['neutral','happy','concern'] as const).map(v=><option key={v} value={v}>{t(`digitalPerson.${v}`)}</option>)}</Select></label></>}
     {preview && <div className="digital-person-voice-preview"><DigitalPersonAvatar avatar={profile.avatar} speaking={speaking} expression={profile.expression} />
     <Button disabled={!supported} onClick={speaking ? stop : play}>{t(!supported ? 'digitalPerson.voiceUnavailable' : speaking ? 'digitalPerson.stopVoice' : 'digitalPerson.tryVoice')}</Button></div>}
-    {error && <p role="alert">{error}</p>}
+    {error && <p role="alert">{localizeErrorDisplay(error)}</p>}
   </div>
 }

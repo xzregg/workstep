@@ -7,6 +7,7 @@ import { isTaskCompleted } from '../pages/taskDetailChat'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import DeleteTaskConfirmation from './DeleteTaskConfirmation'
+import ArchiveWorkspaceChoice from './ArchiveWorkspaceChoice'
 import Icon from './Icon'
 import Input from './Input'
 import TaskCopyButton from './TaskCopyButton'
@@ -22,6 +23,7 @@ interface TaskTableViewProps {
   projectId?: string
   readOnly?: boolean
   canArchive?: boolean
+  canCleanWorkspace?: boolean
   canDelete?: boolean
   canCreateTask?: boolean
   lanes: Lane[]
@@ -30,7 +32,7 @@ interface TaskTableViewProps {
   durationNowMs: number
   onOpenTask: (taskId: string) => void
   onAddTask: (laneKey: string) => void
-  onArchiveTask: (taskId: string) => Promise<void>
+  onArchiveTask: (taskId: string, deleteWorkspace?: boolean) => Promise<void>
   onDeleteTask: (taskId: string, deleteWorkspace: boolean) => Promise<void>
   onError: (message: string) => void
 }
@@ -87,6 +89,7 @@ export default function TaskTableView({
   readOnly = false,
   canCreateTask = true,
   canArchive = !readOnly,
+  canCleanWorkspace = !readOnly,
   canDelete = !readOnly,
 }: TaskTableViewProps) {
   const { t, locale } = useI18n()
@@ -94,6 +97,7 @@ export default function TaskTableView({
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [pendingAction, setPendingAction] = useState<'archive' | 'delete' | null>(null)
   const [busy, setBusy] = useState(false)
+  const [archiveWorkspace, setArchiveWorkspace] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase(locale)
   const visibleTasksByLane = useMemo(() => {
@@ -133,7 +137,7 @@ export default function TaskTableView({
     setBusy(true)
     try {
       if (pendingAction === 'archive') {
-        await Promise.all(selectedIds.map(onArchiveTask))
+        await Promise.all(selectedIds.map(id => onArchiveTask(id, canCleanWorkspace && archiveWorkspace)))
       } else {
         await Promise.all(selectedIds.map(id => onDeleteTask(id, deleteWorkspace)))
       }
@@ -195,7 +199,7 @@ export default function TaskTableView({
           <Button
             variant="ghost"
             disabled={readOnly || selectedIds.length === 0 || busy}
-            onClick={() => setPendingAction('archive')}
+            onClick={() => { setArchiveWorkspace(true); setPendingAction('archive') }}
             style={{ gap: 5 }}
           >
             <Icon name="archive" size={13} strokeWidth={2} />
@@ -332,7 +336,7 @@ export default function TaskTableView({
         loading={busy}
         onConfirm={() => void runBulkAction()}
         onCancel={() => { if (!busy) setPendingAction(null) }}
-      />
+      >{canCleanWorkspace && <ArchiveWorkspaceChoice checked={archiveWorkspace} disabled={busy} onChange={setArchiveWorkspace} />}</ConfirmDialog>
       <DeleteTaskConfirmation
         open={pendingAction === 'delete'}
         count={selectedIds.length}

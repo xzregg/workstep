@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { fsApi } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import MarkdownEditor from './MarkdownEditor'
@@ -64,7 +64,7 @@ export default function ProjectMemoryPanel({ projectId, onClose }: Props) {
         </span>
         <Button variant="icon" onClick={requestClose} aria-label={t('common.close')}>✕</Button>
       </div>
-      {error && <div className="project-memory-error" role="alert">{error}</div>}
+      {error && <div className="project-memory-error" role="alert">{localizeErrorDisplay(error)}</div>}
       <div className="project-memory-body">
         {loading ? <div className="project-memory-loading">{t('common.loading')}</div> :
           <MarkdownEditor value={content} onChange={setContent} projectId={projectId}

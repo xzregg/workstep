@@ -35,12 +35,16 @@ async def test_success_history_reports_real_processing_and_signed_affinity_chang
     run=await current.check()
     assert run['status']==('notified' if notify else 'silent'),run
     records=await current.activity_records()
-    summary=records['runs'][0]['summary']
-    assert '整理 4 条消息（2 个会话）' in summary
-    assert '新增 1 条记忆' in summary
-    assert '好感度上升 2、下降 1' in summary
+    processing={'messages':4,'sessions':2,'memories':1}
+    assert run['processing'] == records['runs'][0]['processing'] == processing
+    assert not records['runs'][0]['summary']
+    assert records['runs'][0]['outcome']['affinity_increased'] == 2
+    assert records['runs'][0]['outcome']['affinity_decreased'] == 1
     detail=await current.run_detail(run['id'])
-    assert summary in detail['summary']
+    assert detail['processing'] == processing
+    assert ('模型内部分析正文' in detail['summary']) is not notify
+    assert detail['notification_message'] == ('模型内部分析正文' if notify else None)
+    assert 'notification_message' not in records['runs'][0]
     assert run['summary']=='模型内部分析正文'
     assert sent==(['模型内部分析正文'] if notify else [])
 

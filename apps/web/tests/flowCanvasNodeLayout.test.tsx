@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Window } from 'happy-dom'
-import { act } from 'react'
+import { act, createRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ReactFlowProvider } from '@xyflow/react'
-import FlowCanvas from '../src/components/FlowCanvas'
+import FlowCanvas, { type FlowCanvasHandle } from '../src/components/FlowCanvas'
+import WorkflowDebugControls, { type WorkflowDebugHandle } from '../src/components/WorkflowDebugControls'
 import { loadCanvasData } from '../src/components/flowCanvasData'
-import { I18nProvider } from '../src/i18n'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 
 function installDom() {
   const window = new Window({ url: 'http://localhost/' })
@@ -76,6 +77,52 @@ test('step cards give long titles enough room to wrap without truncation', async
     assert.equal(titleElement.parentElement?.parentElement?.style.width, '280px')
   } finally {
     await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+
+test('right-click debugging opens the chosen step with its upstream sample fields', async () => {
+  const window = installDom()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const canvas = createRef<FlowCanvasHandle>()
+  const debug = createRef<WorkflowDebugHandle>()
+  const project = { id: 'project', path: '/project', name: 'Project', workflows: [] }
+  const workflow = { nodes: [
+    { id: 1, type: 'a', title: 'A', outputs: [{ name: 'plan', type: 'Markdown' }] },
+    { id: 2, type: 'b', title: 'B', inputs: [{ name: 'plan', type: 'Markdown' }] },
+  ], connections: [{ from: 1, fromPort: 0, to: 2, toPort: 0 }] }
+  try {
+    const render = (enabled: boolean) => act(async () => root.render(
+      <I18nProvider><FlowCanvas initialSteps={workflow} onSave={() => assert.fail('Unexpected save')}
+        ref={canvas} onDebugStep={enabled ? id => debug.current?.open(id) : undefined}
+        toolbarRight={<WorkflowDebugControls ref={debug} project={project} sourceId="source"
+          readDraft={() => canvas.current?.getDraft()} />} /></I18nProvider>,
+    ))
+    const rightClick = () => act(async () => {
+      container.querySelector('[data-id="2"]')!.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true }))
+    })
+    await render(false)
+    await rightClick()
+    const menuButton = () => [...container.querySelectorAll('button')].find(button => button.textContent === '从此步骤调试')
+    assert.equal(menuButton(), undefined)
+    await render(true)
+    await rightClick()
+    assert.ok(menuButton())
+    await act(async () => menuButton()!.click())
+    assert.equal(container.querySelector<HTMLInputElement>('.radio-card-group input:checked')?.value, 'b')
+    assert.ok(container.querySelector('[id="debug-sample-a:0"]'))
+    assert.equal(menuButton(), undefined)
+    const cancel = [...container.querySelectorAll<HTMLButtonElement>('[role=dialog] button')]
+      .find(button => button.textContent === '取消')!
+    await act(async () => cancel.click())
+    await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === '调试')!.click())
+    assert.equal(container.querySelector<HTMLInputElement>('.radio-card-group input:checked')?.value, 'a')
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
     await window.happyDOM.close()
   }
 })

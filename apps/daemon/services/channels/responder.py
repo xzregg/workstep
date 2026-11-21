@@ -129,7 +129,7 @@ class ChatSessionResponder:
                 )
             )
             if not expected_message_id["value"]:
-                raise RuntimeError("渠道助手响应缺少消息标识")
+                raise RuntimeError("Channel assistant response missing message identifier")
             if on_accepted is not None:
                 await on_accepted(session_id)
             if on_started is not None:
@@ -153,17 +153,14 @@ class ChatSessionResponder:
                     if status == "stopped":
                         return session_id, "已停止。"
                     if status != "succeeded":
-                        raise RuntimeError(str(
-                            event.get("error")
-                            or ("渠道助手响应已停止" if status == "stopped" else "渠道助手响应失败")
-                        ))
+                        raise RuntimeError(str(event.get("error") or "The channel assistant failed to respond"))
                     if event.get("content") is not None:
                         reply = str(event["content"])
                     return session_id, reply
                 elif event.get("type") == "RUN_FINISHED":
                     return session_id, reply
                 elif event.get("type") == "RUN_ERROR":
-                    raise RuntimeError(str(event.get("error") or "渠道助手响应失败"))
+                    raise RuntimeError(str(event.get("error") or "The channel assistant failed to respond"))
         finally:
             self._event_bus.unsubscribe(queue)
             await self._event_bus.publish({

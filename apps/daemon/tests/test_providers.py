@@ -36,10 +36,10 @@ async def test_managed_call_rechecks_current_authorization_without_blocking(comp
     await asyncio.sleep(.02)
     assert not task.done()
     await asyncio.wait_for(asyncio.sleep(.01), timeout=.05)
-    with pytest.raises(ValueError, match='供应商授权'):
+    with pytest.raises(ValueError, match='authorization has expired'):
         await task
     store.current = {**provider, 'api_key': 'new-secret'}
-    with pytest.raises(ValueError, match='供应商授权'):
+    with pytest.raises(ValueError, match='authorization has expired'):
         await call(provider, 'model', [], transport=httpx.MockTransport(network))
     assert calls == []
 
@@ -140,12 +140,12 @@ def test_validate_provider_values():
     error = provider_service.validate_provider_values(
         name="", type_id="deepseek", base_url="https://api.deepseek.com/v1"
     )
-    assert error == "供应商名称不能为空"
+    assert error == 'Provider name is required'
 
     error = provider_service.validate_provider_values(
         name="x", type_id="nope", base_url="https://api.deepseek.com/v1"
     )
-    assert error == "不支持的供应商类型"
+    assert error == 'Unsupported provider type'
 
     error = provider_service.validate_provider_values(
         name="x", type_id="custom", base_url="http://192.168.1.20/v1"
@@ -408,7 +408,7 @@ def test_cc_switch_scan_lists_every_application_type(tmp_path, monkeypatch):
     assert by_source["hermes"]["base_url"] == "http://192.168.50.21:3000/v1"
     assert by_source["openclaw"]["model_ids"] == ["openclaw-model"]
     assert by_source["opencode"]["type"] == "anthropic"
-    assert by_source["future-app"]["error"] == "未找到可导入的 API 地址"
+    assert by_source["future-app"]["error"] == 'No importable API address found'
 
 
 def test_cc_switch_official_configs_use_standard_api_addresses(tmp_path, monkeypatch):
@@ -754,9 +754,9 @@ async def test_managed_provider_rejects_unassigned_model_before_network():
         "api_key": "managed-secret",
     }
     transport = httpx.MockTransport(handler)
-    with pytest.raises(ValueError, match="模型未获平台供应商授权"):
+    with pytest.raises(ValueError, match='The\\ selected\\ model\\ is\\ not\\ authorized\\ by\\ the\\ platform\\ vendor'):
         await provider_service.text_completion(provider, "other-model", [], transport=transport)
-    with pytest.raises(ValueError, match="模型未获平台供应商授权"):
+    with pytest.raises(ValueError, match='The\\ selected\\ model\\ is\\ not\\ authorized\\ by\\ the\\ platform\\ vendor'):
         await provider_service.chat_completion(provider, "other-model", [], transport=transport)
     assert calls == []
     assert await provider_service.text_completion(provider, "allowed-model", [],
@@ -927,7 +927,7 @@ async def test_chat_completion_empty_content_raises():
             "choices": [{"message": {"content": "", "reasoning_content": "..."}}],
         })
 
-    with pytest.raises(RuntimeError, match="未返回内容"):
+    with pytest.raises(RuntimeError, match='did not return content'):
         await provider_service.chat_completion(
             {"type": "deepseek", "base_url": "https://gateway.example.com/v1", "api_key": "x"},
             "m",
@@ -952,7 +952,7 @@ async def test_chat_completion_rejects_anthropic_type():
 
 @pytest.mark.anyio
 async def test_chat_completion_requires_config():
-    with pytest.raises(ValueError, match="供应商或模型未配置"):
+    with pytest.raises(ValueError, match='Supplier\\ or\\ model\\ not\\ configured'):
         await provider_service.chat_completion(
             {"type": "deepseek", "base_url": "", "api_key": ""},
             "",
@@ -965,7 +965,7 @@ async def test_chat_completion_malformed_response():
     async def handler(request):
         return httpx.Response(200, json={"choices": []})
 
-    with pytest.raises(RuntimeError, match="响应格式异常"):
+    with pytest.raises(RuntimeError, match='response format is abnormal'):
         await provider_service.chat_completion(
             {"type": "deepseek", "base_url": "https://gateway.example.com/v1", "api_key": "x"},
             "m",

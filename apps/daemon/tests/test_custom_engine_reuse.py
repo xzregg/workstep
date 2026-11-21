@@ -110,7 +110,7 @@ async def test_custom_worker_same_session_busy_and_stop(custom_environment):
         event = await anext(stream)
         session = event.data['session_id']
         entry = pool._entries[(str(source), session)]
-        with pytest.raises(RuntimeError, match='正在执行'):
+        with pytest.raises(RuntimeError, match='session is executing'):
             await run(cls, source, sid=session)
         assert entry.client.process.returncode is None
         await asyncio.wait_for(engine.stop(), 3)

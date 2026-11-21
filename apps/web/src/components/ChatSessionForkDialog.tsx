@@ -4,7 +4,7 @@ import type {
   CoordinatorEngineSummary,
   ProviderInfo,
 } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { resolveForkContextMode, type ForkContextMode } from '../utils/chatSessionFork'
 import ChatHandoffOptions from './ChatHandoffOptions'
 import ConfirmDialog from './ConfirmDialog'
@@ -193,7 +193,7 @@ export default function ChatSessionForkDialog({
 
         {error && (
           <div role="alert" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>
-            {error}
+            {localizeErrorDisplay(error)}
           </div>
         )}
       </div>

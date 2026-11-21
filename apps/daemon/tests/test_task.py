@@ -830,7 +830,7 @@ async def test_cancel_task_finalizes_running_records(subscriber):
 
         assert updated["status"] == "stopped"
         assert step.status == "cancelled"
-        assert step.error == "手动停止"
+        assert step.error == 'Stopped manually'
         assert message.run_status == "cancelled"
         assert task["id"] not in service._running_engines
         assert events[-1]["type"] == "RUN_ERROR"

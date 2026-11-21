@@ -4,11 +4,13 @@ import {resolvedSkinLayout, type SkinLayout} from '../skins/contract'
 import {useCompactLayout} from '../hooks/useCompactLayout'
 
 /** The icon is presentation only; ChatInput retains all state and actions. */
-export function ComposerSendIcon({name = 'send'}: {name?: SkinLayout['composerSendIcon']}) {
- if (typeof name !== 'string') return <svg focusable="false" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{name.paths.map((path,index)=><path key={index} d={path}/>)}</svg>
- return <Icon name={name} size={13} strokeWidth={1.6}/>
+type SendIconSize = {size?:number;strokeWidth?:number}
+
+export function ComposerSendIcon({name = 'send',size=13,strokeWidth=1.6}: SendIconSize & {name?: SkinLayout['composerSendIcon']}) {
+ if (typeof name !== 'string') return <svg focusable="false" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{name.paths.map((path,index)=><path key={index} d={path}/>)}</svg>
+ return <Icon name={name} size={size} strokeWidth={strokeWidth}/>
 }
-export default function SkinnedComposerSendIcon() {
+export default function SkinnedComposerSendIcon(props:SendIconSize) {
  const skin=useActiveSkin(), compact=useCompactLayout()
- return <ComposerSendIcon name={resolvedSkinLayout(skin,compact).composerSendIcon}/>
+ return <ComposerSendIcon {...props} name={resolvedSkinLayout(skin,compact).composerSendIcon}/>
 }

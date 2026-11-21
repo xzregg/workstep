@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { decisionModelsApi, validDecisionEndpoint, type DecisionModelSource } from '../api/decisionModels'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import Select from './Select'
 import './DecisionServiceModels.css'
@@ -37,7 +37,7 @@ export default function DecisionServiceModels({ source, value, disabled, onSelec
         <option value="">{t('decisionModels.chooseServiceModel')}</option>{models.map(model => <option key={model} value={model}>{model}</option>)}
       </Select>}
     </div>
-    {error && <p role="alert" className="decision-error">{error}</p>}
+    {error && <p role="alert" className="decision-error">{localizeErrorDisplay(error)}</p>}
     {models !== null && <p role="status">{models.length ? t('decisionModels.modelsLoaded', { count: models.length }) : t('decisionModels.noServiceModels')}</p>}
     <p>{t('decisionModels.serviceModelsHint')}</p>
   </div>

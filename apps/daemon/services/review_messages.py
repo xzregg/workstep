@@ -210,7 +210,7 @@ class StepReviewMessages:
             def mark_review_cancelled():
                 review = ReviewRun.get_by_id(outcome.review_run.id)
                 review.status = "failed"
-                review.error = "手动停止"
+                review.error = "Stopped manually"
                 review.ended_at = review.ended_at or utc_now()
                 review.save()
 

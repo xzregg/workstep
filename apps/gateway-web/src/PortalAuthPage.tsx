@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { loadPlatformStatus } from './platformBranding'
 import { CompanySubtitle } from './CompanySubtitle'
 import type { EnterpriseProvider } from './enterpriseProviders'
@@ -39,7 +40,7 @@ export function PortalAuthPage() {
         if (!platform.initialized) { setMode('open'); setStage('setup'); return }
         const session = await fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
         if (session.ok) { navigate(next, { replace: true }); return }
-        if (session.status !== 401) throw new Error('无法检查登录状态，请稍后重试。')
+        if (session.status !== 401) throw new Error('Unable to check login status, please try again later.')
         // Optional enterprise sign-in must not delay or block local accounts.
         setScanLoading(true); setScanError(false)
         void fetch('/api/auth/identity-sources', { signal: controller.signal })
@@ -50,7 +51,7 @@ export function PortalAuthPage() {
           }).catch(() => {if (!controller.signal.aborted) setScanError(true)})
           .finally(() => {if (!controller.signal.aborted) setScanLoading(false)})
         const policy = await fetch('/api/auth/registration-policy', { signal: controller.signal })
-        if (!policy.ok) throw new Error('无法读取注册策略，请刷新重试。')
+        if (!policy.ok) throw new Error('Failed to read registration policy. Please refresh and try again.')
         if (!controller.signal.aborted) {
           const data = await policy.json()
           setMode(data.mode)
@@ -58,7 +59,7 @@ export function PortalAuthPage() {
           setStage('login')
         }
       } catch (reason) {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '无法加载登录页面。')
+        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Failed to load the login page.')
       }
     }
     void check()
@@ -69,10 +70,10 @@ export function PortalAuthPage() {
     const response = await fetch(url, { method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     if (!response.ok) {
-      if (response.status === 409 && url === '/api/platform/setup') throw new Error('平台已完成初始化，请刷新页面登录。')
-      if (response.status === 429) throw new Error('尝试次数过多，请稍后再试。')
-      if (response.status === 429) throw new Error('登录尝试过多，请稍后重试。')
-      throw new Error(url === '/api/auth/login' ? '登录失败，请检查账号状态和密码。' : '提交失败，请检查填写内容后重试。')
+      if (response.status === 409 && url === '/api/platform/setup') throw new Error('Platform initialization complete. Please refresh the page to log in.')
+      if (response.status === 429) throw new Error('Too many attempts, please try again later.')
+      if (response.status === 429) throw new Error('Too many login attempts, please try again later.')
+      throw new Error(url === '/api/auth/login' ? 'Login failed. Please check the account status and password.' : 'Submission failed. Please check the entered content and try again.')
     }
     return response
   }
@@ -83,7 +84,7 @@ export function PortalAuthPage() {
       const result = await post('/api/auth/login', { username, password })
       navigate(result.status === 202 ? `/auth/pending?next=${encodeURIComponent(next)}` : next, { replace: true })
     }
-    catch (reason) { setError(reason instanceof Error ? reason.message : '登录失败。') }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Login failed.') }
     finally { setBusy(false) }
   }
 
@@ -94,9 +95,9 @@ export function PortalAuthPage() {
         { return_to: `/auth?next=${encodeURIComponent(next)}` })
       const result = await response.json()
       if (typeof result.authorization_url !== 'string' || !result.authorization_url.startsWith('https://'))
-        throw new Error('身份源返回了无效的登录地址。')
+        throw new Error('The identity source returned an invalid login address.')
       window.location.assign(result.authorization_url)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '扫码登录失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'QR code login failed.') }
     finally { setBusy(false) }
   }
 
@@ -125,7 +126,7 @@ export function PortalAuthPage() {
         onRegistered={() => { window.dispatchEvent(new Event('gateway-auth-changed')); navigate('/admin', { replace: true }) }}
         onBack={() => { setError(''); setRetry(value => value + 1) }} />
     </>}
-    {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
     {stage !== 'checking' && <p className="gateway-auth-return"><Link className="gateway-action-link" to="/">返回工作台</Link></p>}
   </section>
 }

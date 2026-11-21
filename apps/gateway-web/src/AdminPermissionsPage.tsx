@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -36,13 +37,13 @@ export function AdminPermissionsPage({ mode = 'resource' }: { mode?: 'resource' 
       fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal }),
       fetch('/api/admin/permissions/catalog', { credentials: 'same-origin', signal: controller.signal }),
     ]).then(async ([session, definitions]) => {
-      if (!session.ok || !definitions.ok) throw new Error('权限目录加载失败，请重试。')
+      if (!session.ok || !definitions.ok) throw new Error('Failed to load permission directory. Please try again.')
       const [identity, data] = await Promise.all([session.json(), definitions.json()])
       if (!controller.signal.aborted) {
         setCsrf(identity.csrf_token ?? ''); setCatalog(data.permissions ?? [])
         setProjectCatalog(data.project_permissions ?? []); setProjectSets(data.project_permission_sets ?? [])
       }
-    }).catch(reason => { if (reason?.name !== 'AbortError') setSetupError(reason instanceof Error ? reason.message : '权限目录加载失败。') })
+    }).catch(reason => { if (reason?.name !== 'AbortError') setSetupError(reason instanceof Error ? reason.message : 'Failed to load permission directory.') })
     return () => controller.abort()
   }, [retrySetup])
   useEffect(() => {
@@ -54,10 +55,10 @@ export function AdminPermissionsPage({ mode = 'resource' }: { mode?: 'resource' 
     void fetch(`/api/admin/permissions${query.size ? `?${query}` : ''}`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error('权限规则加载失败，请重试。')
+      if (!response.ok) throw new Error('Failed to load permission rules. Please try again.')
       const data = await response.json()
       if (!controller.signal.aborted) setAssignments(data.assignments ?? [])
-    }).catch(reason => { if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '权限规则加载失败。') })
+    }).catch(reason => { if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load permission rules.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [subjectType, subjectId, revision])
@@ -90,9 +91,9 @@ export function AdminPermissionsPage({ mode = 'resource' }: { mode?: 'resource' 
         label="筛选对象" value={subjectId} onChange={setSubjectId} />}
       <button type="button" onClick={() => setRevision(value => value + 1)} disabled={loading}>刷新规则</button>
     </div>
-    {setupError && <p role="alert" className="gateway-auth-error">{setupError} <button type="button" onClick={() => setRetrySetup(value => value + 1)}>重试目录</button></p>}
+    {setupError && <p role="alert" className="gateway-auth-error">{localizeGatewayError(setupError)} <button type="button" onClick={() => setRetrySetup(value => value + 1)}>重试目录</button></p>}
     {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在加载权限规则…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>重试规则</button></p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button" onClick={() => setRevision(value => value + 1)}>重试规则</button></p>}
     {!loading && !error && visible.length === 0 && <p>当前条件下尚无权限规则。点击“{platform ? '分配平台权限' : '分配权限'}”，选择用户或组、权限和作用范围。</p>}
     {!!visible.length && <PermissionSubjectTable assignments={visible} name={name} projectCatalog={projectCatalog} projectSets={projectSets} canEdit={!!csrf && !!availableCatalog.length}
       canRevoke={!!csrf} csrf={csrf} onChanged={() => setRevision(value => value + 1)} onEdit={setEdit} onRevoke={setRevoke} />}

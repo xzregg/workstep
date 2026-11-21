@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
 import Button from './Button'
@@ -55,7 +55,7 @@ export default function ArtifactTemplateDialog({ name, value, sourceValue, onSav
           disabled={saving} readOnly={!onSave} minHeight={0} maxHeight="100%"
           ariaLabel={t('artifactTemplate.title')} placeholder={t('artifactTemplate.placeholder')} />
       </div>
-      {error && <div className="artifact-template-error" role="alert">{error}</div>}
+      {error && <div className="artifact-template-error" role="alert">{localizeErrorDisplay(error)}</div>}
       <div className="dialog-footer">
         {onSave && sourceValue !== undefined && <Button variant="ghost" className="artifact-template-reset"
           disabled={saving} onClick={() => setDraft(sourceValue)}>{t('artifactTemplate.reset')}</Button>}

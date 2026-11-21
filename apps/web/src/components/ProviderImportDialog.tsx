@@ -3,7 +3,7 @@ import ResizablePanel from './ResizablePanel'
 import Button from './Button'
 import Icon from './Icon'
 import { providerApi, type ProviderImportResult, type ProviderImportSource, type ProviderTypeMeta } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import './ProviderImportDialog.css'
 import {
   filterProviderImportCandidates,
@@ -254,7 +254,7 @@ export default function ProviderImportDialog({ types, onClose, onImported }: Pro
                               </div>
                               {candidate.error && (
                                 <div className="provider-import-candidate-error">
-                                  {candidate.error}
+                                  {localizeErrorDisplay(candidate.error)}
                                 </div>
                               )}
                             </div>
@@ -285,7 +285,7 @@ export default function ProviderImportDialog({ types, onClose, onImported }: Pro
                       </span>
                     )}
                     {importError && (
-                      <span className="provider-import-error">{importError}</span>
+                      <span className="provider-import-error">{localizeErrorDisplay(importError)}</span>
                     )}
                   </div>
                   <div className="provider-import-footer">

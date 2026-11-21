@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { remoteProjectApi, type RemoteDevice } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { resolveAccessExpiresAt, type AccessDurationPreset } from '../utils/remoteDeviceAccess'
 import { copyText } from '../utils/clipboard'
 import Button from './Button'
@@ -146,7 +146,7 @@ export default function ProjectLocalSharing({ projectId, active = true }: { proj
               onDeviceChange={handleDeviceChange}
               onError={setDeviceError}
             />
-            {deviceError && <div role="status" className="project-local-sharing-error">{deviceError}</div>}
+            {deviceError && <div role="status" className="project-local-sharing-error">{localizeErrorDisplay(deviceError)}</div>}
           </div>
         <div className="project-local-sharing-actions">
           {shareValue && <Button variant="ghost" onClick={() => void copyText(shareValue)}>{t('common.copy')}</Button>}

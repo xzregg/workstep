@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 
@@ -17,14 +18,14 @@ export function PortalHeader({ hasAdminAccess, signedIn = false, checking = fals
   try {
    const session = await fetch('/api/auth/session', { credentials: 'same-origin' })
    if (session.status !== 401) {
-    if (!session.ok) throw Error('登出失败，请重试。')
+    if (!session.ok) throw Error('Logout failed, please try again.')
     const data = await session.json()
     const response = await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': data.csrf_token } })
-    if (!response.ok && response.status !== 401) throw Error('登出失败，请重试。')
+    if (!response.ok && response.status !== 401) throw Error('Logout failed, please try again.')
    }
    window.dispatchEvent(new Event('gateway-auth-changed'))
    navigate('/auth', { replace: true })
-  } catch { setError('登出失败，请重试。') }
+  } catch { setError('Logout failed, please try again.') }
   finally { pending.current = false; setBusy(false) }
  }
  return <header className="gateway-portal-header">
@@ -38,6 +39,6 @@ export function PortalHeader({ hasAdminAccess, signedIn = false, checking = fals
   {checking ? <span role="status">正在检查登录状态…</span> : signedIn
    ? <button className="gateway-portal-sign-in gateway-portal-sign-out" type="button" disabled={busy} onClick={() => void logout()}>{busy ? <><span className="gateway-spinner" /> 正在登出…</> : '登出'}</button>
    : <Link className="gateway-action-link gateway-portal-sign-in gateway-action-link--primary" to="/auth">登录 / 注册</Link>}
-  {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+  {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
  </header>
 }

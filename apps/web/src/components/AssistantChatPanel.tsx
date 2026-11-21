@@ -89,6 +89,7 @@ export interface AssistantChatPanelProps {
   sessionId?: string | null
   title: string
   onTitleDoubleClick?: () => void
+  hideHeader?: boolean
   hideHeaderStatus?: boolean
   welcome?: boolean
   messages: AssistantChatMessage[]
@@ -110,7 +111,7 @@ export interface AssistantChatPanelProps {
   availableCommands?: EngineInputItem[]
   attachmentPrefix: string
   onInputChange: (value: string) => void
-  onSend: (content?: string, facePersonIds?:string[]) => void
+  onSend: (content?: string, facePersonIds?:string[], recentFaces?:boolean) => void
   onSendContent: (content: string, pendingInsertIds: string[]) => Promise<boolean>
   onStop: () => void
   /** Allow messages to be inserted into the active engine turn. */
@@ -301,7 +302,7 @@ const MessageItem = memo(function MessageItem({
 
 /** Shared visual shell for session-scoped assistant chats. */
 export default function AssistantChatPanel({
-  connectorsEnabled = false, projectId, visibilityPermission = 'session.chat', sessionId, title, onTitleDoubleClick, hideHeaderStatus = false, welcome = false, messages, running, stopping, input, sendError, copy,
+  connectorsEnabled = false, projectId, visibilityPermission = 'session.chat', sessionId, title, onTitleDoubleClick, hideHeader = false, hideHeaderStatus = false, welcome = false, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
   onA2uiAction, headerDrag, headerTitle, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, workflowSkill, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
@@ -493,12 +494,12 @@ export default function AssistantChatPanel({
     )
     : messages
 
-  const sendFromComposer = (content?: string, facePersonIds?:string[]) => {
+  const sendFromComposer = (content?: string, facePersonIds?:string[], recentFaces?:boolean) => {
     if (!(content ?? input).trim() || !canEdit || (running && !effectiveAllowSendWhileRunning)) return
     followRef.current = true
     setHasUnreadMessages(false)
     if (running && queueEnabled && !facePersonIds?.length) void queueCurrentInput(content)
-    else { setAwaitingReply(true); onSend(content,facePersonIds) }
+    else { setAwaitingReply(true); onSend(content,facePersonIds,recentFaces) }
   }
   useSkinActions({
     'input.set': { enabled: () => canEdit, run: args => { onInputChange(String(args?.text ?? '')); inputRef.current?.focus() } },
@@ -506,13 +507,13 @@ export default function AssistantChatPanel({
     'chat.stop': { enabled: () => canEdit && running && !!onStop && !stopping, run: () => onStop?.() },
     'action.run': { enabled: () => can('action.run') && !!onQuickPromptItemSelect, run: args => {
       const item = quickPrompts?.find(item => item.kind === 'action' && item.id === args?.id && !item.disabled)
-      if (!item) throw new Error('快捷操作不可用')
+      if (!item) throw new Error('Quick actions unavailable')
       onQuickPromptItemSelect?.(item)
     } },
   }, { projectId, sessionId: sessionId ?? undefined, readOnly: !canEdit })
   return (
     <div className="assistant-chat-panel" ref={rootRef} data-ui="conversation">
-      <div className="assistant-chat-header" data-ui="chat-header" {...headerDrag}>
+      {!hideHeader && <div className="assistant-chat-header" data-ui="chat-header" {...headerDrag}>
         <div className="assistant-chat-header-title" title={title} onDoubleClick={onTitleDoubleClick}>{headerTitle || title}</div>
         {running && !hideHeaderStatus && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
@@ -522,7 +523,7 @@ export default function AssistantChatPanel({
         <div style={{ flex: 1 }} />
         {headerActions}
         {onClose && <Button variant="icon" aria-label={copy.closePrompt} onClick={onClose}>✕</Button>}
-      </div>
+      </div>}
 
       <SkinExtensionSlot name="chat-header" />
       {headerContext}

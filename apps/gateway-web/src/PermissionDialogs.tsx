@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -55,7 +56,7 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
     setBusy(true); setError('')
     try {
       const confirmation = await confirmStepUp(csrf, password, passwordRequired)
-      if (!confirmation.ok) throw new Error('管理员身份验证失败，请重试。')
+      if (!confirmation.ok) throw new Error('Administrator authentication failed, please try again.')
       for (const selectedPermission of assignment ? [permission] : permissions.filter(id => !completed.includes(id))) {
       const response = await fetch('/api/admin/permissions', { method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify({
@@ -66,7 +67,7 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
       if (!assignment) setCompleted(current => [...current, selectedPermission])
       }
       onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '保存权限失败，请重试。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to save permissions, please try again.') }
     finally { setBusy(false) }
   }
   return <>
@@ -136,7 +137,7 @@ export function PermissionDialog({ catalog, csrf, assignment, preset, onClose, o
       </section>
       {completed.length > 0 && <p role="status">已保存 {completed.length} 项权限；重试仅保存尚未成功的项。</p>}
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在保存权限…</p>}
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     </GatewayModal>
     {discard && <GatewayModal title="放弃权限修改" className="gateway-permission-discard"
       onClose={() => setDiscard(false)} footer={<>
@@ -163,15 +164,15 @@ export function RevokePermissionDialog({ assignment, name, csrf, onClose, onSave
     setBusy(true); setError('')
     try {
       const confirmation = await confirmStepUp(csrf, password, passwordRequired)
-      if (!confirmation.ok) throw new Error('管理员身份验证失败，请重试。')
+      if (!confirmation.ok) throw new Error('Administrator authentication failed, please try again.')
       await revokePermission(assignment.id, csrf); onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '撤销权限失败，请重试。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to revoke permissions, please try again.') }
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="撤销权限" message={`撤销 ${assignment.subject_name} 的“${name}”规则（${assignment.scope_name}）？其他个人或组授权仍可能生效。`}
     confirmLabel="撤销权限" busy={busy} disabled={!csrf || !passwordReady} onConfirm={() => void revoke()} onCancel={onClose}
       passwordConfirmation={<PasswordConfirmation label="输入管理员密码确认" value={password} onChange={setPassword} disabled={busy} />}>
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在撤销权限…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   </GatewayConfirmDialog>
 }

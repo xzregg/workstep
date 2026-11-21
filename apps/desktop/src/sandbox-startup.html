@@ -2,36 +2,140 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WorkStep 沙箱启动</title>
   <style>
-    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1d1d1f; background: #f5f5f7; }
-    body { margin: 0; min-height: 100vh; box-sizing: border-box; display: grid; place-items: start center; padding: 48px 0; overflow-y: auto; }
-    main { width: min(430px, calc(100vw - 64px)); }
-    .brand { display: flex; align-items: center; gap: 10px; color: #0071e3; font-weight: 700; font-size: 16px; }
-    .mark { width: 26px; height: 26px; border-radius: 12px; background: linear-gradient(135deg, #0071e3, #7c3aed); }
-    h1 { margin: 28px 0 10px; font-size: 24px; }
-    p { color: #6e6e73; line-height: 1.6; }
-    .progress-meta { display: flex; justify-content: space-between; gap: 16px; color: #424245; }
-    .progress-meta strong { color: #1d1d1f; }
-    .track { height: 6px; overflow: hidden; border-radius: 12px; background: #e8e8ed; margin: 26px 0 16px; }
-    .bar { height: 100%; width: 36%; border-radius: inherit; background: #0071e3; animation: moving 1.2s ease-in-out infinite alternate; }
-    .track[data-value] .bar { animation: none; width: var(--progress); transition: width .2s ease; }
-    .detail { margin-top: 18px; padding: 14px 16px; white-space: pre-wrap; border-radius: 12px; background: #fbfbfd; color: #dc2626; display: none; }
-    .failed .detail { display: block; }
-    .failed .bar { width: 100%; animation: none; background: #dc2626; }
-    .startup-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
-    .image-picker { display: none; margin-top: 12px; padding: 14px; border: 1px solid #d2d2d7; border-radius: 12px; background: #fbfbfd; }
-    .image-picker.visible { display: block; }
-    .image-picker select { width: 100%; min-height: 38px; margin-bottom: 10px; border: 1px solid #d2d2d7; border-radius: 10px; background: white; padding: 0 10px; font: inherit; }
-    .image-picker-actions { display: flex; gap: 10px; }
-    button { min-height: 36px; padding: 0 14px; border: 1px solid #d2d2d7; border-radius: 12px; background: #fbfbfd; color: #1d1d1f; font: inherit; cursor: pointer; }
-    button.primary { border-color: #0071e3; background: #0071e3; color: #ffffff; }
-    .logs { display: none; max-height: 180px; margin-top: 12px; padding: 12px; overflow: auto; border: 1px solid #d2d2d7; border-radius: 12px; background: #fbfbfd; color: #424245; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .logs.visible { display: block; }
-    @keyframes moving { from { transform: translateX(-80%); } to { transform: translateX(250%); } }
+    :root {
+      color-scheme: light;
+      font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #1d1d1f;
+      background: #fff;
+      --muted: #6e6e73;
+      --accent: #0071e3;
+      --border: #d2d2d7;
+      --surface: #f5f5f7;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body { margin: 0; overflow: clip; }
+    main { padding: 24px 32px; }
+    section, header, ol, p, h1, h2, pre { margin: 0; }
+    h1, h2 { line-height: 1.25; letter-spacing: -.01em; }
+    h1 { font-size: 20px; }
+    h2 { font-size: 16px; }
+    small, .muted { color: var(--muted); font-size: 12px; }
+    button {
+      height: 32px; padding: 0 12px; border: .5px solid var(--border); border-radius: 10px;
+      background: #fff; color: inherit; font: inherit; white-space: nowrap; cursor: pointer;
+    }
+    button:hover:not(:disabled) { background: var(--surface); }
+    button:disabled { opacity: .48; cursor: default; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.primary:hover:not(:disabled) { background: #0077ed; }
+    button.quiet { border-color: transparent; background: transparent; color: var(--accent); }
+    button:focus-visible, label:has(:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .view { display: grid; grid-template-columns: minmax(0,1fr); gap: 16px; }
+    .hero, .row, .actions, .pager { display: flex; align-items: center; gap: 8px; }
+    .hero { gap: 16px; }
+    .hero img { width: 48px; height: 48px; flex: none; }
+    .hero p { margin-top: 4px; color: var(--muted); }
+    .row { justify-content: space-between; }
+    .row > div { min-width: 0; }
+    .row > button { flex: none; }
+    .actions { justify-content: flex-end; }
+    .steps { display: grid; gap: 4px; }
+    .timeline { list-style: none; padding: 0; }
+    .timeline li { position: relative; display: grid; grid-template-columns: 16px 1fr auto; gap: 12px; align-items: center; min-height: 36px; color: var(--muted); }
+    .timeline li:not(:last-child)::after { content: ""; position: absolute; width: .5px; background: var(--border); left: 8px; top: calc(50% + 9px); bottom: calc(-50% + 9px); }
+    .timeline li[aria-current] { color: #1d1d1f; font-weight: 600; }
+    .dot { display: grid; place-items: center; width: 16px; height: 16px; border: .5px solid var(--border); border-radius: 50%; }
+    [data-state=done] .dot { background: #e7f5ed; border-color: #e7f5ed; color: #246b44; }
+    [data-state=done] .dot::before { content: ""; width: 6px; height: 3px; border-bottom: 1.5px solid; border-left: 1.5px solid; transform: rotate(-45deg); }
+    [data-state=active] .dot, .busy .activity { width: 14px; height: 14px; border: 1.5px solid #c5dcfa; border-top-color: var(--accent); border-radius: 50%; animation: spin .9s linear infinite; }
+    [data-state=active] .dot { margin-inline: 1px; }
+    [data-state=failed] .dot { color: #932029; border-color: #e8a4ab; background: #fff4f4; }
+    [data-state=failed] .dot::before { content: "!"; line-height: 1; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { [data-state=active] .dot, .busy .activity { animation: none; } }
+    .alert { padding: 8px 12px; border: .5px solid #f4c6cb; border-radius: 10px; background: #fff4f4; color: #932029; }
+    .alert .quiet { padding-inline: 4px; }
+    .image-section { padding-top: 12px; border-top: .5px solid #eeeef0; }
+    .single-line { display: block; min-width: 0; overflow: clip; white-space: nowrap; text-overflow: ellipsis; }
+    .mono, .logs { font: 12px/1.5 ui-monospace, Menlo, monospace; }
+    .back { justify-self: start; margin-left: -12px; }
+    .logs { padding: 12px; border-radius: 12px; background: var(--surface); }
+    .options { border: .5px solid var(--border); border-radius: 10px; }
+    .option { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; }
+    .option:first-child { border-radius: 9px 9px 0 0; }
+    .option:last-child { border-radius: 0 0 9px 9px; }
+    .option + .option { border-top: .5px solid #eeeef0; }
+    .option:hover { background: var(--surface); }
+    .option:has(:checked) { background: #eff6ff; }
+    .option input { margin: 0; accent-color: var(--accent); }
+    .pager { justify-content: center; }
+    .pager span { min-width: 48px; text-align: center; }
+    .feedback { display: flex; align-items: center; gap: 8px; min-height: 18px; color: var(--muted); font-size: 12px; }
+    .feedback[data-error] { color: #932029; }
+    @media (max-height: 510px) {
+      main { padding-block: 20px; }
+      .view { gap: 12px; }
+    }
   </style>
 </head>
-<body><main id="app"><div class="brand"><span class="mark"></span>WorkStep</div><h1>正在启动沙箱</h1><div class="progress-meta"><strong id="status">正在检查沙箱配置</strong><span id="percent">5%</span></div><div class="track" id="track" data-value><div class="bar" style="--progress: 5%"></div></div><p>首次启动 Podman 虚拟机和容器可能需要一些时间。这里会持续显示当前阶段。</p><div class="detail" id="error"></div><div class="startup-actions"><button class="primary" id="change-image">更换镜像</button><button id="view-logs">查看日志</button><button id="copy-logs">复制日志</button><button id="open-logs">打开日志目录</button></div><div class="image-picker" id="image-picker"><select id="image-select"><option value="">正在扫描本地 Docker…</option></select><div class="image-picker-actions"><button class="primary" id="confirm-image" disabled>使用所选镜像</button><button id="cancel-image">取消</button></div></div><pre class="logs" id="logs"></pre></main>
-</body></html>
+<body>
+  <main>
+    <section id="startup-view" class="view" aria-labelledby="startup-heading">
+      <header class="hero">
+        <!--APP_ICON-->
+        <div><h1 id="startup-heading">启动沙箱</h1><p>沙箱就绪后自动进入工作台</p></div>
+      </header>
+      <section class="steps" aria-labelledby="steps-heading">
+        <div class="row"><h2 id="steps-heading">启动步骤</h2><button id="view-logs" class="quiet">查看日志</button></div>
+        <ol class="timeline" id="steps" aria-live="polite">
+          <li data-step="config"><span class="dot" aria-hidden="true"></span><span>检查配置</span><small></small></li>
+          <li data-step="machine"><span class="dot" aria-hidden="true"></span><span>启动 Podman 运行环境</span><small></small></li>
+          <li data-step="image"><span class="dot" aria-hidden="true"></span><span>准备 WorkStep 镜像</span><small></small></li>
+          <li data-step="container"><span class="dot" aria-hidden="true"></span><span>启动 WorkStep 容器</span><small></small></li>
+        </ol>
+        <div class="row alert" id="failure" hidden>
+          <div><p class="single-line" id="error" role="alert"></p></div>
+          <button id="view-failure-logs" class="quiet">查看日志</button>
+        </div>
+      </section>
+      <section class="row image-section" aria-label="沙箱镜像">
+        <div><small>当前镜像</small><span id="current-image" class="mono single-line">正在读取…</span></div>
+        <button id="change-image">更换镜像</button>
+      </section>
+      <div id="recovery" class="actions" hidden>
+        <button data-recovery="quit">退出</button>
+        <button data-recovery="withoutSandbox">不使用沙箱启动</button>
+        <button data-recovery="retry" class="primary">重试</button>
+      </div>
+    </section>
+    <section id="logs-view" class="view" aria-labelledby="logs-heading" hidden>
+      <button class="quiet back" data-back>‹ 返回启动进度</button>
+      <h1 id="logs-heading">诊断日志</h1>
+      <div id="logs" class="logs" aria-label="日志预览"></div>
+      <div class="actions">
+        <button id="copy-logs">复制日志</button>
+        <button id="open-logs">打开日志目录</button>
+      </div>
+      <p id="logs-feedback" class="feedback" role="status"></p>
+    </section>
+    <section id="images-view" class="view" aria-labelledby="images-heading" hidden>
+      <button class="quiet back" data-back>‹ 返回启动进度</button>
+      <div class="row"><h1 id="images-heading">本地镜像</h1><button id="scan-images" class="quiet">重新扫描</button></div>
+      <div id="image-options" class="options" role="radiogroup" aria-labelledby="images-heading" hidden></div>
+      <div class="pager" id="image-pager" hidden>
+        <button id="previous-images">上一页</button><span id="image-page" class="muted" aria-live="polite"></span><button id="next-images">下一页</button>
+      </div>
+      <div class="actions">
+        <button id="cancel-image" data-back>取消</button>
+        <button id="confirm-image" class="primary" disabled>切换并启动</button>
+      </div>
+      <p id="images-feedback" class="feedback" role="status"><span class="activity" aria-hidden="true"></span><span></span></p>
+    </section>
+  </main>
+</body>
+</html>

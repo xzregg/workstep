@@ -13,6 +13,8 @@ function flatten(value, prefix = '') {
   }
 }
 flatten(zhCN)
+const errors = JSON.parse(await readFile(new URL('../../../packages/gateway-ui/src/errors/source.json', import.meta.url), 'utf8'))
+for (const [id, , chinese] of errors) messages[`errors.${id}`] = chinese
 const required_keys = ['common.confirm', 'common.cancel', 'interaction.permission', 'interaction.allow', 'interaction.deny']
 for (const key of required_keys) if (!messages[key]) throw Error('Missing critical language key: ' + key)
 const catalog = { schema_version: 1, revision: createHash('sha256').update(JSON.stringify(messages)).digest('hex'), required_keys, messages }

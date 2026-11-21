@@ -202,7 +202,7 @@ class CursorSdkEngine(AcpEngineBase):
         if not api_key:
             yield InternalEvent(
                 "done",
-                {"stop_reason": "error", "error": "未配置 Cursor API Key（设置页填写或 CURSOR_API_KEY 环境变量）"},
+                {"stop_reason": "error", "error": "Cursor API Key not configured (enter in Settings page or set CURSOR_API_KEY environment variable)"},
             )
             return
         try:
@@ -213,7 +213,7 @@ class CursorSdkEngine(AcpEngineBase):
                 SendOptions,
             )
         except ImportError as exc:
-            yield InternalEvent("done", {"stop_reason": "error", "error": f"cursor_sdk 未安装: {exc}"})
+            yield InternalEvent("done", {"stop_reason": "error", "error": f"cursor_sdk not installed: {exc}"})
             return
 
         client = None
@@ -371,10 +371,10 @@ class CursorSdkEngine(AcpEngineBase):
 
     async def test_connection(self) -> dict:
         if not await asyncio.to_thread(self.is_installed):
-            return {"ok": False, "message": "cursor-sdk 未安装"}
+            return {"ok": False, "message": "cursor-sdk is not installed"}
         api_key = await asyncio.to_thread(self._api_key)
         if not api_key:
-            return {"ok": False, "message": "未配置 Cursor API Key"}
+            return {"ok": False, "message": "Cursor API Key not configured"}
         try:
             from cursor_sdk import AsyncClient
 

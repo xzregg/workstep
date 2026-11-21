@@ -1,10 +1,7 @@
 const fs = require('node:fs/promises')
-const { createWriteStream } = require('node:fs')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
-const { createHash } = require('node:crypto')
-const { Readable, Transform } = require('node:stream')
-const { pipeline } = require('node:stream/promises')
+const { downloadFile } = require('./resource-download.cjs')
 
 const upstream = 'https://github.com/containers/podman/releases/download/'
 const ASSETS = {
@@ -18,34 +15,20 @@ function run(file, args, { env = process.env, timeout = 600000, onOutput, captur
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     let stdout = '', stderr = ''
-    const timer = setTimeout(() => { child.kill(); reject(new Error('沙箱命令执行超时')) }, timeout)
+    const timer = setTimeout(() => { child.kill(); reject(new Error('Sandbox command execution timed out')) }, timeout)
     child.stdout.on('data', data => { stdout = (stdout + data).slice(-1024 * 1024); onOutput?.(String(data)) })
     child.stderr.on('data', data => { stderr = (stderr + data).slice(-1024 * 1024); onOutput?.(String(data)) })
     child.once('error', error => { clearTimeout(timer); reject(error) })
     child.once('close', code => {
       clearTimeout(timer)
       if (code === 0) resolve((captureCombined ? stdout + stderr : stdout).trim())
-      else reject(new Error(`${path.basename(file)} 执行失败 (${code})：${stderr.trim().slice(-2000)}`))
+      else reject(new Error(`${path.basename(file)} execution failed (${code}): ${stderr.trim().slice(-2000)}`))
     })
   })
 }
 
-async function download(asset, destination, report, fetchImpl = fetch) {
-  if (typeof asset.url !== 'string' || !asset.url.startsWith('https://') || !/^[a-f0-9]{64}$/.test(asset.sha256)) throw new Error('无效的运行时发布清单')
-  const temporary = destination + '.partial'
-  const hash = createHash('sha256')
-  let received = 0
-  try {
-    const response = await fetchImpl(asset.url, { signal: AbortSignal.timeout(600000) })
-    if (!response.ok || !response.body) throw new Error(`下载失败 (${response.status})`)
-    const total = Number(response.headers.get('content-length')) || null
-    const meter = new Transform({ transform(chunk, _encoding, callback) {
-      hash.update(chunk); received += chunk.length; report?.({ received, total }); callback(null, chunk)
-    } })
-    await pipeline(Readable.fromWeb(response.body), meter, createWriteStream(temporary, { mode: 0o600 }))
-    if (hash.digest('hex') !== asset.sha256) throw new Error('运行时下载校验失败')
-    await fs.rename(temporary, destination)
-  } finally { await fs.rm(temporary, { force: true }) }
+function download(asset, destination, report, fetchImpl = fetch) {
+  return downloadFile(asset, destination, { onProgress: report, fetchImpl })
 }
 
 async function findFiles(directory, names) {
@@ -60,7 +43,7 @@ async function findFiles(directory, names) {
 
 function validateArchiveEntries(list) {
   for (const entry of list.split(/\r?\n/).filter(Boolean)) {
-    if (/^[\\/]|^[A-Za-z]:/.test(entry) || entry.replaceAll('\\', '/').split('/').includes('..')) throw new Error('运行时归档包含越界路径')
+    if (/^[\\/]|^[A-Za-z]:/.test(entry) || entry.replaceAll('\\', '/').split('/').includes('..')) throw new Error('Runtime archive contains out-of-bounds path')
   }
 }
 
@@ -89,7 +72,7 @@ try {
 
 async function installRuntime(root, platform, arch, report) {
   const asset = ASSETS[`${platform}-${arch}`]
-  if (!asset) throw new Error('当前系统或架构不支持桌面沙箱')
+  if (!asset) throw new Error('The current system or architecture does not support desktop sandbox')
   const runtime = path.join(root, 'podman')
   await fs.mkdir(path.join(runtime, 'cache'), { recursive: true })
   const marker = path.join(runtime, 'runtime.json')
@@ -111,7 +94,7 @@ async function installRuntime(root, platform, arch, report) {
       await run('tar', ['-xf', archive, '-C', stage])
     }
     const executables = await findFiles(stage, [platform === 'win32' ? 'podman.exe' : 'podman'])
-    if (!executables.length) throw new Error('安装包未包含 Podman')
+    if (!executables.length) throw new Error('The installation package does not include Podman')
     const target = path.join(runtime, 'bin', asset.sha256)
     await fs.mkdir(path.dirname(target), { recursive: true })
     await fs.rm(target, { recursive: true, force: true })

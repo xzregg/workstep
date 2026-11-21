@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState
 import { createPortal } from 'react-dom'
 import { chatGroupApi, type ChatGroup, type GroupMutation } from '../api/chatGroups'
 import type { ChatSessionSummary } from '../api/conversations'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useChatWorkspaceStore } from '../stores/chatWorkspaceStore'
 import { useRecentVisitsStore } from '../stores/recentVisitsStore'
@@ -207,7 +207,7 @@ export default function SidebarSessionGroups({ projectId, source, sessions, canM
     event.preventDefault(); event.stopPropagation(); openMenu(event.clientX, event.clientY)
   }}>
     {(busy || creatingGroupId !== null || (!loaded && !error)) && <div className="sidebar-session-group-status" role="status"><Spinner size={13} /></div>}
-    {error && <div className="sidebar-session-group-error" role="alert">{error}
+    {error && <div className="sidebar-session-group-error" role="alert">{localizeErrorDisplay(error)}
       {!loaded && <button type="button" onClick={() => void load()}>{t('common.retry')}</button>}
     </div>}
     {visibleGroups.map(group => {
@@ -283,7 +283,7 @@ export default function SidebarSessionGroups({ projectId, source, sessions, canM
         onChange={event => setName(event.target.value)} onKeyDown={event => {
           if (event.key === 'Enter' && !event.nativeEvent.isComposing && name.trim()) void mutate({ action: 'create', name: name.trim(), source })
         }} />}
-      {error && <div className="sidebar-session-group-error" role="alert">{error}</div>}
+      {error && <div className="sidebar-session-group-error" role="alert">{localizeErrorDisplay(error)}</div>}
     </ConfirmDialog>}
     <ConfirmDialog open={discard} title={t('sessionGroups.discard')} onCancel={() => setDiscard(false)} onConfirm={() => { setDiscard(false); setDialog(null) }} />
   </div>

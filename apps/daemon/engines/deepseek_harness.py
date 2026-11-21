@@ -337,27 +337,27 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         provider_id = str(values.get("provider_id") or "").strip()
         provider = await asyncio.to_thread(config_store.get_provider, provider_id)
         if not provider_id:
-            raise ValueError("请选择供应商")
+            raise ValueError("Select a provider")
         if (
             provider is None
             or not provider.get("enabled", True)
         ):
-            raise ValueError("所选供应商不存在或已停用")
+            raise ValueError("Selected provider was not found or is disabled")
         if not self.supports_provider(provider):
-            raise ValueError("供应商协议与引擎不兼容，需要 OpenAI Chat Completions")
+            raise ValueError("This engine requires a provider that supports OpenAI Chat Completions")
         current = await asyncio.to_thread(config_store.get_deepseek_harness_config)
         preset = str(
             values.get("preset", current.get("preset") or self.DEFAULT_PRESET) or ""
         ).strip()
         if preset not in self.PRESET_COMPOSITIONS:
-            raise ValueError("DeepSeek Harness preset 不受支持")
+            raise ValueError("DeepSeek Harness preset is not supported")
         max_tokens = str(values.get("max_tokens", current["max_tokens"]) or "").strip()
         if max_tokens:
             try:
                 if int(max_tokens) <= 0:
                     raise ValueError
             except ValueError:
-                raise ValueError("最大输出 Token 必须是正整数") from None
+                raise ValueError("Maximum output tokens must be a positive integer") from None
         await asyncio.to_thread(
             config_store.set_deepseek_harness_config,
             provider_id=provider_id,
@@ -759,13 +759,13 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         if images:
             yield InternalEvent(
                 type="error",
-                data={"message": "DeepSeek Harness 当前不支持图片输入"},
+                data={"message": "DeepSeek Harness currently does not support image input"},
             )
             return
         if not await asyncio.to_thread(self.is_installed):
             yield InternalEvent(
                 type="error",
-                data={"message": "deepseek-harness-sdk 未安装"},
+                data={"message": "deepseek-harness-sdk is not installed"},
             )
             return
 
@@ -799,7 +799,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         ):
             yield InternalEvent(
                 type="error",
-                data={"message": "请先配置可用的 OpenAI Chat Completions 供应商"},
+                data={"message": "Configure an OpenAI Chat Completions provider"},
             )
             return
         raw_max_tokens = str(config.get("max_tokens") or "").strip()
@@ -923,7 +923,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
                 if not self._turn_error_emitted:
                     yield InternalEvent(
                         type="error",
-                        data={"message": "DeepSeek Harness 执行失败"},
+                        data={"message": "DeepSeek Harness execution failed"},
                     )
             else:
                 # 本轮结束：有待插入消息时在同一会话上续跑一轮（轮间续跑，

@@ -1,5 +1,4 @@
-"""One source for the namecard and model-visible digital person statistics."""
-import asyncio
+"""Digital person namecard statistics and available skills."""
 import math
 
 from models.chat_session import ChatMessage, ChatSession
@@ -30,24 +29,3 @@ def enabled_skills(project):
     selection = skill_center.runtime_selection(project.path)
     return [{'id': item.skill_id, 'name': item.name} for item in selection.enabled
             if item.valid and not item.conflict and not item.sync_error]
-
-
-async def load_identity_snapshot(projects, project):
-    from services.digital_person_runtime import read_state
-    stats, skills = await asyncio.gather(
-        projects.run_db(project.id, lambda _: read_statistics(read_state(project.id))),
-        asyncio.to_thread(enabled_skills, project),
-    )
-    return {**stats, 'skills': skills}
-
-
-def format_identity_snapshot(snapshot):
-    if not snapshot:
-        return ''
-    if snapshot.get('unavailable'):
-        return 'Current runtime statistics are unavailable. Do not infer level, experience, or session counts.'
-    return '\n'.join((
-        'Current runtime statistics (default workspace, excluding background check sessions):',
-        f"Level: Lv.{snapshot['level']}; Experience: {snapshot['experience']}; Next level threshold: {snapshot['next_level_experience']}",
-        f"User sessions: {snapshot['session_count']}; Completed replies: {snapshot['reply_count']}; Execution tasks: {snapshot['task_count']}; Completed tasks: {snapshot['completed_task_count']}",
-    ))

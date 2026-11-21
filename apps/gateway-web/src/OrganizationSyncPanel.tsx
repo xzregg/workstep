@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { enterpriseProviderName, type EnterpriseProvider } from './enterpriseProviders'
 import { OrganizationSyncUsers, type SyncUser } from './OrganizationSyncUsers'
@@ -49,7 +50,7 @@ export function OrganizationSyncPanel({ sourceId, provider, csrf, onClose, onCom
    fetch(base + '/directory-preview', {credentials:'same-origin',signal:controller.signal}),
    fetch(base + '/sync-jobs/latest', {credentials:'same-origin',signal:controller.signal}),
   ]).then(async ([directory, latest]) => {
-   if (!directory.ok || !latest.ok) throw Error('组织列表加载失败，请检查应用密钥和通讯录权限后重试。')
+   if (!directory.ok || !latest.ok) throw Error('Failed to load the organization list. Please check the app key and contacts permission, then retry.')
    const [data, progress] = await Promise.all([directory.json(), latest.json()])
    if (controller.signal.aborted) return
    setDepartments(data.departments); setJob(progress)
@@ -60,7 +61,7 @@ export function OrganizationSyncPanel({ sourceId, provider, csrf, onClose, onCom
    const restored = nextMode==='all' ? data.departments.map((item:Department)=>item.external_id) : policy?.mode==='departments' ? departmentScope(data.departments,policy.department_ids) : (choices ?? []).filter((id: string) => data.departments.some((item: Department) => item.external_id === id))
    setSelected(restored)
    savedSignature.current=selectionSignature(nextMode,data.departments,restored,policy?.subjects??[])
-  }).catch(reason => {if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '组织列表加载失败。')})
+  }).catch(reason => {if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Failed to load organization list.')})
    .finally(() => {if (!controller.signal.aborted) setLoading(false)})
   return () => controller.abort()
  }, [base, revision])
@@ -88,13 +89,13 @@ export function OrganizationSyncPanel({ sourceId, provider, csrf, onClose, onCom
   async function poll() {
    try {
     const response = await fetch(base + '/sync-jobs/latest', {credentials:'same-origin',signal:controller.signal})
-    if (!response.ok) throw Error('进度读取失败，任务仍在后台执行，请点击重试。')
+    if (!response.ok) throw Error('Failed to read progress; the task is still executing in the background. Please click Retry.')
     const progress = await response.json() as Job
     if (controller.signal.aborted) return
     setJob(progress)
     if (active(progress)) timer = setTimeout(() => void poll(), 1000)
     else if (progress.status === 'completed') completed.current()
-   } catch (reason) {if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '进度读取失败，请重试。')}
+   } catch (reason) {if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Failed to read progress, please try again.')}
   }
   timer = setTimeout(() => void poll(), 500)
   return () => {controller.abort(); clearTimeout(timer)}
@@ -111,10 +112,10 @@ export function OrganizationSyncPanel({ sourceId, provider, csrf, onClose, onCom
      const latest = await fetch(base + '/sync-jobs/latest', {credentials:'same-origin'})
      if (latest.ok) {setJob(await latest.json()); return}
     }
-    throw Error('同步启动失败，请检查应用配置和权限后重试。')
+    throw Error('Sync start failed. Please check the app configuration and permissions, then retry.')
    }
    setJob(await response.json())
-  } catch (reason) {setError(reason instanceof Error ? reason.message : '同步启动失败。')}
+  } catch (reason) {setError(reason instanceof Error ? reason.message : 'Synchronous startup failed.')}
   finally {submitting.current = false; setStarting(false)}
  }
  async function confirm() {
@@ -123,9 +124,9 @@ export function OrganizationSyncPanel({ sourceId, provider, csrf, onClose, onCom
   try {
    const policy:MaintenancePolicy={mode,department_ids:mode==='departments'?departmentRoots(departments,selected):[],subjects:mode==='users'?selectedUsers:[],excluded_subjects:groupsOnly?maintainedExclusions.current:[]}
    const response=await fetch(base+'/sync-jobs/confirm',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({job_id:job.id, department_ids:selected, ...(job.result?.user_candidates ? {selected_subjects:selectedUsers,maintenance_policy:policy,...(groupsOnly?{groups_only:true}:{})} : {})})})
-   if (!response.ok) throw Error('预览已失效或确认失败，请重新读取变更。')
+   if (!response.ok) throw Error('Preview has expired or confirmation failed. Please re-read the changes.')
    setJob(await response.json())
-  } catch(reason) {setError(reason instanceof Error ? reason.message : '确认失败。')}
+  } catch(reason) {setError(reason instanceof Error ? reason.message : 'Confirmation failed.')}
   finally {submitting.current=false;setStarting(false)}
  }
  const locked = loading || starting || running
@@ -167,7 +168,7 @@ export function OrganizationSyncPanel({ sourceId, provider, csrf, onClose, onCom
  </>}>
   <details className="gateway-sync-instructions"><summary>同步说明与注意事项</summary><p>勾选上级会自动包含全部下级组织及用户；取消上级会一起取消下级。搜索或折叠隐藏的下级也包含在选择中。同步新增组织和用户，并更新姓名、部门及企业状态；明确离职或禁用会撤销访问，读取范围不完整的缺失记录标记为待核实；本地手动停用不会自动恢复。确认同步会恢复或重新创建所选组织对应的用户组，并保留部门层级；已删除用户仅作提示，主动勾选后可恢复或重新创建并覆盖同步资料。未勾选的已有组织和成员保留；后续自动同步沿用最近一次成功的选择。</p></details>
   {loading && <p role="status"><span className="gateway-spinner" /> 正在读取组织列表…</p>}
-  {error && <p role="alert" className="gateway-auth-error">{error}<button type="button" onClick={() => departments.length ? setError('') : setRevision(value => value + 1)}>重试</button></p>}
+  {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}<button type="button" onClick={() => departments.length ? setError('') : setRevision(value => value + 1)}>重试</button></p>}
   {!loading && <>
    <div className="gateway-sync-maintenance-toolbar">
     <label>维护范围<Select value={mode} disabled={locked} onChange={event=>chooseMode(event.target.value as MaintenanceMode)}>

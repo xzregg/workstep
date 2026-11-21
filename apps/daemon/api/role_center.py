@@ -21,11 +21,11 @@ async def invoke(operation, *args):
     except RoleConflict as exc:
         raise HTTPException(409, str(exc)) from exc
     except FileNotFoundError as exc:
-        raise HTTPException(404, "角色或专家团不存在") from exc
+        raise HTTPException(404, "Role or expert group does not exist") from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     except OSError as exc:
-        raise HTTPException(503, "角色中心文件读写失败，请稍后重试") from exc
+        raise HTTPException(503, "Role center file read/write failed, please try again later") from exc
 
 
 @router.get("")

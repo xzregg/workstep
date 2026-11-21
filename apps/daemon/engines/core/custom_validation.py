@@ -20,20 +20,20 @@ CONTENT_KEYS = {
 
 def check_event(event, declared):
     if not isinstance(event, InternalEvent) or event.type not in declared or not isinstance(event.data, dict):
-        raise AssertionError("事件类型或声明不一致")
+        raise AssertionError("Event type or declaration mismatch")
     key = CONTENT_KEYS.get(event.type)
     if key and key not in event.data:
-        raise AssertionError(f"事件缺少字段：{event.type}.{key}")
+        raise AssertionError(f"Event missing field: {event.type}.{key}")
     if event.type in {"agent_message_chunk", "agent_thought_chunk", "user_message_chunk"}:
         if not isinstance(event.data["content"], dict) or not isinstance(event.data["content"].get("text"), str):
-            raise AssertionError("文本事件必须携带 content.text")
+            raise AssertionError("Text events must include content.text")
     if event.type == "tool_call_update" and event.data.get("status") not in {"pending", "in_progress", "completed", "failed"}:
-        raise AssertionError("工具事件状态无效")
+        raise AssertionError("Invalid tool event status")
     if event.type == "usage_update":
         for name in ("input_tokens", "output_tokens", "total_tokens"):
             value = event.data.get(name)
             if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0):
-                raise AssertionError("用量字段无效")
+                raise AssertionError("Invalid usage field")
     payload = {**event.to_dict(), "engine": "custom_validation", "task_id": "validation",
                "session_id": "validation", "message_id": "validation", "channel": "validation"}
     list(to_agui_events(payload, AGUIContext.from_event(payload)))
@@ -67,20 +67,20 @@ async def validate_adapter(engine, root, manifest):
             check_event(event, declared_events(engine))
             observed.add(event.type)
             if event.type == "error":
-                raise AssertionError("引擎返回错误")
+                raise AssertionError("Engine returned an error")
             if event.type == "interaction_request":
                 # Acceptance prompts prohibit tools; do not approve unknown work.
                 await engine.respond_interaction(event.data, {"outcome": {"outcome": "cancelled"}})
-                raise AssertionError("无工具探测不应请求审批")
+                raise AssertionError("Toolless detection should not request approval")
             if coordinator and event.type in {"tool_call", "tool_call_update"}:
-                raise AssertionError("只读协调测试产生工具调用")
+                raise AssertionError("Read-only coordination test generates tool call")
             if event.type == "session_started":
                 session_ids.append(event.data["session_id"])
             if event.type == "agent_message_chunk":
                 chunks.append(event.data["content"]["text"])
         text = "".join(chunks)
         if not text.strip():
-            raise AssertionError("没有实际文本回复")
+            raise AssertionError("No actual text reply")
         return text
 
     with tempfile.TemporaryDirectory(prefix="workstep-engine-validation-") as temporary:
@@ -162,7 +162,7 @@ async def validate_adapter(engine, root, manifest):
             def run():
                 suite = unittest.defaultTestLoader.discover(str(root / "tests"), pattern="test_*.py")
                 if suite.countTestCases() == 0:
-                    raise AssertionError("需要引擎专属测试")
+                    raise AssertionError("Engine-specific testing required")
                 output = io.StringIO()
                 result = unittest.TextTestRunner(stream=output).run(suite)
                 assert result.wasSuccessful()
@@ -181,12 +181,12 @@ async def validate_adapter(engine, root, manifest):
                 return
             file = root / "tests" / "scenarios.json"
             if not file.is_file():
-                raise AssertionError("声明的可选能力需要 tests/scenarios.json")
+                raise AssertionError("Declared optional capabilities require tests/scenarios.json")
             scenarios = await asyncio.to_thread(lambda: json.loads(file.read_text()))
             for capability, expected in active.items():
                 scenario = scenarios.get(capability)
                 if not isinstance(scenario, dict) or not scenario.get("prompt"):
-                    raise AssertionError("缺少声明能力的真实探测")
+                    raise AssertionError("Missing real detection of declared capabilities")
                 kwargs = dict(scenario.get("kwargs") or {})
                 seen = set()
                 if "live_messages" in scenario:
@@ -204,7 +204,7 @@ async def validate_adapter(engine, root, manifest):
                     observed.add(event.type)
                     seen.add(event.type)
                     if event.type == "error":
-                        raise AssertionError("能力探测失败")
+                        raise AssertionError("Capability detection failed")
                     if event.type == "interaction_request":
                         await engine.respond_interaction(event.data, {"outcome": {"outcome": "cancelled"}})
                     if event.type == "agent_message_chunk":

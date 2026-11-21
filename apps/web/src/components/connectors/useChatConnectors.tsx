@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { connectorApi, CONNECTORS_CHANGED, type AvailableConnector } from '../../api/connectors'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import Icon from '../Icon'
 import ConnectorPicker from './ConnectorPicker'
 import ComposerContextChip from '../ComposerContextChip'
@@ -64,7 +64,7 @@ export function useChatConnectors({ enabled, projectId, sessionId, engineId, loc
       {selected.map(item => <ComposerContextChip key={item.id} className="connector-tag" name={item.name}
         icon={<Icon name="plug" size={14} />} unavailable={!item.available} disabled={locked || saving}
         onRemove={() => void remove(item.id)} removeLabel={`${t('connectors.remove')} ${item.name}`} />)}
-      {error && <span role="alert" className="connector-error">{error}</span>}
+      {error && <span role="alert" className="connector-error">{localizeErrorDisplay(error)}</span>}
     </div> : null,
     control: active ? <div className="connector-toolbar-anchor">
       {open && !locked && <ConnectorPicker projectId={projectId!} sessionId={sessionId!} engineId={engineId} initialItems={items} onClose={() => setOpen(false)} onChanged={setItems} onSavingChange={setSaving} />}

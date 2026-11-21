@@ -68,7 +68,7 @@ final class ApkInstaller {
                 try {
                     saveToDownloads(apk, filename);
                 } catch (Exception error) {
-                    saveWarning = "保存到系统下载目录失败，仍可继续安装。";
+                    saveWarning = activity.getString(R.string.apk_save_warning);
                     CrashReports.log(activity, "网页主进程", "APK 保存到下载目录失败", error);
                 }
             } catch (Exception error) {
@@ -84,7 +84,7 @@ final class ApkInstaller {
                 progress = null;
                 if (activity.isFinishing() || activity.isDestroyed()) return;
                 if (message != null) {
-                    new AlertDialog.Builder(activity).setTitle("APK 下载失败")
+                    new AlertDialog.Builder(activity).setTitle(activity.getString(R.string.apk_download_failed))
                             .setMessage(message).setPositiveButton("确定", null).show();
                 } else if (ready != null) {
                     new AlertDialog.Builder(activity)
@@ -108,11 +108,11 @@ final class ApkInstaller {
         values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/");
         values.put(MediaStore.MediaColumns.IS_PENDING, 1);
         Uri destination = activity.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-        if (destination == null) throw new IllegalStateException("无法保存到下载目录");
+        if (destination == null) throw new IllegalStateException("Could not save to Downloads");
         try {
             try (InputStream input = new java.io.FileInputStream(apk);
                  OutputStream output = activity.getContentResolver().openOutputStream(destination, "w")) {
-                if (output == null) throw new IllegalStateException("无法写入下载目录");
+                if (output == null) throw new IllegalStateException("Could not write to Downloads");
                 byte[] buffer = new byte[16384];
                 int count;
                 while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
@@ -128,7 +128,7 @@ final class ApkInstaller {
 
     private File downloadAndVerify(ServerAddress server, String url, String userAgent, String cookie) throws Exception {
         File directory = new File(activity.getCacheDir(), "install");
-        if (!directory.exists() && !directory.mkdirs()) throw new IllegalStateException("无法创建下载缓存");
+        if (!directory.exists() && !directory.mkdirs()) throw new IllegalStateException("Could not create the download cache");
         File partial = new File(directory, "workstep-update.part");
         File apk = new File(directory, "workstep-update.apk");
         try {
@@ -144,27 +144,27 @@ final class ApkInstaller {
                     int status = connection.getResponseCode();
                     if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
                         String location = connection.getHeaderField("Location");
-                        if (location == null) throw new IllegalStateException("服务器未提供下载地址");
+                        if (location == null) throw new IllegalStateException("The server did not provide a download location");
                         address = server.resolveSameOrigin(address, location);
                         continue;
                     }
-                    if (status != 200) throw new IllegalStateException("服务器返回 HTTP " + status);
+                    if (status != 200) throw new IllegalStateException("The server returned HTTP " + status);
                     long bytes = 0;
                     try (InputStream input = connection.getInputStream(); FileOutputStream output = new FileOutputStream(partial)) {
                         byte[] buffer = new byte[16384];
                         int count;
                         while ((count = input.read(buffer)) != -1) {
                             bytes += count;
-                            if (bytes > MAX_APK_BYTES) throw new IllegalStateException("APK 文件过大");
+                            if (bytes > MAX_APK_BYTES) throw new IllegalStateException("The APK is too large");
                             output.write(buffer, 0, count);
                         }
                     }
-                    if (bytes == 0) throw new IllegalStateException("APK 文件为空");
-                    if (apk.exists() && !apk.delete()) throw new IllegalStateException("无法替换旧下载文件");
-                    if (!partial.renameTo(apk)) throw new IllegalStateException("无法保存 APK 文件");
+                    if (bytes == 0) throw new IllegalStateException("The APK is empty");
+                    if (apk.exists() && !apk.delete()) throw new IllegalStateException("Could not replace the previous download");
+                    if (!partial.renameTo(apk)) throw new IllegalStateException("Could not save the APK");
                     PackageInfo archive = activity.getPackageManager().getPackageArchiveInfo(apk.getAbsolutePath(), 0);
                     if (archive == null || !activity.getPackageName().equals(archive.packageName)) {
-                        throw new IllegalStateException("下载的文件不是 WorkStep APK");
+                        throw new IllegalStateException("The downloaded file is not a WorkStep APK");
                     }
                     CrashReports.log(activity, "网页主进程", "WorkStep APK 下载完成；字节=" + bytes, null);
                     return apk;
@@ -172,7 +172,7 @@ final class ApkInstaller {
                     connection.disconnect();
                 }
             }
-            throw new IllegalStateException("下载重定向次数过多");
+            throw new IllegalStateException("Too many download redirects");
         } catch (Exception error) {
             if (partial.exists()) partial.delete();
             if (apk.exists()) apk.delete();
@@ -202,7 +202,7 @@ final class ApkInstaller {
         File apk = pendingInstall;
         if (apk != null && apk.exists()) {
             if (activity.getPackageManager().canRequestPackageInstalls()) openSystemInstaller(apk);
-            else Toast.makeText(activity, "未获得安装权限，可再次点击 APK 下载按钮", Toast.LENGTH_LONG).show();
+            else Toast.makeText(activity, activity.getString(R.string.apk_install_permission), Toast.LENGTH_LONG).show();
         }
         return true;
     }
@@ -220,7 +220,7 @@ final class ApkInstaller {
             CrashReports.log(activity, "网页主进程", "已打开系统 APK 安装器", null);
         } catch (Exception error) {
             CrashReports.log(activity, "网页主进程", "系统 APK 安装器启动失败", error);
-            Toast.makeText(activity, "无法打开系统安装器：" + error.getLocalizedMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(activity, activity.getString(R.string.apk_installer_failed, error.getLocalizedMessage()), Toast.LENGTH_LONG).show();
         }
     }
 

@@ -1,4 +1,6 @@
+import { useProjectProviders } from '../hooks/useProjectProviders'
 import DigitalPersonHome from '../components/digital-person/DigitalPersonHome'
+import { visibleDigitalPersonMessages } from '../components/digital-person/digitalPersonUiReply'
 import type { DigitalPersonProfile } from '../api/digitalPerson'
 import DigitalPersonCamera, { type PrepareCameraMessage } from '../components/digital-person/DigitalPersonCamera'
 import { useDigitalActivity } from '../components/digital-person/useDigitalActivity'
@@ -6,7 +8,7 @@ import DigitalPersonFeedback from '../components/digital-person/DigitalPersonFee
 import { useDigitalPerson } from '../components/digital-person/useDigitalPerson'
 import { useRecentVisitsStore } from '../stores/recentVisitsStore'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
-import { useChatSessionRead } from '../hooks/useChatSessionRead'
+import { useChatSessionRead, type ChatReadTarget } from '../hooks/useChatSessionRead'
 import { useChatListTurnRefresh } from '../hooks/useChatListTurnRefresh'
 import ProjectGitButton from '../components/git/ProjectGitButton'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -34,12 +36,11 @@ import { ArchivedChatSessionsDialog } from '../components/ArchivedChatSessions'
 import {
   assistantApi,
   chatSessionApi,
-  providerApi,
   type AssistantConfigInfo,
-  type ProviderInfo,
   type Project,
 } from '../api/client'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
+import type { AssistantChatMessage } from '../stores/assistantStore'
 import {
   publishEngineCatalog,
   useCoordinatorEngines,
@@ -54,7 +55,7 @@ import { useChatSessionHistory } from '../hooks/useChatSessionHistory'
 import { useChatSessionEngineSelection } from '../hooks/useChatSessionEngineSelection'
 import { useThrottledMemo } from '../hooks/useThrottledMemo'
 import { useCompactLayout } from '../hooks/useCompactLayout'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { clearDraft } from '../utils/chatDraft'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { contextUsageFromMessages } from '../utils/contextUsage.js'
@@ -76,7 +77,11 @@ export interface EmbeddedProjectChat {
   emptyContent?: (insert: (text: string) => void) => ReactNode
   afterContent?: (insert: (text: string) => void) => ReactNode
   placeholder?: string
+  hideHeader?: boolean
+  readTarget?: ChatReadTarget
 }
+
+const EMPTY_MESSAGES: AssistantChatMessage[] = []
 
 export default function ChatPage({ embedded, pane, companionProfile }: { companionProfile?: DigitalPersonProfile; embedded?: EmbeddedProjectChat; pane?: EmbeddedProjectChat & { active?: boolean; headerDrag?: AssistantChatPanelProps['headerDrag']; headerActions?: (actions: { createSession: (onCreated: (id: string) => void) => Promise<void>; creating: boolean; canCreate: boolean }) => ReactNode; closeAction?: ReactNode } } = {}) {
   const controlled = embedded || pane
@@ -116,6 +121,13 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   const [sessionId, setSessionId] = useState<string | null>(sessionParam)
   const [sessionTitle, setSessionTitle] = useState('')
   const [input, setInput] = useState('')
+  const pendingSendsRef = useRef(new Set<string>())
+  const composerOwnerRef = useRef<string | null>(null)
+  composerOwnerRef.current = `${routeProjectId}:${sessionParam}`
+  useEffect(() => {
+    composerOwnerRef.current = `${routeProjectId}:${sessionParam}`
+    return () => { composerOwnerRef.current = null }
+  }, [routeProjectId, sessionParam])
   const [renameOpen, setRenameOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const creatingRef = useRef(false)
@@ -134,7 +146,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   // 引擎可用性（选项是否禁用）跟随共享状态，设置页改动即时生效。
   const sharedEngines = useCoordinatorEngines()
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
-  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const providers = useProjectProviders(activeProject?.id || '')
   const {
     config: engineConfig, permissionMode, setPermissionMode, pendingHandoff, loadedEndpoint, saving: engineConfigSaving, error: engineConfigError,
     setDefaults, restoreSession, applyHandoff,
@@ -163,7 +175,13 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   }, [routeProjectId, sessionParam])
 
   const session = useChatSessionStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
-  const messages = session?.messages ?? []
+  const messages = session?.messages ?? EMPTY_MESSAGES
+  const filterUiReplies = Boolean(companionProfile || activeProject?.is_default_workspace)
+  const displayMessages = useMemo(() => filterUiReplies ? visibleDigitalPersonMessages(messages) : messages, [filterUiReplies, messages])
+  const [acceptedCompanionReply, setAcceptedCompanionReply] = useState<{ sessionId: string; replyId: string }>()
+  const onCompanionReplyAccepted = useCallback((sessionId: string, replyId: string) => {
+    setAcceptedCompanionReply({ sessionId, replyId })
+  }, [])
   const renderDigitalFeedback = useCallback((messageId: string) => <DigitalPersonFeedback messageId={messageId} initialValue={digitalActivity?.feedback?.[messageId] || 0} />, [digitalActivity?.feedback])
   // A streaming bubble is authoritative too: history hydration or a missed START
   // event must never let an active turn fall through to the normal /chat endpoint.
@@ -183,13 +201,14 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     || 'pydantic_ai'
   const cameraPrepare = useRef<PrepareCameraMessage | null>(null)
   const setCameraPrepare = useCallback((prepare: PrepareCameraMessage | null) => { cameraPrepare.current = prepare }, [])
-  const prepareCameraContent = useCallback((content: string, onFaces?: (ids:string[])=>void) => cameraPrepare.current?.(content,onFaces) ?? Promise.resolve(content), [])
+  const prepareCameraContent = useCallback<PrepareCameraMessage>((content, onFaces) => cameraPrepare.current?.(content,onFaces) ?? Promise.resolve(content), [])
   const {
     sendMessageNow, sendPendingContent, stop, continueGoal, endGoal, sendError, setSendError, stopping,
   } = useChatSessionActions({
     sessionId, projectId: activeProject?.id, running, engineConfig,
     permissionMode, planMode, goalMode, effectiveEngine,
     onSessionIdChange: setSessionId, onTitleChange: setSessionTitle, prepareContent: prepareCameraContent,
+    onReplyAccepted: companionProfile && pane?.active !== false ? onCompanionReplyAccepted : undefined,
   })
   const workflowSkill = useWorkflowDesignSkill({
     projectId: routeProjectId, engine: effectiveEngine, sessionId, input, onChange: setInput, running,
@@ -308,17 +327,6 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   }, [activeProject?.id, Boolean(digitalPerson), t, setDefaults]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    let active = true
-    if (!activeProject?.id) return
-    providerApi.list(activeProject.id)
-      .then((result) => {
-        if (active) setProviders(result.providers.filter((item) => item.enabled))
-      })
-      .catch(() => { /* provider list is optional for the engine picker */ })
-    return () => { active = false }
-  }, [activeProject?.id])
-
-  useEffect(() => {
     if (isEmbedded) return
     if (!activeProject?.id) return
     void useChatListStore.getState().fetchQuickButtons(activeProject.id)
@@ -357,7 +365,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     },
   })
 
-  useChatSessionRead(routeProjectId, sessionId===sessionParam?sessionId:null, messages, pane?.active!==false, historyReady)
+  useChatSessionRead(routeProjectId, sessionId===sessionParam?sessionId:null, messages, pane?.active!==false, historyReady, controlled?.readTarget)
 
   // Navigation uses the sidebar cache. Refresh only after a turn finishes.
   useChatListTurnRefresh(activeProject?.id, sessionId, running)
@@ -385,22 +393,38 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     }
   }, [activeProject?.id, permissionMode, sessionId, t, restoreSession])
 
-  const send = useCallback(async (contentOverride?: string, prepared = false, facePersonIds?:string[]) => {
+  const send = useCallback(async (contentOverride?: string, prepared = false, facePersonIds?:string[], recentFaces?:boolean) => {
     if (workflowSkill.loading || handingOff || engineConfigSaving || (sessionParam && !historyReady)) return false
     const content = (contentOverride ?? input).trim()
     if (!content || !sessionId) {
       if (!sessionId) setSendError(t('chatSession.noSession'))
       return false
     }
-    if (beforeSend && !await beforeSend()) return false
-    const sent = await sendMessageNow(content, false, prepared,facePersonIds)
-    if (sent) {
-      setInput(current => current.trim() === (prepared ? input.trim() : content) ? '' : current)
-      clearDraft(sessionId, activeProject?.id ?? '')
-      resetEnhance()
+    const owner = `${routeProjectId}:${sessionParam}`
+    if (pendingSendsRef.current.has(owner)) return false
+    pendingSendsRef.current.add(owner)
+    try {
+      if (beforeSend && !await beforeSend()) return false
+      if (composerOwnerRef.current !== owner) return false
+      // HTTP acknowledgement can arrive after the realtime reply starts.
+      // Release the submitted draft now; a late acknowledgement must never
+      // clear a newer draft or overwrite another conversation's input.
+      const submittedDraft = input
+      const consumesDraft = prepared || input.trim() === content
+      if (consumesDraft) {
+        setInput(current => current === submittedDraft ? '' : current)
+        clearDraft(sessionId, activeProject?.id ?? '')
+        resetEnhance()
+      }
+      const sent = await sendMessageNow(content, false, prepared, facePersonIds, recentFaces)
+      if (!sent && consumesDraft && composerOwnerRef.current === owner) {
+        setInput(current => current === '' ? submittedDraft : current)
+      }
+      return sent
+    } finally {
+      pendingSendsRef.current.delete(owner)
     }
-    return sent
-  }, [input, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance, beforeSend, workflowSkill.loading, handingOff, engineConfigSaving, sessionParam, historyReady, setSendError])
+  }, [input, sessionId, routeProjectId, activeProject?.id, sendMessageNow, t, resetEnhance, beforeSend, workflowSkill.loading, handingOff, engineConfigSaving, sessionParam, historyReady, setSendError])
 
   const handleInputChange = useCallback((value: string) => {
     enhanceInputChanged(value)
@@ -503,7 +527,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
                 </Button>}
                 {!compact && pane?.closeAction}
               </div>
-              {sendError && <div className="chat-session-create-error" role="alert">{sendError}</div>}
+              {sendError && <div className="chat-session-create-error" role="alert">{localizeErrorDisplay(sendError)}</div>}
             </div>}
           />
         </div>
@@ -512,6 +536,8 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     )
   }
 
+  const composerDisabled = handingOff || engineConfigSaving || Boolean(sessionParam && !historyReady)
+  const sendPending = (content: string, ids: string[]) => composerDisabled ? Promise.resolve(false) : sendPendingContent(content, ids)
   const conversation = (
     <>
       <DigitalPersonCamera floating key={`${routeProjectId}/${sessionId}`} projectId={routeProjectId} active={pane?.active !== false}>
@@ -528,9 +554,10 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
         title={sessionTitle || t('chatSession.title')}
         headerDrag={pane?.headerDrag}
         onTitleDoubleClick={!compact && !isEmbedded && can('session.manage') ? () => setRenameOpen(true) : undefined}
+        hideHeader={embedded?.hideHeader}
         hideHeaderStatus={!isEmbedded}
         welcome={!isEmbedded}
-        messages={messages}
+        messages={displayMessages}
         actionRuns={projectActions.runs}
         onStopAction={(runId) => { void projectActions.stop(runId) }}
         afterMessages={<>{messages.length === 0 && embedded?.emptyContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}{embedded?.afterContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}<ProjectActionMessages state={projectActions} /></>}
@@ -547,9 +574,9 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
         attachmentPrefix="chat-session"
         scrollKey={sessionId}
         onInputChange={handleInputChange}
-        onSend={(content,ids) => void send(content, content !== undefined,ids)}
-        onSendContent={(content, ids) => handingOff || engineConfigSaving || (sessionParam && !historyReady) ? Promise.resolve(false) : sendPendingContent(content, ids)}
-        composerDisabled={handingOff || engineConfigSaving || Boolean(sessionParam && !historyReady)}
+        onSend={(content,ids,recent) => void send(content, content !== undefined,ids,recent)}
+        onSendContent={sendPending}
+        composerDisabled={composerDisabled}
         onStop={() => void stop()}
         onAttachmentError={setSendError}
         onLoadMessageEvents={loadMessageEvents}
@@ -751,5 +778,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   )
   return companionProfile ? <DigitalPersonHome profile={companionProfile} activity={digitalActivity}
     projectId={activeProject.id} projectName={activeProject.name} sessionId={sessionId}
-    messages={messages} running={running} active={pane?.active !== false && Boolean(assistantConfig) && !coordinatorConfigError && !handingOff && !engineConfigSaving} onSend={send} onStop={stop} inputValue={input} onDraft={handleInputChange} onPrepareCamera={setCameraPrepare} error={sendError || coordinatorConfigError}>{conversation}</DigitalPersonHome> : conversation
+    messages={displayMessages} uiReply={acceptedCompanionReply?.sessionId === sessionId
+      ? messages.find(message => message.id === acceptedCompanionReply.replyId) : undefined}
+    running={running} active={pane?.active !== false && Boolean(assistantConfig) && !coordinatorConfigError && !handingOff && !engineConfigSaving} composerDisabled={composerDisabled} onSend={send} onSendPending={sendPending} onStop={stop} inputValue={input} onDraft={handleInputChange} onPrepareCamera={setCameraPrepare} error={sendError || coordinatorConfigError}>{conversation}</DigitalPersonHome> : conversation
 }

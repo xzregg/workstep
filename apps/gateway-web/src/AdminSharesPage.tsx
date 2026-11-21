@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useAdminSession } from './useAdminSession'
 import { AdminSessionStatus } from './AdminSessionStatus'
@@ -45,11 +46,11 @@ export function AdminSharesPage() {
     if (submittedQuery) params.set('q', submittedQuery)
     void fetch(`/api/admin/shares?${params}`, { signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error('分享列表加载失败。')
+        if (!response.ok) throw new Error('Failed to load the share list.')
         const data: Listing = await response.json()
         if (!controller.signal.aborted) setListing(data)
       }).catch(reason => {
-        if (reason?.name !== 'AbortError') setError('分享列表加载失败。')
+        if (reason?.name !== 'AbortError') setError('Failed to load the share list.')
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [csrfToken, status, submittedQuery, offset, revision])
@@ -62,11 +63,11 @@ export function AdminSharesPage() {
       const response = await fetch(`/api/admin/shares/${encodeURIComponent(share.id)}/${action}`, {
         method: 'POST', headers: { 'X-CSRF-Token': csrfToken },
       })
-      if (!response.ok) throw new Error('分享状态更新失败。')
+      if (!response.ok) throw new Error('Failed to update share status.')
       setRevokeTarget(null)
       setDeleteTarget(null)
       setRevision(value => value + 1)
-    } catch { setError('分享状态更新失败。') }
+    } catch { setError('Failed to update share status.') }
     finally { setBusy(false) }
   }
 
@@ -89,7 +90,7 @@ export function AdminSharesPage() {
       <input id="gateway-share-search" value={query} onChange={event => setQuery(event.target.value)} />
       <button type="submit">搜索</button>
     </form>
-    {error && <p className="gateway-auth-error" role="alert">{error} <button type="button"
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在更新分享…</p>}
     <AdminListStatus loading={!!csrfToken && loading} label="正在加载分享…"/>

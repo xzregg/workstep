@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { AdminListStatus } from './AdminListStatus'
 import { AdminTabs } from './AdminTabs'
@@ -29,12 +30,12 @@ export function AdminDeviceGroupsPage() {
     void Promise.all(['/api/auth/session', '/api/admin/device-groups?page_size=100',
       '/api/admin/devices?page_size=100', '/api/admin/departments?page_size=100'].map(async path => {
       const response = await fetch(path, { credentials: 'same-origin', signal: controller.signal })
-      if (!response.ok) throw new Error('设备管理范围加载失败，请重试。')
+      if (!response.ok) throw new Error('Failed to load device management scope. Please try again.')
       return response.json()
     })).then(([session, groupList, deviceList, departmentList]) => {
       if (!controller.signal.aborted) { setCsrf(session.csrf_token); setGroups(groupList.groups);
         setDevices(deviceList.devices); setDepartments(departmentList.departments) }
-    }).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '加载失败。') })
+    }).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Load failed.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [revision])
@@ -45,13 +46,13 @@ export function AdminDeviceGroupsPage() {
     try {
       if (sensitive) {
         const step = await confirmStepUp(csrf, password, passwordRequired)
-        if (!step.ok) throw new Error('密码验证失败。')
+        if (!step.ok) throw new Error('Password verification failed.')
       }
       const response = await fetch(path, { method, credentials: 'same-origin', headers,
         ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
-      if (!response.ok) throw new Error('管理范围保存失败，请重试。')
+      if (!response.ok) throw new Error('Failed to save management scope. Please try again.')
       setNotice(success); setPassword(''); setName(''); setRevision(value => value + 1)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '保存失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Save failed.') }
     finally { setBusy(false) }
   }
   const selectedGroup = groups.find(group => group.id === groupId)
@@ -114,7 +115,7 @@ export function AdminDeviceGroupsPage() {
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" />正在保存管理范围…</p>}
       <button type="button" disabled={busy || loading} onClick={() => setRevision(value => value + 1)}>刷新列表</button>
     </div>
-    {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
     {notice && <p role="status">{notice}</p>}
   </section>
 }

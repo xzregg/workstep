@@ -288,11 +288,11 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
     ) -> None:
         mode = str(values.get("permission_mode") or "").strip()
         if mode not in CLAUDE_PERMISSION_MODES:
-            raise ValueError("不支持的权限模式")
+            raise ValueError("Unsupported permission mode")
         if mode == "bypassPermissions" and not (confirmed or {}).get(
             "permission_mode"
         ):
-            raise ValueError("bypassPermissions 需要明确确认风险")
+            raise ValueError("bypassPermissions requires explicit confirmation of the risk")
         # 先校验映射与自定义配置再落盘，避免非法输入时其它字段已写一半。
         model_map = normalize_claude_model_map(values.get("model_map"))
         custom_settings = normalize_claude_custom_settings(
@@ -348,7 +348,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
         except Exception as exc:
             yield InternalEvent(
                 type="error",
-                data={"message": f"claude-agent-sdk 未安装：{exc}"},
+                data={"message": f"claude-agent-sdk not installed: {exc}"},
             )
             return
 
@@ -530,7 +530,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
                             data={
                                 "message_id": message_id,
                                 "status": "error",
-                                "detail": "引擎执行已结束，无法接收新消息",
+                                "detail": "Engine execution has ended, unable to receive new messages",
                             },
                         ))
                     else:
@@ -647,7 +647,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
                     yield InternalEvent(type="live_message", data={
                         "message_id": message_id,
                         "status": "error",
-                        "detail": "引擎执行已结束，无法接收新消息",
+                        "detail": "Engine execution has ended, unable to receive new messages",
                     })
             for task in (receive_task, query_task, watchdog_task):
                 if task is not None and not task.done():

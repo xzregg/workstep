@@ -100,10 +100,10 @@ class CompletionPushService:
         endpoint = subscription.get("endpoint", "")
         parsed = urlparse(endpoint)
         if parsed.scheme != "https" or parsed.hostname != "fcm.googleapis.com":
-            raise ValueError("仅接受 Chrome 推送订阅")
+            raise ValueError("Only accepts Chrome push subscriptions")
         keys = subscription.get("keys") or {}
         if not keys.get("p256dh") or not keys.get("auth"):
-            raise ValueError("推送订阅缺少密钥")
+            raise ValueError("Push subscription missing key")
         async with self._save_lock:
             self.subscriptions[endpoint] = {
                 "subscription": subscription, "project_id": project_id,
@@ -141,6 +141,14 @@ class CompletionPushService:
                        else event.get("task_id"))
             if not project_id or (not task_id if step_result else not message_id or not (session_id or task_id)):
                 continue
+            if task_id:
+                from main import project_manager
+                from services.task_queries import is_debug_task
+                try:
+                    if project_manager and await project_manager.run_db(project_id, lambda _: is_debug_task(task_id)):
+                        continue
+                except (ValueError, LookupError):
+                    pass
             success = event["status"] in {"succeeded", "passed"}
             key = (f"{project_id}:{task_id}:step:{event['step_key']}:{event.get('sequence', event['status'])}"
                    if step_result else f"{project_id}:{session_id or task_id}:{message_id}")

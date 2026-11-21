@@ -936,6 +936,34 @@ class ConfigStore:
         self.set("providers", providers)
         return dict(provider)
 
+    @staticmethod
+    def _managed_connection(provider: dict) -> tuple:
+        urls = provider.get("protocol_base_urls", {})
+        return (
+            provider.get("managed_gateway_id"), provider.get("api_key"),
+            {protocol: url.rstrip("/") for protocol, url in urls.items()},
+        )
+
+    def managed_provider_test_success(self, provider: dict) -> bool | None:
+        tests = self.get("managed_provider_tests", {}).get(provider["id"], {})
+        results = [tests.get(protocol) for protocol in provider["protocols"]]
+        if any(result is False for result in results):
+            return False
+        return True if results and all(result is True for result in results) else None
+
+    def save_managed_provider_test(self, provider: dict, protocol: str, success: bool) -> bool | None:
+        """Store only local probe metadata; ignore replies for replaced connections."""
+        current = self.get_provider(provider["id"])
+        if (not current or not current.get("managed")
+                or current.get("managed_revision") != provider.get("managed_revision")
+                or self._managed_connection(current) != self._managed_connection(provider)):
+            return None
+        tests = self.get("managed_provider_tests", {})
+        self.set("managed_provider_tests", {
+            **tests, provider["id"]: {**tests.get(provider["id"], {}), protocol: success},
+        })
+        return self.managed_provider_test_success(current)
+
     def get_prompt_enhance_config(self) -> dict[str, str]:
         """Provider, protocol and model used by one-shot prompt enhancement."""
         raw = self.get("prompt_enhance", {})
@@ -1084,6 +1112,15 @@ class ConfigStore:
             for item in normalized:
                 cache[item["id"]] = {"models": [{"id": model} for model in item.get("models", [])],
                                      "fetched_at": "managed"}
+            tests = data.get("managed_provider_tests", {})
+            old_by_id = {item["id"]: item for item in existing if item.get("managed")}
+            same_device = (isinstance(state, dict) and state.get("gateway_id") == gateway_id
+                           and state.get("device_id", "") == device_id)
+            data["managed_provider_tests"] = {
+                item["id"]: tests[item["id"]] for item in normalized
+                if same_device and item["id"] in tests and item["id"] in old_by_id
+                and self._managed_connection(item) == self._managed_connection(old_by_id[item["id"]])
+            }
             data["providers"] = retained + normalized
             data["provider_models"] = cache
             data["managed_provider_state"] = {"gateway_id": gateway_id,

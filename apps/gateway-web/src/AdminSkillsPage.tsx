@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useAdminSession } from './useAdminSession'
 import { AdminSessionStatus } from './AdminSessionStatus'
@@ -20,7 +21,7 @@ type Application = { project_id: string; project_name: string; device_id: string
 async function read<T>(url: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(url, { credentials: 'same-origin', signal })
   if (!response.ok) throw new Error(response.status === 403
-    ? '当前账号没有 Skill 管理权限。' : 'Skill 管理数据加载失败。')
+    ? 'Current account does not have Skill management permissions.' : 'Skill management data loading failed.')
   return response.json() as Promise<T>
 }
 
@@ -57,7 +58,7 @@ export function AdminSkillsPage() {
       setSkills(catalog.skills); setGroups(groupList.groups); setApplications(states.projects)
       setError('')
     }).catch(reason => {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '加载失败。')
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Load failed.')
     })
     return () => controller.abort()
   }, [csrf, revision])
@@ -73,7 +74,7 @@ export function AdminSkillsPage() {
         item.id === current && item.status === 'approved') ? current :
         result.versions.find(item => item.status === 'approved')?.id ?? '')
     }).catch(reason => {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '版本加载失败。')
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Version load failed.')
     })
     return () => controller.abort()
   }, [skillId, revision])
@@ -85,7 +86,7 @@ export function AdminSkillsPage() {
       controller.signal).then(result => {
       if (!controller.signal.aborted) setGrants(result.skills)
     }).catch(reason => {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '授权加载失败。')
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Authorization loading failed.')
     })
     return () => controller.abort()
   }, [groupId, revision])
@@ -101,7 +102,7 @@ export function AdminSkillsPage() {
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>平台 Skill 管理</h2></div>
     <p>版本上传后需单独审核；只有已批准版本可授权用户组。撤销版本会使相关项目分配失效。</p>
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
       <div className="gateway-admin-form-row"><label>Skill<Select value={skillId} onChange={event => {
         setSkillId(event.target.value); setVersions([]); setGrantVersionId('')

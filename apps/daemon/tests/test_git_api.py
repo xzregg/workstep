@@ -178,9 +178,9 @@ async def test_task_workspace_allows_multiple_worktrees_for_one_repository(clien
         'workstep/task-duplicate/payment-one', 'workstep/task-duplicate/payment-two',
     }
     assert all(Path(tree['path']).is_dir() for tree in second['worktrees'])
-    with pytest.raises(GitError, match='同名工作目录'):
+    with pytest.raises(GitError, match='work directory with the same name'):
         await workspace.add(root, 'task-duplicate', payment['id'], 'payment-two', 'main')
-    with pytest.raises(GitError, match='功能分支已存在'):
+    with pytest.raises(GitError, match='Feature branch already exists'):
         await workspace.add(
             root, 'task-duplicate', payment['id'], 'payment-three', 'main',
             'workstep/task-duplicate/payment-one',
@@ -209,7 +209,7 @@ async def test_task_workspace_rejects_repository_from_another_registered_project
     from services.git.task_workspace import TaskGitWorkspace
 
     workspace = TaskGitWorkspace(service)
-    with pytest.raises(GitError, match='不属于当前项目'):
+    with pytest.raises(GitError, match='does not belong to the current project'):
         await workspace.add(task_project, 'cross-project', payment['id'], 'payment', 'main')
     assert not (task_project / '.workstep' / 'worktrees' / 'cross-project' / 'payment').exists()
 
@@ -518,7 +518,7 @@ async def test_delete_workspace_preflights_missing_branch_before_removing_any_tr
     fifth_tree = next(tree for tree in created['worktrees'] if tree['alias'] == 'fifth')
     git(fifth_tree['path'], 'config', '--worktree', '--unset', 'workstep.createdBranch')
     git(fifth_tree['path'], 'switch', '--detach')
-    with pytest.raises(GitError, match='功能分支'):
+    with pytest.raises(GitError, match='feature branch'):
         await workspace.delete(root, 'task-branch-check')
     assert all(Path(tree['path']).is_dir() for tree in created['worktrees'])
 
@@ -875,7 +875,7 @@ async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected
     monkeypatch.setattr('services.providers.text_completion', timeout_completion)
     response = await http.post(url + '/commit-message', json={'paths': ['one.txt'], 'snapshot': state['snapshot']})
     assert response.status_code == 504
-    assert '180 秒' in response.json()['detail']
+    assert '180 seconds' in response.json()['detail']
     assert len(recorded_usage) == 1
 
 
@@ -1151,7 +1151,7 @@ async def test_commit_without_author_identity_explains_repository_config(client,
     response = await http.post(url + '/commit', json={'paths': ['one.txt'], 'message': 'change', 'snapshot': snapshot})
     assert response.status_code == 400
     detail = response.json()['detail']
-    assert 'Git 未配置提交作者' in detail
+    assert 'Git commit author is not configured' in detail
     assert 'git config user.name' in detail
     assert 'git config user.email' in detail
     assert 'git config --global' not in detail
@@ -1365,7 +1365,7 @@ async def test_merge_local_and_remote_branch_into_current_and_preserve_conflicts
     state = (await http.get(url + '/status')).json()
     response = await http.post(url + '/merge', json={'branch': 'main', 'snapshot': state['snapshot'], 'source': 'remote-feature', 'remote': 'origin'})
     assert response.status_code == 409, response.text
-    assert '已自动中止' in response.json()['detail']
+    assert 'automatically aborted' in response.json()['detail']
     assert not (repo / '.git' / 'MERGE_HEAD').exists()
     assert (repo / 'one.txt').read_text() == 'local\n'
     assert (repo / 'dirty.txt').read_text() == 'untouched\n'
@@ -1642,7 +1642,7 @@ async def test_merge_into_checked_out_target_rejects_overlapping_uncommitted_fil
         'branch': 'feature', 'target': 'main', 'snapshot': state['snapshot'],
     })
     assert response.status_code == 409, response.text
-    assert '未提交' in response.json()['detail']
+    assert 'Uncommitted' in response.json()['detail']
     assert git(repo, 'rev-parse', 'HEAD') == target_head
     assert (repo / 'one.txt').read_text() == 'target draft\n'
     assert git(repo, 'status', '--short') == 'M one.txt'
@@ -1664,7 +1664,7 @@ async def test_merge_into_detects_committed_conflict_without_touching_dirty_targ
         'branch': 'feature', 'target': 'main', 'snapshot': state['snapshot'],
     })
     assert response.status_code == 409, response.text
-    assert '已自动中止' in response.json()['detail']
+    assert 'automatically aborted' in response.json()['detail']
     assert git(repo, 'rev-parse', 'HEAD') == target_head
     assert (repo / 'one.txt').read_text() == 'target draft\n'
     assert git(repo, 'status', '--short') == 'M one.txt'
@@ -1747,7 +1747,7 @@ async def test_merge_into_conflict_does_not_advance_checked_out_target_upstream(
         'branch': 'feature', 'target': 'dev', 'snapshot': state['snapshot'],
     })
     assert response.status_code == 409, response.text
-    assert '已自动中止' in response.json()['detail']
+    assert 'automatically aborted' in response.json()['detail']
     assert git(repo, 'rev-parse', 'HEAD') == original_head
     assert (repo / 'two.txt').read_text() == 'local draft\n'
     assert not (repo / '.git' / 'MERGE_HEAD').exists()
@@ -2125,7 +2125,7 @@ async def test_pull_preserves_dirty_files_and_refuses_active_diverged_and_missin
     git(peer, 'push', 'origin', 'HEAD:main')
     head = git(repo, 'rev-parse', 'HEAD')
     response = await pull()
-    assert response.status_code == 409 and '分叉' in response.text
+    assert response.status_code == 409 and 'diverged' in response.text
     assert git(repo, 'rev-parse', 'HEAD') == head
     branches = (await http.get(url + '/branches')).json()['branches']
     main = next(b for b in branches if b['name'] == 'main')
@@ -2253,7 +2253,7 @@ async def test_protected_branch_cannot_be_deleted_even_when_unoccupied(client, l
         'branch': branch, 'head': state['head'], 'snapshot': state['snapshot'],
     })
     assert response.status_code == 409
-    assert '主分支' in response.json()['detail']
+    assert 'main branch' in response.json()['detail']
     assert git(repo, 'rev-parse', branch) == state['head']
 
 
@@ -2405,7 +2405,7 @@ async def test_missing_worktree_cleanup_refuses_restored_directory_and_primary_b
     url = f"/api/git/worktrees/{tree['id']}/delete"
     response = await http.post(url, json={'head': tree['head']})
     assert response.status_code == 409
-    assert '主分支' in response.json()['detail']
+    assert 'main branch' in response.json()['detail']
     assert git(repo, 'rev-parse', 'master') == tree['head']
     external.mkdir()
     (external / 'preserve').write_text('restored directory')

@@ -44,7 +44,7 @@ public struct ServerAddress: Equatable {
 
     public enum AddressError: LocalizedError {
         case invalid
-        public var errorDescription: String? { "请输入 HTTP 或 HTTPS 服务根地址，不包含账号、路径或查询参数。" }
+        public var errorDescription: String? { "Enter the HTTP or HTTPS server address without credentials, a path, or query parameters." }
     }
 }
 

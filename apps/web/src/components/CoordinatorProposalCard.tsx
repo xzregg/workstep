@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { ActionProposal } from '../api/client'
 import { taskApi } from '../api/task'
 import { randomUuid } from '../utils/uuid'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import { useCoordinatorProposalActions } from '../contexts/CoordinatorProposalContext'
 
@@ -37,7 +37,8 @@ export function CoordinatorProposalCard({
     && (current.type === 'rerun_from_step' || current.type === 'create_workflow_action')
   const overwriteRetry = current.status === 'failed'
     && current.type === 'create_workflow_action'
-    && current.error?.includes('流程中已存在同名 Action')
+    && (current.error?.includes('The workflow already contains an Action with this name')
+      || current.error?.includes('流程中已存在同名 Action'))
   const canAct = (current.status === 'pending' || retryable) && !pending
 
   const confirm = async (overwrite = false) => {
@@ -174,7 +175,7 @@ export function CoordinatorProposalCard({
         {current.error ? ` · ${current.error}` : ''}
       </div>
       {error && (
-        <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{error}</div>
+        <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{localizeErrorDisplay(error)}</div>
       )}
       {!readOnly && (!actions || actions.canApply(current)) && (current.status === 'pending' || retryable) && (
         <div style={{ display: 'flex', gap: 8 }}>

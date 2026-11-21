@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { connectorApi, type ConnectorDiagnostic, type ConnectorWrite } from '../../api/connectors'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
 import './ConnectorTestPanel.css'
@@ -53,7 +53,7 @@ export default function ConnectorTestPanel({ definition, valid, active, onConfig
     </header>
     {!valid && <p className="connector-muted">{t('connectors.testInvalid')}</p>}
     {busy && <p className="connector-test-status" role="status"><span className="task-status-spinner" />{t(busy === 'connect' ? 'connectors.testing' : 'connectors.invoking')}</p>}
-    {error && <p className="connector-error" role="alert">{error}</p>}
+    {error && <p className="connector-error" role="alert">{localizeErrorDisplay(error)}</p>}
     {result && <div className="connector-test-status" data-ok={result.ok} role="status"><Icon name={result.ok ? 'check' : 'x'} size={16} /><span>{result.message}</span></div>}
     {authRequired && <div className="connector-test-auth"><Button data-connector-configure-auth onClick={onConfigureAuth}>{t('connectors.configureAuthentication')}</Button><p>{t('connectors.oauthNotAvailable')}</p></div>}
     {result?.status === 'cli_available' && <p className="connector-muted">{t('connectors.cliTestHint')}</p>}

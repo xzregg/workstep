@@ -3,7 +3,7 @@ import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissi
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { channelBotApi, type ChannelBot, type DiscussionGroup } from '../api/channelBots'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Input from './Input'
@@ -146,7 +146,7 @@ function TaskDiscussionGroupsDialog({ open, projectId, taskId, groups, onChanged
           ? `${boundGroup.project_name} · ${boundGroup.task_title}` : t('channelBot.currentTask')}</p>}
         <p>{t('channelBot.groupIdHint')}</p>
         </>}
-        {error && <p className="task-discussion-groups-error" role="alert">{error}</p>}
+        {error && <p className="task-discussion-groups-error" role="alert">{localizeErrorDisplay(error)}</p>}
       </div>
     </ConfirmDialog>
     <ConfirmDialog open={!!removeGroup} title={t('channelBot.unbind')} message={t('channelBot.unbindHint')} danger loading={busy}

@@ -34,7 +34,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         view.backgroundColor = .systemBackground
         configureStatus(); configureFloatingButton()
         downloads.presenter = self
-        downloads.onError = { [weak self] in self?.showMessage("文件保存失败，请重试；同时只能保存一个文件。") }
+        downloads.onError = { [weak self] in self?.showMessage("Could not save the file. Try again and save one file at a time.") }
         notifications.currentPage = { [weak self] in self?.webView?.url }
         notifications.onOpen = { [weak self] url in self?.openNotification(url) }
         if let raw = defaults.string(forKey: "server"), let server = try? ServerAddress(raw) { connect(server) }
@@ -243,8 +243,8 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         setStatus("正在连接…", loading: true)
         let deadline = DispatchWorkItem { [weak self] in
             self?.checkingPage = false
-            self?.renderCheck?.cancel(); self?.setStatus("页面加载超时，请重试或返回设备列表。", loading: false)
-            self?.diagnostics.record("页面加载超时")
+            self?.renderCheck?.cancel(); self?.setStatus("The page took too long to load. Try again or return to the device list.", loading: false)
+            self?.diagnostics.record("Page load timed out")
         }
         navigationDeadline = deadline; DispatchQueue.main.asyncAfter(deadline: .now() + 180, execute: deadline)
     }
@@ -271,8 +271,8 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     private func failed(_ error: Error) {
         guard (error as NSError).code != NSURLErrorCancelled else { return }
         checkingPage = false; navigationDeadline?.cancel(); renderCheck?.cancel(); openingNotification = false
-        diagnostics.record("页面加载失败", code: (error as NSError).code)
-        setStatus("页面加载失败，请检查网络、服务地址和证书后重试。", loading: false)
+        diagnostics.record("Page load failed", code: (error as NSError).code)
+        setStatus("Could not load the page. Check the network, server address, and certificate, then try again.", loading: false)
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(error) }
@@ -280,7 +280,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         invalidateMedia()
         diagnostics.record("网页进程退出")
         if !recoveredCrash { recoveredCrash = true; webView.reload() }
-        else { setStatus("网页进程已退出，请重新加载。", loading: false) }
+        else { setStatus("The web process closed. Reload the page.", loading: false) }
     }
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url, let server else { decisionHandler(.cancel); return }

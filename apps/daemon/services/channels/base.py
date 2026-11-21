@@ -128,7 +128,7 @@ class ChannelAdapter(ABC):
 
     async def update_reply(self, message: IncomingMessage, text: str) -> None:
         """Consume cumulative text, editing or sending new blocks per platform."""
-        raise ValueError(f'{self.DISPLAY_NAME}不支持流式回复')
+        raise ValueError(f'{self.DISPLAY_NAME} does not support streaming responses')
 
     @property
     def card_enabled(self) -> bool:
@@ -138,27 +138,27 @@ class ChannelAdapter(ABC):
         self._on_action = handler
 
     async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
-        raise ValueError(f'{self.DISPLAY_NAME}不支持按钮卡片')
+        raise ValueError(f'{self.DISPLAY_NAME} does not support button cards')
 
     async def update_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
         """Refresh a previously sent card when the platform supports active updates."""
 
     async def download(self, attachment: ChannelAttachment) -> tuple[bytes, str]:
-        raise ValueError(f'{self.DISPLAY_NAME}不支持附件下载')
+        raise ValueError(f'{self.DISPLAY_NAME} does not support attachment download')
 
     def validate_outgoing(self, message: OutgoingMessage):
         if not message.text.strip() and not message.attachments:
-            raise ValueError('渠道消息不能为空')
+            raise ValueError('Channel message cannot be empty')
         if message.text and 'text' not in self.CAPABILITIES.send:
-            raise ValueError(f'{self.DISPLAY_NAME}不支持文本发送')
+            raise ValueError(f'{self.DISPLAY_NAME} does not support text sending')
         if len(message.attachments) > 10:
-            raise ValueError('单次最多发送 10 个附件')
+            raise ValueError('Maximum of 10 attachments can be sent at a time')
         for attachment in message.attachments:
             if attachment.kind not in self.CAPABILITIES.send:
-                raise ValueError(f'{self.DISPLAY_NAME}不支持发送{attachment.kind}')
+                raise ValueError(f'{self.DISPLAY_NAME} does not support sending {attachment.kind}')
             if attachment.kind == 'file' and self.CAPABILITIES.file_extensions is not None:
                 from pathlib import Path
                 if Path(attachment.name).suffix.lower().lstrip('.') not in self.CAPABILITIES.file_extensions:
-                    raise ValueError(f'{self.DISPLAY_NAME}不支持此文件格式')
+                    raise ValueError(f'{self.DISPLAY_NAME} does not support this file format')
             if not attachment.data or len(attachment.data) > self.CAPABILITIES.limit(attachment.kind):
-                raise ValueError('附件为空或超过渠道大小限制')
+                raise ValueError('Attachment is empty or exceeds channel size limit')

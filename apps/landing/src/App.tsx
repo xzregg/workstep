@@ -25,7 +25,7 @@ import { GettingStarted } from './components/GettingStarted'
 import { ProductIntro } from './components/ProductIntro'
 
 function scrollToDemos() {
-  document.getElementById('intro-video')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+  document.getElementById('mechanisms')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
 }
 
 export default function App() {
@@ -49,17 +49,17 @@ export default function App() {
       {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} embedded={embedded} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : hash === '#acceptable-use' ? <AcceptableUsePage /> : <main className="landing-home">
         <FlowBackdrop />
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
-        <ProductIntro />
         <Philosophy />
-        <EnginesStrip />
+        <Demos onOpen={setOpenDemo} />
         <Features />
+        <Compare />
         <Workflow />
         <Channels />
         <RemoteShare />
-        <Demos onOpen={setOpenDemo} />
+        <EnginesStrip />
         <div className="container recorded-section"><GuidedWalkthrough /></div>
         <GettingStarted />
-        <Compare />
+        <ProductIntro />
         <FinalCta experienceHref={experienceHref} />
       </main>}
       {!embedded && <Footer />}

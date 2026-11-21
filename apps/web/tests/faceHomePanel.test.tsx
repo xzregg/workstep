@@ -31,14 +31,24 @@ test('home face panel cannot close during an in-flight settings save',async()=>{
  const settings={enabled:false,show_names:true,include_people:true,include_relationship:true,preset:'balanced' as const,threshold:.65}
  faceApi.people=async()=>({items:[]});faceApi.settings=async()=>({settings,revision:0,model_version:''})
  let complete!:(value:any)=>void,closed=0
- faceApi.saveSettings=()=>new Promise(resolve=>{complete=resolve})
+ faceApi.saveSettings=value=>new Promise(resolve=>{assert.deepEqual(value,{...settings,enabled:true});complete=resolve})
  try{
   await act(async()=>root.render(<I18nProvider><FaceHomePanel onClose={()=>closed++}/></I18nProvider>))
-  await act(async()=>document.querySelector<HTMLInputElement>('input[type=checkbox]')!.click())
+  const toggle=document.querySelector<HTMLButtonElement>('[role="switch"]')
+  assert.ok(toggle)
+  const tabs=document.querySelector('[role="tablist"]')
+  assert.ok(tabs)
+  assert.equal(tabs.nextElementSibling,toggle.parentElement)
+  assert.equal(toggle.getAttribute('aria-checked'),'false')
+  await act(async()=>toggle.click())
+  assert.equal(toggle.disabled,true)
+  assert.equal(toggle.getAttribute('aria-checked'),'false')
   assert.equal(document.querySelector<HTMLButtonElement>('.face-home-close')!.disabled,true)
   await act(async()=>document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
   assert.equal(closed,0)
   await act(async()=>complete({settings:{...settings,enabled:true},revision:1,model_version:''}))
+  assert.equal(toggle.disabled,false)
+  assert.equal(toggle.getAttribute('aria-checked'),'true')
   await act(async()=>document.querySelector<HTMLButtonElement>('.face-home-close')!.click());assert.equal(closed,1)
  }finally{await act(async()=>root.unmount());Object.assign(faceApi,old);await window.happyDOM.close()}
 })

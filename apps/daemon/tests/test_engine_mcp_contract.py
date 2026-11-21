@@ -29,7 +29,7 @@ async def test_adapter_method_merges_without_mutating_existing_configuration():
     assert [server['name'] for server in configured['mcp_servers']] == ['native', 'workstep_demo']
     configured['mcp_servers'][1]['env']['ID'] = 'changed'
     assert (original, servers) == before
-    with pytest.raises(ValueError, match='冲突'):
+    with pytest.raises(ValueError, match='conflict'):
         await CodexEngine().configure_mcp_servers([{'name': 'native'}], original)
 
 

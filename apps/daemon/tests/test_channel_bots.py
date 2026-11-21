@@ -310,7 +310,7 @@ async def test_one_bot_routes_two_groups_across_projects_and_clears_deleted_task
     assert [(row[0], row[1]) for row in submissions] == [
         (first.id, "task-1"), (second.id, "task-2"),
     ]
-    with pytest.raises(ValueError, match="已绑定"):
+    with pytest.raises(ValueError, match='already linked'):
         await manager.bind_group(first.id, "task-1", bot["id"], "group-2")
     await manager.remove_task_bindings(first.id, "task-1")
     assert await manager.list_task_groups(first.id, "task-1") == []
@@ -667,7 +667,7 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
     from engines.core.events import InternalEvent
     import agent_assistants.channel_chat as channel_module
 
-    manager, project, _, _, _, _ = bots
+    manager, project, _, _, _, adapters = bots
     module = ChannelChatModule(manager._event_bus, manager._project_manager, register=False)
     monkeypatch.setattr(module, "_validate_engine", lambda _engine: None)
     monkeypatch.setattr(module._config, "validate_engine", lambda _engine: None)
@@ -675,7 +675,13 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
     monkeypatch.setattr(module._config, "resolve_engine_models", lambda: ("codex_sdk", "gpt-6.1-sol", None))
     monkeypatch.setattr(module, "get_system_prompt", lambda _project: "Project role")
     monkeypatch.setattr(channel_module, "config_store", manager._store)
-    monkeypatch.setattr("agent_assistants.base.create_engine", lambda _id: SimpleNamespace(supports_resume=True))
+    selected_provider = ""
+    monkeypatch.setattr("agent_assistants.base.create_engine", lambda _id: SimpleNamespace(
+        supports_resume=True, resolve_provider_id=lambda override: override or selected_provider,
+    ))
+    monkeypatch.setattr("agent_assistants.chat_session_transitions.create_engine", lambda _id: SimpleNamespace(
+        resolve_provider_id=lambda override: override or selected_provider,
+    ))
     monkeypatch.setattr("agent_assistants.chat_session.create_engine", lambda _id: SimpleNamespace(supports_resume=True))
     monkeypatch.setattr("services.config.config_store.get_assistant_defaults", lambda _id: {
         "engine": "codex_sdk", "model": "gpt-6.1-sol",
@@ -769,6 +775,41 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
         assert calls[-1][1] is None
         assert "another-group" in calls[-1][0] and "group:123" not in calls[-1][0]
         assert '"conversation_name": ""' in calls[-1][0]
+
+        async def send_to_original_group(message_id, text):
+            await manager.handle_message(IncomingMessage(
+                bot_id=bot["id"], message_id=message_id, conversation_type="group",
+                conversation_id="group:123", sender_id="u1", text=text,
+            ))
+
+        selected_provider = "provider-b"
+        await send_to_original_group("provider-changed", "接着说")
+        assert len(calls) == 3
+        group, notice = adapters[bot["id"]].sent[-1]
+        assert group == "group:123" and "工作台" in notice and "/new" in notice
+
+        from agent_assistants.chat_session import ChatSessionModule
+        workbench = ChatSessionModule(manager._event_bus, manager._project_manager)
+        monkeypatch.setattr(workbench, "_validate_engine", lambda _engine: None)
+        monkeypatch.setattr(workbench, "_resolve_engine_models", lambda: ("codex_sdk", None, None))
+        monkeypatch.setattr(main, "chat_session_module", workbench)
+        monkeypatch.setattr(main, "project_manager", manager._project_manager)
+        async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+            confirmed = await client.post(
+                f"/api/chat-sessions/{session_id}/handoff",
+                json={"project_id": project.id, "engine": "codex_sdk", "provider_id": "", "context_mode": "smart"},
+            )
+            assert confirmed.status_code == 200, confirmed.text
+
+        await send_to_original_group("provider-confirmed", "确认后继续")
+        assert len(calls) == 4 and calls[-1][1] is None
+        assert "handoffs.jsonl" in calls[-1][0] and "你好" not in calls[-1][0]
+
+        selected_provider = "provider-c"
+        await send_to_original_group("provider-fresh-context", "/new 新的问题")
+        assert len(calls) == 5 and calls[-1][1] is None
+        assert calls[-1][0].endswith("新的问题") and "handoffs.jsonl" not in calls[-1][0]
+        assert (await manager._load())["sessions"][f"{bot['id']}:group:group:123"] == session_id
     finally:
         manager._event_bus.unsubscribe(events_queue)
         await module.shutdown()
@@ -865,6 +906,51 @@ async def test_bot_list_exposes_task_bindings_and_unbinds_without_blocking_healt
         assert (await client.delete(path)).status_code == 200
         remaining = (await client.get("/api/channel-bots")).json()[0]["task_bindings"]
         assert [row["group_id"] for row in remaining] == ["group-b"]
+
+
+@pytest.mark.parametrize('mode', ['silent', 'sent', 'failed', 'offline'])
+async def test_unbind_notice_only_for_removed_group(bots, monkeypatch, mode):
+    from unittest.mock import AsyncMock
+    manager, first, second, submissions, project_chats, adapters = bots
+    bot = await manager.create_bot(dict(platform='wecom', name='助手', app_id='unbind-notice',
+                                        secret='secret', enabled=mode != 'offline', default_project_id=second.id))
+    await manager.bind_group(first.id, 'task-1', bot['id'], 'room')
+    await manager.bind_group(second.id, 'task-2', bot['id'], 'other-room')
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def send(recipient, text):
+        assert await manager.list_task_groups(first.id, 'task-1') == []
+        assert recipient.conversation_type == 'group' and recipient.conversation_id == 'room'
+        assert text == 'This group has been unlinked from its WorkStep task.'
+        entered.set()
+        await release.wait()
+        if mode == 'failed':
+            raise RuntimeError('offline')
+
+    send_text = AsyncMock(side_effect=send)
+    if mode != 'offline':
+        monkeypatch.setattr(adapters[bot['id']], 'send_text', send_text)
+    path = f"/api/task/task-1/discussion-groups/{bot['id']}/room"
+    params = {'project_id': first.id, 'notify': mode != 'silent'}
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+        pending = asyncio.create_task(client.delete(path, params=params))
+        if mode in ('sent', 'failed'):
+            try:
+                await asyncio.wait_for(entered.wait(), 2)
+                assert (await asyncio.wait_for(client.get('/api/health'), .5)).status_code == 200
+                assert (await client.delete(path, params=params)).json() == {'deleted': True, 'notification': 'skipped'}
+            finally:
+                release.set()
+        result = await pending
+        assert result.status_code == 200
+        expected = {'deleted': True}
+        if mode != 'silent':
+            expected['notification'] = 'failed' if mode == 'offline' else mode
+        assert result.json() == expected
+    assert send_text.await_count == int(mode in ('sent', 'failed'))
+    assert await manager.list_task_groups(first.id, 'task-1') == []
+    assert [row['group_id'] for row in await manager.list_task_groups(second.id, 'task-2')] == ['other-room']
+    assert not submissions and not project_chats
 
 
 async def test_task_channel_stop_callback_bypasses_message_queue(bots):

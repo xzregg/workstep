@@ -3,6 +3,7 @@ import asyncio
 import logging
 from contextlib import aclosing
 from dataclasses import replace
+from workstep_gateway_protocol.voice_assets import is_voice_wasm
 
 from gateway.contracts import SocketClosed
 from gateway.services.errors import GatewayError
@@ -10,6 +11,7 @@ from gateway.services.errors import GatewayError
 logger = logging.getLogger(__name__)
 
 MAX_ASSET_BYTES = 8 * 1024 * 1024
+MAX_VOICE_WASM_BYTES = 16 * 1024 * 1024
 ASSET_RECOVERY_SECONDS = 60
 
 
@@ -21,6 +23,7 @@ def is_workspace_asset(call):
 async def proxy_workspace_asset(call, connect, **identity):
     if not is_workspace_asset(call):
         raise ValueError('Only workspace asset reads can be retried')
+    max_bytes = MAX_VOICE_WASM_BYTES if is_voice_wasm(call.target.path) else MAX_ASSET_BYTES
 
     async def empty_body():
         yield b''
@@ -42,7 +45,7 @@ async def proxy_workspace_asset(call, connect, **identity):
                         content = bytearray()
                         async with aclosing(response.chunks):
                             async for chunk in response.chunks:
-                                if len(content) + len(chunk) > MAX_ASSET_BYTES:
+                                if len(content) + len(chunk) > max_bytes:
                                     raise GatewayError('upstream_failed', 'Workspace asset exceeds buffer limit')
                                 content.extend(chunk)
                         if response.status >= 500:

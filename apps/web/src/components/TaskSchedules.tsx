@@ -6,7 +6,7 @@ import type { BoundScheduleTask } from './TaskScheduleEditor'
 import type { ScheduleEditorState } from '../hooks/useScheduleDraftState'
 import SchedulePage from '../pages/SchedulePage'
 import ConfirmDialog from './ConfirmDialog'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useOverlay } from '../hooks/useOverlay'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import Button from './Button'
@@ -89,7 +89,7 @@ export default function TaskSchedules({ taskId, load, project, task }: {
           <Button variant="icon" aria-label={t('common.close')} onClick={() => setOpen(false)}><Icon name="x" size={16}/></Button>
         </header>
         <div className="task-schedules-body">
-          {error && <div role="alert">{error}<Button onClick={() => refresh.current()}>{t('common.retry')}</Button></div>}
+          {error && <div role="alert">{localizeErrorDisplay(error)}<Button onClick={() => refresh.current()}>{t('common.retry')}</Button></div>}
           {!loading && !error && items.length === 0 && <p>{t('schedules.taskEmpty')}</p>}
           {items.map(item => <article className="task-schedules-item" key={item.id}>
             <div className="task-schedules-item-heading"><strong>{item.name}</strong><span>{t(`schedules.status_${item.status}`)}</span></div>

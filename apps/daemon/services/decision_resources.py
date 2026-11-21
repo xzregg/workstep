@@ -47,7 +47,7 @@ class DecisionResources:
 
     def path(self, kind):
         if kind not in self.states:
-            raise ValueError('未知决策资源')
+            raise ValueError('Unknown decision resource')
         return self.root / (kind if kind in RUNTIMES else 'models/' + resource_entry(kind)['id'])
 
     @staticmethod
@@ -79,16 +79,16 @@ class DecisionResources:
         for name, _, expected in self.files(kind):
             path = self.path(kind) / name
             if path.is_symlink():
-                raise ValueError('模型资源无效')
+                raise ValueError('Invalid model resource')
             with path.open('rb') as file:
                 if hashlib.file_digest(file, 'sha256').hexdigest() != expected:
-                    raise ValueError('模型资源校验失败，请删除后重新下载')
+                    raise ValueError('Model resource validation failed. Please delete and re-download.')
 
     async def download(self, kind):
         self.path(kind)
         async with self.lock:
             if self.task and not self.task.done():
-                raise ValueError('请等待当前下载完成或取消下载')
+                raise ValueError('Please wait for the current download to complete or cancel the download')
             if await resource_io(self.installed, kind):
                 return
             self.target = kind
@@ -127,7 +127,7 @@ class DecisionResources:
             self.states[kind]['stage'] = 'cancelled'
             raise
         except Exception:
-            self.states[kind].update(stage='error', error='决策资源安装失败，请检查网络、磁盘空间与平台兼容性后重试')
+            self.states[kind].update(stage='error', error='Could not install decision resources. Check the network, free space, and platform compatibility.')
         finally:
             await resource_io(shutil.rmtree, stage, True)
 
@@ -150,7 +150,7 @@ class DecisionResources:
             base_url = MODEL_BASE if kind == 'model' else resource_entry(kind)['base_url']
             state.update(stage='downloading', total_bytes=sum(f[1] for f in files))
             if await resource_io(lambda: shutil.disk_usage(stage).free) < state['total_bytes'] * 2:
-                raise ValueError('磁盘空间不足')
+                raise ValueError('Disk space is insufficient')
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 for name, size, digest in files:
                     path = stage / name
@@ -165,7 +165,7 @@ class DecisionResources:
         elif uv:
             cmd = [uv, 'pip', 'install', '--python', sys.executable]
         else:
-            raise ValueError('宿主缺少 pip 或 uv')
+            raise ValueError('Host lacks pip or uv')
         packages = list(PACKAGES)
         cmd += ['--only-binary=:all:', '--no-compile', '--index-url', 'https://pypi.org/simple',
                 '--target', str(stage / 'lib')]
@@ -184,7 +184,7 @@ class DecisionResources:
             stderr=asyncio.subprocess.DEVNULL, env={**os.environ, 'PIP_NO_INPUT': '1'})
         try:
             if await asyncio.wait_for(process.wait(), timeout) != 0:
-                raise ValueError('推理运行组件安装或校验失败')
+                raise ValueError('Inference runtime component installation or validation failed')
         finally:
             if process.returncode is None:
                 process.kill()
@@ -200,14 +200,14 @@ class DecisionResources:
                 async for chunk in response.aiter_bytes(256 * 1024):
                     count += len(chunk)
                     if count > size:
-                        raise ValueError('模型文件大小不符')
+                        raise ValueError('Model file size mismatch')
                     digest.update(chunk)
                     await resource_io(file.write, chunk)
                     state['downloaded_bytes'] += len(chunk)
         finally:
             await resource_io(file.close)
         if count != size or digest.hexdigest() != expected:
-            raise ValueError('模型文件校验失败')
+            raise ValueError('Model file validation failed')
 
     async def cancel(self, kind):
         self.path(kind)

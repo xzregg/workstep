@@ -3,10 +3,38 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {act} from 'react'
 import {createRoot} from 'react-dom/client'
-import {I18nProvider} from '../src/i18n'
+import {I18nProvider,useLocaleStore} from '../src/i18n'
 import DigitalPersonCaptions from '../src/components/digital-person/DigitalPersonCaptions'
 import {digitalRuntimeApi} from '../src/api/digitalPerson'
 import {resolveMarkdownImageSrc} from '../src/utils/markdownImages'
+import type {AssistantChatMessage} from '../src/stores/assistantStore'
+
+test('thinking shows elapsed time from the current reply and only finished replies can be read aloud',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const now=Date.now,started=now()-3000,played:string[]=[]
+ let elapsed=3000
+ const locale=useLocaleStore.getState().locale
+ useLocaleStore.setState({locale:'zh-CN'})
+ Date.now=()=>started+elapsed
+ const reply:AssistantChatMessage={id:'a',role:'assistant',content:'',status:'running',created_at:new Date(started).toISOString()}
+ const render=(message:AssistantChatMessage,readingId?:string)=>act(async()=>root.render(<I18nProvider><DigitalPersonCaptions projectId="p" sessionId="main" messages={[message]} greeting="你好" liveText="" readingId={readingId} onToggleSpeech={id=>played.push(id)}/></I18nProvider>))
+ try{
+  await render(reply)
+  assert.match(host.textContent!,/正在思考\s*3秒/)
+  assert.equal(host.querySelector('[aria-label="朗读回复"]'),null)
+  elapsed=4000
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,1050))})
+  assert.match(host.textContent!,/正在思考\s*4秒/)
+  await render({...reply,content:'这是回复。',status:'succeeded'})
+  assert.doesNotMatch(host.textContent!,/正在思考/)
+  const row=host.querySelector('.digital-home-reply-actions')!
+  assert.ok(row.querySelector('[aria-pressed]'),'feedback remains beside playback')
+  await act(async()=>row.querySelector<HTMLButtonElement>('[aria-label="朗读回复"]')!.click())
+  await render({...reply,content:'这是回复。',status:'succeeded'},'a')
+  await act(async()=>row.querySelector<HTMLButtonElement>('[aria-label="停止朗读"]')!.click())
+  assert.deepEqual(played,['a','a'])
+ }finally{Date.now=now;await act(async()=>root.unmount());useLocaleStore.setState({locale});await window.happyDOM.close()}
+})
 
 test('captions retain earlier turns and follow new text only while reading the latest turn',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
@@ -68,4 +96,60 @@ test('avatar transcript feedback restores historical votes and submits the origi
   await act(async()=>down.click())
   assert.deepEqual(calls.at(-1),['old-answer',0])
  }finally{digitalRuntimeApi.feedback=original;await act(async()=>root.unmount());await window.happyDOM.close()}
+})
+
+test('live recognition stays outside scrolling history and revises the same preview before submission',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const messages=[{id:'old',role:'assistant' as const,content:'之前的长回复。'.repeat(80),status:'succeeded' as const}]
+ const render=(liveText:string,voicePhase?:'recording'|'finishing')=>act(async()=>root.render(<I18nProvider><DigitalPersonCaptions projectId="p" sessionId="main" messages={messages} greeting="你好" liveText={liveText} voicePhase={voicePhase}/></I18nProvider>))
+ try{
+  await render('','recording')
+  const history=host.querySelector<HTMLElement>('.digital-home-subtitles')!
+  const live=host.querySelector<HTMLElement>('.digital-home-live-caption')!
+  assert.ok(live,'listening has an immediately visible recognition area')
+  assert.equal(live.getAttribute('role'),'status')
+  assert.equal(history.contains(live),false,'history scrolling cannot hide recognition')
+  Object.defineProperties(history,{scrollHeight:{value:1800,configurable:true},clientHeight:{value:300,configurable:true}})
+  history.scrollTop=100;await act(async()=>history.dispatchEvent(new window.Event('scroll')))
+  await render('帮我检查','recording')
+  assert.equal(host.querySelector('.digital-home-live-caption'),live)
+  assert.match(live.textContent!,/帮我检查/)
+  await render('帮我检查今天的安排','recording')
+  assert.match(live.textContent!,/帮我检查今天的安排/)
+  assert.equal(history.scrollTop,100,'recognition does not pull the reader away from history')
+  assert.doesNotMatch(history.textContent!,/帮我检查/)
+  await render('帮我检查今天的安排','finishing')
+  assert.equal(live.getAttribute('data-phase'),'finishing')
+  await render('')
+  assert.equal(host.querySelector('.digital-home-live-caption'),null,'cancelled or accepted preview is removed')
+ }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
+})
+
+test('mobile recognition keeps one text-only preview across voice phases',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ window.matchMedia=(()=>({matches:true,addEventListener(){},removeEventListener(){}})) as typeof window.matchMedia
+ const render=(liveText:string,voicePhase?:'recording'|'finishing')=>act(async()=>root.render(<I18nProvider><DigitalPersonCaptions projectId="p" sessionId="main" messages={[]} greeting="你好" liveText={liveText} voicePhase={voicePhase}/></I18nProvider>))
+ try{
+  await render('','recording')
+  const live=host.querySelector<HTMLElement>('.digital-home-live-caption')!
+  const text=live.querySelector('p')!
+  assert.equal(live.textContent,'')
+  assert.equal(live.children.length,1)
+  await render('帮我检查','recording')
+  assert.equal(live.firstElementChild,text)
+  assert.equal(live.textContent,'帮我检查')
+  const firstReveal=text.querySelector('.digital-home-live-caption-reveal')!
+  assert.equal(firstReveal.textContent,'帮我检查')
+  await render('帮我检查','finishing')
+  assert.equal(text.querySelector('.digital-home-live-caption-reveal'),firstReveal,'phase changes do not replay the text')
+  await render('帮我检查今天的安排','finishing')
+  assert.equal(host.querySelector('.digital-home-live-caption'),live)
+  assert.equal(live.firstElementChild,text)
+  assert.equal(live.textContent,'帮我检查今天的安排')
+  assert.equal(text.querySelector('.digital-home-live-caption-reveal')?.textContent,'今天的安排')
+  await render('帮我检查明天的安排','finishing')
+  assert.equal(text.querySelector('.digital-home-live-caption-reveal')?.textContent,'明天的安排')
+  await render('')
+  assert.equal(host.querySelector('.digital-home-live-caption'),null)
+ }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
 })

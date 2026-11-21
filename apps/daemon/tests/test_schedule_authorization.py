@@ -142,7 +142,7 @@ async def test_scheduled_creation_does_not_borrow_actor_or_confuse_authorities(m
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("case,detail", [
-    ("missing-creator", "定时规则缺少创建人身份"),
+    ("missing-creator", 'Managed\\ capability\\ denied:\\ task\\.create（Scheduled\\ rule\\ lacks\\ creator\\ identity;\\ please\\ have\\ a\\ user\\ with\\ task\\ creation\\ permissions\\ resave\\ the\\ rule\\.）'),
     ("missing-policy", "网关权限快照尚未就绪"),
     ("expired-policy", "网关权限快照已过期"),
     ("legacy-local", "定时规则创建人与当前网关用户不匹配"),

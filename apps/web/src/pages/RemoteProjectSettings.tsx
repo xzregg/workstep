@@ -9,7 +9,7 @@ import {
   type RemoteAccessSettings,
   type RemoteDevice,
 } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 
 const EMPTY_SETTINGS: RemoteAccessSettings = {
   enabled: false,
@@ -205,7 +205,7 @@ export default function RemoteProjectSettings() {
             </div>
           )}
         </div>
-        {error && <div role="status" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
+        {error && <div role="status" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{localizeErrorDisplay(error)}</div>}
       </section>
 
       <section style={{ paddingTop: 22 }}>

@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client'
 import { useVoiceInput } from '../src/hooks/useVoiceInput'
 import { speechApi } from '../src/api/speech'
 import { captureVoice, voiceCapture, VoiceResampler, pcmBase64 } from '../src/utils/voiceCapture'
+import {TurnController} from '../src/audio/turnController'
 import { I18nProvider } from '../src/i18n'
 import ChatInput from '../src/components/ChatInput'
 
@@ -43,9 +44,10 @@ test('finished dictation inserts once at the captured cursor; cancellation disca
   const inserted: [string, number][] = []
   let state!: ReturnType<typeof useVoiceInput>
   let owner = 'a'
+  let showLevel = false
   function Harness() {
     state = useVoiceInput({ ownerKey: owner, disabled: false, compact: false, projectId: 'p',
-      value: '之前之后', cursor: 2, onInsert: (text, cursor) => inserted.push([text, cursor]) })
+      value: '之前之后', cursor: 2, showLevel, onInsert: (text, cursor) => inserted.push([text, cursor]) })
     return null
   }
   try {
@@ -55,6 +57,11 @@ test('finished dictation inserts once at the captured cursor; cancellation disca
     assert.equal(state.phase, 'recording')
     await act(async () => chunk(new Int16Array(16000), .5))
     assert.equal(state.text, '粤语 English')
+    assert.equal(state.level, 0, 'a hidden meter does not publish audio levels')
+    showLevel = true
+    await act(async () => root.render(<Harness />))
+    await act(async () => chunk(new Int16Array(16000), .5))
+    assert.equal(state.level, .5, 'showing the meter resumes level updates during capture')
     await act(async () => state.finish())
     assert.deepEqual(inserted, [['粤语 English', 2]])
     assert.equal(state.active, false)
@@ -642,21 +649,52 @@ test('mobile empty composer uses click dictation and switches to send for text',
   }
 })
 
-test('optional speech gate holds room noise locally and preserves a bounded opening buffer',async()=>{
+test('automatic recognition keeps pre-roll and invalidates an in-flight candidate before finalizing',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
  const original={...speechApi},start=voiceCapture.start
- let chunk!:(pcm:Int16Array,level:number)=>void,allow=false
- const requests:number[]=[]
- speechApi.start=async()=>({id:'gated',sample_rate:16000,max_seconds:120,max_frame_samples:128000}) as any
- speechApi.audio=async(id,_p,sequence,audio,final)=>{requests.push(atob(audio).length/2);return {id,sequence,final,text:'开头没有丢'}}
+ let chunk!:Parameters<typeof voiceCapture.start>[0],end=0,starts=0
+ let releasePreview!:()=>void
+ const turn = new TurnController()
+ let checkpoint!:()=>void
+ let voice!:ReturnType<typeof useVoiceInput>
+ const requests:{length:number;final:boolean}[]=[]
+ const sent:string[]=[]
+ speechApi.start=async()=>{starts++;return {id:'gated',sample_rate:16000,max_seconds:120,max_frame_samples:128000,streaming:'segment'}}
+ speechApi.audio=async(id,_p,sequence,audio,final)=>{
+  requests.push({length:atob(audio).length/2,final})
+  if(sequence===0)await new Promise<void>(resolve=>{releasePreview=resolve})
+  return {id,sequence,final,text:sequence===0?'旧候选':'续说后的结果'}
+ }
  speechApi.cancel=async()=>({cancelled:true}) as any
- voiceCapture.start=async callback=>{chunk=callback;return {stop(){},flush:async()=>{}}}
- function Harness(){const voice=useVoiceInput({ownerKey:'gate',projectId:'p',disabled:false,compact:false,value:'',cursor:0,onInsert:()=>{},onAudioFrame:()=>allow});return <button onClick={()=>void voice.start()}>start</button>}
+ voiceCapture.start=async callback=>{chunk=callback;return {stop(){},flush:()=>new Promise(resolve=>{checkpoint=()=>resolve(turn.snapshot())})}}
+ function Harness(){
+  voice=useVoiceInput({ownerKey:'gate',projectId:'p',disabled:false,compact:false,value:'',cursor:0,automatic:true,showLevel:false,onInsert:text=>sent.push(text)})
+  return <><button onClick={()=>void voice.start()}>start</button><span>{voice.text}</span></>
+ }
+ const frames=(count:number,probability:number)=>{
+  for(let i=0;i<count;i++)turn.frame({end:end+=512,probability})
+  chunk(new Int16Array(count*512),0,turn.snapshot())
+ }
  try{
   await act(async()=>root.render(<Harness/>));await act(async()=>host.querySelector('button')!.click())
-  await act(async()=>{for(let i=0;i<8;i++)chunk(new Int16Array(8000),.5)})
-  assert.deepEqual(requests,[],'no silence or short noise is uploaded for recognition')
-  allow=true;await act(async()=>chunk(new Int16Array(8000),.5))
-  assert.deepEqual(requests,[24000],'one second pre-roll plus opening frame')
+  await act(async()=>{for(let i=0;i<8;i++)frames(16,.02)})
+  assert.equal(starts,0,'silence never opens an ASR session')
+  const recording=voice
+  assert.equal(recording.hasSpeech,false)
+  await act(async()=>frames(3,.6))
+  assert.equal(recording.hasSpeech,true,'speech onset stays live before a transcription response')
+  await act(async()=>frames(8,.02))
+  assert.deepEqual(requests,[{length:6656+3*512+8*512,final:false}])
+  await act(async()=>frames(11,.02))
+  assert.deepEqual(sent,[],'wait for the capture watermark')
+  await act(async()=>{frames(1,.6);checkpoint();releasePreview()})
+  assert.equal(host.querySelector('span')!.textContent,'')
+  assert.deepEqual(sent,[],'the first resumed frame vetoes the old candidate')
+  await act(async()=>frames(8,.02))
+  await act(async()=>frames(11,.02))
+  await act(async()=>checkpoint())
+  assert.deepEqual(sent,['续说后的结果'])
+  assert.equal(requests[1].length,20*512)
+  assert.deepEqual(requests[2],{length:0,final:true},'reuse the new candidate after confirming silence')
  }finally{await act(async()=>root.unmount());Object.assign(speechApi,original);voiceCapture.start=start;await window.happyDOM.close()}
 })

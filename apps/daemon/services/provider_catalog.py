@@ -178,27 +178,27 @@ def validate_provider_values(
     from engines.core.schema import validate_api_base_url
 
     if not name:
-        return "供应商名称不能为空"
+        return "Provider name is required"
     provider_type = get_type_meta(type_id)
     if provider_type is None:
-        return "不支持的供应商类型"
+        return "Unsupported provider type"
     if protocols is not None:
         if not protocols:
-            return "至少选择一个供应商协议"
+            return "Select at least one provider protocol"
         for value in protocols:
             if value not in PROVIDER_PROTOCOLS:
-                return "不支持的供应商协议"
+                return "Unsupported provider protocol"
     if protocols and protocol_base_urls is not None:
         for protocol in protocols:
             configured = str(protocol_base_urls.get(protocol) or "").strip()
             if not configured:
-                return f"{PROTOCOL_LABELS.get(protocol, protocol)} API 地址不能为空"
+                return f"{PROTOCOL_LABELS.get(protocol, protocol)} API URL is required"
             url_error = validate_api_base_url(configured)
             if url_error:
-                return f"{PROTOCOL_LABELS.get(protocol, protocol)}：{url_error}"
+                return f"{PROTOCOL_LABELS.get(protocol, protocol)}: {url_error}"
     else:
         if not base_url:
-            return "API 地址不能为空"
+            return "API URL is required"
         url_error = validate_api_base_url(base_url)
         if url_error:
             return url_error
@@ -266,7 +266,7 @@ def select_provider_protocol(provider: dict, protocol: str | None = None) -> str
     requested = canonical_provider_protocol(str(protocol or ""))
     if requested:
         if requested not in PROVIDER_PROTOCOLS or requested not in declared:
-            raise ValueError("所选协议未在该供应商中配置")
+            raise ValueError("Selected protocol is not configured for this provider")
         return requested
     return declared[0]
 

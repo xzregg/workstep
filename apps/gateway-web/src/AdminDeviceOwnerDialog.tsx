@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { userChoiceLabel } from './AdminSelection'
 import { useEffect, useState } from 'react'
@@ -24,7 +25,7 @@ export function AdminDeviceOwnerDialog({ device, csrf, onComplete, onClose }: {
  useEffect(() => {
   const controller = new AbortController(); setLoading(true); setError('')
   void fetch(`/api/admin/users?q=${encodeURIComponent(search)}&status=active&page_size=25`, { credentials: 'same-origin', signal: controller.signal }).then(async response => {
-   if (!response.ok) throw Error('用户加载失败，请重新搜索。')
+   if (!response.ok) throw Error('User load failed, please search again.')
    const data = await response.json()
    if (!controller.signal.aborted) setUsers(data.users ?? [])
   }).catch(reason => { if (!controller.signal.aborted) setError(reason.message) })
@@ -37,13 +38,13 @@ export function AdminDeviceOwnerDialog({ device, csrf, onComplete, onClose }: {
   setBusy(true); setError('')
   try {
    const step = await confirmStepUp(csrf, password, passwordRequired)
-   if (!step.ok) throw Error('管理员身份验证失败。')
+   if (!step.ok) throw Error('Administrator authentication failed.')
    const response = await fetch(`/api/admin/devices/${encodeURIComponent(device.id)}/owner`, {
     method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify({ user_id: userId }),
    })
-   if (!response.ok) throw Error('所有者转移失败，请确认用户有效且拥有设备管理权限。')
+   if (!response.ok) throw Error('Owner transfer failed. Please ensure the user is valid and has device management permissions.')
    onComplete()
-  } catch (reason) { setError(reason instanceof Error ? reason.message : '所有者转移失败。') }
+  } catch (reason) { setError(reason instanceof Error ? reason.message : 'Owner transfer failed.') }
   finally { setBusy(false) }
  }
  return <GatewayModal title="转移设备所有者" onClose={close} footer={<>
@@ -64,7 +65,7 @@ export function AdminDeviceOwnerDialog({ device, csrf, onComplete, onClose }: {
    </Select>
   </div>
   {(busy || loading) && <p role="status"><span className="gateway-spinner" /> {busy ? '正在转移…' : '正在加载用户…'}</p>}
-  {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+  {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   {discard && <GatewayConfirmDialog title="放弃转移" message="尚未提交的修改将丢失。" confirmLabel="放弃并关闭" onConfirm={onClose} onCancel={() => setDiscard(false)} />}
  </GatewayModal>
 }

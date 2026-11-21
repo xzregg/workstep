@@ -6,6 +6,14 @@
 
 此授权不包含网关平台管理、设备授权分配或平台模型供应商资源；这些继续单独核权。协议中的 `device_owner` 字段为兼容既有通道格式保留，整机数据代理用它传递宿主操作能力，不修改数据库的设备所有者。实现入口为 Gateway `services/remote_access_api.py::proxy_remote_request`、daemon `services/gateway_client/policy.py::require_managed_capability` 和 `api/gateway_platform.py::_settings_service`；回归覆盖 `test_remote_provider_scope.py`、`test_user_devices.py`、`test_gateway_policy.py`、`test_gateway_platform_settings.py` 和 `test_desktop_security.py`。
 
+## 供应商模型获取与下发
+
+超级管理员在「供应商管理 → 编辑供应商」的「允许模型」旁打开「获取模型」。网关使用已保存的地址与凭据获取列表；更改连接配置时需先保存。支持搜索、勾选和全选，点击「应用到表单」只修改编辑草稿，点击「保存供应商」才写入并下发。已有手工填写的模型仍可选择，部分协议获取失败不会清空已有选择。工作台仅展示已下发模型和网关管理入口提示。
+
+`POST /api/admin/providers/{provider_id}/models/preview` 只预览，返回当前 `revision`、去重模型与脱敏的协议错误；`PUT /api/admin/providers/{provider_id}/models` 接收 `revision` 与 `models`，冲突返回 409，保留凭据和所选模型价格。接口继续要求超管、CSRF 和二次认证；预览通过异步 HTTP 获取并限制响应大小、模型数和分页。保存提升供应商和有效设备版本，由既有控制心跳签名加密下发，离线 PC 在重连后应用。
+
+职责与测试入口见 [Code Map](code-map.md) 的“网关供应商模型选择”；上游使用模拟响应验证，不以此替代实际部署环境的供应商连通性验收。
+
 ## 飞书与 Lark 企业身份
 
 管理后台「平台设置 → 组织同步与扫码登录」支持添加飞书／Lark 企业自建应用。填写企业 `Tenant Key`（开放平台返回的 `tenant_key`）、`App ID` 和 `App Secret`，分别控制应用、扫码登录和组织同步的启用状态。密钥沿用网关加密存储，列表不回显。`provider` 分别为 `feishu`、`lark`；登录、同步及管理 API 沿用现有 `/api/admin/identity-sources` 和 `/api/auth/external/{source_id}/…` 路径。
@@ -51,7 +59,7 @@ Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0
 
 `POST /api/admin/permissions` 统一接收 `subject_type`（user/group）、`subject_id`、`permission`、`scope_type`、`scope_id` 和 `effect`；全局/平台不传 scope_id。`GET` 返回旧入口与新入口的同一批有效授权，`DELETE /{assignment_id}` 复用原有撤销逻辑，保留恢复管理员、最后一名本地超管、CSRF 与二次认证保护。项目查看/编辑共用一条授权，调整访问级别不会新增重复授权。资源访问和管理员角色通过撤销控制，五项业务动作支持显式禁止。个人与当前有效组的业务规则合并，禁止优先；超级管理员拥有全部权限，不受普通业务禁止规则限制。组角色也由当前有效成员继承，移出组、停用组或账号后失效。
 
-策略和供应商授权变更提高关联设备版本，下次控制心跳更新签名策略与加密供应商配置。超级管理员角色变更同时更新这两个版本。组供应商默认优先级为用户、用户组、设备；多个组默认按授权创建时间和 ID 稳定选择。网关授权名 `share.create` 对应 daemon 签名能力 `task.share`；任务创建与分享的项目允许/禁止列表均转换为宿主项目 ID 后签名下发，本机接口也遵守项目禁止优先。本地分享创建、引擎安装、任务创建、项目发布与本地供应商修改有实际后端门禁。设备自行配置的供应商和模型不因网关权限或访问用户变化从目录和运行时移除；本地供应商修改的管理门禁与读取、执行分开。网关下发供应商撤权后从该设备目录和运行时移除，已读出的旧供应商也不能继续通过模型调用入口。设备停用、撤销或账号停用关闭控制连接时，daemon 清空策略。统一列表展示直接规则，用户的组继承权限由后端实时计算。
+策略和供应商授权变更提高关联设备版本，下次控制心跳更新签名策略与加密供应商配置。超级管理员角色变更同时更新这两个版本。组供应商默认优先级为用户、用户组、设备；多个组默认按授权创建时间和 ID 稳定选择。网关授权名 `share.create` 对应 daemon 签名能力 `task.share`；任务创建与分享的项目允许/禁止列表均转换为宿主项目 ID 后签名下发，本机接口也遵守项目禁止优先。本地分享创建、任务创建与项目发布有实际后端能力门禁。设备自行配置的供应商和模型不因网关权限或访问用户变化从目录和运行时移除；本地供应商管理仅检查宿主范围授权，不使用历史 `provider.local` 能力。网关下发供应商撤权后从该设备目录和运行时移除，已读出的旧供应商也不能继续通过模型调用入口。设备停用、撤销或账号停用关闭控制连接时，daemon 清空策略。统一列表展示直接规则，用户的组继承权限由后端实时计算。
 
 桌面登录页支持本地密码及已启用的钉钉/企业微信身份源；扫码回调持久化一次性 state 与经过白名单约束的回跳路径，成功后返回原桌面登录页继续签发 code，失败后携带有限错误状态返回重试。待审核账号进入等待页。
 
@@ -202,8 +210,8 @@ Gateway 的 `ProjectAccessGrant.ui_permissions_json` 保存可空的 `{allow, de
 
 普通安装版选择「暂用本机工作区」后，后台以已验证的临时工作区 Cookie 和原有本机／局域网访问边界建立请求级本机上下文，业务操作不再因缺少网关身份而被误拦。此状态不由浏览器身份请求头建立；跨站写入、未授权远程访问和受管安装包仍不可使用该回退。请求带有有效网关身份时继续验证账号策略，不能借本机 Cookie 绕过禁止或过期授权。
 
-权限目录将历史 `engine.install` 显示为「引擎管理（安装与配置）」，保留协议键与已有授权数据；它覆盖安装、更新、回滚、扫描、连接测试、显示开关、全局默认引擎／模型、二进制路径、配置保存与密钥查看。供应商导入来源扫描与导入统一要求 `provider.local`。项目范围身份不能管理宿主配置；外观、语言包与角色库不复用引擎权限。
+权限目录将历史 `engine.install` 显示为「引擎管理（安装与配置）」，保留协议键与已有授权数据；它覆盖安装、更新、回滚、扫描、连接测试、显示开关、全局默认引擎／模型、二进制路径、配置保存与密钥查看。供应商导入来源扫描与导入仅要求宿主范围授权，不检查 `provider.local`。项目范围身份不能管理宿主配置；外观、语言包与角色库不复用引擎权限。
 
-删除本地供应商允许清理例外：持有效签名策略且账号、设备均匹配的宿主身份，即使 `provider.local` 被禁止，仍可删除未被引用的本地配置。项目范围访问、远程项目调用、过期策略及其他账号不能使用此例外；网关分发的供应商仍只能在网关修改。新增、编辑、导入和密钥查看继续执行原有权限校验。
+本地供应商的新增、编辑、删除、导入来源扫描、导入、模型管理及密钥查看统一沿用宿主范围授权，不检查历史 `provider.local` 能力。策略缺失、过期或该能力被禁止不影响已认证宿主的本地配置操作；项目范围身份不能管理宿主供应商，网关分发记录仍只能在网关修改。本地供应商停用后可直接删除，即使仍有引擎、助手或项目引用；启用状态删除仍检查这些引用。行为回归见 daemon `test_gateway_provider_config.py` 和 `test_gateway_settings_permissions.py`。
 
 回归：daemon `test_gateway_settings_permissions.py`（允许、拒绝、项目票据、其他账号、策略过期及非托管模式）、`test_desktop_security.py::test_native_workspace_capabilities_require_verified_fallback`；网关 `test_permissions.py`、`test_project_ui_permissions.py`、`test_remote_provider_scope.py`、`test_data_http.py`。

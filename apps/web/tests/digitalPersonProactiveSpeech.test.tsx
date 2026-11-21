@@ -36,7 +36,12 @@ test('live proactive speech plays once and suppresses muted, hidden and disabled
   enabled=false;setProactiveSpeechContext(context());await send('disabled');enabled=true;setProactiveSpeechContext(context())
   hidden=true;await send('hidden');hidden=false;await send('hidden');assert.equal(spoken.length,2)
   await send('two');assert.equal(spoken.length,3)
-  let before=stops;setProactiveSpeechContext(null);assert.ok(stops>before,'leaving avatar stops playback');await send('outside-again');assert.equal(spoken.length,3)
+  let before=stops
+  setProactiveSpeechContext({...context(),blockNew:true})
+  await send('while-blocked')
+  assert.equal(stops,before,'blocking new proactive messages preserves the current playback')
+  setProactiveSpeechContext(context());await send('while-blocked');assert.equal(spoken.length,3)
+  setProactiveSpeechContext(null);assert.ok(stops>before,'releasing the playback scope stops playback');await send('outside-again');assert.equal(spoken.length,3)
   setProactiveSpeechContext(context());await send('three')
   before=stops;setProactiveSpeechContext({projectId:'owner-home',sessionId:'main',profile:profile(),muted:true});assert.ok(stops>before)
  }finally{

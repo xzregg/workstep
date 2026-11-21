@@ -253,7 +253,7 @@ class ACPSessionProtocol:
     ) -> dict[str, Any]:
         """Call an ACP extension method, including draft NES methods."""
         if not self._is_acp_native:
-            raise RuntimeError(f"{self.ENGINE_ID}: ACP 扩展不可用")
+            raise RuntimeError(f"{self.ENGINE_ID}: ACP extension unavailable")
 
         async def action(client):
             return await client.ext_method(method, params)
@@ -268,7 +268,7 @@ class ACPSessionProtocol:
     ) -> None:
         """Send an ACP extension notification without silently discarding it."""
         if not self._is_acp_native:
-            raise RuntimeError(f"{self.ENGINE_ID}: ACP 扩展不可用")
+            raise RuntimeError(f"{self.ENGINE_ID}: ACP extension unavailable")
 
         async def action(client):
             await client.ext_notification(method, params)

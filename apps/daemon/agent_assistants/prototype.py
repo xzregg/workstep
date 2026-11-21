@@ -18,7 +18,7 @@ def selection_context(work, path, selection):
     if node_id:
         document = work.document(path)
         if selected.get('version') != document.version or node_id not in document.nodes:
-            raise SourceConflict('选中元素已过期，请刷新预览并重新选择')
+            raise SourceConflict('The selected element has expired. Please refresh the preview and reselect.')
         selected['source_location'] = document.context(node_id)
         selected['tag'] = selected['source_location']['tag']
         selected['text'] = selected['source_location'].get('text_value', selected.get('text', ''))
@@ -69,7 +69,7 @@ class PrototypeModule(AssistantRuntime):
     def workspace(self, session):
         project = self._project_manager.get_project_by_id(session.project_id)
         if project is None:
-            raise ValueError('项目不存在')
+            raise ValueError('Project not found')
         return PrototypeWorkspace(project.path, project.workstep_dir, session.extra['workspace_id'])
 
     def _prototype_cwd(self, session):
@@ -125,7 +125,7 @@ class PrototypeModule(AssistantRuntime):
         work = PrototypeWorkspace(project.path, project.workstep_dir, workspace_id)
         document_id = work.load()['documents'].get(path)
         if not document_id:
-            raise ValueError('原型文档不存在')
+            raise ValueError('Prototype document does not exist')
         selected = selection_context(work, path, selection)
         request = content
         content = located_request(path, content, selected)

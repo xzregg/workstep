@@ -42,7 +42,7 @@ async def run(command, timeout=1800, capture=False, env=None):
         await finish_cleanup(spawn())
         data, _ = await asyncio.wait_for(proc.communicate(), timeout)
         if proc.returncode:
-            raise ValueError('Qwen 运行环境安装或校验失败')
+            raise ValueError('Qwen runtime environment installation or validation failed')
         return data.decode().strip() if capture else ''
     finally:
         if proc is not None and proc.returncode is None:
@@ -83,7 +83,7 @@ async def ensure(root, state):
                 if rank is not None:
                     candidates.append((rank, entry))
             if not candidates:
-                raise ValueError('当前平台没有 Qwen 运行组件')
+                raise ValueError('The current platform does not have the Qwen runtime component')
             wheel = min(candidates, key=lambda item: item[0])[1]
             archive = stage / 'uv.whl'
             digest, count = hashlib.sha256(), 0
@@ -94,18 +94,18 @@ async def ensure(root, state):
                     async for chunk in response.aiter_bytes(256 * 1024):
                         count += len(chunk)
                         if count > wheel['size']:
-                            raise ValueError('运行组件大小不符')
+                            raise ValueError('Component size mismatch')
                         digest.update(chunk)
                         await io(out.write, chunk)
             finally:
                 await io(out.close)
             if count != wheel['size'] or digest.hexdigest() != wheel['digests']['sha256']:
-                raise ValueError('运行组件校验失败')
+                raise ValueError('Component validation failed')
         def unpack():
             with zipfile.ZipFile(archive) as zip:
                 members = [n for n in zip.namelist() if n.endswith('/uv.exe' if os.name == 'nt' else '/uv')]
                 if len(members) != 1:
-                    raise ValueError('运行组件不完整')
+                    raise ValueError('Incomplete running components')
                 binary = stage / ('uv.exe' if os.name == 'nt' else 'uv')
                 binary.write_bytes(zip.read(members[0]))
                 binary.chmod(0o700)
@@ -119,7 +119,7 @@ async def ensure(root, state):
                             '--managed-python', '--no-python-downloads'],
                            capture=True, env=env)
         if not await io(lambda: Path(python).is_file() and Path(python).resolve().is_relative_to((root / 'python').resolve())):
-            raise ValueError('未找到专用 Python 3.12 解释器')
+            raise ValueError('Dedicated Python 3.12 interpreter not found')
         packages = list(PACKAGES)
         cmd = [uv, '--no-config', 'pip', 'install', '--python', python, '--target', stage / 'lib',
                '--index-url', 'https://pypi.org/simple', '--no-compile']

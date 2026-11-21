@@ -1,5 +1,5 @@
 import type { useVoiceInput } from '../hooks/useVoiceInput'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { openSpeechSettings } from '../api/speech'
 import Icon from './Icon'
 import './VoiceInput.css'
@@ -26,7 +26,7 @@ export default function VoiceInputControls({ voice, variant = 'composer' }: { vo
     </div>
     {voice.text && <div className="voice-input-transcript" aria-live="polite">{voice.text}</div>}
     {voice.notice && <p role="status">{t(voice.notice as Parameters<typeof t>[0])}</p>}
-    {error && <p className="voice-input-error" role="alert">{error}</p>}
+    {error && <p className="voice-input-error" role="alert">{localizeErrorDisplay(error)}</p>}
     <div className="voice-input-actions">
       {voice.phase === 'idle' && <button type="button" onClick={() => void voice.start()}>{t('speech.start')}</button>}
       {variant === 'composer' && voice.phase === 'error' && voice.text && <button type="button" onClick={voice.recover}>{t('speech.recover')}</button>}

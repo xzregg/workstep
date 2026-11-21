@@ -5,6 +5,7 @@ No model, credentials or network. All state is synthetic and test-owned.
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import uuid
 
@@ -130,6 +131,12 @@ for raw in sys.stdin:
             complete(tid, turn_id, '', 'failed')
         elif prompt == 'large':
             complete(tid, turn_id, 'x' * 100_000)
+        elif prompt == 'spawn-helper':
+            helper = subprocess.Popen(
+                [sys.executable, '-c', 'import time; time.sleep(60)'],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            complete(tid, turn_id, str(helper.pid))
         elif prompt == 'effective-mode':
             complete(tid, turn_id, state[tid]['mode'])
         else:

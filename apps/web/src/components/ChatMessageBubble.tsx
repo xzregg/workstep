@@ -6,6 +6,7 @@ import A2uiMessage from './A2uiMessage'
 import ImagePreview from './ImagePreview'
 import MarqueeText from './MarqueeText'
 import MarkdownMessage from './MarkdownMessage'
+import { MarkdownPlanCard } from './ProposedPlanMessage'
 import UserMessageContent from './UserMessageContent'
 import MessageTimeline from './MessageTimeline'
 import { MessageCopyButton } from './MessageResponseFooter'
@@ -28,7 +29,7 @@ import {
   interactionForm,
   type InteractionEvent,
 } from '../utils/interaction'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { latestMarkdownPlanFromEvents, latestPlanFromEvents } from '../utils/plan'
 import { latestGoalFromEvents } from '../utils/goal'
 import {
@@ -213,7 +214,7 @@ export default function ChatMessageBubble({
   variant = 'surface',
   rootProps,
 }: ChatMessageBubbleProps) {
-  const { t } = useI18n()
+  const { t, errorText } = useI18n()
   const isUser = role === 'user'
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
   const [asyncAnswers, setAsyncAnswers] = useState<Record<number, string>>({})
@@ -323,6 +324,7 @@ export default function ChatMessageBubble({
                     events={events}
                     streaming={streaming}
                     projectId={projectId}
+                    suppressTextPlan={Boolean(markdownPlan)}
                   />
                   {(hasA2uiBlocks(content) || (a2uiMessages && a2uiMessages.length > 0)) && (
                     <A2uiMessage
@@ -373,22 +375,16 @@ export default function ChatMessageBubble({
             </div>
           )}
           {!isUser && error && (
-            <div style={{ color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))', marginTop: 4 }}>{error}</div>
+            <div style={{ color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))', marginTop: 4 }}>{errorText(error)}</div>
           )}
           {!isUser && error && errorActions}
           {!isUser && markdownPlan && (
-            <section className="chat-proposed-plan" aria-label={t('plan.proposalTitle')}>
-              <div className="chat-proposed-plan-header">
-                <div className="chat-proposed-plan-title">{t('plan.proposalTitle')}</div>
-                <MessageCopyButton content={markdownPlan.content} className="chat-message-action" />
-              </div>
-              <MarkdownMessage
-                content={markdownPlan.content}
-                projectId={projectId}
-                streaming={streaming && !markdownPlan.complete}
-                onImageClick={handleImageClick}
-              />
-            </section>
+            <MarkdownPlanCard
+              content={markdownPlan.content}
+              projectId={projectId}
+              streaming={streaming && !markdownPlan.complete}
+              onImageClick={handleImageClick}
+            />
           )}
           {!isUser && plan && <PlanChecklist plan={plan} streaming={streaming} />}
           {!isUser && goal && (
@@ -466,7 +462,7 @@ export default function ChatMessageBubble({
               )}
             </div>
           })}
-          {asyncSubmitError && <div role="alert" style={{ color: 'var(--danger)' }}>{asyncSubmitError}</div>}
+          {asyncSubmitError && <div role="alert" style={{ color: 'var(--danger)' }}>{localizeErrorDisplay(asyncSubmitError)}</div>}
           {footer}
           {children}
         </div>

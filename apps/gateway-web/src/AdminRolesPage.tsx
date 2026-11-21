@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminListStatus } from './AdminListStatus'
@@ -51,10 +52,10 @@ export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
     void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
         if (response.status === 401) { navigate('/auth?next=%2Fadmin%2Fadmins', { replace: true }); return }
-        if (!response.ok) throw new Error('登录状态加载失败。')
+        if (!response.ok) throw new Error('Failed to load login status.')
         const session = await response.json()
         if (!controller.signal.aborted) { setCsrf(session.csrf_token); setAccess('ready') }
-      }).catch(reason => { if (!controller.signal.aborted) { setError('登录状态加载失败，请重试。'); setAccess('session-error') } })
+      }).catch(reason => { if (!controller.signal.aborted) { setError('Could not load your session. Try again.'); setAccess('session-error') } })
     return () => controller.abort()
   }, [navigate, sessionRevision])
 
@@ -67,11 +68,11 @@ export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
     }).then(async response => {
       if (response.status === 401) { navigate('/auth?next=%2Fadmin%2Fadmins', { replace: true }); return }
       if (response.status === 403) { setAccess('forbidden'); return }
-      if (!response.ok) throw new Error('管理员列表加载失败。')
+      if (!response.ok) throw new Error('Failed to load the administrator list.')
       const result = await response.json()
       if (!controller.signal.aborted) { setRoles(result.roles ?? []); setTotal(result.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '管理员列表加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load the administrator list.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [access, filters, revision, navigate])
@@ -114,7 +115,7 @@ export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
         </Select>
       </div>
       <AdminListStatus loading={loading} label="正在加载管理员…"/>
-      {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
+      {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)} <button type="button" onClick={refresh}>重试</button></p>}
       {!loading && !error && roles.length === 0 && <p>当前条件下没有管理员。</p>}
       {!error && <AdminRecordTable busy={loading} columns={['显示名','用户名','角色','管理范围','状态','操作']}>
         {roles.map(role => <tr key={role.id}><td><strong>{role.display_name}</strong></td><td>{role.username}</td>

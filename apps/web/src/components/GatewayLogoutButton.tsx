@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { gatewayRemotePortalUrl } from '../utils/gatewayRemote'
 import { gatewayFetch } from '../utils/gatewayWorkspacePath'
 import Button from './Button'
@@ -36,5 +36,5 @@ export default function GatewayLogoutButton() {
     }
   }
   return <><Button loading={busy} onClick={() => void logout()}>{t('gatewayLogout.button')}</Button>
-    {error && <span role="alert" className="settings-system-feedback settings-system-feedback--error">{error}</span>}</>
+    {error && <span role="alert" className="settings-system-feedback settings-system-feedback--error">{localizeErrorDisplay(error)}</span>}</>
 }

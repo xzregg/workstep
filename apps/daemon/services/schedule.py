@@ -522,12 +522,12 @@ class ScheduleModule:
                 if row.status == "deleted":
                     raise ValueError("Schedule was deleted")
                 if row.target_type != "project" or row.status == "invalid":
-                    raise ScheduleValidationError("该定时任务不支持立即执行")
+                    raise ScheduleValidationError("This scheduled task does not support immediate execution")
                 if ScheduleRun.select().where(
                     (ScheduleRun.schedule == row)
                     & ScheduleRun.status.in_(("queued", "running"))
                 ).exists():
-                    raise ScheduleValidationError("已有执行正在进行，请等待完成后重试")
+                    raise ScheduleValidationError("An execution is already in progress. Please wait for it to complete and then retry.")
                 current = utc_now()
                 run = ScheduleRun.create(
                     id=str(uuid.uuid4()), schedule=row, scheduled_for=current,

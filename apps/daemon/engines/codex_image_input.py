@@ -16,7 +16,7 @@ def codex_wire_input(prompt: str, images: list[EngineImage] | None) -> str | lis
         elif image.url:
             items.append({"type": "image", "url": image.url})
         else:
-            raise ValueError("Codex 图片缺少路径或 URL")
+            raise ValueError("Codex image missing path or URL")
     return items
 
 
@@ -37,5 +37,5 @@ def codex_sdk_input(prompt: str, images: list[EngineImage] | None) -> str | list
 
             items.append(ImageInput(image.url))
         else:
-            raise ValueError("Codex 图片缺少路径或 URL")
+            raise ValueError("Codex image missing path or URL")
     return items

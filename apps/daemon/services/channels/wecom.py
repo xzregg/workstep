@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from dataclasses import replace
 
@@ -15,6 +16,38 @@ from services.channels.media import fetch_media
 
 
 logger = logging.getLogger(__name__)
+_PARAGRAPH_BREAK = re.compile(r'(\r?\n(?:[ \t]*\r?\n)+)')
+_FENCE_LINE = re.compile(r'^ {0,3}(`{3,}|~{3,})([^\n]*)$')
+# Structural Markdown starts (lists, headings, rules, quotes, etc.) stay apart.
+_PROSE_LINE = re.compile(r'^(?![0-9]{1,9}[.)](?:[ \t]|$))(?:[^\W_]|[@“‘（])')
+
+
+def _compact_markdown(text: str) -> str:
+    """Use a Markdown hard break between ordinary paragraphs in WeCom."""
+    blocks = _PARAGRAPH_BREAK.split(text)
+    if len(blocks) == 1:
+        return text
+    fence = ''
+    previous_prose = False
+    for index in range(0, len(blocks), 2):
+        lines = blocks[index].splitlines()
+        prose = bool(lines) and not fence
+        for line in lines:
+            marker = _FENCE_LINE.match(line)
+            if marker:
+                run, suffix = marker.groups()
+                if not fence:
+                    fence = run
+                elif run[0] == fence[0] and len(run) >= len(fence) and not suffix.strip():
+                    fence = ''
+            if not _PROSE_LINE.match(line):
+                prose = False
+        if previous_prose and prose:
+            separator = blocks[index - 1]
+            blocks[index - 2] = blocks[index - 2].rstrip(' \t')
+            blocks[index - 1] = '  \r\n' if separator.startswith('\r\n') else '  \n'
+        previous_prose = prose
+    return ''.join(blocks)
 
 
 def _utf8_parts(text: str, limit: int):
@@ -182,7 +215,7 @@ class WeComAdapter(ChannelAdapter):
 
     async def start_reply(self, message: IncomingMessage) -> None:
         if not self._client:
-            raise RuntimeError("企业微信机器人未连接")
+            raise RuntimeError("WeCom bot not connected")
         frame = self._reply_frame(message)
         if frame:
             # An empty initial stream restores the native private-chat waiting bubble.
@@ -191,8 +224,9 @@ class WeComAdapter(ChannelAdapter):
 
     async def _send_text(self, message: IncomingMessage, text: str) -> None:
         if not self._client:
-            raise RuntimeError("企业微信机器人未连接")
+            raise RuntimeError("WeCom bot not connected")
         frame = self._reply_frame(message)
+        text = _compact_markdown(text)
         if frame and message.conversation_type == 'group' and message.sender_id:
             # Delivery metadata stays out of the stored/streaming LLM body.
             text += '\n\n<@' + message.sender_id + '>'
@@ -210,10 +244,10 @@ class WeComAdapter(ChannelAdapter):
 
     async def update_reply(self, message: IncomingMessage, text: str) -> None:
         if not self._client:
-            raise RuntimeError("企业微信机器人未连接")
+            raise RuntimeError("WeCom bot not connected")
         frame = self._reply_frame(message)
         if frame and text:
-            preview = next(_utf8_parts(text, 20480))
+            preview = next(_utf8_parts(_compact_markdown(text), 20480))
             await self._reply_stream(message, preview, finish=False)
 
 
@@ -226,7 +260,7 @@ class WeComAdapter(ChannelAdapter):
 
     async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
         if not self._client:
-            raise RuntimeError("企业微信机器人未连接")
+            raise RuntimeError("WeCom bot not connected")
         numbered = any(len(button.label) > 4 for button in card.buttons)
         description = card.text
         compact_description = ''
@@ -264,7 +298,7 @@ class WeComAdapter(ChannelAdapter):
     async def send(self, recipient: IncomingMessage, message: OutgoingMessage) -> None:
         self.validate_outgoing(message)
         if not self._client:
-            raise RuntimeError("企业微信机器人未连接")
+            raise RuntimeError("WeCom bot not connected")
         # Upload every attachment before delivering any part of the message.
         from services.channels.wecom_media import upload_media
         media = [(attachment.kind, await upload_media(self._client, attachment)) for attachment in message.attachments]

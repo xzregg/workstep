@@ -84,7 +84,7 @@ async def test_knowledge_full_read_is_required_and_version_bound(runtime):
                  'source_ids':[mid],'supersedes':[hit['id']]}
     with index.connect() as db:
         db.execute("update memory_knowledge set summary='已被另一轮更新' where id=?",(int(hit['id'].split(':')[1]),))
-    with pytest.raises(ValueError,match='旧知识已变化'):
+    with pytest.raises(ValueError,match='Old knowledge has changed'):
         await asyncio.to_thread(knowledge.store_extraction,{'memories':[replacement]},ctx['reflection_batch'],versions,strict=True)
     with index.connect() as db:
         assert db.execute('select count(*) from memory_knowledge').fetchone()[0]==1

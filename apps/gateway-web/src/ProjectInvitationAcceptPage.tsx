@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { openRemoteAccess } from './openRemoteAccess'
@@ -35,7 +36,7 @@ export function ProjectInvitationAcceptPage() {
       setAccepted(await invitationResponse(await fetch(`/api/project-invitations/${token}/accept`, {
         method: 'POST', headers: invitationHeaders(session.csrf_token),
       })))
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '添加失败，请重试。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Addition failed, please try again.') }
     finally { setBusy(false) }
   }
 
@@ -44,9 +45,9 @@ export function ProjectInvitationAcceptPage() {
     setBusy(true); setError('')
     try {
       const response = await fetch(`/api/projects/${encodeURIComponent(accepted.project_id)}/access`)
-      if (response.status === 409) throw Error('宿主设备当前离线，请等待上线后重试。项目已保存在你的列表中。')
+      if (response.status === 409) throw Error('The host device is currently offline. Please wait until it comes online and try again. The project has been saved to your list.')
       openRemoteAccess(await invitationResponse(response))
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '进入项目失败，请重试。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to enter the project, please try again.') }
     finally { setBusy(false) }
   }
 
@@ -70,7 +71,7 @@ export function ProjectInvitationAcceptPage() {
         <button type="button" disabled={busy} onClick={() => void accept()}>{busy && <span className="gateway-spinner" />}{busy ? '正在添加…' : '添加项目'}</button>
       </>}
     </>}
-    {error && <p role="alert" className="gateway-auth-error">{error} {!preview && <button onClick={() => setRevision(v => v + 1)}>重试加载</button>}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} {!preview && <button onClick={() => setRevision(v => v + 1)}>重试加载</button>}</p>}
     <Link className="gateway-action-link" to="/project-invitations">返回项目分享与添加</Link>
   </section>
 }

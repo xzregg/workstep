@@ -17,8 +17,12 @@ def test_registry_defines_expected_tool_set():
     names = {tool.name for tool in WORKSTEP_TOOLS}
     assert names == {
         "workstep_get_message",
+        "workstep_send_message",
+        "workstep_check_digital_person",
         "workstep_stop_digital_person_check",
+        "workstep_remember_digital_person_rule",
         "workstep_delegate_digital_person",
+        "workstep_list_digital_person_delegations",
         "workstep_list_projects",
         "workstep_get_project",
         "workstep_get_project_quick_buttons",
@@ -84,6 +88,7 @@ def test_registry_defines_expected_tool_set():
         "workstep_search_channel_contacts",
         "workstep_list_channel_sessions",
         "workstep_bind_channel_group",
+        "workstep_unbind_channel_group",
         "workstep_send_channel_message",
         "workstep_upload_channel_attachment",
         "workstep_create_project",
@@ -147,14 +152,14 @@ async def test_stage_tool_reports_unsupported_injection_without_starting_step():
 
     async def handler(request):
         calls.append(request.url.path)
-        return httpx.Response(409, json={"detail": "该引擎不支持执行中消息注入"})
+        return httpx.Response(409, json={"detail": "This engine does not support message injection during execution"})
 
     result = await WorkstepClient(transport=httpx.MockTransport(handler)).call(
         "workstep_send_step_message",
         {"project_id": "p", "task_id": "t", "step_key": "A", "content": "补充", "confirm": "yes"},
     )
     assert result["ok"] is False
-    assert "该引擎不支持执行中消息注入" in result["error"]
+    assert 'This engine does not support message injection during execution' in result["error"]
     assert calls == ["/api/task/t/step/A/message"]
 
 
@@ -409,3 +414,22 @@ async def test_bind_channel_group_requires_confirmation_and_current_session():
     assert result['group_id'] == 'g1'
     assert requests[0].url.path == '/api/channel-bots/sessions/s1/bind-task'
     assert json.loads(requests[0].content) == {'project_id':'p1','task_id':'t1'}
+
+
+@pytest.mark.anyio
+async def test_unbind_channel_group_requires_confirmation_and_preserves_exact_id():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={'deleted': True, 'notification': 'sent'})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    args = {'project_id': 'p1', 'task_id': 't1', 'bot_id': 'b1', 'group_id': 'room?name', 'notify': True}
+    assert (await client.call('workstep_unbind_channel_group', args))['ok'] is False
+    assert (await client.call('workstep_unbind_channel_group', {**args, 'group_id': '..', 'confirm': 'yes'}))['ok'] is False
+    assert not requests
+    result = await client.call('workstep_unbind_channel_group', {**args, 'confirm': 'yes'})
+    assert result['notification'] == 'sent'
+    assert requests[0].url.path == '/api/task/t1/discussion-groups/b1/room?name'
+    assert dict(requests[0].url.params) == {'project_id': 'p1', 'notify': 'true'}

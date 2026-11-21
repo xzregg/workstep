@@ -26,21 +26,21 @@ TEST_PAYLOAD = {'state': 'WorkStep connection test. The service is ready.',
 def validate_settings(value):
     mode = value.get('mode', 'managed')
     if mode not in ('managed', 'local', 'remote'):
-        raise ValueError('不支持的决策运行方式')
+        raise ValueError('Unsupported decision execution mode')
     url = str(value.get('base_url') or '').strip().rstrip('/')
     model = str(value.get('model') or '').strip()
     key = value.get('api_key')
     if key is not None and any(c in key for c in '\r\n\x00'):
-        raise ValueError('认证信息无效')
+        raise ValueError('Invalid authentication information')
     if mode != 'managed':
         parts = urlsplit(url)
         try:
             _ = parts.port
         except ValueError as exc:
-            raise ValueError('服务端口无效') from exc
+            raise ValueError('Invalid service port') from exc
         if (parts.scheme not in ('http', 'https') or not parts.hostname or parts.username is not None
                 or parts.password is not None or parts.query or parts.fragment or not model):
-            raise ValueError('请填写有效服务地址和模型，认证信息请使用密钥字段')
+            raise ValueError('Please provide a valid service address and model. Use the key field for authentication information.')
     return {'mode': mode, 'base_url': url, 'model': model, 'api_key': key}
 
 
@@ -50,7 +50,7 @@ def validate_result(result):
         if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or not 0 <= value <= 1:
             raise ValueError
     except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError('服务未返回有效的 Jev 决策结果') from exc
+        raise ValueError('Service did not return a valid Jev decision result') from exc
 
 
 class DecisionModelService:
@@ -132,7 +132,7 @@ class DecisionModelService:
     async def _require_environment(self, model_id=None):
         environment = await asyncio.to_thread(self._environment, model_id) if model_id else await asyncio.to_thread(self._environment)
         if not environment['supported']:
-            raise ValueError('配置不够：' + '；'.join(environment['reasons']))
+            raise ValueError('Insufficient configuration:' + '；'.join(environment['reasons']))
 
     def _catalog_status(self):
         try:
@@ -167,15 +167,15 @@ class DecisionModelService:
     async def infer(self, payload):
         # No waiting queue: settings/tests/downloads and inference share one owner.
         if self.lock.locked():
-            raise BlockingIOError('本地推理繁忙，请稍后重试')
+            raise BlockingIOError('Local inference is busy, please try again later')
         async with self.lock:
             settings = await asyncio.to_thread(self._settings)
             if settings.get('mode') != 'managed' or not settings.get('proxy_enabled'):
-                raise ValueError('本地代理未启用')
+                raise ValueError('Local proxy is not enabled')
             selected = settings.get('managed_model', DEFAULT_MODEL)
             requested = payload.get('model', selected)
             if requested != selected:
-                raise LookupError('请求模型与当前启用模型不一致')
+                raise LookupError('The requested model does not match the currently enabled model')
             return await self._managed(selected, {k:v for k,v in payload.items() if k != 'model'})
 
     async def _managed(self, selected, payload):
@@ -183,14 +183,14 @@ class DecisionModelService:
         kind = entry['resource_kind']
         runtime_kind = entry.get('runtime_kind', 'runtime')
         if self.resources.task and not self.resources.task.done():
-            raise ValueError('请等待下载完成')
+            raise ValueError('Please wait for the download to complete')
         path = self.resources.path(kind)
         if (self.runtime.process is None or self.runtime.process.returncode is not None
                 or self.runtime.model_path != path):
             await self._require_environment(selected)
             ready = await asyncio.to_thread(lambda: all(self.resources.installed(k) for k in (runtime_kind, kind)))
             if not ready:
-                raise ValueError('请先下载运行组件和所选模型')
+                raise ValueError('Please download and run the component and the selected model')
             await asyncio.to_thread(self.resources.verify_model, kind)
         if entry.get('backend') == 'gguf':
             return await self.runtime.test_gguf(self.resources.path(runtime_kind), path, entry['files'][0][0], payload)
@@ -203,11 +203,11 @@ class DecisionModelService:
                 await self._require_environment(resolved['managed_model'])
                 def ensure_key():
                     if self.remote_access is None:
-                        raise ValueError('远程访问服务未就绪')
+                        raise ValueError('Remote access service is not ready')
                     if not self.remote_access.access_password_required():
                         key = str(value.get('access_key') or '').strip()
                         if not key or any(c in key for c in '\r\n\x00'):
-                            raise ValueError('请先配置访问密钥')
+                            raise ValueError('Please configure the access key first')
                         self.remote_access.set_access_password(key)
                 await asyncio.to_thread(ensure_key)
             await asyncio.to_thread(self._save, resolved)
@@ -224,7 +224,7 @@ class DecisionModelService:
 
     async def available_models(self, value):
         if value.get('mode') not in ('local', 'remote'):
-            raise ValueError('请先选择本地服务或远程服务')
+            raise ValueError('Please select a local service or remote service')
         # Listing does not require a selected model and never persists the draft.
         resolved = await asyncio.to_thread(self._resolve, {**value, 'model': '__models__'})
         from services.decision_external import available_models
@@ -250,17 +250,17 @@ class DecisionModelService:
                             async for chunk in response.aiter_bytes():
                                 data.extend(chunk)
                                 if len(data) > 1024 * 1024:
-                                    raise ValueError('响应过大')
+                                    raise ValueError('Response too large')
                             result = json.loads(data)
                 validate_result(result)
             except asyncio.CancelledError:
                 raise
             except ValueError:
                 if resolved['mode'] == 'managed':
-                    raise ValueError('本地推理未就绪，请检查资源状态或重试测试') from None
-                raise ValueError('服务未返回有效的 Jev 决策结果') from None
+                    raise ValueError('Local inference is not ready. Please check the resource status or retry the test.') from None
+                raise ValueError('Service did not return a valid Jev decision result') from None
             except Exception:
-                raise ValueError('决策连接测试失败，请检查地址、模型、认证及运行环境') from None
+                raise ValueError('Decision connection test failed. Please check the address, model, authentication, and runtime environment:') from None
         return {'success': True, 'elapsed_ms': round((time.monotonic() - started) * 1000), 'mode': resolved['mode']}
 
     async def download(self, kind):

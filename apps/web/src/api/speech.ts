@@ -1,11 +1,11 @@
 import { ApiError, request } from './transport'
 import { workspaceCatalogPath } from './workspaceScope'
+import type { SpeechSecrets } from './speechCredentials'
+import type { VoiceModelInstall } from './speechModelInstall'
 
-export interface SpeechConnection {
+export interface SpeechConnection extends SpeechSecrets {
   mode: 'local' | 'cloud' | 'remote'; provider: 'tencent' | 'volcengine' | 'openai'
   base_url: string; model: string; resource_id: string; app_id: string
-  api_key?: string | null; secret_id?: string | null; secret_key?: string | null
-  has_api_key?: boolean; has_secret_id?: boolean; has_secret_key?: boolean
 }
 export const defaultSpeechConnection: SpeechConnection = { mode: 'local', provider: 'tencent', base_url: '', model: '16k_zh', resource_id: 'volc.seedasr.sauc.duration', app_id: '' }
 export function speechConnectionReady(value: SpeechConnection) {
@@ -24,15 +24,16 @@ export function speechConnectionReady(value: SpeechConnection) {
   return true
 }
 
+export type SpeechStreaming = 'native' | 'segment' | 'final'
 export interface SpeechStatus {
-  connection?: SpeechConnection; ready?: boolean; streaming?: 'native' | 'final'
+  connection?: SpeechConnection; connections?: SpeechConnection[]; ready?: boolean; streaming?: SpeechStreaming
   enabled: boolean
   language: string
   model_id: string
   service: 'busy' | 'ready' | 'stopped'
   languages: string[]
   models: { id: string; name: string; license: string; license_url: string; model_bytes: number; installed: boolean; punctuation?: boolean; streaming: string;
-    install: { stage: string; downloaded_bytes: number; total_bytes: number | null; error: string } }[]
+    install: VoiceModelInstall }[]
 }
 export interface SpeechResult { id: string; sequence: number; text: string; final: boolean; processing_ms?: number }
 const options = (method: string, body?: unknown): RequestInit => ({ method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
@@ -45,20 +46,30 @@ export const speechApi = {
     window.dispatchEvent(new Event('workstep:speech-settings-changed'))
     return result
   }),
-  download: (modelId?: string) => request<SpeechStatus>('/speech/models/download' + (modelId ? `?model_id=${encodeURIComponent(modelId)}` : ''), options('POST')),
+  download: (modelId?: string, mirror?: string) => {
+    const query = new URLSearchParams({ ...(modelId && { model_id: modelId }), ...(mirror && { mirror }) })
+    return request<SpeechStatus>(`/speech/models/download${query.size ? '?' + query : ''}`, options('POST'))
+  },
   cancelDownload: () => request<SpeechStatus>('/speech/models/cancel', options('POST')),
-  deleteModel: (modelId?: string) => request<SpeechStatus>('/speech/models/current' + (modelId ? `?model_id=${encodeURIComponent(modelId)}` : ''), options('DELETE')),
+  deleteModel: (modelId?: string, partialOnly = false) => {
+    const query = new URLSearchParams({ ...(modelId && { model_id: modelId }), ...(partialOnly && { partial_only: 'true' }) })
+    return request<SpeechStatus>(`/speech/models/current${query.size ? '?' + query : ''}`, options('DELETE'))
+  },
   start: async (projectId: string, signal?: AbortSignal) => {
     checkCancelled(signal)
     const path = await workspaceCatalogPath('/speech/sessions', projectId)
     checkCancelled(signal)
     // Aborting a creation request can lose its ID after the server commits it.
     // Always collect that response, then remove a session whose gesture ended.
-    const session = await request<{ id: string; sample_rate: number; max_seconds: number; max_frame_samples?: number }>(path, options('POST')).catch(error => {
+    const session = await request<{ id: string; sample_rate: number; max_seconds: number; max_frame_samples?: number;
+      streaming?: SpeechStreaming }>(path, options('POST')).catch(error => {
       // This wording exists only in the retired single-recording daemon.
       // Never cancel an unknown session: it may belong to another user.
-      if (error instanceof ApiError && error.status === 409 && error.message === '已有录音正在进行') {
+      if (error instanceof ApiError && error.status === 409 && error.rawMessage === '已有录音正在进行') {
         throw new Error('speech.backendUpdateRequired')
+      }
+      if (error instanceof ApiError && [502, 503, 504].includes(error.status)) {
+        throw new Error('speech.serviceUnavailable', { cause: error })
       }
       throw error
     })
@@ -68,9 +79,9 @@ export const speechApi = {
     }
     return session
   },
-  audio: async (id: string, projectId: string, sequence: number, audio: string, final: boolean, signal?: AbortSignal) =>
+  audio: async (id: string, projectId: string, sequence: number, audio: string, final: boolean, signal?: AbortSignal, preview = true) =>
     request<SpeechResult>(await workspaceCatalogPath(`/speech/sessions/${id}/audio`, projectId), {
-      ...options('POST', { sequence, audio, final }), signal,
+      ...options('POST', { sequence, audio, final, ...(preview ? {} : { preview }) }), signal,
     }),
   cancel: async (id: string, projectId: string) =>
     request(await workspaceCatalogPath(`/speech/sessions/${id}`, projectId), options('DELETE')),

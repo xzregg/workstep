@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { Project } from '../../api/client'
 import { useProjectStore } from '../../stores/projectStore'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
 
@@ -49,6 +49,6 @@ export default function DigitalPersonChatButton({ workspace, onClose, label, sid
       <span className={sidebar ? 'digital-person-entry-label' : undefined}>{label || t('digitalPerson.chat')}</span>
       {sidebar && <span className="digital-person-entry-arrow" aria-hidden="true"><Icon name="chevron-right" size={14} /></span>}
     </Button>
-    {error && <p role="alert" className="digital-person-error">{error}</p>}
+    {error && <p role="alert" className="digital-person-error">{localizeErrorDisplay(error)}</p>}
   </div>
 }

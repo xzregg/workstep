@@ -9,6 +9,7 @@ from services.tool_registry import WorkstepClient
 
 @pytest.mark.parametrize('command,flags,expected', [
     ('search', ['--query', '发布经验', '--cursor', '20', '--snapshot', 'page-snapshot', '--limit', '5'], {'query':'发布经验', 'cursor':20, 'snapshot':'page-snapshot', 'limit':5}),
+    ('search', ['--knowledge-only', '--since', '2026-11-09', '--limit', '8'], {'knowledge_only': True, 'since': '2026-11-09', 'limit': 8}),
     ('history', ['--period', 'last_month', '--timezone', 'Asia/Shanghai'], {'period':'last_month', 'timezone_name':'Asia/Shanghai'}),
     ('read', ['--id', 'memory:7', '--offset', '800', '--limit', '40', '--events'], {'memory_id':'memory:7', 'offset':800, 'limit':40, 'events':True}),
 ])

@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { userChoiceLabel } from './AdminSelection'
 import { AdminRecordTable } from './AdminRecordTable'
@@ -36,14 +37,14 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
     void fetch(`/api/admin/${kind === 'user' ? 'users' : 'devices'}?${params}`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error('授权对象加载失败。')
+      if (!response.ok) throw new Error('Failed to load authorization object.')
       const data = await response.json()
       if (!controller.signal.aborted) {
         setTargets(kind === 'user' ? data.users ?? [] : data.devices ?? [])
         setTotal(data.total ?? 0)
       }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '授权对象加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load authorization object.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [assignment, kind, search, page, revision])
@@ -54,7 +55,7 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const subject_type = assignment?.subject_type ?? kind
       const subject_id = assignment?.subject_id ?? targetId
       const response = await fetch(`/api/admin/providers/${encodeURIComponent(providerId)}/${
@@ -62,9 +63,9 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
         method: 'POST', credentials: 'same-origin', headers,
         body: JSON.stringify({ subject_type, subject_id }),
       })
-      if (!response.ok) throw new Error('供应商授权操作失败，请检查对象状态。')
+      if (!response.ok) throw new Error('Supplier authorization operation failed. Please check the object status.')
       onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '供应商授权操作失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Supplier authorization operation failed.') }
     finally { setBusy(false) }
   }
 
@@ -101,7 +102,7 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
             onClick={() => { setTargetId(''); setPage(value => value + 1) }}>下一页</button></div>
         {loading && <p role="status">正在加载对象…</p>}
       </>}
-      {error && <p role="alert" className="gateway-auth-error">{error} {!assignment &&
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} {!assignment &&
         <button type="button" onClick={() => setRevision(value => value + 1)}>重试加载</button>}</p>}
     </GatewayConfirmDialog>
     {discard && <GatewayConfirmDialog title="放弃供应商授权修改" message="当前授权选择有未保存内容。"
@@ -122,15 +123,15 @@ function DefaultProviderDialog({ providerId, csrf, assignment, onClose, onSaved 
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const response = await fetch(`/api/admin/providers/${encodeURIComponent(providerId)}/assign/default`, {
         method: 'PUT', credentials: 'same-origin', headers,
         body: JSON.stringify({ subject_type: assignment.subject_type,
           subject_id: assignment.subject_id, enabled: enable }),
       })
-      if (!response.ok) throw new Error('默认供应商设置失败。')
+      if (!response.ok) throw new Error('Failed to set default supplier.')
       onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '默认供应商设置失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to set default supplier.') }
     finally { setBusy(false) }
   }
 
@@ -141,7 +142,7 @@ function DefaultProviderDialog({ providerId, csrf, assignment, onClose, onSaved 
     confirmLabel={enable ? '确认设置' : '确认取消'} busy={busy} disabled={!passwordReady}
     onConfirm={() => void submit()} onCancel={onClose}
       passwordConfirmation={<PasswordConfirmation id="provider-default-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   </GatewayConfirmDialog>
 }
 
@@ -166,11 +167,11 @@ export function AdminProviderAssignments({ providerId, enabled, csrf, onChanged 
     void fetch(`/api/admin/providers/${encodeURIComponent(providerId)}/assignments?${params}`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error('供应商授权加载失败。')
+      if (!response.ok) throw new Error('Supplier authorization loading failed.')
       const data = await response.json()
       if (!controller.signal.aborted) { setAssignments(data.assignments ?? []); setTotal(data.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '供应商授权加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Supplier authorization loading failed.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [providerId, search, page, revision])
@@ -186,7 +187,7 @@ export function AdminProviderAssignments({ providerId, enabled, csrf, onChanged 
         onChange={event => setQuery(event.target.value)} />
       <button type="submit">搜索</button></form>
     {loading && <p role="status">正在加载授权…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && assignments.length === 0 && <p>当前条件下没有授权。</p>}
     <AdminRecordTable busy={loading} columns={['授权对象','类型','默认供应商','操作']}>

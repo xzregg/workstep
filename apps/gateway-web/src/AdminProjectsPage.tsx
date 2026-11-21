@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useAdminSession } from './useAdminSession'
 import { AdminSessionStatus } from './AdminSessionStatus'
@@ -39,11 +40,11 @@ export function AdminProjectsPage({ canConfigurePermissions = true }: { canConfi
     setLoading(true); setError(''); setProjects([]); setTotal(0)
     void fetch(`/api/admin/projects?${params}`, { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error(response.status === 403 ? '当前账号没有项目管理权限。' : '项目列表加载失败。')
+        if (!response.ok) throw new Error(response.status === 403 ? 'The current account does not have project management permissions.' : 'Failed to load project list.')
         const data = await response.json()
         if (!controller.signal.aborted) { setProjects(data.projects ?? []); setTotal(data.total ?? 0) }
       }).catch(reason => {
-        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '项目列表加载失败。')
+        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load project list.')
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [csrf, filters, revision])
@@ -110,7 +111,7 @@ export function AdminProjectsPage({ canConfigurePermissions = true }: { canConfi
           setUnpublish(null); setRevision(value => value + 1)
         }} />}
     </>}
-    {error && <p role="alert" className="gateway-auth-error">{error} {csrf && <button type="button"
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} {csrf && <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button>}</p>}
   </section>
 }

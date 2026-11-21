@@ -5,7 +5,7 @@ import Spinner from '../components/Spinner'
 import Select from '../components/Select'
 import { skillApi, type Project, type SkillDescriptor } from '../api/client'
 import './SkillCenterSettings.css'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import SkillDraftCreateButton from '../components/SkillDraftCreateButton'
 
@@ -215,7 +215,7 @@ export default function SkillCenterSettings({
         </label>
       </div>
 
-      {error && <div role="alert" style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, color: 'var(--danger)', background: 'color-mix(in oklab, var(--danger), transparent 91%)' }}>{error}</div>}
+      {error && <div role="alert" style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, color: 'var(--danger)', background: 'color-mix(in oklab, var(--danger), transparent 91%)' }}>{localizeErrorDisplay(error)}</div>}
 
       {!loading && available && filtered.length === 0 ? (
         <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--muted)' }}>

@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useState } from 'react'
@@ -27,15 +28,15 @@ export function AdminRegistrationPolicyDialog({ mode, csrf, onSaved, onClose, de
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const response = await fetch(devicePolicy ? '/api/admin/device-approval-policy' : '/api/admin/registration-policy', {
         method: 'PUT', credentials: 'same-origin', headers,
         body: JSON.stringify({ mode: selected }),
       })
-      if (!response.ok) throw new Error(title + '保存失败。')
+      if (!response.ok) throw new Error(title + 'Save failed.')
       onSaved()
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : title + '保存失败。')
+      setError(reason instanceof Error ? reason.message : title + 'Save failed.')
     } finally { setBusy(false) }
   }
 
@@ -53,7 +54,7 @@ export function AdminRegistrationPolicyDialog({ mode, csrf, onSaved, onClose, de
         onChange={event => setSelected(event.target.value as RegistrationMode)}>
         {Object.entries(labels).map(([key, label]) =>
           <option key={key} value={key}>{label}</option>)}</Select>
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     </GatewayConfirmDialog>
     {discard && <GatewayConfirmDialog title="放弃修改" message="注册策略尚未保存。"
       confirmLabel="放弃修改" onConfirm={onClose} onCancel={() => setDiscard(false)} />}

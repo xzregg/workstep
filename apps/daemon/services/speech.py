@@ -17,9 +17,12 @@ from packaging.utils import parse_wheel_filename
 
 from services.config import CONFIG_DIR
 from services.speech_runtime import SpeechRuntime
+from services.voice_model_source import HUGGING_FACE, model_origin
+from services.resource_download import ResourceDownload
 from services.speech_remote import RemoteSpeechRuntime
 from services import speech_connection
-from engines.core.process_cleanup import finish_cleanup
+from services import speech_profiles
+from engines.core.process_cleanup import finish_cleanup, terminate_owned_process
 
 MODEL_ID = 'streaming-paraformer-zh-yue-en-int8'
 REVISION = '86931b152d37c908528b44d30b431c24a19770da'
@@ -48,26 +51,24 @@ MAX_FRAME = SAMPLE_RATE * 2 * 8
 RESOURCE_VERSION = '1'
 
 
-ZIPFORMER_ID = 'streaming-zipformer-zh-en-int8'
+SENSEVOICE_ID = 'sensevoice-small-2024-07-17-int8'
+SENSEVOICE_SOURCE = 'https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17'
 MODELS = {
+    SENSEVOICE_ID: dict(name='SenseVoiceSmall INT8', kind='sensevoice',
+        base=f'{SENSEVOICE_SOURCE}/resolve/6a65851692da9706cbddfac66ea9b96ebb1dee21',
+        languages=['zh', 'en', 'yue', 'ja', 'ko'], license_url=SENSEVOICE_SOURCE,
+        streaming='segment', files=[
+            ('model.int8.onnx', 239233841, 'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51'),
+            ('tokens.txt', 315894, 'f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc'),
+        ]),
     MODEL_ID: dict(name='Streaming Paraformer 三语版 INT8', kind='paraformer', base=MODEL_BASE,
                    languages=['zh', 'yue', 'en'],
                    license_url='https://modelscope.cn/models/dengcunqin/speech_paraformer-large_asr_nat-zh-cantonese-en-16k-vocab8501-online/summary'),
-    ZIPFORMER_ID: dict(name='Streaming Zipformer 中英版 INT8', kind='zipformer',
-        base='https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/resolve/98590b7ed6443e77b714204da2757d75e1a642f4',
-        languages=['zh', 'en'], license_url='https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20',
-        files=[
-            ('encoder-epoch-99-avg-1.int8.onnx', 181895032, '8fa764187a261844f859d7143ebaa563af5d10adfece4c18a8f414c88cba2a9b'),
-            ('decoder-epoch-99-avg-1.int8.onnx', 13091040, '1a70c593d71e53f023f5f55b0b4cfff5055abb786ee3992e5f63dc2e273cc4fa'),
-            ('joiner-epoch-99-avg-1.int8.onnx', 3228404, '1ed689c5ed19dbaa725d9d191bb4822b5f4855a39e1ffd28cbc1f340d25b2ee0'),
-            ('tokens.txt', 56317, 'a8e0e4ec53810e433789b54a5c0134a7eaa2ffca595a6334d54c00da858841d3'),
-            ('README.md', 296, 'b6f9458f4208ae821beaaf11dc983486916a4089a2f3677b40f9ff06ec4e6440'),
-        ]),
 }
 
 def model_spec(model_id):
     if model_id not in MODELS:
-        raise ValueError('不支持的语音模型')
+        raise ValueError('Unsupported voice model')
     return MODELS[model_id]
 
 
@@ -78,14 +79,14 @@ def unpack_wheel(path: Path, target: Path):
             parts = Path(item.filename).parts
             if (not parts or Path(item.filename).is_absolute() or '..' in parts
                     or (item.external_attr >> 16) & 0o170000 == 0o120000):
-                raise ValueError('运行库包含非法路径')
+                raise ValueError('Runtime library contains an invalid path')
             if item.filename.endswith('.pth'):
-                raise ValueError('运行库包含不支持的启动文件')
+                raise ValueError('Runtime library contains unsupported startup file')
         archive.extractall(target)
 
 
 class SpeechService:
-    def __init__(self, root: Path | None = None, model_id: str = MODEL_ID):
+    def __init__(self, root: Path | None = None, model_id: str = SENSEVOICE_ID):
         self.root = root or CONFIG_DIR / 'speech'
         self._use_model(model_id)
         self.settings: dict | None = None
@@ -93,6 +94,7 @@ class SpeechService:
         self.install_states = {model_id: self.install_state}
         self.install_target = model_id
         self.download_task: asyncio.Task | None = None
+        self.download_origin = HUGGING_FACE
         self.sessions: dict[str, dict] = {}
         self.workers: list[SpeechRuntime] = []
         self.session_lock = asyncio.Lock()
@@ -103,10 +105,20 @@ class SpeechService:
         self.model = model_spec(model_id)
         self.model_id = model_id
         self.bundle = self.root / model_id
+        self.model_download = ResourceDownload(self.root, model_id)
 
     @property
     def files(self):
         return MODEL_FILES if self.model_id == MODEL_ID else self.model['files']
+
+    @property
+    def segment_model(self):
+        return self.model.get('streaming') == 'segment'
+
+    def streaming(self, connection):
+        if connection['mode'] == 'local':
+            return self.model.get('streaming', 'native')
+        return 'final' if connection['provider'] == 'openai' else 'native'
 
     def model_installed(self, model_id):
         model_spec(model_id)
@@ -115,11 +127,14 @@ class SpeechService:
     async def get_settings(self):
         if self.settings is None:
             saved = await asyncio.to_thread(speech_connection.read, self.root)
-            self._use_model(saved.get('model_id') if saved.get('model_id') in MODELS else MODEL_ID)
-            self.settings = {'enabled': bool(saved.get('enabled', False)),
-                             'model_id': self.model_id,
-                             'language': saved.get('language', 'auto') if saved.get('language', 'auto') in LANGUAGES else 'auto',
-                             'connection': saved.get('connection', dict(speech_connection.DEFAULTS))}
+            if self.settings is None:
+                if saved.get('model_id') in MODELS:
+                    self._use_model(saved['model_id'])
+                self.settings = {'enabled': bool(saved.get('enabled', False)),
+                                 'model_id': self.model_id,
+                                 'language': saved.get('language', 'auto') if saved.get('language', 'auto') in LANGUAGES else 'auto',
+                                 'connection': saved.get('connection', dict(speech_connection.DEFAULTS)),
+                                 'connections': saved.get('connections', [])}
         return {**self.settings, 'connection': {**speech_connection.DEFAULTS, **self.settings.get('connection', {})}}
 
     async def configure(self, enabled: bool, language: str, model_id: str | None = None, connection=None):
@@ -128,18 +143,20 @@ class SpeechService:
 
     async def _configure(self, enabled: bool, language: str, model_id: str | None = None, connection=None):
         if self.sessions:
-            raise ValueError('录音期间不能修改语音设置')
+            raise ValueError('Voice settings cannot be modified during recording')
         if language not in LANGUAGES:
-            raise ValueError('不支持的识别语言')
+            raise ValueError('Unsupported recognition language')
         current = await self.get_settings()
-        connection = speech_connection.validate(connection, current['connection']) if connection is not None else current['connection']
+        profiles = current['connections']
+        connection = speech_connection.validate(connection, profiles) if connection is not None else current['connection']
         target = model_id or self.model_id
         model_spec(target)
         if self.download_task and not self.download_task.done():
-            raise ValueError('安装期间不能切换语音设置')
+            raise ValueError('Cannot switch language settings during installation')
         if connection['mode'] == 'local' and target != self.model_id and not await asyncio.to_thread(self.model_installed, target):
-            raise ValueError('请先下载所选语音模型')
-        value = {'enabled': enabled, 'language': language, 'model_id': target, 'connection': connection}
+            raise ValueError('Please download the selected voice model first')
+        value = {'enabled': enabled, 'language': language, 'model_id': target, 'connection': connection,
+                 'connections': speech_profiles.remember(profiles, connection)}
         await asyncio.to_thread(speech_connection.save, self.root, value)
         self.settings = value
         if target != self.model_id or connection != current['connection']:
@@ -147,7 +164,12 @@ class SpeechService:
             self._use_model(target)
         if not enabled:
             await self.stop_worker()
-        return {**value, 'connection': speech_connection.public(connection)}
+        return {**value, 'connection': speech_profiles.public(connection),
+                'connections': [speech_profiles.public(row) for row in value['connections']]}
+
+    async def connection_secret(self, target, field):
+        settings = await self.get_settings()
+        return speech_profiles.find(settings['connections'], {**speech_connection.DEFAULTS, **target}).get(field, '')
 
     def installed(self):
         try:
@@ -171,11 +193,14 @@ class SpeechService:
             rows = []
             for mid, spec in MODELS.items():
                 resource = self if mid == self.model_id else SpeechService(self.root, mid)
+                punctuation = {} if resource.segment_model else {'punctuation': resource.punctuation_installed()}
                 rows.append(dict(id=mid, name=spec['name'], license='模型来源与使用说明',
                     license_url=spec['license_url'], languages=spec['languages'],
-                    model_bytes=sum(f[1] for f in resource.files) + PUNCTUATION_FILE[1],
-                    installed=resource.installed(), punctuation=resource.punctuation_installed(),
-                    streaming='native', install=dict(self.install_states.get(mid, {'stage': 'idle', 'downloaded_bytes': 0, 'total_bytes': None, 'error': ''}))))
+                    model_bytes=sum(f[1] for f in resource.files) + (0 if resource.segment_model else PUNCTUATION_FILE[1]),
+                    installed=resource.installed(), **punctuation,
+                    streaming=spec.get('streaming', 'native'), install=dict(
+                        self.install_states.get(mid, {'stage': 'idle', 'downloaded_bytes': 0, 'total_bytes': None, 'error': ''}),
+                        partial_bytes=resource.model_download.cached_bytes())))
             return rows
         connection = settings['connection']
         try:
@@ -185,56 +210,66 @@ class SpeechService:
             configured = False
         local = connection['mode'] == 'local'
         ready = settings['enabled'] and (await asyncio.to_thread(self.installed) if local else configured)
-        return {**settings, 'connection': speech_connection.public(connection), 'providers': speech_connection.PROVIDERS,
-                'ready': ready, 'streaming': 'native' if local or connection['provider'] != 'openai' else 'final',
+        return {**settings, 'connection': speech_profiles.public(connection),
+                'connections': [speech_profiles.public(row) for row in settings['connections']],
+                'providers': speech_connection.PROVIDERS,
+                'ready': ready, 'streaming': self.streaming(connection),
                 'model_id': self.model_id, 'languages': list(LANGUAGES),
                 'service': 'busy' if self.sessions else 'ready' if any(w.process and w.process.returncode is None for w in self.workers) else 'stopped',
                 'active_sessions': len(self.sessions), 'max_sessions': MAX_SESSIONS,
                 'models': await asyncio.to_thread(models)}
 
-    async def download(self, model_id: str | None = None):
+    async def download(self, model_id: str | None = None, mirror: str | None = None):
         async with self.session_lock:
-            await self._begin_download(model_id)
+            await self._begin_download(model_id, model_origin(mirror))
 
-    async def _begin_download(self, model_id: str | None = None):
+    async def _begin_download(self, model_id: str | None = None, origin: str = HUGGING_FACE):
         await self.get_settings()
         target = model_id or self.model_id
         model_spec(target)
         if self.sessions:
-            raise ValueError('录音期间不能安装模型')
+            raise ValueError('Cannot install models during recording')
         if self.download_task and not self.download_task.done():
             if target != self.install_target:
-                raise ValueError('请等待当前模型下载完成或取消下载')
+                raise ValueError('Please wait for the current model download to complete or cancel the download')
             return
         resource = self if target == self.model_id else SpeechService(self.root, target)
-        if await asyncio.to_thread(resource.installed) and await asyncio.to_thread(resource.punctuation_installed):
+        if await asyncio.to_thread(resource.installed) and (resource.segment_model or await asyncio.to_thread(resource.punctuation_installed)):
             return
         await self.stop_worker()
         self.install_state = {'stage': 'resolving', 'downloaded_bytes': 0, 'total_bytes': None, 'error': ''}
         self.install_target = target
         self.install_states[target] = self.install_state
         resource.install_state = self.install_state
+        resource.download_origin = origin
         self.download_task = asyncio.create_task(resource._download())
 
     async def _download(self):
-        stage = self.root / ('.install-' + uuid.uuid4().hex)
+        stage = self.model_download.stage
         try:
-            await asyncio.to_thread(stage.mkdir, parents=True)
+            def prepare():
+                shutil.rmtree(stage, ignore_errors=True)
+                stage.mkdir(parents=True)
+            await finish_cleanup(asyncio.to_thread(prepare))
             await self._install(stage)
-            await asyncio.to_thread((stage / 'punctuation-source.txt').write_text,
-                'CT-Transformer Chinese/English INT8 punctuation model.\n'
-                'Upstream model and usage terms: https://modelscope.cn/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch/summary\n'
-                'Conversion: https://k2-fsa.github.io/sherpa/onnx/punctuation/pretrained_models.html\n', encoding='utf-8')
+            if not self.segment_model:
+                await asyncio.to_thread((stage / 'punctuation-source.txt').write_text,
+                    'CT-Transformer Chinese/English INT8 punctuation model.\n'
+                    'Upstream model and usage terms: https://modelscope.cn/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch/summary\n'
+                    'Conversion: https://k2-fsa.github.io/sherpa/onnx/punctuation/pretrained_models.html\n', encoding='utf-8')
             # Validate imports and model construction in the isolated runtime before publishing it.
-            proc = await asyncio.create_subprocess_exec(*self.worker_command(stage), '--check',
-                                                       stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            proc = None
+            async def spawn_check():
+                nonlocal proc
+                proc = await asyncio.create_subprocess_exec(*self.worker_command(stage), '--check',
+                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
             try:
+                await finish_cleanup(spawn_check())
                 if await asyncio.wait_for(proc.wait(), 120) != 0:
-                    raise ValueError('语音运行库或模型加载失败')
+                    raise ValueError('Voice runtime or model loading failed')
             finally:
-                if proc.returncode is None:
-                    proc.kill()
-                    await proc.wait()
+                if proc is not None and proc.returncode is None:
+                    await finish_cleanup(terminate_owned_process(proc))
             def publish():
                 (stage / 'installed.json').write_text(json.dumps({
                     'version': RESOURCE_VERSION, 'python': f'{sys.version_info.major}.{sys.version_info.minor}',
@@ -242,35 +277,34 @@ class SpeechService:
                 if self.bundle.exists():
                     shutil.rmtree(self.bundle)
                 stage.rename(self.bundle)
-            await asyncio.to_thread(publish)
-            self.install_state['stage'] = 'installed'
+            async def complete():
+                await asyncio.to_thread(publish)
+                self.install_state['stage'] = 'installed'
+                await asyncio.to_thread(shutil.rmtree, self.model_download.folder, True)
+            await finish_cleanup(complete())
         except asyncio.CancelledError:
-            self.install_state['stage'] = 'cancelled'
+            if self.install_state['stage'] != 'installed':
+                self.install_state['stage'] = 'cancelled'
             raise
         except Exception:
             # Do not include signed download URLs, credentials, or audio in errors/logs.
-            self.install_state.update(stage='error', error='语音资源安装失败，请检查网络、磁盘空间与平台兼容性后重试')
+            self.install_state.update(stage='error', error='Could not install speech resources. Check the network, free space, and platform compatibility.')
         finally:
-            await asyncio.to_thread(shutil.rmtree, stage, True)
+            await finish_cleanup(asyncio.to_thread(shutil.rmtree, stage, True))
 
     async def _install(self, stage: Path):
         # Existing ASR remains usable on failure; upgrade only the missing model.
-        if await asyncio.to_thread(self.installed):
+        if not self.segment_model and await asyncio.to_thread(self.installed):
             def copy_verified():
                 for name, _, digest in self.files:
                     with (self.bundle / name).open('rb') as source:
                         if hashlib.file_digest(source, 'sha256').hexdigest() != digest:
-                            raise ValueError('已有语音模型校验失败，请删除后重新下载')
+                            raise ValueError('Voice model validation failed. Please delete and re-download.')
                 shutil.copytree(self.bundle, stage, dirs_exist_ok=True)
-            copying = asyncio.create_task(asyncio.to_thread(copy_verified))
-            try:
-                await asyncio.shield(copying)
-            except asyncio.CancelledError:
-                await asyncio.gather(copying, return_exceptions=True)
-                raise
+            await finish_cleanup(asyncio.to_thread(copy_verified))
             self.install_state.update(stage='downloading', total_bytes=PUNCTUATION_FILE[1])
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
-                await self._fetch(client, PUNCTUATION_URL, stage / PUNCTUATION_FILE[0], *PUNCTUATION_FILE[1:])
+                await self._fetch(client, self.download_origin + PUNCTUATION_URL.removeprefix(HUGGING_FACE), stage / PUNCTUATION_FILE[0], *PUNCTUATION_FILE[1:])
             self.install_state['stage'] = 'installing'
             return
         tags = list(sys_tags())
@@ -289,87 +323,65 @@ class SpeechService:
                     if score is not None:
                         choices.append((score, entry))
                 if not choices:
-                    raise ValueError('当前 Python 或系统没有兼容语音运行库')
+                    raise ValueError('No compatible speech runtime found for the current Python or system')
                 wheels.append(min(choices, key=lambda item: item[0])[1])
-            entries = [(f"{self.model['base']}/{name}", name, size, digest) for name, size, digest in self.files]
-            entries.append((PUNCTUATION_URL, *PUNCTUATION_FILE))
+            base = self.download_origin + self.model['base'].removeprefix(HUGGING_FACE)
+            entries = [(f"{base}/{name}", name, size, digest) for name, size, digest in self.files]
+            if not self.segment_model:
+                entries.append((self.download_origin + PUNCTUATION_URL.removeprefix(HUGGING_FACE), *PUNCTUATION_FILE))
             entries += [(w['url'], w['filename'], w['size'], w['digests']['sha256']) for w in wheels]
             self.install_state['total_bytes'] = sum(e[2] for e in entries)
-            free = await asyncio.to_thread(lambda: shutil.disk_usage(stage).free)
+            free = await asyncio.to_thread(lambda: shutil.disk_usage(stage).free + self.model_download.cached_bytes())
             if free < self.install_state['total_bytes'] * 3:
-                raise ValueError('磁盘空间不足')
+                raise ValueError('Disk space is insufficient')
             self.install_state['stage'] = 'downloading'
             for url, name, size, digest in entries:
                 await self._fetch(client, url, stage / name, size, digest)
             self.install_state['stage'] = 'installing'
             for wheel in wheels:
                 path = stage / wheel['filename']
-                extraction = asyncio.create_task(asyncio.to_thread(unpack_wheel, path, stage / 'runtime'))
-                try:
-                    await asyncio.shield(extraction)
-                except asyncio.CancelledError:
-                    # Cleanup must wait until the filesystem worker has stopped
-                    # writing, otherwise cancellation can leave orphan files.
-                    await asyncio.gather(extraction, return_exceptions=True)
-                    raise
-                await asyncio.to_thread(path.unlink)
+                await finish_cleanup(asyncio.to_thread(unpack_wheel, path, stage / 'runtime'))
+                await finish_cleanup(asyncio.to_thread(path.unlink))
 
     async def _fetch(self, client, url, path, size, expected):
-        digest = hashlib.sha256()
-        count = 0
-        file = await asyncio.to_thread(path.open, 'wb')
-        try:
-            async with client.stream('GET', url, headers={'Accept-Encoding': 'identity'}) as response:
-                response.raise_for_status()
-                async for chunk in response.aiter_bytes(256 * 1024):
-                    count += len(chunk)
-                    if count > size:
-                        raise ValueError('资源大小不符')
-                    digest.update(chunk)
-                    await asyncio.to_thread(file.write, chunk)
-                    self.install_state['downloaded_bytes'] += len(chunk)
-        finally:
-            await asyncio.to_thread(file.close)
-        if count != size or digest.hexdigest() != expected:
-            raise ValueError('资源校验失败')
+        await self.model_download.fetch(client, url, path, size, expected, self.install_state)
 
     async def cancel_download(self):
-        if self.download_task and not self.download_task.done():
-            self.download_task.cancel()
-            await asyncio.gather(self.download_task, return_exceptions=True)
+        task = self.download_task
+        if task and not task.done():
+            task.cancel()
+            await finish_cleanup(asyncio.gather(task, return_exceptions=True))
+            if self.download_task is task and self.install_state['stage'] == 'resolving':
+                self.install_state['stage'] = 'cancelled'
 
-    async def delete(self, model_id: str | None = None):
+    async def delete(self, model_id: str | None = None, partial_only=False):
         async with self.session_lock:
             target = model_id or self.model_id
             model_spec(target)
-            if target == self.model_id:
-                await self._delete()
-            else:
-                if self.sessions:
-                    raise ValueError('录音期间不能删除模型')
-                if target == self.install_target:
-                    await self.cancel_download()
-                await asyncio.to_thread(shutil.rmtree, self.root / target, True)
-            self.install_states.setdefault(target, {})['stage'] = 'idle'
+            await finish_cleanup(self._delete(target, partial_only))
 
-    async def _delete(self):
-        if self.sessions:
-            raise ValueError('录音期间不能删除模型')
-        await self.cancel_download()
-        await self.stop_worker()
-        await asyncio.to_thread(shutil.rmtree, self.bundle, True)
-        self.install_states.setdefault(self.model_id, {})['stage'] = 'idle'
+    async def _delete(self, target, partial_only):
+        if self.sessions and not partial_only:
+            raise ValueError('Cannot delete model during recording')
+        if target == self.install_target:
+            await self.cancel_download()
+        await asyncio.to_thread(ResourceDownload(self.root, target).discard)
+        if not partial_only:
+            if target == self.model_id:
+                await self.stop_worker()
+            await asyncio.to_thread(shutil.rmtree, self.root / target, True)
+        self.install_states.pop(target, None)
 
     def worker_command(self, bundle=None):
         return [sys.executable, '-I', str(Path(__file__).with_name('speech_worker.py')), str(bundle or self.bundle), '--model-type', self.model['kind']]
 
-    async def infer(self, pcm: bytes, session_id: str, final: bool):
+    async def infer(self, pcm: bytes, session_id: str, final: bool, preview=True):
         session = self.sessions.get(session_id)
         if session is None:
-            raise LookupError('录音已结束')
+            raise LookupError('Recording has ended')
         if getattr(session['worker'], 'remote', False):
             return await session['worker'].infer(pcm, final)
-        return await session['worker'].infer(self.worker_command(), pcm, session_id, final)
+        return await session['worker'].infer(self.worker_command(), pcm, session_id, final, preview)
 
     async def _release(self, session, terminate=False):
         sid = session['id']
@@ -400,6 +412,9 @@ class SpeechService:
                     await self._release(session, terminate=True)
             for worker in list(self.workers):
                 if worker.session_id is None and now - worker.last_used > 300:
+                    if (self.segment_model and worker.process and worker.process.returncode is None
+                            and worker is next((w for w in self.workers if w.process and w.process.returncode is None), None)):
+                        continue  # Retain one loaded SenseVoice model between conversations.
                     # Reserve it while closing so a new recording cannot reuse it.
                     self.workers.remove(worker)
                     await worker.close()
@@ -409,44 +424,52 @@ class SpeechService:
     async def start(self, project_id: str, owner: str):
         async with self.session_lock:
             if self.download_task and not self.download_task.done():
-                raise ValueError('正在安装语音资源，请稍后重试')
+                raise ValueError('Installing voice resources, please retry later')
             settings = await self.get_settings()
             local = settings['connection']['mode'] == 'local'
             if not settings['enabled'] or local and not await asyncio.to_thread(self.installed):
-                raise ValueError('请先在设置中下载模型并启用语音输入')
+                raise ValueError('Please download the model and enable voice input in Settings first')
             if not local:
                 speech_connection.validate(settings['connection'])
             worker = next((w for w in self.workers if w.session_id is None), None)
             if worker is None:
                 if len(self.workers) >= MAX_SESSIONS:
-                    raise ValueError(f'语音并发已达上限（{MAX_SESSIONS} 路），请稍后重试')
+                    raise ValueError(f'Voice concurrency limit reached ({MAX_SESSIONS} channels). Please try again later.')
                 worker = SpeechRuntime() if local else RemoteSpeechRuntime(settings['connection'])
                 self.workers.append(worker)
             sid = uuid.uuid4().hex
             worker.session_id = sid
+            if local and self.segment_model:
+                try:
+                    await worker.warm(self.worker_command())
+                except BaseException:
+                    self.workers.remove(worker)
+                    await worker.close()
+                    raise
             self.sessions[sid] = {'id': sid, 'project_id': project_id, 'owner': owner,
                                  'sequence': 0, 'bytes': 0, 'worker': worker,
                                  'touched': time.monotonic(), 'started': time.monotonic(),
                                  'lock': asyncio.Lock(), 'advanced': asyncio.Event()}
             self._maintain()
-            return {'id': sid, 'sample_rate': SAMPLE_RATE, 'max_seconds': 120, 'max_frame_samples': MAX_FRAME // 2}
+            return {'id': sid, 'sample_rate': SAMPLE_RATE, 'max_seconds': 120, 'max_frame_samples': MAX_FRAME // 2,
+                    'streaming': self.streaming(settings['connection'])}
 
     def _session(self, sid, project, owner):
         s = self.sessions.get(sid)
         if not s or s['id'] != sid or s['project_id'] != project or s['owner'] != owner:
-            raise LookupError('录音已结束或无权访问')
+            raise LookupError('Recording has ended or access is not permitted')
         return s
 
-    async def audio(self, sid, project, owner, sequence, pcm, final):
+    async def audio(self, sid, project, owner, sequence, pcm, final, preview=True):
         s = self._session(sid, project, owner)
         if not final:
-            return await self._audio(sid, project, owner, sequence, pcm, False)
+            return await self._audio(sid, project, owner, sequence, pcm, False, preview)
         if s.get('final_pending'):
-            raise ValueError('录音正在完成，请勿重复提交')
+            raise ValueError('Recording is completing, please do not resubmit')
         if sequence not in (s['sequence'], s['sequence'] + 1):
-            raise ValueError('音频顺序错误')
+            raise ValueError('Audio order error')
         if len(pcm) % 2 or len(pcm) > MAX_FRAME:
-            raise ValueError('音频格式或大小错误')
+            raise ValueError('Audio format or size error')
         s['final_pending'] = True
         try:
             # Final and preview may travel on different HTTP connections. Wait
@@ -455,24 +478,24 @@ class SpeechService:
                 try:
                     await asyncio.wait_for(s['advanced'].wait(), 15)
                 except TimeoutError as error:
-                    raise ValueError('等待上一段音频超时，请重试') from error
+                    raise ValueError('Waiting for the previous audio segment timed out, please retry') from error
             return await self._audio(sid, project, owner, sequence, pcm, True)
         finally:
             s.pop('final_pending', None)
 
-    async def _audio(self, sid, project, owner, sequence, pcm, final):
+    async def _audio(self, sid, project, owner, sequence, pcm, final, preview=True):
         s = self._session(sid, project, owner)
         if s['lock'].locked() and not final:
-            raise ValueError('音频处理中，请勿重叠提交')
+            raise ValueError('Do not submit overlapping audio processing tasks')
         async with s['lock']:
             self._session(sid, project, owner)
             if sequence != s['sequence']:
-                raise ValueError('音频顺序错误')
+                raise ValueError('Audio order error')
             if len(pcm) % 2 or len(pcm) > MAX_FRAME:
-                raise ValueError('音频格式或大小错误')
+                raise ValueError('Audio format or size error')
             if s['bytes'] + len(pcm) > MAX_BYTES or time.monotonic() - s['started'] > 150:
                 await self._release(s, terminate=True)
-                raise ValueError('录音超过两分钟限制')
+                raise ValueError('Recording exceeds the two-minute limit')
             s['sequence'] += 1
             advanced, s['advanced'] = s['advanced'], asyncio.Event()
             advanced.set()
@@ -482,7 +505,8 @@ class SpeechService:
                 # Only new samples enter the persistent decoder. The worker owns
                 # encoder/decoder caches and returns the complete hypothesis.
                 inference_started = time.monotonic()
-                text = (await self.infer(pcm, sid, final)).strip()
+                result = await self.infer(pcm, sid, final) if preview else await self.infer(pcm, sid, final, False)
+                text = result.strip()
                 processing_ms = round((time.monotonic() - inference_started) * 1000, 1)
                 self._session(sid, project, owner)
             except BaseException:

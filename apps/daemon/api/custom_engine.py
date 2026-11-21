@@ -60,7 +60,7 @@ async def invoke(awaitable):
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(400, str(exc)) from exc
     except TimeoutError as exc:
-        raise HTTPException(504, "自定义引擎检查超时") from exc
+        raise HTTPException(504, "Custom engine check timeout") from exc
     except RuntimeError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -114,7 +114,7 @@ async def rollback_engine(request: EngineRequest):
 async def export_engine(engine_id: str):
     import re
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", engine_id):
-        raise HTTPException(400, "引擎 ID 无效")
+        raise HTTPException(400, "Invalid engine ID")
     data = await invoke(manager.export(engine_id))
     return Response(data, media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="{engine_id}.zip"',
@@ -126,7 +126,7 @@ async def export_engine(engine_id: str):
 async def export_to_path(request: ExportRequest):
     file = Path(request.output).expanduser()
     if not file.is_absolute() or file.suffix.lower() != ".zip":
-        raise HTTPException(400, "导出路径必须是绝对路径的 ZIP 文件")
+        raise HTTPException(400, "The export path must be an absolute path ZIP file")
     file = await asyncio.to_thread(_assert_preview_path, file)
     data = await invoke(manager.export(request.engine_id))
     await asyncio.to_thread(file.write_bytes, data)
@@ -145,6 +145,6 @@ async def import_engine(request: Request, title: str | None = Query(default=None
     data = bytearray()
     async for chunk in request.stream():
         if len(data) + len(chunk) > MAX_PACKAGE:
-            raise HTTPException(413, '引擎包不能超过 32 MiB')
+            raise HTTPException(413, 'The engine package must not exceed 32 MiB')
         data.extend(chunk)
     return await invoke(import_package(bytes(data), **({"title": title} if title else {})))

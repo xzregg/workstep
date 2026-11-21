@@ -260,7 +260,7 @@ async def run_install_command(
         await proc.wait()
         if isinstance(exc, asyncio.CancelledError):
             raise
-        raise RuntimeError(f"安装超时（超过 {timeout:g} 秒）") from None
+        raise RuntimeError(f"Installation timed out (exceeded {timeout:g} seconds)") from None
     return proc.returncode, output.decode(errors="replace").strip()
 
 
@@ -275,7 +275,7 @@ async def install_with_command(
     if not shutil.which(cmd[0]):
         return EngineInstallResult(
             success=False,
-            message=f"未找到 {cmd[0]}，请先安装对应运行时后重试",
+            message=f"Could not find {cmd[0]}. Install its runtime and try again.",
         )
     try:
         code, output = await run_install_command(cmd)
@@ -323,7 +323,7 @@ async def install_python_package(
         else:
             return EngineInstallResult(
                 success=False,
-                message="未找到 uv 或 pip，无法安装 Python SDK 包",
+                message="Install uv or pip to install the Python SDK.",
             )
         if upgrade:
             cmd.append("--upgrade")
@@ -358,7 +358,7 @@ async def install_python_package(
         )
     return EngineInstallResult(
         success=False,
-        message=f"未找到 uv 或 pip，无法{action} Python SDK 包",
+        message=f"Install uv or pip before attempting to {action} the Python SDK.",
     )
 
 
@@ -386,20 +386,20 @@ class BaseLLMEngine(ABC):
         selection = decode_permission_selection(mode)
         if selection is not None:
             if selection["engine"] != cls.ENGINE_ID:
-                raise ValueError("权限配置不属于当前引擎")
+                raise ValueError("Permission configuration does not belong to the current engine")
             fields = {field.key: field for field in cls.config_schema() if field.category == "mode"}
             values = selection["values"]
             for key, value in values.items():
                 field = fields.get(key)
                 if field is None or field.sensitive or field.type == "password":
-                    raise ValueError("引擎未声明该权限配置字段")
+                    raise ValueError("Engine did not declare the permission configuration field")
                 if field.type == "checkbox":
                     if type(value) is not bool:
-                        raise ValueError("权限配置需要布尔值")
+                        raise ValueError("Permission configuration requires a boolean value")
                 elif (not isinstance(value, str) or value not in {
                     option.value for option in field.options or ()
                 } and not (value == "" and not field.required)):
-                    raise ValueError("引擎未声明该权限选项")
+                    raise ValueError("Engine did not declare this permission option")
             return dict(values)
         return cls.PERMISSION_POLICY.permission_overrides(mode)
 
@@ -572,36 +572,53 @@ class BaseLLMEngine(ABC):
     def require_native_credentials_allowed(self) -> None:
         """Gateway distribution does not disable engine-native credentials."""
 
+    def _resolve_provider_config(self, provider_id: str | None) -> dict[str, Any] | None:
+        selected = self.resolve_provider_id(provider_id)
+        if not selected:
+            if self.provider_required():
+                raise ValueError("Select a provider for this engine")
+            return None
+        provider = self.provider_config_store().get_provider(selected)
+        if provider is None:
+            raise ValueError("Provider not found")
+        if not provider.get("enabled", True):
+            raise ValueError("Selected provider is disabled")
+        if not self.supports_provider(provider):
+            raise ValueError("Provider protocol is incompatible with this engine")
+        return provider
+
+    def resolve_provider_catalog(self, provider_id: str | None = None) -> tuple[str, str] | None:
+        """Resolve the saved catalog before the user has picked a model."""
+        provider = self._resolve_provider_config(provider_id)
+        return (provider["id"], self.pick_protocol(provider)) if provider else None
+
     def resolve_provider_runtime(
         self,
         provider_id: str | None = None,
         model: str | None = None,
     ) -> ProviderRuntimeConfig:
         """Resolve turn override before engine default and validate it."""
-        config_store = self.provider_config_store()
-        selected = self.resolve_provider_id(provider_id)
+        provider = self._resolve_provider_config(provider_id)
         if not model:
-            model = config_store.get_engine_default_model(self.ENGINE_ID) or None
-        if not selected:
-            if self.provider_required():
-                raise ValueError("该引擎需要先选择供应商")
-            return self.build_native_runtime(model)
-        provider = config_store.get_provider(selected)
+            model = self.provider_config_store().get_engine_default_model(self.ENGINE_ID) or None
         if provider is None:
-            raise ValueError("供应商不存在")
-        if not provider.get("enabled", True):
-            raise ValueError("所选供应商已停用")
-        if not self.supports_provider(provider):
-            raise ValueError("所选供应商协议与该引擎不兼容")
+            return self.build_native_runtime(model)
         if provider.get("managed") and (
             not model or model not in provider.get("models", [])
         ):
-            raise ValueError("所选模型未获平台供应商授权")
+            raise ValueError("The selected model is not authorized by the platform vendor")
         protocol = self.pick_protocol(provider)
         return self.build_provider_runtime(provider, model, protocol)
 
+    def pin_provider_id(self, provider_id: str) -> None:
+        """Keep a single invocation on the endpoint selected before context assembly."""
+        self._pinned_provider_id = provider_id
+
     def resolve_provider_id(self, provider_id: str | None = None) -> str:
         """Resolve an explicit provider override against the engine default."""
+        pinned = getattr(self, "_pinned_provider_id", None)
+        if pinned is not None:
+            return pinned
         explicit = str(provider_id or "").strip()
         selected = explicit
         config_store = self.provider_config_store()
@@ -772,7 +789,7 @@ class BaseLLMEngine(ABC):
     async def update(self) -> EngineInstallResult:
         """Update an SDK package in the running daemon environment."""
         if not self.UPDATE_PACKAGE:
-            return EngineInstallResult(success=False, message="该引擎不支持自动更新")
+            return EngineInstallResult(success=False, message="This engine does not support automatic updates")
         return await install_python_package(self.UPDATE_PACKAGE, upgrade=True)
 
 
@@ -1021,7 +1038,7 @@ class BaseLLMEngine(ABC):
         override this method and consume its output in spawn/resume.
         """
         if not self.supports_mcp:
-            raise NotImplementedError('当前引擎不支持 MCP 连接器')
+            raise NotImplementedError('The current engine does not support MCP connectors')
         from copy import deepcopy
         result = deepcopy(config_overrides or {})
         existing = list(result.get('mcp_servers') or [])
@@ -1029,7 +1046,7 @@ class BaseLLMEngine(ABC):
         added = deepcopy(servers)
         new_names = [server.get('name') for server in added]
         if len(new_names) != len(set(new_names)) or any(name in names for name in new_names):
-            raise ValueError('连接器 MCP 名称冲突')
+            raise ValueError('Connector MCP name conflict')
         result['mcp_servers'] = [*existing, *added]
         return result
 

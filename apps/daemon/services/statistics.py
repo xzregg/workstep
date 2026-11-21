@@ -155,12 +155,13 @@ class StatisticsModule:
 
         for project in projects:
             project_bucket = project_buckets[project.id]
-            for workflow in project.workflows:
+            for workflow in project.public_workflows():
                 workflow_meta[(project.id, workflow["id"])] = workflow
                 workflow_buckets[(project.id, workflow["id"])] = MetricBucket()
 
             with self._project_manager.activate_project_by_id(project.id):
-                tasks = list(Task.select())
+                from services.task_queries import formal_tasks
+                tasks = list(formal_tasks())
                 task_by_id = {task.id: task for task in tasks}
                 scoped_tasks = {
                     task.id: task
@@ -492,7 +493,7 @@ class StatisticsModule:
             if project is None:
                 raise ValueError(f"Project not found: {query.project_id}")
             if query.workflow_id and not any(
-                workflow["id"] == query.workflow_id for workflow in project.workflows
+                workflow["id"] == query.workflow_id for workflow in project.public_workflows()
             ):
                 raise ValueError(f"Workflow not found: {query.workflow_id}")
             return [project]
@@ -585,7 +586,7 @@ class StatisticsModule:
         if query.workflow_id:
             return 1
         return sum(
-            1 for project in projects for workflow in project.workflows
+            1 for project in projects for workflow in project.public_workflows()
             if not workflow.get("deleted")
         )
 
@@ -620,7 +621,7 @@ class StatisticsModule:
             report.update({
                 "id": project.id,
                 "name": project.name,
-                "workflow_count": sum(1 for workflow in project.workflows if not workflow.get("deleted")),
+                "workflow_count": sum(1 for workflow in project.public_workflows() if not workflow.get("deleted")),
             })
             reports.append(report)
         return sorted(reports, key=lambda row: (-row["run_count"], row["name"]))
@@ -650,7 +651,7 @@ class StatisticsModule:
             return []
         names: dict[str, str] = {}
         workflow = next(
-            (item for item in projects[0].workflows if item["id"] == query.workflow_id),
+            (item for item in projects[0].public_workflows() if item["id"] == query.workflow_id),
             None,
         )
         for node in (workflow or {}).get("steps", {}).get("nodes", []):

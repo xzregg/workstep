@@ -447,6 +447,7 @@ a.btn { box-sizing: border-box; text-decoration: none; vertical-align: middle; }
   background: color-mix(in oklab, var(--badge-color), transparent 85%);
   color: var(--badge-color);
 }
+.task-detail-debug-badge { --badge-color: var(--danger); flex-shrink: 0; white-space: nowrap; }
 .task-detail-header-badge[data-status="ready"] { --badge-color: var(--status-ready); }
 .task-detail-header-badge[data-status="running"] { --badge-color: var(--status-running); }
 .task-detail-header-badge[data-status="paused"] { --badge-color: var(--status-paused); }
@@ -709,6 +710,8 @@ a.btn { box-sizing: border-box; text-decoration: none; vertical-align: middle; }
 }
 .task-board-lane-body[data-drag-over="true"] { background: color-mix(in oklab, var(--accent), transparent 94%); }
 .task-board-card[data-dragging="true"] { opacity: 0.4; }
+.task-board-motion-overlay { position: fixed; z-index: 2; overflow: hidden; pointer-events: none; }
+.task-board-motion-overlay .task-board-card { transform-origin: top left; transition: none; }
 .task-board-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
 .task-board-card-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
 .task-board-card-title { font-size: calc(13px * var(--font-scale)); font-weight: 600; color: var(--fg); }
@@ -2153,7 +2156,7 @@ details[open] > summary > .process-trace-chevron {
 .markdown-message.subagent-event-markdown ol,
 .markdown-message.subagent-event-markdown blockquote,
 .markdown-message.subagent-event-markdown pre,
-.markdown-message.subagent-event-markdown table {
+.markdown-message.subagent-event-markdown .markdown-table-scroll {
   margin-bottom: 4px;
 }
 
@@ -2184,7 +2187,7 @@ details[open] > summary > .process-trace-chevron {
 .markdown-message.review-report-markdown ol,
 .markdown-message.review-report-markdown blockquote,
 .markdown-message.review-report-markdown pre,
-.markdown-message.review-report-markdown table {
+.markdown-message.review-report-markdown .markdown-table-scroll {
   margin: 0 0 6px;
 }
 
@@ -2227,7 +2230,7 @@ details[open] > summary > .process-trace-chevron {
 .markdown-message ol,
 .markdown-message blockquote,
 .markdown-message pre,
-.markdown-message table {
+.markdown-table-scroll {
   margin: 0 0 10px;
 }
 
@@ -3589,39 +3592,43 @@ details[open] > summary > .process-trace-chevron {
   }
 }
 
-.markdown-message table {
-  display: block;
-  width: 100%;
+.markdown-table-scroll {
   max-width: 100%;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
-  scrollbar-gutter: stable;
+}
+
+.markdown-table-scroll > table {
+  width: 100%;
   border-spacing: 0;
   border-collapse: collapse;
 }
 
 .markdown-message pre::-webkit-scrollbar,
-.markdown-message table::-webkit-scrollbar {
+.markdown-table-scroll::-webkit-scrollbar {
   height: 7px;
 }
 
 .markdown-message pre::-webkit-scrollbar-thumb,
-.markdown-message table::-webkit-scrollbar-thumb {
+.markdown-table-scroll::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: color-mix(in oklab, var(--meta), transparent 45%);
 }
 
 .markdown-message pre::-webkit-scrollbar-track,
-.markdown-message table::-webkit-scrollbar-track {
+.markdown-table-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .markdown-message th,
 .markdown-message td {
+  min-width: 5em;
   padding: 6px 9px;
   border: 1px solid var(--border);
   text-align: left;
-  white-space: nowrap;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .markdown-message th {
@@ -3858,11 +3865,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   border-radius: 8px;
   background: var(--surface);
 }
-.modal-body label.provider-protocol-toggle {
+.modal-body label.provider-protocol-choice {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   min-height: 24px;
   margin: 0;
   color: var(--fg-2);
@@ -3874,46 +3880,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   outline: 2px solid color-mix(in oklab, var(--accent), transparent 72%);
   outline-offset: 2px;
 }
-.provider-protocol-toggle input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  border: 0;
-  clip-path: inset(50%);
-  overflow: hidden;
-  white-space: nowrap;
-}
-.provider-protocol-switch {
-  position: relative;
-  display: block;
-  width: 36px;
-  height: 20px;
-  flex: 0 0 36px;
-  border-radius: 999px;
-  background: var(--border);
-  transition: background var(--motion-fast);
-}
-.provider-protocol-switch::after {
-  content: '';
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  top: 2px;
-  left: 2px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
-  transition: transform var(--motion-fast);
-}
-.provider-protocol-toggle input:checked + .provider-protocol-switch {
-  background: var(--accent);
-}
-.provider-protocol-toggle input:checked + .provider-protocol-switch::after {
-  transform: translateX(16px);
-}
-
 .settings-switch {
   position: relative;
   width: 36px;
@@ -6411,3 +6377,5 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .smooth-message-height { min-width: 0; overflow-anchor: none; }
 .smooth-message-height.is-live { overflow: clip; }
 .smooth-message-height-content { display: flow-root; min-width: 0; }
+
+.markdown-worker-fallback { white-space: pre-wrap; overflow-wrap: anywhere; }

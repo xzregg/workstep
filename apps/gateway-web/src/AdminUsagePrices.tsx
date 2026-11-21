@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useRef, useState } from 'react'
 import { AdminRecordTable } from './AdminRecordTable'
 import { AdminUsagePriceDialog } from './AdminUsagePriceDialog'
@@ -34,11 +35,11 @@ export function AdminUsagePrices() {
       fetch('/api/admin/usage/model-prices?'+params, { credentials:'same-origin',signal:controller.signal }),
     ]).then(async ([session,response]) => {
       if (!session.ok || !response.ok) throw new Error(response.status === 403
-        ? '当前账号没有模型价格管理权限。' : '模型价格加载失败。')
+        ? 'The current account does not have permission to manage model pricing.' : 'Failed to load model prices.')
       const [identity,data] = await Promise.all([session.json(),response.json()])
       if (!controller.signal.aborted) { setCsrf(identity.csrf_token); setModels(data.models ?? []); setTotal(data.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '模型价格加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load model prices.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   },[page,query,revision])
@@ -54,7 +55,7 @@ export function AdminUsagePrices() {
       <button type="button" disabled={!selected.length} onClick={() => setSelected([])}>清空选择</button></div>
     {result && <p role="status">{result}</p>}
     {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true"/> 正在加载模型价格…</p>}
-    {error && <p role="alert">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>重试</button></p>}
+    {error && <p role="alert">{localizeGatewayError(error)} <button type="button" onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && <AdminRecordTable columns={columns.map((column,index) => index ? column :
       <input ref={all} className="gateway-table-checkbox" type="checkbox" aria-label="选择本页模型" checked={!!models.length && pageSelected === models.length}
         disabled={!models.length || (pageSelected !== models.length && new Set([...selected,...models.map(model => model.model)]).size > 100)}

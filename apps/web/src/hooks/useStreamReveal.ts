@@ -51,6 +51,7 @@ export function revealStepFor(
   currentStep: number = REVEAL_STEP_CHARS,
   options: SkinEffects = {},
   streaming = true,
+  arrivalCharsPerSecond?: number,
 ): number {
   const base = Math.max(1, Math.round(((options.charsPerSecond ?? REVEAL_CHARS_PER_SECOND) * MIN_REVEAL_FRAME_MS) / 1000))
   const frames = Math.max(1, Math.ceil((options.maxDurationMs ?? MAX_REVEAL_DURATION_MS) / MIN_REVEAL_FRAME_MS))
@@ -62,7 +63,11 @@ export function revealStepFor(
   )
   if (streaming && remaining <= SMOOTH_BACKLOG_LIMIT && currentStep <= MAX_SMOOTH_STEP_CHARS && base <= MAX_SMOOTH_STEP_CHARS) {
     const liveFrames = Math.ceil(Math.max(LIVE_CATCH_UP_DURATION_MS, options.maxDurationMs ?? 0) / MIN_REVEAL_FRAME_MS)
-    return Math.min(MAX_SMOOTH_STEP_CHARS, Math.max(currentStep, base, Math.ceil(remaining / liveFrames)))
+    // Leave a small cushion when transport is slower than the preferred reading
+    // rate. Recompute live speed instead of ratcheting until the queue is empty.
+    const deliveryStep = arrivalCharsPerSecond == null ? base
+      : Math.max(1, Math.round(arrivalCharsPerSecond * 0.85 * MIN_REVEAL_FRAME_MS / 1000))
+    return Math.min(MAX_SMOOTH_STEP_CHARS, Math.max(arrivalCharsPerSecond == null ? currentStep : 0, Math.min(base, deliveryStep), Math.ceil(remaining / liveFrames)))
   }
   return step
 }
@@ -116,12 +121,28 @@ export default function useStreamReveal(
   streamingRef.current = streaming
   const prevFrozenRef = useRef(frozen)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // 当前每帧步长。常规时等于 REVEAL_STEP_CHARS；积压过多时动态升速，
-  // 并保持到这批积压排空，避免随剩余量递减而形成指数长尾。
+  const lastRevealAt = useRef<number | null>(null)
+  const arrival = useRef<{ text: string; at: number; rate?: number }>({ text: content, at: performance.now() })
+  // Live speed may fall as the buffer shrinks; bulk/completed drains retain
+  // their peak step so their catch-up budget does not acquire a long tail.
   const stepRef = useRef(baseStep)
   useEffect(() => { stepRef.current = baseStep }, [baseStep, effects?.maxDurationMs])
 
   useEffect(() => {
+    const now = performance.now()
+    const previous = arrival.current
+    if (!enabled || frozen || !content.startsWith(previous.text)) {
+      arrival.current = { text: content, at: now }
+    } else if (content !== previous.text) {
+      const elapsed = now - previous.at
+      // Coalesce tiny transport deltas into meaningful samples. Do not include
+      // time spent waiting for the engine's first token in its delivery rate.
+      if (!previous.text || elapsed > 2000) arrival.current = { text: content, at: now }
+      else if (elapsed >= MIN_REVEAL_FRAME_MS) {
+        const sample = (content.length - previous.text.length) * 1000 / elapsed
+        arrival.current = { text: content, at: now, rate: previous.rate == null ? sample : previous.rate * 0.65 + sample * 0.35 }
+      }
+    }
     const stopTimer = () => {
       if (timerRef.current != null) {
         clearTimeout(timerRef.current)
@@ -174,7 +195,8 @@ export default function useStreamReveal(
           return
         }
         // 普通实时积压按小步推进，超大批量恢复才使用快速追平。
-        stepRef.current = revealStepFor(remaining, stepRef.current, settings.current, streamingRef.current)
+        stepRef.current = revealStepFor(remaining, stepRef.current, settings.current, streamingRef.current, arrival.current.rate)
+        lastRevealAt.current = performance.now()
         const step = Math.min(remaining, stepRef.current)
         resetTo(target.slice(0, revealBoundary(target, shownRef.current.length, step)))
         if (contentRef.current.length - shownRef.current.length > 0) {
@@ -183,10 +205,14 @@ export default function useStreamReveal(
           stepRef.current = revealStepFor(0, 0, settings.current)
         }
       }
-      // The first received text should reach the leaf immediately; later
-      // Markdown parses retain the 90ms throttle. No character-count gate.
-      if (shownRef.current.length === 0) tick()
-      else timerRef.current = setTimeout(tick, MIN_REVEAL_FRAME_MS)
+      // Give a tiny opening at most two parse intervals to collect its next
+      // packet. Later arrivals reuse the cadence instead of adding a fresh 90ms
+      // wait every time the buffer happened to run dry.
+      const delay = lastRevealAt.current == null
+        ? (streaming && content.length < baseStep ? MIN_REVEAL_FRAME_MS * 2 : 0)
+        : Math.max(0, MIN_REVEAL_FRAME_MS - (performance.now() - lastRevealAt.current))
+      if (delay === 0) tick()
+      else timerRef.current = setTimeout(tick, delay)
     }
   }, [content, streaming, frozen, enabled])
 

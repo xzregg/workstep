@@ -55,7 +55,7 @@ test('corrupted streamed downloads are rejected and cleaned without changing the
     const progress = []
     updater.on('download-progress', event => progress.push(event.percent))
     await updater.checkForUpdates()
-    await assert.rejects(updater.downloadUpdate(), /校验失败/)
+    await assert.rejects(updater.downloadUpdate(), /verification failed/)
     assert.deepEqual(await fs.readdir(directory), ['WorkStep.app'])
     assert.deepEqual(progress, [100])
   } finally { await fs.rm(directory, { recursive: true, force: true }) }

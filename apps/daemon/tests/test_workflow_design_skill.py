@@ -23,10 +23,20 @@ def test_builtin_skill_example_is_compatible_with_executor_and_canvas():
     assert not re.search(r'[\u3400-\u9fff]', prompt)
     assert "Respond in the user's language" in prompt
     assert "Localize all user-facing text" in prompt
+    assert "one-off task is not worth" in prompt
+    assert "repeatable" in prompt
     example = re.search(r'```json\n\s*(\{.*\})\n', prompt).group(1)
     definition = json.loads(example)
     compiled = WorkflowDefinition.load(definition).compile().to_steps_config()
-    assert compiled['steps'][1]['dependsOn'] == ['investigate']
+    upstream, downstream = compiled['steps']
+    assert downstream['dependsOn'] == ['investigate']
+    for step in compiled['steps']:
+        assert step['outputs']
+        assert all(output['name'].strip() and output['type'].strip() for output in step['outputs'])
+    incoming, = downstream['incomingConnections']
+    output = upstream['outputs'][incoming['fromPort']]
+    assert incoming['output'] == output
+    assert downstream['inputs'][incoming['toPort']] == output
     assert all(isinstance(node['id'], int) and node['id'] > 0 for node in definition['nodes'])
     assert all(node['type'] and isinstance(node['position']['x'], (int, float)) for node in definition['nodes'])
 

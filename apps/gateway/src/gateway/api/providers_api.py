@@ -10,7 +10,21 @@ from fastapi import APIRouter, Query, Request
 
 from gateway.services.providers_api import ProviderInput, ProviderUpdateInput, ProviderAssignInput, ProviderDefaultInput, ProviderTestInput
 
+from gateway.services.provider_models_api import (
+    ProviderModelsInput, preview_platform_provider_models, select_platform_provider_models,
+)
+
 router = APIRouter(prefix="/api/admin/providers")
+
+
+@router.post('/{provider_id}/models/preview')
+async def preview_provider_models(request: Request, provider_id: str):
+    return await invoke(preview_platform_provider_models, request=request, provider_id=provider_id)
+
+
+@router.put('/{provider_id}/models')
+async def select_provider_models(request: Request, provider_id: str, body: ProviderModelsInput):
+    return await invoke(select_platform_provider_models, request=request, provider_id=provider_id, body=body)
 
 
 @router.get("/assignment-catalog")

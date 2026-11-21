@@ -33,12 +33,12 @@ async def verify(model_override: str | None, timeout: float) -> None:
             cfg = config.config_store.get_deepseek_harness_config()
             provider = config.config_store.get_provider(cfg["provider_id"])
             if not provider or not provider.get("api_key"):
-                raise RuntimeError("请先配置 DeepSeek Harness 供应商")
+                raise RuntimeError("Please configure the DeepSeek Harness provider first")
             model = model_override or config.config_store.get_engine_default_model(
                 "deepseek_harness"
             ) or cfg["model"]
             if not DeepSeekHarnessEngine.is_installed():
-                raise RuntimeError("DeepSeek Harness SDK/运行时未安装")
+                raise RuntimeError("DeepSeek Harness SDK/Runtime not installed")
 
             import main
             from services.project import ProjectManager
@@ -80,7 +80,7 @@ async def verify(model_override: str | None, timeout: float) -> None:
                         message = next(m for m in detail["messages"] if m["id"] == message_id)
                         if message.get("status") in {"succeeded", "error", "stopped"}:
                             if message["status"] != "succeeded":
-                                raise AssertionError(f"回合失败：{message.get('content')}")
+                                raise AssertionError(f"Turn failed: {message.get('content')}")
                             engine_sid = detail["engine_session_id"]
                             assert engine_sid
                             entry = next(iter(DeepSeekHarnessEngine._POOL.values()))
@@ -95,7 +95,7 @@ async def verify(model_override: str | None, timeout: float) -> None:
                             }, ensure_ascii=False), flush=True)
                             return engine_sid, pid, message["content"]
                         await asyncio.sleep(0.1)
-                    raise TimeoutError(f"回合超过 {timeout:g} 秒")
+                    raise TimeoutError(f"Turn exceeded {timeout:g} seconds")
 
                 sid = await create("连续会话测试")
                 print(f"provider={provider['name']} model={model}", flush=True)

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { connectorApi, type Connector, type ConnectorWrite } from '../../api/connectors'
 import { useProjectStore } from '../../stores/projectStore'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 import Select from '../Select'
@@ -107,7 +107,7 @@ export default function ConnectorEditor({ initial, initialTab = 'config', onClos
           <p className="connector-muted connector-project-hint">{t('connectors.allProjectsHint')}</p>
         </fieldset>
         <label className="connector-checkbox"><input type="checkbox" checked={value.enabled} onChange={e => change({ enabled: e.target.checked })} />{t('connectors.enabled')}</label>
-        <p className="connector-error" role="alert">{error}</p>
+        <p className="connector-error" role="alert">{localizeErrorDisplay(error)}</p>
       </div>}
       <ConnectorTestPanel definition={definition} valid={valid} active={tab === 'test'} onBusyChange={setTesting}
         onConfigureAuth={() => { focusAuth.current = true; setTab('config') }} />

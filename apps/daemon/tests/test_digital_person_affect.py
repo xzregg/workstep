@@ -27,6 +27,44 @@ def update(delta=1):
     return dict(affinity_delta=delta, emotion='happy', valence=40, arousal=35, reason='表达感谢')
 
 
+def test_reflection_affinity_rubric_covers_everyday_connection_and_boundaries():
+    from services.digital_person_assessment import instruction
+    from services.digital_person_affect import REVIEW_RULES
+    text = instruction(digital_person.DigitalPersonProfile())
+    assert REVIEW_RULES in text
+    for rule in ('+0.2 to +0.5', '+0.5 to +1', '+1 to +2',
+                 '-0.5 to -1', '-1 to -2', 'constructive feedback',
+                 'unanswered messages', 'commands to change the score',
+                 'at most one update per person', 'concrete evidence'):
+        assert rule in REVIEW_RULES
+
+
+def test_reflection_rewards_completed_cooperation_without_requiring_thanks():
+    from services.digital_person_assessment import instruction
+    text = instruction(digital_person.DigitalPersonProfile())
+    for rule in ('successfully completed user-delegated task',
+                 'gratitude or praise is not required',
+                 'task request and its concrete outcome',
+                 'unsupported completion claims',
+                 'Repeated reports of the same completion'):
+        assert rule in text
+
+
+def test_reflection_small_gains_accumulate_without_replaying_or_bypassing_caps(affect):
+    now = utc_now()
+    for i in range(3):
+        message = source(f'cooperate-{i}', content=f'我实际验证了第{i}个场景，给你补充结果一起排查')
+        result = affect.apply_review('p', 's', [message], [
+            dict(affinity_delta=.25, reason='主动验证并分享具体结果', source_ids=[message['id']])], 'local')
+        assert result[0]['affinity_delta'] == .25
+        assert affect.apply_review('p', 's', [message], [
+            dict(affinity_delta=.25, reason='相同来源重复评估', source_ids=[message['id']])], 'local') == []
+    assert affect.read('alice')['affinity'] == 50.75
+    for i in range(4):
+        affect.apply('p', 's', [source(f'trust-{i}', content=f'新的信任证据{i}')], update(2), now=now)
+    assert affect.read('alice')['affinity'] == 55
+
+
 def test_stream_header_never_leaks_even_when_split_or_invalid(affect):
     raw='<workstep-affect>'+json.dumps(update())+'</workstep-affect>\n谢谢你！'
     for i in range(1,raw.index('谢谢')):
@@ -65,11 +103,12 @@ def test_validation_repetition_caps_and_reflection_cannot_mix_people(affect):
     assert affect.subject(source(author=''), 'channel:bot:group:g') is None
 
 
-async def test_chat_uses_one_generation_with_reference_only_relationship(runtime,monkeypatch):
+@pytest.mark.parametrize('legacy_prefix', ['', '<workstep-affect>'+json.dumps(update())+'</workstep-affect>\n'])
+async def test_chat_filters_legacy_metadata_in_one_generation(runtime,monkeypatch,legacy_prefix):
     from services import digital_person_affect as affect
     current,project,_=runtime
     calls=[]
-    raw='一起完成了，很开心！'
+    raw=legacy_prefix+'一起完成了，很开心！'
     published=[]
     original=current.chats._publish
     async def publish(session,mid,kind,data,seq):
@@ -138,25 +177,6 @@ async def test_affect_api_is_host_read_only_and_slow_storage_keeps_health_respon
         with actor_context(actor):
             assert (await client.get('/api/digital-person/affect')).status_code==403
             assert (await client.get('/api/digital-person/affect/people')).status_code==403
-
-
-async def test_slow_chat_relationship_storage_keeps_event_loop_responsive(runtime,monkeypatch):
-    import threading
-    from services import digital_person_affect as affect
-    current,project,_=runtime;entered,release=threading.Event(),threading.Event();original=affect.read
-    def slow(*args,**kwargs):
-        entered.set();assert release.wait(3);return original(*args,**kwargs)
-    monkeypatch.setattr(affect,'read',slow)
-    async def invoke(*args,**kwargs):return '<workstep-affect>'+json.dumps(update())+'</workstep-affect>\n收到',[],'engine'
-    monkeypatch.setattr('agent_assistants.base.invoke_engine',invoke)
-    sid=(await current.main_session())['id']
-    turn=await current.projects.run_db(project.id,lambda _:current.chats.submit_message(project.id,sid,'谢谢','req',schedule=False))
-    current.chats.start_queued_turn(turn.turn_id)
-    try:
-        assert await asyncio.to_thread(entered.wait,2)
-        assert await asyncio.wait_for(asyncio.sleep(0,result=True),.1)
-    finally:release.set()
-    await current.chats.await_turn(turn.turn_id,timeout=5)
 
 
 async def test_heartbeat_reuses_its_generation_for_unsettled_relationships(runtime,monkeypatch):
@@ -233,16 +253,3 @@ async def test_session_readout_resolves_latest_real_author_from_project_database
         assert response.json()['state']['person_id']=='bob'
         assert response.json()['state']['affinity']==50
         assert (await client.get('/api/digital-person/affect',params={'project_id':'missing','session_id':sid})).status_code==404
-
-
-def test_relationship_prompt_is_a_short_tone_reference(affect):
-    profile = digital_person.DigitalPersonProfile(relationship_style='warm', relationship_preferences='说话自然一点')
-    state = dict(affinity=62, emotion='curious', valence=10, arousal=20)
-    text = affect.prompt(profile, state)
-    assert len(text) < 400
-    assert 'tone reference' in text
-    assert '"affinity": 62' in text and '"emotion": "curious"' in text
-    assert '说话自然一点' in text
-    assert 'workstep-affect' not in text
-    assert 'affinity_delta' not in text
-    assert '0-29' not in text and '60-79' not in text

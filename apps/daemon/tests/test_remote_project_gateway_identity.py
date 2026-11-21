@@ -54,7 +54,7 @@ def test_local_remote_project_still_requires_local_name(monkeypatch):
     monkeypatch.setattr(main.config_store, 'get_device_identity', lambda: {
         'device_id': 'device-a', 'device_name': 'Device A'})
     monkeypatch.setattr(main, 'gateway_client', SimpleNamespace(managed_config=None, current_actor=None))
-    with pytest.raises(ValueError, match='使用者名称'):
+    with pytest.raises(ValueError, match='user name'):
         main._local_actor()
 
 

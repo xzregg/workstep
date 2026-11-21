@@ -46,7 +46,7 @@ def api_url(value):
             return value.rstrip('/')
     except ValueError:
         pass
-    raise ValueError('微信 ClawBot 接口地址无效')
+    raise ValueError('WeChat ClawBot API endpoint is invalid')
 
 
 class SessionExpired(RuntimeError):
@@ -92,14 +92,14 @@ class ILinkClient:
             if data.get('ret') == -14 or data.get('errcode') == -14:
                 raise SessionExpired()
             if data.get('ret', 0) != 0 or data.get('errcode', 0) != 0:
-                raise RuntimeError('微信 ClawBot 请求被拒绝，请检查登录状态或稍后重试')
+                raise RuntimeError('WeChat ClawBot request rejected; check login status or try again later')
             return data
         except httpx.ReadTimeout:
             if endpoint == 'getupdates':
                 return {'msgs': [], 'get_updates_buf': payload.get('get_updates_buf', '')}
             if endpoint == 'get_qrcode_status':
                 return {'status': 'wait'}
-            raise RuntimeError('微信 ClawBot 请求超时') from None
+            raise RuntimeError('WeChat ClawBot request timeout') from None
         except (httpx.HTTPError, ValueError):
             # Never include request URLs, response bodies or credential values.
-            raise RuntimeError('微信 ClawBot 请求失败，请检查网络后重试') from None
+            raise RuntimeError('WeChat ClawBot request failed, please check the network and try again') from None

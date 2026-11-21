@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { engineApi, type EngineInfo } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import EngineSelect, { engineOptionLabel, isEngineSelectable } from './EngineSelect'
 import ConfirmDialog from './ConfirmDialog'
@@ -104,7 +104,7 @@ export default function ExecutionDefaultSettings({ engines, loading, onChanged }
           disabled={loading || saving || loadingConfig}
           ariaLabel={t('settings.defaultEngineAria')}
           className="execution-default-settings-select" />
-        {error && <div role="alert" className="execution-default-settings-feedback execution-default-settings-feedback--error">{error}</div>}
+        {error && <div role="alert" className="execution-default-settings-feedback execution-default-settings-feedback--error">{localizeErrorDisplay(error)}</div>}
       </ConfirmDialog>
       <ConfirmDialog open={confirmDiscard} title={t('canvas.unsavedTitle')}
         message={t('canvas.unsavedLeaveMessage')} confirmText={t('common.discard')}

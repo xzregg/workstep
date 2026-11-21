@@ -123,6 +123,25 @@ def test_static_shell_is_available_but_receives_security_headers(monkeypatch):
     assert 'camera=(self)' in response.headers['permissions-policy']
 
 
+def test_only_voice_worker_script_can_compile_wasm():
+    from starlette.responses import Response
+
+    app = _app()
+
+    @app.get('/assets/{name}')
+    async def asset(name):
+        if name.endswith('.html') or name == 'wakeWord.worker-Fallback.js':
+            return Response('<html></html>', media_type='text/html')
+        return Response('self.onmessage = () => {}', media_type='text/javascript')
+
+    with TestClient(app) as client:
+        for name in ('voiceDsp', 'wakeWord'):
+            worker = client.get(f'/assets/{name}.worker-Xvzabc1a.js')
+            assert "'wasm-unsafe-eval'" in worker.headers['content-security-policy']
+        for path in ('/', '/assets/app.js', '/assets/wakeWord.worker-Fallback.js', '/assets/wakeWord-Xvzabc1a.js'):
+            assert "'wasm-unsafe-eval'" not in client.get(path).headers['content-security-policy']
+
+
 def test_project_raw_allows_same_origin_iframe(monkeypatch):
     monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
     monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')

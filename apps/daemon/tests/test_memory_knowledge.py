@@ -70,6 +70,20 @@ def test_correction_scope_and_expiry_validation(knowledge):
     assert knowledge.store_extraction(payload(next_mid, valid_until='not a date'), index.candidates('local')) == 0
 
 
+async def test_atlas_exposes_recorded_conflict_link(knowledge, monkeypatch):
+    from services import digital_person_memory, memory_atlas
+    monkeypatch.setattr(digital_person_memory, 'allowed_projects', lambda _: ['p'])
+    first = seed()
+    assert knowledge.store_extraction(payload(first), index.candidates('local')) == 1
+    second = seed('用户表示对早晚时间仍有不同看法')
+    conflict = payload(second, supersedes=['knowledge:1'], conflict=True)
+    assert knowledge.store_extraction(conflict, index.candidates('local'), ['knowledge:1']) == 1
+    page = await memory_atlas.page(None, 0, 10)
+    assert {row['id']:row['supersedes'] for row in page['items']} == {
+        'knowledge:1': [], 'knowledge:2': ['knowledge:1'],
+    }
+
+
 async def test_consolidation_runs_db_off_loop_and_retries(knowledge, monkeypatch):
     mid = seed()
     class Projects:

@@ -83,7 +83,7 @@ async def browse(projects, query=''):
 
 def _source(projects_ids, source_id):
     if not source_id.startswith('memory:') or not source_id[7:].isdigit():
-        raise ValueError('无效的来源 ID')
+        raise ValueError('Invalid source ID')
     with index.connect() as db:
         row = db.execute('SELECT * FROM memories WHERE id=? AND forgotten=0', (int(source_id[7:]),)).fetchone()
         return dict(row) if row and row['project_id'] in projects_ids else None
@@ -92,13 +92,13 @@ def _source(projects_ids, source_id):
 async def read(projects, source_id, *, offset=0, limit=2400):
     row = await asyncio.to_thread(_source, memory.allowed_projects(projects), source_id)
     if not row:
-        raise LookupError('来源不存在或不可访问')
+        raise LookupError('Source does not exist or is inaccessible')
     hits = await memory.read_projects(projects, [row])
     if not hits:
-        raise LookupError('来源已删除、遗忘或不可访问')
+        raise LookupError('Source has been deleted, forgotten, or is inaccessible')
     content = await projects.run_db(row['project_id'], lambda _: memory.source_text(row))
     if content is None:
-        raise LookupError('来源已不可用')
+        raise LookupError('Source is no longer available')
     end = min(len(content), offset + limit)
     return redact({**hits[0], 'content':content[offset:end], 'offset':offset,
                    'next_offset':end if end < len(content) else None,

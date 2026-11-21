@@ -22,10 +22,10 @@ class WeixinLogin:
     async def start(self, bot_id=''):
         self._prune()
         if len(self._sessions) >= 20:
-            raise ValueError('扫码会话过多，请关闭已有二维码后重试')
+            raise ValueError('Too many scan sessions. Please close existing QR codes and try again.')
         data = await self.api.request('get_bot_qrcode', params={'bot_type': '3'})
         if not data.get('qrcode') or not data.get('qrcode_img_content'):
-            raise RuntimeError('微信 ClawBot 未返回有效二维码')
+            raise RuntimeError('WeChat ClawBot did not return a valid QR code')
         login_id = secrets.token_urlsafe(32)
         self._sessions[login_id] = {'qrcode': data['qrcode'], 'qr_content': data['qrcode_img_content'],
             'bot_id': bot_id, 'status': 'wait', 'base_url': BASE_URL, 'expires': time.monotonic() + 480,
@@ -35,7 +35,7 @@ class WeixinLogin:
     def _get(self, login_id):
         self._prune()
         if login_id not in self._sessions:
-            raise ValueError('二维码已失效，请重新扫码')
+            raise ValueError('QR code has expired, please scan again')
         return self._sessions[login_id]
 
     @staticmethod
@@ -57,7 +57,7 @@ class WeixinLogin:
                 data = await self.api.request('get_qrcode_status', params={'qrcode': row['qrcode']}, base_url=row['base_url'])
                 # Cancellation/deletion while the upstream request was pending must not revive a receipt.
                 if self._get(login_id) is not row:
-                    raise ValueError('二维码已失效，请重新扫码')
+                    raise ValueError('QR code has expired, please scan again')
                 status = data.get('status', 'wait')
                 if status == 'scaned_but_redirect':
                     row['base_url'] = api_url('https://' + str(data.get('redirect_host', '')))
@@ -65,7 +65,7 @@ class WeixinLogin:
                 if status == 'confirmed':
                     account, token, owner = (str(data.get(key) or '').strip() for key in ('ilink_bot_id', 'bot_token', 'ilink_user_id'))
                     if not account or not token or not owner:
-                        raise RuntimeError('微信 ClawBot 登录凭据不完整，请重新扫码')
+                        raise RuntimeError('WeChat ClawBot login credentials are incomplete, please rescan the QR code')
                     row['credentials'] = {'app_id': account, 'secret': token, 'weixin_user_id': owner,
                         'weixin_base_url': api_url(data.get('baseurl') or BASE_URL)}
                 row['status'] = status if status in {'wait', 'scaned', 'confirmed', 'expired'} else 'wait'
@@ -74,7 +74,7 @@ class WeixinLogin:
     def credentials(self, login_id, bot_id=''):
         row = self._get(login_id)
         if row['status'] != 'confirmed' or row['bot_id'] != bot_id:
-            raise ValueError('请完成此机器人的微信扫码授权')
+            raise ValueError('Please complete the WeChat QR code authorization for this bot')
         return dict(row['credentials'])
 
     def consume(self, login_id):

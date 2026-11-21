@@ -40,6 +40,8 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert "--overwrite" in text
     assert "--input-prompt" in text
     assert "WORKSTEP_ACTION_INPUT" in text
+    assert "python -m cli message send --project <project_id> --session <session_id> --content" in text
+    assert "workstep_send_message" in text
     assert "python -m cli project action-create" in text
     assert "python -m cli project quick-buttons" in text
     assert "python -m cli workflow quick-buttons" in text
@@ -58,6 +60,8 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert "python -m cli channel send" in text
     assert "python -m cli channel bind" in text
     assert "workstep_bind_channel_group" in text
+    assert "python -m cli channel unbind" in text
+    assert "workstep_unbind_channel_group" in text
     assert "--image" in text
     assert "--file" in text
     assert "workstep_upload_channel_attachment" in text
@@ -152,6 +156,18 @@ def test_project_local_workstep_cli_skill_wins_over_new_builtin(tmp_path):
     assert len(enabled) == 1
     assert enabled[0].source == "project"
     assert local.joinpath("SKILL.md").read_text(encoding="utf-8").endswith("local\n")
+
+
+def test_digital_person_skill_exposes_manual_reflection():
+    from cli import build_parser
+    root = BUILTIN_SKILLS / 'workstep-cli'
+    assert 'references/digital-person.md' in (root / 'SKILL.md').read_text()
+    reference = (root / 'references/digital-person.md').read_text()
+    assert 'workstep_check_digital_person' in reference
+    assert 'no_work' in reference
+    assert 'explicitly asks' in reference
+    assert 'failed' in reference
+    assert build_parser().parse_args(['digital-person', 'check', '--json']).subcommand == 'check'
 
 
 def test_custom_engine_guides_have_valid_links_commands_and_runtime_mirrors(tmp_path):

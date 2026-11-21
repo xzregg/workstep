@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { QRCode } from 'antd'
 import { channelBotApi, type WeixinLogin } from '../api/channelBots'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import Spinner from './Spinner'
 
@@ -79,7 +79,7 @@ export default function WeixinLoginPanel({ botId, disabled, onAuthorized, onActi
       {loading && <Spinner size={14} />}
       {loading ? t('common.loading') : login ? t(`channelBot.weixinLogin.${login.status}`) : botId ? t('channelBot.weixinStored') : t('channelBot.weixinNotLinked')}
     </p>
-    {error && <p role="alert" className="bot-settings-error">{error}</p>}
+    {error && <p role="alert" className="bot-settings-error">{localizeErrorDisplay(error)}</p>}
     <div className="bot-settings-actions">
       <Button disabled={disabled} loading={loading} onClick={() => void start()}>{t(login || error ? 'channelBot.weixinRefresh' : botId ? 'channelBot.weixinRelogin' : 'channelBot.weixinConnect')}</Button>
       {(login || loading) && <Button disabled={disabled || loading} onClick={() => {

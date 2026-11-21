@@ -766,7 +766,7 @@ async def test_claude_refuses_to_start_without_confirmed_permission_mode(monkeyp
 
     assert len(events) == 1
     assert events[0].type == "error"
-    assert "权限模式尚未确认" in events[0].data["message"]
+    assert 'permission mode is not yet confirmed' in events[0].data["message"]
 
 
 def test_claude_map_event_text_delta():

@@ -61,9 +61,14 @@ async def _require_scoped_task(project_id: str | None, task_id: str) -> None:
         raise HTTPException(status_code=404, detail="Task not found")
 
 
-async def _release_task_channel_bindings(project_id: str, task_id: str) -> None:
+async def _release_task_channel_bindings(project_id: str, task_id: str, *,
+                                         notify_group: tuple[str, str] | None = None) -> str | None:
     """Release channel routing after a successful archive or deletion."""
     from main import channel_bot_manager
 
-    if channel_bot_manager is not None:
+    if channel_bot_manager is None:
+        return 'failed' if notify_group else None
+    if notify_group is None:
         await channel_bot_manager.remove_task_bindings(project_id, task_id)
+        return None
+    return await channel_bot_manager.remove_task_bindings(project_id, task_id, notify_group=notify_group)

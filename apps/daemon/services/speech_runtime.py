@@ -16,27 +16,33 @@ class SpeechRuntime:
         self.lock = asyncio.Lock()
         self.last_used = time.monotonic()
 
-    async def infer(self, command, pcm, session_id, final):
+    async def warm(self, command):
+        async with self.lock:
+            if self.process is None or self.process.returncode is not None:
+                await finish_cleanup(self._start(command))
+
+    async def infer(self, command, pcm, session_id, final, preview=True):
         async with self.lock:
             try:
                 if self.process is None or self.process.returncode is not None:
                     await finish_cleanup(self._start(command))
                 proc = self.process
                 proc.stdin.write((json.dumps({'audio': base64.b64encode(pcm).decode(),
-                                              'session_id': session_id, 'final': final}) + '\n').encode())
+                                              'session_id': session_id, 'final': final,
+                                              'preview': preview}) + '\n').encode())
                 await asyncio.wait_for(proc.stdin.drain(), 15)
                 line = await asyncio.wait_for(self.reader.readline(), 15)
                 if not line:
-                    raise ValueError('语音识别进程已退出，请重试')
+                    raise ValueError('The speech recognition process has exited. Please try again.')
                 result = json.loads(line)
                 if result.get('session_id') != session_id or 'error' in result:
-                    raise ValueError('语音识别失败或返回会话不匹配')
+                    raise ValueError('Speech recognition failed or returned a session mismatch')
                 self.last_used = time.monotonic()
                 return str(result['text'])[:16000]
             except BaseException as error:
                 await finish_cleanup(self._stop_locked())
                 if isinstance(error, TimeoutError):
-                    raise ValueError('语音识别超时，请重试') from error
+                    raise ValueError('Speech recognition timed out, please retry') from error
                 raise
 
     async def _start(self, command):

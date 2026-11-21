@@ -17,10 +17,10 @@ EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 def safe_file(root: str, value: str):
     path = PurePosixPath(value)
     if not value or '\0' in value or path.is_absolute() or '..' in path.parts or '.git' in path.parts:
-        raise GitError('无效的仓库相对路径。')
+        raise GitError('Invalid repository relative path.')
     target = Path(root) / value
     if not target.parent.resolve().is_relative_to(Path(root).resolve()):
-        raise GitError('文件路径越过仓库边界。')
+        raise GitError('File path exceeds repository boundary.')
     return target
 
 
@@ -71,12 +71,12 @@ class GitQueries:
         if ref and ref != 'HEAD' and not re.fullmatch(r'[0-9a-fA-F]{7,64}', ref):
             _, code = await self.command(path, 'show-ref', '--verify', '--quiet', 'refs/heads/' + ref, check=False)
             if code:
-                raise GitError('分支不存在，请刷新列表。', 404)
+                raise GitError('Branch does not exist, please refresh the list.', 404)
             ref = 'refs/heads/' + ref
         raw, code = await self.command(path, 'rev-parse', '--verify', '--end-of-options', (ref or 'HEAD') + '^{commit}', check=False)
         if code:
             if ref and ref != 'HEAD':
-                raise GitError('提交不存在。', 404)
+                raise GitError('Submission does not exist.', 404)
             return None
         return text(raw).strip()
 
@@ -231,7 +231,7 @@ class GitQueries:
         directory = await self.directory(id)
         base, target = await self.comparison(directory['path'], ref, commit)
         if not target:
-            raise GitError('请选择分支或历史提交。')
+            raise GitError('Please select a branch or a historical commit.')
         raw, _ = await self.command(directory['path'], 'diff', '--name-status', '-z', '--find-renames', base or EMPTY_TREE, target, '--')
         fields = iter(raw.split(b'\0'))
         files = []
@@ -264,7 +264,7 @@ class GitQueries:
         changes = await self.changes(id, ref, commit) if target else await self.status(id)
         file = next((f for f in changes['files'] if f['path'] == name), None)
         if not file:
-            raise GitError('文件状态已变化，请刷新文件列表。', 409)
+            raise GitError('File status has changed, please refresh the file list.', 409)
         old = file['old_path'] or name
         before, before_large = await self.blob(path, base, old)
         after, after_large = await self.blob(path, target, name) if target else await asyncio.to_thread(read_file, path, name)

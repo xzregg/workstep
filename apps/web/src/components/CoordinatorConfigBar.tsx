@@ -13,7 +13,7 @@ import {
   type ProviderInfo,
 } from '../api/client'
 import { engineLabel } from '../engineMeta'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import StepConfigFields from './StepConfigFields'
 import { engineEffortOptions, thinkingEffortLabel } from '../utils/thinkingEffort'
 
@@ -481,7 +481,7 @@ export default function CoordinatorConfigBar({
         </>
       )}
       {error ? (
-        <span className="coordinator-config-status coordinator-config-status--error" data-state="error">{error}</span>
+        <span className="coordinator-config-status coordinator-config-status--error" data-state="error">{localizeErrorDisplay(error)}</span>
       ) : notice ? (
         <span className="coordinator-config-status coordinator-config-status--success" data-state="success">{notice}</span>
       ) : hint ? (

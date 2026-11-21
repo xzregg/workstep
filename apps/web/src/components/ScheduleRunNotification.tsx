@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { scheduleApi, type ScheduleRun } from '../api/schedule'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import './ScheduleNotificationEditor.css'
 
@@ -21,6 +21,6 @@ export default function ScheduleRunNotification({ projectId, scheduleId, run, on
     {run.notification_status === 'sending' && <span className="task-status-spinner" />}
     <span>{t(`schedules.notification_${run.notification_status}`)}{run.notification_error && `：${run.notification_error}`}</span>
     {canRetry && run.notification_status === 'failed' && <Button size="sm" loading={busy} onClick={() => void retry()}>{t('schedules.notificationRetry')}</Button>}
-    {error && <span role="alert">{error}</span>}
+    {error && <span role="alert">{localizeErrorDisplay(error)}</span>}
   </div>
 }

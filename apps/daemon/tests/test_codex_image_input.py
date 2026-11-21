@@ -105,7 +105,7 @@ async def test_cli_rejects_nonlocal_images_before_launch(cli_transport, tmp_path
         "原问题", cwd=str(tmp_path), images=[EngineImage(url="https://example.com/shot.png")],
     )]
     assert not commands
-    assert any(event.type == "error" and "本地图片" in event.data["message"] for event in events)
+    assert any(event.type == "error" and 'local image paths' in event.data["message"] for event in events)
 
 
 @pytest.mark.anyio

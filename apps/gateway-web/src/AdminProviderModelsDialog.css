@@ -1,0 +1,14 @@
+.gateway-confirm-dialog.gateway-provider-models { width: min(100%, 760px); }
+.gateway-provider-models-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.gateway-provider-models-heading label { margin: 0; }
+.gateway-provider-models-heading button { white-space: nowrap; }
+.gateway-provider-models-password { max-width: 280px; margin-bottom: 16px; }
+.gateway-provider-models-password label { margin: 0; }
+.gateway-provider-models-toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.gateway-provider-models-toolbar label { flex: 1 1 200px; min-width: 0; margin: 0; }
+.gateway-provider-models-toolbar-actions { display: flex; gap: 8px; }
+.gateway-provider-models-toolbar button { white-space: nowrap; }
+.gateway-provider-models-list { max-height: 45dvh; min-height: 160px; overflow: auto; border: 1px solid var(--gateway-border, #d2d2d7); border-radius: 12px; padding: 8px; }
+.gateway-provider-models-list label { display: flex; align-items: flex-start; gap: 8px; padding: 8px; margin: 0; font-weight: 400; cursor: pointer; }
+.gateway-provider-models-list label span { min-width: 0; overflow-wrap: anywhere; }
+.gateway-provider-models-list input[type="checkbox"] { flex: 0 0 16px; width: 16px; height: 16px; min-height: 0; margin: 2px 0 0; }

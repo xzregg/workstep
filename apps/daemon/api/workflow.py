@@ -67,14 +67,14 @@ def _validate_steps(steps: dict) -> None:
         _validate_step_provider(
             str(node.get("engine") or ""),
             node.get("config"),
-            "工作流步骤",
+            "Workflow step",
         )
         review = node.get("review")
         if isinstance(review, dict):
             _validate_step_provider(
                 str(review.get("engine") or node.get("engine") or ""),
                 review.get("config"),
-                "审核步骤",
+                "Review step",
             )
 
 
@@ -90,15 +90,15 @@ def _validate_step_provider(
         return
     provider = config_service.config_store.get_provider(provider_id)
     if provider is None:
-        raise HTTPException(status_code=422, detail=f"{location}供应商不存在")
+        raise HTTPException(status_code=422, detail=f"{location}: Provider not found")
     if not provider.get("enabled", True):
-        raise HTTPException(status_code=422, detail=f"{location}供应商已停用")
+        raise HTTPException(status_code=422, detail=f"{location}: Selected provider is disabled")
     engine_id = resolve_execution_engine(engine_id)
     engine_cls = list_all_engines().get(engine_id.replace("-", "_"))
     if engine_cls is None or not engine_cls.supports_provider(provider):
         raise HTTPException(
             status_code=422,
-            detail=f"{location}供应商协议与引擎不兼容",
+            detail=f"{location}: Provider protocol is incompatible with the engine",
         )
 
 
@@ -120,7 +120,7 @@ async def list_workflows(pid: str = Query(..., alias="project_id")):
                         or w.get("steps", {}).get("steps", [])
                     ),
                 }
-                for w in proj.workflows
+                for w in proj.public_workflows()
             ]
         }
 
@@ -162,7 +162,7 @@ async def create_workflow(req: CreateWorkflowRequest, pid: str = Query(..., alia
 async def get_workflow(workflow_id: str, pid: str = Query(..., alias="project_id")):
     """Get a single workflow with full steps."""
     def load(proj):
-        wf = next((w for w in proj.workflows if w["id"] == workflow_id), None)
+        wf = next((w for w in proj.public_workflows() if w["id"] == workflow_id), None)
         if wf is None:
             raise HTTPException(status_code=404, detail="Workflow not found")
         return wf
@@ -254,7 +254,7 @@ async def delete_workflow(workflow_id: str, pid: str = Query(..., alias="project
         if result is None:
             raise HTTPException(status_code=404, detail="Workflow not found")
         if not result.get("deleted"):
-            raise HTTPException(status_code=400, detail="默认流程或最后一个流程不能删除")
+            raise HTTPException(status_code=400, detail="The default workflow or the last workflow cannot be deleted")
         return result
 
     return await _run_db(pid, delete)

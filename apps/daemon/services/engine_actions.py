@@ -17,7 +17,7 @@ async def probe_engine(engine_id: str, *, timeout_seconds: float = 300,
     if engine is None:
         await asyncio.to_thread(store.set_engine_verified, engine_id, False)
         return {"engine_id": engine_id, "success": False,
-                "message": "引擎未安装或当前不可用", "duration_ms": 0,
+                "message": "Engine not installed or currently unavailable", "duration_ms": 0,
                 "_unavailable": True}
     kwargs = {"timeout_seconds": timeout_seconds}
     if model.strip():

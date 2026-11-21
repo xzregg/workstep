@@ -18,7 +18,7 @@ def test_workflow_quick_buttons_validate_and_preserve_local_scope():
     bad = {**raw, "nodes": [{**raw["nodes"][0], "quickButtons": [
         {**raw["nodes"][0]["quickButtons"][0], "script_path": "../../escape.sh"},
     ]}]}
-    with pytest.raises(WorkflowValidationError, match="脚本路径"):
+    with pytest.raises(WorkflowValidationError, match='script path'):
         WorkflowDefinition.load(bad).validate()
     with pytest.raises(WorkflowValidationError, match="inheritProjectQuickButtons"):
         WorkflowDefinition.load({**raw, "inheritProjectQuickButtons": "false"}).validate()
@@ -53,7 +53,7 @@ def test_action_button_keeps_confirmation_input_prompt():
         **buttons[0], "require_confirmation": False,
     }])
     assert without_confirmation[0]["confirmation_input_prompt"] == "请输入 Commit 消息"
-    with pytest.raises(ValueError, match="确认输入提示"):
+    with pytest.raises(ValueError, match='input prompt'):
         normalize_quick_buttons([{
             **buttons[0], "confirmation_input_prompt": "x" * 201,
         }])

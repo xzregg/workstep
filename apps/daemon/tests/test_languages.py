@@ -33,7 +33,7 @@ async def test_new_builtin_languages_are_protected_and_available_as_fallbacks(tm
     assert (await manager.validate(str(root)))['ok']
     manifest['locale'] = locale
     manifest_path.write_text(json.dumps(manifest))
-    with pytest.raises(ValueError, match='内置语言不可覆盖'):
+    with pytest.raises(ValueError, match='Built-in languages cannot be overwritten'):
         await manager.validate(str(root))
 
 @pytest.mark.asyncio

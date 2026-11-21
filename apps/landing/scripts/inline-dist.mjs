@@ -7,7 +7,7 @@ const distDir = path.join(appDir, 'dist')
 
 function requiredMatch(html, pattern, label) {
   const match = html.match(pattern)
-  if (!match) throw new Error(`无法在构建产物中找到${label}`)
+  if (!match) throw new Error(`Could not find ${label} in the build artifacts`)
   return match
 }
 
@@ -52,10 +52,10 @@ export function inlineDocument({ html, javascript, stylesheet, favicon, brandMar
     .filter(([, pattern]) => pattern.test(output))
     .map(([label]) => label)
   if (remaining.length > 0) {
-    throw new Error(`构建产物仍包含无法通过 file:// 加载的外部资源：${remaining.join('、')}`)
+    throw new Error(`Build artifacts still contain external resources that cannot be loaded via file://: ${remaining.join('、')}`)
   }
   if (output.lastIndexOf('<script>') < output.indexOf('<div id="root">')) {
-    throw new Error('应用脚本必须在 React 根节点之后执行')
+    throw new Error('Application scripts must execute after the React root node')
   }
 
   return output

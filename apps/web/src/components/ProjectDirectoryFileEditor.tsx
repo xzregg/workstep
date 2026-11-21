@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fsApi } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import Spinner from './Spinner'
 import { languageForFilename } from './CodeFilePreview'
@@ -80,7 +80,7 @@ export default function ProjectDirectoryFileEditor({
           </Button>
         </div>
       </div>
-      {error && <div className="project-directory-editor-error" role="alert">{error}</div>}
+      {error && <div className="project-directory-editor-error" role="alert">{localizeErrorDisplay(error)}</div>}
       {loading ? (
         <div className="project-directory-browser-state"><Spinner size={14} /> {t('common.loading')}</div>
       ) : original !== null && isCode ? (

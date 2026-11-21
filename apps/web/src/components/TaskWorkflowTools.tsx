@@ -1,5 +1,5 @@
 import { lazy, Suspense, useRef, useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { taskWorkflowApi, type TaskWorkflowConfiguration } from '../api/taskWorkflow'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
@@ -88,7 +88,7 @@ export default function TaskWorkflowTools({ taskId, projectId, configuration, on
           {configuration.conflict && <div role="alert">{configuration.conflict}</div>}
           {stale && <div role="alert">{t('taskWorkflow.changed')}</div>}
           {!editable && <div>{t('taskWorkflow.stopFirst')}</div>}
-          {error && <div role="alert">{error}</div>}
+          {error && <div role="alert">{localizeErrorDisplay(error)}</div>}
         </div>
         <div className="task-workflow-canvas">
           <Suspense fallback={<Spinner />}>

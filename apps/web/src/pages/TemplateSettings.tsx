@@ -15,7 +15,7 @@ import {
   templateApi,
   type TemplateInfo,
 } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 
 const TEMPLATE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
@@ -206,7 +206,7 @@ export default function TemplateSettings() {
       </div>
 
       {error && (
-        <div style={{ marginBottom: 12, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)' }}>{error}</div>
+        <div style={{ marginBottom: 12, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)' }}>{localizeErrorDisplay(error)}</div>
       )}
 
       {loading ? (
@@ -357,7 +357,7 @@ export default function TemplateSettings() {
               background: 'color-mix(in oklab, var(--danger), transparent 92%)',
               borderBottom: '1px solid var(--border-soft)',
             }}>
-              {metaError}
+              {localizeErrorDisplay(metaError)}
             </div>
           )}
           <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'stretch' }}>

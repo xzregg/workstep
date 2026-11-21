@@ -140,11 +140,11 @@ def test_deepseek_harness_config_accepts_enabled_chat_provider(
     }
 
     deepseek_provider["protocols"] = ["openai_responses"]
-    with pytest.raises(ValueError, match="协议"):
+    with pytest.raises(ValueError, match="requires a provider that supports OpenAI Chat Completions"):
         asyncio.run(engine.save_config_values({"provider_id": "deepseek-official"}))
 
     deepseek_provider.update(protocols=["openai_chat_completions"], enabled=False)
-    with pytest.raises(ValueError, match="停用"):
+    with pytest.raises(ValueError, match="^Selected provider was not found or is disabled$"):
         asyncio.run(engine.save_config_values({"provider_id": "deepseek-official"}))
 
 

@@ -69,9 +69,9 @@ def set_qoder_sdk_config(
         try:
             value = int(max_turns)
         except ValueError:
-            raise ValueError("最大轮数必须是正整数")
+            raise ValueError("Maximum number of rounds must be a positive integer")
         if value <= 0:
-            raise ValueError("最大轮数必须是正整数")
+            raise ValueError("Maximum number of rounds must be a positive integer")
         raw["max_turns"] = value
     else:
         raw.pop("max_turns", None)

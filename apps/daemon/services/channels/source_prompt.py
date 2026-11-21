@@ -15,12 +15,16 @@ def message_source(message, platform):
     return source_snapshot({'platform': platform, **{key: getattr(message, key) for key in SOURCE_FIELDS if key != 'platform'}})
 
 
-def request_source_prompt(user_message, *, previous_channel=False):
+def stored_message_source(user_message):
     try:
         metadata = json.loads(user_message.prompt_json or '{}')
     except (ValueError, TypeError):
         metadata = {}
-    source = source_snapshot(metadata.get('channel_source')) if isinstance(metadata, dict) else {}
+    return source_snapshot(metadata.get('channel_source')) if isinstance(metadata, dict) else {}
+
+
+def request_source_prompt(user_message, *, previous_channel=False):
+    source = stored_message_source(user_message)
     if source:
         header = '## Channel request background'
         source['origin'] = 'channel'

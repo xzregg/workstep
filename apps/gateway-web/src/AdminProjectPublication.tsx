@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -32,11 +33,11 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
     void fetch(`/api/admin/devices?status=active&sort=name&direction=asc&page=${devicePage}&page_size=25`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error('设备列表加载失败。')
+      if (!response.ok) throw new Error('Failed to load device list.')
       const data = await response.json()
       if (!controller.signal.aborted) { setDevices(data.devices ?? []); setDeviceTotal(data.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '设备列表加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load device list.')
     }).finally(() => { if (!controller.signal.aborted) setDeviceLoading(false) })
     return () => controller.abort()
   }, [devicePage, deviceRevision])
@@ -50,11 +51,11 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
       if (!response.ok) throw new Error(response.status === 503
-        ? 'PC 已离线或项目目录暂不可用。' : '可发布项目加载失败。')
+        ? 'PC is offline or the project directory is temporarily unavailable.' : 'Failed to load publishable project.')
       const data = await response.json()
       if (!controller.signal.aborted) { setProjects(data.projects ?? []); setProjectTotal(data.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '可发布项目加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load publishable project.')
     }).finally(() => { if (!controller.signal.aborted) setProjectLoading(false) })
     return () => controller.abort()
   }, [selectedDevice, projectPage, projectSearch, projectRevision, revision])
@@ -65,14 +66,14 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const response = await fetch(`/api/admin/devices/${encodeURIComponent(selectedDevice.id)}/projects/${encodeURIComponent(selectedProject.host_project_id)}/publish`, {
         method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
       })
       if (!response.ok) throw new Error(response.status === 404
-        ? '项目已不在这台 PC 的目录中，请刷新列表。' : '发布项目失败。')
+        ? 'The project is no longer in the directory on this PC. Please refresh the list.' : 'Failed to publish project.')
       setSelectedProject(null); setPassword(''); onPublished()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '发布项目失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to publish project.') }
     finally { setBusy(false) }
   }
 
@@ -122,7 +123,7 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
         <button type="button" disabled={projectPage >= Math.ceil(projectTotal / 25) || projectLoading}
           onClick={() => setProjectPage(value => value + 1)}>下一页</button></div>
     </section>}
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button"
       onClick={() => selectedDevice ? setProjectRevision(value => value + 1) : setDeviceRevision(value => value + 1)}>
         重试</button></p>}
     {selectedProject && selectedDevice && <GatewayConfirmDialog title="发布平台项目"
@@ -130,7 +131,7 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
       confirmLabel="确认发布" busy={busy} disabled={!passwordReady} onConfirm={() => void publish()}
       onCancel={() => { setSelectedProject(null); setPassword('') }}
       passwordConfirmation={<PasswordConfirmation id="publish-project-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     </GatewayConfirmDialog>}
   </section>
 }
@@ -146,19 +147,19 @@ export function AdminUnpublishProjectDialog({ project, csrf, onClose, onComplete
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const response = await fetch(`/api/admin/projects/${encodeURIComponent(project.id)}/unpublish`, {
         method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
       })
-      if (!response.ok) throw new Error('取消发布失败。')
+      if (!response.ok) throw new Error('Unpublish failed.')
       onComplete()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '取消发布失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unpublish failed.') }
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="取消项目发布"
     message={`确认取消「${project.name}」的发布？只移除 Gateway 登记和访问授权，不删除宿主 PC 的项目目录或数据。`}
     confirmLabel="取消发布" busy={busy} disabled={!passwordReady} onConfirm={() => void unpublish()} onCancel={onClose}
       passwordConfirmation={<PasswordConfirmation id="unpublish-project-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   </GatewayConfirmDialog>
 }

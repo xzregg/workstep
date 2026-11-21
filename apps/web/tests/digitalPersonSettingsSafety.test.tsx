@@ -64,7 +64,7 @@ test('pending child save locks navigation and the outer dialog until it settles'
  voiceWakeApi.get=async()=>({keyword,sensitivity:'balanced'}) as any
  voiceWakeApi.save=async value=>{await new Promise<void>(r=>release=r);keyword=value.keyword;return value as any}
  try{
-  await ui.click('[data-body-part=ears]');await ui.input('.voice-wake-settings input','新唤醒词');await ui.click('[data-save-wake]')
+  await ui.click('[data-body-part=ears]');await ui.click('#speech-tab-wake');await ui.input('.voice-wake-settings input[name=wake_keyword]','新唤醒词');await ui.click('[data-save-wake]')
   assert.equal(ui.busy(),true)
   await ui.click('[data-body-part=feet]')
   assert.ok(ui.host.querySelector('.voice-wake-settings'));assert.equal(document.querySelector('.confirm-dialog-confirm'),null)
@@ -171,7 +171,7 @@ test('outer settings cannot close, escape or change sections while a child save 
  voiceWakeApi.get=async()=>({keyword:'你好小研',sensitivity:'balanced'}) as any
  voiceWakeApi.save=async value=>{await new Promise<void>(r=>release=r);return value as any}
  try{
-  await ui.click('[data-body-part=ears]');await ui.input('.voice-wake-settings input','新的唤醒词');await ui.click('[data-save-wake]')
+  await ui.click('[data-body-part=ears]');await ui.click('#speech-tab-wake');await ui.input('.voice-wake-settings input[name=wake_keyword]','新的唤醒词');await ui.click('[data-save-wake]')
   assert.equal(ui.host.querySelector<HTMLButtonElement>('.settings-dialog-header .btn-icon')!.disabled,true)
   await ui.click('.settings-dialog-header .btn-icon')
   await ui.click('.settings-nav button:not([aria-current=page])')

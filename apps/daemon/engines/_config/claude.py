@@ -33,9 +33,9 @@ def normalize_claude_model_map(raw: Any) -> dict[str, dict[str, str]]:
         try:
             raw = json.loads(text)
         except ValueError:
-            raise ValueError("模型映射格式不正确")
+            raise ValueError("Incorrect model mapping format")
     if isinstance(raw, dict) is False:
-        raise ValueError("模型映射格式不正确")
+        raise ValueError("Incorrect model mapping format")
     normalized: dict[str, dict[str, str]] = {}
     for alias, entry in raw.items():
         key = str(alias or "").strip().lower()
@@ -43,14 +43,14 @@ def normalize_claude_model_map(raw: Any) -> dict[str, dict[str, str]]:
             # 未知档位静默丢弃：CLI 新增档位时旧版本不至于保存失败。
             continue
         if not isinstance(entry, dict):
-            raise ValueError("模型映射格式不正确")
+            raise ValueError("Incorrect model mapping format")
         model = str(entry.get("model") or "").strip()
         if not model:
             continue
         name = str(entry.get("name") or "").strip() or model
         for value in (model, name):
             if len(value) > CLAUDE_MODEL_MAP_MAX_LEN:
-                raise ValueError("模型映射内容过长")
+                raise ValueError("Model mapping content is too long")
         normalized[key] = {"model": model, "name": name}
     return normalized
 
@@ -112,16 +112,16 @@ def normalize_claude_custom_settings(raw: Any) -> str:
         try:
             raw = json.loads(text)
         except ValueError:
-            raise ValueError("自定义配置必须是合法 JSON")
+            raise ValueError("Custom configuration must be valid JSON")
     if isinstance(raw, dict) is False:
-        raise ValueError("自定义配置必须是 JSON 对象")
+        raise ValueError("Custom configuration must be a JSON object")
     env = raw.get("env")
     if env is not None:
         if isinstance(env, dict) is False:
-            raise ValueError("env 必须是 JSON 对象")
+            raise ValueError("env must be a JSON object")
         for key, value in env.items():
             if not isinstance(key, str) or isinstance(value, (dict, list)):
-                raise ValueError("env 的值必须是字符串")
+                raise ValueError("The value of env must be a string")
     if original_text is not None:
         return original_text
     return json.dumps(raw, sort_keys=True, ensure_ascii=False)
@@ -262,9 +262,9 @@ def set_claude_agent_sdk_config(
         try:
             value = int(max_turns)
         except ValueError:
-            raise ValueError("最大轮数必须是正整数")
+            raise ValueError("Maximum number of rounds must be a positive integer")
         if value <= 0:
-            raise ValueError("最大轮数必须是正整数")
+            raise ValueError("Maximum number of rounds must be a positive integer")
         raw["max_turns"] = value
     else:
         raw.pop("max_turns", None)

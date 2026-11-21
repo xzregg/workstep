@@ -24,7 +24,7 @@ import {
 } from './taskDetailChat'
 import { findPreferredArtifact } from './taskArtifactRules'
 import { sharedTaskArtifactFiles, sharedTaskFilePath } from './sharedTaskFiles'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import type { SharedTaskApi } from '../api/share'
 import { useSharedTaskSession } from '../hooks/useSharedTaskSession'
 import { MarkdownAssetUrlProvider } from '../contexts/MarkdownAssetUrlContext'
@@ -379,7 +379,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
           />
           {error && (
             <div className="shared-task-unlock-error" role="alert">
-              {error}
+              {localizeErrorDisplay(error)}
             </div>
           )}
           <Button

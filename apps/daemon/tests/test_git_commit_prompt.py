@@ -30,11 +30,15 @@ def task_context(tmp_path):
 
 
 def test_commit_guidance_is_shared_and_does_not_request_automatic_commits():
-    assert 'Only commit when' in SYSTEM_PROMPT
-    assert 'git -c user.name=' in SYSTEM_PROMPT
-    assert 'email' in SYSTEM_PROMPT
-    assert 'Do not change global' in SYSTEM_PROMPT
-    assert 'most recent delivered' in SYSTEM_PROMPT
+    guidance = ' '.join(SYSTEM_PROMPT.split())
+    assert 'Only commit when' in guidance
+    assert 'git -c user.name=' in guidance
+    assert 'Keep the existing email and Git identity configuration.' in guidance
+    assert 'latest delivered "Triggered by" name to that command only' in guidance
+    assert 'GIT_AUTHOR_NAME or GIT_COMMITTER_NAME' in guidance
+    assert 'as literal data' in guidance
+    assert 'Without a trigger name, keep the existing identity.' in guidance
+    assert 'Preserve original authors' in guidance
 
 
 @pytest.mark.parametrize('kind', ['initial', 'followup', 'retry'])

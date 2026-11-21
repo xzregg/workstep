@@ -9,22 +9,32 @@ await build({root,logLevel:'error',publicDir:false,build:{outDir:out,emptyOutDir
 const html=await fs.readFile(path.join(out,'tests/fixtures/digital-person-home/index.html'))
 const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--enable-unsafe-swiftshader']})
 const results=[]
+const conversationOnly=process.argv.includes('--conversation-only')
 try{
  for(const [width,height]of [[320,568],[320,700],[390,844],[1023,900],[1024,900],[1440,1024]]){
   const page=await browser.newPage({viewport:{width,height}}),errors=[]
-  page.on('pageerror',e=>errors.push(e.message))
+  page.on('pageerror',e=>errors.push(e.stack||e.message))
   await page.route('**/*',async route=>{
    const url=new URL(route.request().url())
    if(url.hostname!=='home.invalid')return route.abort()
    if(url.pathname==='/api/fs/serve/companion-test.webp')return route.fulfill({body:await fs.readFile(path.join(root,'src/assets/digital-person-body-relaxed.webp')),contentType:'image/webp'})
    if(url.pathname==='/api/digital-person/affect')return route.fulfill({status:503,json:{detail:'Simulated unavailable relationship'}})
-   if(url.pathname.startsWith('/api/'))return route.fulfill({json:{}})
+   if(url.pathname==='/api/chat-sessions')return route.fulfill({json:{sessions:[{id:'preview',title:'发布复盘'}]}})
+   if(url.pathname==='/api/chat-sessions/preview')return route.fulfill({json:{id:'preview',project_id:'p',title:'发布复盘',engine:'pydantic_ai',messages:[{id:'preview-message',role:'user',status:'succeeded',content:'这是一段用于验收的模拟对话。'}]}})
+   if(url.pathname==='/api/assistant/list')return route.fulfill({json:{assistants:[{name:'chat_session',configured:{engine:'pydantic_ai'},available_engines:[{id:'pydantic_ai',name:'Pydantic AI',installed:true,enabled:true,configured:true}]}]}})
+   if(url.pathname.startsWith('/api/'))return route.fulfill({json:{providers:[],buttons:[],runs:[],active_action_ids:[],sessions:[]}})
    if(url.pathname==='/')return route.fulfill({body:html,contentType:'text/html'})
    const filename=path.resolve(out,decodeURIComponent(url.pathname).replace(/^\//,''))
    if(!filename.startsWith(out+path.sep))return route.abort()
    try{return route.fulfill({body:await fs.readFile(filename),contentType:{'.js':'text/javascript','.css':'text/css','.webp':'image/webp','.png':'image/png'}[path.extname(filename)]||'application/octet-stream'})}catch{return route.fulfill({status:404,body:''})}
   })
   await page.addInitScript(()=>{
+   window.conversationAnimations=[]
+   const animate=Element.prototype.animate
+   Element.prototype.animate=function(frames,options){
+    if(this.parentElement?.matches('.digital-person-conversation-layer'))window.conversationAnimations.push(frames)
+    return animate.call(this,frames,options)
+   }
    Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>{
     const canvas=document.createElement('canvas');canvas.width=640;canvas.height=360
     const context=canvas.getContext('2d');context.fillStyle='#487c8c';context.fillRect(0,0,640,360)
@@ -33,13 +43,53 @@ try{
   })
   await page.goto('https://home.invalid/')
   assert.equal(await page.locator('.digital-affect').count(),0)
+  await page.locator('.digital-home').waitFor({timeout:5000}).catch(error=>{
+   if(errors.length)throw new Error(errors.join('\n'))
+   throw error
+  })
+  const dock=await page.locator('.digital-home-voice-dock').boundingBox()
+  await page.evaluate(()=>window.homeFixture.uiAction('fixture-open',{action:'conversation.open',project:'视频功能项目',title:'发布复盘'}))
+  const conversation=page.getByRole('dialog',{name:'发布复盘'})
+  await conversation.getByText('这是一段用于验收的模拟对话。').waitFor({timeout:10000}).catch(async error=>{
+   throw new Error(`${error.message}\n${errors.join('\n')}\n${await page.locator('body').innerText()}`)
+  })
+  await conversation.evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished))})
+  const panelBox=await conversation.boundingBox()
+  assert.ok(panelBox.x>=0&&panelBox.y>=0&&panelBox.x+panelBox.width<=width&&panelBox.y+panelBox.height<=dock.y+1)
+  assert.equal(await page.locator('.digital-home-microphone').evaluate(el=>{
+   const box=el.getBoundingClientRect()
+   return el.contains(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2))
+  }),true,'microphone stays reachable while the conversation is open')
+  await page.screenshot({path:path.join(artifacts,`home-conversation-${width}-${height}.png`)})
+  await page.evaluate(()=>window.homeFixture.uiAction('fixture-close',{action:'window.close'}))
+  await page.locator('.digital-person-conversation-layer').waitFor({state:'detached'})
+  const animations=await page.evaluate(()=>window.conversationAnimations)
+  assert.equal(animations.length,2)
+  assert.match(animations[0][0].transform,/translate\(.+\) scale\(\.18\)/)
+  assert.equal(animations[0][1].transform,'none')
+  assert.equal(animations[1][0].transform,'none')
+  assert.match(animations[1][1].transform,/scale\(\.18\)/)
+  if(width===390){
+   await page.emulateMedia({reducedMotion:'reduce'})
+   await page.evaluate(()=>window.homeFixture.uiAction('reduced-open',{action:'conversation.open',project:'视频功能项目',title:'发布复盘'}))
+   await conversation.waitFor()
+   await page.evaluate(()=>window.homeFixture.uiAction('reduced-close',{action:'window.close'}))
+   await page.locator('.digital-person-conversation-layer').waitFor({state:'detached'})
+   assert.equal(await page.evaluate(()=>window.conversationAnimations.length),2)
+   await page.emulateMedia({reducedMotion:'no-preference'})
+  }
+  if(conversationOnly){
+   assert.deepEqual(errors,[])
+   results.push({width,height,conversation:true,microphoneReachable:true})
+   await page.close()
+   continue
+  }
   const avatar=page.locator('.digital-home-avatar canvas')
   await page.locator('.digital-home-avatar canvas[data-avatar-pose]').waitFor()
   const frame=await avatar.getAttribute('data-frame')
   await page.waitForFunction(previous=>document.querySelector('canvas')?.dataset.frame!==previous,frame)
   assert.equal(await page.evaluate(()=>window.homeFixture.log.captures),0)
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false)
-  const dock=await page.locator('.digital-home-voice-dock').boundingBox()
   assert.ok(dock.y>=0&&dock.y+dock.height<=height,`${width}: voice controls inside viewport`)
   await page.screenshot({path:path.join(artifacts,`home-idle-${width}-${height}.png`)})
   const controls=await page.locator('.digital-home-settings, .digital-home-voice-dock > button:not(.digital-home-keyboard)').evaluateAll(buttons=>buttons.map(button=>{
@@ -149,7 +199,8 @@ try{
   // ASR text and one synthetic response, then real WebAudio schedules PCM output.
   await page.locator('.digital-home-microphone').click()
   await page.waitForFunction(()=>window.homeFixture.log.captures===1)
-  await page.evaluate(()=>window.homeFixture.sound(.12))
+  await page.evaluate(()=>{window.homeFixture.sound(.12);window.homeFixture.silence()})
+  await page.locator('.digital-home-end[data-action=send]').click()
   await page.waitForFunction(()=>window.homeFixture.log.sent.length===1,{},{timeout:6000})
   await page.waitForFunction(()=>window.homeFixture.log.audio>0,{},{timeout:6000})
   await page.waitForFunction(()=>window.homeFixture.log.playbackFrames>0,{},{timeout:6000})
@@ -183,7 +234,7 @@ try{
   await page.waitForFunction(()=>document.querySelector('.digital-home-microphone')?.getAttribute('aria-pressed')==='false')
   assert.equal(await page.evaluate(()=>window.homeFixture.log.captures),captures)
   const audioAtHistory=await page.evaluate(()=>window.homeFixture.log.audio)
-  await page.locator('.digital-home-transcript-button').click()
+  await page.locator('.digital-home-dock-transcript').click()
   await page.locator('.digital-home-chat .home-fixture-transcript').waitFor()
   assert.equal(await page.evaluate(()=>window.homeFixture.log.audio),audioAtHistory)
   await page.screenshot({path:path.join(artifacts,`home-history-${width}-${height}.png`)})
@@ -193,4 +244,4 @@ try{
   await page.close()
  }
 }finally{await browser.close()}
-await fs.writeFile(path.join(artifacts,'results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results))
+await fs.writeFile(path.join(artifacts,conversationOnly?'conversation-results.json':'results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results))

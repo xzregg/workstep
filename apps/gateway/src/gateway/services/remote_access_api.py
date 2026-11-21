@@ -36,6 +36,7 @@ from gateway.services.workspace_projects import requested_host_project, workspac
 """One-time, host-bound entry into a managed PC's remote workspace."""
 
 REMOTE_SESSION_SECONDS = 3600
+SPEECH_START_RECONNECT_SECONDS = 8
 
 
 def _remote_cookie_grants(call: GatewayCall, token: str) -> list[CredentialGrant]:
@@ -170,7 +171,17 @@ async def proxy_remote_request(call: GatewayCall):
                 return await call.control_connections.request_data(device_id)
             if is_workspace_asset(call):
                 return await proxy_workspace_asset(call, connect, **identity)
-            connection = await connect()
+            if call.operation == 'POST' and call.target.path == '/api/speech/sessions':
+                # Give a restarting host time to reattach before sending the write.
+                async with asyncio.timeout(SPEECH_START_RECONNECT_SECONDS):
+                    while True:
+                        try:
+                            connection = await connect()
+                            break
+                        except (ConnectionError, SocketClosed):
+                            await asyncio.sleep(0.5)
+            else:
+                connection = await connect()
             return await connection.proxy_http(call, **identity)
 
         if auth_session.project_id:

@@ -31,14 +31,14 @@ class CodexApprovalRouter:
         self.closed = False
         sync = getattr(getattr(client, '_client', None), '_sync', None)
         if sync is None or not hasattr(sync, '_approval_handler'):
-            raise RuntimeError('当前 openai-codex SDK 不支持 WorkStep 审批桥接')
+            raise RuntimeError('The current openai-codex SDK does not support WorkStep approval bridging')
         self.sync = sync
         start = getattr(sync, 'start', None)
         if callable(start):
             def start_native():
                 with self.start_lock:
                     if self.closed:
-                        raise RuntimeError('Codex 客户端已关闭')
+                        raise RuntimeError('Codex client has been closed')
                     start()
             sync.start = start_native
         native_router = getattr(sync, '_router', None)
@@ -65,7 +65,7 @@ class CodexApprovalRouter:
         handle = getattr(sync, '_handle_server_request', None)
         write = getattr(sync, '_write_message', None)
         if callable(handle) != callable(write) or (hasattr(sync, '_proc') and not callable(handle)):
-            raise RuntimeError('当前 openai-codex SDK 不支持非阻塞审批桥接')
+            raise RuntimeError('The current openai-codex SDK does not support non-blocking approval bridging')
         if callable(handle):
             self.write = write
             deferred = object()

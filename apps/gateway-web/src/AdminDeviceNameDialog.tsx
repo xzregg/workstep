@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useState } from 'react'
 import { GatewayModal } from './GatewayModal'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -29,9 +30,9 @@ export function AdminDeviceNameDialog({ device, csrf, onComplete, onClose }: {
         body: JSON.stringify({ name: name.trim() }),
       })
       if (!response.ok) throw new Error(response.status === 403
-        ? '当前账号没有修改此设备名称的权限。' : '设备名称保存失败，请重试。')
+        ? 'The current account does not have permission to modify this device name.' : 'Failed to save device name. Please try again.')
       onComplete()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '设备名称保存失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to save device name.') }
     finally { setBusy(false) }
   }
 
@@ -49,7 +50,7 @@ export function AdminDeviceNameDialog({ device, csrf, onComplete, onClose }: {
       <input id="admin-device-name" value={name} maxLength={256} disabled={busy}
         onChange={event => setName(event.target.value)} />
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在保存名称…</p>}
-      {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+      {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
     </form>
     {discard && <GatewayConfirmDialog title="放弃修改设备名称" message="尚未保存的名称将丢失。"
       confirmLabel="放弃并关闭" cancelLabel="继续编辑" onConfirm={onClose} onCancel={() => setDiscard(false)} />}

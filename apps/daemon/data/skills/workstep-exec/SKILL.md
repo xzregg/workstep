@@ -1,24 +1,27 @@
 ---
 name: workstep-exec
-description: Turn an idea in project chat into a workflow. Present a diagram first; after user confirmation, create the workflow and task, start execution, and provide a task details button.
+description: Turn an idea in project chat into a workflow. Only for repeatable, standardizable work; not for one-off tasks. Define nonempty step artifacts and map upstream outputs to downstream inputs. Present a diagram first; after user confirmation, create the workflow and task, start execution, and provide a task details button.
 ---
 
 # Workflow Mode
 
-Use the requirements in the current conversation to plan work steps, create a workflow and task in the current WorkStep project, and execute them. Present the plan first. Wait for explicit user confirmation before creating resources or starting execution.
+## Only create a workflow for repeatable work
+
+A one-off task is not worth a dedicated workflow. Check whether the work will recur or form a process worth standardizing.
+
+- For a one-off task without an explicit workflow request, briefly explain why a workflow is unnecessary and use `task create` without `--workflow` for the project default (see `workstep-cli`). If repeatability is unclear, ask one concise question.
+- For repeatable work or an explicit workflow request, use the process below. If a workflow already fits, skip `workflow create` and use `--workflow <existing_id>` when creating the task.
 
 ## Language
 
-Respond in the user's language unless they explicitly request another language. Localize all user-facing text, including questions, diagrams, step titles and prompts, workflow names, task titles and descriptions, acceptance criteria, confirmation buttons, task details links, status messages, and errors. The English labels and prose in the examples below are examples to translate, not a requirement to respond in English. Keep skill identifiers, tool names, commands, JSON keys, action event names, resource IDs, and returned URLs unchanged.
+Respond in the user's language unless asked otherwise. Localize all user-facing text, including saved workflow and task text, step prompts, diagrams, button labels, action instructions, and errors. Preserve skill identifiers, tool names, commands, JSON keys, action event names, resource IDs, and returned URLs.
 
 ## Present the diagram, then request confirmation
 
-1. Use the current conversation to understand the goal, inputs, outputs, constraints, and acceptance criteria. Ask concise questions when essential information is missing; otherwise, propose a plan directly.
-2. Break the actual requirements into steps dynamically. Define each step's responsibility, prompt, output, and dependencies. Do not mechanically apply a fixed requirements/development/testing template. Independent steps may run in parallel.
-3. Begin the proposal with a basic Mermaid flowchart in a separate `mermaid` code fence, with node labels enclosed in double quotes. Then describe the steps, proposed workflow name, task title, complete task description, and acceptance criteria.
-4. Workflow names must be nonempty and contain no whitespace, including spaces, tabs, or newlines. Canvas node `id` values must be unique positive integers. Store each step identifier in `type`: it must start with an English letter, use only English letters, digits, underscores, or hyphens, and be unique within the workflow. Use `position: {"x":number,"y":number}` for layout. The diagram, dependencies, and created definition must agree.
-5. Let the user revise the plan through conversation. Update the diagram and step descriptions after each revision; use only the latest confirmed version. Before confirmation, do not create workflows or tasks, modify project code, run development tasks, or start any steps.
-6. End the proposal with a localized "Create and start" confirmation button using the following A2UI fence (one JSON object per line). Generating the button does not constitute user confirmation. Proceed to the next section only after receiving its `confirm_workflow_creation` user message or an explicit user instruction to confirm creation and execution. Translate the button text and the natural-language `instruction` value into the user's language; preserve the event name and JSON structure.
+1. Derive the goal, inputs, outputs, constraints, and acceptance criteria from the current conversation. Ask only for essential missing information.
+2. Tailor the steps to the work. Define responsibilities, prompts, and dependencies; independent steps may run in parallel. Give every step, including the last, at least one concrete artifact with a name, file format or directory type, and required contents. Identify the upstream artifact each downstream step consumes. Resolve missing or placeholder artifacts and handoffs before asking for confirmation.
+3. Start with a basic `mermaid` flowchart in its own fence with double-quoted node labels. Follow it with the steps and handoffs, workflow name, task title, complete task description, and acceptance criteria. The workflow name must be nonempty and contain no whitespace.
+4. Update the diagram and step descriptions after each revision. End the proposal with the localized "Create and start" A2UI button below, keeping its JSON structure and one object per line. Wait for the user to approve the latest plan via a `confirm_workflow_creation` message or a direct instruction to create and execute it. Until then, do not create resources, edit project code, run development tasks, or start steps.
 
 ```a2ui
 {"version":"v0.9.1","createSurface":{"surfaceId":"workstep-exec-confirm","catalogId":"basic"}}
@@ -29,38 +32,36 @@ Respond in the user's language unless they explicitly request another language. 
 
 Prefer native WorkStep tools. If unavailable, use the supported CLI from the built-in `workstep-cli` skill. In a source checkout, use `uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli`; in this repository, `uv run --no-sync --directory apps/daemon python -m cli` is also supported. In a packaged desktop environment, use `"$WORKSTEP_CLI_PYTHON" "$WORKSTEP_DAEMON_DIR/cli.py"`. Below, `<cli>` stands for the selected command prefix, not an executable name. Add `--json` to every invocation. Do not construct HTTP requests yourself, guess ports, read credentials, or modify databases directly.
 
-1. Use `project list` to identify the current project's real ID by matching the working directory and known project context; ask if ambiguous. Read that project's `workflow list` and, when needed, `engine list`. Reuse available project execution defaults; never invent resource IDs or engine configurations.
-2. Save the complete confirmed workflow definition to a temporary JSON file, then call:
+1. Match `project list` to the current working directory and known project context; ask if ambiguous. Check `workflow list` and reuse execution defaults. Query `engine list` when selecting an engine, model, or provider. Use real IDs and configurations.
+2. Verify that the canvas matches the confirmed diagram and dependencies. Give nodes unique positive integer `id` values, unique `type` identifiers matching `[A-Za-z][A-Za-z0-9_-]*`, and numeric `position.x` and `position.y`. Connect existing nodes and keep forward dependencies acyclic. Each node needs a nonempty `outputs` array with concrete `name` and `type` values. Connect each forward edge from a declared output (`fromPort`) to its consumer's declared input (`toPort`). Prompts must specify what to read and what substantive content to write at each declared output path. If anything is missing or unclear, revise and get confirmation before creating. Save the confirmed canvas to a temporary JSON file, then run the command below.
 
    `<cli> workflow create --project <project_id> --name <workflow_name> --steps-file <temporary_json_file> --json`
 
-   The corresponding native operation is `workstep_create_workflow(project_id, name, steps, confirm="yes")`. `steps` is a canvas object. This example illustrates the format only; generate the actual steps dynamically from the requirements:
+   The native operation is `workstep_create_workflow(project_id, name, steps, confirm="yes")`, where `steps` is the canvas shown in the example below.
 
    ```json
-   {"nodes":[{"id":1,"type":"investigate","title":"Analyze the problem","prompt":"Analyze the task description and identify the problem and acceptance criteria","position":{"x":80,"y":80}},{"id":2,"type":"deliver","title":"Deliver the result","prompt":"Complete the task using the upstream analysis and verify each acceptance criterion","position":{"x":400,"y":80}}],"connections":[{"from":1,"fromPort":0,"to":2,"toPort":0,"kind":"solid"}]}
+   {"nodes":[{"id":1,"type":"investigate","title":"Analyze the problem","prompt":"Write the problem analysis at its declared output path with the scope, constraints, and acceptance criteria.","outputs":[{"name":"Problem analysis","type":"Markdown"}],"position":{"x":80,"y":80}},{"id":2,"type":"deliver","title":"Deliver the result","prompt":"Read the problem analysis, complete the task, and write the delivery report at its declared output path with the result and evidence for each acceptance criterion.","inputs":[{"name":"Problem analysis","type":"Markdown"}],"outputs":[{"name":"Delivery report","type":"Markdown"}],"position":{"x":400,"y":80}}],"connections":[{"from":1,"fromPort":0,"to":2,"toPort":0,"kind":"solid"}]}
    ```
 
-   Connection endpoints must reference real node IDs, and ordinary dependencies must not form cycles. Query available configurations before specifying an engine, model, or provider. Do not modify existing workflows or the project's default workflow.
-3. Check the successful response and use the returned workflow ID to create one task. Disable automatic startup so that a startup failure still leaves a clearly identified task:
+   Do not modify existing workflows or the project's default workflow.
+3. After successful workflow creation, use the returned ID to create one task with automatic startup disabled.
 
    `<cli> task create --project <project_id> --workflow <returned_workflow_id> --title <task_title> --desc <task_description_and_acceptance_criteria> --no-auto-start --json`
 
-   The corresponding native operation is `workstep_create_task`, with the same fields plus `auto_start=false, confirm="yes"`.
-4. Record the task ID and `task_detail_url` from the successful response, then call:
+   Use the same fields with `workstep_create_task` and add `auto_start=false, confirm="yes"`.
+4. Record the task ID and `task_detail_url` from the successful response, then start that task.
 
    `<cli> task run --project <project_id> --task <returned_task_id> --json`
 
-   The corresponding native operation is `workstep_run_task(project_id, task_id, confirm="yes")`. Start only the task just created. Do not describe an accepted execution request as completed work.
-5. Never claim success after `ok=false`, a nonzero exit code, or an interrupted request. Preserve and reuse any workflow or task already created; do not create another task because startup failed. When the result is uncertain, verify it with list/get before retrying. Never blindly retry creation. For repeated confirmation clicks, check the creation results already recorded in the conversation; do not create duplicates or restart a running task.
+   Use `workstep_run_task(project_id, task_id, confirm="yes")` for native execution. Acknowledgment of the start request confirms submission only.
+5. Report `ok=false`, nonzero exits, and interrupted requests accurately. Preserve any workflow or task already created, including after startup failure. Before retrying an uncertain result, verify it with list/get. For repeated confirmations, check prior creation results to avoid duplicate resources or restarting a running task.
 
 ## Always include the task details button after task creation
 
-After successful task creation, briefly report the workflow name, task name, and actual startup status, then output a localized link in this form:
+Once the task exists, report the workflow and task names and actual startup status, including any startup failure. WorkStep renders the localized link below as a button when it uses the exact returned `task_detail_url`.
 
 ```markdown
 [Open task details](<task_detail_url>)
 ```
 
-Translate the link label into the user's language. Replace `<task_detail_url>` in parentheses with the exact real value returned by the successful tool response. WorkStep renders this link as a button that opens task details inside the application. Do not output a literal placeholder, guess task IDs, construct a host address, or claim that a button exists without including the link.
-
-If task creation succeeded but startup failed, still include the same task details button and explain the startup failure. If task creation failed, do not invent a button. Buttons in earlier replies should remain usable.
+Include the link only with a URL from successful task creation. Earlier buttons remain usable.

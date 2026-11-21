@@ -28,7 +28,9 @@ from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import InternalEvent, is_commentary
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from agent_assistants.engine_invocation import run_engine_turn
-from agent_assistants.session_state import AssistantSession, AcceptedTurn
+from agent_assistants.session_state import (
+    AssistantSession, AcceptedTurn, PROVIDER_HANDOFF_REQUIRED, provider_context_changed,
+)
 from agent_assistants.persistence import PersistenceAdapter, MemoryPersistence, JsonRowPersistence
 from agent_assistants.history import _PERSISTED_EVENT_TYPES, _prune_events, default_history_message, repair_message_times
 from agent_assistants.event_truncation import truncate_large_tool_payloads
@@ -65,6 +67,11 @@ _UPLOADS_PATH_RE = re.compile(r"([^\s`\"'()]+\.workstep/uploads/[^\s`\"'()]+)")
 _CODEX_ROLLOUT_MISSING_RE = re.compile(
     r"no rollout found for thread id\s+\S+",
     re.IGNORECASE,
+)
+
+_CODEX_PROVIDER_MISMATCH_RE = re.compile(
+    r"JSON-RPC error -32600: This chat uses ([^\s,]+), but your current "
+    r"provider is (?!\1\. )[^\s]+\. Switch to \1 to continue\."
 )
 
 
@@ -161,12 +168,12 @@ def validate_provider_override(provider_id: str, engine_id: str) -> str:
         return ""
     provider = config_store.get_provider(provider_id)
     if provider is None:
-        raise ValueError("供应商不存在")
+        raise ValueError("Provider not found")
     if not provider.get("enabled", True):
-        raise ValueError("所选供应商已停用")
+        raise ValueError("Selected provider is disabled")
     engine = create_engine(engine_id)
     if engine is None or not engine.supports_provider(provider):
-        raise ValueError("供应商协议与所选引擎不兼容")
+        raise ValueError("Provider protocol is incompatible with the selected engine")
     return provider_id
 
 
@@ -193,6 +200,7 @@ async def invoke_engine(
     goal_mode: bool | None = None,
     workstep_tools: bool = False,
     config_overrides: dict | None = None,
+    resolved_provider_id: str | None = None,
     live_message_queue: asyncio.Queue | None = None,
     system_prompt: str | None = None,
     system_prompt_each_turn: bool = False,
@@ -219,6 +227,7 @@ async def invoke_engine(
         goal_mode=goal_mode,
         workstep_tools=workstep_tools,
         config_overrides=config_overrides,
+        resolved_provider_id=resolved_provider_id,
         live_message_queue=live_message_queue,
         **({"system_prompt": system_prompt} if system_prompt else {}),
         **({"system_prompt_each_turn": True} if system_prompt_each_turn else {}),
@@ -320,6 +329,7 @@ class AssistantRuntime:
         reset_context: bool = False,
         internal_event: str | None = None,
         message_context: dict | None = None,
+        reserved_message_ids: tuple[str, str] | None = None,
     ) -> AcceptedTurn:
         """Queue one turn; returns immediately with an accepted turn.
 
@@ -340,7 +350,7 @@ class AssistantRuntime:
         normalized_effort = (thinking_effort or "").strip()
         normalized_service_tier = (service_tier or "").strip()
         if normalized_service_tier not in {"", "default", "priority", "fast", "ultrafast"}:
-            raise ValueError("不支持的速度档位")
+            raise ValueError("Unsupported speed settings")
         if not normalized_effort:
             # “默认”表示不覆盖，由引擎自己的配置决定；只有协调助手
             # 有全局协调默认这一层显式回退。
@@ -418,8 +428,7 @@ class AssistantRuntime:
             extra=extra,
         )
 
-        turn_id = str(uuid.uuid4())
-        assistant_message_id = str(uuid.uuid4())
+        turn_id, assistant_message_id = reserved_message_ids or (str(uuid.uuid4()), str(uuid.uuid4()))
         journal_ref: JournalRef | None = None
         if self._config.event_journal is not None:
             try:
@@ -791,10 +800,10 @@ class AssistantRuntime:
         """Persist and queue a user message for the active assistant turn."""
         from .context_commands import reset_command
         if reset_command(content) is not None:
-            raise ValueError("请先停止当前回复，再清空上下文")
+            raise ValueError("Please stop the current reply, then clear the context.")
         normalized = content.strip()
         if not normalized:
-            raise ValueError("消息内容不能为空")
+            raise ValueError("Message content cannot be empty")
         active: tuple[str, dict] | None = None
         for turn_id, state in reversed(self._turn_states.items()):
             if (
@@ -814,10 +823,10 @@ class AssistantRuntime:
         engine = await asyncio.to_thread(create_engine, session.engine)
         capabilities = getattr(engine, "capabilities", None)
         if not getattr(capabilities, "supports_live_step_message", False):
-            raise ValueError("该引擎不支持执行中消息注入")
+            raise ValueError("This engine does not support message injection during execution")
         queue = state.get("live_message_queue")
         if not isinstance(queue, asyncio.Queue):
-            raise ValueError("会话消息队列不可用")
+            raise ValueError("Session message queue unavailable")
 
         message_id = str(uuid.uuid4())
         created_at = utc_now().isoformat()
@@ -856,7 +865,7 @@ class AssistantRuntime:
                         )
                     )
                     if len(existing) != len(pending_ids):
-                        raise ValueError("待插入消息已被处理")
+                        raise ValueError("Pending message has already been processed")
                     self._config.persistence.save(session)
                     delete_pending_insert_batch(pending_ids)
                     return
@@ -1072,6 +1081,7 @@ class AssistantRuntime:
             messages: list[dict] = []
             resolved: str | None = None
             restored_engine_state: Any = None
+            restored_provider: str | None = None
             restored_extra: dict = {}
             restored_engine, restored_model, restored_fast, restored_vision = (
                 engine_id,
@@ -1096,6 +1106,7 @@ class AssistantRuntime:
                 messages = candidate.messages
                 resolved = candidate.resolved_session_id
                 restored_engine_state = candidate.engine_state
+                restored_provider = candidate.session_provider
                 restored_extra = dict(candidate.extra)
                 restored_engine = candidate.engine or engine_id
                 restored_model = (
@@ -1134,6 +1145,7 @@ class AssistantRuntime:
                 resolved_session_id=resolved,
                 extra={**restored_extra, **dict(extra or {})},
                 engine_state=restored_engine_state,
+                session_provider=restored_provider,
             )
             self._sessions[memory_key] = session
         else:
@@ -1302,6 +1314,15 @@ class AssistantRuntime:
     def _session_system_prompt_each_turn(self, session: AssistantSession) -> bool:
         return self._system_prompt_each_turn()
 
+    def _turn_system_prompt_kwargs(self, session: AssistantSession, system_prompt: str, *, rebuilding=False) -> dict:
+        kwargs = {"system_prompt": system_prompt} if system_prompt else {}
+        if self._session_system_prompt_each_turn(session):
+            kwargs["system_prompt_each_turn"] = True
+        return kwargs
+
+    def _record_successful_turn_context(self, session: AssistantSession, message: dict) -> None:
+        pass
+
     def _capture_prompt_input(self) -> bool:
         return self._config.system_prompt_transport or self._system_prompt_each_turn()
 
@@ -1448,6 +1469,21 @@ class AssistantRuntime:
                     )
                     self._turn_states[turn_id]["status"] = "completed"
                     return
+                turn_state = self._turn_states[turn_id]
+                provider_snapshot = await self._resolve_turn_provider(session.engine, turn_state)
+                turn_state["provider_snapshot"] = provider_snapshot
+                selected_provider, _ = provider_snapshot
+                pending_handoff = session.extra.get("pending_handoff") or {}
+                confirmed_provider = pending_handoff.get("effective_provider", pending_handoff.get("target_provider", ""))
+                if pending_handoff and confirmed_provider != selected_provider:
+                    raise ValueError(PROVIDER_HANDOFF_REQUIRED)
+                if not pending_handoff and provider_context_changed(session.session_provider, selected_provider):
+                    if (session.session_provider is not None or session.resolved_session_id
+                            or session.engine_state is not None or any(
+                                item.get("role") == "assistant" and item.get("status") in {"succeeded", "completed"}
+                                for item in session.messages
+                            )):
+                        raise ValueError(PROVIDER_HANDOFF_REQUIRED)
                 await self._prepare_turn_context(session)
                 session.cwd = await asyncio.to_thread(
                     self._config.session_cwd_resolver, session
@@ -1544,6 +1580,7 @@ class AssistantRuntime:
                             resolved = str(event.data.get("session_id") or "")
                             if resolved:
                                 session.resolved_session_id = resolved
+                                session.session_provider = selected_provider
                                 await self._on_engine_session_started(session)
                         elif event.type == "compacted":
                             await self._on_context_compacted(session)
@@ -1814,13 +1851,15 @@ class AssistantRuntime:
                     return publish_live_event
 
                 journaled_events: list[dict] = []
-                invoke_kwargs = {"message_history": session.engine_state}
-                if system_prompt:
-                    invoke_kwargs["system_prompt"] = system_prompt
-                if self._session_system_prompt_each_turn(session):
-                    invoke_kwargs["system_prompt_each_turn"] = True
+                resume_id = session.resolved_session_id
+                known_provider = session.session_provider
+                invoke_kwargs = {
+                    "message_history": session.engine_state,
+                    **self._turn_system_prompt_kwargs(session, system_prompt),
+                }
                 if images:
                     invoke_kwargs["images"] = images
+                session.session_provider = selected_provider
                 try:
                     raw, _events, resolved = await self._invoke_with_idle_watchdog(
                         session,
@@ -1830,23 +1869,26 @@ class AssistantRuntime:
                         turn_model,
                         session.cwd,
                         prompt,
-                        session.resolved_session_id,
+                        resume_id,
                         **invoke_kwargs,
                     )
                 except RuntimeError as exc:
-                    if (
-                        not session.resolved_session_id
-                        or not is_missing_codex_rollout_error(exc)
-                    ):
+                    if _CODEX_PROVIDER_MISMATCH_RE.fullmatch(str(exc)):
+                        raise ValueError(PROVIDER_HANDOFF_REQUIRED) from exc
+                    if not resume_id or not is_missing_codex_rollout_error(exc):
                         raise
+                    if known_provider is None:
+                        raise ValueError(PROVIDER_HANDOFF_REQUIRED) from exc
                     logger.warning(
-                        "Engine session %s lost its rollout; rebuilding from history",
-                        session.resolved_session_id,
+                        "Engine session %s lost its rollout; rebuilding from history", resume_id,
                     )
                     rebuild_prompt = await asyncio.to_thread(
                         self._build_rebuild_prompt,
                         session,
                     )
+                    invoke_kwargs.pop("system_prompt", None)
+                    invoke_kwargs.pop("system_prompt_each_turn", None)
+                    invoke_kwargs.update(self._turn_system_prompt_kwargs(session, system_prompt, rebuilding=True))
                     raw, _events, resolved = await self._invoke_with_idle_watchdog(
                         session,
                         turn_id,
@@ -1881,6 +1923,7 @@ class AssistantRuntime:
                 if self._turn_states[turn_id]["status"] == "stopping":
                     raise asyncio.CancelledError
                 session.resolved_session_id = resolved
+                session.session_provider = selected_provider
                 if resolved:
                     await self._on_engine_session_started(session)
                 for engine_event in _events:
@@ -1953,6 +1996,7 @@ class AssistantRuntime:
                     active_message[0],
                     {"type": "status", "data": {"status": "succeeded"}},
                 )
+                self._record_successful_turn_context(session, active_message[0])
                 # 终态对外可见之前先落库最终快照：否则客户端可能在
                 # message_completed / status=completed 之后、最终 save 之前
                 # 读历史，拿到缺 engine_session_id 或旧消息的快照。
@@ -2102,14 +2146,7 @@ class AssistantRuntime:
         from main import gateway_client
         from services.messages import extract_usage_json
 
-        state = self._turn_states.get(turn_id, {})
-        if "usage_provider_id" in state:
-            selected = state["usage_provider_id"]
-            provider_snapshot = state["usage_provider_snapshot"]
-        else:
-            selected, provider_snapshot = await self._usage_provider_snapshot(
-                session.engine, str(state.get("resolved_provider_id") or ""),
-            )
+        selected, provider_snapshot = self._turn_states[turn_id]["provider_snapshot"]
         await gateway_client.record_message_usage(
             project_id=session.project_id or None,
             task_id=session.scope_key if self._config.scope == SCOPE_TASK else None,
@@ -2135,6 +2172,13 @@ class AssistantRuntime:
                         if provider else None)
             provider_snapshot = await asyncio.to_thread(load_provider)
         return selected, provider_snapshot
+
+    async def _resolve_turn_provider(self, engine_id: str, turn_state: dict) -> tuple[str, dict | None]:
+        provider_id = turn_state.get("provider_id") or ""
+        if not provider_id and not turn_state.get("engine_overridden"):
+            defaults = await asyncio.to_thread(config_store.get_assistant_defaults, self._config.name)
+            provider_id = defaults.get("provider_id", "")
+        return await self._usage_provider_snapshot(engine_id, provider_id)
 
     async def _record_journal_event(
         self,
@@ -2384,24 +2428,13 @@ class AssistantRuntime:
             else None
         )
         turn_state = self._turn_states.get(run_key, {}) if run_key else {}
-        turn_provider = turn_state.get("provider_id")
-        if turn_provider or turn_state.get("engine_overridden"):
-            provider_id = turn_provider or ""
-        else:
-            defaults = await asyncio.to_thread(
-                config_store.get_assistant_defaults, self._config.name
-            )
-            provider_id = defaults.get("provider_id", "")
+        provider_snapshot = turn_state.get("provider_snapshot")
+        if provider_snapshot is None:
+            provider_snapshot = await self._resolve_turn_provider(engine_id, turn_state)
+        provider_id, _ = provider_snapshot
         config_overrides = (
             {"provider_id": provider_id} if provider_id else None
         )
-        if run_key:
-            turn_state["resolved_provider_id"] = provider_id
-            selected, snapshot = await self._usage_provider_snapshot(
-                engine_id, provider_id,
-            )
-            turn_state["usage_provider_id"] = selected
-            turn_state["usage_provider_snapshot"] = snapshot
         result = await invoke_engine(
             engine_id,
             model,
@@ -2422,6 +2455,7 @@ class AssistantRuntime:
             goal_mode=goal_mode,
             workstep_tools=await asyncio.to_thread(self._workstep_tools_for_project, turn_state.get("project_id", "")),
             config_overrides=config_overrides,
+            resolved_provider_id=provider_id,
             live_message_queue=turn_state.get("live_message_queue"),
             **({"system_prompt": system_prompt} if system_prompt else {}),
             **({"system_prompt_each_turn": True} if system_prompt_each_turn or self._system_prompt_each_turn() else {}),

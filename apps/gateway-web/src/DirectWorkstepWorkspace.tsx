@@ -63,7 +63,7 @@ function DirectConnection({device,project,resumeNext,onError,onChooseDevice}:{de
      const stop=[401,403,404,422].includes(response.status)
      if(!controller.signal.aborted){
       onError?.()
-      setPermanent(stop);setError(stop?'访问授权已失效，请重新登录或联系管理员。':'网关或设备暂时断开，正在自动重连…');setRetrying(!stop)
+      setPermanent(stop);setError(stop?'Access authorization has expired. Please log in again or contact the administrator.':'Gateway or device temporarily disconnected, reconnecting automatically...');setRetrying(!stop)
       if(!stop)timer=setTimeout(()=>setAttempt(value=>value+1),Math.min(3000*2**attempt,15000))
      }
      return
@@ -73,7 +73,7 @@ function DirectConnection({device,project,resumeNext,onError,onChooseDevice}:{de
    }catch(reason){
     if(controller.signal.aborted)return
     onError?.()
-    setError(reason instanceof Error?reason.message:'连接失败。');setRetrying(true)
+    setError(reason instanceof Error?reason.message:'Connection failed.');setRetrying(true)
     timer=setTimeout(()=>setAttempt(value=>value+1),Math.min(3000*2**attempt,15000))
    }
   }

@@ -95,7 +95,7 @@ export function canCompleteStoppedReview<T extends MessageReview & {
   const stoppedManual = review?.mode === 'manual'
     && review.status === 'terminated'
   const stoppedAuto = review?.mode === 'auto'
-    && review.status === 'failed' && review.error === '手动停止'
+    && review.status === 'failed' && (review.error === 'Stopped manually' || review.error === '手动停止')
   if (!review || (!stoppedManual && !stoppedAuto)
     || !['stopped', 'paused', 'waiting', 'failed'].includes(taskStatus || '')
     || !['cancelled', 'failed', 'pending'].includes(stepStatus || '')

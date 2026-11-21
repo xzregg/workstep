@@ -2,7 +2,7 @@ import Select from './Select'
 import { useEffect, useState } from 'react'
 import { projectAuditApi, type ProjectAuditPage } from '../api/projectAudit'
 import { ApiError } from '../api/transport'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import Icon from './Icon'
 import './ProjectAuditSettings.css'
@@ -66,7 +66,7 @@ export default function ProjectAuditSettings({ projectId }: { projectId: string 
       </Button>
     </div>}
     {loading && <p className="project-audit-loading" role="status"><Icon name="loader-circle" size={16} className="project-audit-spinner" />{t('common.loading')}</p>}
-    {error && <p role="alert">{error}{!forbidden && <Button onClick={() => setRevision(value => value + 1)}>{t('projectAudit.retry')}</Button>}</p>}
+    {error && <p role="alert">{localizeErrorDisplay(error)}{!forbidden && <Button onClick={() => setRevision(value => value + 1)}>{t('projectAudit.retry')}</Button>}</p>}
     {!loading && !error && page?.items.length === 0 && <p>{t('projectAudit.empty')}</p>}
     <ol className="project-audit-list">
       {page?.items.map(item => <li key={item.id} className="project-audit-row">

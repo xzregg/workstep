@@ -202,7 +202,7 @@ async def test_feedback_accepts_visible_check_reply_without_counting_internal_ac
     result = await runtime.feedback('check-answer', 1)
     assert result['feedback']['check-answer'] == 1
     assert result['experience'] == 0
-    with pytest.raises(ValueError, match='找不到数字人回复'):
+    with pytest.raises(ValueError, match='Digital\\ reply\\ not\\ found'):
         await runtime.feedback('missing-answer', 1)
 
 
@@ -220,6 +220,125 @@ async def test_proactive_silent_no_send_and_disabled_does_not_run(runtime, monke
     assert run['status'] == 'silent'
     assert not run.get('deliveries')
     assert (await runtime.state())['runs'] == []
+
+
+async def test_main_chat_injects_pending_reflections_and_only_changed_rules(runtime, monkeypatch):
+    import threading
+    import main
+    from httpx import ASGITransport, AsyncClient
+    from engines.codex_sdk import CodexSDKEngine
+    from engines.core.events import InternalEvent
+    from tests.test_chat_session import _wait_turn
+
+    current, project, store = runtime
+    module = current.chats
+    calls = []
+    failure = ''
+
+    class Engine(CodexSDKEngine):
+        async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+            calls.append((prompt, kwargs.get('system_prompt', '')))
+            if failure and session_id:
+                yield InternalEvent(type='error', data={'message': failure})
+                return
+            yield InternalEvent(type='session_started', data={'session_id': 'native-thread'})
+            yield InternalEvent(type='agent_message_chunk', data={'content': {'type': 'text', 'text': '收到'}})
+            yield InternalEvent(type='done', data={})
+
+    monkeypatch.setattr('agent_assistants.chat_session.create_engine', lambda _: Engine())
+    monkeypatch.setattr('agent_assistants.base.create_engine', lambda _: Engine())
+    monkeypatch.setattr(main, 'project_manager', current.projects)
+    monkeypatch.setattr(main, 'chat_session_module', module)
+    store.set('digital_person', {'enabled': True, 'name': '测试数字人'})
+    store.set('assistant_defaults', {'digital_person': {'engine': 'codex_sdk'}})
+    sid = (await current.main_session())['id']
+    original_execute = project.db.execute_sql
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_context_read(sql, *args, **kwargs):
+        if sql.startswith('SELECT') and 'digital_person_proactive' in repr(args) and not release.is_set():
+            entered.set()
+            assert release.wait(2)
+        return original_execute(sql, *args, **kwargs)
+
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+        async def send(number):
+            response = await client.post(f'/api/chat-sessions/{sid}/chat',
+                                         headers={'Idempotency-Key': f'reflection-chat-{number}'},
+                                         json={'project_id': project.id, 'content': f'问题 {number}'})
+            assert response.status_code == 200, response.text
+            return response.json()['turn_id']
+
+        assert await _wait_turn(module, await send(1)) == 'completed'
+        assert 'Name: 测试数字人' in calls[-1][1]
+        assert '```workstep-ui' in calls[-1][1]
+        assert '"action":"conversation.open"' in calls[-1][1]
+        assert '"action":"window.close"' in calls[-1][1]
+        await current._deliver_local(sid, '主动消息 0', 'voice-notice', proactive=True)
+        await current.mutate(lambda state: state['runs'].append(
+            {'id': 'non-voice-notice', 'trigger': 'manual', 'origin_session_id': sid, 'sources': {}}))
+        monkeypatch.setattr('services.digital_person_channels.get_bindings', lambda: [])
+        delivery = await current._notify('主动消息 1', [], 'non-voice-notice')
+        assert delivery[0]['status'] == 'delivered' and not delivery[0]['proactive']
+        await current._deliver_local(sid, '主动消息 2', 'legacy-notice')
+        await current.mutate(lambda state: state['runs'].append({
+            'id': 'legacy-notice', 'trigger': 'interval', 'deliveries': [
+                {'kind': 'local', 'session_id': sid, 'status': 'delivered', 'proactive': False}],
+        }))
+        await current._deliver_local(sid, '普通通知', 'non-proactive')
+
+        monkeypatch.setattr(project.db, 'execute_sql', slow_context_read)
+        turn = await send(2)
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get('/api/health'), .2)).status_code == 200
+        finally:
+            release.set()
+        assert await _wait_turn(module, turn) == 'completed'
+        instruction = calls[-1][1]
+        assert '"主动消息 0", "主动消息 1", "主动消息 2"' in instruction
+        assert '普通通知' not in instruction
+        assert 'Name: 测试数字人' not in instruction
+
+        module._sessions.clear()
+        assert await _wait_turn(module, await send(3)) == 'completed'
+        assert '主动消息' not in calls[-1][1] and 'Name: 测试数字人' not in calls[-1][1]
+
+        await current._deliver_local(sid, '失败后重试', 'retry-notice', proactive=True)
+        failure = 'test failure'
+        assert await _wait_turn(module, await send(4)) == 'error'
+        assert '失败后重试' in calls[-1][1]
+        failure = ''
+        store.set('digital_person', {'enabled': True, 'name': '更新后身份'})
+        assert await _wait_turn(module, await send(5)) == 'completed'
+        assert '失败后重试' in calls[-1][1] and 'Name: 更新后身份' in calls[-1][1]
+
+        await current._deliver_local(sid, '仅在重建轮待补齐', 'rebuild-notice', proactive=True)
+        failure = 'no rollout found for thread id native-thread'
+        assert await _wait_turn(module, await send(6)) == 'completed'
+        body, instruction = calls[-1]
+        assert 'Name: 更新后身份' in instruction
+        assert '仅在重建轮待补齐' in instruction and '仅在重建轮待补齐' not in body
+        assert '失败后重试' in body and '失败后重试' not in instruction
+
+        failure = ''
+
+        def seed_legacy_receipt(_):
+            import json
+            from models.chat_session import ChatMessage
+            reply = ChatMessage.select().where(ChatMessage.session == sid, ChatMessage.role == 'assistant').order_by(
+                ChatMessage.created_at.desc(), ChatMessage.id.desc()).get()
+            context = json.loads(reply.context_json)
+            context['digital_person_injection']['parts'].update(statistics='old', affect='old')
+            reply.context_json = json.dumps(context)
+            reply.save(only=[ChatMessage.context_json])
+
+        await current.projects.run_db(project.id, seed_legacy_receipt)
+        module._sessions.clear()
+        assert await _wait_turn(module, await send(7)) == 'completed'
+        assert calls[-1][1] == '[WorkStep context update] Previous values for these fields no longer apply: affect, statistics.'
+        assert await _wait_turn(module, await send(8)) == 'completed'
+        assert calls[-1][1] == ''
 
 async def test_proactive_rejects_unknown_sources(runtime, monkeypatch):
     runtime, _, _ = runtime
@@ -297,6 +416,10 @@ async def test_quiet_time_defers_and_keeps_pending_work(runtime,monkeypatch):
     run=await runtime.check(manual=False)
     assert run['status']=='deferred'
     assert run['deliveries']==[]
+    detail=await runtime.run_detail(run['id'])
+    assert detail['notification_message']=='done'
+    assert detail['summary']==''
+    assert detail['outcome']['sent']==0
 
 @pytest.mark.parametrize('endpoint', ['activity', 'activity/records', 'runs/canary-run', 'check', 'feedback'])
 async def test_runtime_api_stays_responsive_under_slow_database(runtime,monkeypatch,endpoint):
@@ -349,8 +472,109 @@ async def test_runtime_api_host_scope_rejects_project_identity(runtime,monkeypat
         async with AsyncClient(transport=ASGITransport(app),base_url='http://test') as client:
             assert (await client.get('/api/digital-person/activity')).status_code==403
             assert (await client.get('/api/digital-person/activity/records')).status_code==403
+            assert (await client.get('/api/digital-person/delegations', params={'project_id': 'other', 'origin_session_id': 'source'})).status_code==403
+            assert (await client.get('/api/digital-person/delegations', params={'delegation_id': 'prior', 'origin_session_id': 'source'})).status_code==403
+            assert (await client.post('/api/digital-person/delegate', json={'project_id': 'other', 'instruction': 'follow up', 'request_id': 'denied', 'continuation_of': 'prior'})).status_code==403
             assert (await client.get('/api/digital-person/runs/private')).status_code==403
             assert (await client.post('/api/digital-person/check')).status_code==403
+            assert (await client.post('/api/digital-person/check?background=true')).status_code==403
+
+async def test_cli_check_calls_real_runtime_without_enabling_settings(runtime, monkeypatch):
+    import main
+    from fastapi import FastAPI
+    from api.digital_person import router
+    from cli import build_parser, dispatch
+    from services.tool_registry import WorkstepClient
+    from httpx import ASGITransport
+
+    current, _, store = runtime
+    monkeypatch.setattr(main, 'digital_person_runtime', current)
+    app = FastAPI()
+    app.include_router(router)
+    client = WorkstepClient(base_url='http://test', transport=ASGITransport(app))
+    args = build_parser().parse_args(['digital-person', 'check', '--json'])
+    result = await dispatch(args, client)
+    assert result == {'status': 'accepted'}
+    assert await current._cycle_task == {'status': 'silent', 'sources': {'no_work': True}, 'deliveries': []}
+    assert store.get('digital_person') == {'enabled': True}
+
+    store.set('digital_person', {'enabled': False})
+    result = await dispatch(args, client)
+    assert result['ok'] is False and 'not enabled' in result['error']
+
+
+async def test_cli_check_returns_before_reflection_and_rejects_duplicates(runtime, monkeypatch):
+    import main
+    from fastapi import FastAPI
+    from api.digital_person import router
+    from cli import build_parser, dispatch
+    from services.tool_registry import WorkstepClient
+    from httpx import ASGITransport
+
+    current, _, _ = runtime
+    started, release = asyncio.Event(), asyncio.Event()
+    calls = []
+    async def check(manual=True):
+        calls.append(manual)
+        started.set()
+        await release.wait()
+        return {'status': 'silent'}
+    monkeypatch.setattr(current, 'check', check)
+    monkeypatch.setattr(main, 'digital_person_runtime', current)
+    app = FastAPI()
+    app.include_router(router)
+    client = WorkstepClient(base_url='http://test', transport=ASGITransport(app))
+    args = build_parser().parse_args(['digital-person', 'check', '--json'])
+    try:
+        assert await asyncio.wait_for(dispatch(args, client), 1) == {'status': 'accepted'}
+        await asyncio.wait_for(started.wait(), 1)
+        assert not current._cycle_task.done()
+        duplicate = await dispatch(args, client)
+        assert duplicate['ok'] is False and 'in progress' in duplicate['error']
+        assert calls == [True]
+        stop = build_parser().parse_args(['digital-person', 'stop', '--json'])
+        assert await dispatch(stop, client) == {'stopped': True}
+        assert current._cycle_task.cancelled()
+    finally:
+        release.set()
+        await current.shutdown()
+
+
+async def test_background_check_keeps_health_responsive_during_slow_profile_read(runtime, monkeypatch):
+    import threading
+    import main
+    from fastapi import FastAPI
+    from api.digital_person import router
+    from services import digital_person
+    from httpx import AsyncClient, ASGITransport
+
+    current, _, _ = runtime
+    profile = digital_person.get_profile()
+    entered, release = threading.Event(), threading.Event()
+    def slow_profile():
+        entered.set()
+        assert release.wait(3)
+        return profile
+    async def check(manual=True):
+        return {'status': 'silent'}
+    monkeypatch.setattr(digital_person, 'get_profile', slow_profile)
+    monkeypatch.setattr(current, 'check', check)
+    monkeypatch.setattr(main, 'digital_person_runtime', current)
+    app = FastAPI()
+    app.include_router(router)
+    @app.get('/health')
+    async def health():
+        return {'ok': True}
+    async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
+        pending = asyncio.create_task(client.post('/api/digital-person/check?background=true'))
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            assert (await asyncio.wait_for(client.get('/health'), .3)).status_code == 200
+        finally:
+            release.set()
+        assert (await pending).json() == {'status': 'accepted'}
+        await current._cycle_task
+
 
 async def test_delegate_returns_before_work_finishes_and_deduplicates(runtime,monkeypatch,tmp_path):
     runtime, home, _=runtime
@@ -377,6 +601,222 @@ async def test_delegate_returns_before_work_finishes_and_deduplicates(runtime,mo
             await asyncio.sleep(.01)
     await runtime.follow_delegations()
     assert (await runtime.state())['delegations'][0]['status']=='completed'
+
+
+async def test_delegate_continuation_reuses_session_and_queues_in_order(runtime, monkeypatch, tmp_path):
+    current, home, _ = runtime
+    target = await asyncio.to_thread(current.projects.init_project, tmp_path / 'continuation')
+    origin = (await current.main_session())['id']
+    other_origin = await current.projects.run_db(home.id, lambda _: current.chats.create_session(home.id))
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    inputs = []
+    prepare = current.chats._prepare_turn_context
+
+    async def pause_first(session):
+        if not entered.is_set():
+            entered.set()
+            await release.wait()
+        await prepare(session)
+
+    async def invoke(engine, model, cwd, prompt, session_id, *args, **kwargs):
+        inputs.append((prompt, session_id))
+        return '完成', [], 'worker-thread'
+
+    monkeypatch.setattr(current.chats, '_prepare_turn_context', pause_first)
+    monkeypatch.setattr(current.chats, '_invoke', invoke)
+    first = await current.delegate(target.id, '初始需求', origin, 'first')
+    await asyncio.wait_for(entered.wait(), 1)
+    try:
+        assert (await current.list_delegations(target.id, origin))['items'][0]['id'] == first['id']
+        assert (await current.list_delegations(target.id, other_origin['id']))['items'] == []
+        with pytest.raises(ValueError):
+            await current.delegate(target.id, '不能跨来源复用', other_origin['id'], 'wrong-origin', first['id'])
+        second = await current.delegate(target.id, '追加验证码', origin, 'second', first['id'])
+        third = await current.delegate(target.id, '追加找回密码', origin, 'third', first['id'])
+        assert second['status'] == third['status'] == 'queued'
+        assert second['session_id'] == third['session_id'] == first['session_id']
+        assert second['message_id'] != first['message_id']
+        replay = await current.delegate(target.id, '追加验证码', origin, 'second', first['id'])
+        assert (replay['id'], replay['message_id']) == (second['id'], second['message_id'])
+        with pytest.raises(ValueError):
+            await current.delegate(target.id, '追加验证码', origin, 'second')
+        assert not inputs
+        await current.follow_delegations()
+        assert (await current.state())['delegations'][1]['status'] == 'queued'
+    finally:
+        release.set()
+    for item in (first, second, third):
+        await current.chats.await_turn(item['turn_id'], timeout=2)
+    assert len(inputs) == 3
+    assert '初始需求' in inputs[0][0] and '追加验证码' not in inputs[0][0]
+    assert '追加验证码' in inputs[1][0] and '追加找回密码' not in inputs[1][0]
+    assert '追加找回密码' in inputs[2][0]
+    fourth = await current.delegate(target.id, '继续优化', origin, 'fourth', first['id'])
+    assert fourth['session_id'] == first['session_id'] and fourth['status'] == 'running'
+    await current.chats.await_turn(fourth['turn_id'], timeout=2)
+    from models.chat_session import ChatSession
+    await current.projects.run_db(target.id, lambda _: ChatSession.update(archived=True).where(ChatSession.id == first['session_id']).execute())
+    with pytest.raises(ValueError, match='archived'):
+        await current.delegate(target.id, '不能继续', origin, 'archived', first['id'])
+    assert await current.projects.run_db(target.id, lambda _: ChatSession.select().count()) == 1
+
+
+async def test_delegate_existing_conversation_registers_and_follows_it(runtime, monkeypatch, tmp_path):
+    import threading
+
+    import httpx
+    import main
+    from cli import build_parser, dispatch
+    from models.chat_session import ChatSession
+    from services.remote_access import ActorSnapshot, actor_context
+    from services.tool_registry import WorkstepClient
+
+    current, _, _ = runtime
+    target = await asyncio.to_thread(current.projects.init_project, tmp_path / 'adopt-chat')
+    origin = (await current.main_session())['id']
+    session = await current.projects.run_db(target.id, lambda _: current.chats.create_session(target.id))
+    sid = session['id']
+    monkeypatch.setattr(main, 'digital_person_runtime', current)
+    started, finish = asyncio.Event(), asyncio.Event()
+    prompts = []
+
+    async def invoke(engine, model, cwd, prompt, session_id, *args, **kwargs):
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            started.set()
+            await finish.wait()
+            return '已有对话结果', [], None
+        return '委派执行完成', [], None
+
+    monkeypatch.setattr(current.chats, '_invoke', invoke)
+    previous = await current.projects.run_db(target.id, lambda _: current.chats.submit_message(
+        target.id, sid, '原先任务', 'original', schedule=False,
+    ))
+    current.chats.start_queued_turn(previous.turn_id)
+    entered, release = threading.Event(), threading.Event()
+    execute_sql = target.db.execute_sql
+
+    def slow_sql(sql, *args, **kwargs):
+        if 'FROM "chat_sessions"' in sql and not entered.is_set():
+            entered.set()
+            release.wait(2)
+        return execute_sql(sql, *args, **kwargs)
+
+    monkeypatch.setattr(target.db, 'execute_sql', slow_sql)
+    transport = httpx.ASGITransport(app=main.app)
+    client = WorkstepClient(base_url='http://test', transport=transport)
+    payload = {'project_id': target.id, 'origin_session_id': origin, 'target_session_id': sid,
+               'instruction': '接着执行', 'request_id': 'adopt'}
+    with actor_context(ActorSnapshot('editor', '编辑者', 'device', '设备', 'managed',
+                                     project_id=target.id, access_level='edit')):
+        denied = await client.call('workstep_delegate_digital_person', {**payload, 'confirm': 'yes'})
+        assert denied == {'ok': False, 'error': 'Project scope denied'}
+        async with httpx.AsyncClient(base_url='http://test', transport=transport) as http:
+            denied = await http.post('/api/digital-person/delegate/existing', json=payload)
+        assert denied.status_code == 403
+    argv = ['digital-person', 'delegate', '--project', target.id, '--session', origin,
+            '--target-session', sid, '--instruction', '接着执行', '--idempotency-key', 'adopt']
+    try:
+        await asyncio.wait_for(started.wait(), 2)
+        args = build_parser().parse_args(argv)
+        pending = asyncio.create_task(dispatch(args, client))
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            async with httpx.AsyncClient(base_url='http://test', transport=transport) as http:
+                assert (await asyncio.wait_for(http.get('/api/health'), .5)).status_code == 200
+        finally:
+            release.set()
+            adopted = await pending
+        assert adopted['session_id'] == sid and adopted['status'] == 'queued'
+        assert adopted['followup_state'] == 'pending'
+        replay = await dispatch(args, client)
+        assert (replay['id'], replay['message_id']) == (adopted['id'], adopted['message_id'])
+        assert len(prompts) == 1
+    finally:
+        finish.set()
+    await current.chats.await_turn(adopted['turn_id'], timeout=2)
+    await current.delegation_management.refresh()
+    state = await current.state()
+    assert [item['id'] for item in state['delegations']] == [adopted['id']]
+    eligible = await current.delegation_management.eligible(state)
+    assert [item['id'] for item in eligible] == [adopted['id']]
+    result, = (await current.list_delegations(target.id, origin, adopted['id']))['items']
+    assert result['status'] == 'completed' and result['result'] == '委派执行完成'
+    activity, = (await current.activity_records())['delegations']
+    assert (activity['id'], activity['session_id']) == (adopted['id'], sid)
+    assert '已有对话结果' in prompts[1] and '接着执行' in prompts[1]
+
+    second = await current.delegate(target.id, '再做一次', origin, 'adopt-again', target_session_id=sid)
+    assert second['continuation_of'] == adopted['id']
+    assert second['session_id'] == sid
+    await current.chats.await_turn(second['turn_id'], timeout=2)
+    assert await current.projects.run_db(target.id, lambda _: ChatSession.select().count()) == 1
+    assert (await current.state())['delegations'][0]['followup_state'] == 'continued'
+    with pytest.raises(ValueError, match='identifier'):
+        await current.delegate(target.id, '接着执行', origin, 'adopt', target_session_id='missing')
+    with pytest.raises(ValueError, match='deleted|not found'):
+        await current.delegate(target.id, '不能发送', origin, 'wrong-project', target_session_id=origin)
+    with pytest.raises(ValueError, match='source session'):
+        await current.delegate(target.id, '不能发送', sid, 'invalid-origin', target_session_id=sid)
+    await current.projects.run_db(target.id, lambda _: ChatSession.update(archived=True).where(
+        ChatSession.id == sid,
+    ).execute())
+    with pytest.raises(ValueError, match='archived'):
+        await current.delegate(target.id, '不能发送', origin, 'archived', target_session_id=sid)
+    assert len((await current.state())['delegations']) == 2
+
+
+async def test_delegate_continuation_api_does_not_block_health(runtime, monkeypatch, tmp_path):
+    import threading
+    import main
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+    from api.digital_person import router
+
+    current, _, _ = runtime
+    target = await asyncio.to_thread(current.projects.init_project, tmp_path / 'continuation-canary')
+    origin = (await current.main_session())['id']
+    monkeypatch.setattr(main, 'digital_person_runtime', current)
+
+    async def invoke(*args, **kwargs):
+        return '完成', [], 'worker-thread'
+
+    monkeypatch.setattr(current.chats, '_invoke', invoke)
+    first = await current.delegate(target.id, '开始', origin, 'first')
+    await current.chats.await_turn(first['turn_id'], timeout=2)
+    entered, release = threading.Event(), threading.Event()
+    submit = current.chats.submit_message
+
+    def slow_submit(*args, **kwargs):
+        entered.set()
+        assert release.wait(2)
+        return submit(*args, **kwargs)
+
+    monkeypatch.setattr(current.chats, 'submit_message', slow_submit)
+    app = FastAPI()
+    app.include_router(router)
+
+    @app.get('/health')
+    async def health():
+        return {'ok': True}
+
+    scope = {'project_id': target.id, 'origin_session_id': origin}
+    async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
+        listed = await client.get('/api/digital-person/delegations', params=scope)
+        assert listed.json()['items'][0]['id'] == first['id']
+        pending = asyncio.create_task(client.post('/api/digital-person/delegate', json={
+            **scope, 'instruction': '追加需求', 'request_id': 'continue', 'continuation_of': first['id'],
+        }))
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            assert (await asyncio.wait_for(client.get('/health'), .3)).status_code == 200
+        finally:
+            release.set()
+        response = await pending
+    assert response.status_code == 200, response.text
+    assert response.json()['session_id'] == first['session_id']
+    await current.chats.await_turn(response.json()['turn_id'], timeout=2)
 
 async def test_failed_local_delivery_does_not_block_channels_and_retry_skips_success(runtime,monkeypatch):
     runtime, project, _=runtime
@@ -448,12 +888,12 @@ async def test_check_sources_are_isolated_and_rotate_between_initiators(runtime)
 
 
 @pytest.mark.parametrize("reply,expected", [
-    ("", "未返回检查结果"),
-    ("   ", "未返回检查结果"),
-    ("暂时没有需要通知的事项。", "不是有效的 JSON"),
-    ("[]", "结果结构无效"),
-    ("null", "结果结构无效"),
-    ('{"decision":"silent","summary":"无变化","source_ids":[{}]}', "结果结构无效"),
+    ("", 'did not return results'),
+    ("   ", 'did not return results'),
+    ("暂时没有需要通知的事项。", 'not valid JSON'),
+    ("[]", 'result structure is invalid'),
+    ("null", 'result structure is invalid'),
+    ('{"decision":"silent","summary":"无变化","source_ids":[{}]}', 'result structure is invalid'),
 ])
 async def test_checker_rejects_empty_or_invalid_model_output_with_actionable_error(runtime, monkeypatch, reply, expected):
     runtime, _, _ = runtime
@@ -485,8 +925,7 @@ async def test_checker_accepts_fenced_json_without_changing_notification_policy(
     assert run["deliveries"]==[]
 
 
-async def test_identity_snapshot_matches_overview_and_excludes_check_sessions(runtime, monkeypatch):
-    from services.digital_person_statistics import load_identity_snapshot
+async def test_overview_statistics_exclude_check_sessions(runtime, monkeypatch):
     from models.chat_session import ChatMessage
     from models.fields import utc_now
     from types import SimpleNamespace
@@ -502,25 +941,25 @@ async def test_identity_snapshot_matches_overview_and_excludes_check_sessions(ru
     checker=await runtime.projects.run_db(project.id,seed)
     await runtime.mutate(lambda state:state.update(check_sessions=[checker],feedback={"a-voted":-1},delegations=[{"status":"completed"},{"status":"running"}]))
     monkeypatch.setattr("services.digital_person_statistics.skill_center.runtime_selection",lambda _:SimpleNamespace(enabled=[SimpleNamespace(skill_id="skill-a",name="代码评审",valid=True,conflict=False,sync_error=None)]))
-    snapshot=await load_identity_snapshot(runtime.projects,project)
+    snapshot=await runtime.overview()
     assert snapshot['session_count']==2
     assert snapshot['reply_count']==3
     assert snapshot['task_count']==2
     assert snapshot['completed_task_count']==1
     assert snapshot['experience']==3  # 3 replies - 1 negative + 1 completed task
     assert snapshot['skills']==[{"id":"skill-a","name":"代码评审"}]
-    overview=await runtime.overview()
-    assert all(overview[key]==value for key,value in snapshot.items())
 
 
 @pytest.mark.parametrize("channel",[False,True])
-async def test_digital_status_is_refreshed_in_system_prompt_on_each_turn(runtime, monkeypatch,channel):
+async def test_digital_chat_skips_statistics_and_relationship_reads(runtime, monkeypatch,channel):
     runtime, project, _=runtime
     if channel:
         from agent_assistants.channel_chat import ChannelChatModule
         runtime.chats=ChannelChatModule(runtime.bus,runtime.projects,register=False)
     main=await runtime.main_session()
-    monkeypatch.setattr("services.digital_person_statistics.enabled_skills",lambda _:[{"id":"review","name":"代码评审"}])
+    reads = []
+    monkeypatch.setattr("services.digital_person_statistics.read_statistics", lambda _: reads.append('statistics'))
+    monkeypatch.setattr("services.digital_person_affect.read", lambda _: reads.append('affect'))
     calls=[]
     async def invoke(*args, **kwargs):
         calls.append(kwargs.get('system_prompt',''))
@@ -530,9 +969,89 @@ async def test_digital_status_is_refreshed_in_system_prompt_on_each_turn(runtime
         accepted=await runtime.projects.run_db(project.id,lambda _:runtime.chats.submit_message(project.id,main['id'],"你的状态是什么？",f"status-{index}",schedule=False))
         runtime.chats.start_queued_turn(accepted.turn_id)
         await runtime.chats.await_turn(accepted.turn_id,timeout=5)
-    assert 'Level: Lv.1; Experience: 0' in calls[0]
-    assert 'Level: Lv.1; Experience: 1' in calls[1]
-    assert all('User sessions: 1' in prompt and '代码评审' not in prompt for prompt in calls)
+    assert len(calls) == 2 and '## Memory retrieval' in calls[0]
+    assert reads == []
+    for prompt in calls:
+        assert 'Level:' not in prompt and 'Experience:' not in prompt
+        assert 'runtime statistics' not in prompt and 'Relationship tone reference' not in prompt
+
+
+async def test_bound_channel_injects_only_changed_digital_person_context(runtime, monkeypatch):
+    import threading
+
+    import main
+    from httpx import ASGITransport, AsyncClient
+    from agent_assistants.channel_chat import ChannelChatModule
+    from engines.codex_sdk import CodexSDKEngine
+    from engines.core.events import InternalEvent
+    from services.channels.bots import BotManager, IncomingMessage
+    from services.channels.responder import ChatSessionResponder
+    from tests.test_channel_bots import FakeAdapter
+
+    current, project, store = runtime
+    module = ChannelChatModule(current.bus, current.projects, register=False)
+    calls = []
+
+    class Engine(CodexSDKEngine):
+        async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+            calls.append((prompt, session_id, kwargs.get('system_prompt', '')))
+            yield InternalEvent(type='session_started', data={'session_id': 'channel-thread'})
+            yield InternalEvent(type='agent_message_chunk', data={'content': {'type': 'text', 'text': '收到'}})
+            yield InternalEvent(type='done', data={})
+
+    for path in ('agent_assistants.chat_session.create_engine', 'agent_assistants.base.create_engine'):
+        monkeypatch.setattr(path, lambda _: Engine())
+    for path in ('agent_assistants.channel_chat.config_store', 'services.channels.responder.config_store',
+                 'services.digital_person_channels.config_store'):
+        monkeypatch.setattr(path, store)
+    store.set('assistant_defaults', {'digital_person': {'engine': 'codex_sdk'}})
+    store.set('digital_person', {'enabled': True, 'name': '渠道数字人'})
+    manager = BotManager(store, current.projects, current.bus, None,
+                         ChatSessionResponder(current.bus, current.projects, module), {'dingtalk': FakeAdapter})
+    bot = await manager.create_bot({'platform': 'dingtalk', 'name': '机器人', 'app_id': 'bot',
+                                    'secret': 'secret', 'enabled': True})
+    store.set('digital_person_channels', [{'bot_id': bot['id'], 'conversation_type': 'group',
+                                           'conversation_id': 'room'}])
+
+    async def send(number, sender):
+        await manager.handle_message(IncomingMessage(bot['id'], str(number), 'group', 'room',
+                                                     sender, '你好', conversation_name='研发群'))
+
+    try:
+        await send(1, 'alice')
+        assert calls[-1][1] is None and 'Name: 渠道数字人' in calls[-1][2]
+        assert 'workstep-ui' not in calls[-1][2]
+        module._sessions.clear()
+        await send(2, 'bob')
+        assert calls[-1][1:] == ('channel-thread', '')
+        assert 'bob' in calls[-1][0] and 'alice' in calls[0][0]
+
+        original_execute = project.db.execute_sql
+        entered, release = threading.Event(), threading.Event()
+
+        def slow_receipt_read(sql, params=None, *args, **kwargs):
+            if sql.startswith('SELECT') and '"digital_person_injection"' in (params or ()):
+                entered.set()
+                assert release.wait(3)
+            return original_execute(sql, params, *args, **kwargs)
+
+        monkeypatch.setattr(project.db, 'execute_sql', slow_receipt_read)
+        pending = asyncio.create_task(send(3, 'bob'))
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+                assert (await asyncio.wait_for(client.get('/api/health'), .3)).status_code == 200
+        finally:
+            release.set()
+            await pending
+        assert calls[-1][2] == ''
+
+        store.set('digital_person', {'enabled': True, 'name': '新人设'})
+        await send(4, 'bob')
+        assert 'Name: 新人设' in calls[-1][2]
+        assert len(calls) == 4
+    finally:
+        await manager.shutdown()
 
 
 async def test_slow_skill_discovery_does_not_block_activity_api(runtime,monkeypatch):
@@ -754,7 +1273,7 @@ async def test_activity_records_api_paginates_previews_and_loads_detail_on_deman
     def seed(state):
         state['runs'] = [{'id': f'run-{i}', 'status': 'silent', 'summary': '结果' * 1000,
                           'created_at': f'2026-11-14T01:{20-i:02}:00', 'sources': {'secret': 'large context'},
-                          'deliveries': [{'status': 'delivered'}]} for i in range(12)]
+                          'deliveries': []} for i in range(12)]
         state['delegations'] = [{'id': f'work-{i}', 'project_id': 'p', 'session_id': f's{i}',
                                  'instruction': '执行要求' * 1000, 'status': 'running' if i == 0 else 'completed',
                                  'created_at': f'2026-11-14T01:{i:02}:00', 'request_id': 'private'} for i in range(12)]
@@ -940,18 +1459,29 @@ async def test_failed_scope_switch_never_resumes_previous_contacts_engine(runtim
 async def test_activity_outcomes_report_actual_delivery_and_affinity_changes(runtime):
     runtime, _, _ = runtime
     await runtime.mutate(lambda state: state.update(runs=[
-        {'id':'outcome','status':'delivery_failed','summary':'复盘结束','created_at':'2026-11-17',
-         'deliveries':[{'status':'delivered'},{'status':'failed'}],
+        {'id':'outcome','status':'delivery_failed','summary':'不应显示的通知正文','created_at':'2026-11-17',
+         'activity_summary':'整理 2 条消息（1 个会话），新增 1 条记忆；好感度上升 2、下降 1',
+         'deliveries':[{'status':'delivered'},{'status':'failed','error':'来源会话已归档'},
+                       {'status':'failed','error':'来源会话已归档'}],
          'relationship_updates':[{'affinity_delta':2},{'affinity_delta':-1}]},
+        {'id':'legacy-notice','status':'notified','summary':'历史通知正文',
+         'deliveries':[{'status':'delivered'}]},
         {'id':'silent','status':'silent','deliveries':[],'relationship_updates':[]},
         {'id':'running','status':'running','deliveries':[],'relationship_updates':[]},
         {'id':'old','status':'silent'},
     ]))
     records = await runtime.activity_records()
     items = {row['id']:row for row in records['runs']}
-    expected = {'sent':1,'failed':1,'affinity_increased':2,'affinity_decreased':1,'message_preview':'复盘结束'}
+    expected = {'sent':1,'failed':2,'affinity_increased':2,'affinity_decreased':1,
+                'delivery_failure_reasons':['来源会话已归档']}
     assert items['outcome']['outcome'] == expected
-    assert (await runtime.run_detail('outcome'))['outcome'] == expected
+    detail = await runtime.run_detail('outcome')
+    assert detail['outcome'] == expected
+    assert items['outcome']['processing'] == detail['processing'] == {'messages':2,'sessions':1,'memories':1}
+    assert items['outcome']['summary'] == detail['summary'] == ''
+    assert 'notification_message' not in items['outcome']
+    assert detail['notification_message'] == '不应显示的通知正文'
+    assert items['legacy-notice']['summary'] == (await runtime.run_detail('legacy-notice'))['summary'] == ''
     assert items['silent']['outcome'] == {'sent':0,'failed':0,'affinity_increased':0,'affinity_decreased':0}
     assert items['running']['outcome'] is None
     assert items['old']['outcome'] is None
@@ -986,25 +1516,80 @@ async def test_failed_reflection_preserves_generated_content_and_separates_failu
     assert run['status'] == 'failed'
     detail = await current.run_detail(run['id'])
     assert detail['draft_summary'] == '我想跟进昨天的安排。'
-    assert detail['failure_reason'] == '本轮引用的 1 条来源中，有 1 条未能对应到本批次消息，结果未采用。'
+    assert detail['failure_reason'] == 'Of the 1 sources cited in this round, 1 could not be matched to the current batch of messages, so the results were not adopted.'
     assert detail['outcome']['affinity_increased'] == 0
     records = await current.activity_records()
-    assert records['runs'][0]['summary'] == '本轮思考未完成'
+    assert records['runs'][0]['status'] == 'failed'
+    assert not records['runs'][0]['summary']
     await current.mutate(lambda state: state['runs'].append({'id':'legacy-failure','status':'failed','error':'检查结果来源无效'}))
     legacy = await current.run_detail('legacy-failure')
     assert not legacy.get('draft_summary')
-    assert legacy['failure_reason'] == '未能确认思考内容对应的消息，本轮结果未采用。'
+    assert legacy['failure_reason'] == 'Could not match the reflection to its source messages. The result was discarded.'
 
 
 def test_reflection_source_references_resolve_only_unique_current_batch_aliases():
     from services.digital_person_runtime import resolve_check_sources
     context={'origin_project_id':'p','origin_session_id':'s','conversation':[{'id':'msg1','memory_ids':['memory:1'],'read_ids':['memory:1']} ]}
     assert resolve_check_sources(context,['memory:1','msg1']) == ['msg1']
-    with pytest.raises(ValueError,match='未能对应'):
+    with pytest.raises(ValueError,match='could not be matched'):
         resolve_check_sources(context,['memory:other'])
-    with pytest.raises(ValueError,match='格式'):
+    with pytest.raises(ValueError,match='format'):
         resolve_check_sources(context,[123])
     other={'origin_project_id':'other','origin_session_id':'other','conversation':[{'id':'msg1','memory_ids':['memory:2']} ]}
-    with pytest.raises(ValueError,match='多个'):
+    with pytest.raises(ValueError,match='multiple sessions'):
         resolve_check_sources({'_groups':[context,other]},['msg1'])
     assert resolve_check_sources({'_groups':[context,other]},['memory:2']) == ['msg1']
+
+
+@pytest.mark.parametrize('terminal,expected', [('completed','completed'), ('failed','failed'), ('stopped','stopped')])
+async def test_delegation_records_follow_result_independently_of_notification(runtime, terminal, expected):
+    from models.chat_session import ChatMessage
+    from models.fields import utc_now
+    from services.chat_read_state import mark_read
+    runtime, project, _ = runtime
+    def seed(_):
+        sid = runtime.chats.create_session(project.id, title='Delegated')['id']
+        ChatMessage.create(id='target-result', session=sid, role='assistant', status='running', content='', created_at=utc_now())
+        return sid
+    sid = await runtime.projects.run_db(project.id, seed)
+    await runtime.mutate(lambda state: state['delegations'].append(dict(id='work', project_id=project.id,
+        session_id=sid, message_id='target-result', status='running', notified=True, notification_state='notified')))
+    async def row():
+        return (await runtime.activity_records())['delegations'][0]
+    assert (await row())['result_viewed'] is None
+    await runtime.projects.run_db(project.id, lambda _: ChatMessage.update(status=terminal).where(ChatMessage.id=='target-result').execute())
+    result = await row()
+    assert (result['status'], result['result_viewed'], result['message_id']) == (expected, False, 'target-result')
+    await runtime.projects.run_db(project.id, lambda _: mark_read(project.id, sid, 'target-result'))
+    result = await row()
+    assert result['result_viewed'] is True and result['notification_state'] == 'notified'
+
+
+async def test_delegation_result_lookup_yields_event_loop_for_slow_project_db(runtime, monkeypatch):
+    import threading
+    from models.chat_session import ChatMessage
+    from models.fields import utc_now
+    from services import chat_read_state
+    runtime, project, _ = runtime
+    def seed(_):
+        sid = runtime.chats.create_session(project.id, title='Delegated')['id']
+        ChatMessage.create(id='slow-result', session=sid, role='assistant', status='completed', content='result', created_at=utc_now())
+        return sid
+    sid = await runtime.projects.run_db(project.id, seed)
+    await runtime.mutate(lambda state: state['delegations'].append(dict(id='work', project_id=project.id,
+        session_id=sid, message_id='slow-result', status='running')))
+    entered, release = threading.Event(), threading.Event()
+    original = chat_read_state.is_read
+    def slow_read(*args):
+        entered.set()
+        assert release.wait(3)
+        return original(*args)
+    monkeypatch.setattr(chat_read_state, 'is_read', slow_read)
+    pending = asyncio.create_task(runtime.activity_records())
+    try:
+        assert await asyncio.wait_for(asyncio.to_thread(entered.wait, 2), .5)
+        assert not pending.done()
+    finally:
+        release.set()
+        result = await pending
+    assert result['delegations'][0]['status'] == 'completed'

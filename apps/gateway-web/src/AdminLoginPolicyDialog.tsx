@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useRef, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -17,11 +18,11 @@ export function AdminLoginPolicyDialog({enabled, csrf, onClose, onSaved}: {
   try{
    const headers={'Content-Type':'application/json','X-CSRF-Token':csrf}
    const proof=await confirmStepUp(csrf, password, passwordRequired)
-   if(!proof.ok)throw Error('管理员密码验证失败。')
+   if(!proof.ok)throw Error('Administrator password verification failed.')
    const result=await fetch('/api/admin/login-policy',{method:'PUT',credentials:'same-origin',headers,body:JSON.stringify({password_login_enabled:selected})})
-   if(!result.ok)throw Error(result.status===409?'请先配置并启用至少一个企业扫码登录应用。':'登录方式保存失败，请检查权限后重试。')
+   if(!result.ok)throw Error(result.status===409?'Please configure and enable at least one enterprise QR code login application.':'Failed to save login method. Please check permissions and try again.')
    onSaved()
-  }catch(reason){setError(reason instanceof Error?reason.message:'保存失败。')}
+  }catch(reason){setError(reason instanceof Error?reason.message:'Save failed.')}
   finally{submitting.current=false;setBusy(false)}
  }
  function close(){if(selected!==enabled || password)setDiscard(true);else onClose()}
@@ -32,7 +33,7 @@ export function AdminLoginPolicyDialog({enabled, csrf, onClose, onSaved}: {
    <label className="gateway-check-label"><input type="checkbox" checked={selected} disabled={busy} onChange={event=>setSelected(event.target.checked)}/>启用账号密码登录</label>
    <p>企业扫码入口在下方应用配置中分别启用。现有账号和会话保留，重新启用后恢复原注册策略。</p>
    {busy && <p role="status"><span className="gateway-spinner"/>正在保存登录方式…</p>}
-   {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+   {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   </GatewayConfirmDialog>
   {discard && <GatewayConfirmDialog title="放弃登录方式修改" message="登录方式尚未保存。" confirmLabel="放弃并关闭" onConfirm={onClose} onCancel={()=>setDiscard(false)}/>}
  </>

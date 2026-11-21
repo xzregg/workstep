@@ -35,30 +35,30 @@ async function directoryOpeners({ platform = process.platform, exists: check = e
  }))
 }
 function mapSandboxPath(input, config) {
- if (typeof input !== 'string' || !path.posix.isAbsolute(input) || input.includes('\0') || input.split('/').includes('..')) throw new Error('沙箱目录路径无效')
+ if (typeof input !== 'string' || !path.posix.isAbsolute(input) || input.includes('\0') || input.split('/').includes('..')) throw new Error('Invalid sandbox directory path')
  const normalized = path.posix.normalize(input)
  const mounts = [{ source: config.project, target: '/data/projects' }, { source: path.join(config.root, 'home'), target: '/root' }, ...(config.mounts || [])]
  const mount = mounts.sort((a, b) => b.target.length - a.target.length).find(m => normalized === m.target || normalized.startsWith(m.target + '/'))
- if (!mount) throw new Error('此沙箱目录没有对应的宿主机挂载')
+ if (!mount) throw new Error('This sandbox directory has no corresponding host machine mount')
  return path.join(mount.source, path.posix.relative(mount.target, normalized))
 }
 function openCommand(platform, id, directory, command) {
  const app = APPS.find(item => item[0] === id)
- if (!app) throw new Error('未知目录打开应用')
+ if (!app) throw new Error('Unknown directory opening application')
  if (platform === 'darwin') return id === 'file_manager' ? ['open', directory] : ['open', '-a', app[2], directory]
- if (!command) throw new Error('宿主机未安装所选应用')
+ if (!command) throw new Error('Host machine does not have the selected application installed')
  if (id === 'terminal') return [command, platform === 'win32' ? '-d' : '--working-directory', directory]
  return [command, directory]
 }
 async function openDirectory(input, manager, shell) {
- if (!input || typeof input.path !== 'string' || !path.isAbsolute(input.path)) throw new Error('目录必须是绝对路径')
+ if (!input || typeof input.path !== 'string' || !path.isAbsolute(input.path)) throw new Error('The directory must be an absolute path')
  const status = await manager.status()
  let directory = status.running ? mapSandboxPath(input.path, manager.activeConfig || status.settings) : input.path
  directory = await fs.realpath(directory)
  if (!(await fs.stat(directory)).isDirectory()) directory = path.dirname(directory)
  const id = input.opener || 'file_manager'
  const opener = (await directoryOpeners()).find(item => item.id === id && item.available)
- if (!opener) throw new Error('宿主机未安装所选应用')
+ if (!opener) throw new Error('Host machine does not have the selected application installed')
  if (id === 'file_manager') {
   const error = await shell.openPath(directory)
   if (error) throw new Error(error)
@@ -70,11 +70,11 @@ async function openDirectory(input, manager, shell) {
  return { opened: true, path: directory }
 }
 async function fileAction(input, manager, shell, dialog, window) {
- if (!input || typeof input.path !== 'string' || !path.isAbsolute(input.path) || input.path.includes('\0')) throw new Error('文件必须是绝对路径')
- if (!['open', 'reveal', 'save'].includes(input.action)) throw new Error('未知文件操作')
+ if (!input || typeof input.path !== 'string' || !path.isAbsolute(input.path) || input.path.includes('\0')) throw new Error('The file must be an absolute path')
+ if (!['open', 'reveal', 'save'].includes(input.action)) throw new Error('Unknown file operation')
  const status = await manager.status()
  const file = await fs.realpath(status.running ? mapSandboxPath(input.path, manager.activeConfig || status.settings) : input.path)
- if (!(await fs.stat(file)).isFile()) throw new Error('请选择文件')
+ if (!(await fs.stat(file)).isFile()) throw new Error('Please select a file')
  if (input.action === 'reveal') shell.showItemInFolder(file)
  else if (input.action === 'save') {
   const options = { defaultPath: path.basename(file) }
@@ -88,7 +88,7 @@ async function fileAction(input, manager, shell, dialog, window) {
    if (error) throw new Error(error)
   } else {
    const opener = (await directoryOpeners()).find(item => item.id === id && item.available)
-   if (!opener) throw new Error('宿主机未安装所选应用')
+   if (!opener) throw new Error('Host machine does not have the selected application installed')
    if (id === 'file_manager') shell.showItemInFolder(file)
    else {
     const app = APPS.find(item => item[0] === id)

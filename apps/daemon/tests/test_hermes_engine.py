@@ -77,7 +77,7 @@ async def test_bare_internal_error_gets_actionable_hint(monkeypatch):
     errors = [event for event in events if event.type == "error"]
     assert errors
     assert "hermes model" in errors[-1].data["message"]
-    assert "Internal error" in errors[-1].data["message"]
+    assert "internal error" in errors[-1].data["message"]
 
 
 def _replay_chunk(update_cls, session_update, text):

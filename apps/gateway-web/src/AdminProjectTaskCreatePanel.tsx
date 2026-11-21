@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
@@ -33,11 +34,11 @@ function CapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
     void fetch(`/api/admin/project-grant-subjects?${params}`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error('对象加载失败。')
+      if (!response.ok) throw new Error('Object loading failed.')
       const data = await response.json()
       if (!controller.signal.aborted) { setSubjects(data.subjects ?? []); setTotal(data.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '对象加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Object loading failed.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [assignment, subjectType, search, page])
@@ -47,7 +48,7 @@ function CapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const url = subjectType === 'user'
         ? `/api/admin/capabilities/${encodeURIComponent(subjectId)}`
         : `/api/admin/projects/${encodeURIComponent(projectId)}/task-create-groups/${encodeURIComponent(subjectId)}`
@@ -56,9 +57,9 @@ function CapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
         : { effect }
       const response = await fetch(url, { method: 'POST', credentials: 'same-origin', headers,
         body: JSON.stringify(body) })
-      if (!response.ok) throw new Error('保存任务创建能力失败。')
+      if (!response.ok) throw new Error('Failed to save task creation capability.')
       onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '保存任务创建能力失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to save task creation capability.') }
     finally { setBusy(false) }
   }
   const dirty = subjectId !== (assignment?.subjectId ?? '') || effect !== (assignment?.effect ?? 'allow') || !!password
@@ -92,7 +93,7 @@ function CapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
       <label htmlFor="task-create-effect">效果</label>
       <Select id="task-create-effect" value={effect} onChange={event => setEffect(event.target.value as 'allow' | 'deny')}>
         <option value="allow">允许创建</option><option value="deny">禁止创建</option></Select>
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     </GatewayConfirmDialog>
     {discard && <GatewayConfirmDialog title="放弃任务能力修改" message="当前表单有未保存内容。"
       confirmLabel="放弃并关闭" onConfirm={onClose} onCancel={() => setDiscard(false)} />}
@@ -110,7 +111,7 @@ function RevokeCapabilityDialog({ projectId, csrf, assignment, onClose, onSaved 
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const url = assignment.subjectType === 'user'
         ? `/api/admin/capabilities/${encodeURIComponent(assignment.subjectId)}/revoke`
         : `/api/admin/projects/${encodeURIComponent(projectId)}/task-create-groups/${encodeURIComponent(assignment.subjectId)}`
@@ -118,15 +119,15 @@ function RevokeCapabilityDialog({ projectId, csrf, assignment, onClose, onSaved 
         ? { method: 'POST', credentials: 'same-origin', headers,
           body: JSON.stringify({ capability: 'task.create', scope_type: 'project', scope_id: projectId }) }
         : { method: 'DELETE', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf } })
-      if (!response.ok) throw new Error('撤销任务创建能力失败。')
+      if (!response.ok) throw new Error('Failed to revoke task creation capability.')
       onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '撤销任务创建能力失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to revoke task creation capability.') }
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="撤销任务创建能力" message={`确认撤销 ${assignment.subjectName} 的项目任务创建规则？`}
     confirmLabel="撤销规则" busy={busy} disabled={!passwordReady} onConfirm={() => void revoke()} onCancel={onClose}
       passwordConfirmation={<PasswordConfirmation id="task-create-revoke-password" label="输入管理员密码确认" value={password} onChange={setPassword} />}>
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   </GatewayConfirmDialog>
 }
 
@@ -146,7 +147,7 @@ export function AdminProjectTaskCreatePanel({ projectId, csrf }: { projectId: st
       fetch(`/api/admin/projects/${encodeURIComponent(projectId)}/task-create-groups`, {
         credentials: 'same-origin', signal: controller.signal }),
     ]).then(async ([users, groups]) => {
-      if (!users.ok || !groups.ok) throw new Error('任务创建能力加载失败。')
+      if (!users.ok || !groups.ok) throw new Error('Failed to load task creation capability.')
       const [userData, groupData] = await Promise.all([users.json(), groups.json()])
       if (!controller.signal.aborted) setAssignments([
         ...(userData.assignments ?? []).map((row: { id: string; user_id: string; username: string; display_name?: string; effect: 'allow' | 'deny' }) =>
@@ -157,7 +158,7 @@ export function AdminProjectTaskCreatePanel({ projectId, csrf }: { projectId: st
             subjectName: row.group_name, effect: row.effect })),
       ])
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '任务创建能力加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load task creation capability.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [projectId, revision])
@@ -167,7 +168,7 @@ export function AdminProjectTaskCreatePanel({ projectId, csrf }: { projectId: st
       <button type="button" onClick={() => setEdit('new')}>配置能力</button></div>
     <p>需要同时具有项目可编辑授权。显式禁止规则优先于允许规则。</p>
     {loading && <p role="status">正在加载任务创建规则…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && assignments.length === 0 && <p>暂无项目任务创建规则。</p>}
     <ul className="gateway-device-list">{assignments.map(assignment => <li key={assignment.id}>

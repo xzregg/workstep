@@ -101,7 +101,7 @@ async def set_settings(call: GatewayCall, body: CallbackSettingsInput):
 async def validate_authorization(call: GatewayCall, body: AuthorizeInput):
     async with call.database.session() as session:
         if body.callback not in await callback_urls(session):
-            raise GatewayError('forbidden', '回调地址未获授权，请联系网关管理员。')
+            raise GatewayError('forbidden', 'Callback address not authorized, please contact the gateway administrator.')
     return JsonValue({'valid': True}, headers=NO_STORE)
 
 
@@ -115,10 +115,10 @@ async def authorize(call: GatewayCall, body: AuthorizeInput):
             # Lock the policy before checking it, also serializing with allowlist deletion.
             await session.execute(update(PlatformSetting).where(PlatformSetting.key == 'platform_initialized').values(value_json='true'))
             if body.callback not in await callback_urls(session):
-                raise GatewayError('forbidden', '回调地址未获授权，请联系网关管理员。')
+                raise GatewayError('forbidden', 'Callback address not authorized, please contact the gateway administrator.')
             current = await session.get(User, user.id)
             if current is None or current.status != 'active':
-                raise GatewayError('forbidden', '账号不可用。')
+                raise GatewayError('forbidden', 'Account is unavailable.')
             await session.execute(delete(ThirdPartyAuthCode).where(ThirdPartyAuthCode.expires_at <= _now()))
             session.add(ThirdPartyAuthCode(code_hash=_digest(code), request_id_hash=_digest(body.request_id),
                 user_id=user.id, callback=body.callback, expires_at=_now() + timedelta(minutes=2)))
@@ -136,10 +136,10 @@ async def exchange(call: GatewayCall, body: ExchangeInput):
                 ThirdPartyAuthCode.used_at.is_(None), ThirdPartyAuthCode.expires_at > _now(),
             ).values(used_at=_now()).returning(ThirdPartyAuthCode.user_id, ThirdPartyAuthCode.callback))).first()
             if claimed is None:
-                raise GatewayError('bad_input', '授权码无效、已使用或已过期，请重新登录。')
+                raise GatewayError('bad_input', 'Invalid, used, or expired authorization code. Please log in again.')
             user = await session.get(User, claimed.user_id)
             if user is None or user.status != 'active' or claimed.callback not in await callback_urls(session):
-                raise GatewayError('forbidden', '账号或回调授权已不可用。')
+                raise GatewayError('forbidden', 'Account or callback authorization is no longer available.')
             session.add(AuditEvent(id=str(uuid4()), user_id=user.id, action='auth.third_party_exchanged', result='success'))
             result = {'id':user.id, 'username':user.username, 'display_name':user.display_name}
     return JsonValue({'user':result}, headers=NO_STORE)

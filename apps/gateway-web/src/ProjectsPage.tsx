@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { DirectWorkstepWorkspace } from './DirectWorkstepWorkspace'
@@ -30,10 +31,10 @@ export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: 
           navigate(loginPath, { replace: true })
           return
         }
-        if (!response.ok) throw Error('登录状态检查失败，请刷新重试。')
+        if (!response.ok) throw Error('Login status check failed, please refresh and try again.')
         setStatus('ready')
       })
-      .catch(reason => { if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '登录状态检查失败。') })
+      .catch(reason => { if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Login status check failed.') })
     return () => controller.abort()
   }, [navigate, loginPath])
 
@@ -46,8 +47,8 @@ export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: 
     await Promise.all(['/api/devices','/api/projects'].map(url=>fetch(url,{credentials:'same-origin',signal:controller.signal})))
       .then(async ([deviceResponse,response]) => {
         if (response.status === 401 || deviceResponse.status === 401) { navigate(loginPath, { replace: true }); return }
-        if (!deviceResponse.ok) throw Error('设备列表加载失败，请重试。')
-        if (!response.ok) throw new Error('项目列表加载失败。')
+        if (!deviceResponse.ok) throw Error('Failed to load device list, please try again.')
+        if (!response.ok) throw new Error('Failed to load project list.')
         const assigned:WorkspaceDevice[]=(await deviceResponse.json()).devices ?? []
         const available:Project[]=(await response.json()).projects ?? []
         if(controller.signal.aborted)return
@@ -78,6 +79,6 @@ export function ProjectsPage({ autoEnter = false, portalHeader }: { autoEnter?: 
     {status === 'ready' && <>
       {loading && !devices.length?<div className="gateway-direct-state" role="status"><span className="gateway-spinner"/>正在加载工作空间…</div>:!!devices.length && <DirectWorkstepWorkspace autoConnect={!recovering && !selectingDevice} manualEntry={selectingDevice} devices={devices} projects={projects} hideNavigation={!portalVisible && !error} onShowNavigation={showPortal}/>}
     </>}
-    {error && <p className="gateway-auth-error" role="alert">{error} {status==='ready' && <button type="button" disabled={loading} onClick={()=>setRetry(value=>value+1)}>重新加载</button>}</p>}
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)} {status==='ready' && <button type="button" disabled={loading} onClick={()=>setRetry(value=>value+1)}>重新加载</button>}</p>}
   </section></>
 }

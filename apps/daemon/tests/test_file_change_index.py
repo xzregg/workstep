@@ -28,7 +28,7 @@ def test_new_journal_index_has_counts_and_offsets_but_no_patch_text(tmp_path, mo
         assert index.exists()
         payload = index.read_text()
         assert "secret_old" not in payload and "secret_new" not in payload
-        monkeypatch.setattr(journal, "_read", lambda *_: (_ for _ in ()).throw(AssertionError("full read")))
+        monkeypatch.setattr(journal, "_iter_events", lambda *_: pytest.fail("indexed read must not scan the journal"))
         summary = journal.file_changes(ref)
         assert summary["files"][0] == {"path": "src/a.py", "added": 2, "removed": 1, "has_patch": True}
         detail = journal.file_changes(ref, file_path="src/a.py")

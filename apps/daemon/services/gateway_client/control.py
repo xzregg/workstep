@@ -217,7 +217,7 @@ class GatewayControlClient:
                             or response.get("device_id") != device_id):
                         raise ValueError("Invalid Gateway task share acknowledgment")
                     if not response.get("ok"):
-                        raise PermissionError(response.get("error") or "网关拒绝了分享操作。")
+                        raise PermissionError(response.get("error") or "The gateway rejected the sharing operation.")
                     result = response.get("result")
                     if not isinstance(result, dict): raise ValueError("Invalid Gateway task share result")
                     return result

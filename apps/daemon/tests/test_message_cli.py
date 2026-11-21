@@ -1,4 +1,4 @@
-"""Direct message lookup does not depend on the memory index."""
+"""CLI lookup and submission for project chat messages."""
 
 import asyncio
 import json
@@ -7,11 +7,191 @@ import threading
 import httpx
 import pytest
 
-from cli import main as cli_main
-from models.chat_session import ChatMessage
+from cli import build_parser, dispatch, main as cli_main
+from models.chat_session import ChatMessage, ChatSession
 from models.fields import utc_now
 from services.tool_registry import WorkstepClient
-from tests.test_chat_session import chat_module
+from tests.test_chat_session import _wait_turn, chat_module
+
+
+def send_args(project, session, content, *options):
+    return ["message", "send", "--project", project, "--session", session,
+            "--content", content, *options, "--json"]
+
+
+def test_message_send_cli(capsys):
+    from uuid import UUID
+
+    async def handler(request):
+        assert request.method == "POST"
+        assert request.url.path == "/api/chat-sessions/s1/chat"
+        assert dict(request.url.params) == {"project_id": "p1"}
+        assert json.loads(request.content) == {"project_id": "p1", "content": "执行现有对话\n里的任务"}
+        assert UUID(request.headers["Idempotency-Key"]).version == 4
+        return httpx.Response(200, json={"status": "queued", "session_id": "s1",
+                                         "turn_id": "t1", "assistant_message_id": "a1"})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    assert cli_main(send_args("p1", "s1", "执行现有对话\n里的任务"), client=client) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "queued", "session_id": "s1", "turn_id": "t1", "assistant_message_id": "a1",
+    }
+
+
+def test_message_send_cli_reports_http_error(capsys):
+    async def handler(request):
+        assert request.headers["Idempotency-Key"] == "retry-key"
+        return httpx.Response(403, json={"detail": "Project scope denied"})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    assert cli_main(send_args("p1", "s1", "hello", "--idempotency-key", "retry-key"), client=client) == 1
+    assert json.loads(capsys.readouterr().out) == {"ok": False, "error": "Project scope denied"}
+
+
+@pytest.mark.anyio
+async def test_message_send_can_only_submit_with_confirmation_and_valid_input():
+    from services.remote_access import ActorSnapshot, actor_context
+
+    def unexpected(_request):
+        pytest.fail("Invalid send reached the daemon")
+
+    client = WorkstepClient(transport=httpx.MockTransport(unexpected))
+    args = {"project_id": "p1", "session_id": "s1", "content": "follow up"}
+    for overrides in ({}, {"confirm": "yes", "content": "  "},
+                      {"confirm": "yes", "session_id": "../elsewhere"},
+                      {"confirm": "yes", "idempotency_key": "newline\n"}):
+        result = await client.call("workstep_send_message", {**args, **overrides})
+        assert result["ok"] is False
+    for scope, level in (("p1", "read"), ("p2", "edit")):
+        actor = ActorSnapshot("visitor", "访客", "device", "设备", "managed",
+                              project_id=scope, access_level=level)
+        with actor_context(actor):
+            result = await client.call("workstep_send_message", {**args, "confirm": "yes"})
+        assert result == {"ok": False, "error": "Project scope denied"}
+
+
+@pytest.mark.anyio
+async def test_message_send_queues_behind_existing_chat_and_preserves_context(chat_module, monkeypatch):
+    import main
+
+    module, _, manager, project, _ = chat_module
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    session = await manager.run_db(project.id, lambda _: module.create_session(project.id))
+    sid = session["id"]
+    entered, release = asyncio.Event(), asyncio.Event()
+    prompts = []
+
+    async def invoke(_engine, _model, _cwd, prompt, _session_id, _on_event, **kwargs):
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            entered.set()
+            await release.wait()
+            return "reply from the first turn", [], "native-thread"
+        return "follow-up complete", [], "native-thread"
+
+    monkeypatch.setattr(module, "_invoke", invoke)
+    transport = httpx.ASGITransport(app=main.app)
+    cli = WorkstepClient(base_url="http://test", transport=transport)
+    parser = build_parser()
+    async with httpx.AsyncClient(base_url="http://test", transport=transport) as http:
+        first = await http.post(f"/api/chat-sessions/{sid}/chat",
+                                json={"project_id": project.id, "content": "first turn"},
+                                headers={"Idempotency-Key": "first"})
+        assert first.status_code == 200, first.text
+        first_turn = first.json()["turn_id"]
+        args = parser.parse_args(send_args(project.id, sid, "second turn", "--idempotency-key", "second"))
+        try:
+            await asyncio.wait_for(entered.wait(), 3)
+            queued = await dispatch(args, cli)
+            assert queued["status"] == "queued"
+            assert queued["session_id"] == sid
+            assert queued["turn_id"] != first_turn
+            assert await dispatch(args, cli) == queued
+            assert module._turn_states[first_turn]["status"] == "running"
+            assert len(prompts) == 1
+        finally:
+            release.set()
+        assert await _wait_turn(module, first_turn) == "completed"
+        assert await _wait_turn(module, queued["turn_id"]) == "completed"
+        replay = await dispatch(args, cli)
+        assert replay["status"] == "completed"
+        assert replay["assistant_message_id"] == queued["assistant_message_id"]
+        detail = await http.get(f"/api/chat-sessions/{sid}", params={"project_id": project.id})
+        assert [message["content"] for message in detail.json()["messages"]] == [
+            "first turn", "reply from the first turn", "second turn", "follow-up complete",
+        ]
+    assert len(prompts) == 2
+    assert "reply from the first turn" in prompts[1]
+    assert "second turn" in prompts[1]
+
+
+@pytest.mark.anyio
+async def test_message_send_legacy_scope_and_health(chat_module, monkeypatch, tmp_path):
+    import main
+    from services.remote_access import ActorSnapshot, actor_context
+
+    module, _, manager, project, _ = chat_module
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    other = manager.init_project(tmp_path / "other-chat-project")
+    legacy_id = "a16b95dd-0804-4f58-8b3a-d896f7fe2724"
+    await manager.run_db(project.id, lambda _: ChatSession.create(
+        id=legacy_id, project_id=project.id, workflow_id="", engine="claude",
+        created_at=utc_now(), updated_at=utc_now(),
+    ))
+    # A row physically present in a DB must still belong to the requested project.
+    await manager.run_db(other.id, lambda _: ChatSession.create(
+        id=legacy_id, project_id=project.id, workflow_id="", engine="claude",
+        created_at=utc_now(), updated_at=utc_now(),
+    ))
+
+    async def invoke(*args, **kwargs):
+        return "ok", [], None
+
+    monkeypatch.setattr(module, "_invoke", invoke)
+    transport = httpx.ASGITransport(app=main.app)
+    client = WorkstepClient(base_url="http://test", transport=transport)
+    args = {"project_id": project.id, "session_id": legacy_id, "content": "follow up", "confirm": "yes"}
+    async with httpx.AsyncClient(base_url="http://test", transport=transport) as http:
+        for scope, level in ((project.id, "read"), (other.id, "edit")):
+            actor = ActorSnapshot("visitor", "访客", "device", "设备", "managed",
+                                  project_id=scope, access_level=level)
+            with actor_context(actor):
+                response = await http.post(f"/api/chat-sessions/{legacy_id}/chat",
+                                           json={"project_id": project.id, "content": "follow up"},
+                                           headers={"Idempotency-Key": "denied"})
+            assert response.status_code == 403
+    result = await client.call("workstep_send_message", {**args, "project_id": other.id})
+    assert result["ok"] is False and "not found" in result["error"]
+    result = await client.call("workstep_send_message", {**args, "project_id": "missing"})
+    assert result["ok"] is False and "Project not found" in result["error"]
+    assert not module._turn_states
+
+    entered, release = threading.Event(), threading.Event()
+    execute_sql = project.db.execute_sql
+
+    def slow_sql(sql, *args, **kwargs):
+        if 'FROM "chat_sessions"' in sql and not entered.is_set():
+            entered.set()
+            release.wait(2)
+        return execute_sql(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_sql)
+    editor = ActorSnapshot("editor", "编辑者", "device", "设备", "managed",
+                           project_id=project.id, access_level="edit")
+    with actor_context(editor):
+        pending = asyncio.create_task(client.call("workstep_send_message", args))
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        async with httpx.AsyncClient(base_url="http://test", transport=transport) as http:
+            assert (await asyncio.wait_for(http.get("/api/health"), 0.5)).status_code == 200
+    finally:
+        release.set()
+        accepted = await pending
+    assert accepted["status"] == "queued"
+    assert await _wait_turn(module, accepted["turn_id"]) == "completed"
+    assert await manager.run_db(project.id, lambda _: ChatMessage.get_by_id(accepted["turn_id"]).author_id) == "editor"
 
 
 def test_message_get_cli(capsys):
@@ -50,7 +230,6 @@ async def test_message_api_exact_lookup_legacy_and_scope(chat_module, monkeypatc
     legacy_id = "a16b95dd-0804-4f58-8b3a-d896f7fe2724"
 
     def seed(_):
-        from models.chat_session import ChatSession
         ChatSession.create(id=legacy_id, project_id=project.id, workflow_id="", engine="claude",
                            created_at=utc_now(), updated_at=utc_now())
         for sid, mid in ((session["id"], "m1"), (legacy_id, "old")):
@@ -78,7 +257,6 @@ async def test_message_api_exact_lookup_legacy_and_scope(chat_module, monkeypatc
     assert missing.value.status_code == 404
 
     # Exercise the complete CLI dispatch -> HTTP -> real project DB path.
-    from cli import build_parser, dispatch
     result = await dispatch(
         build_parser().parse_args(["message", "get", "--session", session["id"], "--message", "m1"]),
         WorkstepClient(base_url="http://test", transport=httpx.ASGITransport(app=main.app)),

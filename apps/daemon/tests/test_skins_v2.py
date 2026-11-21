@@ -73,7 +73,7 @@ async def test_non_object_manifest_is_a_validation_error(tmp_path):
     manager = SkinManager(tmp_path / 'runtime')
     root = package(tmp_path / 'draft')
     (root / 'skin.json').write_text('[]')
-    with pytest.raises(ValueError, match='JSON 对象'):
+    with pytest.raises(ValueError, match='JSON object'):
         await manager.validate(str(root))
 
 

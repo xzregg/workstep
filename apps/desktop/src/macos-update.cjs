@@ -35,23 +35,23 @@ exit 0
 
 function releaseAsset(release, name) {
   const assets = release?.assets?.filter(asset => asset.name === name) || []
-  if (assets.length !== 1) throw new Error(`Release 缺少更新文件：${name}`)
+  if (assets.length !== 1) throw new Error(`Release missing update file: ${name}`)
   const url = new URL(assets[0].browser_download_url)
   if (url.origin !== 'https://github.com' || !url.pathname.startsWith('/xzregg/workstep/releases/download/')) {
-    throw new Error('更新文件地址无效')
+    throw new Error('Invalid file address')
   }
   return assets[0]
 }
 
 function macReleaseAsset(release, arch) {
-  if (!['arm64', 'x64'].includes(arch)) throw new Error('当前架构不支持自动更新')
+  if (!['arm64', 'x64'].includes(arch)) throw new Error('Current architecture does not support automatic updates')
   return releaseAsset(release, `WorkStep-macos-${arch}.zip`)
 }
 
 function checksumFor(text, name) {
   const matches = text.split(/\r?\n/).map(line => line.match(/^([a-f\d]{64})\s+\*?(.+)$/i))
     .filter(match => match && match[2] === name)
-  if (matches.length !== 1) throw new Error('更新文件缺少有效的 SHA-256 校验值')
+  if (matches.length !== 1) throw new Error('Update file is missing a valid SHA-256 checksum')
   return matches[0][1].toLowerCase()
 }
 
@@ -70,7 +70,7 @@ class MacBundleUpdater extends EventEmitter {
       headers: { 'User-Agent': `WorkStep/${this.app.getVersion()}` },
       signal: AbortSignal.timeout(timeout),
     })
-    if (!response.ok) throw new Error(`下载更新失败 (${response.status})`)
+    if (!response.ok) throw new Error(`Download update failed (${response.status})`)
     return response
   }
 
@@ -85,7 +85,7 @@ class MacBundleUpdater extends EventEmitter {
     const expected = checksumFor(await (await this.response(sums.browser_download_url)).text(), asset.name)
     const target = path.resolve(this.app.getAppPath(), '../../..')
     if (!target.endsWith('.app') || target.startsWith('/Volumes/') || target.includes('/AppTranslocation/')) {
-      throw new Error('请先将 WorkStep 移到应用程序目录，再使用自动更新')
+      throw new Error('Please move WorkStep to the application directory first, then use automatic update')
     }
     // Sibling staging checks write permissions before shutdown and keeps renames
     // on the same filesystem. Never modify the running bundle while downloading.
@@ -103,7 +103,7 @@ class MacBundleUpdater extends EventEmitter {
           callback(null, chunk)
         },
       }), createWriteStream(archive, { flags: 'wx', mode: 0o600 }))
-      if (hash.digest('hex') !== expected) throw new Error('更新文件校验失败，请重新下载')
+      if (hash.digest('hex') !== expected) throw new Error('File verification failed, please re-download')
       await execute('/usr/bin/ditto', ['-x', '-k', archive, stage])
       const staged = path.join(stage, 'WorkStep.app')
       await execute('/usr/bin/codesign', ['--verify', '--deep', '--strict', staged])
@@ -111,7 +111,7 @@ class MacBundleUpdater extends EventEmitter {
       const readPlist = async key => (await execute('/usr/libexec/PlistBuddy', ['-c', `Print :${key}`, plist])).stdout.trim()
       if (await readPlist('CFBundleIdentifier') !== 'com.workstep.desktop'
         || await readPlist('CFBundleShortVersionString') !== this.release.tag_name.replace(/^v/, '')) {
-        throw new Error('更新包的应用标识或版本不匹配')
+        throw new Error('The application identifier or version in the update package does not match')
       }
       await fs.unlink(archive)
       this.installation = { target, staged, stage }

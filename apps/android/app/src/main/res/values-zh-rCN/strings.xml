@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="web_timeout">网页加载超时，请重新加载</string>
+    <string name="web_render_failed">网页未能正常显示，请重新加载</string>
+    <string name="web_load_failed">网页加载失败：%1$s</string>
+    <string name="web_http_failed">网页资源加载失败（HTTP %1$d），请重新加载</string>
+    <string name="web_tls_failed">HTTPS 证书验证失败</string>
+    <string name="file_picker_failed">无法打开文件选择器</string>
+    <string name="external_link_failed">无法打开外部链接</string>
+    <string name="download_same_origin">只能下载当前服务的文件</string>
+    <string name="finish_current_save">请先完成当前文件的保存选择</string>
+    <string name="save_picker_failed">无法打开保存位置选择器</string>
+    <string name="file_save_failed">保存失败：%1$s</string>
+    <string name="camera_permission_denied">未获得摄像头权限，可重试或选择本地图片</string>
+    <string name="camera_open_failed">无法打开相机，请选择本地图片</string>
+    <string name="apk_download_failed">APK 下载失败</string>
+    <string name="apk_save_warning">保存到系统下载目录失败，仍可继续安装。</string>
+    <string name="apk_install_permission">未获得安装权限，可再次点击 APK 下载按钮</string>
+    <string name="apk_installer_failed">无法打开系统安装器：%1$s</string>
+    <string name="invalid_server_address">请输入有效的 HTTP 或 HTTPS 服务根地址</string>
+    <string name="server_connection_failed">无法连接：%1$s</string>
+</resources>

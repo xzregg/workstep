@@ -253,7 +253,7 @@ def test_referenced_symlink_does_not_escape_copy(tmp_path):
     outside.write_text('{}')
     (root / 'linked.json').symlink_to(outside)
     (root / 'index.html').write_text('<script src="linked.json"></script>')
-    with pytest.raises(ValueError, match='符号链接'):
+    with pytest.raises(ValueError, match='symbolic link'):
         PrototypeWorkspace.open(root, root / '.workstep', root / 'index.html')
 
 
@@ -281,7 +281,7 @@ def test_selected_resources_still_enforce_total_budget(tmp_path, monkeypatch):
     (root / 'one.png').write_bytes(b'a' * 100)
     (root / 'two.png').write_bytes(b'b' * 100)
     monkeypatch.setattr(module, 'MAX_TOTAL', 150)
-    with pytest.raises(ValueError, match='引用资源总量'):
+    with pytest.raises(ValueError, match='Total prototype reference resources'):
         PrototypeWorkspace.open(root, root / '.workstep', root / 'index.html')
     assert not list((root / '.workstep/prototype-editor').glob('*'))
 

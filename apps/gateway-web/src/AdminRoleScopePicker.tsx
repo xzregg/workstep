@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useEffect, useState } from 'react'
 
@@ -30,13 +31,13 @@ export function AdminRoleScopePicker({ role, scope, scopeId, disabled, onChange,
     const endpoint = scope === 'department' ? 'departments' : scope === 'organization' ? 'identity-sources' : 'device-groups'
     void fetch(`/api/admin/${endpoint}?q=${encodeURIComponent(search)}&page_size=100`,
       { credentials: 'same-origin', signal: controller.signal }).then(async response => {
-      if (!response.ok) throw new Error('管理范围加载失败，请重试。')
+      if (!response.ok) throw new Error('Failed to load management scope. Please try again.')
       const result = await response.json()
       const rows = result.departments ?? result.sources ?? result.groups ?? []
       if (!controller.signal.aborted) setChoices(rows.map((row: Record<string, string>) => ({
         id: row.id, label: row.display_name ?? row.name ?? `${row.provider} · ${row.tenant_id}`,
       })))
-    }).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '管理范围加载失败。') })
+    }).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Failed to load management scope.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [scope, search])
@@ -55,7 +56,7 @@ export function AdminRoleScopePicker({ role, scope, scopeId, disabled, onChange,
         <option value="">选择管理范围</option>{choices.map(choice => <option value={choice.id} key={choice.id}>{choice.label}</option>)}
       </Select>
       {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" />正在加载范围…</p>}
-      {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+      {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
     </>}
   </>
 }

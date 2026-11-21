@@ -67,23 +67,23 @@ class ChannelMessageSender:
         from services.channels.bots import IncomingMessage
 
         if self._projects.get_project_by_id(project_id) is None:
-            raise LookupError("项目不存在")
+            raise LookupError("Project not found")
         data = await self._load()
         if session_id:
             owner_id = (session_project_id(data, session_id) or project_id) if schedule else project_id
             route = next((route for route, value in data['sessions'].items() if value == session_id), None)
             if route is None:
-                raise LookupError('渠道会话已重置或不存在')
+                raise LookupError('Channel session has been reset or does not exist')
             def read(_project):
                 session = ChatSession.get_or_none((ChatSession.id == session_id) & (ChatSession.project_id == owner_id))
                 if session is None:
-                    raise LookupError('渠道会话不属于此项目')
+                    raise LookupError('Channel session does not belong to this project')
                 if session.archived:
-                    raise RuntimeError('渠道会话已归档')
+                    raise RuntimeError('Channel conversation is archived')
                 return self._recipient(session, route, data)
             recipient = await self._projects.run_db(owner_id, read)
             if recipient is None:
-                raise LookupError('机器人不存在')
+                raise LookupError('Robot does not exist')
             bot_id = recipient['bot_id']
             conversation_type, conversation_id = recipient['conversation_type'], recipient['conversation_id']
             user_id = recipient['user_id'] or ''
@@ -91,21 +91,21 @@ class ChannelMessageSender:
             conversation_type, conversation_id = ('group', group_id) if group_id else ('single', user_id)
         bot = next((bot for bot in data['bots'] if bot['id'] == bot_id), None)
         if bot is None:
-            raise LookupError('机器人不存在')
+            raise LookupError('Robot does not exist')
         if schedule and not session_id and not any(
             row['bot_id'] == bot_id and row['group_id'] == group_id
             for row in [*data.get('groups', []), *data.get('recent_groups', [])]
         ):
-            raise LookupError('通知群聊不存在')
+            raise LookupError('Notification group chat does not exist')
         if not schedule and not session_id and not (
             bot['default_project_id'] == project_id
             or (group_id and any(binding['bot_id'] == bot_id and binding['group_id'] == group_id
                                  and binding['project_id'] == project_id for binding in data['groups']))
         ):
-            raise PermissionError('机器人或群聊不属于此项目')
+            raise PermissionError('The robot or group chat does not belong to this project')
         adapter = self._adapters.get(bot_id)
         if not bot['enabled'] or adapter is None:
-            raise RuntimeError('机器人未启用或尚未连接')
+            raise RuntimeError('The bot is disabled or disconnected')
         message_id = str(uuid.uuid4())
         recipient = IncomingMessage(
             bot_id=bot_id, message_id=message_id, conversation_type=conversation_type,
@@ -118,7 +118,7 @@ class ChannelMessageSender:
             outgoing = await outgoing_content(project, adapter, text, attachments or ())
             await adapter.send(recipient, outgoing)
         elif attachments:
-            raise ValueError('渠道不支持附件')
+            raise ValueError('Channel does not support attachments')
         else:
             from services.channels.file_links import ChannelFileLinks
             project = self._projects.get_project_by_id(project_id)

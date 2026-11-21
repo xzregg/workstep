@@ -41,15 +41,15 @@ class RoleCenter:
     def _directory(self, kind):
         directory = self.root / kind
         if self.root.is_symlink() or directory.is_symlink():
-            raise ValueError("角色中心不能使用符号链接目录")
+            raise ValueError("Role center cannot use symbolic link directories")
         return directory
 
     def _path(self, kind, asset_id):
         if not ID_PATTERN.fullmatch(asset_id):
-            raise ValueError("角色或专家团 ID 格式不正确")
+            raise ValueError("Invalid role or expert group ID format")
         path = self._directory(kind) / (asset_id + ".json")
         if path.is_symlink():
-            raise ValueError("角色文件不能是符号链接")
+            raise ValueError("Role file cannot be a symbolic link")
         return path
 
     def _atomic_write(self, path, data):
@@ -82,7 +82,7 @@ class RoleCenter:
             for name in ("categories.json", "source.json", "LICENSE.agency-agents.txt"):
                 target = self.root / name
                 if target.is_symlink():
-                    raise ValueError("角色中心元数据不能是符号链接")
+                    raise ValueError("Role center metadata cannot be a symbolic link")
                 if not target.exists():
                     target.write_bytes((SHIPPED_DIR / name).read_bytes())
 
@@ -91,13 +91,13 @@ class RoleCenter:
         if not path.exists():
             raise FileNotFoundError(asset_id)
         if path.stat().st_size > 2_000_000:
-            raise ValueError("角色文件过大")
+            raise ValueError("Role file is too large")
         raw = path.read_bytes()
         data = json.loads(raw)
         model = RoleDocument if kind == "roles" else TeamDocument
         data = model.model_validate(data).model_dump()
         if data["id"] != asset_id:
-            raise ValueError("角色文件 ID 与文件名不一致")
+            raise ValueError("Role file ID does not match the file name")
         data["revision"] = hashlib.sha256(raw).hexdigest()
         return data
 
@@ -128,7 +128,7 @@ class RoleCenter:
             roles, teams = self._list("roles", warnings), self._list("teams", warnings)
             path = self.root / "categories.json"
             if path.is_symlink():
-                raise ValueError("分类文件不能是符号链接")
+                raise ValueError("The classification file cannot be a symbolic link")
             categories = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
             known = {item["id"] for item in categories}
             for item in roles:
@@ -151,19 +151,19 @@ class RoleCenter:
             existing = self._read(kind, asset_id) if asset_id else None
             if existing:
                 if request.expected_revision != existing["revision"]:
-                    raise RoleConflict("内容已被其他窗口修改，请重新打开后再保存")
+                    raise RoleConflict("Content has been modified by another window. Please reopen and save again.")
             elif request.expected_revision:
-                raise ValueError("新建角色或专家团不能带已有版本")
+                raise ValueError("New role or expert group cannot have an existing version")
             warnings = []
             if any(item["id"] != asset_id and item["name"].casefold() == request.name.casefold()
                    for item in self._list(kind, warnings)):
-                raise RoleConflict("名称已存在")
+                raise RoleConflict("Name already exists")
             if kind == "teams":
                 for member in request.members:
                     try:
                         self._read("roles", member.role_id)
                     except FileNotFoundError as exc:
-                        raise ValueError("成员角色不存在：" + member.role_id) from exc
+                        raise ValueError("Member role does not exist:" + member.role_id) from exc
             asset_id = asset_id or uuid4().hex
             data = request.model_dump(exclude={"expected_revision"})
             data.update(id=asset_id, updated_at=datetime.now(timezone.utc).isoformat())

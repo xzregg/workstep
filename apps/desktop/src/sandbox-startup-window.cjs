@@ -6,9 +6,15 @@ const LABELS = {
   image: '正在准备 WorkStep 镜像', caching: '正在缓存 WorkStep 镜像',
   switching: '正在切换 WorkStep 镜像',
   starting: '正在启动 WorkStep 容器', running: '沙箱后台已启动',
-  error: '沙箱启动失败', idle: '正在检查沙箱配置', ready: '沙箱已准备就绪',
+  error: 'Sandbox startup failed', idle: '正在检查沙箱配置', ready: '沙箱已准备就绪',
 }
 const PHASE_PROGRESS = { idle: 5, switching: 10, download: 5, machine: 30, image: 45, caching: 55, ready: 65, starting: 70, running: 100 }
+const PHASE_STEP = {
+  idle: 'config', download: 'config', runtimeReady: 'config', machine: 'machine',
+  image: 'image', switching: 'image', caching: 'image', imageReady: 'image', ready: 'image',
+  starting: 'container', running: 'container',
+}
+const RECOVERY_ACTIONS = new Set(['retry', 'withoutSandbox', 'quit'])
 
 function startupViewState(status = {}) {
   let progress = Number.isFinite(status.percent) ? status.percent : PHASE_PROGRESS[status.phase]
@@ -23,9 +29,9 @@ function startupViewState(status = {}) {
 
 function formatSandboxFailure(error, status = {}) {
   const phase = startupViewState(status).label
-  const lines = [error instanceof Error ? error.message : String(error), '', `当前阶段：${phase}`]
-  if (status.hostPort) lines.push(`后台端口：${status.hostPort}`)
-  if (status.logDirectory) lines.push(`日志目录：${status.logDirectory}`)
+  const lines = [error instanceof Error ? error.message : String(error), '', `Stage: ${status.phase || phase}`]
+  if (status.hostPort) lines.push(`Backend port: ${status.hostPort}`)
+  if (status.logDirectory) lines.push(`Log directory: ${status.logDirectory}`)
   return lines.join('\n')
 }
 
@@ -59,26 +65,57 @@ async function applyPendingImageSwitch(manager) {
   }
 }
 
-function createSandboxStartupWindow(BrowserWindow, { onUserClose } = {}) {
+function createSandboxStartupWindow(BrowserWindow, { onUserClose, image, iconDataUrl } = {}) {
   const window = new BrowserWindow({
     title: 'WorkStep 沙箱启动', width: 560, height: 680, minWidth: 480, minHeight: 520,
-    show: false, resizable: true, backgroundColor: '#f7f8fa',
+    show: false, resizable: true, backgroundColor: '#ffffff',
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
       preload: path.join(__dirname, 'sandbox-startup-preload.cjs') },
   })
   let state = startupViewState()
+  let step = 'config'
+  let recovery
   let loaded = false
   let closingInternally = false
+  function publish() {
+    if (loaded && !window.isDestroyed()) {
+      window.webContents.send('workstep:sandbox:startupStatus', {
+        ...state, step, image, recovery: Boolean(recovery),
+      })
+    }
+  }
+  function update(status) {
+    state = startupViewState(status)
+    step = PHASE_STEP[state.phase] || step
+    publish()
+  }
   window.on('close', event => {
     if (!closingInternally) onUserClose?.(event, window)
   })
-  window.webContents.once('did-finish-load', () => { loaded = true; window.webContents.send('workstep:sandbox:startupStatus', state) })
+  window.webContents.once('did-finish-load', () => { loaded = true; publish() })
   window.once('ready-to-show', () => window.show())
-  const markup = fs.readFileSync(path.join(__dirname, 'sandbox-startup.html'), 'utf8')
+  const logo = /^data:image\/png;base64,[\w+/=]+$/.test(iconDataUrl ?? '')
+    ? `<img alt="" src="${iconDataUrl}">` : ''
+  const markup = fs.readFileSync(path.join(__dirname, 'sandbox-startup.html'), 'utf8').replace('<!--APP_ICON-->', logo)
   void window.loadURL(`data:text/html;charset=UTF-8,${encodeURIComponent(markup)}`)
   return {
     window,
-    update(status) { state = startupViewState(status); if (loaded && !window.isDestroyed()) window.webContents.send('workstep:sandbox:startupStatus', state) },
+    update,
+    setImage(value) { image = value; publish() },
+    waitForRecovery(status) {
+      return new Promise(resolve => {
+        recovery = resolve
+        update(status)
+      })
+    },
+    recover(action) {
+      if (!recovery || !RECOVERY_ACTIONS.has(action)) return false
+      const resolve = recovery
+      recovery = undefined
+      update({ phase: 'idle' })
+      resolve(action)
+      return true
+    },
     close() {
       closingInternally = true
       if (!window.isDestroyed()) window.close()

@@ -70,6 +70,63 @@ for (const compact of [false, true]) test(`${compact ? 'mobile' : 'desktop'} sid
   }
 })
 
+for (const width of [390, 1280]) test(`recent chats can be closed and restored from the project toolbar at ${width}px`, async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setWindowSize({ width, height: 900 })
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const host = document.body.appendChild(document.createElement('div'))
+  let root = createRoot(host)
+  const render = () => act(async () => root.render(<I18nProvider><MemoryRouter><WorkspaceSidebarSections
+    projectActions={<><button>展开项目</button><input aria-label="搜索项目" /><button>添加项目</button></>} projects={<div>项目树</div>}
+  /></MemoryRouter></I18nProvider>))
+  const button = (section: string, label: string) => host.querySelector<HTMLButtonElement>(
+    `[data-sidebar-section-heading="${section}"] button[aria-label="${label}"]`,
+  )
+  const close = () => button('recent', '关闭最近聊天')
+  const restore = () => button('projects', '最近聊天')
+  const recent = () => host.querySelector<HTMLElement>('.layout-sidebar-recent')!
+  try {
+    await render()
+    assert.equal(restore(), null)
+    const original = recent()
+    const search = host.querySelector('input')!
+    search.value = '已有的搜索词'
+    if (width > 1023) {
+      const toggle = host.querySelector<HTMLButtonElement>('.layout-sidebar-recent .layout-sidebar-section-toggle')!
+      await act(async () => toggle.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true, bubbles: true })))
+      await act(async () => toggle.click())
+    }
+    assert.ok(close())
+    close()!.focus()
+    await act(async () => close()!.click())
+    assert.equal(recent(), original)
+    assert.equal(recent().hidden, true)
+    assert.equal(host.querySelector('[role="separator"]'), null)
+    assert.equal(host.querySelector('input'), search)
+    assert.equal(search.value, '已有的搜索词')
+    assert.equal(document.activeElement, restore())
+    const actions = Array.from(restore()!.parentElement!.children).slice(1)
+    assert.deepEqual(actions.map(action => action.getAttribute('aria-label') ?? action.textContent), ['最近聊天', '展开项目', '搜索项目', '添加项目'])
+    assert.ok(restore()!.querySelector('.lucide-messages-square'))
+    await act(async () => root.unmount())
+    root = createRoot(host)
+    await render()
+    assert.equal(recent().hidden, true)
+    await act(async () => restore()!.click())
+    assert.equal(recent().hidden, false)
+    assert.equal(host.querySelector<HTMLElement>('#workspace-recent-content')?.hidden, false)
+    assert.equal(restore(), null)
+    assert.equal(document.activeElement, close())
+    if (width > 1023) {
+      assert.equal(host.querySelector('.layout-sidebar-body > section'), recent())
+      assert.ok(host.querySelector('[role="separator"]'))
+    }
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('desktop split height follows dragging, persists, and respects reversed section order', async () => {
   const { window } = installDomEnvironment()
   window.happyDOM.setWindowSize({ width: 1280, height: 900 })

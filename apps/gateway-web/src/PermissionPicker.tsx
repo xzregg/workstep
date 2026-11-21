@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useEffect, useId, useState } from 'react'
 
@@ -32,11 +33,11 @@ export function PermissionPicker({ kind, targetType, label, value, onChange, onN
     void fetch(`/api/admin/permissions/${kind === 'subject' ? 'subjects' : 'resources'}?${params}`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error(`${label}加载失败。`)
+      if (!response.ok) throw new Error(`${label} failed to load.`)
       const data = await response.json()
       if (!controller.signal.aborted) { setOptions(data[kind === 'subject' ? 'subjects' : 'resources'] ?? []); setTotal(data.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Load failed.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [kind, targetType, search, page, retry, label])
@@ -62,6 +63,6 @@ export function PermissionPicker({ kind, targetType, label, value, onChange, onN
       <button type="button" disabled={disabled || loading || page >= Math.ceil(total / 25)} onClick={() => { setPage(page + 1); if (!selected) onChange('') }}>下一页</button>
     </div>
     {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在加载{label}…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button" onClick={() => setRetry(retry + 1)}>重试</button></p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button" onClick={() => setRetry(retry + 1)}>重试</button></p>}
   </div>
 }

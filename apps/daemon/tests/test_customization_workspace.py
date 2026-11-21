@@ -62,12 +62,12 @@ async def test_default_workspace_can_be_renamed_but_cannot_be_removed_via_api(tm
             assert response.status_code == 200
             response = await client.delete(f'/api/project/{project.id}')
             assert response.status_code == 409
-            assert '不能删除' in response.json()['detail']
+            assert 'cannot be deleted' in response.json()['detail']
             summary = (await client.get(f'/api/project/{project.id}/summary')).json()
             assert summary['name'] == '我的工作台'
             assert summary['is_default_workspace'] is True
             assert manager.get_project_by_id(project.id) is project
-            with pytest.raises(ValueError, match='不能删除'):
+            with pytest.raises(ValueError, match='cannot be deleted'):
                 await asyncio.to_thread(manager.unregister, project.id)
             await asyncio.to_thread(manager.close_all)
             await asyncio.to_thread(manager._load_saved_projects)

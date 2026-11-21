@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useState } from 'react'
+import { memo, useLayoutEffect, useRef, useState } from 'react'
 import { MIN_REVEAL_FRAME_MS } from '../hooks/useStreamReveal'
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -23,6 +23,7 @@ function appendCharacters(text: string, offset: number, now: number): Character[
 /** Reveal only the suffix of one native text node; never replace settled glyphs
  * with animation spans. Frame updates stay in this leaf, outside Markdown parsing. */
 function StreamRevealText({ text, enabled, animateInitial = true, animateFrom = 0 }: { text: string; enabled: boolean; animateInitial?: boolean; animateFrom?: number }) {
+  const selected = useRef(false)
   const [state, setState] = useState(() => {
     const characters = enabled && animateInitial ? appendCharacters(text, animateFrom, performance.now()) : []
     return { text, enabled, characters, shown: characters.length ? characters[0].start : text.length }
@@ -47,6 +48,13 @@ function StreamRevealText({ text, enabled, animateInitial = true, animateFrom = 
     setState(current)
   }
   useLayoutEffect(() => {
+    if (!enabled || !current.characters.length) { selected.current = false; return }
+    const updateSelection = () => { selected.current = window.getSelection()?.isCollapsed === false }
+    updateSelection()
+    document.addEventListener('selectionchange', updateSelection)
+    return () => document.removeEventListener('selectionchange', updateSelection)
+  }, [enabled, current.characters.length > 0])
+  useLayoutEffect(() => {
     const characters = state.characters
     if (!characters.length) return
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || document.hidden) {
@@ -56,7 +64,7 @@ function StreamRevealText({ text, enabled, animateInitial = true, animateFrom = 
     let frame = 0
     let selectionTimer: ReturnType<typeof setTimeout> | undefined
     const tick = () => {
-      if (window.getSelection()?.isCollapsed === false) {
+      if (selected.current) {
         selectionTimer = setTimeout(tick, 250)
         return
       }

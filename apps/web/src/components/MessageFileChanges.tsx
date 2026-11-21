@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { GitDiff } from '../api/git'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { collectMessageFileChanges, relativeMessageFilePath, type FileChangesPage, type FileChangesQuery } from '../utils/messageFileChanges'
 import { useProjectStore } from '../stores/projectStore'
 import { buildMessageTimeline, type MessageTimelineEvent } from '../utils/messageTimeline'
@@ -120,7 +120,7 @@ export default function MessageFileChanges({ events, projectId, eventDetail, onL
         {indexLoading && <StreamingStatusText label={t('trace.loadingDetails')} />}
         {indexError && (
           <button type="button" className="message-file-changes-error chat-message-action"
-            onClick={() => { void loadDetails() }}>{indexError} · {t('git.retry')}</button>
+            onClick={() => { void loadDetails() }}>{localizeErrorDisplay(indexError)} · {t('git.retry')}</button>
         )}
         <ul className="message-file-changes-list">
           {(!pendingDetails || Boolean(eventDetail?.edited_files?.length)) && files.map(file => {

@@ -1,8 +1,10 @@
 """File upload, preview, and local directory opening API."""
 
 import asyncio
+import codecs
 import mimetypes
 import platform
+import re
 import shutil
 import uuid
 from pathlib import Path
@@ -232,7 +234,7 @@ async def write_memory(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     if len(req.content) > 500_000:
-        raise HTTPException(status_code=400, detail="记忆内容超过 500KB 上限")
+        raise HTTPException(status_code=400, detail="Memory content exceeds the 500KB limit")
     memory_path = project.workstep_dir / "MEMORY.md"
     def persist_memory() -> None:
         _assert_preview_path(memory_path)
@@ -306,7 +308,7 @@ async def upload_image(
     # Short flow/task prefix so uploads can be bulk-cleared later.
     prefix = req.prefix.strip()
     if len(prefix) > 32 or not _re.fullmatch(r"[A-Za-z0-9_-]*", prefix):
-        raise HTTPException(status_code=400, detail="前缀仅允许字母、数字、下划线和连字符，长度不超过 32")
+        raise HTTPException(status_code=400, detail="Prefix must consist of letters, digits, underscores, and hyphens, and be no longer than 32 characters")
 
     filename = f"{prefix}-{uuid.uuid4().hex}{ext}" if prefix else f"{uuid.uuid4().hex}{ext}"
     if project is not None:
@@ -361,11 +363,11 @@ async def upload_file(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid base64 data")
     if len(content) > 25_000_000:
-        raise HTTPException(status_code=400, detail="文件超过 25MB 上限")
+        raise HTTPException(status_code=400, detail="File exceeds the 25MB limit")
 
     prefix = req.prefix.strip()
     if len(prefix) > 32 or not _re.fullmatch(r"[A-Za-z0-9_-]*", prefix):
-        raise HTTPException(status_code=400, detail="前缀仅允许字母、数字、下划线和连字符，长度不超过 32")
+        raise HTTPException(status_code=400, detail="Prefix must consist of letters, digits, underscores, and hyphens, and be no longer than 32 characters")
 
     ext = Path(req.filename).suffix.lower()
     if not _re.fullmatch(r"\.[a-z0-9]{1,10}", ext):
@@ -566,6 +568,22 @@ async def html_preview_resource(request: Request, project_ref: str, token: str,
     return await asyncio.to_thread(load)
 
 
+def _preview_content_type(file_path: Path) -> str | None:
+    if file_path.suffix.lower() != '.ts':
+        return mimetypes.guess_type(str(file_path))[0]
+
+    sample_size = 4096
+    with file_path.open('rb') as source:
+        sample = source.read(sample_size)
+    if re.search(rb'[\x00-\x08\x0e-\x1f\x7f]', sample):
+        return 'video/mp2t'
+    try:
+        codecs.utf_8_decode(sample, 'strict', len(sample) < sample_size)
+    except UnicodeDecodeError:
+        return 'video/mp2t'
+    return 'text/plain'
+
+
 def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
     file_path = _resolve_preview_file(path, project_id, allow_absolute=absolute)
 
@@ -575,7 +593,7 @@ def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
     if not file_path.is_file():
         raise HTTPException(status_code=400, detail=_path_error_detail("Not a file", file_path))
 
-    content_type, _ = mimetypes.guess_type(str(file_path))
+    content_type = _preview_content_type(file_path)
     file_size = file_path.stat().st_size
     relative_path = _project_relative_path(file_path, project_id)
     # Audio/video bytes are streamed by the raw endpoint, never embedded in JSON.

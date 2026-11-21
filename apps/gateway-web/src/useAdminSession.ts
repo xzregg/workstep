@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 
+export const expiredSessionMessage = 'Your session has expired. Sign in again.'
+const sessionLoadError = 'Could not load your session. Try again.'
+
 /** Keep session failures independent from list errors so refreshing data cannot hide them. */
 export function useAdminSession() {
   const [csrf, setCsrf] = useState('')
@@ -12,13 +15,13 @@ export function useAdminSession() {
     void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error(response.status === 401
-          ? '登录状态已失效，请重新登录。' : '登录状态加载失败，请重试。')
+          ? expiredSessionMessage : sessionLoadError)
         const data = await response.json()
-        if (!data.csrf_token) throw new Error('登录状态加载失败，请重试。')
+        if (!data.csrf_token) throw new Error(sessionLoadError)
         if (!controller.signal.aborted) setCsrf(data.csrf_token)
       }).catch(reason => {
-        if (!controller.signal.aborted) setError(reason instanceof Error && reason.message.startsWith('登录状态')
-          ? reason.message : '登录状态加载失败，请重试。')
+        if (!controller.signal.aborted) setError(reason instanceof Error && reason.message === expiredSessionMessage
+          ? expiredSessionMessage : sessionLoadError)
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [revision])

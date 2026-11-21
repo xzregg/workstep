@@ -717,6 +717,39 @@ async def test_cli_channel_bind_uses_session_and_task_ids():
     assert (await dispatch(args, client))['group_id'] == 'g1'
 
 
+@pytest.mark.parametrize('action, suffix, fields', [
+    ('archive', '/archive', {'task_id': 'task-1'}),
+    ('archive-confirm', '/task-1/archive-experience/confirm', {'experience': 'lesson'}),
+])
+async def test_cli_archive_notify_carries_current_coordinator_turn(monkeypatch, action, suffix, fields):
+    from services.coordinator_source import COORDINATOR_TURN_ENV, COORDINATOR_TURN_HEADER
+
+    monkeypatch.setenv(COORDINATOR_TURN_ENV, 'current-turn')
+    def handler(request):
+        assert request.url.path == f'/api/task{suffix}'
+        assert request.headers[COORDINATOR_TURN_HEADER] == 'current-turn'
+        assert json.loads(request.content) == {**fields, 'notify': True}
+        return httpx.Response(200, json={'archived': True, 'notification': 'sent'})
+
+    options = ['--experience', 'lesson'] if action == 'archive-confirm' else []
+    args = build_parser().parse_args(['task', action, '--project', 'project-1', '--task', 'task-1', '--notify', *options])
+    assert (await dispatch(args, WorkstepClient(transport=httpx.MockTransport(handler))))['notification'] == 'sent'
+
+
+@pytest.mark.parametrize('flags, notification', [([], 'false'), (['--notify'], 'true'), (['--no-notify'], 'false')])
+async def test_cli_channel_unbind_passes_notification_choice(flags, notification):
+    def handler(request):
+        assert request.method == 'DELETE'
+        assert request.url.path == '/api/task/t1/discussion-groups/b1/g1'
+        assert dict(request.url.params) == {'project_id': 'p1', 'notify': notification}
+        return httpx.Response(200, json={'deleted': True})
+
+    args = build_parser().parse_args([
+        'channel', 'unbind', '--project', 'p1', '--task', 't1', '--bot', 'b1', '--group', 'g1', '--json', *flags,
+    ])
+    assert await dispatch(args, WorkstepClient(transport=httpx.MockTransport(handler))) == {'deleted': True}
+
+
 @pytest.mark.anyio
 @pytest.mark.parametrize('timing', [['--at', '2099-01-01T09:00:00+08:00'], ['--cron', '0 9 * * *']])
 async def test_cli_schedule_default_timezone_is_valid_iana(timing):
@@ -818,9 +851,97 @@ async def test_digital_person_delegation_cli_uses_tracked_runtime():
     assert result['session_id']=='worker'
 
 
+async def test_digital_person_cli_discovers_and_continues_delegation():
+    def handler(request):
+        if request.method == 'GET':
+            assert request.url.path == '/api/digital-person/delegations'
+            assert dict(request.url.params) == {'project_id': 'p', 'origin_session_id': 's'}
+            return httpx.Response(200, json={'items': [{'id': 'prior'}]})
+        assert request.url.path == '/api/digital-person/delegate'
+        assert json.loads(request.content) == {
+            'project_id': 'p', 'origin_session_id': 's', 'instruction': '追加要求',
+            'request_id': 'follow-up', 'continuation_of': 'prior',
+        }
+        return httpx.Response(200, json={'session_id': 'worker', 'status': 'queued'})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    parser = build_parser()
+    listed = await dispatch(parser.parse_args(['digital-person', 'delegations', '--project', 'p', '--session', 's']), client)
+    result = await dispatch(parser.parse_args([
+        'digital-person', 'delegate', '--project', 'p', '--session', 's', '--instruction', '追加要求',
+        '--idempotency-key', 'follow-up', '--continue-from', listed['items'][0]['id'],
+    ]), client)
+    assert result == {'session_id': 'worker', 'status': 'queued'}
+
+
+async def test_existing_delegation_on_old_daemon_does_not_create_a_new_conversation():
+    def handler(request):
+        assert request.url.path == '/api/digital-person/delegate/existing'
+        assert json.loads(request.content)['target_session_id'] == 'existing'
+        return httpx.Response(404, json={'detail': 'Not Found'})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    args = build_parser().parse_args([
+        'digital-person', 'delegate', '--project', 'p', '--session', 'origin',
+        '--target-session', 'existing', '--instruction', '追加要求', '--idempotency-key', 'adopt',
+    ])
+    assert await dispatch(args, client) == {'ok': False, 'error': 'Not Found'}
+
+
+async def test_digital_person_cli_reads_delegation_by_id():
+    def handler(request):
+        assert request.method == 'GET'
+        assert request.url.path == '/api/digital-person/delegations'
+        assert dict(request.url.params) == {'delegation_id': 'prior', 'origin_session_id': 's'}
+        return httpx.Response(200, json={'items': [{'id': 'prior', 'result': '核对通过'}]})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    args = build_parser().parse_args(['digital-person', 'delegations', '--id', 'prior', '--session', 's'])
+    result = await dispatch(args, client)
+    assert result['items'][0]['result'] == '核对通过'
+
+
 def test_digital_person_stop_uses_existing_host_endpoint(capsys):
     async def handler(request):
         assert request.method=='POST' and request.url.path=='/api/digital-person/check/stop'
         return httpx.Response(200,json={'stopped':True})
     assert main(['digital-person','stop','--json'],client=WorkstepClient(transport=httpx.MockTransport(handler)))==0
     assert json.loads(capsys.readouterr().out)=={'stopped':True}
+
+
+def test_digital_person_remember_sends_only_the_requested_rule(capsys):
+    async def handler(request):
+        assert request.method == 'POST' and request.url.path == '/api/digital-person/standing-memory'
+        assert json.loads(request.content) == {'rule': '先看原型'}
+        return httpx.Response(200, json={'saved': True, 'added': True})
+
+    assert main(['digital-person', 'remember', '--rule', '先看原型', '--json'],
+                client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert json.loads(capsys.readouterr().out) == {'saved': True, 'added': True}
+
+
+def test_digital_person_check_uses_existing_host_endpoint(capsys):
+    result = {'status': 'accepted'}
+    async def handler(request):
+        assert request.method == 'POST' and request.url.path == '/api/digital-person/check'
+        assert request.url.params['background'] == 'true'
+        assert request.extensions['timeout']['read'] == 30.0
+        return httpx.Response(200, json=result)
+    assert main(['digital-person', 'check', '--json'], client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert json.loads(capsys.readouterr().out) == result
+
+
+@pytest.mark.parametrize('detail', ['数字人主动检查未开启', '已有检查正在进行'])
+def test_digital_person_check_reports_rejection(capsys, detail):
+    async def handler(request):
+        return httpx.Response(409, json={'detail': detail})
+    assert main(['digital-person', 'check', '--json'], client=WorkstepClient(transport=httpx.MockTransport(handler))) == 1
+    assert json.loads(capsys.readouterr().out)['error'] == detail
+
+
+async def test_digital_person_check_tool_requires_explicit_confirmation():
+    async def handler(request):
+        pytest.fail('unconfirmed check must not reach the daemon')
+    result = await WorkstepClient(transport=httpx.MockTransport(handler)).call('workstep_check_digital_person')
+    assert result['ok'] is False
+    assert "confirm='yes'" in result['error']

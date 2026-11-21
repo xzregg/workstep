@@ -17,11 +17,12 @@ interface AssistantPendingInsertOptions {
   input: string
   onInputChange: (value: string) => void
   onSendContent: (content: string, ids: string[]) => Promise<boolean>
+  disabled?: boolean
 }
 
 /** Owns the queue attached to the currently running assistant message. */
 export function useAssistantPendingInserts({
-  projectId, sessionId, messages, input, onInputChange, onSendContent,
+  projectId, sessionId, messages, input, onInputChange, onSendContent, disabled = false,
 }: AssistantPendingInsertOptions) {
   const { t } = useI18n()
   const runningMessage = [...messages].reverse().find((message) => (
@@ -60,23 +61,35 @@ export function useAssistantPendingInserts({
     })
   }, [activeMessageId, actions, projectId, t])
 
-  const queueCurrentInput = useCallback(async (override?: string) => {
+  const enqueue = useCallback(async (override?: string): Promise<boolean> => {
     const content = (override ?? input).trim()
-    if (!content || !activeMessageId) return
-    if (addingRef.current.has(pendingKey)) return
+    if (disabled || !content || !activeMessageId) return false
+    if (addingRef.current.has(pendingKey)) return false
     addingRef.current.add(pendingKey)
     setError('')
     try {
       await actions.add(projectId, activeMessageId, content)
-      if (latest.current.pendingKey === pendingKey && latest.current.input === input) onInputChange('')
+      return true
     } catch (reason) {
       if (latest.current.pendingKey === pendingKey) {
         setError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
       }
+      return false
     } finally {
       addingRef.current.delete(pendingKey)
     }
-  }, [activeMessageId, actions, input, onInputChange, pendingKey, projectId, t])
+  }, [activeMessageId, actions, disabled, input, pendingKey, projectId, t])
+
+  /** Queues the draft itself, clearing it only if it is still the text that was queued. */
+  const queueCurrentInput = useCallback(async (override?: string): Promise<boolean> => {
+    const queued = input
+    if (!await enqueue(override)) return false
+    if (latest.current.pendingKey === pendingKey && latest.current.input === queued) onInputChange('')
+    return true
+  }, [enqueue, input, onInputChange, pendingKey])
+
+  /** Queues content from another source (voice) and leaves the draft untouched. */
+  const queueContent = useCallback((content: string) => enqueue(content), [enqueue])
 
   const send = useCallback(async (selected: Array<{ id: string; content: string }>) => {
     if (!activeMessageId || selected.length === 0) return
@@ -109,6 +122,7 @@ export function useAssistantPendingInserts({
   const panel = activeMessageId && items.length > 0 ? <PendingMessageInserts
     projectId={projectId}
     items={items}
+    disabled={disabled}
     title={t('chatSession.pendingInsertTitle')}
     titleTooltip={t('chatSession.pendingInsertHint')}
     editingId={editingId}
@@ -136,5 +150,5 @@ export function useAssistantPendingInserts({
     reorderHint={t('chatSession.pendingInsertReorderHint')}
   /> : null
 
-  return { panel, error, queueEnabled: Boolean(sessionId && runningMessage), queueCurrentInput }
+  return { panel, error, queueEnabled: Boolean(sessionId && runningMessage), queueCurrentInput, queueContent }
 }

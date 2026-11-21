@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useState, type FormEvent } from 'react'
 import { passwordRequirements, validPortalPassword } from './portalAccount'
 
@@ -26,11 +27,11 @@ export function AccountSecurityPanel({user, csrf, passwordRequired, onExpired}: 
         body: JSON.stringify({ current_password: current, new_password: next }),
       })
       if (response.status === 401) { onExpired(); return }
-      if (!response.ok) throw new Error(response.status === 403 ? '当前密码不正确。' : '修改密码失败，请重试。')
+      if (!response.ok) throw new Error(response.status === 403 ? 'Current password is incorrect.' : 'Failed to modify password, please try again.')
       setCurrent(''); setNext(''); setConfirmation('')
       setNotice('密码已更新，其他登录会话已失效。')
       window.dispatchEvent(new Event('gateway-auth-changed'))
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '修改密码失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to modify password.') }
     finally { setBusy(false) }
   }
 
@@ -44,7 +45,7 @@ export function AccountSecurityPanel({user, csrf, passwordRequired, onExpired}: 
    {confirmation && confirmation!==next && <p role="alert" className="gateway-auth-error">两次输入的密码不一致。</p>}
    <div><button className="gateway-admin-primary" type="submit" disabled={busy || !validPasswordChange(current,next,confirmation,passwordRequired,user.username)}>{busy ? <><span className="gateway-spinner"/> 正在保存…</> : '保存新密码'}</button></div>
    {notice && <p className="gateway-center-success" role="status">{notice}</p>}
-   {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+   {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
   </form>
  </section>
 }

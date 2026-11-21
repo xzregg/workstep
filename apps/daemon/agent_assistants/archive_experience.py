@@ -402,7 +402,7 @@ class ArchiveExperienceDraftService:
                 lines = experience.splitlines()
                 if len(lines) > 3 or len(experience) > total_limit or any(len(line) > line_limit for line in lines):
                     raise RuntimeError(
-                        "经验草稿须最多 3 条，每条不超过 50 字，总计不超过 150 字，请重试"
+                        "Experience drafts must be at most 3, each not exceeding 50 characters, with a total not exceeding 150 characters. Please try again:"
                         if locale.lower().startswith("zh") else
                         f"Use at most 3 lessons, {line_limit} characters per line and {total_limit} in total; please retry"
                     )

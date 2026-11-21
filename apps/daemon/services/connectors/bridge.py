@@ -24,7 +24,7 @@ async def serve():
         items = await asyncio.to_thread(store.selected, project, session_id)
         item = next((i for i in items if i['id'] == identifier), None)
         if item is None:
-            raise PermissionError('连接器已停用或不在当前项目范围内')
+            raise PermissionError('Connector is disabled or not within the current project scope')
         return item
 
     item = await checked()
@@ -39,7 +39,7 @@ async def serve():
         @server.call_tool()
         async def call_tool(name, arguments):
             if name != 'run':
-                raise ValueError('未知工具')
+                raise ValueError('Unknown tool')
             current = await checked()
             import json
             result = await run_cli(current, arguments.get('arguments', []), os.environ.get('WORKSTEP_CONNECTOR_CWD'))
@@ -55,17 +55,17 @@ async def serve():
                 try:
                     return (await upstream.list_tools()).tools
                 except Exception:
-                    raise ValueError('无法读取连接器工具，请检查连接设置') from None
+                    raise ValueError('Unable to read connector tool, please check connection settings:') from None
 
             @server.call_tool()
             async def call_tool(name, arguments):
                 current = await checked()
                 if current['revision'] != item['revision']:
-                    raise ValueError('连接器配置已更新，请开始新一轮执行')
+                    raise ValueError('Connector configuration has been updated. Please start a new execution round.')
                 try:
                     return await upstream.call_tool(name, arguments)
                 except Exception:
-                    raise ValueError('连接器调用失败，请检查连接状态') from None
+                    raise ValueError('Connector call failed, please check the connection status') from None
 
             async with stdio_server() as (read, write):
                 await server.run(read, write, server.create_initialization_options())

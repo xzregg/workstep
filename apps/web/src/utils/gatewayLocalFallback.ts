@@ -13,7 +13,7 @@ export async function restoreLocalGatewayMode(): Promise<void> {
     method: 'POST',
     headers: { Origin: location.origin },
   })
-  if (!response.ok) throw Error('无法返回本地工作台')
+  if (!response.ok) throw Error('Failed to return to the local workspace')
   params.delete('gateway_auth')
   const query = params.toString()
   window.history.replaceState(window.history.state, '', location.pathname + (query ? `?${query}` : '') + location.hash)

@@ -48,6 +48,35 @@ class StreamingDecoder:
         return text
 
 
+class SegmentDecoder:
+    """Reuse a speculative transcript until more waveform is appended."""
+
+    def __init__(self, decode):
+        self.decode = decode
+        self.session_id = None
+        self.chunks = []
+        self.text = None
+
+    def feed(self, session_id, samples, final, preview=True):
+        if self.session_id != session_id:
+            self.session_id = session_id
+            self.chunks = []
+            self.text = None
+        if len(samples):
+            self.chunks.append(samples)
+            self.text = None
+        if not final and not preview:
+            return ''
+        if self.text is None:
+            self.text = self.decode(self.chunks) if self.chunks else ''
+        text = self.text
+        if final:
+            self.session_id = None
+            self.chunks = []
+            self.text = None
+        return text
+
+
 def main():
     bundle = Path(sys.argv[1])
     sys.path.insert(0, str(bundle / 'runtime'))
@@ -55,39 +84,47 @@ def main():
     import sherpa_onnx
 
     kind = sys.argv[sys.argv.index('--model-type') + 1] if '--model-type' in sys.argv else 'paraformer'
-    if kind == 'zipformer':
-        recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
-            tokens=str(bundle / 'tokens.txt'),
-            encoder=str(bundle / 'encoder-epoch-99-avg-1.int8.onnx'),
-            decoder=str(bundle / 'decoder-epoch-99-avg-1.int8.onnx'),
-            joiner=str(bundle / 'joiner-epoch-99-avg-1.int8.onnx'),
-            num_threads=2, provider='cpu', enable_endpoint_detection=True,
+    if kind == 'sensevoice':
+        recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
+            model=str(bundle / 'model.int8.onnx'), tokens=str(bundle / 'tokens.txt'),
+            language='auto', use_itn=True, num_threads=2, provider='cpu',
         )
+
+        def decode(chunks):
+            stream = recognizer.create_stream()
+            stream.accept_waveform(16000, np.concatenate(chunks))
+            recognizer.decode_stream(stream)
+            return stream.result.text.strip()
+
+        make_decoder = lambda: SegmentDecoder(decode)
     else:
         recognizer = sherpa_onnx.OnlineRecognizer.from_paraformer(
             tokens=str(bundle / 'tokens.txt'), encoder=str(bundle / 'encoder.int8.onnx'),
             decoder=str(bundle / 'decoder.int8.onnx'), num_threads=2, provider='cpu',
             enable_endpoint_detection=True,
         )
-    punctuator = None
-    punctuation_path = bundle / 'punctuation.int8.onnx'
-    if punctuation_path.is_file():
-        punctuator = sherpa_onnx.OfflinePunctuation(sherpa_onnx.OfflinePunctuationConfig(
-            model=sherpa_onnx.OfflinePunctuationModelConfig(
-                ct_transformer=str(punctuation_path), num_threads=1, provider='cpu')))
-    punctuate = punctuator.add_punctuation if punctuator else None
+    punctuate = None
+    if kind != 'sensevoice':
+        punctuation_path = bundle / 'punctuation.int8.onnx'
+        if punctuation_path.is_file():
+            punctuate = sherpa_onnx.OfflinePunctuation(sherpa_onnx.OfflinePunctuationConfig(
+                model=sherpa_onnx.OfflinePunctuationModelConfig(
+                    ct_transformer=str(punctuation_path), num_threads=1, provider='cpu'))).add_punctuation
+        make_decoder = lambda: StreamingDecoder(recognizer, punctuate)
     if '--check' in sys.argv:
         if punctuate:
             punctuate('你好这是一条测试')
         return
-    decoder = StreamingDecoder(recognizer, punctuate)
+    decoder = make_decoder()
     for line in sys.stdin:
         try:
             request = json.loads(line)
             samples = np.frombuffer(base64.b64decode(request['audio'], validate=True), dtype='<i2').astype(np.float32) / 32768
-            result = {'session_id': request['session_id'], 'text': decoder.feed(request['session_id'], samples, request['final'])}
+            args = (request['session_id'], samples, request['final'])
+            text = decoder.feed(*args, request.get('preview', True)) if kind == 'sensevoice' else decoder.feed(*args)
+            result = {'session_id': request['session_id'], 'text': text}
         except Exception:
-            decoder = StreamingDecoder(recognizer, punctuate)
+            decoder = make_decoder()
             result = {'error': 'recognition_failed'}
         print(json.dumps(result, ensure_ascii=False), flush=True)
 

@@ -57,7 +57,7 @@ function drain(): Promise<void> {
       try {
         const response = await request<PersonalAppearance>('/appearance/preferences', {method:'PATCH', headers: {'X-Appearance-Scope': appearanceScope()!}, body:JSON.stringify(patch)})
         if (current !== generation) return
-        if (response.scope !== appearanceScope()) throw new Error('个人外观身份已变化，请刷新后重试')
+        if (response.scope !== appearanceScope()) throw new Error('Personal appearance identity has changed, please refresh and try again')
       } catch (error) {
         if (current !== generation) return
         if (error instanceof ApiError && error.status === 409) writable = false

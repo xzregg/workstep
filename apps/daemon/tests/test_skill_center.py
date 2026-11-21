@@ -61,7 +61,7 @@ def test_invalid_frontmatter_is_visible_but_cannot_be_enabled(
     descriptor = center.list_project(tmp_path / "project")[0]
     assert descriptor.valid is False
     assert descriptor.error
-    with pytest.raises(ValueError, match="无效"):
+    with pytest.raises(ValueError, match='Invalid'):
         center.set_enabled(tmp_path / "project", descriptor.skill_id, True)
 
 
@@ -146,7 +146,7 @@ def test_batch_toggle_validates_all_ids_before_changing_anything(
     center = SkillCenter(source_roots=roots)
     skill = center.list_project(project)[0]
 
-    with pytest.raises(KeyError, match="未知技能"):
+    with pytest.raises(KeyError, match='Unknown\\ skill'):
         center.set_enabled_batch(project, [skill.skill_id, "missing"], True)
 
     assert not center.list_project(project)[0].enabled
@@ -223,7 +223,7 @@ def test_rejects_symlink_that_escapes_skill_root(
     center = SkillCenter(source_roots=roots)
     skill = center.list_project(tmp_path / "project")[0]
 
-    with pytest.raises(ValueError, match="符号链接"):
+    with pytest.raises(ValueError, match='symbolic link'):
         center.set_enabled(tmp_path / "project", skill.skill_id, True)
 
 

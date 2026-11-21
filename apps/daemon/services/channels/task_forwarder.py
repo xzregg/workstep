@@ -375,7 +375,7 @@ class ChannelTaskForwarder:
             await self._bus.publish({'type':'CUSTOM', 'name':'channel_bots.reply_error',
                                      'project_id':state.key[0], 'task_id':state.key[1],
                                      'value':{'message_id':state.key[2], 'bot_id':bot_id, 'group_id':group_id,
-                                              'error':'任务消息推送失败，请检查机器人连接及发送权限。'}})
+                                              'error':'Task message push failed. Please check the bot connection and send permissions.'}})
         finally:
             if scope:
                 await self._controls.finish(scope)

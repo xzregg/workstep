@@ -33,9 +33,9 @@ class ActionError(ValueError):
 def _action_input(button: dict, value: str) -> str:
     value = str(value or "")
     if len(value) > 4000:
-        raise ActionError("Action 输入内容不能超过 4000 字", 422)
+        raise ActionError("Action input must not exceed 4000 characters", 422)
     if button.get("require_confirmation") is not False and button.get("confirmation_input_prompt") and not value.strip():
-        raise ActionError("请填写 Action 执行内容", 422)
+        raise ActionError("Please provide the Action execution content", 422)
     return value
 
 
@@ -129,7 +129,7 @@ def _script_config(project: Path, task: Task | None, button: dict, source: str) 
     action_id = str(button.get("action_id") or "")
     script_path = str(button.get("script_path") or "")
     if not valid_script_path(script_path):
-        raise ActionError("脚本路径无效")
+        raise ActionError("Invalid script path")
     project = project.resolve()
     workstep = data_directory(project).resolve()
     workflow_root = workstep / "artifacts" / (task.workflow_id or "default") if task else None
@@ -140,46 +140,46 @@ def _script_config(project: Path, task: Task | None, button: dict, source: str) 
         else workflow_root / "actions" / action_id
     ).resolve()
     if not _within(action_root, workstep):
-        raise ActionError("Action 目录超出项目根目录")
+        raise ActionError("Action directory exceeds the project root directory")
     script = (action_root / script_path).resolve()
     if not _within(script, action_root) or not script.is_file():
-        raise ActionError("脚本路径无效或文件不存在")
+        raise ActionError("Invalid script path or file does not exist")
     cwd_mode = button.get("cwd_mode") or "task"
     cwd = project if task is None or cwd_mode == "project" else task_root
     cwd = cwd.resolve()
     if not (_within(cwd, project) or _within(cwd, workstep)):
-        raise ActionError("执行目录超出项目根目录")
+        raise ActionError("Execution directory exceeds the project root directory")
     metadata_path = action_root / "action.json"
     metadata = {}
     if metadata_path.is_file():
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            raise ActionError("Action 配置文件无效") from exc
+            raise ActionError("Action configuration file is invalid") from exc
         if not isinstance(metadata, dict) or metadata.get("id", action_id) != action_id:
-            raise ActionError("Action 配置文件无效")
+            raise ActionError("Action configuration file is invalid")
     timeout = metadata.get("timeout_seconds", 600)
     grace = metadata.get("stop_grace_seconds", 3)
     managed_service = metadata.get("managed_service") is True
     if not isinstance(timeout, (int, float)) or not (1 <= timeout <= 86400 or (managed_service and timeout == 0)):
-        raise ActionError("Action 超时时间无效")
+        raise ActionError("Action timeout invalid")
     if not isinstance(grace, (int, float)) or not 0.1 <= grace <= 30:
-        raise ActionError("Action 停止宽限期无效")
+        raise ActionError("Action Stop grace period invalid")
     interpreter = metadata.get("interpreter")
     if interpreter not in {None, "bash", "python", "executable"}:
-        raise ActionError("Action 解释器无效")
+        raise ActionError("Action interpreter is invalid")
     args = metadata.get("args", [])
     if not isinstance(args, list) or len(args) > 32 or any(
         not isinstance(item, str) or "\x00" in item for item in args
     ):
-        raise ActionError("Action 参数无效")
+        raise ActionError("Invalid Action parameter")
     if interpreter == "bash" or (interpreter is None and script.suffix in {".sh", ".bash"}):
         command = ["/bin/bash", str(script), *args]
     elif interpreter == "python" or (interpreter is None and script.suffix == ".py"):
         command = [sys.executable, str(script), *args]
     else:
         if not os.access(script, os.X_OK):
-            raise ActionError("脚本没有执行权限")
+            raise ActionError("Script lacks execute permission")
         command = [str(script), *args]
     return {
         "script": script,
@@ -230,7 +230,7 @@ class ActionRuntime:
         def load(_project):
             task = Task.get_or_none(Task.id == task_id)
             if task is None:
-                raise ActionError("任务不存在", 404)
+                raise ActionError("Task not found", 404)
             runs = list(ActionRun.select().where(ActionRun.task_id == task_id).order_by(ActionRun.started_at.desc()).limit(50))
             return {"buttons": _available_buttons(_project, task, step_key), "runs": [_serialize(run) for run in runs]}
         result = await self._db(project_id, load)
@@ -246,7 +246,7 @@ class ActionRuntime:
                 (ChatSession.id == session_id) & (ChatSession.project_id == project_id)
             )
             if session is None:
-                raise ActionError("聊天会话不存在", 404)
+                raise ActionError("Chat session does not exist", 404)
             runs = list(ActionRun.select().where(ActionRun.session_id == session_id).order_by(ActionRun.started_at.desc()).limit(50))
             active = list(ActionRun.select().where(
                 (ActionRun.project_id == project_id)
@@ -272,7 +272,7 @@ class ActionRuntime:
         def load(_project):
             run = ActionRun.get_or_none(ActionRun.id == run_id)
             if run is None or run.project_id != project_id:
-                raise ActionError("Action 运行记录不存在", 404)
+                raise ActionError("Action run record does not exist", 404)
             return _serialize(run)
         result = await self._db(project_id, load)
         if result["status"] in ACTIVE and run_id not in self.tasks:
@@ -283,20 +283,20 @@ class ActionRuntime:
     async def start(self, project_id: str, task_id: str, button_id: str, source: str, step_key: str | None, confirmed: bool, action_input: str = "") -> dict:
         project = self._manager().get_project_by_id(project_id)
         if project is None:
-            raise ActionError("项目不存在", 404)
+            raise ActionError("Project not found", 404)
         if source not in {"project", "workflow", "stage"}:
-            raise ActionError("快捷按钮来源无效")
+            raise ActionError("Invalid source for shortcut button")
 
         def claim(_project):
             task = Task.get_or_none(Task.id == task_id)
             if task is None:
-                raise ActionError("任务不存在", 404)
+                raise ActionError("Task not found", 404)
             button = next((item for item in _available_buttons(_project, task, step_key)
                            if item.get("id") == button_id and item.get("source") == source), None)
             if button is None or button.get("kind") != "action":
-                raise ActionError("Action 快捷按钮不存在", 404)
+                raise ActionError("Action shortcut button does not exist", 404)
             if button.get("require_confirmation", True) and not confirmed:
-                raise ActionError("需要用户确认后执行", 409)
+                raise ActionError("Requires user confirmation before execution", 409)
             input_value = _action_input(button, action_input)
             active_key = f"task:{task_id}:action:{button['action_id']}"
             existing = ActionRun.get_or_none(ActionRun.active_key == active_key)
@@ -351,21 +351,21 @@ class ActionRuntime:
     async def start_session(self, project_id: str, session_id: str, button_id: str, confirmed: bool, action_input: str = "") -> dict:
         project = self._manager().get_project_by_id(project_id)
         if project is None:
-            raise ActionError("项目不存在", 404)
+            raise ActionError("Project not found", 404)
 
         def claim(_project):
             session = ChatSession.get_or_none(
                 (ChatSession.id == session_id) & (ChatSession.project_id == project_id)
             )
             if session is None:
-                raise ActionError("聊天会话不存在", 404)
+                raise ActionError("Chat session does not exist", 404)
             button = next((item for item in _buttons_from_setting(project_id)
                            if item.get("id") == button_id and item.get("kind") == "action"
                            and item.get("enabled") is not False), None)
             if button is None:
-                raise ActionError("Action 快捷按钮不存在", 404)
+                raise ActionError("Action shortcut button does not exist", 404)
             if button.get("require_confirmation", True) and not confirmed:
-                raise ActionError("需要用户确认后执行", 409)
+                raise ActionError("Requires user confirmation before execution", 409)
             input_value = _action_input(button, action_input)
             active_key = f"project:{project_id}:action:{button['action_id']}"
             existing = ActionRun.get_or_none(ActionRun.active_key == active_key)
@@ -477,10 +477,10 @@ class ActionRuntime:
                 run_dir = config["workstep_root"] / "action-runs" / run_id
                 worktrees_file = run_dir / ".worktrees.json"
             if not _within(await asyncio.to_thread(run_dir.resolve), config["workstep_root"]):
-                raise ActionError("Action 运行目录超出项目根目录")
+                raise ActionError("Action: Run directory exceeds project root directory")
             await asyncio.to_thread(run_dir.mkdir, parents=True, exist_ok=True)
             if not _within(await asyncio.to_thread(worktrees_file.resolve), config["workstep_root"]):
-                raise ActionError("Worktree 映射文件超出项目根目录")
+                raise ActionError("Worktree mapping file exceeds project root directory")
             worktrees = {"worktrees": []}
             if run["task_id"]:
                 from services.git import git_service

@@ -8,12 +8,12 @@ import pytest
 from fastapi import FastAPI
 
 from api import speech
-from services.speech import SpeechService
+from services.speech import MODEL_ID, SENSEVOICE_ID, SpeechService
 
 
 @pytest.fixture
 def service(tmp_path, monkeypatch):
-    instance = SpeechService(tmp_path)
+    instance = SpeechService(tmp_path, MODEL_ID)
     monkeypatch.setattr(speech, 'service', instance)
     monkeypatch.setattr(speech, 'authorize', lambda project_id, manage=False: None)
     return instance
@@ -56,7 +56,7 @@ async def test_cancel_discards_late_result_and_blocks_model_mutation(service, mo
     service.settings = {'enabled': True, 'language': 'auto'}
     monkeypatch.setattr(service, 'installed', lambda: True)
     sid = (await service.start('p', 'owner'))['id']
-    with pytest.raises(ValueError, match='录音'):
+    with pytest.raises(ValueError, match='recording'):
         await service.delete()
     await service.cancel(sid, 'p', 'owner')
     with pytest.raises(LookupError):
@@ -69,9 +69,9 @@ async def test_bad_audio_sequence_and_duration_leave_draft_untouched(service, mo
     service.settings = {'enabled': True, 'language': 'auto'}
     monkeypatch.setattr(service, 'installed', lambda: True)
     sid = (await service.start('p', 'owner'))['id']
-    with pytest.raises(ValueError, match='顺序'):
+    with pytest.raises(ValueError, match='Audio order'):
         await service.audio(sid, 'p', 'owner', 2, b'\0\0', False)
-    with pytest.raises(ValueError, match='音频'):
+    with pytest.raises(ValueError, match='Audio format'):
         await service.audio(sid, 'p', 'owner', 0, b'\0', False)
     await service.close()
 
@@ -142,7 +142,7 @@ def test_runtime_wheels_reject_traversal_and_startup_hooks(tmp_path):
 async def test_resource_download_verifies_hash_before_accepting(service, tmp_path):
     transport = httpx.MockTransport(lambda request: httpx.Response(200, content=b'wrong'))
     async with httpx.AsyncClient(transport=transport) as client:
-        with pytest.raises(ValueError, match='校验'):
+        with pytest.raises(ValueError, match='validation'):
             await service._fetch(client, 'https://example.com/model', tmp_path/'model', 5, '0'*64)
 
 
@@ -185,17 +185,35 @@ async def test_half_second_preview_is_replaced_by_final_hypothesis(service, monk
 
 
 @pytest.mark.asyncio
-async def test_default_is_native_streaming_and_legacy_language_migrates(service):
+async def test_default_is_sensevoice_and_legacy_language_migrates(tmp_path):
+    service = SpeechService(tmp_path)
     service.root.mkdir(parents=True, exist_ok=True)
     (service.root / 'settings.json').write_text('{"enabled": true, "language": "ja"}')
     snapshot = await service.snapshot()
-    assert snapshot['model_id'] == 'streaming-paraformer-zh-yue-en-int8'
-    assert snapshot['models'][0]['streaming'] == 'native'
-    assert snapshot['models'][0]['languages'] == ['zh', 'yue', 'en']
+    assert snapshot['model_id'] == SENSEVOICE_ID
+    assert snapshot['models'][0]['streaming'] == 'segment'
+    assert {'zh', 'en'} <= set(snapshot['models'][0]['languages'])
+    assert 'punctuation' not in snapshot['models'][0]
     assert snapshot['languages'] == ['auto']
     assert snapshot['language'] == 'auto'
     assert snapshot['enabled'] is True
     assert snapshot['models'][0]['installed'] is False
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_retired_zipformer_setting_falls_back_to_sensevoice(tmp_path):
+    retired = 'streaming-zipformer-zh-en-int8'
+    service = SpeechService(tmp_path)
+    (tmp_path / 'settings.json').write_text(
+        '{"enabled": true, "model_id": "' + retired + '"}'
+    )
+    snapshot = await service.snapshot()
+    assert snapshot['enabled'] is True
+    assert snapshot['model_id'] == SENSEVOICE_ID
+    assert [model['id'] for model in snapshot['models']] == [SENSEVOICE_ID, MODEL_ID]
+    with pytest.raises(ValueError, match='Unsupported\\ voice\\ model'):
+        await service.download(retired)
     await service.close()
 
 
@@ -256,7 +274,7 @@ async def test_recording_capacity_is_bounded_and_returns_after_cancel(service, m
     service.settings = {'enabled': True, 'language': 'auto'}
     monkeypatch.setattr(service, 'installed', lambda: True)
     sessions = [(await service.start('p', 'owner'))['id'] for _ in range(MAX_SESSIONS)]
-    with pytest.raises(ValueError, match='并发'):
+    with pytest.raises(ValueError, match='concurrency'):
         await service.start('p', 'other')
     await service.cancel(sessions[0], 'p', 'owner')
     assert (await service.start('p', 'other'))['id'] not in sessions
@@ -306,7 +324,7 @@ for line in sys.stdin:
         crash = await call('alice', 'POST', f'/api/speech/sessions/{crashing}/audio?project_id=p',
                            json={'sequence': 0, 'audio': base64.b64encode(b'\x03\0').decode(), 'final': True})
         assert crash.status_code == 409
-        assert '进程已退出' in crash.json()['detail']
+        assert 'process has exited' in crash.json()['detail']
         assert (await call('bob', 'DELETE', f'/api/speech/sessions/{a}?project_id=p')).status_code == 404
         assert (await call('alice', 'DELETE', f'/api/speech/sessions/{a}?project_id=p')).status_code == 200
         assert (await slow).status_code in (404, 409)
@@ -394,7 +412,7 @@ async def test_queued_final_is_bounded_and_cancellation_releases_waiter(service,
     sid = (await service.start('p', 'owner'))['id']
     final = asyncio.create_task(service.audio(sid, 'p', 'owner', 1, b'', True))
     await asyncio.sleep(.01)
-    with pytest.raises(ValueError, match='重复'):
+    with pytest.raises(ValueError, match='do not resubmit'):
         await service.audio(sid, 'p', 'owner', 1, b'', True)
     with pytest.raises(LookupError):
         await service.audio(sid, 'p', 'other', 1, b'', True)
@@ -430,20 +448,18 @@ async def test_catchup_batch_is_negotiated_and_bounded_through_http(service, mon
 
 
 @pytest.mark.asyncio
-async def test_two_native_streaming_models_and_selection_are_persisted(service, monkeypatch):
-    from services.speech import ZIPFORMER_ID, MODEL_ID
+async def test_supported_model_selection_is_persisted(service, monkeypatch):
     snapshot = await service.snapshot()
-    assert len(snapshot['models']) == 2
-    assert all(m['streaming'] == 'native' for m in snapshot['models'])
+    assert {m['id']: m['streaming'] for m in snapshot['models']} == {MODEL_ID: 'native', SENSEVOICE_ID: 'segment'}
     with pytest.raises(ValueError):
-        await service.configure(True, 'auto', ZIPFORMER_ID)
+        await service.configure(True, 'auto', SENSEVOICE_ID)
     monkeypatch.setattr(service, 'model_installed', lambda mid: True)
-    await service.configure(True, 'auto', ZIPFORMER_ID)
-    assert service.bundle.name == ZIPFORMER_ID
+    await service.configure(True, 'auto', SENSEVOICE_ID)
+    assert service.bundle.name == SENSEVOICE_ID
     reopened = SpeechService(service.root)
-    assert (await reopened.snapshot())['model_id'] == ZIPFORMER_ID
+    assert (await reopened.snapshot())['model_id'] == SENSEVOICE_ID
     await service.configure(False, 'auto')
-    assert service.model_id == ZIPFORMER_ID
+    assert service.model_id == SENSEVOICE_ID
     with pytest.raises(ValueError):
         await service.download('../invalid')
     await service.close()
@@ -452,20 +468,18 @@ async def test_two_native_streaming_models_and_selection_are_persisted(service, 
 
 @pytest.mark.asyncio
 async def test_switching_model_during_recording_is_rejected_and_preserves_current(service, monkeypatch):
-    from services.speech import ZIPFORMER_ID, MODEL_ID
     service.settings = {'enabled': True, 'language': 'auto'}
     monkeypatch.setattr(service, 'installed', lambda: True)
     monkeypatch.setattr(service, 'model_installed', lambda mid: True)
     await service.start('p', 'owner')
-    with pytest.raises(ValueError, match='录音'):
-        await service.configure(True, 'auto', ZIPFORMER_ID)
+    with pytest.raises(ValueError, match='recording'):
+        await service.configure(True, 'auto', SENSEVOICE_ID)
     assert service.model_id == MODEL_ID
     await service.close()
 
 
 @pytest.mark.asyncio
 async def test_model_download_http_targets_secondary_and_delete_preserves_primary(service, monkeypatch):
-    from services.speech import ZIPFORMER_ID, MODEL_ID
     entered, wait = asyncio.Event(), asyncio.Event()
     targets = []
     async def download_resource(resource):
@@ -480,23 +494,24 @@ async def test_model_download_http_targets_secondary_and_delete_preserves_primar
     app = FastAPI()
     app.include_router(speech.router)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
-        result = await client.post('/api/speech/models/download', params={'model_id': ZIPFORMER_ID})
+        result = await client.post('/api/speech/models/download', params={'model_id': SENSEVOICE_ID})
         assert result.status_code == 200
         await entered.wait()
         snapshot = (await client.get('/api/speech')).json()
-        assert targets == [ZIPFORMER_ID]
+        assert targets == [SENSEVOICE_ID]
         assert snapshot['model_id'] == MODEL_ID
-        assert snapshot['models'][0]['install']['stage'] == 'idle'
-        assert snapshot['models'][1]['install']['stage'] == 'downloading'
+        stages = {m['id']: m['install']['stage'] for m in snapshot['models']}
+        assert stages[MODEL_ID] == 'idle'
+        assert stages[SENSEVOICE_ID] == 'downloading'
         assert (await client.post('/api/speech/models/download', params={'model_id': MODEL_ID})).status_code == 409
-        assert (await client.put('/api/speech/settings', json={'enabled': True, 'model_id': ZIPFORMER_ID})).status_code == 409
+        assert (await client.put('/api/speech/settings', json={'enabled': True, 'model_id': SENSEVOICE_ID})).status_code == 409
         await client.post('/api/speech/models/cancel')
         service.bundle.mkdir(parents=True, exist_ok=True)
         (service.bundle / 'keep').write_text('primary')
-        other = service.root / ZIPFORMER_ID
+        other = service.root / SENSEVOICE_ID
         other.mkdir()
         (other / 'remove').write_text('secondary')
-        assert (await client.delete('/api/speech/models/current', params={'model_id': ZIPFORMER_ID})).status_code == 200
+        assert (await client.delete('/api/speech/models/current', params={'model_id': SENSEVOICE_ID})).status_code == 200
         assert not other.exists()
         assert (service.bundle / 'keep').read_text() == 'primary'
         assert (await client.post('/api/speech/models/download', params={'model_id': '../bad'})).status_code == 409
@@ -507,6 +522,7 @@ async def test_model_download_http_targets_secondary_and_delete_preserves_primar
 @pytest.mark.parametrize('project_access', [None, 'read', 'edit'])
 @pytest.mark.parametrize('method,path,body', [
     ('PUT', '/api/speech/settings', {'enabled': True, 'language': 'auto'}),
+    ('POST', '/api/speech/settings/secret', {'mode': 'cloud', 'provider': 'openai', 'field': 'api_key'}),
     ('POST', '/api/speech/models/download', None),
     ('POST', '/api/speech/models/cancel', None),
     ('DELETE', '/api/speech/models/current', None),
@@ -525,8 +541,11 @@ async def test_speech_management_matches_host_scope_without_retired_engine_insta
         return {'ok': True}
     async def snapshot():
         return {'ok': True}
+    async def connection_secret(*args):
+        calls.append(args)
+        return 'demo'
     monkeypatch.setattr(speech, 'service', SimpleNamespace(configure=operation, download=operation,
-        cancel_download=operation, delete=operation, snapshot=snapshot))
+        cancel_download=operation, delete=operation, snapshot=snapshot, connection_secret=connection_secret))
     app = FastAPI()
     app.include_router(speech.router)
     actor = ActorSnapshot('user', 'User', 'device', 'Device', 'managed',
@@ -536,3 +555,29 @@ async def test_speech_management_matches_host_scope_without_retired_engine_insta
             result = await client.request(method, path, **({'json': body} if body else {}))
     assert result.status_code == (403 if project_access else 200), result.text
     assert len(calls) == (0 if project_access else 1)
+
+
+@pytest.mark.asyncio
+async def test_input_mirror_is_carried_to_the_background_download(service, tmp_path, monkeypatch):
+    from services import speech as downloader
+    from services.speech import SENSEVOICE_ID, SpeechService
+    seen = []
+    stage = tmp_path / 'stage'
+    stage.mkdir()
+
+    async def download(resource):
+        await resource._install(stage)
+
+    async def fetch(_resource, _client, url, path, size, digest):
+        seen.append((url, path.name, size, digest))
+
+    monkeypatch.setattr(downloader, 'PACKAGES', [])
+    monkeypatch.setattr(SpeechService, '_download', download)
+    monkeypatch.setattr(SpeechService, '_fetch', fetch)
+    await service.download(SENSEVOICE_ID, 'https://mirror.example/hub/')
+    await service.download_task
+    spec = downloader.MODELS[SENSEVOICE_ID]
+    base = 'https://mirror.example/hub' + spec['base'].removeprefix('https://huggingface.co')
+    assert seen == [(f'{base}/{name}', name, size, digest) for name, size, digest in spec['files']]
+    with pytest.raises(ValueError):
+        await service.download(SENSEVOICE_ID, 'https://user:secret@mirror.example')

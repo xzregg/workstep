@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useEffect, useRef, useState } from 'react'
 import { AdminRecordTable } from './AdminRecordTable'
@@ -28,7 +29,7 @@ export function GroupMembersManager({groupId, csrf, onChanged}: {
  useEffect(()=>{
   const controller = new AbortController(); setLoading(true);setError('')
   void fetch(base,{credentials:'same-origin',signal:controller.signal}).then(async response=>{
-   if(!response.ok)throw Error('成员加载失败，请检查管理权限后重试。')
+   if(!response.ok)throw Error('Failed to load members. Please check your admin permissions and try again.')
    const result=await response.json(); if(!controller.signal.aborted)setMembers(result.members ?? [])
   }).catch(reason=>{if(!controller.signal.aborted)setError(reason.message)})
    .finally(()=>{if(!controller.signal.aborted)setLoading(false)})
@@ -40,9 +41,9 @@ export function GroupMembersManager({groupId, csrf, onChanged}: {
   setSearching(true);setError('');additions.setSelected([])
   try {
    const response=await fetch(`/api/admin/users?${new URLSearchParams({q:query.trim(),status:'active',page_size:'100'})}`,{credentials:'same-origin',signal:controller.signal})
-   if(!response.ok)throw Error('用户搜索失败，请重试。')
+   if(!response.ok)throw Error('User search failed, please try again.')
    const result=await response.json();if(!controller.signal.aborted){setMatches(result.users ?? []);setSearched(true)}
-  }catch(reason){if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'搜索失败。')}
+  }catch(reason){if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'Search failed.')}
   finally{if(!controller.signal.aborted)setSearching(false)}
  }
  function change(kind:'add'|'remove'|'set_role', ids:string[], targetRole=role) {
@@ -73,7 +74,7 @@ export function GroupMembersManager({groupId, csrf, onChanged}: {
    </tr>})}
   </AdminRecordTable>}
   {searched && !matches.length && <p>没有匹配的用户。</p>}
-  {error && <p role="alert" className="gateway-auth-error">{error}<button type="button" onClick={()=>setRevision(value=>value+1)}>重试</button></p>}
+  {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}<button type="button" onClick={()=>setRevision(value=>value+1)}>重试</button></p>}
   {loading && <p role="status"><span className="gateway-spinner"/>正在加载成员…</p>}
   {notice && <p role="status">{notice}</p>}
   <div className="gateway-bulk-toolbar" aria-label="成员批量操作"><span>已选 {selection.selected.length} 位成员</span>

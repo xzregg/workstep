@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, ty
 import { createPortal } from 'react-dom'
 import { prototypeApi, type PrototypeState, type PrototypeDocument, type PrototypeSelection } from '../../api/prototype'
 import { fsApi } from '../../api/client'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import { HTML_PREVIEW_SANDBOX } from '../../utils/htmlPreviewCompat'
 import { randomUuid } from '../../utils/uuid'
 import Button from '../Button'
@@ -224,7 +224,7 @@ export default function PrototypeEditor({projectId,path:entry,onClose}:{projectI
         </div>
       </header>
       {previewDocument?.inspection_only&&<div className="prototype-recovery" role="status">{t('prototype.runtimeInspection')}</div>}
-      {error&&<div role="alert" className="prototype-error">{error}</div>}
+      {error&&<div role="alert" className="prototype-error">{localizeErrorDisplay(error)}</div>}
       {work?.pending&&work.status!=='running'&&<div className="prototype-recovery"><span>{work.error||t('prototype.recovery')}</span><Button disabled={busy} onClick={()=>void action('publish')}>{t('prototype.publish')}</Button><Button disabled={busy} onClick={()=>setConfirm('discard')}>{t('prototype.discard')}</Button></div>}
       {history&&work&&<PrototypeHistory projectId={projectId} work={work} onClose={()=>changeLayout('history',false)} onClean={()=>void action('clean_history')}/>}
       <nav className="prototype-mobile-tabs">{['chat','preview','properties'].map(tab=><Button key={tab} onClick={()=>changeLayout('mobileTab',tab)}>{t(`prototype.${tab}` as 'prototype.chat')}</Button>)}</nav>

@@ -14,7 +14,7 @@ def source_workflow(project, task: Task) -> dict:
     if task.workflow_id:
         selected = project.workflow_by_id(task.workflow_id)
         if selected is None:
-            raise WorkflowConflict(f"来源流程不存在: {task.workflow_id}")
+            raise WorkflowConflict(f"Source workflow does not exist: {task.workflow_id}")
         return deepcopy(selected["steps"])
     return deepcopy(project.steps)
 
@@ -23,9 +23,9 @@ def task_overrides(task: Task) -> dict | None:
     try:
         value = json.loads(task.workflow_overrides_json) if task.workflow_overrides_json else None
     except (ValueError, TypeError) as exc:
-        raise WorkflowConflict("任务流程覆盖格式损坏") from exc
+        raise WorkflowConflict("Task flow coverage format corrupted") from exc
     if value is not None and not isinstance(value, dict):
-        raise WorkflowConflict("任务流程覆盖格式无效")
+        raise WorkflowConflict("Invalid task flow coverage format")
     return value
 
 
@@ -142,7 +142,7 @@ def replace_review_overrides(task, reviews):
         _store_delta(task, delta)
     for key, review in reviews.items():
         if not isinstance(review, dict):
-            raise ValueError("审核配置必须为对象")
+            raise ValueError("Audit configuration must be an object")
         set_review_override(task, key, review)
 
 
@@ -177,7 +177,7 @@ def require_editable(task: Task, active_runner: bool = False) -> None:
     if (active_runner or task.status in {"running", "queued"}
             or TaskStep.select().where((TaskStep.task == task) & TaskStep.status.in_(ACTIVE)).exists()
             or ReviewRun.select().where((ReviewRun.task == task) & ReviewRun.status.in_(["pending", "running"])).exists()):
-        raise RuntimeError("请先停止任务执行和审核，再编辑任务流程")
+        raise RuntimeError("Please stop task execution and review, then edit the task flow:")
 
 
 def get_task_workflow(project, task_id: str, *, active_runner: bool = False) -> dict:
@@ -208,7 +208,7 @@ def get_task_workflow(project, task_id: str, *, active_runner: bool = False) -> 
 
 
 def save_task_workflow(project, task_id: str, edited: dict | None, revision: str,
-                       *, active_runner: bool = False, context_mode: str = "smart") -> dict:
+                       *, active_runner: bool = False, context_mode: str | None = None) -> dict:
     from services.step_execution_config import prepare_execution_handoff, validate_execution_config
 
     task = Task.get_or_none(Task.id == task_id)
@@ -217,7 +217,7 @@ def save_task_workflow(project, task_id: str, edited: dict | None, revision: str
     require_editable(task, active_runner)
     current = get_task_workflow(project, task_id)
     if revision != current["revision"]:
-        raise RuntimeError("流程配置已变化，请重新加载后保存")
+        raise RuntimeError("The process configuration has changed. Please reload and save.")
     source = source_workflow(project, task)
     delta = build_overrides(source, edited) if edited is not None else None
     effective = canonical_workflow(merge_workflow(source, delta))
@@ -228,7 +228,7 @@ def save_task_workflow(project, task_id: str, edited: dict | None, revision: str
             if (Message.select().where((Message.task == task) & (Message.step_key == key)).exists()
                     or StepRun.select().join(WorkflowRun).where(
                         (WorkflowRun.task == task) & (StepRun.step_key == key)).exists()):
-                raise WorkflowConflict(f"已有执行历史，不能删除任务新增阶段: {key}")
+                raise WorkflowConflict(f"Execution history already exists; cannot delete task addition phase: {key}")
     before = {node["type"]: node for node in current["workflow"]["nodes"]}
     with Task._meta.database.atomic():
         for node in effective["nodes"]:
@@ -238,7 +238,11 @@ def save_task_workflow(project, task_id: str, edited: dict | None, revision: str
             if any(previous.get(field) != node.get(field) for field in execution_fields):
                 validate_execution_config(node.get("engine"), node.get("config") or {})
             row, _ = TaskStep.get_or_create(task=task, step_key=key, defaults={"status": "pending"})
-            if any(previous.get(field) != node.get(field) for field in ("engine", "config")):
+            if context_mode is not None and (
+                previous.get("engine") != node.get("engine")
+                or (previous.get("config") or {}).get("provider_id", "")
+                != (node.get("config") or {}).get("provider_id", "")
+            ):
                 prepare_execution_handoff(project, task, row, previous, node, context_mode)
             row.execution_config_json = None
             row.save(only=[TaskStep.execution_config_json, TaskStep.pending_handoff_json])

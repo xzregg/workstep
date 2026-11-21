@@ -41,7 +41,7 @@ class CustomEngineManager:
         from engines.core.registry import list_all_engines
         existing = list_all_engines().get(manifest["id"])
         if existing is not None and not getattr(existing, "_metadata", {}).get("custom"):
-            raise ValueError("不能覆盖内置引擎 ID")
+            raise ValueError("Cannot overwrite built-in engine ID")
         return root, manifest
 
     async def inspect(self, path, timeout=15):
@@ -94,13 +94,13 @@ class CustomEngineManager:
 
     async def start_operation(self, action, path):
         if action not in {"install", "validate"}:
-            raise ValueError("不支持的接入操作")
+            raise ValueError("Unsupported access operation")
         root, _ = await asyncio.to_thread(self._load, path)
         for operation in self.operations.values():
             if operation["path"] == str(root) and operation["status"] == "running":
                 if operation["action"] == action:
                     return dict(operation)
-                raise ValueError("该引擎已有安装或验收操作进行中")
+                raise ValueError("An installation or acceptance operation is already in progress for this engine:")
         key = uuid.uuid4().hex
         operation = {"id": key, "action": action, "path": str(root), "status": "running", "result": None}
         self.operations[key] = operation
@@ -121,13 +121,13 @@ class CustomEngineManager:
         def read():
             from services.config import CONFIG_DIR
             if not key.isalnum() or len(key) != 32:
-                raise ValueError("操作 ID 无效")
+                raise ValueError("Invalid operation ID")
             file = CONFIG_DIR / "runtime" / "engine-operations" / f"{key}.json"
             if not file.is_file():
-                raise ValueError("操作不存在")
+                raise ValueError("Operation does not exist")
             operation = json.loads(file.read_text())
             if operation["status"] == "running":
-                operation.update(status="interrupted", result={"ok": False, "error": "后台重启，操作已中断"})
+                operation.update(status="interrupted", result={"ok": False, "error": "Background restart, operation interrupted"})
             return operation
         return await asyncio.to_thread(read)
 
@@ -145,7 +145,7 @@ class CustomEngineManager:
             result = await self.run_operation(operation["action"], operation["path"])
             operation.update(status="completed" if result.get("ok") else "failed", result=result)
         except asyncio.CancelledError:
-            operation.update(status="cancelled", result={"ok": False, "error": "操作已停止"})
+            operation.update(status="cancelled", result={"ok": False, "error": "Operation stopped"})
         except Exception as exc:
             operation.update(status="failed", result={"ok": False, "error": str(exc)})
         finally:
@@ -164,13 +164,13 @@ class CustomEngineManager:
                 return await self._install(root, manifest)
             if action == "validate":
                 return await self._validate(root, manifest)
-            raise ValueError("不支持的接入操作")
+            raise ValueError("Unsupported access operation")
 
     async def _install(self, root, manifest):
         await self._close_cached_workers(root)
         from engines.core.custom_transport import ACTIVE_CLIENTS
         if any(client.root == root and not client.closed for client in ACTIVE_CLIENTS):
-            raise ValueError("引擎正在运行，不能替换依赖")
+            raise ValueError("Engine is running, cannot replace dependencies")
         stage = root / f".dependencies-{uuid.uuid4().hex}"
         previous = root / "dependencies"
         backup = root / f".dependencies-backup-{uuid.uuid4().hex}"
@@ -185,12 +185,12 @@ class CustomEngineManager:
         try:
             result = await worker.call("install", timeout=900)
             if not isinstance(result, dict) or result.get("success") is not True:
-                raise ValueError("自定义 install 未成功完成")
+                raise ValueError("Custom install did not complete successfully")
             await worker.close()
             worker = CustomWorkerClient(root, dependencies=stage)
             metadata = await worker.call("describe", timeout=15)
             if not metadata.get("installed"):
-                raise ValueError("安装后实际依赖检查失败")
+                raise ValueError("Actual dependency check failed after installation")
             await worker.close()
             def switch():
                 if previous.exists():
@@ -252,27 +252,27 @@ class CustomEngineManager:
         async with lock:
             target = self.root() / manifest["id"]
             if await asyncio.to_thread(target.exists) and root != target and not replace:
-                raise ValueError("引擎已接入；更新必须指定 replace")
+                raise ValueError("Engine has been connected; update must specify replace")
             def verified():
                 file = root / "validation.json"
                 if not file.is_file():
-                    raise ValueError("需要先完成公共验收")
+                    raise ValueError("Please complete the public acceptance first")
                 report = json.loads(file.read_text())
                 if not hmac.compare_digest(str(report.get("signature", "")), self._seal(report)):
-                    raise ValueError("验收报告签名无效，请重新验收")
+                    raise ValueError("The acceptance report signature is invalid. Please re-accept.")
                 if report.get("ok") is not True or report.get("api_version") != 1:
-                    raise ValueError("公共验收未通过")
+                    raise ValueError("Public acceptance failed")
                 current = self._fingerprint(root, manifest)
                 if any(report.get(key) != value for key, value in current.items()):
-                    raise ValueError("验收已失效，请重新验收")
+                    raise ValueError("Acceptance has expired, please re-accept")
                 if not report.get("metadata", {}).get("installed"):
-                    raise ValueError("实际运行环境未通过验收")
+                    raise ValueError("Actual runtime environment has not passed acceptance")
                 return report
             report = await asyncio.to_thread(verified)
             await self._close_cached_workers(target)
             from engines.core.custom_transport import ACTIVE_CLIENTS
             if any(client.root == target and not client.closed for client in ACTIVE_CLIENTS):
-                raise ValueError("引擎正在运行，不能替换适配器")
+                raise ValueError("Engine is running, cannot replace adapter")
             def copy():
                 self.root().mkdir(parents=True, exist_ok=True)
                 metadata = dict(report["metadata"], package_digest=report["package_digest"])
@@ -296,7 +296,7 @@ class CustomEngineManager:
                     self._write_json(stage / "validation.json", report)
                     self._write_json(stage / "installation.json", metadata)
                     if digest(stage, manifest, dependencies=True) != report["package_digest"]:
-                        raise ValueError("复制期间文件变化，验收失效")
+                        raise ValueError("File changed during copy, validation failed")
                     if backup.exists():
                         shutil.rmtree(backup)
                     if target.exists():
@@ -316,10 +316,10 @@ class CustomEngineManager:
     async def disable(self, engine_id, disabled=True):
         import re
         if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", engine_id):
-            raise ValueError("引擎 ID 无效")
+            raise ValueError("Invalid engine ID")
         def save():
             if not (self.root() / engine_id / "manifest.json").is_file():
-                raise ValueError("自定义引擎不存在")
+                raise ValueError("Custom engine does not exist")
             with config_store._lock:
                 values = set(config_store.get("disabled_custom_engines", []))
                 if disabled:
@@ -341,16 +341,16 @@ class CustomEngineManager:
     async def rollback(self, engine_id):
         import re
         if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", engine_id):
-            raise ValueError("引擎 ID 无效")
+            raise ValueError("Invalid engine ID")
         target = self.root() / engine_id
         backup = self.root() / f".previous-{engine_id}"
         await self._close_cached_workers(target)
         from engines.core.custom_transport import ACTIVE_CLIENTS
         if any(client.root == target and not client.closed for client in ACTIVE_CLIENTS):
-            raise ValueError("引擎正在运行")
+            raise ValueError("Engine is running")
         def swap():
             if not backup.is_dir():
-                raise ValueError("没有上一版本")
+                raise ValueError("No previous version")
             temporary = self.root() / f".rollback-{uuid.uuid4().hex}"
             target.rename(temporary)
             try:
@@ -366,7 +366,7 @@ class CustomEngineManager:
     async def export(self, engine_id):
         import re
         if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", engine_id):
-            raise ValueError("引擎 ID 无效")
+            raise ValueError("Invalid engine ID")
         def pack():
             root, manifest = self._load(self.root() / engine_id)
             buffer = io.BytesIO()
@@ -376,9 +376,9 @@ class CustomEngineManager:
                     source = safe_file(root, name)
                     total += source.stat().st_size
                     if total > 32 * 1024 * 1024:
-                        raise ValueError("适配包源码与资源超过 32 MiB")
+                        raise ValueError("Adaptation package source code and resources exceed 32 MiB")
                     if source.name in {"auth.json", "config.json", ".env", "credentials.json"}:
-                        raise ValueError("认证和本机配置文件不能导出")
+                        raise ValueError("Authentication and local profile cannot be exported")
                     archive.write(source, name)
                 # Only safe summary fields; never include full diagnostics/config.
                 report = root / "validation.json"

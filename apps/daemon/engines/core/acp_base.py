@@ -309,12 +309,12 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         if str(kwargs.get("prompt") or "").strip() == "/compact":
             if not self.supports_manual_compaction:
                 yield InternalEvent(type="error", data={
-                    "message": f"{self.ENGINE_ID} 当前不支持手动压缩会话",
+                    "message": f"{self.ENGINE_ID} Manual session compression is not currently supported",
                 })
                 return
             if not kwargs.get("session_id"):
                 yield InternalEvent(type="error", data={
-                    "message": "没有可压缩的引擎会话",
+                    "message": "No compressible engine session",
                 })
                 return
             # Compaction changes the current session. Never retry it blindly.
@@ -329,7 +329,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                     yield event
             if not confirmed and not failed:
                 yield InternalEvent(type="error", data={
-                    "message": "引擎未返回压缩完成事件，无法确认上下文已压缩",
+                    "message": "Engine did not return a compression completion event; unable to confirm that the context has been compressed",
                 })
             return
         async for event in self._stream_with_retry(
@@ -523,7 +523,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         for image in images or []:
             data_url = image.to_data_url()
             if not data_url.startswith("data:") or ";base64," not in data_url:
-                raise ValueError("ACP 图片必须是本地文件或 base64 data URL")
+                raise ValueError("ACP image must be a local file or base64 data URL")
             header, encoded = data_url.split(",", 1)
             mime_type = header[5:].split(";", 1)[0] or "application/octet-stream"
             # Validate before handing malformed media to an ACP agent.
@@ -549,7 +549,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         if additional_directories and not cls._agent_capability(
             initialize_response, "session_capabilities", "additional_directories"
         ):
-            raise RuntimeError("ACP Agent 未声明 additionalDirectories 支持")
+            raise RuntimeError("ACP Agent does not declare support for additionalDirectories")
         capabilities = getattr(
             getattr(initialize_response, "agent_capabilities", None),
             "mcp_capabilities",
@@ -557,7 +557,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         )
         if capabilities is None:
             if mcp_servers:
-                raise RuntimeError("ACP Agent 未声明 MCP 支持")
+                raise RuntimeError("ACP Agent does not declare MCP support")
             return
         for server in mcp_servers:
             server_type = (
@@ -568,15 +568,15 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             if (
                 isinstance(server, schema.HttpMcpServer) or server_type == "http"
             ) and not capabilities.http:
-                raise RuntimeError("ACP Agent 未声明 HTTP MCP 支持")
+                raise RuntimeError("ACP Agent does not declare HTTP MCP support")
             if (
                 isinstance(server, schema.SseMcpServer) or server_type == "sse"
             ) and not capabilities.sse:
-                raise RuntimeError("ACP Agent 未声明 SSE MCP 支持")
+                raise RuntimeError("ACP Agent does not declare SSE MCP support")
             if (
                 isinstance(server, schema.AcpMcpServer) or server_type == "acp"
             ) and not capabilities.acp:
-                raise RuntimeError("ACP Agent 未声明 ACP MCP transport 支持")
+                raise RuntimeError("ACP Agent does not declare support for ACP MCP transport")
 
     async def list_models(self, cwd: str) -> list[EngineModel]:
         """Read the ACP session's model configuration options."""
@@ -798,19 +798,19 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
     ) -> AsyncIterator[InternalEvent]:
         if goal_action and not self.supports_goal_mode:
             yield InternalEvent(type="error", data={
-                "message": f"当前引擎不支持目标模式：{self.ENGINE_ID}",
+                "message": f"Current engine does not support target mode: {self.ENGINE_ID}",
             })
             return
         if prompt.strip() == "/compact":
             if not session_id:
                 yield InternalEvent(type="error", data={
-                    "message": "没有可压缩的 ACP 会话",
+                    "message": "No compressible ACP session",
                 })
                 return
             commands = await self._inspect_acp_commands(cwd)
             if not any(command["name"] == "compact" for command in commands):
                 yield InternalEvent(type="error", data={
-                    "message": "ACP 引擎未声明 /compact 命令",
+                    "message": "ACP engine does not declare the /compact command",
                 })
                 return
 
@@ -836,7 +836,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
 
         if self.REQUIRES_PERMISSION_MODE and not permission_mode:
             yield InternalEvent(type="error", data={
-                "message": "Claude Code 权限模式尚未确认，请先在设置中选择权限模式",
+                "message": "Claude Code permission mode is not yet confirmed. Please select a permission mode in settings first.",
             })
             return
 
@@ -876,8 +876,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                     != acp.PROTOCOL_VERSION
                 ):
                     raise RuntimeError(
-                        "ACP 协议版本不兼容："
-                        f"客户端={acp.PROTOCOL_VERSION}，Agent={init_resp.protocol_version}"
+                        f"Incompatible ACP protocol version: client={acp.PROTOCOL_VERSION}, agent={init_resp.protocol_version}"
                     )
 
                 mcp_servers = list(
@@ -911,13 +910,13 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                             )
                         else:
                             raise RuntimeError(
-                                "ACP Agent 未声明 session/load 或 session/resume 支持"
+                                "ACP Agent does not declare support for session/load or session/resume"
                             )
                         active_session_id = session_id
                     except Exception as exc:
                         logger.warning("Failed to load session %s: %s", session_id, exc)
                         yield InternalEvent(type="error", data={
-                            "message": f"无法恢复 ACP 会话 {session_id}: {exc}",
+                            "message": f"Unable to restore ACP session {session_id}: {exc}",
                             "session_id": session_id,
                         })
                         return
@@ -977,7 +976,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                 if images and not self._agent_capability(
                     init_resp, "prompt_capabilities", "image"
                 ):
-                    raise RuntimeError("ACP Agent 未声明图片 Prompt 支持")
+                    raise RuntimeError("ACP Agent does not declare support for image prompts")
                 prompt_blocks = await asyncio.to_thread(
                     self._acp_prompt_blocks, prompt, images
                 )
@@ -1012,7 +1011,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                     return
                 if stop_reason in {"max_tokens", "max_turn_requests", "refusal"}:
                     yield InternalEvent(type="error", data={
-                        "message": f"ACP Agent 提前停止：{stop_reason}",
+                        "message": f"ACP Agent stopped prematurely: {stop_reason}",
                         "stop_reason": stop_reason,
                     })
                     return
@@ -1125,7 +1124,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                 await self.stop()
             return EngineTestResult(
                 success=False,
-                message=f"测试超时（{timeout_seconds:g} 秒）",
+                message=f"Connection test timed out after {timeout_seconds:g} seconds",
                 duration_ms=round((time.monotonic() - started) * 1000),
             )
         try:
@@ -1275,13 +1274,13 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             return response
         interaction_id = str(event.data.get("interaction_id") or "")
         if not interaction_id:
-            raise ValueError("interaction_request 缺少 interaction_id")
+            raise ValueError("interaction_request missing interaction_id")
         pending = getattr(self, "_pending_interaction_responses", None)
         if pending is None:
             pending = {}
             setattr(self, "_pending_interaction_responses", pending)
         if interaction_id in pending:
-            raise RuntimeError(f"交互请求重复：{interaction_id}")
+            raise RuntimeError(f"Duplicate interaction request: {interaction_id}")
         future = asyncio.get_running_loop().create_future()
         pending[interaction_id] = future
         approval_key = ""

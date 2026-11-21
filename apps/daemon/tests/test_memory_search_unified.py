@@ -50,7 +50,7 @@ async def test_unified_search_http_and_scope(runtime, monkeypatch):
     from fastapi import FastAPI
     from httpx import AsyncClient, ASGITransport
     from api import memory
-    from services import memory_query as query
+    from services import digital_person_memory_index as index, memory_query as query
     current, project, sid = await seed(runtime, ['部署完成'])
     monkeypatch.setattr(memory,'projects',lambda:current.projects)
     app=FastAPI()
@@ -62,6 +62,19 @@ async def test_unified_search_http_and_scope(runtime, monkeypatch):
             result=await client.post('/api/memory/'+path,json={'since':'2026-10-01T00:00:00Z','before':'2026-11-01T00:00:00Z'})
             assert result.status_code==200
             assert result.json()['items'][0]['source_message_id']=='query-0'
+        await extract_seed_knowledge()
+        with index.connect() as db:
+            db.execute("UPDATE memory_knowledge SET event_time='2026-10-02T00:00:00+00:00'")
+        result = await client.post('/api/memory/search', json={
+            'knowledge_only': True, 'since': '2026-10-01T00:00:00Z', 'before': '2026-11-01T00:00:00Z',
+        })
+        assert result.status_code == 200
+        assert result.json()['coverage']['basis'] == 'knowledge_index'
+        assert result.json()['items'] == []
+        assert [row['summary'] for row in result.json()['knowledge']] == ['部署完成']
+        result = await client.post('/api/memory/search', json={'knowledge_only': True, 'since': '2026-12-01'})
+        assert result.status_code == 200
+        assert result.json()['knowledge'] == result.json()['items'] == []
         result=await client.post('/api/memory/search',json={'filter_project_id':'missing'})
         assert result.status_code==403
         assert (await client.post('/api/memory/search',json={'filter_project_id':'bad'})).status_code==403

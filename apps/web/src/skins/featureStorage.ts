@@ -10,32 +10,32 @@ export interface FeatureStorage {
 }
 
 function checkedKey(key: string) {
-  if (typeof key !== 'string' || !key || key.length > 256) throw new Error('本地数据键无效')
+  if (typeof key !== 'string' || !key || key.length > 256) throw new Error('Invalid local data key')
   return key
 }
 function jsonValue(value: unknown): unknown {
   const source = JSON.stringify(value)
-  if (source === undefined) throw new Error('本地数据必须可序列化为 JSON')
+  if (source === undefined) throw new Error('Local data must be serializable to JSON')
   return JSON.parse(source)
 }
 
 export function createFeatureStorage(scope: string, skinId: string, featureId: string): FeatureStorage {
   const namespace = JSON.stringify([scope, skinId, featureId])
   const run = async <T>(mode: IDBTransactionMode, operation: (store: IDBObjectStore, resolve: (result: T) => void) => void): Promise<T> => {
-    if (!globalThis.indexedDB) throw new Error('当前浏览器无法保存本地数据')
+    if (!globalThis.indexedDB) throw new Error('The current browser cannot save local data')
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const open = indexedDB.open('workstep-feature-data', 1)
       open.onupgradeneeded = () => open.result.createObjectStore('records')
       open.onsuccess = () => resolve(open.result)
-      open.onerror = () => reject(open.error ?? new Error('本地数据库打开失败'))
-      open.onblocked = () => reject(new Error('本地数据库被其他窗口占用，请关闭旧窗口后重试'))
+      open.onerror = () => reject(open.error ?? new Error('Failed to open local database'))
+      open.onblocked = () => reject(new Error('The local database is being used by another window. Please close the old window and try again.'))
     })
     try {
       return await new Promise<T>((resolve, reject) => {
         const transaction = db.transaction('records', mode)
         let result: T
         transaction.oncomplete = () => resolve(result)
-        transaction.onerror = transaction.onabort = () => reject(transaction.error ?? new Error('本地数据保存失败'))
+        transaction.onerror = transaction.onabort = () => reject(transaction.error ?? new Error('Local data save failed'))
         try { operation(transaction.objectStore('records'), value => { result = value }) }
         catch (error) { transaction.abort(); reject(error) }
       })
@@ -64,9 +64,9 @@ export function createFeatureStorage(scope: string, skinId: string, featureId: s
     list: async () => (await entries()).map(([key]) => key),
     export: async () => ({ format: 'workstep-feature-data', version: 1, entries: await entries() }),
     import: async data => {
-      if (!data || data.format !== 'workstep-feature-data' || data.version !== 1 || !Array.isArray(data.entries) || data.entries.length > 10000) throw new Error('本地数据备份格式无效')
+      if (!data || data.format !== 'workstep-feature-data' || data.version !== 1 || !Array.isArray(data.entries) || data.entries.length > 10000) throw new Error('Invalid local data backup format')
       const checked = data.entries.map(row => {
-        if (!Array.isArray(row) || row.length !== 2) throw new Error('本地数据备份条目无效')
+        if (!Array.isArray(row) || row.length !== 2) throw new Error('Invalid local data backup entry')
         return [checkedKey(row[0]), jsonValue(row[1])] as const
       })
       await run<void>('readwrite', (store, done) => {

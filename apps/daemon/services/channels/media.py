@@ -25,7 +25,7 @@ async def fetch_media(url: str, limit: int, domains: tuple[str, ...], *, upgrade
                 parsed = parsed._replace(scheme='https', netloc=host)
                 url = parsed.geturl()
             if parsed.scheme != 'https' or not trusted or parsed.username or parsed.password or parsed.port not in (None, 443):
-                raise ValueError(f'附件下载地址不是平台 HTTPS 地址（协议: {parsed.scheme}，域名: {host}）')
+                raise ValueError(f'The attachment download URL is not a platform HTTPS address (protocol: {parsed.scheme}, domain: {host})')
             async with session.get(url, allow_redirects=False) as response:
                 if response.status in (301,302,303,307,308):
                     from urllib.parse import urljoin
@@ -36,9 +36,9 @@ async def fetch_media(url: str, limit: int, domains: tuple[str, ...], *, upgrade
                 async for chunk in response.content.iter_chunked(64*1024):
                     data.extend(chunk)
                     if len(data) > limit:
-                        raise ValueError('附件超过渠道大小限制')
+                        raise ValueError('Attachment exceeds channel size limit')
                 return bytes(data)
-    raise ValueError('附件下载重定向过多')
+    raise ValueError('Too many redirects when downloading the attachment')
 
 
 def safe_name(name: str, kind: str) -> str:
@@ -56,16 +56,16 @@ async def load_outgoing_attachment(project, kind: str, path: str, limit: int) ->
             candidate = Path(*candidate.parts[1:])
         file = (root / candidate).resolve()
         if not file.is_relative_to(root) or not file.is_file():
-            raise ValueError('附件必须是项目内的文件')
+            raise ValueError('The attachment must be a file within the project')
         from engines.core.image_output import MAX_IMAGE_BYTES
         read_limit = max(limit, MAX_IMAGE_BYTES) if kind == 'image' else limit
         with file.open('rb') as stream:
             data = stream.read(read_limit + 1)
         if not data or len(data) > read_limit:
-            raise ValueError('附件为空或超过渠道大小限制')
+            raise ValueError('Attachment is empty or exceeds channel size limit')
         mime = mimetypes.guess_type(file.name)[0] or 'application/octet-stream'
         if kind == 'image' and not mime.startswith('image/'):
-            raise ValueError('图片附件必须使用图片格式')
+            raise ValueError('Image attachments must use image formats')
         name = file.name
         if kind == 'image' and len(data) > limit:
             data = _fit_channel_image(data, limit)
@@ -92,7 +92,7 @@ def _fit_channel_image(data: bytes, limit: int) -> bytes:
             if output.tell() <= limit:
                 return output.getvalue()
         image = image.resize((max(1, image.width * 3 // 4), max(1, image.height * 3 // 4)))
-    raise ValueError('图片压缩后仍超过渠道大小限制')
+    raise ValueError('Image compression still exceeds channel size limit')
 
 
 async def _incoming_parts(project, adapter, text, attachments) -> str:
@@ -100,13 +100,13 @@ async def _incoming_parts(project, adapter, text, attachments) -> str:
     for attachment in attachments:
         data, filename = await adapter.download(attachment)
         if not data or len(data) > adapter.CAPABILITIES.limit(attachment.kind):
-            raise ValueError('附件为空或超过渠道大小限制')
+            raise ValueError('Attachment is empty or exceeds channel size limit')
         name = safe_name(filename or attachment.name, attachment.kind)
         storage_name = f'channel-{uuid.uuid4().hex}-{name}'
         def save():
             uploads = (Path(project.workstep_dir) / 'uploads').resolve()
             if not uploads.is_relative_to(Path(project.path).resolve()):
-                raise ValueError('项目上传目录不能指向项目之外')
+                raise ValueError('The project upload directory cannot point outside the project')
             uploads.mkdir(parents=True, exist_ok=True)
             (uploads / storage_name).write_bytes(data)
         await asyncio.to_thread(save)

@@ -33,25 +33,25 @@ def normalize_commit_message(value):
     lines = [line.rstrip() for line in value.splitlines()]
     value = '\n'.join(lines).strip()
     if not value or not re.match(r'^(feat|fix|refactor|perf|docs|test|build|ci|chore|style|revert)(\([^)\n]+\))?!?: .+', lines[0] if lines else ''):
-        raise GitError('供应商返回的提交说明不符合 Conventional Commits 规范，请重试。', 502)
+        raise GitError('The commit message returned by the supplier does not conform to the Conventional Commits specification. Please try again.', 502)
     if len(value) > 10000:
-        raise GitError('供应商返回的提交说明过长，请重试。', 502)
+        raise GitError('The submission description returned by the supplier is too long. Please try again.', 502)
     return value
 
 
 def delete_worktree_file(root, value):
     target = safe_file(root, value)
     if target.is_dir() and not target.is_symlink():
-        raise GitError('只能撤销文件，不能删除目录。')
+        raise GitError('Only files can be undone, not directories.')
     target.unlink(missing_ok=True)
 
 
 def append_gitignore(root, value):
     if '\n' in value or '\r' in value:
-        raise GitError('包含换行符的文件名不能加入 Git 忽略。')
+        raise GitError('File names containing newlines cannot be added to Git ignore.')
     target = safe_file(root, '.gitignore')
     if target.is_symlink() or (target.exists() and not target.is_file()):
-        raise GitError('.gitignore 不是可安全写入的普通文件。')
+        raise GitError('.gitignore is not a regular file that can be safely written.')
     escaped = value.replace('\\', '\\\\')
     for token in ('*', '?', '['):
         escaped = escaped.replace(token, '\\' + token)
@@ -68,9 +68,9 @@ def append_gitignore(root, value):
 def replace_worktree_file(root, value, content):
     target = safe_file(root, value)
     if target.is_symlink() or (target.exists() and not target.is_file()):
-        raise GitError('只能编辑工作目录中的普通文本文件。')
+        raise GitError('Only plain text files in the working directory can be edited.')
     if not target.parent.exists():
-        raise GitError('文件所在目录已不存在，请刷新后重试。', 409)
+        raise GitError('The directory containing the file no longer exists. Please refresh and try again.', 409)
     mode = target.stat().st_mode if target.exists() else 0o644
     fd, temporary = tempfile.mkstemp(prefix='.workstep-edit-', dir=target.parent)
     try:
@@ -98,7 +98,7 @@ class GitWrites:
         if branch in {'main', 'master', 'develop', 'development', 'trunk'} or any(
             tree['main'] and tree['branch'] == branch for tree in repository['worktrees']
         ):
-            raise GitError('主分支不能删除。', 409)
+            raise GitError('The main branch cannot be deleted.', 409)
 
     async def require_preserved_head(self, path, head, branches, branch):
         other_heads = [item['head'] for item in branches if item['name'] != branch]
@@ -113,43 +113,43 @@ class GitWrites:
             if not code:
                 break
         else:
-            raise GitError('此分支的提交尚未合入其他本地分支或其远程上游，已保留分支。', 409)
+            raise GitError('Commits in this branch have not been merged into other local branches or their remote upstreams; the branch has been retained.', 409)
 
     async def delete_worktree(self, id, snapshot=None, head=None):
         known = self.directories.get(id)
         if not known or not set(known['project_ids']).intersection(p['id'] for p in self.projects_provider()):
-            raise GitError('工作目录未授权或已移除，请重新扫描。', 404)
+            raise GitError('The working directory is unauthorized or has been removed. Please rescan.', 404)
         source_directory = next((w for w in self.directories.values()
             if w['common_dir'] == known['common_dir'] and w['main'] and w['available']), None)
         if not source_directory:
-            raise GitError('主目录不可用，请重新扫描。', 409)
+            raise GitError('Home directory unavailable, please rescan.', 409)
         directory = await self.directory(source_directory['id'])
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             repository = await self.discover_repository(Path(directory['path']))
             tree = next((tree for tree in repository['worktrees'] if tree['id'] == id), None)
             if not tree or tree['main'] or tree['locked']:
-                raise GitError('主目录或锁定的工作目录不能删除。', 409)
+                raise GitError('The home directory or locked working directory cannot be deleted.', 409)
             path = tree['path']
             missing = not await asyncio.to_thread(os.path.lexists, path)
             if tree['branch']:
                 await self.protect_branch(directory['path'], tree['branch'])
             if missing:
                 if not head or tree['head'] != head:
-                    raise GitError('工作目录记录已变化，请重新扫描后再删除。', 409)
+                    raise GitError('The working directory record has changed. Please rescan before deleting.', 409)
                 state = await self.status(directory['id'])
                 if state['active'] or state['operation']:
-                    raise GitError('存在运行中的任务或未完成的 Git 操作，请稍后清理。', 409)
+                    raise GitError('There are running tasks or incomplete Git operations. Please clean them up later.', 409)
             else:
                 if not snapshot or not tree['available'] or tree['prunable']:
-                    raise GitError('工作目录已变化，请重新扫描并审阅后再删除。', 409)
+                    raise GitError('Working directory has changed. Please rescan and review before deleting.', 409)
                 state = await self.reviewed(id, snapshot)
                 if state['active'] or state['files']:
-                    raise GitError('存在未提交内容或运行中的任务，请先处理后再删除。', 409)
+                    raise GitError('There are uncommitted changes or running tasks. Please handle them before deletion.', 409)
             branches = (await self.branches(directory['id']))['branches']
             await self.require_preserved_head(directory['path'], tree['head'], branches, tree['branch'])
             source = next((w['path'] for w in repository['worktrees'] if w['main'] and w['available']), None)
             if not source:
-                raise GitError('主目录不可用，请重新扫描。', 409)
+                raise GitError('Home directory unavailable, please rescan.', 409)
             await self.command(source, 'worktree', 'remove', '--', path, timeout=120)
             try:
                 if tree['branch']:
@@ -169,13 +169,13 @@ class GitWrites:
             await self.protect_branch(path, branch)
             state = await self.reviewed(id, snapshot)
             if state['active'] or state['operation']:
-                raise GitError('项目有正在运行的任务或未完成的 Git 操作，请稍后删除分支。', 409)
+                raise GitError('There are running tasks or incomplete Git operations in the project. Please delete the branch later.', 409)
             branch_data = await self.branches(id)
             target = next((item for item in branch_data['branches'] if item['name'] == branch), None)
             if not target or target['head'] != head:
-                raise GitError('分支已变化，请刷新后重试。', 409)
+                raise GitError('Branch has changed, please refresh and try again.', 409)
             if target['worktree_id']:
-                raise GitError('分支已在工作目录中检出，请先切换或移除对应工作目录。', 409)
+                raise GitError('Branch is already checked out in the working directory. Please switch or remove the corresponding working directory first.', 409)
             await self.require_preserved_head(path, head, branch_data['branches'], branch)
             await self.command(path, 'update-ref', '-d', 'refs/heads/' + branch, head)
             return await self.branches(id)
@@ -186,16 +186,16 @@ class GitWrites:
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             state = await self.reviewed(id, snapshot)
             if state['active'] or state['operation']:
-                raise GitError('项目有正在运行的任务或未完成的 Git 操作，请稍后创建分支。', 409)
+                raise GitError('There are running tasks or incomplete Git operations in the project. Please create the branch later.', 409)
             _, code = await self.command(path, 'check-ref-format', '--branch', name, check=False)
             if code:
-                raise GitError('新分支名称无效。')
+                raise GitError('Invalid new branch name.')
             _, code = await self.command(path, 'check-ref-format', '--branch', base_branch, check=False)
             if code:
-                raise GitError('来源分支名称无效。')
+                raise GitError('Invalid source branch name.')
             branch_data = await self.branches(id)
             if any(item['name'] == name for item in branch_data['branches']):
-                raise GitError('新分支名称已存在。', 409)
+                raise GitError('New branch name already exists.', 409)
             if base_remote:
                 await self.validate_remote(path, base_remote)
                 base = next((item for item in branch_data['remote_branches']
@@ -203,9 +203,9 @@ class GitWrites:
             else:
                 base = next((item for item in branch_data['branches'] if item['name'] == base_branch), None)
             if not base:
-                raise GitError('来源分支不存在，请刷新分支列表。', 404)
+                raise GitError('Source branch does not exist, please refresh the branch list.', 404)
             if base['head'] != base_head:
-                raise GitError('来源分支已变化，请刷新后重试。', 409)
+                raise GitError('Source branch has changed, please refresh and retry.', 409)
             await self.command(path, 'branch', '--no-track', '--', name, base_head)
             return await self.branches(id)
 
@@ -230,13 +230,13 @@ class GitWrites:
     def normalize_credential_host(cls, host):
         host = host.strip()
         if not re.fullmatch(r'[A-Za-z0-9.-]+(?::[0-9]{1,5})?', host):
-            raise GitError('请输入 HTTPS 远程地址中的主机名。')
+            raise GitError('Please enter the hostname in the HTTPS remote address.')
         try:
             normalized = cls.credential_host('https://' + host)
         except ValueError as exc:
-            raise GitError('HTTPS 主机名无效。') from exc
+            raise GitError('Invalid HTTPS hostname.') from exc
         if not normalized:
-            raise GitError('HTTPS 主机名无效。')
+            raise GitError('Invalid HTTPS hostname.')
         return normalized
 
     async def credential_hosts(self):
@@ -271,7 +271,7 @@ class GitWrites:
         fetch_url = await self.remote_url(directory['path'], remote)
         host = self.credential_host(fetch_url)
         if not host:
-            raise GitError('用户名和访问令牌仅用于 HTTPS 或可升级为 HTTPS 的 HTTP 远程源。')
+            raise GitError('User name and access token are only used for HTTPS or HTTP remote sources that can be upgraded to HTTPS.')
         await self.change_credentials(host, {'username': username, 'token': token})
         return await self.credentials(id)
 
@@ -313,9 +313,9 @@ class GitWrites:
     async def reviewed(self, id, snapshot):
         state = await self.status(id)
         if state['snapshot'] != snapshot:
-            raise GitError('文件或分支已变化，请刷新并重新审阅后再操作。', 409)
+            raise GitError('File or branch has changed. Please refresh and review again before proceeding.', 409)
         if state['operation'] or any(f['conflict'] for f in state['files']):
-            raise GitError('仓库存在冲突或未完成的 Git 操作，请先在本地处理。', 409)
+            raise GitError('Repository has conflicts or unfinished Git operations; please resolve them locally first.', 409)
         return state
 
     async def commit(self, id, paths, message, snapshot):
@@ -324,9 +324,9 @@ class GitWrites:
             state = await self.reviewed(id, snapshot)
             files = {f['path']: f for f in state['files']}
             if not paths or len(set(paths)) != len(paths) or any(p not in files for p in paths):
-                raise GitError('提交文件已变化，请重新选择。', 409)
+                raise GitError('The submitted file has changed. Please reselect.', 409)
             if any(files[p]['submodule'] for p in paths):
-                raise GitError('子模块变更请在本地 Git 中处理。')
+                raise GitError('Submodule changes should be handled in local Git.')
             names = list(dict.fromkeys(n for p in paths for n in [p, files[p]['old_path']] if n))
             pathspec = b''.join(os.fsencode(p) + b'\0' for p in names)
             # --only writes selected working-file versions and preserves other index entries.
@@ -341,13 +341,13 @@ class GitWrites:
             except GitError as exc:
                 actual_head = await self.revision(directory['path'])
                 if actual_head != state['head']:
-                    raise GitError(str(exc) + '\nHEAD 已变化，可能已生成提交，请先检查提交历史，不要直接重复提交。', 409) from exc
+                    raise GitError(str(exc) + '\nHEAD has changed; a commit may have been generated. Please check the commit history first and do not directly repeat the commit.', 409) from exc
                 if 'Author identity unknown' in str(exc) or 'unable to auto-detect email address' in str(exc):
-                    raise GitError('Git 未配置提交作者。请在此仓库设置真实姓名和邮箱：\n'
-                        'git config user.name "你的姓名"\n'
-                        'git config user.email "你的邮箱"\n'
-                        '然后刷新状态并重试；已暂存的选中文件会保留。', exc.status) from exc
-                raise GitError(str(exc) + '\n提交未完成，请刷新状态；已暂存的选中文件会保留。', exc.status) from exc
+                    raise GitError('Git commit author is not configured. Set your name and email for this repository:\n'
+                        'git config user.name "Your Name"\n'
+                        'git config user.email "Your Email"\n'
+                        'Then refresh and try again. Selected files that were staged will stay staged.', exc.status) from exc
+                raise GitError(str(exc) + '\nCommit did not complete. Refresh to check the status. Selected files that were staged will stay staged.', exc.status) from exc
             finally:
                 await asyncio.to_thread(Path(name).unlink, missing_ok=True)
             return {'head': await self.revision(directory['path'])}
@@ -359,9 +359,9 @@ class GitWrites:
             state = await self.reviewed(id, snapshot)
             file = next((item for item in state['files'] if item['path'] == value), None)
             if not file:
-                raise GitError('文件状态已变化，请刷新后重试。', 409)
+                raise GitError('File status has changed, please refresh and try again.', 409)
             if file['conflict'] or file['submodule']:
-                raise GitError('冲突文件和子模块需要在本地 Git 中处理。', 409)
+                raise GitError('Conflicting files and submodules need to be handled in local Git.', 409)
             names = list(dict.fromkeys(name for name in (file['old_path'], file['path']) if name))
             for name in names:
                 raw, code = await self.command(root, 'ls-tree', '--name-only', '-z', 'HEAD', '--', name, check=False)
@@ -379,9 +379,9 @@ class GitWrites:
             state = await self.reviewed(id, snapshot)
             file = next((item for item in state['files'] if item['path'] == value), None)
             if not file:
-                raise GitError('文件状态已变化，请刷新后重试。', 409)
+                raise GitError('File status has changed, please refresh and try again.', 409)
             if not file['untracked'] or file['submodule']:
-                raise GitError('只有未跟踪文件可以加入 Git 忽略。', 409)
+                raise GitError('Only untracked files can be added to Git ignore.', 409)
             await asyncio.to_thread(append_gitignore, root, value)
             return await self.status(id)
 
@@ -394,13 +394,13 @@ class GitWrites:
             if not file:
                 tracked, code = await self.command(root, 'ls-files', '-z', '--error-unmatch', '--', value, check=False)
                 if expected_content is None or code or value not in text(tracked).split('\0'):
-                    raise GitError('文件状态已变化，请刷新后重试。', 409)
+                    raise GitError('File status has changed, please refresh and try again.', 409)
             if file and (file['conflict'] or file['submodule']):
-                raise GitError('冲突文件和子模块不能在对比窗口中编辑。', 409)
+                raise GitError('Conflicting files and submodules cannot be edited in the comparison window.', 409)
             if expected_content is not None:
                 current, truncated = await asyncio.to_thread(read_file, root, value)
                 if truncated or text(current) != expected_content:
-                    raise GitError('文件在审阅期间发生变化，请刷新后重试。', 409)
+                    raise GitError('The file has changed during review. Please refresh and try again.', 409)
             await asyncio.to_thread(replace_worktree_file, root, value, content)
             return await self.status(id)
 
@@ -410,9 +410,9 @@ class GitWrites:
         state = await self.reviewed(id, snapshot)
         files = {item['path']: item for item in state['files']}
         if not paths or len(set(paths)) != len(paths) or any(path not in files for path in paths):
-            raise GitError('用于生成提交说明的文件已变化，请重新选择。', 409)
+            raise GitError('The file used to generate the commit message has changed. Please reselect.', 409)
         if any(files[path]['conflict'] or files[path]['submodule'] for path in paths):
-            raise GitError('冲突文件和子模块不能用于生成提交说明。', 409)
+            raise GitError('Conflicting files and submodules cannot be used to generate commit messages.', 409)
         names = list(dict.fromkeys(name for path in paths for name in (files[path]['old_path'], path) if name))
         status_lines = [f"{files[path]['index_status']}{files[path]['worktree_status']} {path}" for path in paths]
         patch = ''
@@ -446,10 +446,10 @@ class GitWrites:
         from main import gateway_client
         config = await asyncio.to_thread(config_store.get_prompt_enhance_config)
         if not config.get('provider_id') or not config.get('model'):
-            raise GitError('请先在设置中配置“提示词增强”的供应商和模型。', 409)
+            raise GitError('Configure a provider and model for prompt enhancement in Settings.', 409)
         provider = await asyncio.to_thread(config_store.get_provider, config['provider_id'])
         if provider is None:
-            raise GitError('提示词增强的供应商不存在，请在设置中重新配置。', 409)
+            raise GitError('Prompt enhancement provider not found. Update it in Settings.', 409)
         provider_snapshot = snapshot_usage_provider(provider)
         usage: dict = {}
         try:
@@ -459,10 +459,10 @@ class GitWrites:
             ], max_tokens=800, timeout=180, thinking='disabled',
                 protocol=config.get('protocol') or None, usage_collector=usage)
         except httpx.TimeoutException as exc:
-            raise GitError('生成提交说明超时（180 秒），请检查供应商连接或稍后重试。', 504) from exc
+            raise GitError('Generating commit message timed out (180 seconds). Please check the vendor connection or try again later.', 504) from exc
         except Exception as exc:
             detail = str(exc).strip() or type(exc).__name__
-            raise GitError(f'生成提交说明失败：{detail}', 502) from exc
+            raise GitError(f'Failed to generate commit message: {detail}', 502) from exc
         project_ids = directory['project_ids']
         await gateway_client.record_one_shot_usage(
             project_id=project_ids[0] if len(project_ids) == 1 else None,
@@ -475,10 +475,10 @@ class GitWrites:
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             state = await self.reviewed(id, snapshot)
             if state['active']:
-                raise GitError('此项目有正在运行的任务或对话，请结束后再切换分支。', 409)
+                raise GitError('This project has running tasks or conversations. Please end them before switching branches.', 409)
             _, code = await self.command(directory['path'], 'check-ref-format', '--branch', branch, check=False)
             if code:
-                raise GitError('分支名称无效。')
+                raise GitError('Invalid branch name.')
             branch_data = await self.branches(id)
             branches = branch_data['branches']
             target = next((b for b in branches if b['name'] == branch), None)
@@ -487,11 +487,11 @@ class GitWrites:
                 remote_target = next((item for item in branch_data['remote_branches']
                     if item['remote'] == remote and item['branch'] == branch), None)
                 if not remote_target:
-                    raise GitError('远程分支不存在，请重新拉取分支。', 404)
+                    raise GitError('Remote branch does not exist, please pull the branch again.', 404)
             elif not target:
-                raise GitError('本地分支不存在，请刷新。', 404)
+                raise GitError('Local branch does not exist, please refresh.', 404)
             if target and target['worktree_id'] and target['worktree_id'] != id:
-                raise GitError('该分支已在其他工作目录中检出，请定位到该目录。', 409)
+                raise GitError('This branch is already checked out in another working directory. Please navigate to that directory.', 409)
             if branch != state['branch']:
                 if target:
                     await self.command(directory['path'], 'switch', '--no-guess', '--', branch)
@@ -505,33 +505,33 @@ class GitWrites:
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             state = await self.reviewed(id, snapshot)
             if state['active']:
-                raise GitError('项目有正在运行的任务或对话，请结束后再更新分支。', 409)
+                raise GitError('Project has running tasks or conversations. Please end them before updating the branch.', 409)
             if state['branch'] == branch:
-                raise GitError('当前分支请使用拉取操作更新。', 409)
+                raise GitError('Please use pull to update the current branch.', 409)
             target = next((item for item in (await self.branches(id))['branches'] if item['name'] == branch), None)
             if not target:
-                raise GitError('本地分支不存在，请刷新。', 404)
+                raise GitError('Local branch does not exist, please refresh.', 404)
             if target['worktree_id']:
-                raise GitError('该分支已在工作目录中检出，请定位到对应目录后拉取。', 409)
+                raise GitError('This branch is already checked out in the working directory. Please navigate to the corresponding directory and pull.', 409)
             if not target['remote'] or target['remote'] == '.' or not target['upstream_ref']:
-                raise GitError('该分支没有可拉取的远程上游。', 409)
+                raise GitError('No remote upstream to pull from this branch.', 409)
             auth = await self.credential_for(directory, target['remote'])
             await self.command(path, 'fetch', '--prune', '--no-recurse-submodules', '--', target['remote'], timeout=120, auth=auth)
             self.fetched_at[directory['common_dir']] = time.time()
             state = await self.reviewed(id, snapshot)
             if state['active']:
-                raise GitError('项目有正在运行的任务或对话，请结束后再更新分支。', 409)
+                raise GitError('Project has running tasks or conversations. Please end them before updating the branch.', 409)
             target = next((item for item in (await self.branches(id))['branches'] if item['name'] == branch), None)
             if not target or target['worktree_id'] or not target['upstream_ref']:
-                raise GitError('分支状态已变化，请刷新后重试。', 409)
+                raise GitError('Branch status has changed, please refresh and try again.', 409)
             remote_head, code = await self.command(path, 'rev-parse', '--verify', '--end-of-options', target['upstream_ref'] + '^{commit}', check=False)
             if code:
-                raise GitError('上游分支已不存在，请重新拉取分支。', 409)
+                raise GitError('The upstream branch no longer exists. Please pull the branch again.', 409)
             remote_sha = text(remote_head).strip()
             counts, _ = await self.command(path, 'rev-list', '--left-right', '--count', target['head'] + '...' + remote_sha, '--')
             ahead, behind = map(int, counts.split())
             if ahead and behind:
-                raise GitError('本地与上游分支已分叉，无法快进更新。', 409)
+                raise GitError('Local and upstream branches have diverged, cannot fast-forward update.', 409)
             if behind:
                 await self.command(path, 'update-ref', 'refs/heads/' + branch, remote_sha, target['head'])
             return await self.branches(id)
@@ -542,28 +542,28 @@ class GitWrites:
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             state = await self.reviewed(id, snapshot)
             if state['branch'] != branch or not state['head']:
-                raise GitError('只能合并到当前已提交的分支，请刷新状态。', 409)
+                raise GitError('Can only merge into the currently submitted branch. Please refresh the status.', 409)
             if state['active']:
-                raise GitError('项目有正在运行的任务或对话，请结束后再合并。', 409)
+                raise GitError('Project has running tasks or conversations, please end them before merging.', 409)
             if state['operation']:
-                raise GitError('请先完成当前 Git 操作。', 409)
+                raise GitError('Please complete the current Git operation.', 409)
             _, code = await self.command(path, 'check-ref-format', '--branch', source, check=False)
             if code:
-                raise GitError('来源分支名称无效。')
+                raise GitError('Invalid source branch name.')
             if remote:
                 await self.validate_remote(path, remote)
                 candidates = (await self.branches(id))['remote_branches']
                 if not any(item['remote'] == remote and item['branch'] == source for item in candidates):
-                    raise GitError('远程分支不存在，请先刷新远程状态。', 404)
+                    raise GitError('Remote branch does not exist, please refresh the remote status first.', 404)
                 ref = f'refs/remotes/{remote}/{source}'
             else:
                 candidates = (await self.branches(id))['branches']
                 if not any(item['name'] == source for item in candidates):
-                    raise GitError('本地分支不存在，请刷新。', 404)
+                    raise GitError('Local branch does not exist, please refresh.', 404)
                 ref = f'refs/heads/{source}'
             source_head, code = await self.command(path, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}', check=False)
             if code:
-                raise GitError('来源分支已变化，请刷新。', 409)
+                raise GitError('Source branch has changed, please refresh.', 409)
             await self.merge_commit(path, text(source_head).strip())
             after = await self.revision(path)
             await self.record_merge(directory, target=branch, source=ref, before=state['head'],
@@ -579,9 +579,9 @@ class GitWrites:
                 try:
                     await self.command(path, 'merge', '--abort', timeout=120)
                 except GitError as abort_error:
-                    raise GitError('合并失败，自动中止也未完成；请检查当前 Git 状态。\n' + str(abort_error), 409) from abort_error
-                raise GitError('合并发生冲突，已自动中止；原有未提交修改已保留。\n' + str(exc), 409) from exc
-            raise GitError('Git 拒绝合并；原有未提交修改已保留。\n' + str(exc), 409) from exc
+                    raise GitError('Merge failed, and auto-abort also did not complete; please check the current Git status.\n' + str(abort_error), 409) from abort_error
+                raise GitError('Merge conflict occurred, automatically aborted; existing uncommitted changes have been preserved.\n' + str(exc), 409) from exc
+            raise GitError('Git refuses to merge; existing uncommitted changes have been preserved.\n' + str(exc), 409) from exc
 
     async def merge_into(self, id, branch, snapshot, target_name):
         directory = await self.directory(id)
@@ -589,20 +589,20 @@ class GitWrites:
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             state = await self.reviewed(id, snapshot)
             if state['branch'] != branch or not state['head'] or state['active'] or state['operation']:
-                raise GitError('当前分支状态已变化，或有正在运行的任务及未完成的 Git 操作。', 409)
+                raise GitError('The current branch state has changed, or there are running tasks and incomplete Git operations.', 409)
             _, code = await self.command(path, 'check-ref-format', '--branch', target_name, check=False)
             if code or target_name == branch:
-                raise GitError('请选择不同的有效目标分支。')
+                raise GitError('Please select a different valid target branch.')
             targets = (await self.branches(id))['branches']
             target = next((item for item in targets if item['name'] == target_name), None)
             if not target:
-                raise GitError('目标本地分支不存在，请刷新分支列表。', 404)
+                raise GitError('Target local branch does not exist, please refresh the branch list.', 404)
             target_id = target['worktree_id']
             target_path = (await self.directory(target_id))['path'] if target_id else None
             if target_id:
                 target_state = await self.status(target_id)
                 if target_state['branch'] != target_name or target_state['active'] or target_state['operation']:
-                    raise GitError('目标分支正在使用或有未完成的 Git 操作。', 409)
+                    raise GitError('The target branch is in use or has unfinished Git operations.', 409)
             updated = False
             merge_base_head = target['head']
             if target['remote'] and target['remote'] != '.' and target['upstream_ref']:
@@ -611,24 +611,24 @@ class GitWrites:
                 self.fetched_at[directory['common_dir']] = time.time()
                 state = await self.reviewed(id, snapshot)
                 if state['branch'] != branch or state['active'] or state['operation']:
-                    raise GitError('更新目标分支期间当前分支已变化，请重试。', 409)
+                    raise GitError('Current branch changed during update of target branch, please retry.', 409)
                 current_head, _ = await self.command(path, 'rev-parse', '--verify', 'refs/heads/' + target_name)
                 if text(current_head).strip() != target['head']:
-                    raise GitError('目标分支已变化，请刷新后重试。', 409)
+                    raise GitError('The target branch has changed. Please refresh and try again.', 409)
                 remote_head, code = await self.command(path, 'rev-parse', '--verify', '--end-of-options', target['upstream_ref'] + '^{commit}', check=False)
                 if code:
-                    raise GitError('目标分支的上游已不存在，请检查远程配置。', 409)
+                    raise GitError('The upstream of the target branch no longer exists. Please check the remote configuration.', 409)
                 remote_sha = text(remote_head).strip()
                 counts, _ = await self.command(path, 'rev-list', '--left-right', '--count', target['head'] + '...' + remote_sha, '--')
                 ahead, behind = map(int, counts.split())
                 if ahead and behind:
-                    raise GitError('目标分支与上游已分叉，无法先快进更新。', 409)
+                    raise GitError('The target branch has diverged from the upstream, so a fast-forward update is not possible.', 409)
                 if behind:
                     merge_base_head = remote_sha
                     updated = True
             current_head, _ = await self.command(path, 'rev-parse', '--verify', 'refs/heads/' + target_name)
             if text(current_head).strip() != target['head']:
-                raise GitError('目标分支已变化，请刷新后重试。', 409)
+                raise GitError('The target branch has changed. Please refresh and try again.', 409)
             temporary = await asyncio.to_thread(tempfile.mkdtemp, prefix='workstep-git-merge-')
             added = False
             try:
@@ -639,17 +639,17 @@ class GitWrites:
                 merged_head = text(head).strip()
                 state = await self.reviewed(id, snapshot)
                 if state['branch'] != branch or state['active'] or state['operation']:
-                    raise GitError('合并期间当前分支已变化，请刷新后重试。', 409)
+                    raise GitError('The current branch has changed during the merge. Please refresh and try again.', 409)
                 if target_path:
                     latest = await self.status(target_id)
                     if (latest['branch'] != target_name or latest['head'] != target['head']
                             or latest['snapshot'] != target_state['snapshot'] or latest['active'] or latest['operation']):
-                        raise GitError('目标工作目录已变化，请刷新后重试。', 409)
+                        raise GitError('The target working directory has changed. Please refresh and try again.', 409)
                     try:
                         await self.command(target_path, '-c', 'merge.autoStash=false', 'merge', '--ff-only', '--no-edit', merged_head, timeout=120)
                     except GitError as exc:
                         if latest['files'] and ('would be overwritten' in str(exc) or 'not uptodate' in str(exc)):
-                            raise GitError('目标工作目录的未提交修改与合并结果重叠；已保留原样，请先处理对应文件。\n' + str(exc), 409) from exc
+                            raise GitError('Uncommitted changes in the target work directory overlap with merge results; kept as-is. Please handle the corresponding files first.\n' + str(exc), 409) from exc
                         raise
                 else:
                     await self.command(path, 'update-ref', 'refs/heads/' + target_name, merged_head, target['head'])
@@ -667,10 +667,10 @@ class GitWrites:
         path = directory['path']
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             if (await self.status(id))['active']:
-                raise GitError('项目有正在运行的任务或对话，请结束后再推送。', 409)
+                raise GitError('Project has running tasks or conversations, please end them before pushing.', 409)
             target = next((item for item in (await self.branches(id))['branches'] if item['name'] == branch), None)
             if not target or target['head'] != head:
-                raise GitError('目标分支已变化，请刷新并重新审阅后再推送。', 409)
+                raise GitError('The target branch has changed. Please refresh and re-review before pushing.', 409)
             remote, target_branch = await self.remote_target(path, branch, remote, target_branch)
             auth = await self.credential_for(directory, remote, push=True)
             await self.command(path, '-c', 'remote.' + remote + '.mirror=false', 'push',
@@ -694,23 +694,23 @@ class GitWrites:
     async def validate_remote(self, path, remote):
         names_raw, _ = await self.command(path, 'remote')
         if remote not in text(names_raw).splitlines():
-            raise GitError('远程源不存在，请刷新远程列表。', 404)
+            raise GitError('Remote source does not exist, please refresh the remote list.', 404)
         return remote
 
     async def remote_target(self, path, branch, remote=None, target_branch=None):
         if bool(remote) != bool(target_branch):
-            raise GitError('请选择完整的远程源和远程分支。')
+            raise GitError('Please select a complete remote source and remote branch.')
         if not remote:
             raw, _ = await self.command(path, 'for-each-ref',
                 '--format=%(upstream:remotename)%00%(upstream:remoteref)', 'refs/heads/' + branch)
             remote, _, remote_ref = text(raw).strip().partition('\0')
             if not remote or remote == '.' or not remote_ref.startswith('refs/heads/'):
-                raise GitError('当前分支未配置远程上游，请选择远程源和目标分支。', 409)
+                raise GitError('The current branch has no remote upstream configured. Please select a remote source and target branch.', 409)
             target_branch = remote_ref.removeprefix('refs/heads/')
         await self.validate_remote(path, remote)
         _, code = await self.command(path, 'check-ref-format', '--branch', target_branch, check=False)
         if code:
-            raise GitError('远程分支名称无效。')
+            raise GitError('Invalid remote branch name.')
         return remote, target_branch
 
     async def fetch_remote(self, id, remote):
@@ -738,12 +738,12 @@ class GitWrites:
             remote_ref = f'refs/remotes/{remote}/{target_branch}'
             remote_head, code = await self.command(path, 'rev-parse', '--verify', '--end-of-options', remote_ref + '^{commit}', check=False)
             if code:
-                raise GitError('上游分支已不存在，请检查远程分支设置。', 409)
+                raise GitError('Upstream branch no longer exists. Please check remote branch settings.', 409)
             sha = text(remote_head).strip()
             counts, _ = await self.command(path, 'rev-list', '--left-right', '--count', state['head'] + '...' + sha, '--')
             ahead, behind = map(int, counts.split())
             if ahead and behind:
-                raise GitError('本地与上游分支已分叉，无法快进更新。请在本地处理合并或变基。', 409)
+                raise GitError('Local and upstream branches have diverged, cannot fast-forward update. Please handle merge or rebase locally.', 409)
             if behind:
                 await self.command(path, '-c', 'merge.autoStash=false', 'merge', '--ff-only', '--no-edit', sha, timeout=120)
             if set_upstream:
@@ -753,9 +753,9 @@ class GitWrites:
     @staticmethod
     def require_pullable(state, branch):
         if not state['branch'] or state['branch'] != branch:
-            raise GitError('只能拉取当前检出的分支，请先切换或定位到对应工作目录。', 409)
+            raise GitError('Only the currently checked-out branch can be pulled. Please switch or navigate to the corresponding working directory.', 409)
         if state['active']:
-            raise GitError('项目有正在运行的任务或对话，请结束后再拉取。', 409)
+            raise GitError('Project has running tasks or conversations, please end them before pulling.', 409)
 
 
     async def push(self, id, branch, snapshot, remote=None, target_branch=None, set_upstream=False):
@@ -764,9 +764,9 @@ class GitWrites:
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             state = await self.reviewed(id, snapshot)
             if not state['branch'] or state['branch'] != branch or not state['head']:
-                raise GitError('只能推送当前已提交的分支，请刷新状态。', 409)
+                raise GitError('Only the currently submitted branch can be pushed. Please refresh the status.', 409)
             if state['active']:
-                raise GitError('项目有正在运行的任务或对话，请结束后再推送。', 409)
+                raise GitError('Project has running tasks or conversations, please end them before pushing.', 409)
             remote, target_branch = await self.remote_target(path, branch, remote, target_branch)
             auth = await self.credential_for(directory, remote, push=True)
             remote_ref = 'refs/heads/' + target_branch

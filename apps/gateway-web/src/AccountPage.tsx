@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { AdminTabs } from './AdminTabs'
@@ -33,10 +34,10 @@ export function AccountPage() {
   setBusy(true);setError('')
   try{
    const response=await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':session.csrf_token}})
-   if(!response.ok && response.status!==401)throw Error('退出登录失败，请重试。')
+   if(!response.ok && response.status!==401)throw Error('Failed to log out, please try again.')
    window.dispatchEvent(new Event('gateway-auth-changed'))
    navigate('/auth',{replace:true})
-  }catch(reason){setError(reason instanceof Error?reason.message:'退出登录失败。')}
+  }catch(reason){setError(reason instanceof Error?reason.message:'Failed to log out.')}
   finally{setBusy(false)}
  }
  return <section className="gateway-admin-page gateway-account-center">
@@ -46,7 +47,7 @@ export function AccountPage() {
   {status==='error' && <p className="gateway-center-state" role="alert">无法检查登录状态。<button onClick={()=>setRevision(value=>value+1)}>重试</button></p>}
   {status==='ready' && session && <>
    <div className="gateway-center-profile"><div className="gateway-center-avatar" aria-hidden="true">{Array.from(session.user.display_name || session.user.username)[0]}</div><div className="gateway-center-profile-name"><h3>{session.user.display_name || session.user.username}</h3><p>{loginUsername(session.user) ? `登录用户名：${loginUsername(session.user)}` : '企业账号'}</p></div><span className="gateway-center-account-state">已登录</span><button type="button" className="gateway-center-logout" disabled={busy} onClick={()=>void logout()}>{busy?<><span className="gateway-spinner"/> 正在退出…</>:'退出登录'}</button></div>
-   {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+   {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
    <AdminTabs label="用户中心" value={tab} onChange={value=>setParams(value==='security'?{view:'security'}:{})} items={[
     {id:'overview',label:'用量概览',content:<AccountUsagePanel onExpired={expire}/>},
     {id:'security',label:'安全设置',content:<AccountSecurityPanel user={session.user} csrf={session.csrf_token} passwordRequired={session.password_confirmation_required!==false} onExpired={expire}/>},

@@ -6,11 +6,12 @@ import Button from '../components/Button'
 import WorkflowDetailLoadStatus from '../components/WorkflowDetailLoadStatus'
 import Icon from '../components/Icon'
 import FlowCanvas, { type FlowCanvasHandle } from '../components/FlowCanvas'
+import WorkflowDebugControls, { type WorkflowDebugHandle } from '../components/WorkflowDebugControls'
 import AiFlowEditorPanel from '../components/AiFlowEditorPanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Select from '../components/Select'
 import { useProjectStore } from '../stores/projectStore'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { resolveCanvasProject } from '../utils/canvasProjectLoad'
 
@@ -25,7 +26,7 @@ function CanvasEditorInner() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const activeProject = useProjectStore((s) => s.activeProject)
-  const { can } = useGatewayProjectPermissions(activeProject?.id)
+  const { can, bound } = useGatewayProjectPermissions(activeProject?.id)
   const canEdit = can('workflow.edit')
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const saveSteps = useProjectStore((s) => s.saveSteps)
@@ -45,6 +46,8 @@ function CanvasEditorInner() {
   const [aiConfirmClose, setAiConfirmClose] = useState(false)
   const [aiApplyError, setAiApplyError] = useState('')
   const canvasRef = useRef<FlowCanvasHandle>(null)
+  const debugRef = useRef<WorkflowDebugHandle>(null)
+  const canDebug = canEdit && !bound && activeProject && activeProject.type !== 'remote' && activeWorkflowId
   const onboardingWorkflowId = useOnboardingStore((state) => state.workflowId)
   const canvasHintSeen = useOnboardingStore((state) => state.canvasHintSeen)
   const markCanvasHintSeen = useOnboardingStore((state) => state.markCanvasHintSeen)
@@ -187,6 +190,10 @@ function CanvasEditorInner() {
             </Button>
           </div>
         }
+        onDebugStep={canDebug ? nodeId => debugRef.current?.open(nodeId) : undefined}
+        toolbarRight={canDebug
+          ? <WorkflowDebugControls ref={debugRef} key={activeProject.id + ':' + activeWorkflowId} project={activeProject}
+              sourceId={activeWorkflowId} readDraft={() => canvasRef.current?.getDraft()} /> : null}
         ref={canvasRef}
       />
 
@@ -220,7 +227,7 @@ function CanvasEditorInner() {
           onRequestClose={requestCloseAiPanel}
           title={t('canvas.aiEditFlowTitle')}
         />
-        {aiApplyError && <div className="ai-flow-editor-error" role="alert">{aiApplyError}</div>}
+        {aiApplyError && <div className="ai-flow-editor-error" role="alert">{localizeErrorDisplay(aiApplyError)}</div>}
       </div>}
 
       {/* AI panel: close while generating */}

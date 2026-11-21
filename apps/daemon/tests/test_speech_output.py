@@ -1,7 +1,9 @@
 import asyncio
 import base64
+import io
 import json
 import time
+import wave
 
 import httpx
 import pytest
@@ -31,7 +33,7 @@ def app():
 
 
 @pytest.mark.asyncio
-async def test_settings_encrypt_credentials_and_preserve_only_same_destination(output):
+async def test_settings_encrypt_credentials_and_preserve_only_same_destination(output, monkeypatch):
     settings = dict(mode='cloud', provider='qwen', api_key='private-key', model='qwen3-tts-flash-realtime', voice='Cherry')
     await output.configure(settings)
     status = await output.snapshot()
@@ -44,6 +46,18 @@ async def test_settings_encrypt_credentials_and_preserve_only_same_destination(o
     assert not (await output.settings())['api_key']
     reloaded = SpeechOutputService(output.root)
     assert (await reloaded.settings())['provider'] == 'openai'
+    await reloaded.configure(dict(mode='system'))
+    assert 'private-key' not in (output.root / 'settings.json').read_text()
+    monkeypatch.setattr(speech_output, 'service', SpeechOutputService(output.root))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app()), base_url='http://test') as client:
+        status = (await client.get('/api/speech-output')).json()
+        assert 'private-key' not in json.dumps(status)
+        assert any(c['provider'] == 'qwen' and c['has_api_key'] for c in status['connections'])
+        assert 'connections' not in (await client.get('/api/speech-output?project_id=p')).json()
+        result = await client.post('/api/speech-output/settings/secret', json={**settings, 'field': 'api_key'})
+        assert result.json() == {'value': 'private-key'}
+        assert result.headers['cache-control'] == 'no-store'
+        assert (await client.put('/api/speech-output/settings', json={**settings, 'api_key': None})).json()['has_api_key']
     await output.close()
 
 
@@ -94,6 +108,32 @@ async def test_draft_test_does_not_save_settings_and_failures_are_redacted(outpu
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(('failure', 'code'), [
+    (httpx.ConnectError('private endpoint'), 'temporary'),
+    (503, 'temporary'), (401, 'authentication'), (403, 'authentication'), (400, 'configuration'),
+    (RuntimeError('private endpoint'), 'synthesis'),
+])
+async def test_synthesis_failure_has_safe_stable_code(output, monkeypatch, failure, code):
+    async def broken(settings, text):
+        if isinstance(failure, int):
+            request = httpx.Request('POST', 'https://example.com/private-endpoint')
+            httpx.Response(failure, request=request).raise_for_status()
+        raise failure
+        yield
+
+    monkeypatch.setattr(output, '_audio', broken)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app()), base_url='http://test') as client:
+        created = await client.post('/api/speech-output/sessions', json={
+            'text': '你好', 'settings': {'mode': 'cloud', 'provider': 'qwen', 'api_key': 'private-key'},
+        })
+        sid = created.json()['id']
+        result = (await client.post(f'/api/speech-output/sessions/{sid}/next')).json()
+        assert result['done'] and result['error_code'] == code
+        assert 'private' not in result['error']
+        assert (await client.delete(f'/api/speech-output/sessions/{sid}')).status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_host_settings_reject_project_identity(output, monkeypatch):
     from fastapi import HTTPException
     def require(project):
@@ -103,7 +143,15 @@ async def test_host_settings_reject_project_identity(output, monkeypatch):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app()), base_url='http://test') as client:
         assert (await client.get('/api/speech-output')).status_code == 403
         assert (await client.put('/api/speech-output/settings', json={'mode': 'system'})).status_code == 403
+        assert (await client.post('/api/speech-output/settings/secret',
+                                  json=dict(mode='cloud', provider='qwen', field='api_key'))).status_code == 403
         assert (await client.post('/api/speech-output/models/download?model_id=kokoro-v1')).status_code == 403
+        assert (await client.post('/api/speech-output/models/discard?model_id=kokoro-v1')).status_code == 403
+        assert (await client.post('/api/speech-output/reference', content=b'wav')).status_code == 403
+        assert (await client.delete(f'/api/speech-output/reference/{"a" * 64}')).status_code == 403
+        assert (await client.post('/api/speech-output/sessions?project_id=p', json={
+            'text': '你好。', 'digital_session_id': 'known',
+        })).status_code == 403
     await output.close()
 
 
@@ -138,12 +186,12 @@ async def test_cancel_reaps_active_worker_but_not_worker_owned_by_another_queued
     import sys
     await output.configure(dict(mode='local', model_id='kokoro-v1', voice='46'))
     monkeypatch.setattr(output.resources, 'installed', lambda model_id: True)
-    async def start(path):
+    async def start(path, design=False):
         code = ("import sys,json,time;sys.stdin.readline();"
                 "print(json.dumps({'audio':'AAAA'*30000,'format':'pcm','sample_rate':24000}),flush=True);time.sleep(60)")
         output.runtime.process = await asyncio.create_subprocess_exec(sys.executable, '-c', code,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-        output.runtime.model = path
+        output.runtime.model = (path, design)
     monkeypatch.setattr(output.runtime, '_start', start)
     first = (await output.start('p', 'alice', 'hello'))['id']
     chunk = await output.next(first, 'p', 'alice')
@@ -164,10 +212,9 @@ async def test_resource_hash_failure_never_publishes_and_leaves_no_staging(outpu
     from services import tts_resources
     real_client = httpx.AsyncClient
     monkeypatch.setattr(tts_resources, 'PACKAGES', [])
+    monkeypatch.setitem(tts_resources.MODELS['kokoro-v1'], 'files', [('model.onnx', 4, '0' * 64, 'sha256')])
     def handler(request):
-        if '/tree/' in request.url.path:
-            return httpx.Response(200, json=[dict(type='file', path=name, size=4, oid='0' * 40)
-                for name in ['model.onnx', 'voices.bin', 'tokens.txt']])
+        assert request.url.host == 'huggingface.co'
         return httpx.Response(200, content=b'bad!')
     monkeypatch.setattr(tts_resources.httpx, 'AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
     await output.resources.download('kokoro-v1')
@@ -231,15 +278,24 @@ async def test_http_adapters_decode_expected_protocol_without_exposing_secrets(p
 
 
 @pytest.mark.asyncio
-async def test_local_catalog_has_qwen_variants_and_model_specific_voice_validation(output):
+async def test_local_catalog_exposes_three_models_and_validates_model_controls(output):
     from services.speech_output import validate
     status = await output.snapshot()
     catalog = {m['id']: m for m in status['models']}
-    small = catalog['qwen-06-custom']
+    assert set(catalog) == {'moss-nano', 'cosyvoice3', 'omnivoice'}
+    assert len(catalog['moss-nano']['voices']) == 19
+    assert catalog['cosyvoice3']['style'] == 'instruction'
+    assert catalog['omnivoice']['style'] == 'tone'
+    assert [voice['id'] for voice in catalog['omnivoice']['voices']] == ['persona', 'reference']
+    validate(dict(mode='local', model_id='moss-nano', voice='Xiaoyu'))
+    with pytest.raises(ValueError):
+        validate(dict(mode='local', model_id='omnivoice', voice='reference', instructions='自由描述'))
+    from services.tts_catalog import MODELS, voices
+    small = MODELS['qwen-06-custom']
     assert small['runtime'] == 'qwen' and not small['instructions']
-    assert any(v['id'] == 'Vivian' for v in small['voices'])
-    assert catalog['qwen-17-custom']['instructions']
-    assert catalog['qwen-17-design']['voice_design']
+    assert any(v['id'] == 'Vivian' for v in voices('qwen-06-custom'))
+    assert MODELS['qwen-17-custom']['instructions']
+    assert MODELS['qwen-17-design']['voice_design']
     assert all(m['streaming'] == 'sentence' for m in catalog.values())
     validate(dict(mode='local', model_id='qwen-06-custom', voice='Vivian'))
     validate(dict(mode='local', model_id='qwen-17-design', voice='design', instructions='年轻清亮的女性声音'))
@@ -249,6 +305,217 @@ async def test_local_catalog_has_qwen_variants_and_model_specific_voice_validati
         with pytest.raises(ValueError):
             validate(dict(mode='local', **value))
     await output.close()
+
+
+@pytest.mark.asyncio
+async def test_omnivoice_persona_preview_and_saved_playback_read_current_profile(output, monkeypatch):
+    from services import tts_omni_persona
+    from services.digital_person import DigitalPersonProfile
+    import threading
+
+    profile = DigitalPersonProfile(personality='年轻女声，偶尔俏皮', tone='温柔、沉稳')
+    event_loop_thread = threading.get_ident()
+
+    def load_profile():
+        assert threading.get_ident() != event_loop_thread
+        return profile
+
+    def no_swift(model_id):
+        raise AssertionError('Persona synthesis does not use the Swift reference runtime')
+
+    calls = []
+
+    async def audio(path, text, voice, instructions, **options):
+        calls.append((path.name, text, voice, instructions, options))
+        yield {'audio': 'AAAA', 'format': 'pcm', 'sample_rate': 24000}
+
+    monkeypatch.setattr(tts_omni_persona, 'get_profile', load_profile)
+    monkeypatch.setattr(output.resources, 'installed', lambda model_id: True)
+    monkeypatch.setattr(output.resources, 'omni_design_ready', lambda: True)
+    monkeypatch.setattr(output.resources, 'runtime_error', no_swift)
+    monkeypatch.setattr(output.runtime, 'audio', audio)
+    settings = {'mode': 'local', 'model_id': 'omnivoice', 'voice': 'persona'}
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app()), base_url='http://test') as client:
+        async def play(body, project=''):
+            query = f'?project_id={project}'
+            response = await client.post(f'/api/speech-output/sessions{query}', json=body)
+            assert response.status_code == 200
+            sid = response.json()['id']
+            path = f'/api/speech-output/sessions/{sid}'
+            assert (await client.post(f'{path}/next{query}')).json()['audio']
+            assert (await client.post(f'{path}/next{query}')).json() == {'done': True}
+            assert (await client.delete(f'{path}{query}')).status_code == 200
+
+        rejected = await client.post('/api/speech-output/sessions', json={
+            'text': '今晚慢慢来。', 'settings': settings, 'preview_prompt': '愤怒',
+        })
+        assert rejected.status_code == 409
+        assert '自然、温柔' in rejected.json()['detail']
+        await play({'text': '今晚慢慢来。', 'settings': settings})
+        await play({'text': 'Good evening.', 'settings': settings,
+                    'preview_prompt': '女性，青年，高音调，英式口音'})
+        assert (await client.post('/api/speech-output/sessions', json={
+            'text': '晚上好。', 'settings': settings, 'preview_prompt': '英式口音',
+        })).status_code == 409
+        assert (await client.post('/api/speech-output/sessions', json={
+            'text': 'Good evening.', 'settings': settings, 'preview_prompt': 'female, male',
+        })).status_code == 409
+        assert (await output.settings())['mode'] == 'system'
+        assert (await client.put('/api/speech-output/settings', json=settings)).status_code == 200
+        profile = DigitalPersonProfile(personality='年轻女声', tone='活泼、俏皮')
+        assert (await client.post('/api/speech-output/sessions', json={
+            'text': '晚上好。', 'preview_prompt': '轻声耳语',
+        })).status_code == 409
+        await play({'text': '试听。', 'settings': settings, 'preview_prompt': '轻声耳语'})
+        assert (await output.settings())['instructions'] == ''
+        await play({'text': '我来陪你。'}, 'digital-person-project')
+        await play({'text': '晚上好。', 'settings': {**settings, 'instructions': 'whisper'}})
+
+    assert calls == [
+        ('omnivoice', '今晚慢慢来。', 'persona', 'female, young adult', {}),
+        ('omnivoice', 'Good evening.', 'persona', 'female, young adult, high pitch, british accent', {}),
+        ('omnivoice', '试听。', 'persona', 'female, young adult, whisper', {}),
+        ('omnivoice', '我来陪你。', 'persona', 'female, young adult, high pitch', {}),
+        ('omnivoice', '晚上好。', 'persona', 'female, young adult, whisper', {}),
+    ]
+    await output.close()
+
+
+@pytest.mark.asyncio
+async def test_digital_voice_uses_saved_reference_identity_and_affinity_without_preview_leak(output, monkeypatch):
+    from api import digital_person
+    from services import digital_person_affect, digital_person_sessions, tts_omni_persona
+    from services.digital_person import DigitalPersonProfile
+
+    profile = DigitalPersonProfile(personality='年轻女声', tone='俏皮、明快')
+    monkeypatch.setattr(tts_omni_persona, 'get_profile', lambda: profile)
+    monkeypatch.setattr(digital_person, 'runtime', lambda: object())
+    monkeypatch.setattr(output.resources, 'installed', lambda model_id: True)
+    monkeypatch.setattr(output.resources, 'runtime_error', lambda model_id: '')
+    monkeypatch.setattr(output.resources, 'omni_design_ready', lambda: True)
+    calls = []
+
+    async def subject(_, project, session):
+        assert (project, session) == ('p', 'chat')
+        return 'matched-person'
+
+    def affinity(person):
+        assert person == 'matched-person'
+        time.sleep(.15)
+        return {'affinity': 85}
+
+    async def audio(path, text, voice, instructions, **options):
+        calls.append((voice, instructions, options))
+        yield {'audio': 'AAAA', 'format': 'pcm', 'sample_rate': 24000}
+
+    monkeypatch.setattr(digital_person_sessions, 'affect_person', subject)
+    monkeypatch.setattr(digital_person_affect, 'read', affinity)
+    monkeypatch.setattr(output.runtime, 'audio', audio)
+    wav = io.BytesIO()
+    with wave.open(wav, 'wb') as reference:
+        reference.setparams((1, 2, 24000, 0, 'NONE', ''))
+        reference.writeframes(b'\0\0' * 24000)
+    identifier = await output.upload_reference(wav.getvalue())
+    reference_path = output.root / 'references' / f'{identifier}.wav'
+    settings = dict(mode='local', model_id='omnivoice', voice='reference', reference_id=identifier)
+    await output.configure(settings)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app()), base_url='http://test') as client:
+        preview = (await client.post('/api/speech-output/sessions', json={
+            'text': '晚安。', 'settings': settings, 'preview_prompt': '温柔、沉稳',
+        })).json()['id']
+        assert (await client.post(f'/api/speech-output/sessions/{preview}/next')).json()['audio']
+        assert (await client.post(f'/api/speech-output/sessions/{preview}/next')).json()['done']
+        await client.delete(f'/api/speech-output/sessions/{preview}')
+        combo = (await client.post('/api/speech-output/sessions', json={
+            'text': '晚安。', 'settings': settings, 'preview_prompt': 'attributes:low pitch, whisper',
+        })).json()['id']
+        assert (await client.post(f'/api/speech-output/sessions/{combo}/next')).json()['audio']
+        assert (await client.post(f'/api/speech-output/sessions/{combo}/next')).json()['done']
+        await client.delete(f'/api/speech-output/sessions/{combo}')
+        pending = asyncio.create_task(client.post('/api/speech-output/sessions?project_id=p',
+            json={'text': '晚上好。', 'digital_session_id': 'chat'}))
+        await asyncio.sleep(.02)
+        assert (await asyncio.wait_for(client.get('/health'), .08)).is_success
+        assert not pending.done()
+        formal = (await pending).json()['id']
+        chunk = (await client.post(f'/api/speech-output/sessions/{formal}/next?project_id=p')).json()
+        assert chunk['audio'] and chunk['rate_factor'] == .96
+        assert (await client.post(f'/api/speech-output/sessions/{formal}/next?project_id=p')).json()['done']
+        await client.delete(f'/api/speech-output/sessions/{formal}?project_id=p')
+
+    assert [(voice, prompt, options['reference']) for voice, prompt, options in calls] == [
+        ('reference', 'warm', reference_path),
+        ('reference', 'low pitch, whisper', reference_path),
+        ('reference', 'happy', reference_path),
+    ]
+    assert calls[1][2]['use_design'] is True
+    assert (await output.settings())['instructions'] == ''
+    await output.close()
+
+
+@pytest.mark.asyncio
+async def test_reference_upload_and_validation_leave_health_responsive(output, monkeypatch):
+    from services import speech_output as implementation
+    original = implementation.store_reference
+
+    def slow_store(root, content):
+        time.sleep(.15)
+        return original(root, content)
+
+    monkeypatch.setattr(implementation, 'store_reference', slow_store)
+    target = io.BytesIO()
+    with wave.open(target, 'wb') as wav:
+        wav.setparams((1, 2, 24000, 0, 'NONE', ''))
+        wav.writeframes(b'\x00\x00' * 24000)
+    wav_data = target.getvalue()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app()), base_url='http://test') as client:
+        pending = asyncio.create_task(client.post('/api/speech-output/reference', content=wav_data))
+        await asyncio.sleep(.02)
+        assert (await asyncio.wait_for(client.get('/health'), .10)).status_code == 200
+        assert not pending.done()
+        response = await pending
+        assert response.status_code == 200
+        reference = response.json()['id']
+        assert response.json()['reference']['duration'] == 1.0
+        host = (await client.get('/api/speech-output')).json()
+        assert host['references'] == [response.json()['reference']]
+        scoped = (await client.get('/api/speech-output?project_id=p')).json()
+        assert 'references' not in scoped
+        assert (output.root / 'references' / f'{reference}.wav').read_bytes() == wav_data
+        settings = dict(mode='local', model_id='omnivoice', voice='reference', instructions='warm')
+        assert (await client.put('/api/speech-output/settings', json=settings)).status_code == 409
+        assert (await client.put('/api/speech-output/settings', json={**settings, 'reference_id': reference})).status_code == 200
+        custom = {**settings, 'reference_id': reference, 'instructions': 'prompt:用温柔、沉稳的语气说。'}
+        assert (await client.put('/api/speech-output/settings', json=custom)).status_code == 200
+        assert (await output.settings())['instructions'] == custom['instructions']
+        assert (await client.put('/api/speech-output/settings', json={**settings, 'voice': 'persona'})).status_code == 200
+        assert (await client.get('/api/speech-output')).json()['references'] == host['references']
+        assert (await client.put('/api/speech-output/settings', json=custom)).status_code == 200
+        other = (await client.post('/api/speech-output/reference', content=wav_data[:-2] + b'\1\0')).json()['id']
+        assert (await client.delete('/api/speech-output/reference/not-a-hash')).status_code == 409
+        deleted = await client.delete(f'/api/speech-output/reference/{reference}')
+        assert deleted.status_code == 200
+        assert deleted.json()['settings']['voice'] == 'persona'
+        assert deleted.json()['settings']['reference_id'] == ''
+        assert deleted.json()['settings']['reference_text'] == ''
+        assert deleted.json()['settings']['instructions'] == ''
+        assert not (output.root / 'references' / f'{reference}.wav').exists()
+        assert [row['id'] for row in (await client.get('/api/speech-output')).json()['references']] == [other]
+        assert (await SpeechOutputService(output.root).settings())['voice'] == 'persona'
+        assert (await client.delete(f'/api/speech-output/reference/{reference}')).status_code == 200
+        assert (await client.post('/api/speech-output/reference', content=wav_data[:-2])).status_code == 409
+    await output.close()
+
+
+def test_local_catalog_resolves_companion_assets_on_selected_hugging_face_origin():
+    from services.tts_catalog import file_source
+    assert file_source('moss-nano', 'MOSS-Audio-Tokenizer-Nano-ONNX/codec_browser_onnx_meta.json') == (
+        'OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX', 'ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae',
+        'codec_browser_onnx_meta.json')
+    assert file_source('cosyvoice3', 'speech_tokenizer/model.safetensors') == (
+        'mlx-community/S3TokenizerV3', 'b143914b3e912278104824da706edc9c2d317c4e', 'model.safetensors')
 
 
 @pytest.mark.asyncio
@@ -272,10 +539,12 @@ async def test_qwen_download_checks_nested_weights_reuses_runtime_and_publishes_
     from services import tts_resources, tts_qwen_resources
     real_client = httpx.AsyncClient
     files = {name: b'weights-or-config' for name in ['model.safetensors', 'config.json', 'speech_tokenizer/model.safetensors']}
+    spec = tts_resources.MODELS['qwen-06-custom']
+    monkeypatch.setitem(spec, 'files', [(name, len(data), hashlib.sha256(data).hexdigest(), 'sha256')
+                                       for name, data in files.items()])
     def handler(request):
-        if '/tree/' in request.url.path:
-            return httpx.Response(200, json=[dict(type='file', path=name, size=len(data),
-                lfs=dict(oid=hashlib.sha256(data).hexdigest())) for name, data in files.items()])
+        assert request.url.host == 'mirror.example'
+        assert request.url.path.startswith(f"/hub/{spec['repo']}/resolve/{spec['revision']}/")
         for name, data in files.items():
             if request.url.path.endswith('/' + name):
                 return httpx.Response(200, content=data)
@@ -291,7 +560,7 @@ async def test_qwen_download_checks_nested_weights_reuses_runtime_and_publishes_
     monkeypatch.setattr(tts_qwen_resources, 'installed', lambda root: True)
     monkeypatch.setattr(tts_qwen_resources, 'worker_command', lambda path, check: ['python', str(path), '--check'])
     monkeypatch.setattr(tts_qwen_resources, 'run', run)
-    await output.resources.download('qwen-06-custom')
+    await output.resources.download('qwen-06-custom', 'https://mirror.example/hub/')
     await output.resources.task
     assert output.resources.states['qwen-06-custom']['stage'] == 'installed'
     assert output.resources.installed('qwen-06-custom')
@@ -370,7 +639,7 @@ async def test_qwen_bootstrap_rejects_bad_wheel_before_running_installer(tmp_pat
     async def forbidden(*args, **kwargs):
         pytest.fail('unverified native code must never run')
     monkeypatch.setattr(tts_qwen_resources, 'run', forbidden)
-    with pytest.raises(ValueError, match='校验失败'):
+    with pytest.raises(ValueError, match='校验失败|Component validation failed'):
         await tts_qwen_resources.ensure(tmp_path, {})
     assert not list(tmp_path.iterdir())
 

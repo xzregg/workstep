@@ -42,6 +42,9 @@ def add_task_management_parsers(subparsers, add_json):
             parser.add_argument("--comment")
         if action in {"archive-prepare", "archive-confirm"}:
             parser.add_argument("--locale", help="output language, e.g. zh-CN or en-US")
+        if action in {"archive", "archive-confirm"}:
+            parser.add_argument("--notify", action="store_true", default=None,
+                                help="notify the group that originated the current coordinator turn")
         if action == "archive-confirm":
             parser.add_argument("--experience", required=True,
                                 help="reviewed experience; empty only for a saved no-experience draft")
@@ -51,7 +54,7 @@ def add_task_management_parsers(subparsers, add_json):
 async def dispatch_task_management(args, client):
     arguments = {"project_id": args.project_id, "task_id": args.task_id, "confirm": "yes"}
     for key in ("title", "description", "delete_workspace", "message_id", "step_key",
-                "review_run_id", "comment", "locale", "experience"):
+                "review_run_id", "comment", "locale", "experience", "notify"):
         value = getattr(args, key, None)
         if value is not None:
             arguments[key] = value

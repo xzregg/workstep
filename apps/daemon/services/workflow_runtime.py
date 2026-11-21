@@ -486,7 +486,7 @@ class WorkflowRuntime:
         """Inject a user message into a running step or automatic review."""
         runner = self._runners.get(task_id)
         if runner is None:
-            raise ValueError("任务没有正在执行的步骤")
+            raise ValueError("No steps are currently executing")
         return await runner.send_live_message(
             task_id,
             step_key,
@@ -623,7 +623,7 @@ class WorkflowRuntime:
         """
         normalized = content.strip()
         if not normalized:
-            raise ValueError("消息内容不能为空")
+            raise ValueError("Message content cannot be empty")
         if not replay_pending:
             from services.remote_access import require_user_actor
 
@@ -735,7 +735,7 @@ class WorkflowRuntime:
                 "reviewing",
                 "rework_waiting",
             ):
-                raise ValueError(f"步骤执行中，不能重建会话: {step_key}")
+                raise ValueError(f"Cannot rebuild session during step execution: {step_key}")
 
         await self._run_db(project_id, lambda _project: validate_reset())
         handle = await self.restart_from_step(
@@ -896,7 +896,7 @@ class WorkflowRuntime:
         from services.messages import current_actor_message_fields
 
         if decision == "set_complete" and schedule_downstream is None:
-            raise RuntimeError("请先选择是否继续调度下游步骤")
+            raise RuntimeError("Please select whether to continue scheduling downstream steps")
 
         if decision == "complete_task":
             for _ in range(100):
@@ -1086,7 +1086,7 @@ class WorkflowRuntime:
                         or latest.status in {'stopped', 'completed', 'ready'}
                         or run.status != 'running'
                         or lease_held_by_live_owner(run, utc_now(), self._leases.instance_id)):
-                    raise RuntimeError('执行轮次已变化或停止，不能恢复')
+                    raise RuntimeError('Execution round has changed or stopped; cannot resume')
                 heal_task_cwd(latest, current_project)
                 return latest, run
 
@@ -1389,7 +1389,7 @@ class WorkflowRuntime:
 
             admitted = concurrency_gate.task_permit(project_id, task_id)
             if not active_runner and admitted is not None and admitted is not task_permit:
-                raise RuntimeError('任务正在排队或准备启动，请先取消后再重跑')
+                raise RuntimeError('Task is queued or preparing to start. Please cancel it before rerunning.')
             inspected = await self._run_db(
                 project_id,
                 lambda project: inspect_restart_run(
@@ -1626,7 +1626,7 @@ class WorkflowRuntime:
                 if (current.active_workflow_run_id != run.id
                         or current.status in {'stopped', 'completed', 'ready'}
                         or run.status != 'running'):
-                    raise RuntimeError('执行轮次已变化或停止')
+                    raise RuntimeError('Execution round has changed or stopped')
                 Task.update(queued_run_json=None).where(Task.id == task.id).execute()
 
             await runner._run_db(validate_execution)

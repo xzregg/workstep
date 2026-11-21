@@ -1,0 +1,97 @@
+# Digital person
+
+In the host's main conversation, save one standing agreement when the user
+explicitly asks you to remember an enduring rule, such as showing a prototype
+before proposing a solution. Use one line and preserve the user's conditions.
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-person remember --rule "Before presenting a proposal, show me a prototype" --json
+```
+
+The native equivalent is `workstep_remember_digital_person_rule` with
+`{"rule":"Before presenting a proposal, show me a prototype","confirm":"yes"}`.
+Report success only when `saved: true`. If `added: false`, the same rule is
+already in standing memory. The rule appears in the profile's Memory document.
+
+For a reminder or a request to act later, follow [Schedules](schedules.md) to
+create a session schedule. Ask for any missing execution time. Only standing
+agreements go into the profile's Memory document.
+
+When the user explicitly asks to think proactively now (主动思考一下 / 立即思考),
+run one reflection with the applicable transport from SKILL.md:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-person check --json
+```
+
+The native tool equivalent is `workstep_check_digital_person` with
+`{"confirm":"yes"}`. The command returns `{"status":"accepted"}` as soon as
+the background assessment is accepted, without waiting for its result.
+It uses the existing host authorization and requires the digital
+person to be enabled; it does not enable recurring reflection or change settings.
+Reflection processes eligible pending evidence, rather than treating the current
+user message as a free-form thinking prompt. It can update memories and
+relationships and send notifications under the existing manual-check policies.
+
+Inspect the returned response before reporting:
+
+- `status: accepted`: report that reflection was triggered, not completed.
+- `ok: false`: report the error, including disabled or already-running checks.
+
+The daemon continues the assessment after the CLI exits. Results appear in the
+existing reflection activity UI; do not poll or wait unless asked. With no pending
+evidence (`sources.no_work: true` internally), no model reflection runs.
+An accepted request can still finish as `failed`, `cancelled` or `deferred`;
+acceptance does not confirm completed thinking or notification delivery.
+
+Do not automatically retry a timed-out request: it may still be running.
+When explicitly asked to stop the active reflection:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-person stop --json
+```
+
+To delegate actual work into a separate project execution session, resolve the
+target project and origin conversation IDs first, then use:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-person delegate --project <project_id> --instruction "Work to perform" --session <session_id> --idempotency-key <request_key> --json
+```
+
+Reuse the same request key on retries. A running delegation is not finished work.
+
+When sending work to a specified existing ordinary project conversation, use
+tracked delegation with its project and session IDs:
+
+```bash
+workstep digital-person delegate --project <project_id> --session <origin_session_id> --target-session <target_session_id> --instruction "Work to perform" --idempotency-key <request_key> --json
+```
+
+The native tool takes `target_session_id` plus the usual delegation arguments.
+The daemon registers the new turn as a delegation before execution. It uses the
+target conversation's history and waits behind active work. The digital person
+follows the result from the originating conversation. Keep the returned
+delegation `id` for follow-ups. If this route is unavailable, report the failure.
+
+For a follow-up on the same task, look up recent delegations in the target project
+from the current digital-person conversation:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-person delegations --project <project_id> --session <origin_session_id> --json
+```
+
+To inspect one delegation from the current conversation and read its execution
+result, use its listed ID and the origin session:
+
+```bash
+workstep digital-person delegations --id <delegation_id> --session <origin_session_id> --json
+```
+
+Pass the matching item's `id` (not its `session_id`) as `--continue-from` on
+`digital-person delegate`. Native equivalents are
+`workstep_list_digital_person_delegations` and the `continuation_of` parameter on
+`workstep_delegate_digital_person`. Use a fresh idempotency key for a new
+instruction; reuse it only for a retry of that instruction. A `queued` result
+means the follow-up was accepted behind existing work without interrupting it.
+Do not start a new conversation as a fallback when a continuation fails. If it
+is unclear whether the new instruction belongs to a prior task, ask the user.

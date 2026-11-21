@@ -40,7 +40,7 @@ def resolve_binding(binding: dict | None) -> tuple[str, str]:
             parts.append(f"### {index}. {role['name']}\nRole reference: {member['role_id']}\n{role['prompt']}\nAssignment: {member['duty'] or 'Apply your expertise to the current request.'}")
         text = '\n\n'.join(parts)
         if len(text) > 200_000:
-            raise ValueError('专家团提示词总长度不能超过 200000 字，请精简后再使用')
+            raise ValueError('The total length of the expert team\'s prompt cannot exceed 200,000 characters. Please refine it before use:')
         return team['name'], text
 
 
@@ -67,11 +67,11 @@ class ChatRoleBindings:
             if row is None:
                 raise ValueError('Chat session not found')
             if channel_session_source(row.id, row.title).get('source') == 'channel':
-                raise ValueError('渠道会话暂不支持加载角色')
+                raise ValueError('Channel conversation does not support loading roles')
             if any(state.get('session_id') == session_id and state.get('status') in {'queued', 'running', 'stopping'}
                    for state in self._turn_states.values()) or ChatMessage.select().where(
                        ChatMessage.session == row, ChatMessage.status == 'running').exists():
-                raise ValueError('Chat session is running: 对话运行中，不能切换角色')
+                raise ValueError('Chat session is running: Cannot switch roles')
             name, _ = resolve_binding(binding)
             removing = binding is None and bool(row.role_binding_json)
             row.role_binding_json = json.dumps(binding) if binding else None
@@ -102,7 +102,7 @@ class ChatRoleBindings:
         try:
             _, body = resolve_binding(binding)
         except FileNotFoundError as exc:
-            raise ValueError('角色或专家团成员不存在，请重新选择') from exc
+            raise ValueError('Role or expert group member does not exist, please reselect') from exc
         fingerprint = hashlib.sha256(('system-v1\n' + json.dumps(binding, sort_keys=True) + '\n' + body).encode()).hexdigest()
         engine = create_engine(session.engine)
         context_id = session.resolved_session_id if engine and engine.supports_resume else None

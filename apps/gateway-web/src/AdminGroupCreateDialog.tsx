@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
@@ -21,7 +22,7 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose, defaultParentId 
   useEffect(()=>{
     const controller=new AbortController();setParentsLoading(true);setParentsError('')
     void fetch('/api/admin/user-groups/tree',{credentials:'same-origin',signal:controller.signal}).then(async response=>{
-      if(!response.ok)throw Error('父组列表加载失败，请重试。')
+      if(!response.ok)throw Error('Failed to load parent group list. Please try again.')
       const data=await response.json()
       if(!controller.signal.aborted){setGroups(data.groups ?? []);setParentId(current=>data.groups?.some((group:{id:string})=>group.id===current)?current:'')}
     }).catch(reason=>{if(!controller.signal.aborted)setParentsError(reason.message)})
@@ -47,10 +48,10 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose, defaultParentId 
       const response = await fetch(`/api/admin/departments?${new URLSearchParams({
         q: departmentQuery.trim(), page_size: '25',
       })}`, { credentials: 'same-origin' })
-      if (!response.ok) throw new Error('部门搜索失败。')
+      if (!response.ok) throw new Error('Department search failed.')
       const result = await response.json()
       setDepartments(result.departments ?? []); setError('')
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '部门搜索失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Department search failed.') }
   }
 
   async function submit() {
@@ -60,18 +61,18 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose, defaultParentId 
     try {
       if (sourceType === 'external_department') {
         const step = await confirmStepUp(csrf, password, passwordRequired)
-        if (!step.ok) throw new Error('管理员密码验证失败。')
+        if (!step.ok) throw new Error('Administrator password verification failed.')
       }
       const response = await fetch('/api/groups', { method: 'POST', credentials: 'same-origin',
         headers, body: JSON.stringify({ name: trimmedName, slug: trimmedSlug, description, source_type: sourceType,
           external_department_id: sourceType === 'external_department' ? departmentId : null,
           ...(sourceType === 'manual' && parentId ? {parent_id:parentId} : {}) }) })
       if (!response.ok) throw new Error(response.status === 409
-        ? '用户组标识已存在。' : '创建用户组失败。')
+        ? 'User group identifier already exists.' : 'Failed to create user group.')
       const created = await response.json()
       onDone(created.id)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '创建用户组失败。')
+      setError(reason instanceof Error ? reason.message : 'Failed to create user group.')
     } finally { setBusy(false) }
   }
 
@@ -93,7 +94,7 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose, defaultParentId 
       </Select></label>}
       {sourceType==='external_department' && <p>父组按外部部门层级自动同步。</p>}
       {parentsLoading && sourceType==='manual' && <p role="status"><span className="gateway-spinner"/>正在加载父组…</p>}
-      {parentsError && sourceType==='manual' && <p role="alert">{parentsError}<button type="button" onClick={()=>setParentsRevision(value=>value+1)}>重试父组列表</button></p>}
+      {parentsError && sourceType==='manual' && <p role="alert">{localizeGatewayError(parentsError)}<button type="button" onClick={()=>setParentsRevision(value=>value+1)}>重试父组列表</button></p>}
       {sourceType === 'external_department' && <>
         <label>搜索部门<input value={departmentQuery} maxLength={128}
           onChange={event => setDepartmentQuery(event.target.value)} /></label>
@@ -103,9 +104,9 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose, defaultParentId 
             {item.display_name} · {item.provider}</option>)}</Select></label>
       </>}
     </div>
-    {validationError && <p role="alert" className="gateway-auth-error">{validationError}</p>}
+    {validationError && <p role="alert" className="gateway-auth-error">{localizeGatewayError(validationError)}</p>}
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在创建用户组…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   </GatewayConfirmDialog>
   {discard && <GatewayConfirmDialog title="放弃创建用户组" message="已填写的字段将被清除。"
     confirmLabel="放弃并关闭" cancelLabel="继续编辑" onConfirm={onClose}

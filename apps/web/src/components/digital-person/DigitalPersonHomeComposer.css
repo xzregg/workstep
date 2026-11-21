@@ -1,0 +1,24 @@
+.digital-home-composer{display:flex;flex-direction:column;gap:var(--space-2);width:min(100%,720px);min-width:0;color:var(--fg)}
+.digital-home-composer .pending-insert-panel{position:static;transform:none;width:100%;max-width:none;max-height:24dvh;overflow-y:auto;box-sizing:border-box;margin:0;padding:var(--space-2);border-width:.5px;box-shadow:none}
+.digital-home-composer .pending-insert-heading,.digital-home-composer .pending-insert-button,.digital-home-composer .pending-insert-editor{font-size:12px}
+.digital-home-composer-error{margin:0;color:var(--danger);font-size:12px}
+
+.digital-home-composer-backdrop{position:fixed;inset:0;z-index:2000;background:#0006}
+.digital-home-composer-anchor{
+ --composer-gap:var(--space-2);
+ --composer-left-gutter:max(var(--composer-gap),env(safe-area-inset-left));
+ --composer-right-gutter:max(var(--composer-gap),env(safe-area-inset-right));
+ --composer-width:min(720px,calc(100% - var(--composer-left-gutter) - var(--composer-right-gutter)));
+ --composer-bottom:calc(min(var(--composer-anchor-y,100dvh),var(--composer-viewport-top,0px) + var(--app-viewport-height,100dvh)) - var(--composer-gap));
+ position:absolute;
+ width:var(--composer-width);
+ left:clamp(var(--composer-left-gutter),calc(var(--composer-anchor-x,50%) - var(--composer-width)/2),calc(100% - var(--composer-width) - var(--composer-right-gutter)));
+ bottom:calc(100% - var(--composer-bottom));
+}
+.digital-home-composer-dialog{display:flex;flex-direction:column;gap:var(--space-3);width:100%;box-sizing:border-box;padding:var(--space-4);border:.5px solid var(--border);border-radius:var(--radius-xl);background:var(--bg);color:var(--fg);box-shadow:var(--elev-raised)}
+.digital-home-composer-dialog>.digital-home-composer{width:100%;margin-top:auto}
+.digital-home-composer-dialog>header{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)}
+.digital-home-composer-dialog>header>h2{margin:0;font-size:var(--text-title-2)}
+@media(max-width:1023px){
+ .digital-home-composer-dialog{max-height:max(0px,calc(var(--composer-bottom) - var(--composer-viewport-top,0px) - max(var(--composer-gap),env(safe-area-inset-top))));overflow-y:auto}
+}

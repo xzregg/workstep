@@ -1,7 +1,7 @@
 import Button from './Button'
 import Icon from './Icon'
 import Spinner from './Spinner'
-import { useI18n, type TKey } from '../i18n'
+import { useI18n, type TKey, localizeErrorDisplay } from '../i18n'
 import { decisionResourceBusy, type DecisionModel, type DecisionResource, type DecisionResourceKind } from '../api/decisionModels'
 
 export default function DecisionModelResource({ kind, resource, disabled, downloadDisabled = false, selectDisabled = false, onDownload, onCancel, onDelete, model, selected, onSelect }: {
@@ -26,7 +26,7 @@ export default function DecisionModelResource({ kind, resource, disabled, downlo
       {busy && <div className="decision-progress"><progress aria-label={model?.name ?? t(native ? 'decisionModels.nativeRuntime' : runtime ? 'decisionModels.runtime' : 'decisionModels.modelName')}
         max={resource.total_bytes || 1} value={resource.total_bytes ? resource.downloaded_bytes : undefined} />
         {resource.total_bytes != null && <span>{Math.round(resource.downloaded_bytes / 1e6)} / {Math.round(resource.total_bytes / 1e6)} MB</span>}</div>}
-      {resource.error && <p role="alert" className="decision-error">{resource.error}</p>}
+      {resource.error && <p role="alert" className="decision-error">{localizeErrorDisplay(resource.error)}</p>}
     </div><div className="decision-resource-actions">{onSelect && <Button size="sm" aria-pressed={selected} disabled={disabled || selected || selectDisabled} onClick={onSelect}>{t(selected ? 'decisionModels.modelSelected' : 'decisionModels.useModel')}</Button>}{busy ? <Button size="sm" disabled={disabled} onClick={onCancel}>{t('decisionModels.cancel')}</Button>
       : resource.installed ? <Button size="sm" disabled={disabled} onClick={onDelete}>{t('decisionModels.delete')}</Button>
       : <Button size="sm" disabled={disabled || downloadDisabled} onClick={onDownload}>{t(resource.stage === 'error' ? 'decisionModels.retry' : runtime ? 'decisionModels.downloadRuntime' : 'decisionModels.downloadModel')}</Button>}</div>

@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useState } from 'react'
 import dayjs from 'dayjs'
@@ -38,7 +39,7 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
     const to = draft.to_time ? new Date(draft.to_time) : null
     if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))
         || (from && to && from >= to)) {
-      setError('结束时间必须晚于开始时间。'); return
+      setError('End time must be later than start time.'); return
     }
     setError('')
     const params = new URLSearchParams()
@@ -92,7 +93,7 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
         </div>
       </details>
     </form>}
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     <div id="usage-report-panel" role="tabpanel" aria-labelledby={'usage-tab-'+tab}>
       {tab === 'prices' ? !readOnly && <AdminUsagePrices/> : tab === 'events' ? <AdminUsageEvents key={filters} filters={filters}/> : tab === 'reconciliation' ?
         !readOnly && <><AdminUsageBillImport/><AdminUsageReconciliation/></> :

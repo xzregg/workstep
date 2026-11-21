@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { ApplicationEnabledSwitch } from './ApplicationEnabledSwitch'
 import { ApplicationSecretField } from './ApplicationSecretField'
@@ -34,9 +35,9 @@ function ApplicationEditor({ provider, source, csrf, platformAddress, allowedOri
     body: JSON.stringify({ provider, tenant_id: draft.tenant.trim(), client_id: provider === 'wecom' ? draft.tenant.trim() : draft.client.trim(), agent_id: provider === 'wecom' ? draft.agent.trim() : null,
      client_secret: draft.secret || null, enabled: draft.enabled, login_enabled: draft.login, sync_enabled: draft.sync, sync_schedule: {frequency: draft.frequency, time: draft.time, timezone: draft.zone, weekday: Number(draft.weekday)} }),
    })
-   if (!response.ok) throw Error(response.status === 409 ? '该企业应用已存在，请编辑已有配置。' : '保存应用配置失败，请重试。')
+   if (!response.ok) throw Error(response.status === 409 ? 'This enterprise application already exists. Please edit the existing configuration.' : 'Failed to save application configuration, please try again.')
    onSaved()
-  } catch (reason) { setError(reason instanceof Error ? reason.message : '保存失败。') }
+  } catch (reason) { setError(reason instanceof Error ? reason.message : 'Save failed.') }
   finally { submitting.current = false; setBusy(false) }
  }
  return <><GatewayConfirmDialog title={names[provider] + '应用配置'} message="配置企业应用并选择组织同步及扫码登录。" confirmLabel="保存配置" disabled={!valid} busy={busy} onConfirm={() => void save()} onCancel={() => dirty ? setDiscard(true) : onClose()}>
@@ -58,7 +59,7 @@ function ApplicationEditor({ provider, source, csrf, platformAddress, allowedOri
   <p>密钥加密保存，可按需显示或复制。请在企业应用后台授权通讯录读取权限，并配置本平台的登录回调域。</p>
   {source && <label>登录回调地址<input readOnly value={(platformAddress || window.location.origin).replace(/\/+$/, '') + '/api/auth/external/' + source.id + '/callback'} /></label>}
   {source && allowedOrigins?.filter(origin => origin !== platformAddress).map(origin => <label key={origin}>其他入口登录回调地址<input readOnly value={origin + '/api/auth/external/' + source.id + '/callback'} /></label>)}
-  {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+  {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
  </GatewayConfirmDialog>
  {discard && <GatewayConfirmDialog title="放弃应用配置" message="尚未保存的修改将丢失。" confirmLabel="放弃并关闭" onConfirm={onClose} onCancel={() => setDiscard(false)} />}</>
 }
@@ -74,16 +75,16 @@ export function OrganizationSyncSettings({ csrf, platformAddress, allowedOrigins
  useEffect(() => {
   const controller = new AbortController(); setLoading(true); setError('')
   void fetch(`/api/admin/identity-sources?page=${page}&page_size=25`, { credentials: 'same-origin', signal: controller.signal }).then(async response => {
-   if (!response.ok) throw Error('企业应用配置加载失败。')
+   if (!response.ok) throw Error('Failed to load enterprise application configuration.')
    const result = await response.json(); if (!controller.signal.aborted) { setSources(result.sources ?? []); setTotal(result.total ?? result.sources?.length ?? 0) }
-  }).catch(() => { if (!controller.signal.aborted) setError('企业应用配置加载失败，请重试。') }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
+  }).catch(() => { if (!controller.signal.aborted) setError('Failed to load enterprise application configuration. Please try again.') }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
   return () => controller.abort()
  }, [revision, page])
  return <section className="gateway-project-grants gateway-organization-settings"><div className="gateway-admin-toolbar"><h3>组织同步与扫码登录</h3>
   <div className="gateway-device-actions"><OrganizationSyncNotice/>{(Object.keys(enterpriseProviders) as EnterpriseProvider[]).map(provider => <button key={provider} type="button" disabled={!csrf} onClick={() => setEditor({ provider })}>添加{enterpriseProviderName(provider)}应用</button>)}</div>
  </div><p>同步将按企业部门层级创建用户组及成员；启用扫码登录后，对应入口会出现在平台登录页。</p>
  {loading && <p role="status"><span className="gateway-spinner" /> 正在加载企业应用…</p>}
- {error && <p role="alert" className="gateway-auth-error">{error}<button type="button" onClick={() => setRevision(value => value+1)}>重试</button></p>}
+ {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}<button type="button" onClick={() => setRevision(value => value+1)}>重试</button></p>}
  {notice && <p role="status">{notice}</p>}
  <AdminRecordTable columns={['应用', '应用状态', '组织同步', '扫码登录', '最近同步', '操作']}>{sources.map(source => <tr key={source.id}>
   <td><strong>{names[source.provider]}</strong><p>{source.tenant_id}</p><small>{source.secret_configured ? '密钥已配置' : '请配置密钥'}{source.enabled ? '' : ' · 应用已停用'}</small></td>

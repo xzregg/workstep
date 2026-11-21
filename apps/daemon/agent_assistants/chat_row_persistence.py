@@ -64,6 +64,7 @@ class ChatRowPersistence(PersistenceAdapter):
             return
         session.messages = self._load_messages(row, context_only=True)
         session.resolved_session_id = row.engine_session_id
+        session.session_provider = row.session_provider
         session.extra['role_checkpoint'] = _load_json(row.role_checkpoint_json, None)
         session.extra['role_binding'] = _load_json(row.role_binding_json, None)
         if row.engine_state_json:
@@ -168,6 +169,7 @@ class ChatRowPersistence(PersistenceAdapter):
                 fast_model=session.fast_model,
                 vision_model=session.vision_model,
                 engine_session_id=session.resolved_session_id,
+                session_provider=session.session_provider,
                 engine_state_json=self._dump_state(session.engine_state),
                 created_at=now,
                 updated_at=now,
@@ -176,6 +178,7 @@ class ChatRowPersistence(PersistenceAdapter):
             title = row.title or self._default_title(session.messages)
             row.title = title
             row.engine_session_id = session.resolved_session_id
+            row.session_provider = session.session_provider
             row.engine_state_json = self._dump_state(session.engine_state)
             if 'role_checkpoint' in session.extra:
                 row.role_checkpoint_json = self._dump_state(session.extra['role_checkpoint'])

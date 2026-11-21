@@ -103,8 +103,8 @@ function openProtocolUrl(value) {
       void completeConfiguredGatewayCallback(value).catch((error) => {
         returnToLocalWorkspace()
         console.error('Unable to complete configured Gateway login', error)
-        const options = { type: 'error', title: '网关登录失败',
-          message: '无法完成网关登录。', detail: error.message || String(error) }
+        const options = { type: 'error', title: 'Gateway sign-in failed',
+          message: 'Failed to complete gateway login.', detail: error.message || String(error) }
         void (mainWindow ? dialog.showMessageBox(mainWindow, options) : dialog.showMessageBox(options))
       })
     } else {
@@ -389,8 +389,8 @@ function diagnosticMenu() {
 async function openFeedback() {
   try { await feedbackWindow?.open() }
   catch (error) {
-    console.error('无法打开一键反馈', error)
-    await dialog.showMessageBox({ type: 'error', title: '一键反馈', message: '无法打开反馈窗口，请重试或导出诊断包。' })
+    console.error('Unable to open one-click feedback', error)
+    await dialog.showMessageBox({ type: 'error', title: 'Feedback', message: 'Unable to open the feedback window. Please retry or export the diagnostic package.' })
   }
 }
 
@@ -413,7 +413,7 @@ async function openDiagnosticsDirectory() {
     await fs.mkdir(diagnostics.directory, { recursive: true, mode: 0o700 })
     const error = await shell.openPath(diagnostics.directory)
     if (error) throw new Error(error)
-  } catch (error) { console.error('无法打开日志目录', error) }
+  } catch (error) { console.error('Unable to open log directory', error) }
 }
 
 async function exportDiagnostics() {
@@ -432,8 +432,8 @@ async function exportDiagnostics() {
     await dialog.showMessageBox({ type: 'info', title: '诊断包已导出',
       message: '已保存桌面文本日志与版本信息。', detail: '原生崩溃转储保存在日志目录的 crashes 子目录中。' })
   } catch (error) {
-    console.error('无法导出诊断包', error)
-    await dialog.showMessageBox({ type: 'error', title: '诊断包导出失败', message: '无法保存诊断包，请检查目标目录的权限和磁盘空间。' })
+    console.error('Unable to export diagnostic package', error)
+    await dialog.showMessageBox({ type: 'error', title: 'Diagnostic export failed', message: 'Failed to save diagnostic package. Please check the permissions and disk space of the target directory.' })
   }
 }
 
@@ -460,11 +460,14 @@ async function hasActiveWork() {
   }
 }
 
-function configureTray() {
-  const iconPath = app.isPackaged
+function desktopIconPath() {
+  return app.isPackaged
     ? path.join(process.resourcesPath, 'tray-icon.png')
     : path.join(__dirname, '../build/icons/32x32.png')
-  const icon = nativeImage.createFromPath(iconPath).resize({ width: 18, height: 18 })
+}
+
+function configureTray() {
+  const icon = nativeImage.createFromPath(desktopIconPath()).resize({ width: 18, height: 18 })
   tray = new Tray(icon)
   tray.setToolTip('WorkStep')
   tray.setContextMenu(Menu.buildFromTemplate([
@@ -572,10 +575,10 @@ function beginManagedReauthentication(managed) {
         return
       } catch (error) {
         const result = await dialog.showMessageBox(mainWindow, {
-          type: 'error', title: 'WorkStep 需要重新登录',
-          message: '本机会话或网关控制授权已失效，重新登录后继续使用。',
+          type: 'error', title: 'Sign in to WorkStep again',
+          message: 'The local session or gateway control authorization has expired. Please log in again to continue.',
           detail: error instanceof Error ? error.message : String(error),
-          buttons: ['重试', '退出'], defaultId: 0, cancelId: 1,
+          buttons: ['Retry', 'Quit'], defaultId: 0, cancelId: 1,
         })
         if (result.response === 1) { app.quit(); return }
       }
@@ -617,8 +620,8 @@ function configureUpdater() {
   const updater = createDesktopUpdateService(app)
   let automatic
   const autoUpdate = () => {
-    if (!app.isPackaged) throw new Error('自动更新仅支持已安装的正式包')
-    if (process.platform === 'linux' && !process.env.APPIMAGE) throw new Error('自动更新仅支持 AppImage 安装包')
+    if (!app.isPackaged) throw new Error('Automatic updates are only supported for installed official packages')
+    if (process.platform === 'linux' && !process.env.APPIMAGE) throw new Error('Automatic updates are only supported for AppImage packages')
     if (!automatic) {
       const engine = process.platform === 'darwin'
         ? new (require('./macos-update.cjs').MacBundleUpdater)({ app, fetchImpl: net.fetch.bind(net) })
@@ -652,7 +655,7 @@ function configureUpdater() {
   ipcMain.handle('workstep:update:auto-status', () => automatic?.status() || { phase: 'idle', percent: 0, error: null })
   ipcMain.handle('workstep:update:start', event => {
     if (!mainWindow || event.sender !== mainWindow.webContents || !isTrustedNavigation(event.senderFrame?.url, rootUrl)) {
-      throw new Error('更新操作来源无效')
+      throw new Error('Invalid source for update operation')
     }
     return autoUpdate().start()
   })
@@ -732,28 +735,35 @@ app.whenReady().then(async () => {
       }
     } })
   const startupAction = async (event, action, input) => {
-    if (!sandboxStartup || event.sender !== sandboxStartup.window.webContents) throw new Error('沙箱启动操作来源无效')
+    if (!sandboxStartup || event.sender !== sandboxStartup.window.webContents) throw new Error('Invalid source for sandbox startup operation')
     if (action === 'readLogs') return sandboxManager.readLogs()
     if (action === 'copyLogs') { clipboard.writeText(await sandboxManager.readLogs()); return }
     if (action === 'openLogs') {
       const settings = await sandboxManager.settings()
-      if (settings.root) await shell.openPath(path.join(settings.root, 'desktop'))
+      if (!settings.root) throw new Error('日志目录不可用')
+      const error = await shell.openPath(path.join(settings.root, 'desktop'))
+      if (error) throw new Error(error)
       return
     }
     if (action === 'dockerImages') return sandboxManager.dockerImages()
+    if (action === 'recover') {
+      if (!sandboxStartup.recover(input)) throw new Error('当前无法执行此启动操作')
+      return
+    }
     if (action === 'switchImage') {
       const available = await sandboxManager.dockerImages()
       if (available.error) throw new Error(available.error)
       const selected = available.images.find(item => item.id === input)
-      if (!selected) throw new Error('请选择扫描结果中的兼容镜像')
+      if (!selected) throw new Error('Please select a compatible image from the scan results')
       const tag = selected.tags[0] || null
-      sandboxStartup.update({ phase: 'switching', message: `正在切换到 ${tag || input.slice(0, 19) + '…'}`, error: null })
       await sandboxManager.queueImageSwitch(input, tag)
       sandboxSwitchSignal += 1
+      sandboxStartup?.recover('retry')
+      sandboxStartup?.update({ phase: 'switching', message: `正在切换到 ${tag || input.slice(0, 19) + '…'}`, error: null })
       return { queued: true, image: input, tag }
     }
   }
-  for (const action of ['readLogs', 'copyLogs', 'openLogs', 'dockerImages', 'switchImage']) {
+  for (const action of ['readLogs', 'copyLogs', 'openLogs', 'dockerImages', 'switchImage', 'recover']) {
     const channel = `workstep:sandbox:startup:${action}`
     ipcMain.removeHandler(channel)
     ipcMain.handle(channel, (event, input) => startupAction(event, action, input))
@@ -776,35 +786,60 @@ app.whenReady().then(async () => {
     const sandboxSettings = await sandboxManager.settings()
     if (sandboxSettings.enabled || sandboxSettings.pendingDockerImage) {
       sandboxStartup = createSandboxStartupWindow(BrowserWindow, {
+        iconDataUrl: nativeImage.createFromPath(desktopIconPath()).toDataURL(),
+        image: {
+          id: sandboxSettings.dockerImage,
+          label: sandboxSettings.dockerImage || sandboxSettings.releaseImage || image || sandboxSettings.image,
+        },
         onUserClose: (event, window) => { event.preventDefault(); windowsVisible = false; window.hide() },
       })
     }
     const finishPendingImageSwitch = async () => {
       let observedSwitchSignal = sandboxSwitchSignal
-      while ((await sandboxManager.settings()).pendingDockerImage) {
-        try { await applyPendingImageSwitch(sandboxManager); return true }
+      let settings = await sandboxManager.settings()
+      while (settings.pendingDockerImage) {
+        try {
+          if (await applyPendingImageSwitch(sandboxManager)) {
+            const applied = await sandboxManager.settings()
+            sandboxStartup?.setImage({
+              id: applied.dockerImage,
+              label: settings.pendingDockerImageTag || applied.dockerImage,
+            })
+            return true
+          }
+        }
         catch (error) {
           const status = await sandboxManager.status()
           sandboxStartup?.update({ ...status, phase: 'error', error: error instanceof Error ? error.message : String(error) })
           while (observedSwitchSignal === sandboxSwitchSignal) await new Promise(resolve => setTimeout(resolve, 250))
           observedSwitchSignal = sandboxSwitchSignal
         }
+        settings = await sandboxManager.settings()
       }
       return false
     }
     await finishPendingImageSwitch()
     for (;;) {
       try { rootUrl = await backendUrl(); break } catch (error) {
-        if ((await sandboxManager.settings()).pendingDockerImage) {
+        const settings = await sandboxManager.settings()
+        if (settings.pendingDockerImage) {
           await finishPendingImageSwitch()
           continue
         }
-        if (!(await sandboxManager.settings()).enabled) throw error
+        if (!settings.enabled) throw error
+        if (sandboxStartup) {
+          const action = await sandboxStartup.waitForRecovery({
+            phase: 'error', error: error instanceof Error ? error.message : String(error),
+          })
+          if (action === 'quit') { app.quit(); return }
+          if (action === 'withoutSandbox') await sandboxManager.setEnabled(false)
+          else await finishPendingImageSwitch()
+          continue
+        }
         const status = await sandboxManager.status()
-        sandboxStartup?.update({ ...status, phase: 'error', error: error instanceof Error ? error.message : String(error) })
-        const result = await dialog.showMessageBox({ type: 'error', title: 'WorkStep 沙箱启动失败',
-          message: '沙箱后台未能通过健康检查', detail: formatSandboxFailure(error, status),
-          buttons: ['重试', '打开日志目录', '切回非沙箱', '退出'], defaultId: 0, cancelId: 3 })
+        const result = await dialog.showMessageBox({ type: 'error', title: 'WorkStep sandbox failed to start',
+          message: 'Sandbox backend failed health check', detail: formatSandboxFailure(error, status),
+          buttons: ['Retry', 'Open logs', 'Run without sandbox', 'Quit'], defaultId: 0, cancelId: 3 })
         if (result.response === 3) { app.quit(); return }
         if (result.response === 1) {
           await sandboxManager.logWrite
@@ -828,14 +863,14 @@ app.whenReady().then(async () => {
     configureManagedSessionRecovery(managed)
     configureUpdater()
   } catch (error) {
-    console.error('桌面启动失败', error)
+    console.error('Desktop startup failed', error)
     await diagnostics?.flush()
     const result = await dialog.showMessageBox({
       type: 'error',
-      title: 'WorkStep 无法启动',
-      message: managed ? '网关登录或本地后台启动失败' : '本地后台服务启动失败',
+      title: 'WorkStep could not start',
+      message: managed ? 'Gateway login or local backend startup failed' : 'Local background service failed to start',
       detail: error instanceof Error ? error.message : String(error),
-      buttons: ['退出', '打开日志目录'], defaultId: 0, cancelId: 0,
+      buttons: ['Quit', 'Open logs'], defaultId: 0, cancelId: 0,
     })
     if (result.response === 1) await openDiagnosticsDirectory()
     app.quit()

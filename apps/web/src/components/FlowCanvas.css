@@ -10,3 +10,12 @@
   color: var(--meta);
 }
 .flow-standalone-output-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.flow-canvas-debug-menu-action.btn {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  padding-inline: var(--space-4);
+  border-color: transparent;
+  white-space: nowrap;
+}

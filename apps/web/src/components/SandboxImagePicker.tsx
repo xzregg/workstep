@@ -1,6 +1,6 @@
 import Select from './Select'
 import { useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import type { LocalDockerImage, SandboxBridge } from '../utils/desktopSandbox'
 import Button from './Button'
 
@@ -31,6 +31,6 @@ export default function SandboxImagePicker({ value, online, disabled, scan, onCh
     </div>
     <p>{t('sandbox.localImageDescription')}</p>
     {scanned && !images.length && !error && <p>{t('sandbox.noLocalImage')}</p>}
-    {error && <p className="sandbox-error" role="alert">{error}</p>}
+    {error && <p className="sandbox-error" role="alert">{localizeErrorDisplay(error)}</p>}
   </div>
 }

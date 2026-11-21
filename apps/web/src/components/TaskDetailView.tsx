@@ -74,7 +74,7 @@ import {
   taskTargetStepsInWorkflowOrder,
 } from '../pages/taskDetailChat'
 import { findActionablePendingReview, isReviewActionable } from '../pages/taskReviewRules'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { ActionConversationMessage, TaskActionButtons } from './TaskActionShortcuts'
 import { useTaskActions } from './useActionRuns'
 
@@ -151,6 +151,7 @@ export interface TaskDetailViewProps {
     title: string
     description?: string | null
     status: string
+    is_debug?: Task['is_debug']
     status_reason?: string | null
     pending_confirmations?: Task['pending_confirmations']
     steps: TaskStepState[]
@@ -285,6 +286,7 @@ export interface TaskDetailViewProps {
   // ── Prompt editing (edit mode only) ──
   onOpenPromptEditor?: () => void
   workflowTools?: React.ReactNode
+  debugWorkflowTools?: React.ReactNode
 
   // ── Review config (edit mode only) ──
   reviewConfigEditable?: boolean
@@ -435,6 +437,7 @@ export default function TaskDetailView({
   // Prompt
   onOpenPromptEditor,
   workflowTools,
+  debugWorkflowTools,
   // Review config
   reviewConfigEditable,
   // A2UI
@@ -540,7 +543,7 @@ export default function TaskDetailView({
     'chat.stop': { enabled: () => can('task.stop') && composerState.running && (chatTarget !== 'coordinator' ? !!onStopStep && selectedStepRunning : !!onStop), run: () => chatTarget !== 'coordinator' && selectedStepRunning ? onStopStep?.(chatTarget ?? '') : onStop?.() },
     'action.run': { enabled: () => canRunActions && !taskActions.busy, run: args => {
       const button = taskActions.buttons.find(button => button.id === args?.id)
-      if (!button) throw new Error('快捷操作不可用')
+      if (!button) throw new Error('Quick actions unavailable')
       return taskActions.run(button)
     } },
   }, { projectId, taskId: task?.id, readOnly: !canChat })
@@ -868,7 +871,7 @@ export default function TaskDetailView({
             className={`task-detail-composer${!compact && composerResize.height !== null ? ' is-resized' : ''}`}
           >
             {onSendPrompt && !compact && <TaskActionButtons actionsAllowed={canRunActions} state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} />}
-            {onSendPrompt && compact && taskActions.error && <span role="alert" className="task-conversation-action-error">{taskActions.error}</span>}
+            {onSendPrompt && compact && taskActions.error && <span role="alert" className="task-conversation-action-error">{localizeErrorDisplay(taskActions.error)}</span>}
             {composerState.running && (
               <ComposerOverlayHostContext.Provider value={registerOverlay}>
               <PendingMessageInserts
@@ -1161,15 +1164,15 @@ export default function TaskDetailView({
         onHeaderPointerDown={onHeaderPointerDown} onHeaderKeyDown={onHeaderKeyDown}
         onHeaderDoubleClick={onHeaderDoubleClick} />}
 
-      {(!compact || canShowAnalysis || gitEnabled || navigationActions || schedulesControl) && <TaskDetailTabs
+      {(!compact || canShowAnalysis || gitEnabled || navigationActions || schedulesControl || debugWorkflowTools) && <TaskDetailTabs
         className="task-detail-primary-tabs" ariaLabel={t('executionAnalysis.title')}
-        actions={compact ? <>{schedulesControl}{navigationActions}</> : undefined}
+        actions={compact ? <>{schedulesControl}{navigationActions}{debugWorkflowTools}</> : debugWorkflowTools}
         selected={detailMode} onSelect={setDetailMode}
         tabs={[
           { id: 'detail', label: t('taskDetail.detailTab') },
+          ...(gitEnabled && (gitProjectId || projectId) ? [{ id: 'git', label: t('git.taskWorkspace') }] : []),
           ...(!compact ? [{ id: 'artifacts', label: t('mobile.artifacts') }] : []),
           ...(canShowAnalysis ? [{ id: 'analysis', label: t('executionAnalysis.title') }] : []),
-          ...(gitEnabled && (gitProjectId || projectId) ? [{ id: 'git', label: t('git.taskWorkspace') }] : []),
         ] as Array<{ id: typeof detailMode; label: string }>} />}
 
       {detailMode === 'git' && gitEnabled && (gitProjectId || projectId) ? (

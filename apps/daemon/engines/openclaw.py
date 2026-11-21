@@ -141,7 +141,7 @@ class OpenClawEngine(AcpEngineBase):
             envelope = json.loads(stdout.decode(errors="replace"))
         except json.JSONDecodeError:
             yield InternalEvent(type="error", data={
-                "message": "OpenClaw 未返回有效 JSON",
+                "message": "OpenClaw did not return valid JSON",
                 "stderr": stderr.decode(errors="replace"),
             })
             return
@@ -159,7 +159,7 @@ class OpenClawEngine(AcpEngineBase):
         has_error = any(event.type == "error" for event in mapped)
         if exit_code != 0 and not has_error:
             yield InternalEvent(type="error", data={
-                "message": f"OpenClaw 进程退出码 {exit_code}",
+                "message": f"OpenClaw process exit code {exit_code}",
                 "stderr": stderr.decode(errors="replace"),
             })
         elif exit_code == 0 and not has_error:

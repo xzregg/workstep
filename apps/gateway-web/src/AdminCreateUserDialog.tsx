@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { passwordRequirements } from './portalAccount'
 import { useState } from 'react'
@@ -37,9 +38,9 @@ export function AdminCreateUserDialog({ csrf, onSaved, onClose }: {
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
         body: JSON.stringify({ username, display_name: displayName, password, status }),
       })
-      if (!response.ok) throw new Error(response.status === 409 ? '用户名已存在。' : '创建账号失败，请重试。')
+      if (!response.ok) throw new Error(response.status === 409 ? 'Username already exists.' : 'Failed to create account, please try again.')
       onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '创建账号失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to create account.') }
     finally { setBusy(false) }
   }
 
@@ -65,7 +66,7 @@ export function AdminCreateUserDialog({ csrf, onSaved, onClose }: {
         <Select id="admin-create-user-status" value={status} onChange={event => setStatus(event.target.value as 'active' | 'pending')}>
           <option value="active">启用</option><option value="pending">待审核</option>
         </Select>
-        {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+        {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
         <div className="gateway-dialog-actions">
           <button type="button" className="gateway-dialog-cancel" disabled={busy} onClick={requestClose}>取消</button>
           <button type="submit" disabled={busy || !canSubmit}>

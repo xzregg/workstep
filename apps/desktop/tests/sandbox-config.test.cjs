@@ -59,7 +59,7 @@ test('project registration maps only explicitly selected mounted projects and pr
     await fs.writeFile(path.join(project, '.workstep/workstep.db'), 'existing database')
     const mapped = await mapProjects({ project, mounts: [] }, [{ path: project, id: 'original', name: 'Existing' }], [project])
     assert.deepEqual(mapped, [{ path: '/data/projects', id: 'original', name: 'Existing', sort_order: 0 }])
-    await assert.rejects(mapProjects({ project, mounts: [] }, [], [outside]), /挂载/)
+    await assert.rejects(mapProjects({ project, mounts: [] }, [], [outside]), /authorized project mount/)
     assert.deepEqual(await mapProjects({ project, mounts: [] }, [], []), [])
     assert.equal(await fs.readFile(path.join(project, '.workstep/workstep.db'), 'utf8'), 'existing database')
   } finally { await fs.rm(base, { recursive: true, force: true }) }

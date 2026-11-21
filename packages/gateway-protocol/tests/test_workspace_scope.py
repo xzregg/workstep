@@ -100,6 +100,7 @@ def test_session_action_run_is_edit_only_and_project_bound():
  ('POST','/api/task-draft/chat',[]), ('POST','/api/task-draft/session-1/stop',[]),
  ('POST','/api/project/save-steps',[('workflow_id','flow-1')]),
  ('GET','/api/schedule/notification-options',[('task_id','task-1')]),
+ ('DELETE','/api/task/task-1/discussion-groups/bot-1/group-1',[('notify','true')]),
  ('POST','/api/schedule/schedule-1/runs/run-1/notification/retry',[]),
  ('GET','/api/schedule/list',[]), ('POST','/api/schedule/create',[]),
  ('GET','/api/schedule/schedule-1/runs',[('limit','100'),('offset','0')]),

@@ -1,11 +1,13 @@
 """Host-scoped digital person configuration; no workspace/access selectors."""
 import asyncio
 from datetime import datetime
-from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Annotated, Literal
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from pydantic import ConfigDict, Field
 from api.project_scope import require_catalog_project
 from services import digital_person as service
 from services.digital_person import DigitalPersonProfile
+from services.wake_audio import wake_audio
 
 
 def authorize():
@@ -29,26 +31,53 @@ async def save_profile(profile: DigitalPersonProfile):
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except OSError as exc:
-        raise HTTPException(503, "数字人配置保存失败，请重试") from exc
+        raise HTTPException(503, "Failed to save digital human configuration. Please try again.") from exc
+
+
+@router.post("/standing-memory")
+async def remember(draft: service.StandingMemoryDraft):
+    try:
+        added = await asyncio.to_thread(service.append_standing_memory, draft)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(503, "Unable to save standing memory. Please retry.") from exc
+    return {"saved": True, "added": added}
 
 
 @router.get("/voice-wake")
-async def get_voice_wake():
+async def get_voice_wake(response: Response):
+    response.headers['Cache-Control'] = 'no-store'
     return await asyncio.to_thread(service.get_voice_wake)
 
 
 @router.put("/voice-wake")
 async def save_voice_wake(draft: service.VoiceWakeDraft):
     try:
-        return await asyncio.to_thread(service.save_voice_wake, draft)
+        saved = await asyncio.to_thread(service.save_voice_wake, draft)
     except OSError as exc:
-        raise HTTPException(503, "语音唤醒配置保存失败，请重试") from exc
+        raise HTTPException(503, "Voice wake-up configuration save failed, please retry") from exc
+    try:
+        await wake_audio.prepare(retry=True)
+    except (OSError, ValueError):
+        # The configuration is already saved. Audio can be requested again by a listener.
+        pass
+    return saved
+
+
+@router.get("/voice-wake/audio")
+async def get_wake_audio(response: Response):
+    response.headers['Cache-Control'] = 'no-store'
+    try:
+        return await wake_audio.prepare()
+    except (OSError, ValueError):
+        raise HTTPException(503, "Unable to prepare wake greeting audio")
 
 
 def runtime():
     import main
     if main.digital_person_runtime is None:
-        raise HTTPException(503, "数字人正在初始化")
+        raise HTTPException(503, "Digital human is initializing")
     return main.digital_person_runtime
 
 
@@ -93,6 +122,26 @@ async def memory(session_id: str = '', query: str = Query(default='', max_length
     return {'items': await memory_store.browse_projects(current.projects,scope=scope,query=query,since=since,before=before,limit=limit)}
 
 
+AtlasKnowledgeId = Annotated[int, Field(gt=0, le=2**63 - 1)]
+
+
+@router.get('/memory/atlas')
+async def memory_atlas_page(cursor: int = Query(default=0, ge=0, le=2**63 - 1),
+                            limit: int = Query(default=50, ge=1, le=500),
+                            ids: list[AtlasKnowledgeId] = Query(default=[], max_length=50)):
+    from services import memory_atlas
+    return await memory_atlas.page(runtime().projects, cursor, limit, ids)
+
+
+@router.get('/memory/atlas/{knowledge_id}')
+async def memory_atlas_detail(knowledge_id: int = Path(gt=0, le=2**63 - 1)):
+    from services import memory_atlas
+    detail = await memory_atlas.detail(runtime().projects, knowledge_id)
+    if detail is None:
+        raise HTTPException(404, 'Knowledge does not exist or is inaccessible')
+    return detail
+
+
 @router.get('/memory/view')
 async def memory_view(query: str = Query(default='', max_length=1000)):
     from services import memory_visualization
@@ -115,7 +164,7 @@ async def memory_source(source_id: str, offset: int = Query(default=0, ge=0),
 async def forget_memory(memory_id: str):
     from services.digital_person_memory import forget
     if not await asyncio.to_thread(forget, memory_id):
-        raise HTTPException(404, '记忆不存在')
+        raise HTTPException(404, 'Memory does not exist')
     return {'forgotten': True}
 
 
@@ -133,10 +182,26 @@ async def feedback(request: FeedbackRequest):
 
 
 class DelegateRequest(service.BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     project_id: str
     instruction: str = service.Field(min_length=1, max_length=12000)
     origin_session_id: str = ""
     request_id: str = service.Field(min_length=1, max_length=200)
+    continuation_of: str = service.Field(default='', max_length=200)
+
+
+class ExistingDelegateRequest(DelegateRequest):
+    target_session_id: str = service.Field(pattern=r'^[A-Za-z0-9_-]{1,128}$')
+
+
+@router.get('/delegations')
+async def list_delegations(origin_session_id: str = Query(min_length=1),
+                           project_id: str | None = Query(default=None, min_length=1),
+                           delegation_id: str | None = Query(default=None, min_length=1)):
+    if not project_id and not delegation_id:
+        raise HTTPException(422, 'Provide a project ID or a delegation ID')
+    return await runtime().list_delegations(project_id, origin_session_id, delegation_id or '')
 
 
 @router.post("/delegate")
@@ -147,9 +212,16 @@ async def delegate(request: DelegateRequest):
         raise HTTPException(400, str(exc)) from exc
 
 
+@router.post("/delegate/existing")
+async def delegate_existing(request: ExistingDelegateRequest):
+    return await delegate(request)
+
+
 @router.post("/check")
-async def check():
+async def check(background: bool = False):
     try:
+        if background:
+            return await runtime().trigger_check()
         return await runtime().check()
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
@@ -198,7 +270,7 @@ async def test_channel(binding_id: str):
     bindings = await asyncio.to_thread(get_bindings)
     binding = next((r for r in bindings if r['id']==binding_id), None)
     if not binding:
-        raise HTTPException(404, "渠道未绑定")
+        raise HTTPException(404, "Channel not bound")
     profile = await asyncio.to_thread(service.get_profile)
     try:
         from services.digital_person_channels import send_binding

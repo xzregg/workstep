@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useEffect, useState } from 'react'
 import { AdminProviderAssignments } from './AdminProviderAssignments'
@@ -16,7 +17,7 @@ export function AdminScopedProviderAssignmentsPage() {
     setLoading(true); setError('')
     void Promise.all(['/api/auth/session', '/api/admin/providers/assignment-catalog'].map(async path => {
       const response = await fetch(path, { credentials: 'same-origin', signal: controller.signal })
-      if (!response.ok) throw new Error('供应商目录加载失败')
+      if (!response.ok) throw new Error('Failed to load vendor directory')
       return response.json()
     })).then(([session, catalog]) => {
       if (controller.signal.aborted) return
@@ -32,7 +33,7 @@ export function AdminScopedProviderAssignmentsPage() {
   return <section className="gateway-admin-page">
     <h2>供应商分配</h2>
     {loading && <p role="status"><span className="gateway-spinner" aria-hidden="true" />正在加载供应商…</p>}
-    {error && <p role="alert">{error}<button type="button" onClick={() => setRevision(value => value + 1)}>重试</button></p>}
+    {error && <p role="alert">{localizeGatewayError(error)}<button type="button" onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     <label htmlFor="scoped-provider-choice">供应商</label>
     <Select id="scoped-provider-choice" value={providerId} disabled={loading}
       onChange={event => setProviderId(event.target.value)}>

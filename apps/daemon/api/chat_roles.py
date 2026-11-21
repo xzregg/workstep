@@ -19,11 +19,11 @@ async def invoke(project_id, operation):
     try:
         return await _run_db(project_id, operation)
     except FileNotFoundError as exc:
-        raise HTTPException(404, '角色或专家团成员不存在，请重新选择') from exc
+        raise HTTPException(404, 'Role or expert group member does not exist, please reselect') from exc
     except ValueError as exc:
         raise HTTPException(_error_status(exc), str(exc)) from exc
     except OSError as exc:
-        raise HTTPException(503, '角色中心读取失败，请重试') from exc
+        raise HTTPException(503, 'Failed to read role center, please retry') from exc
 
 
 @router.get('/{session_id}/role-binding')

@@ -6,7 +6,7 @@ import Input from '../components/Input'
 import Spinner from '../components/Spinner'
 import PromptAssetEditor from '../components/role-center/PromptAssetEditor'
 import { roleCenterApi, type RoleCatalog, type RoleDocument, type TeamDocument } from '../api/roleCenter'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import './RoleCenterSettings.css'
 
 export default function RoleCenterSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
@@ -63,7 +63,7 @@ export default function RoleCenterSettings({ onDirtyChange }: { onDirtyChange?: 
         {t(item === 'roles' ? 'roleCenter.roles' : 'roleCenter.teams')}<span>{item === 'roles' ? roles.length : teams.length}</span>
       </button>)}
     </div>
-    {error && <div className="role-center-error" role="alert">{error}<Button onClick={() => setRevision(r => r + 1)}>{t('roleCenter.retry')}</Button></div>}
+    {error && <div className="role-center-error" role="alert">{localizeErrorDisplay(error)}<Button onClick={() => setRevision(r => r + 1)}>{t('roleCenter.retry')}</Button></div>}
     {!catalog && !error && <div className="role-center-loading"><Spinner />{t('roleCenter.loading')}</div>}
     {catalog && <div className="role-center-workspace">
       <aside className="role-center-categories" aria-label={t('roleCenter.category')}>

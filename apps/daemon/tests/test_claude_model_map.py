@@ -27,12 +27,12 @@ def test_normalize_claude_model_map_defaults_name_to_model():
     '{"sonnet": 42}',
 ])
 def test_normalize_claude_model_map_rejects_bad_shapes(raw):
-    with pytest.raises(ValueError, match="模型映射格式不正确"):
+    with pytest.raises(ValueError, match='Incorrect\\ model\\ mapping\\ format'):
         normalize_claude_model_map(raw)
 
 
 def test_normalize_claude_model_map_rejects_overlong_content():
-    with pytest.raises(ValueError, match="模型映射内容过长"):
+    with pytest.raises(ValueError, match='Model\\ mapping\\ content\\ is\\ too\\ long'):
         normalize_claude_model_map({
             "sonnet": {"model": "x" * 257},
         })

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import type { SandboxBridge, SandboxConfigImport, SandboxStatus } from '../utils/desktopSandbox'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
@@ -42,11 +42,11 @@ export default function SandboxConfigSync({ bridge, status, disabled, onBusyChan
       {(['codex', 'claude', 'agents'] as const).map(kind => <Button key={kind} disabled={disabled || busy} onClick={() => { setError(''); setSelection({ input: kind }) }}>{t(`sandbox.import.${kind}`)}</Button>)}
       <Button disabled={disabled || busy} onClick={() => void chooseOther()}>{t('sandbox.import.other')}</Button>
     </div>
-    {!selection && error && <p className="sandbox-error" role="alert">{error}</p>}
+    {!selection && error && <p className="sandbox-error" role="alert">{localizeErrorDisplay(error)}</p>}
     <ConfirmDialog open={Boolean(selection)} title={t('sandbox.importTitle')} message={t('sandbox.importConfirm')} loading={busy}
       confirmDisabled={disabled && !busy} onConfirm={() => void sync()} onCancel={() => { if (!busy) { setSelection(null); setError('') } }}>
       {selection?.source && <dl className="sandbox-sync-paths"><dt>{t('sandbox.importSource')}</dt><dd>{selection.source}</dd><dt>{t('sandbox.importTarget')}</dt><dd>{`/root/${selection.name}`}</dd></dl>}
-      {error && <p className="sandbox-error" role="alert">{error}</p>}
+      {error && <p className="sandbox-error" role="alert">{localizeErrorDisplay(error)}</p>}
     </ConfirmDialog>
   </details>
 }

@@ -27,3 +27,22 @@ test('audio worklet batches 20ms and flushes every last sample before acknowledg
   processor.port.onmessage({ data: { type: 'flush' } })
   assert.equal(messages.filter(item => ArrayBuffer.isView(item)).length, 51)
 })
+
+test('audio worklet reports a gap before delivering samples from the resumed device', () => {
+  const messages: any[] = []
+  let Processor: any
+  const sandbox = {
+    AudioWorkletProcessor: class {
+      port = { onmessage: null as any, postMessage: (data: any) => messages.push(data) }
+    },
+    sampleRate: 48000, currentFrame: 0,
+    registerProcessor: (_name: string, implementation: any) => { Processor = implementation },
+  }
+  runInNewContext(readFileSync(new URL('../src/audio/voiceCapture.worklet.js', import.meta.url), 'utf8'), sandbox)
+  const processor = new Processor()
+  processor.process([[new Float32Array(128).fill(1)]])
+  sandbox.currentFrame = 256
+  processor.process([[new Float32Array(128).fill(2)]])
+  processor.port.onmessage({ data: { type: 'flush' } })
+  assert.deepEqual(messages.map(message => message.type ?? message[0]), [1, 'discontinuity', 2, 'flushed'])
+})

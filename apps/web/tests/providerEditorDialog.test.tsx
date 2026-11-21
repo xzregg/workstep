@@ -107,9 +107,9 @@ test('closing an edited provider draft requires discard confirmation', async () 
     await act(async () => root.render(<I18nProvider><ProviderEditorDialog
       target={{ mode: 'edit', provider }} types={[]} onClose={() => { closed += 1 }} onSaved={() => {}}
     /></I18nProvider>))
-    const protocolSwitch = container.querySelector<HTMLInputElement>('input[role="switch"]')
-    assert.ok(protocolSwitch)
-    await act(async () => protocolSwitch.click())
+    const protocolCheckbox = container.querySelector<HTMLInputElement>('.provider-protocol-options input[type="checkbox"]:not([role])')
+    assert.ok(protocolCheckbox)
+    await act(async () => protocolCheckbox.click())
     const cancel = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find((button) => button.textContent?.includes('Cancel'))
     assert.ok(cancel)
@@ -117,6 +117,51 @@ test('closing an edited provider draft requires discard confirmation', async () 
     assert.equal(closed, 0)
     assert.equal(container.querySelectorAll('[role="dialog"]').length, 2)
   } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
+test('protocol checkboxes keep independent selections in the draft until Save', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originalSave = providerApi.save
+  const saved: Parameters<typeof providerApi.save>[0][] = []
+  const types = [{ id: 'custom', label: 'Custom', default_base_url: 'https://example.test' }] as ProviderTypeMeta[]
+  providerApi.save = async (value) => {
+    saved.push(value)
+    return { saved: true, provider }
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><ProviderEditorDialog
+      target={{ mode: 'edit', provider }} types={types} onClose={() => {}} onSaved={() => {}}
+    /></I18nProvider>))
+    const checkboxes = Array.from(container.querySelectorAll<HTMLInputElement>('.provider-protocol-options input[type="checkbox"]:not([role])'))
+    assert.equal(checkboxes.length, 3)
+    const anthropic = checkboxes.find((checkbox) => checkbox.labels?.[0]?.textContent?.includes('Anthropic Messages'))
+    const responses = checkboxes.find((checkbox) => checkbox.labels?.[0]?.textContent?.includes('OpenAI Responses'))
+    assert.ok(anthropic && responses?.checked)
+    assert.equal(anthropic.checked, false)
+    assert.equal(container.querySelector('#provider-base-url-anthropic_messages'), null)
+    await act(async () => anthropic.click())
+    assert.equal(anthropic.checked, true)
+    assert.equal(responses.checked, true)
+    assert.ok(container.querySelector('#provider-base-url-anthropic_messages'))
+    assert.equal(saved.length, 0)
+    const save = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.includes('保存'))
+    assert.ok(save && !save.disabled)
+    await act(async () => save.click())
+    assert.equal(saved.length, 1)
+    assert.deepEqual(saved[0].protocols, ['openai_responses', 'anthropic_messages'])
+    assert.deepEqual(saved[0].protocol_base_urls, {
+      openai_responses: 'https://example.test',
+      anthropic_messages: 'https://example.test',
+    })
+  } finally {
+    providerApi.save = originalSave
     await act(async () => root.unmount())
     container.remove()
     await window.happyDOM.close()

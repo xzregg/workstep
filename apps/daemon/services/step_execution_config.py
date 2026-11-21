@@ -15,18 +15,18 @@ def validate_execution_config(engine: str | None, config: dict) -> None:
 
     target = create_engine(resolve_execution_engine(engine))
     if target is None:
-        raise ValueError(f"未知引擎: {engine}")
+        raise ValueError(f"Unknown engine: {engine}")
     allowed = {field.key for field in target.full_step_config_schema()}
     if (set(config) - allowed or any(not isinstance(k, str) or not isinstance(v, str)
                                    for k, v in config.items())):
-        raise ValueError("步骤配置包含不支持的字段或非字符串值")
+        raise ValueError("Step configuration contains unsupported fields or non-string values")
 
 
 def prepare_execution_handoff(project, task, step, current: dict, target: dict,
                                context_mode: str = "smart") -> None:
     """Shared DB-thread handoff preparation for quick config and canvas saves."""
     if context_mode not in {"smart", "full", "none"}:
-        raise ValueError("不支持的交接方式")
+        raise ValueError("Unsupported handover method")
     previous = (Message.select().where(
         (Message.task == task) & (Message.step_key == step.step_key)
         & (Message.channel == "execution") & (Message.role == "assistant")
@@ -34,9 +34,14 @@ def prepare_execution_handoff(project, task, step, current: dict, target: dict,
     ).order_by(Message.sequence.desc()).first())
     source_engine = str((previous.engine if previous else None) or step.engine or "")
     target_engine = resolve_execution_engine(target.get("engine"))
-    old_provider = str((step.session_provider if step.session_id else
+    old_provider = str((step.session_provider if step.session_provider is not None else
                         (current.get("config") or {}).get("provider_id")) or "").strip()
     new_provider = str((target.get("config") or {}).get("provider_id") or "").strip()
+    if not new_provider:
+        from engines.core.registry import create_engine
+        resolver = getattr(create_engine(target_engine), "resolve_provider_id", None)
+        if callable(resolver):
+            new_provider = resolver("")
     if not source_engine or (source_engine == target_engine and old_provider == new_provider):
         # An unrelated draft save must not discard an already prepared handoff.
         return
@@ -172,21 +177,21 @@ class StepExecutionConfigService:
 
         normalized_engine = engine.strip()
         if not normalized_engine:
-            raise ValueError("引擎不能为空")
+            raise ValueError("Engine cannot be empty")
         if context_mode not in {None, "smart", "full", "none"}:
-            raise ValueError("不支持的交接方式")
+            raise ValueError("Unsupported handover method")
         if any(not isinstance(key, str) or not isinstance(value, str) for key, value in config.items()):
-            raise ValueError("步骤配置必须为字符串键值")
+            raise ValueError("Step configuration must be a string key-value")
         def load_engine_fields():
             target_engine = create_engine(normalized_engine)
             if target_engine is None:
-                raise ValueError(f"未知引擎: {normalized_engine}")
+                raise ValueError(f"Unknown engine: {normalized_engine}")
             return {field.key for field in target_engine.full_step_config_schema()}
 
         allowed_fields = await asyncio.to_thread(load_engine_fields)
         unknown_fields = sorted(set(config) - allowed_fields)
         if unknown_fields:
-            raise ValueError(f"不支持的步骤配置字段: {', '.join(unknown_fields)}")
+            raise ValueError(f"Unsupported step configuration field: {', '.join(unknown_fields)}")
 
         def save(_project):
             task = Task.get_or_none(Task.id == task_id)
@@ -198,13 +203,14 @@ class StepExecutionConfigService:
                 raise ValueError(f"Step does not exist: {step_key}")
             step, _ = TaskStep.get_or_create(task=task, step_key=step_key, defaults={"status": "pending"})
             if step.status in ACTIVE_STEP_CONFIG_STATUSES:
-                raise RuntimeError("步骤执行中，不能修改引擎配置")
+                raise RuntimeError("Cannot modify engine configuration while steps are executing")
             target = {
                 "engine": normalized_engine,
                 "model": (model or "").strip(),
                 "config": dict(config),
             }
-            prepare_execution_handoff(_project, task, step, current_step, target, context_mode or "smart")
+            if context_mode is not None:
+                prepare_execution_handoff(_project, task, step, current_step, target, context_mode)
             step.execution_config_json = None
             from services.task_workflow_config import set_execution_override
             set_execution_override(_project, task, step_key, target)
@@ -236,15 +242,13 @@ class StepExecutionConfigService:
             if step is None:
                 raise ValueError(f"Step does not exist: {step_key}")
             if step.status in ACTIVE_STEP_CONFIG_STATUSES:
-                raise RuntimeError("步骤执行中，不能修改引擎配置")
+                raise RuntimeError("Cannot modify engine configuration while steps are executing")
             from services.task_workflow_config import task_overrides, source_workflow, _store_delta
             target = self._find_step(source_workflow(_project, task), step_key)
             if target is None:
-                raise ValueError("任务新增阶段没有主流程配置可恢复，请在任务流程中编辑")
-            current = self._find_step(self._workflow_steps(_project, task), step_key) or {}
+                raise ValueError("No main process configuration available for recovery in the task creation phase. Please edit in the task flow.")
             step.execution_config_json = None
             step.pending_handoff_json = None
-            prepare_execution_handoff(_project, task, step, current, target)
             delta = task_overrides(task)
             if delta:
                 patch = delta.get("nodes", {}).get(step_key, {})

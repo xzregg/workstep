@@ -7,7 +7,7 @@ import BotPrivateWhitelist from '../components/BotPrivateWhitelist'
 import BotTaskBindings from '../components/BotTaskBindings'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Spinner from '../components/Spinner'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import './BotSettings.css'
 
@@ -91,7 +91,7 @@ export default function BotSettings({ onDirtyChange }: { onDirtyChange?: (dirty:
       <div className="bot-settings-content">
         <header className="bot-settings-section-heading"><h2>{t(`channelBot.${platform}`)}</h2><span>{t('channelBot.botCount', { count: platformBots.length })}</span></header>
         {loading && <div className="bot-settings-loading" role="status"><Spinner />{t('common.loading')}</div>}
-        {error && <p className="bot-settings-error" role="alert">{error}<Button onClick={() => void reload().then(() => setError('')).catch(reason => setError(String(reason)))}>{t('common.retry')}</Button></p>}
+        {error && <p className="bot-settings-error" role="alert">{localizeErrorDisplay(error)}<Button onClick={() => void reload().then(() => setError('')).catch(reason => setError(String(reason)))}>{t('common.retry')}</Button></p>}
         <div className="bot-settings-list">
           {platformBots.map(bot => <div className="bot-settings-card" key={bot.id}>
             <div className="bot-settings-row"><div><strong>{bot.name}</strong><span>{bot.app_id}</span></div>

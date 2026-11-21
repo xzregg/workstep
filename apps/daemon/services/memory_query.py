@@ -75,7 +75,7 @@ def query_access(projects,project_id='',session_id=''):
 
 def _project_filter(ids,project_id):
     if not project_id:return ids
-    if project_id not in ids:raise PermissionError('项目不存在或不可访问')
+    if project_id not in ids:raise PermissionError('Project does not exist or is not accessible')
     return [project_id]
 
 
@@ -84,9 +84,9 @@ def bind_assessment(token, context):
     with _lock:
         access = _lookup(token)
         if not access or access.expires <= time.monotonic():
-            raise PermissionError('主动思考凭据已过期')
+            raise PermissionError('The proactive thinking credentials have expired')
         if context.get('origin_project_id') not in access.project_ids:
-            raise PermissionError('主动思考来源项目不可访问')
+            raise PermissionError('Source project is inaccessible')
         access.assessment.update(context=copy.deepcopy(context), observed=False)
 
 
@@ -95,7 +95,7 @@ def bind_assessment_loader(token, loader):
     with _lock:
         access = _lookup(token)
         if not access or access.expires <= time.monotonic():
-            raise PermissionError('主动思考凭据已过期')
+            raise PermissionError('The proactive thinking credentials have expired')
         access.assessment.update(loader=loader, load_lock=asyncio.Lock(), observed=False)
 
 
@@ -121,13 +121,15 @@ async def pending(projects, context):
             if 'context' not in access.assessment:
                 context = await loader()
                 projects_in_batch = {r['project_id'] for r in context.get('conversations', [])}
+                projects_in_batch.update(r['project_id'] for r in context.get('delegations', [])
+                                         if r['status'] != 'missing')
                 projects_in_batch.add(context.get('origin_project_id'))
                 if not projects_in_batch.issubset(set(ids)):
-                    raise PermissionError('主动思考来源项目不可访问')
+                    raise PermissionError('Source project is inaccessible')
                 access.assessment['context'] = copy.deepcopy(context)
     assigned = access.assessment.get('context')
     if assigned is None or assigned.get('origin_project_id') not in ids:
-        raise PermissionError('本次执行没有可领取的主动思考批次')
+        raise PermissionError('No active thinking batches available for claim in this execution')
     async with access.assessment.setdefault('catalog_lock', asyncio.Lock()):
         context = access.assessment.get('context')
         if context is not None and context.get('origin_project_id') in ids and 'session_knowledge' not in context:
@@ -140,7 +142,7 @@ async def pending(projects, context):
     with _lock:
         context = access.assessment.get('context')
         if context is None or context.get('origin_project_id') not in ids:
-            raise PermissionError('本次执行没有可领取的主动思考批次')
+            raise PermissionError('No active thinking batches available for claim in this execution')
         access.assessment['observed'] = True
         return copy.deepcopy(context)
 
@@ -200,11 +202,11 @@ def instruction():
 async def _authorize(projects, token):
     from services.digital_person import get_profile
     if not (await asyncio.to_thread(get_profile)).enabled:
-        raise PermissionError("记忆功能已关闭")
+        raise PermissionError("Memory feature is disabled")
     with _lock:
         access = _lookup(token)
     if access is None or access.expires <= time.monotonic():
-        raise PermissionError("记忆访问凭据无效或已过期，请在新一轮执行中重试")
+        raise PermissionError("Invalid or expired memory access credentials, please retry in a new execution round")
     allowed = set(memory.allowed_projects(projects)).intersection(access.project_ids)
     return access, sorted(allowed)
 
@@ -213,7 +215,7 @@ def time_range(*, since=None, before=None, period='', timezone_name='Asia/Shangh
     try:
         zone = ZoneInfo(timezone_name)
     except ZoneInfoNotFoundError as exc:
-        raise ValueError("无效时区") from exc
+        raise ValueError("Invalid timezone") from exc
     def normalize(value):
         if not value:
             return None
@@ -223,7 +225,7 @@ def time_range(*, since=None, before=None, period='', timezone_name='Asia/Shangh
         return value.astimezone(timezone.utc).isoformat()
     if period:
         if since or before:
-            raise ValueError("period 与 since/before 不能同时使用")
+            raise ValueError("period and since/before cannot be used together")
         local = (now or datetime.now(timezone.utc)).astimezone(zone)
         first = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         if period in ('上月', 'last_month'):
@@ -234,35 +236,35 @@ def time_range(*, since=None, before=None, period='', timezone_name='Asia/Shangh
             day = local.replace(hour=0, minute=0, second=0, microsecond=0)
             since, before = (day - timedelta(days=1), day) if period in ('昨天', 'yesterday') else (day, local)
         else:
-            raise ValueError("不支持的时间段，请使用明确的 since/before")
+            raise ValueError("Unsupported time range, please use explicit since/before")
     start, end = normalize(since), normalize(before)
     if start and end and start >= end:
-        raise ValueError("since 必须早于 before")
+        raise ValueError("since must be earlier than before")
     return start, end
 
 
 async def search(projects, context, *, query='', cursor=0, limit=20, since=None, before=None,
                  period='', timezone_name='Asia/Shanghai', include_knowledge=True, snapshot='',
                  include_sources=False, source_chars=2400, person='', event='', object='', place='', time='', relation='',
-                 filter_project_id='',filter_session_id=''):
+                 filter_project_id='',filter_session_id='', knowledge_only=False):
     access, ids = await _authorize(projects, context)
     ids=_project_filter(ids,filter_project_id)
     if access.assessment and (not any(isinstance(value,str) and value.strip() for value in (query,person,event,object,place,time,relation)) or since or before or period or include_sources):
-        raise PermissionError('后台整理只允许定向查询已有知识，不允许回顾历史原文')
+        raise PermissionError('Background organization only allows targeted queries of existing knowledge; reviewing historical original text is not permitted.')
     if not 1 <= limit <= 100 or cursor < 0 or len(query) > 1000 or not 1 <= source_chars <= 6000:
-        raise ValueError("无效的查询或分页参数")
+        raise ValueError("Invalid query or pagination parameters")
     filters={}
     for kind,value in (('person',person),('event',event),('object',object),('place',place),('time',time)):
         if not isinstance(value,str) or (value and not 1 <= len(value.strip()) <= 120):
-            raise ValueError('实体条件须为1～120字符')
+            raise ValueError('Entity condition must be 1–120 characters')
         if value:
             filters[kind]=value.strip()
     if not isinstance(relation,str) or (relation and not 1 <= len(relation.strip()) <= 120):
-        raise ValueError('关系条件须为1～120字符')
+        raise ValueError('The relationship condition must be 1 to 120 characters')
     relation=relation.strip()
     structured=bool(filters or relation)
     query = query.strip()
-    if not structured and (not query or since or before or period):
+    if not knowledge_only and not structured and (not query or since or before or period):
         from services.memory_history import page
         result = await page(projects, access.scope, ids, context, cursor=cursor, limit=limit,
                           since=since, before=before, period=period, timezone_name=timezone_name, snapshot=snapshot, query=query,session_id=filter_session_id)
@@ -330,7 +332,7 @@ async def history(projects, context, *, query='', cursor=0, limit=20, since=None
     access, ids = await _authorize(projects, context)
     ids=_project_filter(ids,filter_project_id)
     if access.assessment:
-        raise PermissionError('后台整理不允许回顾历史原文')
+        raise PermissionError('Background cleanup does not allow reviewing the original text')
     return await page(projects, access.scope, ids, context, cursor=cursor, limit=limit,
                       since=since, before=before, period=period, timezone_name=timezone_name, snapshot=snapshot, query=query,session_id=filter_session_id)
 
@@ -339,7 +341,7 @@ def _find(scope, ids, memory_id):
     try:
         mid = int(str(memory_id).removeprefix('memory:'))
     except ValueError as exc:
-        raise ValueError("无效的记忆 ID") from exc
+        raise ValueError("Invalid memory ID") from exc
     with index.connect() as db:
         alias=db.execute('SELECT memory_id FROM memory_source_aliases WHERE old_id=?',(mid,)).fetchone()
         mid=alias[0] if alias else mid
@@ -355,11 +357,11 @@ async def read(projects, context, memory_id, *, offset=0, limit=2400, events=Fal
     access, ids = await _authorize(projects, context)
     ids=_project_filter(ids,filter_project_id)
     if offset < 0 or not 1 <= limit <= 6000:
-        raise ValueError("无效的分页参数")
+        raise ValueError("Invalid pagination parameters")
     if str(memory_id).startswith('knowledge:'):
-        if events: raise ValueError('知识记录没有执行日志')
+        if events: raise ValueError('Knowledge record has no execution log')
         if memory_id not in access.knowledge_ids:
-            raise PermissionError('请先搜索定位知识记录')
+            raise PermissionError('Please search for the knowledge record first')
         from services.memory_knowledge import read_record
         record=await asyncio.to_thread(read_record,access.scope,ids,memory_id,filter_session_id)
         text=record.pop('content');version=record.pop('version')
@@ -369,26 +371,26 @@ async def read(projects, context, memory_id, *, offset=0, limit=2400, events=Fal
         return {**record,'content':text[offset:end],'offset':offset,'has_more':end<len(text),
                 'next_offset':end if end<len(text) else None,'total_chars':len(text)}
     if access.assessment:
-        raise PermissionError('后台整理通过pending读取新证据，只允许额外读取已定位的知识')
+        raise PermissionError('Background cleanup reads new evidence via pending; only allows reading already-located knowledge')
     row = await asyncio.to_thread(_find, access.scope, ids, memory_id)
     if not row:
-        raise LookupError("记忆不存在或不可访问")
+        raise LookupError("Memory does not exist or is not accessible")
     if filter_session_id and row['session_id']!=filter_session_id.removeprefix('task:'):
-        raise LookupError('记忆不在指定会话中')
+        raise LookupError('Memory not found in the specified session')
     hits = await memory.read_projects(projects, [row])
     if not hits:
-        raise LookupError("记忆原文已不可用")
+        raise LookupError("Memory original is no longer available")
     if events:
         from services.digital_person_memory import read_task_events
         result = await read_task_events(projects, row, offset=offset, limit=min(limit,100))
         if result is None:
-            raise LookupError("事件原文不存在或不可访问")
+            raise LookupError("The original event does not exist or is inaccessible")
         return result
     def original(_):
         return memory.source_text(row)
     text = await projects.run_db(row['project_id'], original)
     if text is None:
-        raise LookupError("记忆原文已不可用")
+        raise LookupError("Memory original is no longer available")
     end = min(len(text), offset + limit)
     with _lock:
         key=(row['project_id'],row['source_message_id'],0,'')

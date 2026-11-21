@@ -31,3 +31,21 @@ test('receipts require visible focused active conversation and a completed displ
   await act(async()=>window.dispatchEvent(new window.Event('focus')));assert.deepEqual(calls,['p/s/m','p/s/new'])
  }finally{await act(async()=>root.unmount());chatSessionApi.markRead=original;node.remove();await window.happyDOM.close()}
 })
+
+
+test('an open delegation only acknowledges its own result once it becomes terminal',async()=>{
+ const {window}=installDomEnvironment(),root=createRoot(document.body.appendChild(document.createElement('div')))
+ Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.hasFocus=()=>true
+ const original=chatSessionApi.markRead,calls:string[]=[],read:string[]=[]
+ chatSessionApi.markRead=async(_s,_p,id)=>{calls.push(id);return {read:true}}
+ const target={messageId:'result',onResultVisible:(status:string)=>read.push(status)}
+ function Surface({status,ready}:{status:string;ready:boolean}){
+  useChatSessionRead('p','s',[{id:'result',role:'assistant',status},{id:'other',role:'assistant',status:'completed'}],true,ready,target)
+  return null
+ }
+ try{
+  await act(async()=>root.render(<Surface status="running" ready/>));assert.deepEqual(calls,[])
+  await act(async()=>root.render(<Surface status="completed" ready={false}/>));assert.deepEqual(calls,[])
+  await act(async()=>root.render(<Surface status="completed" ready/>));assert.deepEqual(calls,['result']);assert.deepEqual(read,['completed'])
+ }finally{await act(async()=>root.unmount());chatSessionApi.markRead=original;await window.happyDOM.close()}
+})

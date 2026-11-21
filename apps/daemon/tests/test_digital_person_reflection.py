@@ -17,16 +17,38 @@ async def seed(runtime, *, archived=False):
     await current.projects.run_db(project.id,write)
     return sid
 
-async def test_archived_source_is_reflected_without_notification_or_unarchive(runtime,monkeypatch):
+@pytest.mark.parametrize('archive_during_thinking', [False, True])
+async def test_archived_source_is_reflected_without_notification_or_unarchive(runtime,monkeypatch,archive_during_thinking):
     current,project,_=runtime
-    sid=await seed(runtime,archived=True)
+    from services.digital_person_reflection import model_context
+    from services import digital_person_memory_index as index
+    sid=(await current.main_session())['id']
+    def prepare(_):
+        create_completed_user(id='evidence',session=sid,role='user',status='completed',
+                              content='帮我整理一份报告，还没开始做。',created_at=utc_now())
+        if not archive_during_thinking:
+            ChatSession.update(archived=True).where(ChatSession.id==sid).execute()
+    await current.projects.run_db(project.id,prepare)
     async def decide(ctx):
-        return {'decision':'notify','summary':'旧结果','source_ids':['evidence']}
+        await ctx['_load']()
+        assert model_context(ctx,project.id)['archived_source'] is (not archive_during_thinking)
+        if archive_during_thinking:
+            await current.projects.run_db(project.id,lambda _:ChatSession.update(archived=True).where(ChatSession.id==sid).execute())
+        return {'decision':'notify','summary':'请继续整理报告','source_ids':['evidence'],
+                'memories':[{'summary':'用户委托整理报告，尚未完成'+('。' if archive_during_thinking else '，会话已归档。'),
+                             'kind':'event','outcome':'planned','source_ids':ctx['conversation'][0]['memory_ids']}]}
     async def notify(*args):
         pytest.fail('archived history is internal reflection only')
     monkeypatch.setattr(current,'_decide',decide)
     monkeypatch.setattr(current,'_notify',notify)
-    assert (await current.check())['status']=='silent'
+    result=await current.check()
+    assert result['status']=='silent',result
+    if archive_during_thinking:
+        assert result['summary']=='Archived source processed internally; no notification sent.'
+    assert result['memory_processing']['knowledge']['created']==1
+    with index.connect() as db:
+        row=db.execute('SELECT summary,outcome FROM memory_knowledge').fetchone()
+        assert '尚未完成' in row['summary'] and row['outcome']=='planned'
     assert await current.projects.run_db(project.id,lambda _:ChatSession.get_by_id(sid).archived)
     await current.check()
 
@@ -103,8 +125,24 @@ def test_model_input_omits_runtime_bookkeeping_and_old_notification_text():
              'origin_session_id':'source','clock':'now'}
     result=model_context(context,'home')
     assert 'OLD-UNRELATED-NOTIFICATION-TEXT' not in json.dumps(result)
-    assert not {'indexed','busy','archived_source'}.intersection(result)
+    assert not {'indexed','busy'}.intersection(result)
+    assert result['archived_source'] is False
     assert result['previous_notifications']==[{'source_ids':['old-source']}]
+
+
+def test_grouped_model_input_keeps_archive_status_per_source_conversation():
+    from services.digital_person_assessment import instruction
+    from services.digital_person import DigitalPersonProfile
+    from services.digital_person_reflection import model_context
+    result=model_context({'origin_project_id':'p','_groups':[
+        {'origin_project_id':'p','origin_session_id':'archived','archived_source':True},
+        {'origin_project_id':'p','origin_session_id':'active','archived_source':False}]},'p')
+    assert [(g['session_id'],g['archived_source']) for g in result['conversations']]==[
+        ('archived',True),('active',False)]
+    text=instruction(DigitalPersonProfile())
+    assert 'For archived_source=true' in text
+    assert 'Archiving is not task completion' in text
+    assert 'when the user explicitly brings it up later' in text
 
 
 async def test_legacy_notice_with_delivery_receipt_cannot_reenter_evidence(runtime):

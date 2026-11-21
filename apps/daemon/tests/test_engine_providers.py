@@ -176,9 +176,9 @@ def test_provider_resolution_rejects_disabled_or_incompatible_provider(provider_
     })
     engine = CodexEngine()
 
-    with pytest.raises(ValueError, match="协议"):
+    with pytest.raises(ValueError, match="^Provider protocol is incompatible with this engine$"):
         engine.resolve_provider_runtime(provider_id="chat", model="gpt-test")
-    with pytest.raises(ValueError, match="停用"):
+    with pytest.raises(ValueError, match="^Selected provider is disabled$"):
         engine.resolve_provider_runtime(provider_id="disabled", model="gpt-test")
 
 
@@ -731,7 +731,8 @@ def test_workflow_step_rejects_incompatible_provider(provider_store):
                 "config": {"provider_id": "chat"},
             }],
         })
-    assert "供应商协议与引擎不兼容" in exc_info.value.detail
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == "Workflow step: Provider protocol is incompatible with the engine"
 
 
 @pytest.mark.anyio

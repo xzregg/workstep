@@ -14,6 +14,31 @@
 
 脚本由设置 → 外观 → 选中皮肤 →「运行皮肤脚本」开关控制；检测到 theme.js 时开关可用，无脚本时禁用并说明。直接切换、立即生效，不弹额外授权确认。选择按当前身份、设备访问范围和皮肤保存，刷新、重新加载及更新同名皮肤后沿用，关闭则立即停用组件。制作窗口和皮肤卡片内的缩略预览不执行脚本。脚本权限与当前页面相同，不要把它描述为沙箱；真实预览中的业务操作不自动撤销。故障恢复使用 URL `skin=default`。可按需在 theme.js 中创建新组件，通过 api.features.register 或 api.slots.register 注册；组件代码随皮肤包提供，本地数据使用 api.storage。使用 skin validate/register/export，校验不执行脚本，不代表视觉验收。
 
+## 数字人形象（数字中枢）
+
+用户要换数字中枢形象时，在皮肤包的 `theme.js` 里用 `api.avatar.register` 注册渲染组件。宿主把当前会话的只读快照 `state` 和形象名称 `name` 传给组件，状态变化会自动更新。以下示例使用包内的一张图片；把 `assets/avatar.webp` 换成皮肤自己的资源即可。
+
+```js
+export function activate(api) {
+  function Avatar({ state, name }) {
+    return api.React.createElement('img', {
+      src: api.asset('assets/avatar.webp'),
+      alt: name,
+      'data-call-state': state.callState,
+      style: { width: '100%', height: '100%', objectFit: 'contain' }
+    })
+  }
+  return api.avatar.register({ id: 'custom-avatar', render: Avatar })
+}
+```
+
+只调整现有形象的样式时，`theme.css` 可以直接使用宿主选择器，例如 `[data-ui="avatar"][data-avatar-call-state="waitingForWake"]`。皮肤自行决定各状态的外观和动作。
+
+- `state.callState` 区分等待唤醒（`waitingForWake`）、监听（`listening`）、思考（`thinking`）、播音（`speaking`）等状态。
+- `state.inputLevel` 是麦克风电平。`state.speech.playing` 表示正在播音，`state.speech.metered` 为真时可用 `state.speech.level` 读取实测播放电平。两种电平均为 0–1。`state.reducedMotion` 提供减少动态效果偏好。
+- 其他组件可通过 `api.avatar.get(scope)` 读取快照、`api.avatar.subscribe(listener, scope)` 订阅 `state/audio/dispose` 事件。`scope` 是 `{ projectId, sessionId }`，订阅返回取消函数。
+- 验证脚本形象时，在「设置 → 外观」选择皮肤，开启「运行皮肤脚本」，再进入数字人页面查看数字中枢。制作窗口的缩略预览只展示样式。
+
 ## 制作流程
 
 先阅读对话提供的 Runtime 根目录中的 `skin-contract.json`。会话在该根目录中自行建立皮肤包目录，默认建议使用 `skin/`，也可另行命名；不要覆盖其他已有成果。完整规范可通过 `skin contract --json` 查询。生成 skin.json 和 theme.js，按需生成 theme.css 及本地资源，不修改应用源码。结构化样式、布局及动作以规范为准，更自由的样式和交互使用上述 CSS 与组件接口。部位含引擎展开选项和所有工作台界面，未覆盖部分继承默认。

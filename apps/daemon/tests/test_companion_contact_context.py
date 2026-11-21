@@ -28,9 +28,7 @@ def test_notification_timestamps_survive_model_projection():
 def test_roleplay_guidance_connects_state_to_behavior():
     from services.digital_person_assessment import instruction
     from services.digital_person import DigitalPersonProfile
-    from services.digital_person_affect import prompt
     profile=DigitalPersonProfile()
-    state=dict(affinity=50,emotion='calm',valence=0,arousal=0)
     text=instruction(profile)
     assert 'EMOTION' not in text
     assert 'arousal' not in text and '"mood"' not in text

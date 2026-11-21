@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { TaskStepState } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { isTaskNotStarted } from '../pages/taskDetailChat'
 import { useTaskStore } from '../stores/taskStore'
 import {
@@ -83,7 +83,7 @@ export default function TaskDetailDescription({ task, projectId, editable = fals
         projectId={projectId} imagePrefix={task.id.slice(0, 8)}
         placeholder={t('taskDetail.descriptionPlaceholder')}
         minHeight={140} maxHeight="33vh" disabled={saving} autoFocus />
-      {error && <div className="task-description-error" role="alert">{error}</div>}
+      {error && <div className="task-description-error" role="alert">{localizeErrorDisplay(error)}</div>}
       <div className="task-description-actions">
         {canReschedule && <div className="task-description-leading-actions">
           <div className="task-description-schedule-editor">

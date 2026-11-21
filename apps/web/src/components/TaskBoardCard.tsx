@@ -100,6 +100,7 @@ export default function TaskBoardCard({
   return (
     <div
       className="task-board-card"
+      data-board-task-id={task.id}
       data-task-status={status}
       data-dragging={dragging || undefined}
       draggable={draggable && canArchive && !showArchived}

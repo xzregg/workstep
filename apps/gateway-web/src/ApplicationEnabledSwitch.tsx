@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useRef, useState } from 'react'
 
 export function ApplicationEnabledSwitch({ sourceId, label, enabled, csrf, onSaved }: {
@@ -15,10 +16,10 @@ export function ApplicationEnabledSwitch({ sourceId, label, enabled, csrf, onSav
         body: JSON.stringify({enabled: !enabled}),
       })
       if (!response.ok) throw Error(response.status === 409
-        ? '无法停用最后一个登录入口，请先启用账号密码登录或其他企业应用。'
-        : '应用状态保存失败，请重试。')
+        ? 'Cannot disable the last login entry. Please enable account/password login or another enterprise application first.'
+        : 'Failed to save application state, please try again.')
       onSaved(!enabled)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '应用状态保存失败，请重试。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to save application state, please try again.') }
     finally { pending.current = false; setBusy(false) }
   }
   return <div className="gateway-application-enabled">
@@ -28,6 +29,6 @@ export function ApplicationEnabledSwitch({ sourceId, label, enabled, csrf, onSav
       <span>{enabled ? '已启用' : '已停用'}</span>
     </div>
     {busy && <span role="status"><span className="gateway-spinner" aria-hidden="true" />正在保存…</span>}
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   </div>
 }

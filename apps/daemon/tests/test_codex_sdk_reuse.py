@@ -41,7 +41,7 @@ async def test_reuse_is_exclusive_and_configuration_changes_rebuild():
     pool = CodexClientPool(idle_seconds=60)
     first = await pool.acquire('/project', None, 'config-a', Client)
     pool.bind(first, 'session-a', SimpleNamespace(id='session-a'))
-    with pytest.raises(RuntimeError, match='正在执行'):
+    with pytest.raises(RuntimeError, match='session is executing'):
         await pool.acquire('/project', 'session-a', 'config-a', Client)
     await pool.release(first, reusable=True)
     second = await pool.acquire('/project', 'session-a', 'config-a', Client)
@@ -110,7 +110,7 @@ async def test_shutdown_during_process_probe_cannot_return_a_closed_lease():
         assert await asyncio.to_thread(entered.wait, 1)
         await pool.close()
         unblock.set()
-        with pytest.raises(RuntimeError, match='已关闭'):
+        with pytest.raises(RuntimeError, match='has been closed'):
             await acquiring
         assert entry.client.closed == 1
     finally:
@@ -326,7 +326,7 @@ async def test_adapter_early_stream_close_and_same_instance_concurrency(fake_sdk
             if event.type == 'session_started':
                 break
         conflict = await collect(engine, tmp_path, session_id='b')
-        assert any(e.type == 'error' and '正在执行' in e.data['message'] for e in conflict)
+        assert any(e.type == 'error' and 'is executing' in e.data['message'] for e in conflict)
         await stream.aclose()
         assert fake_sdk.clients[0].closed == 1
         assert not engine._spawn_active and not engine._running
@@ -428,7 +428,7 @@ async def test_adapter_failure_stop_and_different_sessions_are_isolated(fake_sdk
         # A slow active turn cannot block a distinct session or the event loop.
         await asyncio.wait_for(collect(b, tmp_path, session_id='b'), 1)
         blocked = await collect(CodexSDKEngine(), tmp_path, session_id='a')
-        assert any(e.type == 'error' and '正在执行' in e.data['message'] for e in blocked)
+        assert any(e.type == 'error' and 'session is executing' in e.data['message'] for e in blocked)
         assert fake_sdk.clients[0].closed == 0
         await a.stop()
         await asyncio.wait_for(running, 1)

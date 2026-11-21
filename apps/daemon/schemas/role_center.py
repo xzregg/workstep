@@ -11,7 +11,7 @@ class AssetFields(BaseModel):
     @classmethod
     def nonblank_name(cls, value):
         if not value.strip():
-            raise ValueError("名称不能为空")
+            raise ValueError("Name cannot be empty")
         return value.strip()
 
 
@@ -23,14 +23,14 @@ class RoleFields(AssetFields):
     @classmethod
     def nonblank_category(cls, value):
         if not value.strip():
-            raise ValueError("分类不能为空")
+            raise ValueError("Category cannot be empty")
         return value.strip()
 
     @field_validator("prompt")
     @classmethod
     def nonblank_prompt(cls, value):
         if not value.strip():
-            raise ValueError("角色提示词不能为空")
+            raise ValueError("Role prompt cannot be empty")
         return value
 
 
@@ -51,7 +51,7 @@ class TeamFields(AssetFields):
     def unique_members(self):
         ids = [member.role_id for member in self.members]
         if len(ids) != len(set(ids)):
-            raise ValueError("同一角色不能重复加入专家团")
+            raise ValueError("The same role cannot be added to the expert team more than once")
         return self
 
 

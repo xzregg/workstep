@@ -17,6 +17,8 @@ from urllib.parse import urlsplit
 
 @pytest.mark.parametrize('path,workspace,expected_query', [
     ('/assets/app.js', True, ''),
+    ('/assets/voiceDsp.worker-WqAbCd12.js', True, ''),
+    ('/assets/wakeWord.worker-WqAbCd12.js', True, ''),
     ('/assets/app.css', True, ''),
     ('/assets/app.js', False, '_workstep_asset=0457af26fe899a12'),
     ('/api/tasks', True, '_workstep_asset=0457af26fe899a12'),
@@ -34,7 +36,7 @@ async def test_workspace_asset_revision_is_not_forwarded_to_device(path, workspa
             if frame.type == FrameType.http_request and frame.payload['phase'] == 'end':
                 # Older hosts accept the original static asset URL only.
                 status = 403 if path.startswith('/assets/') and starts[-1]['query'] else 200
-                for payload in ({'phase': 'start', 'status': status, 'headers': []},
+                for payload in ({'phase': 'start', 'status': status, 'headers': [['content-type', 'text/javascript']]},
                                 {'phase': 'body', 'data': base64.b64encode(b'asset').decode()},
                                 {'phase': 'end'}):
                     await connection.deliver(ProxyFrame(stream_id=frame.stream_id, type=FrameType.http_response, payload=payload))
@@ -48,6 +50,8 @@ async def test_workspace_asset_revision_is_not_forwarded_to_device(path, workspa
                                            project_id='project-1', access_level='read')
     assert b''.join([chunk async for chunk in response.chunks]) == b'asset'
     assert starts[0]['query'] == expected_query
+    worker = path.startswith(('/assets/voiceDsp.worker-', '/assets/wakeWord.worker-'))
+    assert ("'wasm-unsafe-eval'" in response.headers['Content-Security-Policy']) == worker
     if workspace and path.startswith('/assets/'):
         assert response.status == 200
 

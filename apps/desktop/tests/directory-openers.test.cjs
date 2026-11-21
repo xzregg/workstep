@@ -30,7 +30,7 @@ const opened = []
   assert.equal(result.opened, true)
   await assert.rejects(openDirectory({ path: '/etc', opener: 'file_manager' },
    { status: async () => ({ running: true, settings: { root: '/sandbox', project: root, mounts: [] } }) },
-   { openPath: async () => { throw new Error('must not open') } }), /挂载/)
+   { openPath: async () => { throw new Error('must not open') } }), /host machine mount/)
  } finally { await fs.rm(root, { recursive: true, force: true }) }
 })
 
@@ -50,6 +50,6 @@ test('file actions preserve the file, reveal it, and save a complete copy throug
   await fileAction({ path: '/data/projects/source.txt', action: 'save' }, manager, shell,
    { showSaveDialog: async () => ({ canceled: false, filePath: destination }) })
   assert.equal(await fs.readFile(destination, 'utf8'), 'complete content')
-  await assert.rejects(fileAction({ path: '/etc/passwd', action: 'open' }, manager, shell), /挂载/)
+  await assert.rejects(fileAction({ path: '/etc/passwd', action: 'open' }, manager, shell), /host machine mount/)
  } finally { await fs.rm(root, { recursive: true, force: true }) }
 })

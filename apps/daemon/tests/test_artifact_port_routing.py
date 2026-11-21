@@ -607,7 +607,7 @@ async def test_feedback_connection_stops_after_three_returns(tmp_path):
             (TaskStep.task == task) & (TaskStep.step_key == "test")
         )
         assert test_step.status == "failed"
-        assert "3 次" in test_step.error
+        assert '3 times' in test_step.error
         assert len(calls["develop"]) == 4
         assert len(calls["test"]) == 4
         run = WorkflowRun.get_by_id(run.id)
@@ -1539,7 +1539,7 @@ async def test_forward_and_feedback_outputs_in_same_round_pause_as_conflict(tmp_
             (TaskStep.task == task) & (TaskStep.step_key == "test")
         )
         assert test_step.status == "failed"
-        assert "路由冲突" in test_step.error
+        assert 'routing conflict' in test_step.error
         assert len(calls["develop"]) == 1
         assert len(calls["test"]) == 1
         assert calls["publish"] == []

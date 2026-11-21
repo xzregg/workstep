@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
@@ -60,10 +61,10 @@ export function GatewayShareCreatePage() {
     const params = new URLSearchParams({ project_id: projectId, task_id: taskId })
     void fetch(`/api/platform-shares?${params}`, { signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error('分享列表加载失败。')
+        if (!response.ok) throw new Error('Failed to load the share list.')
         const result: { shares: ExistingShare[] } = await response.json()
         if (!controller.signal.aborted) setExistingShares(result.shares)
-      }).catch(reason => { if (reason?.name !== 'AbortError') setError('分享列表加载失败。') })
+      }).catch(reason => { if (reason?.name !== 'AbortError') setError('Failed to load the share list.') })
     return () => controller.abort()
   }, [auth, projectId, taskId, validTarget, listRevision])
 
@@ -83,12 +84,12 @@ export function GatewayShareCreatePage() {
           expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
         }),
       })
-      if (response.status === 403) { setError('当前账户没有此项目的分享创建权限。'); return }
-      if (response.status === 404) { setError('项目已停止发布或不可用。'); return }
-      if (!response.ok) { setError('创建分享失败，请检查输入后重试。'); return }
+      if (response.status === 403) { setError('The current account does not have permission to create shares for this project.'); return }
+      if (response.status === 404) { setError('The project has stopped publishing or is unavailable.'); return }
+      if (!response.ok) { setError('Failed to create share. Please check the input and try again.'); return }
       setCreated(await response.json() as CreatedShare)
       setListRevision(value => value + 1)
-    } catch { setError('无法连接 Gateway，请稍后重试。') }
+    } catch { setError('Unable to connect to Gateway, please try again later.') }
     finally { setBusy(false) }
   }
 
@@ -100,19 +101,19 @@ export function GatewayShareCreatePage() {
       const response = await fetch(`/api/platform-shares/${encodeURIComponent(shareId)}/revoke`, {
         method: 'POST', headers: { 'X-CSRF-Token': csrfToken },
       })
-      if (!response.ok) { setError('撤销失败，请重试。'); return }
+      if (!response.ok) { setError('Failed to cancel, please try again.'); return }
       if (created?.id === shareId) setRevoked(true)
       setConfirmRevoke(false)
       setExistingRevokeTarget(null)
       setListRevision(value => value + 1)
-    } catch { setError('无法连接 Gateway，请稍后重试。') }
+    } catch { setError('Unable to connect to Gateway, please try again later.') }
     finally { setBusy(false) }
   }
 
   async function copyLink(share = created, key = createdPassword) {
     if (!share?.url) return
     try { await navigator.clipboard.writeText(taskShareClipboard(share.url, key, share.title || title.trim() || taskId, shareClipboardLocale(document.documentElement.lang || 'zh-CN'))); setCopied(true) }
-    catch { setError('复制失败，请手动选择链接。') }
+    catch { setError('Copy failed, please manually select the link.') }
   }
 
   return <section className="gateway-auth-card gateway-share-create-page">
@@ -144,7 +145,7 @@ export function GatewayShareCreatePage() {
       <label htmlFor="gateway-share-expiry">过期时间（默认 7 天）</label>
       <input id="gateway-share-expiry" type="datetime-local" value={expiresAt}
         onChange={event => setExpiresAt(event.target.value)} />
-      {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+      {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
       <button type="submit" disabled={busy || (!loginRequired && !!password && password.length < 4)}>
         {busy && <span className="gateway-share-spinner" aria-hidden="true" />}
         {busy ? '正在创建…' : '创建分享'}
@@ -163,7 +164,7 @@ export function GatewayShareCreatePage() {
           <button type="button" onClick={() => setConfirmRevoke(true)}>撤销分享</button>
         </div>
       </>}
-      {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+      {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
     </div>}
     {auth === 'ready' && existingShares.length > 0 && <section className="gateway-share-existing">
       <h3>我创建的分享</h3>

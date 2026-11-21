@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useRef, useState } from 'react'
 import { GatewayModal } from './GatewayModal'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
@@ -19,7 +20,7 @@ export function BulkRevokePermissionDialog({ assignments, name, csrf, onFinished
     pending.current = true; setBusy(true); setError('')
     try {
       const confirmation = await confirmStepUp(csrf, password, passwordRequired)
-      if (!confirmation.ok) throw Error('管理员身份验证失败，请重试。')
+      if (!confirmation.ok) throw Error('Administrator authentication failed, please try again.')
       for (const row of assignments) {
         if (done.current.includes(row.id)) continue
         try { await revokePermission(row.id, csrf) }
@@ -30,7 +31,7 @@ export function BulkRevokePermissionDialog({ assignments, name, csrf, onFinished
         setCompleted([...done.current])
       }
       onFinished([...done.current])
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '批量撤销失败，请重试。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Batch undo failed, please try again.') }
     finally { pending.current = false; setBusy(false) }
   }
   return <GatewayModal title="批量撤销权限" className="gateway-bulk-revoke-dialog" onClose={close} footer={<>
@@ -47,6 +48,6 @@ export function BulkRevokePermissionDialog({ assignments, name, csrf, onFinished
       {completed.includes(row.id) && <span> · 已撤销</span>}
     </li>)}</ul>
     {(busy || completed.length > 0) && <p role="status">{busy && <span className="gateway-spinner" aria-hidden="true" />} 已处理 {completed.length}/{assignments.length} 条规则；重试仅处理剩余规则。</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   </GatewayModal>
 }

@@ -1,6 +1,7 @@
-import { createContext, isValidElement, memo, useCallback, useContext, useLayoutEffect, useMemo, useRef, type ReactNode, type RefObject } from 'react'
+import { createContext, isValidElement, memo, useCallback, useContext, useLayoutEffect, useMemo, useRef, type ReactNode, type RefObject, type ComponentProps } from 'react'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { splitMarkdownBlocks } from '../utils/markdownBlocks'
 import { isLocalMarkdownImage, resolveMarkdownImageSrc } from '../utils/markdownImages'
 import { convertVisualizeMarkers } from '../utils/markdownVisualize'
 import { convertFileCitations } from '../utils/markdownFileCitation'
@@ -9,7 +10,9 @@ import { useI18n } from '../i18n'
 import MermaidBlock, { MarkdownStreamingContext } from './MermaidBlock'
 import { useMarkdownUrlResolver, useTaskFilePreview } from '../contexts/MarkdownAssetUrlContext'
 import StreamRevealText from './StreamRevealText'
+import WorkerMarkdownBlock from './WorkerMarkdownBlock'
 import rehypeStreamReveal, { REVEAL_WINDOW_CHARS } from '../utils/rehypeStreamReveal'
+import rehypeWebCitations, { incompleteWebCitationAtEnd } from '../utils/rehypeWebCitations'
 import { parseTaskDetailLink } from '../utils/taskDetailLink'
 import MarkdownTaskLink from './MarkdownTaskLink'
 
@@ -27,9 +30,36 @@ interface MarkdownContentProps {
   rootRef?: RefObject<HTMLDivElement | null>
   animateReveal?: boolean
   animateInitialReveal?: boolean
+  freezeReveal?: boolean
 }
 
 const RevealContext = createContext({ enabled: false, animateInitial: true, from: 0 })
+const revealPlugins = [rehypeStreamReveal]
+const noRehypePlugins: [] = []
+
+const MarkdownBlock = memo(function MarkdownBlock({ content, source, components, enabled, animateInitial, from, incompleteCitation, freezeReveal }: {
+  content: string
+  source: string
+  components: ComponentProps<typeof ReactMarkdown>['components']
+  enabled: boolean
+  animateInitial: boolean
+  from: number
+  incompleteCitation?: string
+  freezeReveal?: boolean
+}) {
+  const settings = useMemo(() => ({ enabled, animateInitial, from }), [enabled, animateInitial, from])
+  const rehypePlugins: ComponentProps<typeof ReactMarkdown>['rehypePlugins'] = content.includes('\uE200')
+    ? [[rehypeWebCitations, incompleteCitation], ...(enabled ? revealPlugins : noRehypePlugins)]
+    : enabled ? revealPlugins : noRehypePlugins
+  return <RevealContext.Provider value={settings}>
+    {content.length >= 2048
+      ? <WorkerMarkdownBlock content={content} source={source} incompleteCitation={incompleteCitation} components={components} urlTransform={fileAwareUrlTransform} paused={freezeReveal} />
+      : <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={components} urlTransform={fileAwareUrlTransform}>
+        {content}
+      </ReactMarkdown>}
+
+  </RevealContext.Provider>
+})
 
 // Keep this component type stable as reveal settings change, so already
 // displayed text keeps its state instead of replaying the whole paragraph.
@@ -105,18 +135,24 @@ function MarkdownContent({
   rootRef,
   animateReveal = false,
   animateInitialReveal = true,
+  freezeReveal = false,
 }: MarkdownContentProps) {
   const { t } = useI18n()
   const markdownUrlResolver = useMarkdownUrlResolver()
   const taskFilePreview = useTaskFilePreview()
-  const normalizedContent = convertFileCitations(convertVisualizeMarkers(content))
+  // Structured results are literal data. Parsing their source-id arrays and
+  // punctuation as GFM links/emphasis is expensive and changes string values.
+  const structured = !plainText && /^\s*(?:<json>\s*)?(?:\{\s*"|\[\s*\{)/.test(content)
+  const normalizedContent = structured
+    ? content.replace(/^\s*<json>/, '').replace(/<\/json>\s*$/, '')
+    : convertFileCitations(convertVisualizeMarkers(content))
   const previousContent = useRef(animateInitialReveal ? '' : normalizedContent)
   const revealFrom = Math.max(
     normalizedContent.length - REVEAL_WINDOW_CHARS,
     normalizedContent.startsWith(previousContent.current) ? previousContent.current.length : normalizedContent.length,
   )
   useLayoutEffect(() => { previousContent.current = normalizedContent }, [normalizedContent])
-  const markdown = streaming ? closeStreamingFence(normalizedContent) : normalizedContent
+  const markdown = !structured && streaming ? closeStreamingFence(normalizedContent) : normalizedContent
   const plainSegments = plainText ? splitPlainText(normalizedContent) : []
 
   const renderImage = useCallback((src: string | undefined, alt: string) => {
@@ -178,6 +214,9 @@ function MarkdownContent({
     img: (props: { src?: string; alt?: string }) => renderImage(props.src, props.alt ?? ''),
     a: (props: { href?: string; children?: React.ReactNode; title?: string }) =>
       renderLink(props.href, props.children, props.title),
+    table: ({ children }: { children?: ReactNode }) => (
+      <div className="markdown-table-scroll"><table>{children}</table></div>
+    ),
     pre: ({ children }: { children?: ReactNode }) => {
       if (isValidElement<{ className?: string; children?: ReactNode }>(children)
         && /(?:^|\s)language-mermaid(?:\s|$)/i.test(children.props.className ?? '')) {
@@ -188,19 +227,14 @@ function MarkdownContent({
     },
   }), [compactParagraphs, mermaidRenderDelayMs, renderImage, renderLink])
 
-  const revealSettings = useMemo(() => ({
-    enabled: animateReveal, animateInitial: animateInitialReveal, from: revealFrom,
-  }), [animateReveal, animateInitialReveal, revealFrom])
-
   return (
     <MarkdownStreamingContext.Provider value={streaming}>
-      <RevealContext.Provider value={revealSettings}>
       <div
         ref={rootRef}
         className={`markdown-message${streaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
         aria-live={streaming ? 'polite' : undefined}
       >
-        {plainText ? plainSegments.map((segment, index) => {
+        {structured ? <p><StreamRevealText text={normalizedContent} enabled={animateReveal} animateInitial={animateInitialReveal} animateFrom={revealFrom} /></p> : plainText ? plainSegments.map((segment, index) => {
           if (segment.type === 'image') {
             return <span key={index} className="markdown-inline-image">{renderImage(segment.url, segment.alt)}</span>
           }
@@ -212,15 +246,17 @@ function MarkdownContent({
           ) return null
           return <span key={index}>{segment.text}</span>
         }) : (
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={animateReveal ? [rehypeStreamReveal] : []} components={components} urlTransform={fileAwareUrlTransform}>
-            {markdown}
-          </ReactMarkdown>
+          splitMarkdownBlocks(markdown).map(block => <MarkdownBlock key={block.offset}
+            content={block.content} source={normalizedContent.slice(block.offset, block.offset + block.content.length)} components={components} freezeReveal={freezeReveal} enabled={animateReveal && block.offset + block.content.length > revealFrom}
+            incompleteCitation={(streaming || animateReveal) && block.offset + block.content.length === markdown.length
+              ? incompleteWebCitationAtEnd(block.content) : undefined}
+            animateInitial={animateReveal && block.offset + block.content.length > revealFrom && animateInitialReveal}
+            from={animateReveal && block.offset + block.content.length > revealFrom ? Math.max(0, revealFrom - block.offset) : 0} />)
         )}
         {streaming && content.trim() !== '' && (
           <span className="markdown-stream-cursor" aria-hidden="true" />
         )}
       </div>
-      </RevealContext.Provider>
     </MarkdownStreamingContext.Provider>
   )
 }

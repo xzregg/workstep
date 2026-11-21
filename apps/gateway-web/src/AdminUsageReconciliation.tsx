@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { GatewayDateRange } from './GatewayDateRange'
 import { useState } from 'react'
 
@@ -25,10 +26,10 @@ export function AdminUsageReconciliation() {
 
   async function query() {
     if (!providerId.trim() || !fromDay || !toDay || fromDay > toDay) {
-      setError('请填写供应商 ID 和有效的日期范围。'); return
+      setError('Please provide the supplier ID and a valid date range.'); return
     }
     const days = (Date.parse(toDay) - Date.parse(fromDay)) / 86400000
-    if (days > 30) { setError('对账日期范围不能超过 31 天。'); return }
+    if (days > 30) { setError('The reconciliation date range cannot exceed 31 days.'); return }
     setBusy(true); setError('')
     const params = new URLSearchParams({ provider_id: providerId.trim(),
       from_day: fromDay, to_day: toDay })
@@ -36,11 +37,11 @@ export function AdminUsageReconciliation() {
       const response = await fetch(`/api/admin/usage/reconciliation?${params}`, {
         credentials: 'same-origin',
       })
-      if (!response.ok) throw new Error('账单差异加载失败。')
+      if (!response.ok) throw new Error('Failed to load billing discrepancy.')
       const data = await response.json()
       setRows(data.rows ?? [])
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '账单差异加载失败。')
+      setError(reason instanceof Error ? reason.message : 'Failed to load billing discrepancy.')
     } finally { setBusy(false) }
   }
 
@@ -55,7 +56,7 @@ export function AdminUsageReconciliation() {
       <button type="submit" disabled={busy}>查看账单差异</button>
     </form>
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在核对账单…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     {rows && !busy && !error && (rows.length ? <ul className="gateway-device-list">{rows.map(row =>
       <li key={`${row.day}-${row.provider_id}-${row.model}`}><div>
         <strong>{row.model ?? '模型未标记'} · {statusNames[row.status] ?? row.status}</strong>

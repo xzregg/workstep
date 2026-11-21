@@ -206,14 +206,14 @@ def model_entry(model_id):
     for entry in compatible_models():
         if entry['id'] == model_id:
             return entry
-    raise ValueError('未知或尚未确认框架兼容的本地决策模型')
+    raise ValueError('Unknown or unconfirmed local decision model for framework compatibility')
 
 
 def resource_entry(kind):
     for entry in compatible_models():
         if entry['resource_kind'] == kind:
             return entry
-    raise ValueError('未知或尚未确认框架兼容的决策资源')
+    raise ValueError('Unknown or unconfirmed framework-compatible decision resource')
 
 
 def public_catalog():

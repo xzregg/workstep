@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useId, useState } from 'react'
 
 type Option = { id: string; label: string }
@@ -25,10 +26,10 @@ export function AuditEntityFilter({ kind, value, onChange }: {
     const params = new URLSearchParams({ kind, q: search.q })
     void fetch(`/api/admin/audit/filter-options?${params}`, { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error(response.status === 403 ? '没有审计查询权限。' : `${label}搜索失败，请重试。`)
+        if (!response.ok) throw new Error(response.status === 403 ? 'No audit query permission.' : `${label} search failed, please try again.`)
         const data = await response.json()
         if (!controller.signal.aborted) { setOptions(data.items ?? []); setMore(!!data.has_more) }
-      }).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '搜索失败。') })
+      }).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Search failed.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [kind, label, search])
@@ -48,7 +49,7 @@ export function AuditEntityFilter({ kind, value, onChange }: {
     </div>
     {value && <div className="gateway-audit-entity-selected"><span title={value}>已选：{selectedLabel?.id === value ? selectedLabel.label : value}</span><button type="button" onClick={() => onChange('')}>清除{label}</button></div>}
     {loading && <span role="status"><span className="gateway-spinner" aria-hidden="true" />正在搜索…</span>}
-    {error && <span role="alert">{error}<button type="button" onClick={find}>重试{label}搜索</button></span>}
+    {error && <span role="alert">{localizeGatewayError(error)}<button type="button" onClick={find}>重试{label}搜索</button></span>}
     {!loading && !error && search && <div className="gateway-audit-entity-results" aria-label={`${label}搜索结果`}>
       {options.map(option => <button key={option.id} type="button" title={option.id} onClick={() => {
         setSelectedLabel(option); onChange(option.id); setSearch(null); setOptions([])

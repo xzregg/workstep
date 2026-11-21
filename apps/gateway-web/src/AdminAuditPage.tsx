@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { AuditEntityFilter } from './AuditEntityFilter'
 import { AdminRecordDetails } from './AdminRecordDetails'
@@ -49,12 +50,12 @@ export function AdminAuditPage() {
     setLoading(true); setError('')
     void fetch(`/api/admin/audit?${params}`, { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error('审计记录加载失败。')
+        if (!response.ok) throw new Error('Failed to load audit records.')
         const data = await response.json()
         if (!controller.signal.aborted) { setEvents(data.items ?? []); setTotal(data.total ?? 0) }
       }).catch(reason => {
         if (!controller.signal.aborted && reason?.name !== 'AbortError') {
-          setError(reason instanceof Error ? reason.message : '审计记录加载失败。')
+          setError(reason instanceof Error ? reason.message : 'Failed to load audit records.')
         }
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
@@ -110,7 +111,7 @@ export function AdminAuditPage() {
     </form>
     {validation && <p role="alert" className="gateway-auth-error">{validation}</p>}
     <AdminListStatus loading={loading} label="正在加载审计记录…"/>
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button"
       onClick={() => setRevision(current => current + 1)}>重试</button></p>}
     {!loading && !error && events.length === 0 && <p>当前条件下没有审计记录。</p>}
     <AdminRecordTable busy={loading} columns={['发生时间','操作','操作人','用户名','请求 IP','登录方式','设备','项目','结果','目标','操作']}>

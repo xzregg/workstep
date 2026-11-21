@@ -11,7 +11,7 @@ export function useInvitationSession() {
     setStatus('loading')
     void fetch('/api/auth/session', { signal: controller.signal }).then(async response => {
       if (response.status === 401) { if (!controller.signal.aborted) setStatus('login'); return }
-      if (!response.ok) throw Error('会话加载失败。')
+      if (!response.ok) throw Error('Failed to load session.')
       const data = await response.json()
       if (!controller.signal.aborted) { setSession(data); setStatus('ready') }
     }).catch(reason => { if (reason?.name !== 'AbortError') setStatus('error') })
@@ -36,7 +36,7 @@ export async function invitationResponse(response: Response) {
     404: '项目或邀请不存在，项目可能已取消发布。',
     410: '邀请已暂停、撤销或过期，请联系分享者。', 409: '当前状态不允许此操作。',
     422: '请检查访问级别和过期时间，过期时间必须晚于当前时间。',
-  } as Record<number, string>)[response.status] ?? '网关暂时不可用，请重试。')
+  } as Record<number, string>)[response.status] ?? 'Gateway temporarily unavailable, please retry.')
 }
 
 export function invitationHeaders(csrf: string) {

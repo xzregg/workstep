@@ -138,7 +138,7 @@ async def test_hermes_rejects_compact_when_agent_does_not_advertise_it(monkeypat
 
     assert len(events) == 1
     assert events[0].type == "error"
-    assert "未声明" in events[0].data["message"]
+    assert 'does not declare' in events[0].data["message"]
 
 
 @pytest.mark.anyio
@@ -217,4 +217,4 @@ async def test_native_acp_compact_requires_unified_completion_event():
     )]
 
     assert events[-1].type == "error"
-    assert "压缩完成事件" in events[-1].data["message"]
+    assert 'compression completion event' in events[-1].data["message"]

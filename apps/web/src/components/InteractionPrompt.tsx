@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import Button from './Button'
 import Textarea from './Textarea'
 import { ApiError } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import {
   buildInteractionResponse,
   cancelInteractionResponse,
@@ -158,7 +158,7 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
       )}
       {request.method === 'session/request_permission' ? (
         <>
-          {error && <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{error}</div>}
+          {error && <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{localizeErrorDisplay(error)}</div>}
           {permissionOptions.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6 }}>
               {permissionOptions.map((option) => (
@@ -262,7 +262,7 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
               </div>
             )
           })}
-          {error && <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{error}</div>}
+          {error && <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{localizeErrorDisplay(error)}</div>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button
               variant="ghost"

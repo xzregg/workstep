@@ -17,29 +17,29 @@ def valid_script_path(value: str) -> bool:
 
 def normalize_quick_buttons(buttons: list, *, max_buttons: int = 20) -> list[dict]:
     if not isinstance(buttons, list) or len(buttons) > max_buttons:
-        raise ValueError(f"最多配置 {max_buttons} 个快捷按钮")
+        raise ValueError(f"Maximum {max_buttons} quick buttons can be configured")
     cleaned: list[dict] = []
     seen: set[str] = set()
     for item in buttons:
         if not isinstance(item, dict):
-            raise ValueError("快捷按钮格式无效")
+            raise ValueError("Invalid shortcut button format")
         label = str(item.get("label") or "").strip()
         prompt = str(item.get("prompt") or "").strip()
         content = str(item.get("content") or "").strip()
         kind = str(item.get("kind") or "prompt").strip()
         if not label:
-            raise ValueError("快捷按钮标签不能为空")
+            raise ValueError("The shortcut button label cannot be empty")
         if len(label) > 1000:
-            raise ValueError("快捷按钮标签不能超过 1000 字")
+            raise ValueError("The shortcut button label cannot exceed 1000 characters")
         if len(prompt) > 400:
-            raise ValueError("快捷按钮提示词不能超过 400 字")
+            raise ValueError("The prompt for the shortcut button cannot exceed 400 characters")
         if len(content) > 4000:
-            raise ValueError("展示内容不能超过 4000 字")
+            raise ValueError("Displayed content cannot exceed 4000 characters")
         if kind not in {"prompt", "display", "action"}:
-            raise ValueError("快捷按钮类型无效")
+            raise ValueError("Invalid shortcut button type")
         button_id = str(item.get("id") or uuid.uuid4())
         if button_id in seen:
-            raise ValueError("快捷按钮 id 重复")
+            raise ValueError("Duplicate shortcut button id")
         seen.add(button_id)
         result = {
             "id": button_id,
@@ -57,13 +57,13 @@ def normalize_quick_buttons(buttons: list, *, max_buttons: int = 20) -> list[dic
             cwd_mode = str(item.get("cwd_mode") or "task")
             confirmation_input_prompt = str(item.get("confirmation_input_prompt") or "").strip()
             if not ACTION_ID.fullmatch(action_id):
-                raise ValueError("Action ID 无效")
+                raise ValueError("Invalid Action ID")
             if not valid_script_path(script_path):
-                raise ValueError("脚本路径无效")
+                raise ValueError("Invalid script path")
             if cwd_mode not in {"project", "task", "worktrees"}:
-                raise ValueError("执行目录无效")
+                raise ValueError("Invalid execution directory")
             if len(confirmation_input_prompt) > 200:
-                raise ValueError("确认输入提示不能超过 200 字")
+                raise ValueError("Confirm that the input prompt cannot exceed 200 characters")
             require_confirmation = item.get("require_confirmation") is not False
             result.update({
                 "action_id": action_id,

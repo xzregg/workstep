@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { userChoiceLabel } from './AdminSelection'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
@@ -31,10 +32,10 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
     try {
       const response = await fetch(`/api/admin/${kind}?q=${encodeURIComponent(query.trim())}&page=1&page_size=10`,
         { credentials: 'same-origin' })
-      if (!response.ok) throw new Error('搜索失败，请重试。')
+      if (!response.ok) throw new Error('Search failed, please try again.')
       const result = await response.json()
       setUserChoices(result.users ?? [])
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '搜索失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Search failed.') }
     finally { setBusy(false) }
   }
 
@@ -44,16 +45,16 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
     setBusy(true); setError('')
     try {
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/roles`, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
         body: JSON.stringify({ role, scope_type: scope, scope_id: scope === 'platform' ? null : scopeId,
           include_subdepartments: includeChildren }),
       })
-      if (!response.ok) throw new Error(response.status === 403 ? '当前权限无法授予此角色。' : '授予角色失败，请重试。')
+      if (!response.ok) throw new Error(response.status === 403 ? 'Current permissions cannot be granted to this role.' : 'Failed to grant role, please try again.')
       onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '授予角色失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to grant role.') }
     finally { setBusy(false) }
   }
 
@@ -87,7 +88,7 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
         onChange={(nextScope, id) => { setScope(nextScope); setScopeId(id) }} />
       {scope === 'department' && <label className="gateway-role-checkbox"><input type="checkbox" checked={includeChildren}
         onChange={event => setIncludeChildren(event.target.checked)} /> 包含下级部门</label>}
-      {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+      {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
       <div className="gateway-dialog-actions">
       <div className="gateway-password-confirmation"><PasswordConfirmation id="role-step-password" label="输入你的密码确认" value={password} onChange={setPassword} /></div>
         <button type="button" className="gateway-dialog-cancel" disabled={busy}
@@ -110,19 +111,19 @@ export function AdminRevokeRoleDialog({ role, csrf, onComplete, onClose }: {
     setBusy(true); setError('')
     try {
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const response = await fetch(`/api/admin/roles/${encodeURIComponent(role.id)}`, {
         method: 'DELETE', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
       })
-      if (!response.ok) throw new Error(response.status === 409 ? '必须保留最后一名本地超级管理员。'
-        : response.status === 403 ? '恢复管理员受到保护。' : '撤销权限失败，请重试。')
+      if (!response.ok) throw new Error(response.status === 409 ? 'The last local super administrator must be retained.'
+        : response.status === 403 ? 'Administrator recovery is protected.' : 'Failed to revoke permissions, please try again.')
       onComplete()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '撤销权限失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to revoke permissions.') }
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="撤销管理员权限" message={`撤销 ${role.display_name} 的 ${role.role} 权限？`}
     confirmLabel="确认撤销" disabled={!passwordReady} busy={busy} onConfirm={() => void confirm()} onCancel={onClose}
       passwordConfirmation={<PasswordConfirmation id="revoke-role-password" label="输入你的密码确认" value={password} onChange={setPassword} />}>
-    {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
   </GatewayConfirmDialog>
 }

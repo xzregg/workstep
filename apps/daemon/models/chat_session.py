@@ -31,6 +31,7 @@ class ChatSession(BaseModel):
     service_tier = pw.TextField(null=True)
     execution_config_revision = pw.IntegerField(default=0)
     engine_session_id = pw.TextField(null=True)
+    session_provider = pw.TextField(null=True)
     engine_state_json = pw.TextField(null=True)
     context_reset_at = UTCDateTimeField(null=True)
     parent_session_id = pw.TextField(null=True)

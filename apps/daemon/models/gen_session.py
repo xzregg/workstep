@@ -23,6 +23,7 @@ class WorkflowGenSession(BaseModel):
     vision_model = pw.TextField(null=True)
     engine_session_id = pw.TextField(null=True)
     engine_state_json = pw.TextField(null=True)
+    session_provider = pw.TextField(null=True)
     messages_json = pw.TextField(null=True)
     cwd = pw.TextField(null=True)
     created_at = UTCDateTimeField()

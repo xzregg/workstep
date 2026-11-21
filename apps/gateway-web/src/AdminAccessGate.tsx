@@ -27,7 +27,7 @@ export function useAdminAccess(): State {
         if (response.status === 401) {
           setState({ scope, status: 'anonymous', access: null }); return
         }
-        if (!response.ok) throw new Error('管理权限检查失败')
+        if (!response.ok) throw new Error('Management permission check failed')
         const access = await response.json() as Access
         if (!controller.signal.aborted) setState({ scope, status: 'ready', access })
       }).catch(reason => {

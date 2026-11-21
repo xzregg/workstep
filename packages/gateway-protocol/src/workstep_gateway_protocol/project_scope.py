@@ -100,7 +100,7 @@ _PROJECT_SERVICES = [
     (r"/api/skills/rescan", {'POST'}, set()),
     (r"/api/fs/memory", {'GET','PUT'}, set()),
     (r"/api/task/[A-Za-z0-9_-]{1,128}/discussion-groups", {'GET','POST'}, set()),
-    (r"/api/task/[A-Za-z0-9_-]{1,128}/discussion-groups/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,256}", {'DELETE'}, set()),
+    (r"/api/task/[A-Za-z0-9_-]{1,128}/discussion-groups/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,256}", {'DELETE'}, {'notify'}),
     (r"/api/templates/(?:list|[A-Za-z0-9_-]{1,64})", {'GET'}, set()),
     (r"/api/tasks/[A-Za-z0-9_-]{1,128}/actions", {'GET'}, {'step_key'}),
     (r"/api/tasks/[A-Za-z0-9_-]{1,128}/actions/run", {'POST'}, set()),

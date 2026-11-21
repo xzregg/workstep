@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useState } from 'react'
 
 type DeviceApplication = { device_id: string; device_name: string; device_status: string;
@@ -29,11 +30,11 @@ export function AdminProviderApplications() {
     void fetch(`/api/admin/providers/applications?${params}`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error('设备应用状态加载失败。')
+      if (!response.ok) throw new Error('Failed to load device application status.')
       const data = await response.json()
       if (!controller.signal.aborted) { setDevices(data.devices ?? []); setTotal(data.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '设备应用状态加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load device application status.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [search, page, revision])
@@ -47,13 +48,13 @@ export function AdminProviderApplications() {
       <input id="provider-device-search" value={query} onChange={event => setQuery(event.target.value)} />
       <button type="submit">搜索</button></form>
     {loading && <p role="status">正在加载设备状态…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && devices.length === 0 && <p>当前条件下没有设备。</p>}
     <ul className="gateway-device-list">{devices.map(device => <li key={device.device_id}>
       <div><strong>{device.device_name}</strong><p>{applicationStatus(device)} · 期望版本 {
         device.desired_revision} · 已应用版本 {device.applied_revision ?? '未知'}</p>
-        {device.last_error && <p>错误：{device.last_error}</p>}</div>
+        {device.last_error && <p>错误：{localizeGatewayError(device.last_error)}</p>}</div>
     </li>)}</ul>
     <div className="gateway-admin-pagination"><span>共 {total} 台设备 · 第 {page}/{
       Math.max(1, Math.ceil(total / 25))} 页</span>

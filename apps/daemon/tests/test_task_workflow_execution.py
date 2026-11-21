@@ -335,7 +335,7 @@ async def test_task_specific_rework_limits_are_enforced(scenario, limit):
             & (ReviewRun.mode == "manual") & (ReviewRun.status == "pending")).count()) == 1
     else:
         error = await s.db(lambda _p: TaskStep.get((TaskStep.task == s.task_id) & (TaskStep.step_key == "test")).error)
-        assert "上限 1" in error
+        assert 'limit 1' in error
     await s.unchanged_source()
 
 

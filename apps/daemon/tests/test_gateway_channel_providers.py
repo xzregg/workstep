@@ -229,7 +229,7 @@ async def test_failed_message_retry_resolves_current_default_provider(bots, loca
                 row = Message.get((Message.task == task_id) & (Message.role == "assistant")
                                   & (Message.channel == "execution"))
                 assert row.run_status == "failed"
-                assert "供应商不存在" in StepRun.get_by_id(row.step_run_id).error
+                assert "Provider not found" in StepRun.get_by_id(row.step_run_id).error
                 return row.id
 
             message_id = await projects.run_db(project.id, failed_message)

@@ -1,0 +1,15 @@
+.digital-home-activity-entry{display:none}
+.digital-home-activity-backdrop{--home-ink:#f5f8ff;--home-muted:#a2b5ca;--home-accent:#2bdbec;--fg:var(--home-ink);--text-muted:var(--home-muted);--border-soft:#284052;--border:#355064;position:fixed;inset:0;z-index:240;background:#0008;color:var(--home-ink)}
+.digital-home-activity-dialog{position:absolute;inset:0 auto 0 0;width:min(84%,400px);padding:max(var(--space-5),env(safe-area-inset-top)) var(--space-5) max(var(--space-5),env(safe-area-inset-bottom));background:#102131;box-shadow:var(--elev-overlay);display:flex;flex-direction:column;min-width:0;animation:digital-activity-in var(--motion-fast) var(--ease)}
+.digital-home-activity-dialog>.digital-home-activity-close{position:absolute;right:var(--space-3);top:max(var(--space-4),env(safe-area-inset-top));width:var(--mobile-control-touch);height:var(--mobile-control-touch);min-height:var(--mobile-control-touch);padding:0;border:0;background:transparent;color:var(--home-ink)}
+.digital-home-activity-dialog>.digital-home-context{position:static;display:flex;flex-direction:column;width:auto;flex:1;min-height:0;overflow:hidden}
+.digital-home-activity-dialog{--home-activity-highlight:#8eb5d32b}
+.digital-home-activity-dialog .digital-home-activity-header{flex-shrink:0;padding:var(--space-2) var(--space-7) var(--space-5) 0}
+.digital-home-activity-dialog .digital-home-activity-header h2{margin:0;font-size:var(--text-title-2);line-height:24px;font-weight:600;color:var(--home-ink)}
+.digital-home-activity-dialog .digital-home-activity-scroll{touch-action:pan-y}
+.digital-home-activity-dialog .digital-home-context .btn.digital-home-work-summary,
+.digital-home-activity-dialog .digital-home-context .btn.digital-home-work-next{min-height:var(--mobile-control-touch);font-size:14px}
+.digital-home-activity-dialog .digital-home-work-summary:is([data-status=failed],[data-status=error]) .digital-home-work-status{color:#ff929a}
+@media(max-width:1023px){.digital-home .digital-home-activity-entry{position:absolute;z-index:4;top:var(--space-3);left:20px;display:flex;align-items:center;gap:var(--space-2);min-height:var(--mobile-control-touch);padding:0 var(--space-3);color:var(--home-ink);background:#173a50;border:.5px solid #355266}}
+@keyframes digital-activity-in{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+@media(prefers-reduced-motion:reduce){.digital-home-activity-dialog{animation:none}}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { projectApi, type ProjectPublicationStatus } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button, { ButtonLink } from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import './ProjectPublicationSettings.css'
@@ -47,7 +47,7 @@ export default function ProjectPublicationSettings({ projectId }: { projectId: s
 
   return <section className="project-publication-settings">
     {loading && !status && <p role="status">{t('common.loading')}</p>}
-    {error && <div role="alert"><p>{error}</p>
+    {error && <div role="alert"><p>{localizeErrorDisplay(error)}</p>
       {!status && <Button variant="ghost" onClick={() => void load()}>{t('projectSettings.access.retry')}</Button>}
     </div>}
     {status && <>

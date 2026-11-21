@@ -63,6 +63,42 @@ async def test_wecom_progress_uses_same_bubble_and_final_body_is_complete():
     assert [call.kwargs['finish'] for call in calls] == [False, False, True]
 
 
+@pytest.mark.parametrize('mode', ['stream', 'active', 'fallback'])
+async def test_wecom_compacts_prose_paragraphs_into_one_line_break(mode):
+    adapter = WeComAdapter({'id': 'bot'}, AsyncMock(), AsyncMock())
+    adapter._client = type('Client', (), {'reply_stream': AsyncMock(), 'send_message': AsyncMock()})()
+    if mode == 'fallback':
+        adapter._client.reply_stream.side_effect = RuntimeError('expired')
+    frame = None if mode == 'active' else {'headers': {'req_id': 'req'}}
+    message = IncomingMessage('bot', 'message', 'single', 'user', 'user', '问题', reply_context=frame)
+    body = '@协调\n查询结果是 `OPEN`。\n\n数据库还保存旧值。\n下一行照常保留。\n \n\n请核对。'
+    expected = '@协调\n查询结果是 `OPEN`。  \n数据库还保存旧值。\n下一行照常保留。  \n请核对。'
+
+    if mode == 'stream':
+        await adapter.update_reply(message, body)
+        assert adapter._client.reply_stream.await_args.args[2] == expected
+    await adapter.send_text(message, body)
+
+    if mode == 'stream':
+        assert adapter._client.reply_stream.await_args.args[2] == expected
+        assert adapter._client.reply_stream.await_args.kwargs['finish'] is True
+    else:
+        assert adapter._client.send_message.await_args.args[1]['markdown']['content'] == expected
+
+
+async def test_wecom_preserves_blank_lines_in_markdown_blocks():
+    adapter = WeComAdapter({'id': 'bot'}, AsyncMock(), AsyncMock())
+    adapter._client = type('Client', (), {'send_message': AsyncMock()})()
+    message = IncomingMessage('bot', 'message', 'single', 'user', 'user', '问题')
+    body = (
+        '示例：\n\n~~~text\n甲\n\n乙\n\n丙\n\n丁\n~~~\n\n'
+        '1. 第一项\n\n   继续说明\n\n2. 第二项\n\n'
+        '> 引用\n\n| 列 |\n| --- |\n| 值 |\n\n小结。\n\n___\n\n结束。'
+    )
+    await adapter.send_text(message, body)
+    assert adapter._client.send_message.await_args.args[1]['markdown']['content'] == body
+
+
 @pytest.mark.asyncio
 async def test_wecom_long_utf8_body_is_bounded_without_losing_text():
     adapter = WeComAdapter({'id': 'bot'}, AsyncMock(), AsyncMock())

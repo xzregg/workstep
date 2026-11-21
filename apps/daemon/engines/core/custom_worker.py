@@ -60,69 +60,69 @@ def load_adapter(root, manifest):
     spec.loader.exec_module(module)
     cls = getattr(module, manifest["class_name"], None)
     if not isinstance(cls, type) or not issubclass(cls, AcpEngineBase) or cls.ENGINE_ID != manifest["id"]:
-        raise ValueError("适配器必须继承 AcpEngineBase 且 ENGINE_ID 与清单一致")
+        raise ValueError("The adapter must inherit AcpEngineBase, and ENGINE_ID must match the manifest")
     cls.set_binary_override(config_store.get_engine_binary_path(manifest["id"]) or None)
     engine = cls()
     if not isinstance(getattr(engine, "_pending_approvals", None), dict):
-        raise ValueError("构造函数必须调用 super().__init__()")
+        raise ValueError("The constructor must call super().__init__()")
     return engine
 
 
 def describe(engine, manifest):
     if not isinstance(engine.PERMISSION_POLICY, EnginePermissionPolicy):
-        raise ValueError("PERMISSION_POLICY 必须为 EnginePermissionPolicy")
+        raise ValueError("PERMISSION_POLICY must be EnginePermissionPolicy")
     policy = EnginePermissionPolicy(**asdict(engine.PERMISSION_POLICY))
     schema = [asdict(field) for field in engine.config_schema()]
     keys = [field["key"] for field in schema]
     if len(keys) != len(set(keys)) or any(not key for key in keys):
-        raise ValueError("配置字段 key 不能为空或重复")
+        raise ValueError("Configuration field key cannot be empty or duplicate")
     if any((field["sensitive"] or field["type"] == "password") and field["default"] for field in schema):
-        raise ValueError("敏感配置不能包含默认值")
+        raise ValueError("Sensitive configurations cannot contain default values")
     supported_types = {"text", "password", "select", "textarea", "json", "number", "checkbox", "model_map"}
     if any(field["type"] not in supported_types for field in schema):
-        raise ValueError("配置字段类型不受支持")
+        raise ValueError("Configured field type is not supported")
     events = set(engine.acp_events)
     if not events or not events <= set(ACP_EVENTS):
-        raise ValueError("acp_events 必须声明有效事件集合")
+        raise ValueError("acp_events must declare a valid event set")
     if not engine._is_acp_native and events == set(ACP_EVENTS):
-        raise ValueError("非 ACP 原生引擎不能宣称支持全部事件")
+        raise ValueError("Non-ACP native engines cannot claim to support all events")
     for name in ALLOWED_METHODS:
         if not callable(getattr(engine, name, None)):
             # Legacy live-stage name is optional; step live-message is canonical.
             if name != "send_live_stage_message":
-                raise ValueError(f"缺少接口：{name}")
+                raise ValueError(f"Missing API: {name}")
     signature = inspect.signature(engine.spawn)
     for key in ("prompt", "cwd", "model", "session_id", "images", "config_overrides"):
         if key not in signature.parameters and not any(p.kind == p.VAR_KEYWORD for p in signature.parameters.values()):
-            raise ValueError(f"spawn 缺少参数：{key}")
+            raise ValueError(f"spawn missing argument: {key}")
     extensions = set(getattr(engine, "workstep_events", ()))
     if not extensions <= EXTENSION_EVENTS:
-        raise ValueError("WorkStep 扩展事件声明无效")
+        raise ValueError("Invalid WorkStep extension event declaration")
     for field in engine.config_schema():
         if field.category != "mode":
             continue
         if field.sensitive or field.type not in {"select", "checkbox"}:
-            raise ValueError("权限字段必须是非敏感的 select/checkbox")
+            raise ValueError("Permission fields must be non-sensitive select/checkbox")
         if field.type == "select" and (not field.options or len({item.value for item in field.options}) != len(field.options)):
-            raise ValueError("权限字段选项必须非空且不能重复")
+            raise ValueError("Permission field options must be non-empty and unique")
     caps = asdict(engine.capabilities)
     if bool(caps.get('supports_mcp')) != bool(engine.supports_mcp):
-        raise ValueError('supports_mcp 能力与属性声明不一致')
+        raise ValueError('Inconsistency between supports_mcp capability and attribute declaration')
     if caps.get('supports_mcp'):
         from engines.core.base import BaseLLMEngine
         if type(engine).configure_mcp_servers is BaseLLMEngine.configure_mcp_servers:
-            raise ValueError('声明 MCP 支持必须实现 configure_mcp_servers')
+            raise ValueError('Declare that MCP support must implement configure_mcp_servers')
         method = engine.configure_mcp_servers
         if not inspect.iscoroutinefunction(method):
-            raise ValueError('configure_mcp_servers 必须是 async 方法')
+            raise ValueError('configure_mcp_servers must be an async method')
         try:
             inspect.signature(method).bind(servers=[], config_overrides={})
         except TypeError as exc:
-            raise ValueError('configure_mcp_servers 必须接收 servers 与 config_overrides') from exc
+            raise ValueError('configure_mcp_servers must receive servers and config_overrides') from exc
     if caps.get("supports_tool_approval") and "interaction_request" not in events:
-        raise ValueError("审批能力必须声明 interaction_request")
+        raise ValueError("Approval capability must declare interaction_request")
     if engine.supports_process_reuse and not engine.supports_resume:
-        raise ValueError("声明进程复用必须支持原生会话恢复")
+        raise ValueError("Process reuse must support native session recovery")
     return {
         "id": manifest["id"], "name": manifest["name"], "description": manifest.get("description", ""),
         "mode": manifest["mode"], "custom": True, "installed": bool(engine.is_installed()),
@@ -179,7 +179,7 @@ class Worker:
                 result = True
             elif method == "live_queue":
                 if self.live_queue is None:
-                    raise ValueError("没有活跃的消息队列")
+                    raise ValueError("No active message queues")
                 await self.live_queue.put(request.get("kwargs", {}).get("item"))
                 result = True
             elif method in ALLOWED_METHODS:
@@ -197,9 +197,9 @@ class Worker:
                     async with aclosing(function(*args, **kwargs)) as stream:
                         async for event in stream:
                             if not isinstance(event, InternalEvent):
-                                raise ValueError("引擎必须返回 InternalEvent")
+                                raise ValueError("The engine must return InternalEvent")
                             if event.type not in declared_events(self.engine):
-                                raise ValueError(f"产生未声明事件：{event.type}")
+                                raise ValueError(f"Undeclared event occurred: {event.type}")
                             await self.send({"id": key, "event": event.to_dict()})
                     result = None
                 elif inspect.iscoroutinefunction(function):
@@ -211,10 +211,10 @@ class Worker:
                         if turn_key != key and not task.done():
                             task.cancel()
             else:
-                raise ValueError("不支持的工作进程方法")
+                raise ValueError("Unsupported worker process method")
             await self.send({"id": key, "result": plain(result)})
         except asyncio.CancelledError:
-            await self.send({"id": key, "error": "操作已停止"})
+            await self.send({"id": key, "error": "Operation stopped"})
         except Exception as exc:
             # Diagnostics stay in the worker; parent uses a redacted error.
             await self.send({"id": key, "error": f"{type(exc).__name__}: {exc}"})
@@ -229,7 +229,7 @@ class Worker:
                     break
                 request = json.loads(line)
                 if request.get("protocol") != 1 or not isinstance(request.get("id"), str):
-                    raise ValueError("工作进程协议无效")
+                    raise ValueError("Invalid work process protocol")
                 task = asyncio.create_task(self.request(request))
                 self.turns[request["id"]] = task
         finally:

@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useSearchParams } from 'react-router-dom'
 import { DeviceHealthDetails } from './DeviceHealthDetails'
@@ -67,13 +68,13 @@ export function DeviceAdminPage() {
       .then(async (response) => {
         if (controller.signal.aborted) return
         if (response.status === 401) { setStatus('login'); return }
-        if (!response.ok) throw new Error('登录状态加载失败，请重试。')
+        if (!response.ok) throw new Error('Could not load your session. Try again.')
         const result = await response.json()
         if (controller.signal.aborted) return
         setCsrf(result.csrf_token)
         setStatus('ready')
       })
-      .catch(() => { if (!controller.signal.aborted) { setStatus('session-error'); setError('登录状态加载失败，请重试。') } })
+      .catch(() => { if (!controller.signal.aborted) { setStatus('session-error'); setError('Could not load your session. Try again.') } })
     return () => controller.abort()
   }, [sessionRevision])
 
@@ -86,11 +87,11 @@ export function DeviceAdminPage() {
     }).then(async response => {
       if (controller.signal.aborted) return
       if (response.status === 401) { setCsrf(''); setStatus('login'); return }
-      if (!response.ok) throw new Error(response.status === 403 ? '当前账号没有设备管理权限。' : '设备列表加载失败。')
+      if (!response.ok) throw new Error(response.status === 403 ? 'The current account does not have device management permissions.' : 'Failed to load device list.')
       const result = await response.json()
       if (!controller.signal.aborted) { setDevices(result.devices ?? []); setTotal(result.total ?? 0) }
     }).catch(reason => {
-      if (!controller.signal.aborted && reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '设备列表加载失败。')
+      if (!controller.signal.aborted && reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load device list.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [status, filters, revision])
@@ -102,11 +103,11 @@ export function DeviceAdminPage() {
         method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       })
-      if (!response.ok) throw new Error('登录失败，请检查账号和密码。')
+      if (!response.ok) throw new Error('Login failed, please check your account and password.')
       setCsrf((await response.json()).csrf_token)
       setStatus('ready')
       window.dispatchEvent(new Event('gateway-auth-changed'))
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '登录失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Login failed.') }
     finally { setBusy(false) }
   }
 
@@ -202,7 +203,7 @@ export function DeviceAdminPage() {
       onClose={() => setRenameDevice(null)} onComplete={() => {
         setRenameDevice(null); setRevision(value => value + 1)
       }} />}
-    {error && <p className="gateway-auth-error" role="alert">{error} {(status === 'ready' || status === 'session-error') &&
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)} {(status === 'ready' || status === 'session-error') &&
       <button type="button" onClick={() => status === 'session-error' ? setSessionRevision(value => value + 1) : setRevision(value => value + 1)}>重试</button>}</p>}
   </section>
 }

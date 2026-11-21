@@ -41,10 +41,10 @@ class IdentityRateLimiter:
                 if not attempts:
                     del self._account_attempts[key]
             if username not in self._account_attempts and len(self._account_attempts) >= 10000:
-                raise GatewayError('rate_limited', '登录尝试过多，请稍后重试。')
+                raise GatewayError('rate_limited', 'Too many login attempts, please try again later.')
             attempts = self._account_attempts.setdefault(username, deque())
             if len(attempts) >= 10:
-                raise GatewayError('rate_limited', '登录尝试过多，请稍后重试。')
+                raise GatewayError('rate_limited', 'Too many login attempts, please try again later.')
             attempts.append(now)
 
     async def login_succeeded(self, username: str) -> None:

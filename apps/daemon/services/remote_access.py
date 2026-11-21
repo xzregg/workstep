@@ -91,6 +91,16 @@ def get_current_actor() -> ActorSnapshot | None:
     return _current_actor.get()
 
 
+def has_project_edit_scope(project_id: str) -> bool:
+    """Check the project grant when the current actor is project-scoped."""
+    actor = get_current_actor()
+    return (
+        actor is None
+        or actor.project_id is None
+        or (actor.project_id == project_id and actor.access_level == "edit")
+    )
+
+
 @contextmanager
 def actor_context(actor: ActorSnapshot):
     token = _current_actor.set(actor)
@@ -146,7 +156,7 @@ class UserIdentityRequired(ValueError):
 def require_user_actor() -> ActorSnapshot:
     actor = get_effective_actor()
     if actor is None or not actor.user_name.strip():
-        raise UserIdentityRequired("请先设置本地用户名")
+        raise UserIdentityRequired("Please set the local username first")
     return actor
 
 

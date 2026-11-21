@@ -140,6 +140,109 @@ def test_managed_provider_apply_is_atomic_scoped_and_idempotent(tmp_path, monkey
     assert [item["id"] for item in store.get_providers()] == ["local-1"]
 
 
+@pytest.mark.asyncio
+async def test_managed_provider_tests_survive_reload_without_changing_bundle(tmp_path, monkeypatch):
+    import threading
+    from services.remote_access import ActorSnapshot, actor_context
+
+    monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    store.set_managed_gateway_id("gateway", provider_guard=lambda _: True)
+    protocols = ["openai_responses", "openai_chat_completions"]
+    provider = {"id": "distributed", "name": "Distributed", "type": "custom",
+                "protocols": protocols, "api_key": "fixture-key", "models": ["allowed"],
+                "protocol_base_urls": dict.fromkeys(protocols, "https://api.example.test")}
+    store.apply_managed_providers("gateway", 1, [provider])
+    monkeypatch.setattr("api.provider.config_store", store)
+    fail = False
+
+    async def probe(*args, **kwargs):
+        return EngineTestResult(not fail, "probe finished", 1)
+
+    monkeypatch.setattr("api.provider.provider_service.test_connection", probe)
+    app = FastAPI()
+    app.include_router(provider_router)
+    @app.get("/health")
+    async def health():
+        return {"ok": True}
+
+    entered, release = threading.Event(), threading.Event()
+    save = store._save
+
+    def slow_save():
+        entered.set()
+        release.wait(2)
+        save()
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
+        async def badge():
+            result = await client.get("/api/provider/list")
+            return result.json()["providers"][0].get("test_success")
+
+        async def test_protocol(protocol):
+            return await client.post("/api/provider/distributed/test", json={"protocol": protocol})
+
+        assert await badge() is None
+        actor = ActorSnapshot("worker", "Worker", "device", "Device", "managed",
+                              project_id="visible", access_level="edit")
+        with actor_context(actor):
+            assert (await test_protocol(protocols[0])).status_code == 403
+        assert (await test_protocol(protocols[0])).json()["success"] is True
+        assert await badge() is None
+        monkeypatch.setattr(store, "_save", slow_save)
+        pending = asyncio.create_task(test_protocol(protocols[1]))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get("/health"), .2)).status_code == 200
+        finally:
+            release.set()
+            response = await pending
+            monkeypatch.setattr(store, "_save", save)
+        assert response.json()["test_success"] is True
+        store.invalidate()
+        assert await badge() is True
+        fail = True
+        assert (await test_protocol(protocols[1])).json()["test_success"] is False
+        store.invalidate()
+        assert await badge() is False
+        store.apply_managed_providers("gateway", 2, [{**provider, "models": ["new-model"]}])
+        assert await badge() is False
+        old_connection = store.get_provider("distributed")
+        store.apply_managed_providers("gateway", 3, [{**provider, "api_key": "new-key"}])
+        assert store.save_managed_provider_test(old_connection, protocols[1], False) is None
+        assert await badge() is None
+        assert store.get_provider("distributed")["api_key"] == "new-key"
+
+
+@pytest.mark.asyncio
+async def test_managed_model_catalog_does_not_require_a_preselected_model(tmp_path, monkeypatch):
+    import api.engine as engine_api
+
+    monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    store.set_managed_gateway_id("gateway", provider_guard=lambda _: True)
+    store.apply_managed_providers("gateway", 1, [
+        {"id": "distributed", "name": "Distributed", "type": "custom",
+         "protocols": ["openai_responses"], "api_key": "fixture-key", "models": ["allowed"],
+         "protocol_base_urls": {"openai_responses": "https://api.example.test"}},
+    ])
+    engine = CodexEngine()
+    monkeypatch.setattr(engine, "provider_config_store", lambda: store)
+    monkeypatch.setattr(engine_api, "config_store", store)
+    monkeypatch.setattr(engine_api.provider_service, "config_store", store)
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **_: None)
+    monkeypatch.setattr(engine_api, "create_engine", lambda _: engine)
+    for default in ("", "native-model"):
+        store.set_engine_default_model("codex", default)
+        result = await engine_api.list_engine_models("codex", provider_id="distributed")
+        assert result["error"] is None
+        assert [model["id"] for model in result["models"]] == ["allowed"]
+    with pytest.raises(ValueError, match='not authorized by the platform vendor'):
+        engine.resolve_provider_runtime("distributed", model="not-assigned")
+
+
 def test_managed_provider_runtime_requires_catalog_model(tmp_path, monkeypatch):
     monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
@@ -171,34 +274,106 @@ def test_managed_provider_runtime_requires_catalog_model(tmp_path, monkeypatch):
     assert store.get_assistant_defaults("task_coordinator")["provider_id"] == "managed-1"
     assert CodexEngine().resolve_provider_runtime(provider_id="managed-1",
                                                    model="model-a").provider_id == "managed-1"
-    with pytest.raises(ValueError, match="模型"):
+    with pytest.raises(ValueError, match='selected model'):
         CodexEngine().resolve_provider_runtime(provider_id="managed-1", model="model-b")
-    with pytest.raises(ValueError, match="模型"):
+    with pytest.raises(ValueError, match='selected model'):
         CodexEngine().resolve_provider_runtime(provider_id="managed-1", model=None)
-    with pytest.raises(ValueError, match="模型未获平台供应商授权"):
+    with pytest.raises(ValueError, match='The\\ selected\\ model\\ is\\ not\\ authorized\\ by\\ the\\ platform\\ vendor'):
         PydanticAIEngine.build_model(provider=store.get_provider("managed-1"),
                                      model_name="model-b")
 
 
 @pytest.mark.asyncio
-async def test_managed_provider_api_allows_local_mutations(tmp_path, monkeypatch):
+@pytest.mark.parametrize("policy_mode", ["missing", "denied", "expired"])
+async def test_managed_provider_api_allows_local_mutations(tmp_path, monkeypatch, policy_mode):
+    import main
+    from dataclasses import replace
+    from services.gateway_client.policy import verify_policy_snapshot
+    from services.remote_access import ActorSnapshot, actor_context
+    from tests.test_gateway_policy import _signed_policy
+
     monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
     store = config_module.ConfigStore()
-    store.set_managed_gateway_id("gateway", provider_guard=lambda _id: True)
+    store.set_managed_gateway_id("gateway-test", provider_guard=lambda _id: True)
+    cache = ManagedPolicyCache()
+    if policy_mode != "missing":
+        token, pem, fingerprint = _signed_policy(allow_local_providers=False)
+        cache.apply(verify_policy_snapshot(token, pem, fingerprint, "gateway-test", "device-1", "user-1"))
+        if policy_mode == "expired":
+            cache.current = replace(cache.current, expires_at=0)
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(managed_config=object(), policy_cache=cache))
     monkeypatch.setattr("api.provider.config_store", store)
     monkeypatch.setattr("api.provider.refresh_registry", lambda: None)
+    monkeypatch.setattr("api.provider.project_manager.provider_references", lambda _: [])
     monkeypatch.setattr("api.provider.provider_service.scan_cc_switch_providers", lambda: [])
     app = FastAPI()
-    app.state.gateway_client = SimpleNamespace(managed_config=object())
     app.include_router(provider_router)
+    actor = ActorSnapshot("user-1", "Alice", "device-1", "PC", "managed")
+    with actor_context(actor):
+        await _assert_local_provider_mutations(app, store)
+
+
+async def _assert_local_provider_mutations(app, store):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1") as client:
         response = await client.post("/api/provider", json={"name":"Local","type":"custom","protocols":["openai_chat_completions"],"base_url":"https://api.example.test","api_key":"local-secret"})
         assert response.status_code == 200 and response.json()["saved"]
         provider_id = response.json()["provider"]["id"]
+        response = await client.post("/api/provider", json={"id": provider_id, "name":"Updated","type":"custom","protocols":["openai_chat_completions"],"base_url":"https://api.example.test"})
+        assert response.status_code == 200 and response.json()["saved"]
+        assert store.get_provider(provider_id)["name"] == "Updated"
+        response = await client.post(f"/api/provider/{provider_id}/models/selection", json={"models": [{"id": "own-model"}]})
+        assert response.status_code == 200 and response.json()["count"] == 1
         assert (await client.post(f"/api/provider/{provider_id}/reveal")).json()["value"] == "local-secret"
         assert (await client.post("/api/provider/import/cc-switch", json={})).status_code == 200
         assert (await client.get("/api/provider/import/sources")).json() == {"sources": []}
         assert (await client.delete(f"/api/provider/{provider_id}")).status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["project", "distributed"])
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_provider_mutations_preserve_host_scope_and_distributed_records(tmp_path, monkeypatch, scope, enabled):
+    from services.remote_access import ActorSnapshot, actor_context
+
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    store.set_managed_gateway_id("gateway-test", provider_guard=lambda _id: True)
+    provider = {"id": "provider", "name": "Original", "type": "custom", "enabled": enabled,
+                "protocols": ["openai_responses"], "api_key": "fixture-secret",
+                "protocol_base_urls": {"openai_responses": "https://api.example.test"}}
+    if scope == "distributed":
+        store.apply_managed_providers("gateway-test", 1, [provider])
+    else:
+        store.save_provider(provider)
+    monkeypatch.setattr("api.provider.config_store", store)
+    app = FastAPI()
+    app.include_router(provider_router)
+    actor = ActorSnapshot("user-1", "Alice", "device-1", "PC", "managed",
+                          project_id="project-1" if scope == "project" else None)
+    requests = [
+        ("POST", "/api/provider", {**provider, "name": "Changed"}),
+        ("DELETE", "/api/provider/provider", None),
+        ("POST", "/api/provider/provider/reveal", None),
+        ("POST", "/api/provider/provider/models/selection", {"models": []}),
+        ("GET", "/api/provider/provider/models?refresh=true", None),
+        ("GET", "/api/provider/provider/models/preview", None),
+    ]
+    if scope == "project":
+        requests.extend([
+            ("POST", "/api/provider", {"name": "New"}),
+            ("GET", "/api/provider/import/sources", None),
+            ("POST", "/api/provider/import/cc-switch", {}),
+        ])
+    with actor_context(actor):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
+            if scope == "distributed":
+                listed = await client.get('/api/provider/list')
+                assert listed.json()['providers'][0]['managed'] is True
+            for method, path, body in requests:
+                response = await client.request(method, path, **({"json": body} if body is not None else {}))
+                assert response.status_code == 403, (method, path, response.text)
+    assert store.get_provider("provider")["name"] == "Original"
+    assert store.get_provider("provider")["api_key"] == "fixture-secret"
 
 
 @pytest.mark.asyncio
@@ -381,14 +556,14 @@ def test_remote_actor_uses_only_providers_installed_and_authorized_on_device(tmp
         assert [provider['id'] for provider in store.get_providers()] == ['owner-only']
         assert store.get_provider('owner-only') is not None
         assert CodexEngine().resolve_provider_runtime(model='model-a').provider_id == 'owner-only'
-        with pytest.raises(ValueError, match='供应商不存在'):
+        with pytest.raises(ValueError, match='^Provider not found$'):
             CodexEngine().resolve_provider_runtime(provider_id='not-installed', model='model-a')
-        with pytest.raises(ValueError, match='模型未获'):
+        with pytest.raises(ValueError, match='selected model is not authorized'):
             CodexEngine().resolve_provider_runtime(provider_id='owner-only', model='not-downloaded')
     store.set_managed_gateway_id('gateway', provider_guard=lambda _id: False)
     with actor_context(actor):
         assert store.get_providers() == []
-        with pytest.raises(ValueError, match='供应商不存在'):
+        with pytest.raises(ValueError, match='^Provider not found$'):
             CodexEngine().resolve_provider_runtime(provider_id='owner-only', model='model-a')
 
 
@@ -477,7 +652,6 @@ async def test_local_provider_catalog_and_execution_are_independent_of_gateway_m
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
         with actor_context(actor):
             assert [item['id'] for item in (await client.get("/api/provider/list")).json()["providers"]] == ['local']
-            assert (await client.delete("/api/provider/local")).status_code == 403
             CodexEngine().require_native_credentials_allowed()
             for revision, allowed in ((2, True), (3, False)):
                 token, pem, fingerprint = _signed_policy(policy_revision=revision, allow_local_providers=allowed)
@@ -534,8 +708,31 @@ async def test_local_provider_cleanup_preserves_authorization_and_references(tmp
     with actor_context(actor):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
             response = await client.delete("/api/provider/local")
-    assert response.status_code == (200 if mode == "denied" else 400 if mode == "referenced" else 403), response.text
-    assert bool(store.get_providers(include_unmanaged=True)) == (mode != "denied")
+    allowed = mode in {"denied", "expired", "other-user"}
+    assert response.status_code == (200 if allowed else 400 if mode == "referenced" else 403), response.text
+    assert bool(store.get_providers(include_unmanaged=True)) == (not allowed)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("engine_reference,project_reference", [(True, False), (False, True), (True, True)])
+async def test_disabled_local_provider_can_be_deleted_with_references(tmp_path, monkeypatch, engine_reference, project_reference):
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    store.save_provider({"id": "local", "name": "Local", "type": "custom", "enabled": False})
+    store.set_engine_provider("codex", "local" if engine_reference else "")
+    store.set_provider_models("local", [{"id": "model"}], "2026-11-18T00:00:00Z", "openai_responses")
+    monkeypatch.setattr("api.provider.config_store", store)
+    monkeypatch.setattr("api.provider.refresh_registry", lambda: None)
+    monkeypatch.setattr("api.provider.project_manager.provider_references", lambda _: (
+        [{"project_name": "Demo", "location": "step"}] if project_reference else []))
+    app = FastAPI()
+    app.include_router(provider_router)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
+        response = await client.delete("/api/provider/local")
+    assert response.status_code == 200, response.text
+    assert response.json() == {"deleted": True}
+    assert store.get_provider("local") is None
+    assert not store.get_provider_models("local", "openai_responses").get("models")
 
 
 @pytest.mark.asyncio

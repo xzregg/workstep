@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { GrantSubjectPicker } from './GrantSubjectPicker'
 import { useState } from 'react'
@@ -54,7 +55,7 @@ export function ProjectPermissionDialog({ catalog, sets, csrf, assignment, prese
     setBusy(true); setError('')
     try {
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('管理员身份验证失败，请重试。')
+      if (!step.ok) throw new Error('Administrator authentication failed, please try again.')
       for (const subject of subjects) for (const project of projects) {
         const pair = JSON.stringify([subject.id, project.id])
         if (completed.includes(pair)) continue
@@ -65,7 +66,7 @@ export function ProjectPermissionDialog({ catalog, sets, csrf, assignment, prese
         setCompleted(current => [...current, pair])
       }
       onSaved()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '保存项目权限失败，请重试。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to save project permissions. Please try again.') }
     finally { setBusy(false) }
   }
   return <>
@@ -77,7 +78,7 @@ export function ProjectPermissionDialog({ catalog, sets, csrf, assignment, prese
           {busy ? <><span className="gateway-spinner" aria-hidden="true" /> 保存中…</> : '保存权限'}</button>
         {(!!completed.length || !!error) && <div className="gateway-project-permission-save-status">
           {!!completed.length && <p role="status">已保存 {completed.length}/{subjects.length * projects.length} 项授权，再次保存仅重试剩余授权。</p>}
-          {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+          {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
         </div>}</>}>
 
       <div className="gateway-project-permission-context">

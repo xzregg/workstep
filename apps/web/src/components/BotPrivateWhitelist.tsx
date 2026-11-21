@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { channelBotApi, type PrivateWhitelist } from '../api/channelBots'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import './BotPrivateWhitelist.css'
@@ -47,7 +47,7 @@ export default function BotPrivateWhitelist({ botId, scope = 'private' }: { botI
         <Button variant="ghost" loading={busy} disabled={busy} onClick={() => void load(false)}>{t(group ? 'channelBot.groupWhitelistRefresh' : 'channelBot.whitelistRefresh')}</Button>
         <input className="bot-private-whitelist-search" type="search" value={search} placeholder={t(group ? 'channelBot.groupWhitelistSearch' : 'channelBot.whitelistSearch')} aria-label={t(group ? 'channelBot.groupWhitelistSearch' : 'channelBot.whitelistSearch')} onInput={event => setSearch(event.currentTarget.value)} />
         <div className="bot-private-whitelist-count" role="status">{t(group ? 'channelBot.groupWhitelistCount' : 'channelBot.whitelistCount', { selected: selected.length, total: state?.candidates.length || 0 })}</div>
-        {error && <p role="alert">{error}</p>}
+        {error && <p role="alert">{localizeErrorDisplay(error)}</p>}
         {state && !state.candidates.length && <p>{t(group ? 'channelBot.groupWhitelistEmpty' : 'channelBot.whitelistEmpty')}</p>}
         {state && state.candidates.length > 0 && !visibleUsers.length && <p>{t(group ? 'channelBot.groupWhitelistNoMatch' : 'channelBot.whitelistNoMatch')}</p>}
         <div className="bot-private-whitelist-users">{visibleUsers.map(user => <label className="bot-private-whitelist-user" key={user.sender_id}>

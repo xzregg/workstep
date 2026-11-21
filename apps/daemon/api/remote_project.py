@@ -135,7 +135,7 @@ async def remote_access_status(request: Request):
 async def unlock_remote_access(req: RemoteAccessUnlockRequest, request: Request):
     ok = await asyncio.to_thread(remote_access_service.verify_access_password, req.password)
     if not ok:
-        raise HTTPException(status_code=401, detail="访问密钥不正确")
+        raise HTTPException(status_code=401, detail="Access key is incorrect")
     token = await asyncio.to_thread(remote_access_service.issue_access_token)
     response = Response(
         content=json.dumps({"authorized": True}),
@@ -187,7 +187,7 @@ async def add_remote_project(req: AddRemoteProjectRequest):
     except (ValueError, PermissionError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"连接远程项目失败：{exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Failed to connect to remote project: {exc}") from exc
 
 
 @router.delete("/{project_id}")

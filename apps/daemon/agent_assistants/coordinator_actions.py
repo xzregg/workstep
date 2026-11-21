@@ -141,9 +141,9 @@ class CoordinatorActionService:
             try:
                 round_number = int(raw_round)
             except (TypeError, ValueError):
-                raise ValueError(f"非法产物轮次: {raw_step}={raw_round}")
+                raise ValueError(f"Invalid artifact round: {raw_step}={raw_round}")
             if round_number < 1:
-                raise ValueError(f"非法产物轮次: {raw_step}={raw_round}")
+                raise ValueError(f"Invalid artifact round: {raw_step}={raw_round}")
             normalized[step_key] = round_number
         return normalized
 
@@ -253,7 +253,7 @@ class CoordinatorActionService:
     def _execute_create_workflow_action_sync(project, task_id: str, payload: dict) -> dict:
         task = Task.get_by_id(task_id)
         if not task.workflow_id:
-            raise ValueError("任务没有关联流程")
+            raise ValueError("Task has no associated process")
         return create_workflow_action(project, task.workflow_id, payload)
 
     def _execute_supplement(self, project_id, task_id, proposal_id, payload):

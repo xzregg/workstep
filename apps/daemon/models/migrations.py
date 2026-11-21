@@ -50,6 +50,7 @@ _LEGACY_MALFORMED_INDEXES = (
 )
 
 _ADDITIVE_COLUMNS = {
+    "workflows": {"debug_source_id": "TEXT"},
     "notification_hooks": {
         "markdown_template": "TEXT",
     },
@@ -105,6 +106,7 @@ _ADDITIVE_COLUMNS = {
         "reviewer_device_name": "TEXT",
     },
     "chat_sessions": {
+        "session_provider": "TEXT",
         "thinking_effort": "TEXT",
         "service_tier": "TEXT",
         "execution_config_revision": "INTEGER NOT NULL DEFAULT 0",
@@ -122,7 +124,9 @@ _ADDITIVE_COLUMNS = {
     },
     "gen_sessions": {
         "vision_model": "TEXT",
+        "session_provider": "TEXT",
     },
+    "prototype_sessions": {"session_provider": "TEXT"},
     "schedules": {
         "target_session_id": "TEXT",
         "idempotency_key": "TEXT",
@@ -137,7 +141,10 @@ _ADDITIVE_COLUMNS = {
         "execution_scope": "TEXT NOT NULL DEFAULT 'main'",
         "schedule_run_id": "TEXT",
     },
-    "coordinator_sessions": {"context_reset_sequence": "INTEGER NOT NULL DEFAULT 0"},
+    "coordinator_sessions": {
+        "context_reset_sequence": "INTEGER NOT NULL DEFAULT 0",
+        "session_provider": "TEXT",
+    },
     "tasks": {
         "status": "TEXT NOT NULL DEFAULT 'ready'",
         "status_reason": "TEXT",

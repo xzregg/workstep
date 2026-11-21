@@ -37,7 +37,7 @@ class HookDraft(BaseSchema):
     @classmethod
     def required_text(cls, value):
         if not value.strip():
-            raise ValueError('不能为空')
+            raise ValueError('Cannot be empty')
         return value.strip()
 
 
@@ -48,7 +48,7 @@ class SaveHooks(BaseSchema):
 def check_edit(project_id):
     actor = get_current_actor()
     if actor and actor.project_id is not None and (actor.project_id != project_id or actor.access_level != 'edit'):
-        raise HTTPException(403, '需要项目编辑权限')
+        raise HTTPException(403, 'Project editing permissions are required')
 
 
 async def configuration(project_id, workflow_id):
@@ -84,7 +84,7 @@ async def save_hooks(workflow_id: str, body: SaveHooks, project_id: str = Query(
     check_edit(project_id)
     ids = [d.id for d in body.hooks if d.id]
     if len(ids) != len(set(ids)):
-        raise HTTPException(422, '钩子 ID 重复')
+        raise HTTPException(422, 'Duplicate hook ID')
     actor = get_current_actor()
     await invoke_hook(hook_service.save(project_id, workflow_id, body.hooks,
                             actor.actor_id if actor and actor.source == 'managed' else None))
@@ -95,45 +95,45 @@ async def save_hooks(workflow_id: str, body: SaveHooks, project_id: str = Query(
 async def trigger_hook(device_id: str, hook_id: str, request: Request):
     from main import task_service, workflow_runtime, gateway_client
     if not HOOK_PATH.fullmatch(request.url.path):
-        raise HTTPException(404, '入口不存在')
+        raise HTTPException(404, 'Entry does not exist')
     identity = await asyncio.to_thread(config_store.get_device_identity)
     if device_id != identity['device_id']:
-        raise HTTPException(404, '设备不存在')
+        raise HTTPException(404, 'Device does not exist')
     items = list(request.query_params.multi_items())
     if any(k not in {'token', 'step_key', 'title', 'creator'} for k, _ in items) or len({k for k, _ in items}) != len(items):
-        raise HTTPException(422, '不支持的参数或重复参数')
+        raise HTTPException(422, 'Unsupported or duplicate parameter')
     project_id, hook, workflow = await invoke_hook(hook_service.resolve(hook_id))
     token = request.query_params.get('token', '')
     if not token or not hmac.compare_digest(token.encode(), hook['token'].encode()):
-        raise HTTPException(401, 'Token 无效')
+        raise HTTPException(401, 'Invalid token')
     if not hook['enabled']:
-        raise HTTPException(403, '钩子已停用')
+        raise HTTPException(403, 'Hook disabled')
     title = request.query_params.get('title', '').strip() or hook['default_title']
     creator = request.query_params.get('creator', '').strip() or hook['default_creator'].strip() or '钩子触发'
     if len(title) > 500 or len(creator) > 256:
-        raise HTTPException(422, '标题或创建者过长')
+        raise HTTPException(422, 'Title or creator is too long')
     step_key = request.query_params.get('step_key', '').strip() or None
     steps = WorkflowDefinition.load(workflow['steps']).compile().steps
     if not steps or (step_key and step_key not in {s['key'] for s in steps}):
-        raise HTTPException(422, '流程为空或起始阶段不存在')
+        raise HTTPException(422, 'The process is empty or the starting stage does not exist')
     media = request.headers.get('content-type', 'text/plain').split(';')[0].strip().lower()
     if media not in {'application/json', 'text/plain', 'text/markdown'}:
-        raise HTTPException(415, '仅支持 JSON 或 UTF-8 文本')
+        raise HTTPException(415, 'Only JSON or UTF-8 text is supported')
     chunks, size = [], 0
     async for chunk in request.stream():
         size += len(chunk)
         if size > MAX_BODY:
-            raise HTTPException(413, '正文超过 1 MiB')
+            raise HTTPException(413, 'Body exceeds 1 MiB')
         chunks.append(chunk)
     try:
         content = b''.join(chunks).decode('utf-8')
     except UnicodeDecodeError as exc:
-        raise HTTPException(422, '正文必须为 UTF-8') from exc
+        raise HTTPException(422, 'The main text must be UTF-8') from exc
     if media == 'application/json':
         fence = '`' * max(3, max((len(m[0]) for m in re.finditer(r'`+', content)), default=0) + 1)
         content = f'{fence}json\n{content}\n{fence}'
     if task_service is None:
-        raise HTTPException(503, '任务服务尚未就绪')
+        raise HTTPException(503, 'Task service is not ready')
     fields = {'creator_name': creator, 'creator_device_id': device_id,
               'creator_device_name': identity['device_name']}
     # Hook ownership is authenticated at configuration time. The URL display
@@ -154,7 +154,7 @@ async def trigger_hook(device_id: str, hook_id: str, request: Request):
             if hook['execution_mode'] == 'immediate':
                 try:
                     if workflow_runtime is None:
-                        raise RuntimeError('执行服务尚未就绪')
+                        raise RuntimeError('Execution service is not yet ready')
                     await workflow_runtime.start(project_id, result.task['id'], '', source='hook')
                 except Exception:
                     run_error = '任务已创建，但自动运行失败，请在任务详情重试'

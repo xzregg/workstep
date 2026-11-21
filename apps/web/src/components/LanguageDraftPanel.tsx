@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { languagesApi } from '../api/languages'
 import { ApiError } from '../api/transport'
-import { useI18n, useLocaleStore, createLanguageT } from '../i18n'
+import { useI18n, useLocaleStore, createLanguageT, localizeErrorDisplay } from '../i18n'
 import { languageCatalog, validateLanguage, type LanguageDocument } from '../i18n/languagePack'
 import Button from './Button'
 import Input from './Input'
@@ -70,7 +70,7 @@ export default function LanguageDraftPanel({workspacePath, running}: {workspaceP
   <p className="skin-studio-note">{t('languages.hint')}</p>
   <label>{t('languages.path')}<Input aria-label={t('languages.path')} value={input} disabled={busy || running} onChange={event => setInput(event.target.value)} /></label>
   <Button size="sm" disabled={!input.trim() || busy || running} loading={busy} onClick={() => void run(async () => { if (path === input.trim()) await load(); else { setDocument(null); setPath(input.trim()) } })}>{t('languages.read')}</Button>
-  {error && <p className="skin-studio-error" role="alert">{error}</p>}
+  {error && <p className="skin-studio-error" role="alert">{localizeErrorDisplay(error)}</p>}
   {!document ? <p className="skin-studio-note">{t('languages.waiting')}</p> : <>
    <h4>{document.manifest.native_name} · {document.manifest.locale}</h4>
    <p>{document.manifest.name} · {document.manifest.version}</p>

@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
@@ -50,14 +51,14 @@ export function ProjectInvitationsPage() {
         body: JSON.stringify({ access_level: accessLevel, expires_at: expiresAt ? new Date(expiresAt).toISOString() : null }),
       }))
       setCreated(result); setRevision(value => value + 1)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '生成邀请失败，请重试。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to generate invitation, please try again.') }
     finally { setBusy(false) }
   }
 
   async function copy() {
     if (!created) return
     try { await navigator.clipboard.writeText(created.url); setCopied(true) }
-    catch { setError('复制失败，请手动选择链接复制。') }
+    catch { setError('Copy failed, please manually select the link to copy.') }
   }
 
   return <section className="gateway-admin-page gateway-project-invitations">
@@ -86,7 +87,7 @@ export function ProjectInvitationsPage() {
       {tab === 'share' && <><h3>分享我的项目</h3>
       <p>设备主人可分享已发布项目；对方通过网关邀请链接登录并添加，无需管理员逐个授权。</p></>}
       {loading && <p role="status"><span className="gateway-spinner" /> 正在加载项目…</p>}
-      {loadError && <p role="alert">{loadError} <button onClick={() => setLoadRevision(v => v + 1)}>重试加载</button></p>}
+      {loadError && <p role="alert">{localizeGatewayError(loadError)} <button onClick={() => setLoadRevision(v => v + 1)}>重试加载</button></p>}
       {!loading && !loadError && !projects.length && <p>你没有可分享的已发布项目。请在自己的 WorkStep「项目配置 → 分享 → 访问授权」中发布项目；没有设备也可通过“添加项目”标签加入别人分享的项目。</p>}
       {!!projects.length && <>
         {tab === 'share' && <>
@@ -103,7 +104,7 @@ export function ProjectInvitationsPage() {
           <input id="invitation-expiry" type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} />
           <p>过期时间限制添加项目的时间；已加入用户的访问持续到授权被撤销。可编辑权限仍受平台任务创建和模型权限约束。</p>
           {selected && !selected.invitations_enabled && <p role="alert">管理员已禁止通过邀请加入这个项目。</p>}
-          {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+          {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
           <button type="submit" disabled={busy || loading || !selected?.invitations_enabled}>
             {busy && <span className="gateway-spinner" />}{busy ? '正在生成…' : '生成项目邀请'}
           </button>

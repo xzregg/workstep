@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
@@ -35,11 +36,11 @@ export function AdminProviderTestPanel({ providerId, providerName, csrf, onClose
     setLoading(true); setLoadError('')
     void fetch(`/api/admin/providers/${encodeURIComponent(providerId)}/test-targets?${params}`,
       { credentials: 'same-origin', signal: controller.signal }).then(async response => {
-      if (!response.ok) throw new Error('在线 PC 加载失败。')
+      if (!response.ok) throw new Error('Online PC load failed.')
       const data = await response.json()
       if (!controller.signal.aborted) { setTargets(data.devices ?? []); setTotal(data.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setLoadError('在线 PC 加载失败。')
+      if (reason?.name !== 'AbortError') setLoadError('Online PC load failed.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [providerId, search, page, revision])
@@ -49,17 +50,17 @@ export function AdminProviderTestPanel({ providerId, providerName, csrf, onClose
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('密码验证失败。')
+      if (!step.ok) throw new Error('Password verification failed.')
       const response = await fetch(`/api/admin/providers/${encodeURIComponent(providerId)}/test`, {
         method: 'POST', credentials: 'same-origin', headers,
         body: JSON.stringify({ device_id: deviceId }),
       })
-      if (!response.ok) throw new Error(response.status === 503 ? 'PC 已离线，请刷新目标列表。'
-        : response.status === 504 ? '测试超时，请重试。' : '测试命令发送失败。')
+      if (!response.ok) throw new Error(response.status === 503 ? 'PC is offline, please refresh the target list.'
+        : response.status === 504 ? 'Test timed out, please retry.' : 'Failed to send test command.')
       const data = await response.json()
       setResult(data as TestResult)
       setPassword('')
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '测试命令发送失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to send test command.') }
     finally { setBusy(false) }
   }
 
@@ -88,10 +89,10 @@ export function AdminProviderTestPanel({ providerId, providerName, csrf, onClose
           setDeviceId(''); setPage(value => value + 1)
         }}>下一页</button></div>
       {loading && <p role="status">正在加载在线 PC…</p>}
-      {loadError && <p role="alert" className="gateway-auth-error">{loadError} <button type="button"
+      {loadError && <p role="alert" className="gateway-auth-error">{localizeGatewayError(loadError)} <button type="button"
         onClick={() => setRevision(value => value + 1)}>重试加载</button></p>}
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在测试连接…</p>}
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
       {result && <p role="status">{result.status === 'succeeded' ? '连接成功'
         : errorLabels[result.error_code ?? 'connection_failed']} · 耗时 {result.duration_ms} 毫秒</p>}
       {result && <button type="button" onClick={onClose}>关闭</button>}

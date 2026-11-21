@@ -1,7 +1,7 @@
 import { Component, createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useOverlay } from '../hooks/useOverlay'
 import { useProjectStore } from '../stores/projectStore'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
@@ -108,12 +108,12 @@ export default function SkinWorkspaceFrame({ children, onOpenSettings, loadModul
   useSkinActions({
     navigate: { run: args => {
       const path = String(args?.path ?? '')
-      if (!/^\/(?:tasks|chat|canvas|statistics|schedules|git|appearance)(?:\?|$)/.test(path)) throw new Error('页面入口无效')
+      if (!/^\/(?:tasks|chat|canvas|statistics|schedules|git|appearance)(?:\?|$)/.test(path)) throw new Error('Invalid page entry')
       navigate(path)
     } },
     'settings.open': { run: args => {
       const section = String(args?.section ?? 'providers')
-      if (!['engines', 'providers', 'pricing', 'assistants', 'templates', 'roles', 'channels', 'remote', 'concurrency', 'git', 'appearance', 'system', 'feedback', 'sandbox'].includes(section)) throw new Error('设置入口无效')
+      if (!['engines', 'providers', 'pricing', 'assistants', 'templates', 'roles', 'channels', 'remote', 'concurrency', 'git', 'appearance', 'system', 'feedback', 'sandbox'].includes(section)) throw new Error('Invalid entry point')
       if (bound) { navigate('/appearance'); return }
       onOpenSettings(section as SettingsSection)
     }, enabled: () => !bound },
@@ -155,7 +155,7 @@ export default function SkinWorkspaceFrame({ children, onOpenSettings, loadModul
       <div className="skin-workspace-top-area">{side('top')}
         {skin.script && !allowed && <div className="skin-extension-status" data-skin-recovery><span>{t('skinExtensions.codeDisabled')}</span><Button size="sm" onClick={() => onOpenSettings('appearance')}>{t('skinExtensions.scriptSettings')}</Button></div>}
         {loading && <div className="skin-extension-status" role="status"><Icon name="loader-circle" className="skin-extension-spinner" />{t('skinExtensions.loading')}</div>}
-        {error && <div className="skin-extension-status" role="alert" data-skin-recovery><span>{t('skinExtensions.failed')} {error}</span><Button size="sm" onClick={() => setError('')}>{t('common.close')}</Button></div>}
+        {error && <div className="skin-extension-status" role="alert" data-skin-recovery><span>{t('skinExtensions.failed')} {localizeErrorDisplay(error)}</span><Button size="sm" onClick={() => setError('')}>{t('common.close')}</Button></div>}
       </div>
       {side('left')}{children}{side('right')}{side('bottom')}
     </div>

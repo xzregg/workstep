@@ -39,6 +39,7 @@ from sqlalchemy import select
 
 from workstep_gateway_protocol import (FrameType, ProxyFrame,
                                        WebSocketMessageAssembler, websocket_payloads)
+from workstep_gateway_protocol.voice_assets import is_voice_worker
 
 from gateway.models import Device, DeviceConnection, DeviceProjectSkillState, DeviceProviderApplication, PlatformProject, User, UserDevice
 
@@ -832,8 +833,12 @@ class DataConnection:
                         elif parsed.netloc == remote_host:
                             value = call.workspace_path.rstrip('/') + parsed.path + ('?' + parsed.query if parsed.query else '')
                     response.headers.append(pair[0], value)
+            content_type = next((value for key, value in response.headers.extra if key.lower() == 'content-type'), '')
+            script_policy = ("script-src 'self' 'wasm-unsafe-eval'"
+                             if call.operation in ('GET', 'HEAD') and is_voice_worker(call.target.path, status, content_type)
+                             else "script-src 'self' 'unsafe-inline'")
             response.headers["Content-Security-Policy"] = "; ".join((
-                "default-src 'self'", "script-src 'self' 'unsafe-inline'",
+                "default-src 'self'", script_policy,
                 "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https:",
                 "font-src 'self' data:", f"connect-src 'self' {websocket_scheme}://{remote_host}",
                 "object-src 'none'", "base-uri 'self'", "form-action 'self'",

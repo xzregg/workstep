@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { passwordRequirements, validPortalAccount } from './portalAccount'
@@ -24,11 +25,11 @@ export function UserInvitationPage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token }), signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error([410, 422].includes(response.status) ? '邀请链接已失效，请联系管理员重新获取。' : '邀请链接加载失败，请重试。')
+      if (!response.ok) throw new Error([410, 422].includes(response.status) ? 'The invitation link has expired. Please contact the administrator to obtain a new one.' : 'Failed to load the invitation link. Please try again.')
       const result = await response.json()
       if (!controller.signal.aborted) { setDisplayName(result.display_name); setUsername(result.username ?? '') }
     }).catch(reason => {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '邀请链接加载失败。')
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Failed to load the invitation link.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [token, revision])
@@ -43,19 +44,19 @@ export function UserInvitationPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, username, password }),
       })
-      if (!response.ok) throw new Error(response.status === 409 ? '登录名已被使用，请换一个。'
-        : response.status === 410 ? '邀请链接已失效，请联系管理员重新获取。'
-        : response.status === 422 ? '请检查登录名和密码是否符合要求。' : '设置失败，请稍后重试。')
+      if (!response.ok) throw new Error(response.status === 409 ? 'Login name is already in use, please choose another.'
+        : response.status === 410 ? 'The invitation link has expired. Please contact the administrator to obtain a new one.'
+        : response.status === 422 ? 'Please check that the login name and password meet the requirements.' : 'Setup failed, please try again later.')
       const result = await response.json()
       setDone(result.status); setSignedIn(result.signed_in === true); setPassword(''); setConfirmation('')
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '设置失败，请重试。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Setup failed, please try again.') }
     finally { setBusy(false) }
   }
 
   return <section className="gateway-auth-card">
     <h2>设置登录账号</h2>
     <AdminListStatus loading={loading} label="正在检查邀请链接…" />
-    {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
     {!loading && !displayName && <button type="button" onClick={() => setRevision(value => value + 1)}>重试</button>}
     {done ? <><p role="status">{done === 'pending' ? '账号设置成功，请等待管理员审核。' : signedIn ? '账号设置成功并已登录，邀请链接已失效。' : '账号设置成功，邀请链接已失效。'}</p>
       <a href={signedIn ? '/' : '/auth'} className="gateway-action-link">{signedIn ? '进入工作台' : '前往登录'}</a></> : !loading && displayName && <>

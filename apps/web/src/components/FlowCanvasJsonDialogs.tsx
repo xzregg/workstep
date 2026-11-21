@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import Button from './Button'
 import ResizablePanel from './ResizablePanel'
 import Textarea from './Textarea'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { copyText } from '../utils/clipboard'
 import './FlowCanvasJsonDialogs.css'
 
@@ -81,7 +81,7 @@ export default function FlowCanvasJsonDialogs({
               <Textarea className="flow-json-editor" value={importText}
                 onChange={(event) => { setImportText(event.target.value); setImportError('') }}
                 placeholder={t('flow.importPlaceholder')} spellCheck={false} />
-              {importError && <p className="flow-json-error" role="alert">{importError}</p>}
+              {importError && <p className="flow-json-error" role="alert">{localizeErrorDisplay(importError)}</p>}
             </div>
             <div className="modal-footer">
               <Button variant="ghost" onClick={onCloseImport}>{t('common.cancel')}</Button>

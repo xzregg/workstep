@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { connectorApi, openConnectorSettings, type AvailableConnector } from '../../api/connectors'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import ResponsivePopover from '../ResponsivePopover'
 import Icon from '../Icon'
 import './Connectors.css'
@@ -37,7 +37,7 @@ export default function ConnectorPicker({ projectId, sessionId, engineId, initia
       <label className="connector-search"><Icon name="search" size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('connectors.search')} aria-label={t('connectors.search')} /></label>
       <div className="connector-picker-list">
         {loading && <span className="connector-loading"><span className="task-status-spinner" />{t('connectors.loading')}</span>}
-        {error && <p className="connector-error" role="alert">{error}</p>}
+        {error && <p className="connector-error" role="alert">{localizeErrorDisplay(error)}</p>}
         {!loading && !items.length && <p className="connector-muted">{t('connectors.empty')}</p>}
         {items.filter(item => item.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(item => <div className="connector-picker-row" key={item.id}>
           <span className="connector-glyph"><Icon name={item.kind === 'cli' ? 'terminal' : 'plug'} size={20} /></span>

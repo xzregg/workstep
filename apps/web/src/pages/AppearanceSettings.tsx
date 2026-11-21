@@ -1,6 +1,6 @@
 import SettingsHelpButton from '../components/SettingsHelpButton'
 import { useEffect, useState } from 'react'
-import { useI18n, useLocaleStore } from '../i18n'
+import { useI18n, useLocaleStore, localizeErrorDisplay } from '../i18n'
 import Select from '../components/Select'
 import { loadFontFamilyPreference, currentFontFamilyPreference, saveFontFamilyPreference, type FontFamilyPreference } from '../utils/fontFamilyPreference'
 import SegmentedControl from '../components/SegmentedControl'
@@ -71,7 +71,7 @@ export default function AppearanceSettings() {
             {installed.map(item => <option key={item.manifest.id} value={'pack:' + item.manifest.id}>{item.manifest.native_name} · {item.manifest.name}</option>)}
             {language && !installed.some(item => item.manifest.id === language.manifest.id) && <option value={'pack:' + language.manifest.id}>{language.manifest.native_name}</option>}
           </Select>
-          {languageError && <p role="alert">{languageError}</p>}
+          {languageError && <p role="alert">{localizeErrorDisplay(languageError)}</p>}
         </div>
       </div>
     </section>

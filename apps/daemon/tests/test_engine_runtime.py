@@ -229,7 +229,7 @@ async def test_tampered_download_never_runs_installer(runtime_client, monkeypatc
     await client.post('/api/engine/codex_sdk/runtime/operation', json={'version': '0.150.0'})
     state = await wait_finished(client)
     assert state['status'] == 'failed'
-    assert '校验失败' in state['message']
+    assert 'verification failed' in state['message']
 
 
 async def test_interrupted_operation_survives_restart(runtime_client):

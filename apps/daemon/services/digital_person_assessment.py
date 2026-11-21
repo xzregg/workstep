@@ -41,6 +41,16 @@ def pending(project_ids, excluded=(), *, baseline, previous='', limit=100):
             (baseline,*args,max(1,min(limit,1000))))]
 
 
+def defer_unavailable(rows):
+    """Leave unreadable evidence pending, allowing other sources past the batch limit."""
+    with index.connect() as db:
+        ready_at = time.time() + 300
+        for row in rows:
+            db.execute("""UPDATE memories SET pending_ready_at=MAX(pending_ready_at,?)
+                WHERE id=? AND source_hash=? AND memory_status='pending'""",
+                (ready_at, row['id'], row['source_hash']))
+
+
 def claim(rows):
     if not rows:
         return True
@@ -76,10 +86,10 @@ def commit(rows, memories, run_id, existing_ids=()):
         boundary=reflection.cutoff(db)
         for row in rows:
             if not reflection.eligible(row,boundary):
-                raise ValueError('历史处理已跳过，未提交旧结果')
+                raise ValueError('Historical processing skipped; old results not submitted')
             actual=db.execute('SELECT * FROM memories WHERE id=? AND forgotten=0',(row['id'],)).fetchone()
             if actual is None or reflection.version(dict(actual))!=reflection.version(row):
-                raise ValueError('思考期间来源已变化，未提交旧结果')
+                raise ValueError('Source changed during thinking, old result not submitted')
         stored=knowledge.store_extraction({'memories':memories},
             [r for r in rows if r.get('needs_knowledge',True)],existing_ids,
             report=True,strict=True,connection=db)
@@ -105,7 +115,7 @@ def skip_before(value, project_ids=()):
     """User-requested cutoff, no source deletion and no model invocation."""
     parsed=datetime.fromisoformat(value)
     if parsed.tzinfo is None:
-        raise ValueError('历史截止时间必须包含时区')
+        raise ValueError('The historical deadline must include the time zone')
     knowledge.ensure_schema()
     with index.connect() as db:
         reflection._schema(db)
@@ -149,7 +159,7 @@ def skip_before(value, project_ids=()):
 
 
 def instruction(profile):
-    from services.digital_person_affect import STYLES
+    from services.digital_person_affect import STYLES, REVIEW_RULES
     from services.memory_policy import RULES
     from services.digital_person import profile_documents
     persona = profile_documents(profile)
@@ -173,14 +183,23 @@ def instruction(profile):
             'For experience use outcome=reported for a user-described result, observed for supplied verification, or failed for an evidenced failure. '
             'Include all source IDs supporting the situation, action and result, and keep each result within those sources. '
             'Step 3: Assess affinity changes from relationships.unsettled, grouping source messages by their actual speaker. '
-            'Return affinity_delta and a brief reason for meaningful evidence of trust, repair or disrespect. Ordinary instructions and reasonable corrections usually have delta=0. '
+            +REVIEW_RULES+' '
             'The program applies affinity_delta to the stored total and computes social-contact frequency. '
             'Step 4: Review the supplied turns to classify task progress as completed, running, waiting for user input, stopped or uncertain. '
             'Distinguish message completion from task completion, including conversations with repeated requests to continue. '
+            'For archived_source=true, preserve useful knowledge but choose silent for that conversation and leave its unfinished work without follow-up. '
+            'Archiving is not task completion: a useful task memory can retain both unfinished status and the archived conversation state, without inventing cancellation or success. '
+            'Such knowledge remains available when the user explicitly brings it up later; retention is not a reminder or permission to resume work. '
             'For evidenced unfinished work awaiting user confirmation, missing information or a necessary user operation, consider a kind=work reminder independent of affinity. '
             'Name the task, the remaining blocker and the specific user action, citing this batch\'s source IDs. Keep agent-executable work with the execution engine. '
             'Choose silent for running, cancelled, resolved or explicitly paused work, uncertain task status, and unchanged requests already covered by previous_notifications. '
-            'Delegation completion delivery is handled by the program. Other work notices require a verified new result, blocker or pending user action. '
+            'Handle entries in delegations using their goal and the message matching message_id, found in conversations, conversation or delegation_messages. '
+            'Return delegation_actions with one object per entry: {"id":"provided ID","action":"continue","instruction":"specific next work"} '
+            'only when there is concrete progress and a specific remaining step within the original goal, '
+            '{"id":"provided ID","action":"complete","summary":"result for the user"} when verified complete, '
+            'or {"id":"provided ID","action":"needs_user","summary":"specific blocker or question"} if approval, missing information or no material progress. '
+            'For pending approval report it without approving. Never use tools to continue these delegations, and do not also report these actions as a general notification. '
+            'Other work notices require a verified new result, blocker or pending user action. '
             'For natural social contact, use kind=social and follow companion.contact_policy and companion.contact_timing. '
             'Before notifying, compare clock, last_contact_attempt_at, last_user_message_at, and previous_notifications attempted_at/notified_at/status. '
             'Distinguish attempted delivery, confirmed delivery and an actual user response; missing timestamps remain unknown. '
@@ -190,7 +209,8 @@ def instruction(profile):
             'Wrap the complete final JSON object in exactly one <json>...</json> pair; all explanations belong inside JSON string fields. '
             'Example: <json>{"decision":"silent","summary":"Memory assessment completed","source_ids":[],"memories":[]}</json>. '
             'origin_session_id identifies the source conversation. Preserve the chronological meaning of repeated messages. '
-            'For historical_batch or memory_only, return decision=silent and limit the result to memory processing. '
+            'For historical_batch or memory_only, return decision=silent for general notifications. '
+            'Current items in delegations still require their own decisions. '
             'Result contract: {"decision":"silent|notify","kind":"work|social","summary":"brief internal outcome when silent; actual message text when notifying","source_ids":["source ID from this batch"]}. '
             'For top-level source_ids use conversation message IDs; exact memory_ids/read_ids from this batch are also accepted and resolved to their messages. Use only IDs supplied in this batch. '
             'Optional memories: [{summary,kind:event|preference|experience|fact,outcome:stated|planned|reported|observed|failed|unknown,source_ids:[IDs from conversation.memory_ids],'

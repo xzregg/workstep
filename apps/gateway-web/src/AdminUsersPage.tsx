@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { AdminSessionStatus } from './AdminSessionStatus'
 import { AdminListStatus } from './AdminListStatus'
@@ -58,11 +59,11 @@ export function AdminUsersPage() {
     void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
         if (response.status === 401) { navigate('/auth?next=%2Fadmin%2Fusers', { replace: true }); return }
-        if (!response.ok) throw new Error('登录状态加载失败。')
+        if (!response.ok) throw new Error('Failed to load login status.')
         const session = await response.json()
         if (!controller.signal.aborted) { setCsrf(session.csrf_token); setSuperAdmin((session.admin_roles ?? []).includes('super_admin')); setCanViewAudit((session.admin_roles ?? []).some((role: string) => ['super_admin', 'audit_admin'].includes(role))); setAccess('ready') }
       })
-      .catch(reason => { if (!controller.signal.aborted) { setError('登录状态加载失败，请重试。'); setAccess('session-error') } })
+      .catch(reason => { if (!controller.signal.aborted) { setError('Could not load your session. Try again.'); setAccess('session-error') } })
     return () => controller.abort()
   }, [navigate, sessionRevision])
 
@@ -75,11 +76,11 @@ export function AdminUsersPage() {
     }).then(async response => {
       if (response.status === 401) { navigate('/auth?next=%2Fadmin%2Fusers', { replace: true }); return }
       if (response.status === 403) { setAccess('forbidden'); return }
-      if (!response.ok) throw new Error('用户列表加载失败。')
+      if (!response.ok) throw new Error('Failed to load user list.')
       const result = await response.json()
       if (!controller.signal.aborted) { setUsers(result.users ?? []); setTotal(result.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '用户列表加载失败。')
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load user list.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [access, filters, revision, navigate])
@@ -133,7 +134,7 @@ export function AdminUsersPage() {
         </Select>
       </div>
       <AdminListStatus loading={loading} label="正在加载用户…"/>
-      {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
+      {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)} <button type="button" onClick={refresh}>重试</button></p>}
       {!loading && !error && users.length === 0 && <p>当前条件下没有用户。</p>}
       {!error && <AdminUserTable users={users} csrf={csrf} loading={loading} resetKey={filters} onRefresh={refresh} canViewAudit={canViewAudit}
         loginSort={filters.sort === 'last_login_at' ? filters.direction : undefined}

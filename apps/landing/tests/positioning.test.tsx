@@ -69,7 +69,7 @@ describe('landing positioning', () => {
     expect(html).toContain('id="start"')
   })
 
-  it('explains the example and capabilities before optional demos and onboarding', () => {
+  it('groups workflow explanations with demos, integrations together, and tutorials at the end', () => {
     const html = renderLanding()
     const exampleIndex = html.indexOf('例如：给项目加一个搜索功能')
     const featuresIndex = html.indexOf('少一点来回交代，多一点过程掌控')
@@ -82,9 +82,18 @@ describe('landing positioning', () => {
     expect(html).not.toContain('像看视频一样')
     expect(demosIndex).toBeGreaterThan(exampleIndex)
     expect(featuresIndex).toBeGreaterThan(exampleIndex)
-    expect(demosIndex).toBeGreaterThan(remoteShareIndex)
-    expect(workflowIndex).toBeGreaterThan(featuresIndex)
-    expect(remoteShareIndex).toBeGreaterThan(workflowIndex)
+    expect(workflowIndex).toBeGreaterThan(exampleIndex)
+    expect(html).toMatch(/<\/section>\s*<section class="section mechanism-gallery"/)
+    const sections = [...html.matchAll(/<section\b[^>]*\bid="([^"]+)"/g)].map(match => match[1])
+    expect(sections.indexOf('philosophy')).toBe(sections.indexOf('top') + 1)
+    expect(sections.indexOf('mechanisms')).toBe(sections.indexOf('philosophy') + 1)
+    expect(sections.indexOf('channels')).toBe(sections.indexOf('workflow') + 1)
+    expect(sections.indexOf('remote')).toBe(sections.indexOf('channels') + 1)
+    expect(sections.indexOf('engines')).toBe(sections.indexOf('remote') + 1)
+    expect(sections.indexOf('demos')).toBe(sections.indexOf('engines') + 1)
+    expect(sections.indexOf('start')).toBe(sections.indexOf('demos') + 1)
+    expect(demosIndex).toBeLessThan(remoteShareIndex)
+    expect(html.indexOf('class="compare-table"')).toBeLessThan(html.indexOf('id="engines"'))
     expect(finalCtaIndex).toBeGreaterThan(remoteShareIndex)
   })
 

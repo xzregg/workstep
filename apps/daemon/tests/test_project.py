@@ -708,7 +708,7 @@ async def test_project_storage_rejects_running_task(tmp_path, manager):
     root.mkdir()
     project = m.init_project(root)
     await m.run_db(project.id, lambda p: Task.create(id="busy", title="busy", cwd=str(root), status="running", created_at=1, updated_at=1))
-    with pytest.raises(ValueError, match="运行"):
+    with pytest.raises(ValueError, match='running tasks'):
         await m.set_storage(project.id, False)
     assert project.follow_project
 

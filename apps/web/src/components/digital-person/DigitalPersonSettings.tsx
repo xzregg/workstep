@@ -1,4 +1,3 @@
-import { useCompactLayout } from '../../hooks/useCompactLayout'
 import SettingsHelpButton from '../SettingsHelpButton'
 import { useNavigate } from 'react-router-dom'
 import DigitalPersonRelationship from './DigitalPersonRelationship'
@@ -9,12 +8,12 @@ import DigitalPersonMemory from './DigitalPersonMemory'
 import DigitalPersonDocuments from './DigitalPersonDocuments'
 import {personaDocument,setDocumentSection,withPersonaDocument} from './digitalPersonMarkdown'
 import DigitalPersonBodyNavigation, { type DigitalPersonBodyPart } from './DigitalPersonBodyNavigation'
-import VoiceWakeSettings from './VoiceWakeSettings'
+import VoiceInputSettings from '../../pages/VoiceInputSettings'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { digitalPersonApi, digitalRuntimeApi, type DigitalPersonProfile } from '../../api/digitalPerson'
 import { roleCenterApi } from '../../api/roleCenter'
 import { useProjectStore } from '../../stores/projectStore'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import Button from '../Button'
 import Input from '../Input'
 import Icon, { type IconName } from '../Icon'
@@ -39,7 +38,6 @@ const mobileSettingsTabs: readonly Tab[] = ['card', 'identity', 'channels', 'act
 const menuIcons: Record<Tab, IconName> = { card:'user', identity:'shield', appearance:'volume', proactive:'lightbulb', channels:'bot', memory:'book', assistant:'settings', input:'mic', vision:'eye', tools:'mouse-pointer', activity:'clock' }
 export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyChange }: { onClose: () => void; onDirtyChange?: (dirty: boolean) => void; onBusyChange?: (busy: boolean) => void }) {
   const { t } = useI18n()
-  const compact = useCompactLayout()
   const navigate = useNavigate()
   const enterHome = () => { onDirtyChange?.(false); onClose(); navigate('/companion') }
   const projects = useProjectStore(state => state.projects)
@@ -128,10 +126,10 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
     finally { setBusy(false); window.dispatchEvent(new Event(DIGITAL_ACTIVITY_CHANGED)) }
   }
   if (loading) return <div className="digital-person-loading"><Spinner />{t('digitalPerson.loading')}</div>
-  if (!draft || !saved) return <div role="alert">{error}<Button onClick={() => setRetry(value => value + 1)}>{t('common.retry')}</Button></div>
+  if (!draft || !saved) return <div role="alert">{localizeErrorDisplay(error)}<Button onClick={() => setRetry(value => value + 1)}>{t('common.retry')}</Button></div>
   return <div className="digital-person-settings">
     <header className="digital-person-header"><div className="digital-person-header-title"><h1>{t('digitalPerson.title')}<SettingsHelpButton section="digital-person" /></h1><Button size="sm" disabled={blocked || dirty} onClick={beginGuide}>{t('digitalPerson.setup')}</Button></div>
-    {guide !== null && <div className="digital-person-guide"><strong>{t('digitalPerson.setupStep',{step:guide+1,total:guideTabs.length})}</strong><span>{t(`digitalPerson.${guideTabs[guide]}`)}</span>
+    {guide !== null && <div className="digital-person-guide"><strong>{t('digitalPerson.setupStep',{step:guide+1,total:guideTabs.length})}</strong><span>{t(guideTabs[guide] === 'appearance' ? 'digitalPerson.bodymouth' : `digitalPerson.${guideTabs[guide]}`)}</span>
       <Button disabled={blocked} onClick={()=>setGuide(null)}>{t('digitalPerson.setupLater')}</Button>
       <Button disabled={blocked || childDirty || !valid} onClick={async()=>{
         const next=guide+1
@@ -146,7 +144,7 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
           aria-checked={saved.enabled} disabled={blocked} onClick={() => void toggleEnabled()}><span className="settings-switch-thumb" /></button>
       </div>
     </header>
-    {error && <p role="alert" className="digital-person-error">{error}</p>}
+    {error && <p role="alert" className="digital-person-error">{localizeErrorDisplay(error)}</p>}
     <div className="digital-person-settings-body">
     <DigitalPersonBodyNavigation disabled={blocked}
       selected={(Object.keys(bodyTabs) as DigitalPersonBodyPart[]).find(part => bodyTabs[part] === tab) ?? null}
@@ -154,7 +152,7 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
       <div className="digital-person-secondary-settings">
         <nav className="digital-person-secondary-nav" aria-label={t('digitalPerson.moreSettings')}>
           {settingsTabs.map(value=>{
-            const label=t(value==='identity'?'digitalPerson.identityPersonality':value==='input'?'digitalPerson.bodyears':value==='vision'?'digitalPerson.bodyeyes':value==='tools'?'digitalPerson.bodyhands':`digitalPerson.${value}`)
+            const label=t(value==='identity'?'digitalPerson.identityPersonality':value==='appearance'?'digitalPerson.bodymouth':value==='input'?'digitalPerson.bodyears':value==='vision'?'digitalPerson.bodyeyes':value==='tools'?'digitalPerson.bodyhands':`digitalPerson.${value}`)
             return <button type="button" key={value} data-settings-tab={value} data-mobile-hidden={!mobileSettingsTabs.includes(value)} aria-pressed={tab===value} disabled={blocked} onClick={()=>switchTab(value)}><Icon name={menuIcons[value]} className="digital-person-menu-icon"/><span data-short-label={/^[\u3400-\u9fff]{2}$/.test(label)}>{label}</span></button>
           })}
         </nav>
@@ -162,25 +160,19 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
     </DigitalPersonBodyNavigation>
     <section ref={panelRef} id="digital-person-panel" aria-labelledby={tab==='memory'?undefined:'digital-person-panel-title'} aria-label={tab==='memory'?t('digitalPerson.memory'):undefined}>
     {tab !== 'memory' && tab !== 'channels' && tab !== 'activity' && <h2 id="digital-person-panel-title">{t(tab === 'identity' ? 'digitalPerson.identityPersonality' : tab === 'assistant' ? 'digitalPerson.bodybrain' : tab === 'appearance' ? 'digitalPerson.bodymouth' : tab === 'input' ? 'digitalPerson.bodyears' : tab === 'vision' ? 'digitalPerson.bodyeyes' : tab === 'tools' ? 'digitalPerson.bodyhands' : `digitalPerson.${tab}`)}</h2>}
-    {(['identity', 'appearance', 'proactive'] as Tab[]).includes(tab) && <div className="digital-person-form-actions"><Button variant="primary" disabled={!valid || !profileDirty || childDirty || childBusy} loading={busy}
-      onClick={() => void save()}>{t(tab === 'appearance' ? 'digitalPerson.saveAppearance' : 'common.save')}</Button></div>}
+    {(tab === 'identity' || tab === 'proactive') && <div className="digital-person-form-actions"><Button variant="primary" disabled={!valid || !profileDirty || childDirty || childBusy} loading={busy}
+      onClick={() => void save()}>{t('common.save')}</Button></div>}
     {tab === 'card' && <article className="digital-person-card">
       <div className="digital-person-card-main"><DigitalPersonAvatar avatar={saved.avatar} /><div><h2>{saved.name}</h2><p className="digital-person-role">{saved.role}</p><p>{[saved.personality,saved.tone].filter(Boolean).join('，')}</p><span className="digital-person-status">{t(saved.enabled ? 'digitalPerson.enabled' : 'digitalPerson.disabled')}</span></div></div>
       <div className="digital-person-card-relationship"><DigitalPersonRelationship /></div>
-      <DigitalPersonGrowth /><details className="digital-person-card-details" open={!compact}><summary>{t('digitalPerson.duties')}</summary><p className="digital-person-duties">{saved.duties}</p></details>
+      <DigitalPersonGrowth />
       <div className="digital-person-actions"><DigitalPersonChatButton workspace={workspace} onClose={onClose} />
         <Button onClick={() => setTab('identity')}>{t('digitalPerson.edit')}</Button>
       </div>
     </article>}
     {tab === 'identity' && <DigitalPersonDocuments value={draft} onChange={setDraft} disabled={blocked} onChooseRole={()=>setChooseRole(true)} />}
-    {tab === 'appearance' && <div className="digital-person-form digital-person-appearance-form">
-      <label>{t('digitalPerson.avatar')}<Select value={draft.avatar} disabled={blocked} onChange={event => update('avatar', event.target.value as DigitalPersonProfile['avatar'])}>
-        <option value="robot">{t('digitalPerson.robot')}</option><option value="spark">{t('digitalPerson.spark')}</option></Select></label>
-      <label className="digital-person-channel-check"><input disabled={blocked} type="checkbox" checked={draft.show_panel ?? true} onChange={e=>update('show_panel',e.target.checked)}/>{t('digitalPerson.showPanel')}</label>
-      <label className="digital-person-channel-check"><input disabled={blocked} type="checkbox" checked={draft.floating ?? false} onChange={e=>update('floating',e.target.checked)}/>{t('digitalPerson.showFloating')}</label>
-    </div>}
-    {tab === 'appearance' && <VoiceOutputSettings parametersOnly initialProfile={saved} onDirtyChange={childChanged} onBusyChange={childBusyChanged} onSaved={voiceSaved} disabled={busy} />}
-    {tab === 'activity' && <DigitalPersonActivity titleId="digital-person-panel-title" checking={busy} onNavigate={onClose} />}
+    {tab === 'appearance' && <VoiceOutputSettings initialProfile={saved} onDirtyChange={childChanged} onBusyChange={childBusyChanged} onSaved={voiceSaved} disabled={busy} />}
+    {tab === 'activity' && <DigitalPersonActivity titleId="digital-person-panel-title" checking={busy} />}
     {tab === 'proactive' && <div className="digital-person-form">
       <div className="digital-person-context-setting"><label className="digital-person-channel-check"><input name="reflection_enabled" disabled={blocked} type="checkbox" checked={draft.reflection_enabled ?? true} onChange={e=>update('reflection_enabled',e.target.checked)}/>{t('digitalPerson.enableReflection')}</label>
       <p>{t('digitalPerson.enableReflectionHint')}</p></div>
@@ -204,7 +196,9 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
         <DigitalPersonMemory name={saved.name} avatar={saved.avatar} />
       }
     </div>}
-    {tab === 'input' && <div className="digital-person-input-settings"><VoiceWakeSettings parametersOnly onDirtyChange={childChanged} onBusyChange={childBusyChanged} /></div>}
+    {tab === 'input' && <div className="digital-person-input-settings">
+      <VoiceInputSettings sections={['input', 'wake']} wakeVoice={saved} onDirtyChange={childChanged} onBusyChange={childBusyChanged} />
+    </div>}
     {tab === 'vision' && <DigitalPersonVisionSettings onDirtyChange={childChanged} onBusyChange={childBusyChanged}/>}
     {tab === 'tools' && <DigitalPersonOperations />}
     </section>

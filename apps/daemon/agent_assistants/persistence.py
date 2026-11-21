@@ -85,6 +85,7 @@ class JsonRowPersistence:
             return
         session.messages = _restore_messages(row.messages_json, persist_prompt=self._persist_prompt)
         session.resolved_session_id = row.engine_session_id
+        session.session_provider = row.session_provider
         if row.engine_state_json:
             try:
                 session.engine_state = json.loads(row.engine_state_json)
@@ -138,6 +139,7 @@ class JsonRowPersistence:
                     fast_model=session.fast_model,
                     vision_model=session.vision_model,
                     engine_session_id=session.resolved_session_id,
+                    session_provider=session.session_provider,
                     engine_state_json=self._dump_state(session.engine_state),
                     messages_json=payload,
                     cwd=session.cwd,
@@ -150,6 +152,7 @@ class JsonRowPersistence:
                 row.fast_model = session.fast_model
                 row.vision_model = session.vision_model
                 row.engine_session_id = session.resolved_session_id
+                row.session_provider = session.session_provider
                 row.engine_state_json = self._dump_state(session.engine_state)
                 row.messages_json = payload
                 row.cwd = session.cwd

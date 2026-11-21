@@ -16,11 +16,11 @@ def stage_package(data: bytes, workspace: Path) -> Path:
     root = workspace / f'engine-import-{uuid.uuid4().hex}'
     try:
         if len(data) > MAX_PACKAGE:
-            raise ValueError('引擎包不能超过 32 MiB')
+            raise ValueError('The engine package must not exceed 32 MiB')
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             entries = archive.infolist()
             if len(entries) > 1003 or sum(item.file_size for item in entries) > MAX_PACKAGE:
-                raise ValueError('引擎包解压后过大或文件过多')
+                raise ValueError('Engine package is too large or contains too many files after extraction')
             names = set()
             for item in entries:
                 path = PurePosixPath(item.filename)
@@ -30,10 +30,10 @@ def stage_package(data: bytes, workspace: Path) -> Path:
                         or str(path) != item.filename or item.is_dir()
                         or (stat.S_IFMT(mode) not in {0, stat.S_IFREG})
                         or item.filename in names):
-                    raise ValueError('引擎包包含无效路径或特殊文件')
+                    raise ValueError('Engine package contains invalid path or special file')
                 names.add(item.filename)
             if any(str(parent) in names for name in names for parent in PurePosixPath(name).parents):
-                raise ValueError('引擎包文件与目录路径冲突')
+                raise ValueError('Engine package file and directory path conflict')
             root.mkdir(parents=True)
             for item in entries:
                 target = root / item.filename
@@ -43,13 +43,13 @@ def stage_package(data: bytes, workspace: Path) -> Path:
             manifest = load_manifest(root)
             allowed = set(exported_files(root, manifest)) | {'validation-summary.json'}
             if names != allowed and names != allowed - {'validation-summary.json'}:
-                raise ValueError('引擎包只能包含清单声明的源码、资源和验收摘要')
+                raise ValueError('The engine package can only contain source code, resources, and acceptance summaries declared in the manifest.')
             # An exported summary is informational, never a local acceptance report.
             (root / 'validation-summary.json').unlink(missing_ok=True)
             return root
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
         shutil.rmtree(root, ignore_errors=True)
-        raise ValueError('需要有效的自定义引擎 ZIP 包') from exc
+        raise ValueError('A valid custom engine ZIP package is required') from exc
     except BaseException:
         shutil.rmtree(root, ignore_errors=True)
         raise

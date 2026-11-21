@@ -30,7 +30,7 @@ import ModelPricingSettings from './ModelPricingSettings'
 import GlobalConcurrencySettings from './GlobalConcurrencySettings'
 import DesktopUpdateSettings from '../components/DesktopUpdateSettings'
 import ProblemFeedbackSettings from '../components/ProblemFeedbackSettings'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { browserPushEnabled, enableBrowserPush } from '../utils/browserPush'
@@ -249,7 +249,7 @@ export default function SettingsPage({
               )}
               {userSettingsError && (
                 <div role="status" className="settings-system-feedback settings-system-feedback--error">
-                  {userSettingsError}
+                  {localizeErrorDisplay(userSettingsError)}
                 </div>
               )}
             </div>

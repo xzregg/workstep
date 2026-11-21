@@ -636,14 +636,14 @@ async def test_provider_save_validates_input(engine_client):
         json={"name": "", "type": "deepseek", "base_url": "https://api.deepseek.com/v1"},
     )
     assert missing_name.json()["saved"] is False
-    assert "名称" in missing_name.json()["message"]
+    assert 'name' in missing_name.json()["message"]
 
     unknown_type = await client.post(
         "/api/provider",
         json={"name": "x", "type": "not-a-type", "base_url": "https://api.x.com/v1"},
     )
     assert unknown_type.json()["saved"] is False
-    assert "供应商类型" in unknown_type.json()["message"]
+    assert "Unsupported provider type" in unknown_type.json()["message"]
 
     plain_http = await client.post(
         "/api/provider",
@@ -661,7 +661,7 @@ async def test_provider_save_validates_input(engine_client):
         },
     )
     assert empty_protocols.json()["saved"] is False
-    assert "至少选择一个" in empty_protocols.json()["message"]
+    assert 'at least one' in empty_protocols.json()["message"]
 
     invalid_protocol = await client.post(
         "/api/provider",
@@ -674,7 +674,7 @@ async def test_provider_save_validates_input(engine_client):
         },
     )
     assert invalid_protocol.json()["saved"] is False
-    assert "供应商协议" in invalid_protocol.json()["message"]
+    assert "Unsupported provider protocol" in invalid_protocol.json()["message"]
 
     missing_protocol_url = await client.post(
         "/api/provider",
@@ -960,7 +960,7 @@ async def test_native_engine_models_are_persisted_and_reused(engine_client, monk
     calls = {"count": 0}
 
     class NativeEngine:
-        def resolve_provider_runtime(self, provider_id=""):
+        def resolve_provider_catalog(self, provider_id=""):
             return None
 
         async def list_models(self, cwd):
@@ -991,7 +991,7 @@ async def test_model_efforts_survive_refresh_and_cached_reads(engine_client, mon
     client, _store = engine_client
 
     class NativeEngine:
-        def resolve_provider_runtime(self, provider_id=""):
+        def resolve_provider_catalog(self, provider_id=""):
             return None
 
         async def list_models(self, cwd):
@@ -1167,11 +1167,9 @@ async def test_engine_refresh_preserves_provider_selection(
 ):
     client, store = engine_client
     provider = _add_provider(store, type_id="openai", protocol="openai_responses")
-    from engines.core.base import ProviderRuntimeConfig
-
     class BoundEngine:
-        def resolve_provider_runtime(self, provider_id=""):
-            return ProviderRuntimeConfig(provider_id=provider_id, protocol="openai_responses")
+        def resolve_provider_catalog(self, provider_id=""):
+            return (provider_id, "openai_responses")
 
     monkeypatch.setattr(engine_api, "create_engine", lambda _: BoundEngine())
     monkeypatch.setattr(engine_api, "refresh_registry", lambda **_: None)
@@ -1380,7 +1378,7 @@ async def test_provider_delete_blocked_while_in_use(engine_client):
 
     blocked = await client.delete(f"/api/provider/{provider['id']}")
     assert blocked.status_code == 400
-    assert "引擎或助手" in blocked.json()["detail"]
+    assert 'engine or assistant' in blocked.json()["detail"]
     assert store.get_provider(provider["id"]) is not None
 
     store.set_pydantic_ai_engine_config(provider_id="", model="")
@@ -1505,7 +1503,7 @@ async def test_pydantic_ai_engine_config_saves_provider_id(engine_client):
         json={"values": {"provider_id": "prov_missing"}},
     )
     assert rejected.json()["saved"] is False
-    assert "不存在" in rejected.json()["message"]
+    assert rejected.json()["message"] == "Provider not found"
 
 
 @pytest.mark.anyio
@@ -1637,7 +1635,7 @@ async def test_engine_config_save_persists_and_echoes_model_map(engine_client):
         }},
     )
     assert rejected.json()["saved"] is False
-    assert "格式不正确" in rejected.json()["message"]
+    assert 'Incorrect model mapping format' in rejected.json()["message"]
     assert store.get_claude_agent_sdk_config()["model_map"] == body["values"]["model_map"]
 
 
@@ -1724,7 +1722,7 @@ async def test_engine_config_rejects_incompatible_common_provider(engine_client)
     )
 
     assert response.json()["saved"] is False
-    assert "协议" in response.json()["message"]
+    assert response.json()["message"] == "Provider protocol is incompatible with this engine"
 
     fast_response = await client.put(
         "/api/engine/coordinator/config",
@@ -1800,7 +1798,7 @@ async def test_engine_must_pass_connection_test_before_selection(
         json={"engine": "pydantic_ai"},
     )
     assert rejected.status_code == 400
-    assert "测试" in rejected.json()["detail"]
+    assert 'test' in rejected.json()["detail"]
 
     async def successful_test(self, cwd, timeout_seconds=30):
         return EngineTestResult(True, "连接和对话测试通过", 12)
@@ -2617,7 +2615,7 @@ async def test_engine_update_endpoint_rejects_non_sdk_engine(engine_client):
     resp = await client.post("/api/engine/pydantic_ai/update")
 
     assert resp.status_code == 400
-    assert "不支持自动更新" in resp.json()["detail"]
+    assert 'does not support automatic updates' in resp.json()["detail"]
 
 
 @pytest.mark.anyio
@@ -2656,7 +2654,7 @@ async def test_qoder_install_requires_explicit_third_party_terms_acceptance(
     rejected = await client.post("/api/engine/qoder_sdk/install", json={})
     assert rejected.status_code == 400
     assert called is False
-    assert "第三方" in rejected.json()["detail"]
+    assert 'third-party' in rejected.json()["detail"]
 
     accepted = await client.post(
         "/api/engine/qoder_sdk/install",
@@ -2780,8 +2778,8 @@ async def test_provider_delete_blocked_by_project_reference(engine_client, monke
     blocked = await client.delete(f"/api/provider/{provider['id']}")
     assert blocked.status_code == 400
     detail = blocked.json()["detail"]
-    assert "2 处流程或任务引用" in detail
-    assert "sass：步骤「需求」执行配置" in detail
+    assert '2 workflows or tasks' in detail
+    assert 'sass: 步骤「需求」执行配置' in detail
     assert store.get_provider(provider["id"]) is not None
 
 

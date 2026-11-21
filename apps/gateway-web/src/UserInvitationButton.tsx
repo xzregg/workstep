@@ -14,7 +14,7 @@ export function UserInvitationButton({ userId, csrf, disabled }: { userId: strin
       const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/invitation`, {
         method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
       })
-      if (!response.ok) throw new Error(response.status === 409 ? '账户状态已变化，请刷新列表。' : '获取邀请链接失败，请重试。')
+      if (!response.ok) throw new Error(response.status === 409 ? 'Account status has changed, please refresh the list.' : 'Failed to get the invitation link, please try again.')
       const result = await response.json()
       const url = new URL(result.url, window.location.origin).href
       try {

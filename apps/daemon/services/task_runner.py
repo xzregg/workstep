@@ -21,10 +21,11 @@ from services.artifact_rounds import (
     discard_artifact_round,
     write_round_manifest,
 )
+from services.messages import StepEventProgress
 from services.pipeline import DAGScheduler, Step
 from services.prompt import assemble_step_system_prompt
 from agent_assistants.prompt_input import format_prompt_input
-from services.task_step_start import start_step_state
+from services.task_step_start import StepProviderHandoffRequired, start_step_state
 from services.step_execution_messages import StepExecutionMessages
 from services.step_interaction_messages import StepInteractionMessages
 from services.step_rework import StepRework
@@ -84,8 +85,8 @@ async def _with_engine_idle_timeout(
                 type="error",
                 data={
                     "message": (
-                        f"引擎空闲超时（{int(timeout_seconds)}s 无输出），"
-                        "已停止执行并保留会话，可重新执行该步骤恢复"
+                        f"The engine stopped after {int(timeout_seconds)} seconds without output. "
+                        "Run the step again to resume the session."
                     ),
                 },
             )
@@ -217,7 +218,7 @@ class TaskRunner:
             # Build DAG
             step_list = [Step.from_dict(s) for s in steps_config.get("steps", [])]
             if not step_list:
-                raise ValueError('空流程不能启动，请先添加步骤')
+                raise ValueError('Empty flow cannot be started, please add steps first')
 
             scheduler = DAGScheduler(step_list)
 
@@ -358,7 +359,7 @@ class TaskRunner:
 
                 await self._run_db(lambda: settle_interrupted_run(
                     task.id, workflow_run.id if workflow_run is not None else None,
-                    '手动停止', stopped=True,
+                    'Stopped manually', stopped=True,
                 ))
                 task.status, task.status_reason = 'stopped', 'user_stop'
             elif completed == all_keys:
@@ -606,7 +607,7 @@ class TaskRunner:
         retry_feedback = None
         if cancelled:
             ts = await self._persist_step_status(
-                task.id, step_key, "cancelled", "手动停止", utc_now()
+                task.id, step_key, "cancelled", "Stopped manually", utc_now()
             )
             failed.add(step_key)
         elif outcome.status == "passed":
@@ -840,6 +841,9 @@ class TaskRunner:
         effective_config = dict(step.config or {})
         if effective_provider_id:
             effective_config["provider_id"] = effective_provider_id
+        pin_provider_id = getattr(engine, "pin_provider_id", None)
+        if callable(pin_provider_id):
+            pin_provider_id(effective_provider_id)
         provider_snapshot = None
         if effective_provider_id:
             def load_usage_provider():
@@ -862,12 +866,22 @@ class TaskRunner:
             task, step, scheduler, artifacts_dir,
         )
 
-        started_state = await self._run_db(lambda: start_step_state(
-            task=task, step=step, workflow_run=workflow_run,
-            artifacts_dir=artifacts_dir, effective_provider_id=effective_provider_id,
-            resolved_model=resolved_model, input_rounds=input_rounds,
-            input_snapshot=input_snapshot,
-        ))
+        try:
+            started_state = await self._run_db(lambda: start_step_state(
+                task=task, step=step, workflow_run=workflow_run,
+                artifacts_dir=artifacts_dir, effective_provider_id=effective_provider_id,
+                resolved_model=resolved_model, input_rounds=input_rounds,
+                input_snapshot=input_snapshot,
+            ))
+        except StepProviderHandoffRequired as exc:
+            error = str(exc)
+            failed.add(step_key)
+            await self._persist_step_status(task.id, step_key, "failed", error, utc_now())
+            await self._publish(task.id, step_key, {
+                "type": "status",
+                "data": {"status": "failed", "step_key": step_key, "error": error},
+            })
+            return
         ts = started_state.task_step
         await self._artifact_routes.consume_explicit_trigger(step_key, workflow_run)
         step_run = started_state.step_run
@@ -887,7 +901,7 @@ class TaskRunner:
                 if self._cancel_audit:
                     return
                 if self._dispatch_service is None:
-                    raise RuntimeError("流程步骤服务未初始化")
+                    raise RuntimeError("Workflow step service not initialized")
                 await self._dispatch_service.dispatch(
                     source_project_id=self._source_project_id,
                     task=task,
@@ -896,7 +910,7 @@ class TaskRunner:
                     artifacts_dir=artifacts_dir,
                 )
             except Exception as exc:
-                error = str(exc) or "创建下游任务失败"
+                error = str(exc) or "Failed to create downstream task"
                 await self._fail_step(ts, task, step_key, error)
                 failed.add(step_key)
                 running.discard(step_key)
@@ -965,7 +979,7 @@ class TaskRunner:
             return
 
         live_queue = self._live.start_execution(run_key, engine)
-        events_collected = []
+        event_progress = StepEventProgress()
         content_parts = []
         reported_error: str | None = None
         execution_succeeded = False
@@ -983,7 +997,7 @@ class TaskRunner:
                 return
             completion = await self._execution_messages.finish(
                 message_id=msg_id, journal_ref=journal_ref,
-                events_collected=events_collected,
+                event_progress=event_progress,
                 succeeded=execution_succeeded,
                 cancelled=self._live.is_cancelled(run_key),
                 ended_at=execution_ended_at,
@@ -1001,7 +1015,7 @@ class TaskRunner:
             execution_message_finalized = True
             await self._execution_messages.publish_completion(
                 task.id, step_key, msg_id, completion,
-                len(events_collected) + 1,
+                event_progress.count + 1,
                 error=reported_error,
             )
 
@@ -1098,8 +1112,9 @@ class TaskRunner:
                         event.data.get("interaction_id") or uuid.uuid4()
                     )
                     event.data["interaction_id"] = interaction_id
-                events_collected.append(event.to_dict())
-                await self._event_journal.arecord(journal_ref, event.to_dict())
+                event_data = event.to_dict()
+                event_progress.observe(event_data)
+                await self._event_journal.arecord(journal_ref, event_data)
                 if event.type == "agent_message_chunk" and not is_commentary(event):
                     content = event.data.get("content") or {}
                     content_parts.append(content.get("text", ""))
@@ -1132,11 +1147,11 @@ class TaskRunner:
                         message_id=msg_id, journal_ref=journal_ref,
                         session_id=captured_session_id,
                         resolved_model=resolved_model,
-                        events_collected=events_collected,
+                        event_progress=event_progress,
                     )
                     if live_data.get("status") == "delivered":
                         content_parts.clear()
-                        events_collected.clear()
+                        event_progress = StepEventProgress()
                 if event.type == "interaction_request":
                     interaction_waiter = await self._interaction_messages.begin(
                         task_id=task.id, step_key=step_key, event=event,
@@ -1147,7 +1162,7 @@ class TaskRunner:
                     "message_id": live_message_id or msg_id,
                     "engine": step.engine,
                     "model": resolved_model,
-                    "event_sequence": len(events_collected),
+                    "event_sequence": event_progress.count,
                     "type": event.type,
                     "data": {**event.data, "task_id": task.id, "step_key": step_key},
                 })
@@ -1157,7 +1172,7 @@ class TaskRunner:
                         task_id=task.id, step_key=step_key, event=event,
                         engine=engine, engine_id=step.engine,
                         message_id=msg_id, journal_ref=journal_ref,
-                        events_collected=events_collected,
+                        event_progress=event_progress,
                         resolved_model=resolved_model,
                     )
 
@@ -1186,7 +1201,7 @@ class TaskRunner:
             if self._live.is_cancelled(run_key):
                 # 手动停止：步骤状态与普通失败区分，前端显示「手动停止」。
                 ts = await self._persist_step_status(
-                    task.id, step_key, "cancelled", "手动停止", utc_now()
+                    task.id, step_key, "cancelled", "Stopped manually", utc_now()
                 )
                 await self._publish(task.id, step_key, {
                     "type": "status",
@@ -1283,7 +1298,7 @@ class TaskRunner:
             error_event = InternalEvent(
                 type="error", data={"message": str(e)}
             ).to_dict()
-            events_collected.append(error_event)
+            event_progress.observe(error_event)
             await self._event_journal.arecord(journal_ref, error_event)
 
         finally:

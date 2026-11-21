@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { type GitWorktree } from '../../api/git'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import { useGitStore } from '../../stores/gitStore'
 import Button from '../Button'
 import Icon from '../Icon'
@@ -35,5 +35,5 @@ export default function GitWorktreeDeleteButton({ tree, onDeleted }: { tree: Git
   }
   if (!can('deleteWorktree')) return null
   return <><Button variant="icon" className="git-tree-delete" aria-label={t('git.deleteWorktreeTitle', { name })} title={t('git.deleteWorktreeTitle', { name })} onClick={() => { setError(''); setOpen(true) }}><Icon name="trash" size={13} /></Button>
-    <ConfirmDialog open={open} title={t('git.deleteWorktreeTitle', { name })} message={t('git.deleteWorktreeHint', { name, path: tree.path })} confirmText={t('common.delete')} danger loading={busy} onConfirm={() => void remove()} onCancel={() => { if (!busy) setOpen(false) }}>{error && <p role="alert" className="git-danger">{error}</p>}</ConfirmDialog></>
+    <ConfirmDialog open={open} title={t('git.deleteWorktreeTitle', { name })} message={t('git.deleteWorktreeHint', { name, path: tree.path })} confirmText={t('common.delete')} danger loading={busy} onConfirm={() => void remove()} onCancel={() => { if (!busy) setOpen(false) }}>{error && <p role="alert" className="git-danger">{localizeErrorDisplay(error)}</p>}</ConfirmDialog></>
 }

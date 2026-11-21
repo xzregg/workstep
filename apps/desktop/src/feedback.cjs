@@ -45,7 +45,7 @@ function createFeedbackService({ diagnostics, runtime, clipboard, getWindow, roo
         try { state = await runtime() }
         catch (error) { report.warnings.push(`后台状态不可用：${error.message}`) }
         const text = limitFeedbackText(diagnostics.redact(formatFeedback(report, state)))
-        if (current !== generation) throw Error('反馈窗口已关闭')
+        if (current !== generation) throw Error('Feedback window has been closed')
         clipboard.writeText(text)
         textCopied = true
       })().finally(() => { if (pending?.promise === promise) pending = null })
@@ -53,20 +53,20 @@ function createFeedbackService({ diagnostics, runtime, clipboard, getWindow, roo
       return promise
     },
     async capture() {
-      if (!textCopied) throw Error('请先复制诊断文字')
+      if (!textCopied) throw Error('Please copy the diagnostic text first')
       image = null
       const window = getWindow(), current = generation
-      if (!window || window.isDestroyed() || !isTrustedNavigation(window.webContents.getURL(), rootUrl())) throw Error('当前没有可截图的 WorkStep 页面')
+      if (!window || window.isDestroyed() || !isTrustedNavigation(window.webContents.getURL(), rootUrl())) throw Error('No WorkStep page available for screenshot')
       const url = window.webContents.getURL()
       const captured = await window.webContents.capturePage()
-      if (current !== generation) throw Error('反馈窗口已关闭')
-      if (window.isDestroyed() || window.webContents.getURL() !== url) throw Error('WorkStep 页面已切换，请重新截图')
-      if (captured.isEmpty()) throw Error('页面截图为空，请重试')
+      if (current !== generation) throw Error('Feedback window has been closed')
+      if (window.isDestroyed() || window.webContents.getURL() !== url) throw Error('WorkStep page has switched, please take a screenshot again')
+      if (captured.isEmpty()) throw Error('Page screenshot is empty, please try again')
       image = captured
       return image.toDataURL()
     },
     async copyImage() {
-      if (!image) throw Error('请先生成并检查截图')
+      if (!image) throw Error('Please generate and check the screenshot first')
       clipboard.writeImage(image)
     },
     clearImage() { image = null },
@@ -78,17 +78,17 @@ function registerFeedbackIpc({ ipcMain, getWindow, getFeedbackWindow, rootUrl, s
   const handlers = {
     open: async event => {
       const window = getWindow()
-      if (!window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || !isTrustedNavigation(event.senderFrame?.url, rootUrl())) throw Error('反馈操作来源无效')
+      if (!window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || !isTrustedNavigation(event.senderFrame?.url, rootUrl())) throw Error('Invalid source for feedback operation')
       await open()
     },
     action: async (event, action) => {
       const window = getFeedbackWindow()
-      if (!window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw Error('反馈操作来源无效')
+      if (!window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw Error('Invalid source for feedback operation')
       if (action === 'copyText') return service.copyText()
       if (action === 'capture') return service.capture()
       if (action === 'copyImage') return service.copyImage()
       if (action === 'clearImage') { service.clearImage(); return }
-      throw Error('反馈操作无效')
+      throw Error('Feedback operation is invalid')
     },
   }
   for (const [name, handler] of Object.entries(handlers)) {

@@ -25,7 +25,7 @@ logger = logging.getLogger('workstep.restart')
 @contextmanager
 def restart_deadline(seconds=240):
     def expired(signum, frame):
-        raise TimeoutError(f"重启超过总时限（{seconds} 秒），停止本次尝试，不自动重试")
+        raise TimeoutError(f"Restart exceeded total time limit ({seconds} seconds), stopping this attempt, no automatic retry")
 
     previous_handler = signal.signal(signal.SIGALRM, expired)
     started = time.monotonic()
@@ -102,7 +102,7 @@ def listeners(port: int) -> set[int]:
         capture_output=True, text=True, timeout=5,
     )
     if result.returncode not in {0, 1}:
-        raise RuntimeError(f"无法检查端口 {port}: {result.stderr}")
+        raise RuntimeError(f"Unable to check port {port}: {result.stderr}")
     return {int(pid) for pid in result.stdout.split()}
 
 
@@ -156,7 +156,7 @@ def discover_targets() -> dict[int, Process]:
         for pid in listeners(port):
             process = processes.get(pid)
             if pid in own_tree or not process or not is_service(process, port):
-                raise RuntimeError(f"端口 {port} 被其他项目或未知进程 {pid} 占用，拒绝停止")
+                raise RuntimeError(f"Port {port} is occupied by another project or unknown process {pid}, refusing to stop:")
             seeds.add(pid)
     # Includes duplicate launchers whose daemon already failed to bind the port.
     seeds.update(p.pid for p in processes.values() if p.pid not in own_tree and is_launcher(p))
@@ -201,10 +201,10 @@ def stop_services(targets: dict[int, Process]) -> None:
                      and (current[pid].started, current[pid].command) == (p.started, p.command)}
         if not remaining:
             if listeners(8765) or listeners(5173):
-                raise RuntimeError("停止后端口仍被占用，拒绝启动重复后台")
+                raise RuntimeError("Port still in use after stop, refusing to start duplicate background")
             return
         time.sleep(.5)
-    raise RuntimeError("旧服务尚未退出；未强制杀进程，请检查重启日志")
+    raise RuntimeError("Old service has not exited; process not forcibly killed, please check restart logs")
 
 
 def run_preflight_command(command, **kwargs):
@@ -225,14 +225,14 @@ def run_preflight_command(command, **kwargs):
 def preflight() -> None:
     for tool in ("bash", "uv", "node", "lsof", "ps"):
         if not shutil.which(tool):
-            raise RuntimeError(f"缺少 {tool}，保留旧服务")
+            raise RuntimeError(f"Missing {tool}, keeping old service")
     if not (shutil.which("corepack") or shutil.which("yarn")):
-        raise RuntimeError("缺少 Yarn/Corepack，保留旧服务")
+        raise RuntimeError("Missing Yarn/Corepack, keeping old service")
     run_preflight_command(["bash", "-n", str(ROOT / "start.sh")], timeout=5)
     run_preflight_command(["uv", "run", "--no-sync", "--directory", str(ROOT / "apps/daemon"),
                            "python", "-c", "import main; assert main.app"], timeout=30)
     if not (ROOT / "apps/web/node_modules/.bin/vite").exists():
-        raise RuntimeError("前端依赖缺失，保留旧服务；请先安装依赖")
+        raise RuntimeError("Frontend dependency missing, keeping old service; please install dependencies first")
     # Build before shutdown so broken frontend/toolchain code preserves the old
     # service. start.sh can reuse this build without another failure window.
     yarn = ["corepack", "yarn"] if shutil.which("corepack") else ["yarn"]
@@ -286,14 +286,14 @@ def start_services() -> int:
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             if child.poll() is not None:
-                raise RuntimeError(f"新启动器 {child.pid} 退出（{child.returncode}）；查看 daemon.log/web.log")
+                raise RuntimeError(f"New launcher {child.pid} exited ({child.returncode}); check daemon.log/web.log")
             tree = descendants({child.pid}, process_table())
             daemon, web = listeners(8765), listeners(5173)
             if daemon and web and daemon <= tree and web <= tree and health_ready():
                 logger.info('重启成功：新启动器 %s，后台 %s，前端 %s', child.pid, sorted(daemon), sorted(web))
                 return child.pid
             time.sleep(.5)
-        raise RuntimeError(f"新启动器 {child.pid} 未通过就绪检查；查看 daemon.log/web.log")
+        raise RuntimeError(f"New launcher {child.pid} failed readiness check; see daemon.log/web.log")
     except BaseException:
         try:
             cleanup_failed_start(child)
@@ -310,7 +310,7 @@ def worker(lock_fd=None) -> None:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise RuntimeError("已有重启正在执行，请勿重复点击")
+            raise RuntimeError("A restart is already in progress, please do not click repeatedly")
         with restart_deadline(), restart_ownership():
             preflight()
             targets = discover_targets()
@@ -338,7 +338,7 @@ def main() -> None:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise RuntimeError("已有重启正在执行，请勿重复点击")
+            raise RuntimeError("A restart is already in progress, please do not click repeatedly")
         # Replace the inode: old launchers can still hold writable descriptors
         # until shutdown, but cannot append to or seek inside this attempt's log.
         temporary = log_path.with_suffix(".log.tmp")

@@ -129,11 +129,15 @@ class Project:
     def db_path(self) -> Path:
         return self.workstep_dir / "workstep.db"
 
+    def public_workflows(self) -> list[dict]:
+        return [workflow for workflow in self.workflows if not workflow.get("debug_source_id")]
+
     def default_workflow(self) -> dict | None:
-        for wf in self.workflows:
+        available = self.public_workflows()
+        for wf in available:
             if wf.get("is_default") and not wf.get("deleted"):
                 return wf
-        for wf in self.workflows:
+        for wf in available:
             if not wf.get("deleted"):
                 return wf
         return None
@@ -329,7 +333,7 @@ class ProjectManager:
 
         def execute() -> ResultT:
             if project.storage_changing:
-                raise ValueError("项目数据正在迁移，请稍后重试")
+                raise ValueError("Project data is being migrated, please try again later")
             with ProjectContext(project):
                 return operation(project)
 
@@ -436,7 +440,7 @@ class ProjectManager:
         project_id = str(uuid.uuid4())
         ws_dir = path / settings.workstep_dir if follow_project else external_directory(project_id)
         if ws_dir.exists() and any(ws_dir.iterdir()):
-            raise ValueError("项目数据目录非空，不能覆盖")
+            raise ValueError("Project data directory is not empty, cannot overwrite")
         ws_dir.mkdir(parents=True, exist_ok=True)
 
         ignore_rule = f"{settings.workstep_dir.rstrip('/')}/"
@@ -463,15 +467,15 @@ class ProjectManager:
     async def set_storage(self, project_id: str, follow_project: bool) -> dict:
         project = self.get_project_by_id(project_id)
         if project is None:
-            raise ValueError("项目不存在")
+            raise ValueError("Project not found")
         if project.storage_changing:
-            raise ValueError("项目数据正在迁移，请稍后重试")
+            raise ValueError("Project data is being migrated, please try again later")
         if project.follow_project == follow_project:
             return {"follow_project": follow_project, "data_path": str(project.workstep_dir)}
         from services.concurrency import concurrency_gate
         counts = concurrency_gate.active_count(project_id)
         if counts["tasks_running"] or counts["chats_running"]:
-            raise ValueError("项目有运行中的任务或会话，不能迁移")
+            raise ValueError("Project has running tasks or sessions, cannot migrate")
         project.storage_changing = True
 
         def migrate():
@@ -482,21 +486,21 @@ class ProjectManager:
                     or ChatMessage.select().where(ChatMessage.status == "running").exists()
                     or CoordinatorTurn.select().where(CoordinatorTurn.status.in_(["queued", "running"])).exists()
                     or ActionRun.select().where(ActionRun.status.in_(["preparing", "running"])).exists()):
-                raise ValueError("项目有运行中的任务或会话，不能迁移")
+                raise ValueError("Project has running tasks or sessions, cannot migrate")
             source = project.workstep_dir
             target = project.path / settings.workstep_dir if follow_project else external_directory(project.id)
             if target.is_symlink():
-                raise ValueError("数据目录不能是符号链接")
+                raise ValueError("The data directory cannot be a symbolic link")
             if target.exists() and any(p.name != "project.json" for p in target.iterdir()):
-                raise ValueError("目标数据目录非空，不能覆盖")
+                raise ValueError("Target data directory is not empty, cannot overwrite")
             if any(p.name == ".git" for p in source.rglob(".git")):
-                raise ValueError("项目存在 Git 工作区，请移除工作区后再切换存储位置")
+                raise ValueError("The project has a Git working directory. Please remove the working directory before switching the storage location.")
             staging = target.with_name(target.name + ".migrating")
             if staging.exists():
-                raise ValueError("存在未完成的迁移目录，请检查后重试")
+                raise ValueError("Incomplete migration directory exists. Please check and retry:")
             checkpoint = project.db.execute_sql("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
             if checkpoint and checkpoint[0] != 0:
-                raise ValueError("数据库仍被占用，请稍后重试")
+                raise ValueError("Database is still in use, please try again later")
             project.db.close()
             installed = []
             old_db = project.db
@@ -524,7 +528,7 @@ class ProjectManager:
                             setattr(row, column.name, json.dumps(updated, ensure_ascii=False))
                             row.save(only=[column])
                 if new_db.execute_sql("PRAGMA quick_check").fetchone() != ("ok",):
-                    raise ValueError("迁移后的数据库校验失败")
+                    raise ValueError("Post-migration database validation failed")
                 write_identity(project.path, project.id, follow_project)
                 project.db = new_db
                 project.database_executor.rebind(new_db)
@@ -583,7 +587,7 @@ class ProjectManager:
         for existing in list(self._projects.values()):
             if project_id and existing.id == project_id:
                 if existing.path.exists():
-                    raise ValueError("项目 ID 已被其他目录使用；复制项目不能同时关联同一份数据")
+                    raise ValueError("Project ID is already used by another directory; copying a project cannot associate with the same data simultaneously")
                 self.unregister(existing.id)
         ws_dir = data_directory(path)
         if not ws_dir.exists():
@@ -646,7 +650,7 @@ class ProjectManager:
             return None
         from services.customization_workspace import is_default_workspace
         if is_default_workspace(proj):
-            raise ValueError('默认工作区不能删除，可以修改名称')
+            raise ValueError('The default workspace cannot be deleted, but its name can be modified')
 
         path_str = str(proj.path)
         self._projects.pop(path_str, None)
@@ -708,7 +712,7 @@ class ProjectManager:
         Providers live in the global config, but workflows, tasks and chat
         sessions persist their own copies of ``provider_id`` in per-project
         databases. Deleting a provider without checking these leaves dangling
-        references that only surface as runtime failures ("供应商不存在") when a
+        references that only surface as runtime failures ("Provider not found") when a
         step or the coordinator tries to resolve them.
         """
         target = str(provider_id or "").strip()
@@ -813,7 +817,7 @@ class ProjectManager:
                 "failed": self.workflow_has_failed_tasks(w["id"]),
                 "nodeCount": len(w.get("steps", {}).get("nodes", []) or w.get("steps", {}).get("steps", [])),
             }
-            for w in proj.workflows
+            for w in proj.public_workflows()
         ]
         return {
             "id": proj.id,

@@ -370,7 +370,7 @@ class StepArtifactRoutes:
             await self._persist_state(workflow_run)
 
             if result.conflict:
-                error = "同一轮同时产生了正常输出和返回输出，路由冲突"
+                error = "Normal output and return output were generated in the same round, causing a routing conflict:"
                 await self._fail_step(task, step, completed, failed, error)
                 await self._publish(task.id, step.key, {
                     "type": "status",
@@ -384,7 +384,7 @@ class StepArtifactRoutes:
                 return
 
             if result.exhausted_edges:
-                error = f"返回线已达到配置上限 {step.max_return_rounds} 次"
+                error = f"Return line has reached the configured limit {step.max_return_rounds} times"
                 await self._fail_step(task, step, completed, failed, error)
                 await self._publish(task.id, step.key, {
                     "type": "return_limit_reached",

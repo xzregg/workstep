@@ -35,7 +35,7 @@ final class CompletionNotifications: NSObject, UNUserNotificationCenterDelegate 
                 UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil)) { error in
                     DispatchQueue.main.async {
                         self.pending.remove(key)
-                        if let error { self.diagnostics.record("通知发送失败", code: (error as NSError).code) }
+                        if let error { self.diagnostics.record("Notification delivery failed", code: (error as NSError).code) }
                         else { _ = self.ledger.take(key); UserDefaults.standard.set(self.ledger.keys, forKey: "notificationLedger") }
                     }
                 }

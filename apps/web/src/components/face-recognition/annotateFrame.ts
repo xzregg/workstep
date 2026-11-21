@@ -2,7 +2,7 @@ import type {FaceFramePerson} from '../../api/faces'
 import type {FaceObservation} from './runtime'
 
 /** Burn annotations into the same captured canvas before JPEG encoding. */
-export function annotateFaceFrame(canvas:HTMLCanvasElement,faces:FaceObservation[],people:FaceFramePerson[],unknownLabel:string){
+export function annotateFaceFrame(canvas:HTMLCanvasElement,faces:FaceObservation[],people:FaceFramePerson[],unknownLabel:string,showBoxes=true){
  const context=canvas.getContext('2d');if(!context)return
  const names=new Map(people.map(person=>[person.person_id,person]))
  const fontSize=Math.max(14,Math.min(24,Math.round(canvas.width/40))),padding=6,lineHeight=fontSize+6
@@ -16,7 +16,7 @@ export function annotateFaceFrame(canvas:HTMLCanvasElement,faces:FaceObservation
    const width=Math.min(canvas.width-x,nw*canvas.width),height=Math.min(canvas.height-y,nh*canvas.height)
    if(width<=0||height<=0)continue
    const person=face.person?names.get(face.person.id):undefined,color=person?'#69bd8a':'#e7bb5b'
-   context.strokeStyle=color;context.strokeRect(x,y,width,height)
+   if(showBoxes){context.strokeStyle=color;context.strokeRect(x,y,width,height)}
    const maxWidth=Math.min(canvas.width,Math.max(width,canvas.width*.45)),lines=[person?.name||unknownLabel]
    const labels=lines.map(line=>{
     let text=line

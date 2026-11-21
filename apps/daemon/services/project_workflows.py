@@ -75,6 +75,7 @@ class ProjectWorkflowService:
             result.append({
                 "id": r.id,
                 "name": r.name,
+                "debug_source_id": r.debug_source_id,
                 "steps": steps,
                 "is_default": bool(r.is_default),
                 "deleted": bool(r.deleted),
@@ -112,7 +113,7 @@ class ProjectWorkflowService:
 
     def reorder_workflows(self, proj: Project, ordered_ids: list[str]) -> None:
         """Reassign sort_order from an explicit id list; unknown ids keep their relative order at the end."""
-        rows = list(Workflow.select().order_by(Workflow.sort_order, Workflow.created_at))
+        rows = list(Workflow.select().where(Workflow.debug_source_id.is_null()).order_by(Workflow.sort_order, Workflow.created_at))
         by_id = {row.id: row for row in rows}
         seen: set[str] = set()
         ordered: list[Workflow] = []
@@ -134,7 +135,7 @@ class ProjectWorkflowService:
     def update_workflow(self, proj: Project, workflow_id: str,
                         name: str | None = None, steps: dict | None = None) -> dict | None:
         """Update a workflow's name and/or steps. Returns the updated dict or None."""
-        row = Workflow.get_or_none(Workflow.id == workflow_id)
+        row = Workflow.get_or_none(Workflow.id == workflow_id, Workflow.debug_source_id.is_null())
         if row is None:
             return None
         if name is not None:
@@ -180,7 +181,7 @@ class ProjectWorkflowService:
         permanently removes the row. The default workflow and the last
         remaining active workflow cannot be deleted.
         """
-        row = Workflow.get_or_none(Workflow.id == workflow_id)
+        row = Workflow.get_or_none(Workflow.id == workflow_id, Workflow.debug_source_id.is_null())
         if row is None:
             return None
 
@@ -197,7 +198,7 @@ class ProjectWorkflowService:
 
         if bool(row.is_default):
             return {"deleted": False, "reason": "default"}
-        active_count = Workflow.select().where(Workflow.deleted == 0).count()
+        active_count = Workflow.select().where(Workflow.deleted == 0, Workflow.debug_source_id.is_null()).count()
         if active_count <= 1:
             return {"deleted": False, "reason": "last"}
 
@@ -247,7 +248,7 @@ class ProjectWorkflowService:
     @_audit_remote_change("workflow.restore")
     def restore_workflow(self, proj: Project, workflow_id: str) -> dict | None:
         """Restore a soft-deleted (recycle bin) workflow. Returns the dict or None."""
-        row = Workflow.get_or_none(Workflow.id == workflow_id)
+        row = Workflow.get_or_none(Workflow.id == workflow_id, Workflow.debug_source_id.is_null())
         if row is None or not bool(row.deleted):
             return None
         row.deleted = 0

@@ -68,7 +68,7 @@ async def test_cli_parallel_sessions_busy_stop_and_crash_recovery(cli):
             pass
         pool = get_session_pool('claude')
         entry = pool._entries[(str(cli), session)]
-        with pytest.raises(RuntimeError, match='正在执行'):
+        with pytest.raises(RuntimeError, match='session is executing'):
             await collect(cli, 'conflict', session)
         other = await collect(cli, 'other')
         await engine.stop()

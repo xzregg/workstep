@@ -1,7 +1,9 @@
+import {atlasToolEvent} from '../components/digital-person/atlasToolEvents'
 import { dispatchProactiveMessage } from '../components/digital-person/digitalPersonProactive'
 import { usePrototypeStore } from '../stores/prototypeStore'
 import { postAndroidNotification } from '../utils/completionNotifications'
 import { gatewayFetch, gatewayResourceUrl } from '../utils/gatewayWorkspacePath'
+import { CUSTOM, isCustom, isToolEvent } from '../utils/agui'
 /**
  * useWebSocket — WebSocket connection with auto-reconnect.
  *
@@ -133,7 +135,7 @@ export function useWebSocket() {
       ...Object.keys(useChatSessionStore.getState().sessions),
       ...Object.values(useChatListStore.getState().sessionsByProject).flat().map((session) => session.id),
     ])],
-    channels: ['channel_bots', 'digital_person'],
+    channels: ['channel_bots', 'digital_person', 'task_board'],
   }), [])
 
   const flushSubscription = useCallback(() => {
@@ -270,6 +272,9 @@ export function useWebSocket() {
           if (!active || wsRef.current !== ws) return
           try {
             const parsed = JSON.parse(event.data)
+            if(isToolEvent(parsed)&&CHAT_SESSION_CHANNELS.includes(parsed.channel||'')){
+              window.dispatchEvent(new window.CustomEvent(atlasToolEvent,{detail:parsed}))
+            }
             dispatchProactiveMessage(parsed)
             useChatExecutionConfigStore.getState().handleWsEvent(parsed)
             if (parsed.type === 'pong') {
@@ -326,7 +331,8 @@ export function useWebSocket() {
                 url: notificationUrlFor({ ...watch, sessionId: null, outcome: 'succeeded', title: '', body: '' }),
               })
             }
-            const notice = completionNotice(parsed)
+            const debugTask = parsed.task_id && useTaskStore.getState().tasks.some(task => task.id === parsed.task_id && task.is_debug)
+            const notice = debugTask ? null : completionNotice(parsed)
             if (notice) {
               notifyCompletion(notice, notificationUrlFor(notice))
               postAndroidNotification({ type: 'unwatch', id: parsed.step_key
@@ -340,6 +346,8 @@ export function useWebSocket() {
             if (parsed.session_id && CHAT_SESSION_CHANNELS.includes(parsed.channel || '')) handleChatSessionEvent(parsed)
             void useRecentActivityStore.getState().handleWsEvent(parsed)
             handleEvent(parsed)
+            if (isCustom(parsed, CUSTOM.taskCreated)
+              && parsed.project_id === useProjectStore.getState().activeProject?.id) flushSubscription()
           } catch (error) {
             console.warn('[WS] invalid message:', error)
           }

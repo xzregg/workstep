@@ -14,7 +14,7 @@ import { BrandIcon } from './BrandIcon'
 import { useState, useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import SessionRowActions from './SessionRowActions'
 import SidebarSessionGroups, { SessionGroupCreationArea } from './SidebarSessionGroups'
 import ChatSessionRenameDialog from './ChatSessionRenameDialog'
@@ -43,7 +43,6 @@ import SandboxModeBadge from './SandboxModeBadge'
 import GatewayConnectionStatus from './GatewayConnectionStatus'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
 import LayoutOnboardingActions from './LayoutOnboardingActions'
-import { DigitalPersonWakeController } from './digital-person/DigitalPersonWake'
 import DigitalPersonDesktopBridge from './digital-person/DigitalPersonDesktopBridge'
 import WorkspaceNavigationActions, { WORKSPACE_TOOL_RAIL_WIDTH } from './WorkspaceNavigationActions'
 import DigitalPersonSidebarEntry from './digital-person/DigitalPersonSidebarEntry'
@@ -1242,7 +1241,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       />
       {sessionDeleteError && (
         <div role="alert" className="layout-session-delete-error">
-          <span>{sessionDeleteError}</span>
+          <span>{localizeErrorDisplay(sessionDeleteError)}</span>
           <Button
             variant="icon"
             size="sm"
@@ -1278,7 +1277,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       )}
 
       <DigitalPersonDesktopBridge />
-      <DigitalPersonWakeController /><DigitalPersonProactiveSpeech />
+      <DigitalPersonProactiveSpeech />
       <LayoutOnboardingActions
         onOpenSettings={openOnboardingSettings}
         onOpenProject={openLocalProjectModal}
@@ -1363,7 +1362,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       >
         {bulkDeleteError && (
           <div className="layout-bulk-delete-error">
-            {bulkDeleteError}
+            {localizeErrorDisplay(bulkDeleteError)}
           </div>
         )}
       </ConfirmDialog>

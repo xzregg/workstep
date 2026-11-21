@@ -46,7 +46,7 @@ def reuse_successful_step(
         if source.io_contract_json:
             contract = json.loads(source.io_contract_json)
             if contract.get("outputs") != step.outputs:
-                raise ValueError("已有成功产物与当前输出配置不一致，请直接触发该步骤重新生成")
+                raise ValueError("Existing successful artifacts are inconsistent with the current output configuration. Please directly trigger this step to regenerate.")
     elif row.status != "passed":
         return None
     selected = select_upstream_round(
@@ -54,7 +54,7 @@ def reuse_successful_step(
         source.artifact_round if source is not None else None,
     )
     if selected is None:
-        raise ValueError("已有成功产物缺失，请直接触发该步骤重新生成")
+        raise ValueError("Missing successful artifacts, please directly trigger this step to regenerate")
     if not selected.eligible_for_downstream:
         return None
     usable = False
@@ -67,10 +67,10 @@ def reuse_successful_step(
         if value.get("name") != output.get("name") or (
             declared is not None and declared.get("type") != output.get("type")
         ):
-            raise ValueError("已有成功产物与当前输出配置不一致，请直接触发该步骤重新生成")
+            raise ValueError("Existing successful artifacts are inconsistent with the current output configuration. Please directly trigger this step to regenerate.")
         path = Path(value["path"])
         if path.is_symlink() or not path.resolve().is_relative_to(selected.path.resolve()):
-            raise ValueError("已有成功产物路径不可用，请直接触发该步骤重新生成")
+            raise ValueError("The path to the existing successful artifact is unavailable. Please directly trigger this step to regenerate.")
         nonempty = (
             path.is_file() and path.stat().st_size > 0
             or path.is_dir() and any(
@@ -79,10 +79,10 @@ def reuse_successful_step(
             )
         )
         if not nonempty:
-            raise ValueError("已有成功产物缺失或为空，请直接触发该步骤重新生成")
+            raise ValueError("Existing successful artifacts are missing or empty. Please directly trigger this step to regenerate.")
         usable = True
     if not usable:
-        raise ValueError("没有与当前输出配置匹配的成功产物，请直接触发该步骤重新生成")
+        raise ValueError("No successful artifacts matched the current output configuration. Please directly trigger this step to regenerate.")
     now = utc_now()
     with db_proxy.atomic():
         if workflow_run is not None:

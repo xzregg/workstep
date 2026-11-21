@@ -35,7 +35,7 @@ def main():
             protocol.write(json.dumps({'id': request['id'], 'result': result}, ensure_ascii=False) + '\n')
             protocol.flush()
         except Exception:
-            protocol.write(json.dumps({'error': '本地决策推理失败'}) + '\n')
+            protocol.write(json.dumps({'error': 'Local decision reasoning failed'}) + '\n')
             protocol.flush()
 
 

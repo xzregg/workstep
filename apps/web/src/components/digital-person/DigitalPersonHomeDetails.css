@@ -18,3 +18,22 @@
 .digital-home-detail-run .digital-person-run-detail{margin:0 0 var(--space-4) calc(var(--space-4) + var(--space-3));padding:var(--space-3) var(--space-4);background:var(--surface);border-radius:var(--radius-xs);overflow-wrap:anywhere}
 .digital-home-detail-loading{display:flex;justify-content:center;padding:var(--space-7) 0}
 @media(max-width:1023px){.digital-home-detail-panel--reflection{width:100%;height:min(640px,80dvh)}.digital-home-detail-panel--reflection .digital-home-detail-content{padding:var(--space-2) var(--space-4)}.digital-home-detail-panel--reflection>footer{padding:var(--space-3) var(--space-4) max(var(--space-3),env(safe-area-inset-bottom))}}
+
+.digital-home-detail-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: .5px solid var(--border-soft);
+}
+
+.digital-home-detail-switch-row .settings-switch {
+  flex-shrink: 0;
+  background: var(--border);
+}
+
+.digital-home-detail-switch-row .settings-switch[aria-checked="true"] {
+  background: var(--accent);
+}

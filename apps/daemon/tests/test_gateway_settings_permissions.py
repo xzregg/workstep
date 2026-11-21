@@ -61,7 +61,7 @@ SETTINGS_WRITES = [
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method,path,body", SETTINGS_WRITES)
 @pytest.mark.parametrize("mode", ["denied", "allowed", "project", "unmanaged", "other-user", "expired", "missing"])
-async def test_settings_require_matching_host_permission(settings_app, method, path, body, mode):
+async def test_settings_require_host_scope_without_gateway_capability(settings_app, method, path, body, mode):
     app, gateway = settings_app
     allowed = mode in ("allowed", "project", "other-user", "expired")
     token, pem, fingerprint = _signed_policy(engine_install=allowed, allow_local_providers=allowed)
@@ -80,10 +80,7 @@ async def test_settings_require_matching_host_permission(settings_app, method, p
     with actor_context(actor):
         async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
             response = await client.request(method, path, **({"json": body} if body is not None else {}))
-    if path.startswith("/api/engine/"):
-        expected = 403 if mode == "project" else 200
-    else:
-        expected = 200 if mode in ("allowed", "unmanaged") else 403
+    expected = 403 if mode == "project" else 200
     assert response.status_code == expected, response.text
 
 

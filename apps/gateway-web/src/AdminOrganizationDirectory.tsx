@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { enterpriseProviderName } from './enterpriseProviders'
 import { useEffect, useState } from 'react'
@@ -26,11 +27,11 @@ function DepartmentNode({ department, selectedId, select, revision }: {
     setLoading(true); setError('')
     void fetch(`/api/admin/org/departments?${params}`, { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error(response.status === 403 ? '当前权限无法查看子部门。' : '子部门加载失败。')
+        if (!response.ok) throw new Error(response.status === 403 ? 'Current permissions do not allow viewing sub-departments.' : 'Failed to load sub-department.')
         const data = await response.json()
         if (!controller.signal.aborted) { setChildren(data.departments ?? []); setTotal(data.total ?? 0) }
       }).catch(reason => {
-        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '子部门加载失败。')
+        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load sub-department.')
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [department.id, expanded, page, retry, revision])
@@ -48,7 +49,7 @@ function DepartmentNode({ department, selectedId, select, revision }: {
     </div>
     {expanded && <div className="gateway-org-children">
       {loading && <p role="status">正在加载子部门…</p>}
-      {error && <p role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>重试</button></p>}
+      {error && <p role="alert">{localizeGatewayError(error)} <button type="button" onClick={() => setRetry(value => value + 1)}>重试</button></p>}
       {!loading && !error && children.length === 0 && <p>没有可见子部门。</p>}
       {!error && children.length > 0 && <ul className="gateway-org-department-list">{children.map(child =>
         <DepartmentNode key={child.id} department={child} selectedId={selectedId} select={select} revision={revision} />
@@ -91,11 +92,11 @@ export function AdminOrganizationDirectory({ sourceId, revision, superAdmin }: {
     setDepartmentLoading(true); setDepartmentError('')
     void fetch(`/api/admin/org/departments?${params}`, { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error(response.status === 403 ? '当前权限无法查看组织目录。' : '部门列表加载失败。')
+        if (!response.ok) throw new Error(response.status === 403 ? 'Current permissions do not allow viewing the organization directory.' : 'Failed to load department list.')
         const data = await response.json()
         if (!controller.signal.aborted) { setDepartments(data.departments ?? []); setDepartmentTotal(data.total ?? 0) }
       }).catch(reason => {
-        if (reason?.name !== 'AbortError') setDepartmentError(reason instanceof Error ? reason.message : '部门列表加载失败。')
+        if (reason?.name !== 'AbortError') setDepartmentError(reason instanceof Error ? reason.message : 'Failed to load department list.')
       }).finally(() => { if (!controller.signal.aborted) setDepartmentLoading(false) })
     return () => controller.abort()
   }, [sourceId, departmentFilters, revision, departmentRevision])
@@ -110,11 +111,11 @@ export function AdminOrganizationDirectory({ sourceId, revision, superAdmin }: {
     void fetch(`/api/admin/org/departments/${encodeURIComponent(selected.id)}/members?${params}`, {
       credentials: 'same-origin', signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error(response.status === 403 ? '当前权限无法查看该部门。' : '成员列表加载失败。')
+      if (!response.ok) throw new Error(response.status === 403 ? 'Current permissions do not allow viewing this department.' : 'Failed to load member list.')
       const data = await response.json()
       if (!controller.signal.aborted) { setMembers(data.members ?? []); setMemberTotal(data.total ?? 0) }
     }).catch(reason => {
-      if (reason?.name !== 'AbortError') setMemberError(reason instanceof Error ? reason.message : '成员列表加载失败。')
+      if (reason?.name !== 'AbortError') setMemberError(reason instanceof Error ? reason.message : 'Failed to load member list.')
     }).finally(() => { if (!controller.signal.aborted) setMemberLoading(false) })
     return () => controller.abort()
   }, [selected, memberFilters, revision, memberRevision])
@@ -149,7 +150,7 @@ export function AdminOrganizationDirectory({ sourceId, revision, superAdmin }: {
         </Select>
       </div>
       {departmentLoading && <p role="status">正在加载部门…</p>}
-      {departmentError && <p role="alert" className="gateway-auth-error">{departmentError} <button type="button"
+      {departmentError && <p role="alert" className="gateway-auth-error">{localizeGatewayError(departmentError)} <button type="button"
         onClick={() => setDepartmentRevision(value => value + 1)}>重试</button></p>}
       {!departmentLoading && !departmentError && departments.length === 0 && <p>当前条件下没有部门。</p>}
       {!departmentLoading && !departmentError && <ul className="gateway-org-department-list">{departments.map(department =>
@@ -186,7 +187,7 @@ export function AdminOrganizationDirectory({ sourceId, revision, superAdmin }: {
           </Select>
         </div>
         {memberLoading && <p role="status">正在加载成员…</p>}
-        {memberError && <p role="alert" className="gateway-auth-error">{memberError} <button type="button"
+        {memberError && <p role="alert" className="gateway-auth-error">{localizeGatewayError(memberError)} <button type="button"
           onClick={() => setMemberRevision(value => value + 1)}>重试</button></p>}
         {!memberLoading && !memberError && members.length === 0 && <p>该部门当前没有直属成员。</p>}
         {!memberLoading && !memberError && <ul className="gateway-device-list">{members.map(member => <li key={member.id}>

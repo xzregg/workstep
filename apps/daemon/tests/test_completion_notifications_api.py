@@ -66,5 +66,5 @@ async def test_project_scoped_notification_identity_cannot_subscribe_other_proje
             response = await client.post('/api/completion-notifications/subscriptions',json=PAYLOAD,
                 headers={'Origin':'https://workstep.example'})
         assert response.status_code == 403
-        assert response.json()['detail'] == '不能订阅其他项目'
+        assert response.json()['detail'] == 'Cannot subscribe to other projects'
         app.state.completion_push.register.assert_not_awaited()

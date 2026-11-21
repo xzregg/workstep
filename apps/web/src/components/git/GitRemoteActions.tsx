@@ -4,7 +4,7 @@ import { useGitApi, useGitActionAllowed } from './GitApiContext'
 import { useRef, useState } from 'react'
 import { type GitRemotes, type GitStatus } from '../../api/git'
 import { useGitStore } from '../../stores/gitStore'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
 import { usePanelGitWrites } from './gitPanelWrites'
@@ -99,7 +99,7 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
         </label>
         <span className="git-remote-route"><small>{t('git.syncRoute')}</small><strong>{route}</strong>{inventory?.upstream && <small>{t('git.currentUpstream', { upstream: `${inventory.upstream.remote}/${inventory.upstream.branch}` })}</small>}</span>
         <label className="git-remote-track"><input type="checkbox" checked={setUpstream} onChange={event => setSetUpstream(event.target.checked)} /> <span>{t('git.setUpstream')}<small>{t('git.setUpstreamHint')}</small></span></label>
-        {error && <span className="git-remote-error" role="alert">{error}</span>}
+        {error && <span className="git-remote-error" role="alert">{localizeErrorDisplay(error)}</span>}
         <span className="git-remote-panel__actions">{can('fetchRemote') && <Button size="sm" loading={loading} disabled={!remote || !!busy || writes.busy} onClick={() => void refreshRemote()}><Icon name="refresh" size={13} />{t('git.fetchRemote')}</Button>}<Button size="sm" variant="primary" loading={!!busy} disabled={!remote || !targetBranch.trim() || !!loading || writes.busy} onClick={() => void run(mode)}>{mode === 'push' ? t('git.pushConfirm') : t('git.pullConfirm')}</Button></span>
       </>}
     </GitActionPanel>}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { chatSessionApi } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useChatListStore } from '../stores/chatSessionStore'
 import ConfirmDialog from './ConfirmDialog'
 import Input from './Input'
@@ -64,7 +64,7 @@ export default function ChatSessionRenameDialog({
         }}
         placeholder={t('chatSession.renamePlaceholder')}
       />
-      {error && <div className="chat-session-rename-error" role="alert">{error}</div>}
+      {error && <div className="chat-session-rename-error" role="alert">{localizeErrorDisplay(error)}</div>}
     </div>
   </ConfirmDialog>
 }

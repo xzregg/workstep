@@ -4,7 +4,7 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
-import { scheduleApi, type Project, type Task } from '../src/api/client'
+import { scheduleApi, taskApi, type Project, type Task } from '../src/api/client'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import TaskList from '../src/pages/TaskList'
 import { useProjectStore } from '../src/stores/projectStore'
@@ -16,6 +16,33 @@ const makeTask = (id: string, status: string, extra: Partial<Task> = {}): Task =
   created_at: '2026-11-12T00:00:00Z', updated_at: '2026-11-12T00:00:00Z',
   steps: [{ step_key: 'do', status: 'pending', engine: null, started_at: null, ended_at: null, error: null }],
   ...extra,
+})
+
+test('a task created while the list is loading survives the older response and a duplicate create response', async () => {
+  const initial = useTaskStore.getState()
+  const originalList = taskApi.list
+  const originalCreate = taskApi.create
+  const task = makeTask('cli', 'ready')
+  const { promise, resolve } = Promise.withResolvers<{ tasks: Task[] }>()
+  taskApi.list = () => promise
+  taskApi.create = async () => task
+  useTaskStore.setState({ tasks: [], listQuery: null })
+  try {
+    const { fetchTasks, handleWsEvent, createTask } = useTaskStore.getState()
+    const loading = fetchTasks('demo', 'flow')
+    handleWsEvent({ type: 'CUSTOM', name: 'workstep.task_created', project_id: 'demo', value: { task } })
+    handleWsEvent({ type: 'CUSTOM', name: 'workstep.status', project_id: 'demo', task_id: task.id, value: { status: 'waiting' } })
+    resolve({ tasks: [makeTask('existing', 'ready')] })
+    await loading
+    await createTask(task.title, task.cwd, 'demo')
+    assert.deepEqual(useTaskStore.getState().tasks.map(({ id, status }) => [id, status]), [
+      ['cli', 'waiting'], ['existing', 'ready'],
+    ])
+  } finally {
+    taskApi.list = originalList
+    taskApi.create = originalCreate
+    useTaskStore.setState(initial, true)
+  }
 })
 
 test('status view groups real task states, retains card details, updates live and persists the selection', async () => {
@@ -60,6 +87,17 @@ test('status view groups real task states, retains card details, updates live an
     assert.ok([...container.querySelectorAll('.desktop-task-board .task-board-card')].every(card => card.getAttribute('draggable') === 'false'))
     assert.equal(fetches, 1, 'changing view does not fetch tasks again')
     assert.equal(localStorage.getItem('workstep.boardView'), 'status')
+    await act(async () => {
+      const { handleWsEvent } = useTaskStore.getState()
+      const event = { type: 'CUSTOM', name: 'workstep.task_created', project_id: 'demo', task_id: 'cli', value: { task: makeTask('cli', 'ready') } }
+      handleWsEvent({ ...event, project_id: 'other' })
+      handleWsEvent({ ...event, value: { task: makeTask('cli', 'ready', { workflow_id: 'other' }) } })
+      assert.equal(useTaskStore.getState().tasks.some(task => task.id === 'cli'), false)
+      handleWsEvent(event)
+      handleWsEvent(event)
+    })
+    assert.deepEqual(laneIds()[0], ['cli', 'ready', 'queued'])
+    assert.equal(fetches, 1, 'creation events insert one card without another list request')
     await act(async () => useTaskStore.setState({ tasks: tasks.map(task => task.id === 'ready' ? { ...task, status: 'waiting', status_reason: 'manual_review' } : task) }))
     assert.deepEqual(laneIds(), [['queued'], ['running'], ['ready', 'waiting'], ['stopped', 'failed'], ['completed']])
     await act(async () => root.unmount())

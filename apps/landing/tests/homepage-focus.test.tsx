@@ -12,8 +12,11 @@ describe('focused homepage and extensible engines', () => {
     for (const content of ['class="guided-walkthrough"', 'class="start-layout"', 'class="compare-table"']) {
       expect(html).toContain(content)
     }
-    expect(html).not.toContain('<details')
-    expect(html).not.toContain('<summary')
+    expect(html).toContain('<details')
+    expect(html).toContain('<summary')
+    expect(html).not.toContain('id="product-intro-title"')
+    expect(html).not.toContain('class="product-intro-player"')
+    expect(html.indexOf('id="intro-video"')).toBeGreaterThan(html.indexOf('id="start"'))
     expect(html.match(/class="workflow-card"/g)).toHaveLength(4)
   })
 

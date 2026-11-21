@@ -75,6 +75,7 @@ class ChatMessageRequest(BaseSchema):
     project_id: str
     content: str
     face_person_ids: list[str] = Field(default_factory=list, max_length=8)
+    face_context_recent: bool = False
     engine: str | None = None
     model: str | None = None
     fast_model: str | None = None
@@ -526,7 +527,10 @@ async def chat_message(
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
 ):
     """Queue one chat turn for a session; events stream over WebSocket."""
-    _enforce_project_scope(req.project_id)
+    from services.remote_access import has_project_edit_scope
+
+    if not has_project_edit_scope(req.project_id):
+        raise HTTPException(status_code=403, detail="Project scope denied")
     if req.face_person_ids:
         from api.project_scope import require_catalog_project
         require_catalog_project('')
@@ -538,6 +542,7 @@ async def chat_message(
             plan_mode=req.plan_mode,
             goal_mode=req.goal_mode,
             face_person_ids=req.face_person_ids,
+            face_context_recent=req.face_context_recent,
         ))
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc

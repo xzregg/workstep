@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { scheduleApi } from '../api/schedule'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 
 export default function ScheduleRunNowButton({ projectId, scheduleId, disabled, running, onStarted }: {
@@ -21,7 +21,7 @@ export default function ScheduleRunNowButton({ projectId, scheduleId, disabled, 
     finally { pending.current = false; setBusy(false) }
   }
   return <>
-    {error && <span className="schedule-run-now-error" role="alert">{error}</span>}
+    {error && <span className="schedule-run-now-error" role="alert">{localizeErrorDisplay(error)}</span>}
     <Button loading={busy || running} disabled={disabled} title={t('schedules.runNowHelp')} onClick={() => void run()}>{t('schedules.runNow')}</Button>
   </>
 }

@@ -30,7 +30,7 @@ async def connect(item):
 
 async def run_cli(item, arguments, cwd=None):
     if not isinstance(arguments, list) or len(arguments) > 100 or any(not isinstance(a, str) or len(a) > 8192 for a in arguments):
-        raise ValueError('CLI 参数无效')
+        raise ValueError('Invalid CLI parameters')
     process = await asyncio.create_subprocess_exec(
         item['command'], *item.get('args', []), *arguments,
         cwd=cwd, env={**os.environ, **item.get('env', {})},
@@ -43,7 +43,7 @@ async def run_cli(item, arguments, cwd=None):
             async for line in iter_stream_lines(process.stdout):
                 size += len(line)
                 if size > 1024 * 1024:
-                    raise ValueError('CLI 输出超过限制')
+                    raise ValueError('CLI output exceeds limit')
                 parts.append(line.decode(errors='replace') if isinstance(line, bytes) else line)
             await process.wait()
         return {'exit_code': process.returncode, 'output': '\n'.join(parts)}
@@ -75,10 +75,10 @@ def _failure(exc):
             scheme = error.response.headers.get('www-authenticate', '').split(' ', 1)[0].lower()
             return {'ok': False, 'status': status, 'tool_count': 0, 'tools': [],
                     'auth_scheme': scheme if scheme in {'bearer', 'basic'} else 'unknown',
-                    'message': '需要认证或凭据已过期，请配置认证后重试' if status == 'auth_required' else '访问被拒绝，请检查账号权限、授权范围和服务访问策略'}
+                    'message': 'Authentication required or credentials expired. Please configure authentication and retry:' if status == 'auth_required' else 'Access denied. Please check account permissions, authorization scope, and service access policies:'}
         timeout = timeout or isinstance(error, (TimeoutError, httpx.TimeoutException))
     return {'ok': False, 'status': 'timeout' if timeout else 'error', 'tool_count': 0, 'tools': [],
-            'message': '连接超时，请检查服务状态后重试' if timeout else '连接失败，请检查地址、安装状态和认证信息'}
+            'message': 'Connection timeout, please check the service status and retry' if timeout else 'Connection failed. Please check the address, installation status, and authentication information:'}
 
 
 def _redact(value, item):
@@ -121,16 +121,16 @@ async def diagnose(item, *, tool_name=None, arguments=None, include_tools=True):
                     result['tools'] = [{'name': tool.name, 'description': tool.description or '', 'input_schema': tool.inputSchema} for tool in tools]
                 if tool_name is not None:
                     if tool_name not in {tool.name for tool in tools}:
-                        return {'ok': False, 'status': 'error', 'tool_count': len(tools), 'tools': [], 'message': '工具已变化或不存在，请重新测试连接'}
+                        return {'ok': False, 'status': 'error', 'tool_count': len(tools), 'tools': [], 'message': 'The tool has changed or does not exist. Please retest the connection.'}
                     invoking = True
                     output = await client.call_tool(tool_name, arguments or {})
                     result.update(ok=not output.isError, status='tool_error' if output.isError else 'connected',
-                                  message='工具执行失败' if output.isError else '工具执行完成', result=output.model_dump(mode='json', by_alias=True))
+                                  message='Tool execution failed' if output.isError else '工具执行完成', result=output.model_dump(mode='json', by_alias=True))
                 return _redact(result, item)
     except asyncio.CancelledError:
         raise
     except Exception as exc:
         failure = _failure(exc)
         if invoking and failure['status'] == 'error':
-            failure.update(status='tool_error', message='工具调用失败，请检查参数和权限')
+            failure.update(status='tool_error', message='Tool call failed. Check its parameters and permissions.')
         return failure

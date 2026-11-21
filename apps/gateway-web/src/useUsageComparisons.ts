@@ -20,7 +20,7 @@ export function useUsageComparisons(filters: string, enabled: boolean) {
    let pending = requests.get(url)
    if (!pending) {
     pending = fetch(url, { credentials: 'same-origin', signal: controller.signal }).then(async response => {
-     if (!response.ok) throw Error('对比用量加载失败')
+     if (!response.ok) throw Error('Failed to load usage comparison')
      return await response.json() as UsageTotals
     })
     requests.set(url, pending)

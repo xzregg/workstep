@@ -1,7 +1,7 @@
 import Select from '../Select'
 import { useEffect, useState } from 'react'
 import { type GitBranch } from '../../api/git'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import { useGitApi } from './GitApiContext'
 import Button from '../Button'
 import Icon from '../Icon'
@@ -61,6 +61,6 @@ export default function GitBranchPushPanel({ id, branch, onClose, onBusy, onPush
     <label>{t('git.targetBranch')}<input name="pushTargetBranch" value={target} disabled={loading || pushing} onChange={event => setTarget(event.target.value)} /></label>
     <label className="git-branch-push-track"><input type="checkbox" checked={setUpstream} disabled={loading || pushing} onChange={event => setSetUpstream(event.target.checked)} />{t('git.setUpstream')}</label>
     <Button size="sm" variant="primary" loading={loading || pushing} disabled={!remote || !target.trim() || writes.busy} onClick={() => void push()}>{t('git.pushConfirm')}</Button>
-    {error && <span role="alert" className="git-danger">{error}</span>}
+    {error && <span role="alert" className="git-danger">{localizeErrorDisplay(error)}</span>}
   </div>
 }

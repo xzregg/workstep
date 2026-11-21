@@ -2,6 +2,7 @@ from tests.memory_turn_fixture import assessment_access
 from tests.memory_turn_fixture import create_completed_user
 import asyncio
 import json
+import pytest
 from datetime import timedelta
 
 from models.chat_session import ChatMessage
@@ -9,6 +10,63 @@ from models.fields import utc_now
 from services import digital_person_memory as memory, digital_person_memory_index as index
 from tests.test_chat_session import chat_module
 from tests.test_digital_person_runtime import runtime
+
+
+@pytest.mark.parametrize('failure', ['missing', 'changed'])
+async def test_unreadable_sources_are_skipped_without_blocking_valid_batch(runtime, monkeypatch, failure):
+    current, project, _ = runtime
+    sid = (await current.main_session())['id']
+    def seed(_):
+        for name in ('bad', 'good'):
+            create_completed_user(id=name, session=sid, role='user', status='completed',
+                                  content=f'{name}独立记录', created_at=utc_now())
+    await current.projects.run_db(project.id, seed)
+    original = memory.read_projects
+    async def read(*args, **kwargs):
+        hits = await original(*args, **kwargs)
+        if failure == 'missing':
+            return [h for h in hits if 'bad' not in h['source_message_id']]
+        return [{**h, 'source_hash':'changed'} if 'bad' in h['source_message_id'] else h for h in hits]
+    monkeypatch.setattr(memory, 'read_projects', read)
+    async def decide(context):
+        await context['_load']()
+        assert {m['id'] for m in context['conversation']} == {'good', 'fixture-reply-good'}
+        return dict(decision='silent', summary='已处理有效来源', source_ids=[])
+    monkeypatch.setattr(current, '_decide', decide)
+    result = await current.check()
+    assert result['status'] == 'silent', result
+    assert result['memory_processing']['knowledge']['processed'] == 2
+    with index.connect() as db:
+        rows = list(db.execute('SELECT source_message_id,memory_status,pending_ready_at FROM memories'))
+        assert all(r['memory_status']=='done' for r in rows if 'good' in r['source_message_id'])
+        bad = [r for r in rows if 'bad' in r['source_message_id']]
+        assert all(r['memory_status']=='pending' and r['pending_ready_at']>0 for r in bad)
+        assert db.execute('SELECT count(*) FROM digital_reflections').fetchone()[0] == 2
+    assert (await current._collect())['no_work'] is True
+
+
+async def test_all_unavailable_sources_are_deferred_without_completion(runtime, monkeypatch):
+    current, project, _ = runtime
+    sid = (await current.main_session())['id']
+    await current.projects.run_db(project.id, lambda _: create_completed_user(
+        id='offline', session=sid, role='user', status='completed', content='暂时不可读', created_at=utc_now()))
+    original = memory.read_projects
+    async def read(*args, **kwargs):
+        return []
+    monkeypatch.setattr(memory, 'read_projects', read)
+    assert (await current._collect())['no_work'] is True
+    with index.connect() as db:
+        assert db.execute('SELECT count(*) FROM digital_reflections').fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM memories WHERE memory_status='pending' AND pending_ready_at>0").fetchone()[0] == 2
+    from services.memory_pending_queue import has_pending
+    assert not await asyncio.to_thread(has_pending, [project.id])
+    # Simulate expiration of the retry delay, then restore the source reader.
+    with index.connect() as db:
+        db.execute('UPDATE memories SET pending_ready_at=0')
+    monkeypatch.setattr(memory, 'read_projects', original)
+    recovered = await current._collect()
+    assert {m['id'] for m in recovered['conversation']} == {'offline', 'fixture-reply-offline'}
+    assert await asyncio.to_thread(has_pending, [project.id])
 
 
 async def test_cli_lazily_reads_100_across_ten_conversations_once(runtime,monkeypatch):
@@ -100,7 +158,7 @@ async def test_manual_run_during_automatic_run_keeps_active_batch(runtime,monkey
     active=asyncio.create_task(current.check(manual=False))
     try:
         await asyncio.wait_for(entered.wait(),3)
-        with pytest.raises(ValueError,match='已有检查正在进行'):
+        with pytest.raises(ValueError,match='An\\ existing\\ check\\ is\\ in\\ progress'):
             await current.check(manual=True)
         assert len(calls)==1
         assert memory_query.assessment_observed(calls[0][0])

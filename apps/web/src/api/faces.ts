@@ -1,6 +1,6 @@
 import {request} from './transport'
 export const FACE_MODEL_VERSION='human-3.3.6-faceres-1024-v1'
-export interface FaceSettings {enabled:boolean;show_names:boolean;include_people:boolean;include_relationship:boolean;preset:'balanced'|'light'|'clear';threshold:number}
+export interface FaceSettings {enabled:boolean;show_boxes?:boolean;show_names:boolean;include_people:boolean;include_relationship:boolean;preset:'balanced'|'light'|'clear';threshold:number}
 export interface FacePerson {id:string;name:string;relationship:string;notes:string;enabled:boolean;sample_count:number;created_at:string;updated_at:string}
 export interface FaceSample {id:string;model_version:string;created_at:string}
 export interface FaceFramePerson {person_id:string;name:string;relationship?:string}

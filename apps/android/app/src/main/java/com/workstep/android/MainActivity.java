@@ -17,6 +17,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.PermissionRequest;
@@ -69,6 +70,7 @@ public final class MainActivity extends Activity {
     private static final String MENU_X_KEY = "connection_menu_x";
     private static final String MENU_Y_KEY = "connection_menu_y";
     private static final String WATCH_SERVICE_REQUESTED_KEY = "watch_service_requested";
+    private static final String KEEP_SCREEN_ON_KEY = "keep_screen_on";
     private static final int FILE_REQUEST = 1001;
     private static final int SAVE_REQUEST = 1002;
 
@@ -106,6 +108,7 @@ public final class MainActivity extends Activity {
     private String notificationProjectId = "";
     private String notificationProjectName = "";
     private int notificationNavigationGeneration;
+    private final AtlasPerformanceCapture atlasPerformance = new AtlasPerformanceCapture();
 
     static boolean isVisibleToUser() { return activityVisible; }
 
@@ -181,7 +184,14 @@ public final class MainActivity extends Activity {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
+    private void updateKeepScreenOn() {
+        if (activityVisible && getPreferences(MODE_PRIVATE).getBoolean(KEEP_SCREEN_ON_KEY, true))
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
     private void clearPage() {
+        atlasPerformance.cancel(false);
         if (systemSpeech != null) { systemSpeech.close(); systemSpeech = null; }
         if (imageCapture != null) imageCapture.clear();
         if (microphonePermissions != null) microphonePermissions.clear();
@@ -283,7 +293,7 @@ public final class MainActivity extends Activity {
             try {
                 candidate = ServerAddress.parse(address.getText().toString());
             } catch (IllegalArgumentException reason) {
-                error.setText(reason.getMessage());
+                error.setText(R.string.invalid_server_address);
                 return;
             }
             connectToServer(candidate, scroll, connect, switchAddress, progress, error);
@@ -294,7 +304,7 @@ public final class MainActivity extends Activity {
             try {
                 candidate = ServerAddress.parse(address.getText().toString());
             } catch (IllegalArgumentException reason) {
-                error.setText(reason.getMessage());
+                error.setText(R.string.invalid_server_address);
                 return;
             }
             if (saved.contains(candidate.origin())) {
@@ -398,7 +408,7 @@ public final class MainActivity extends Activity {
             }
             return null;
         } catch (Exception error) {
-            return "无法连接：" + error.getLocalizedMessage();
+            return getString(R.string.server_connection_failed, error.getLocalizedMessage());
         } finally {
             if (connection != null) connection.disconnect();
         }
@@ -426,6 +436,11 @@ public final class MainActivity extends Activity {
                         if (source != webView || !isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
                         if (systemSpeech != null) systemSpeech.handle(message.getData(), reply);
                     });
+            WebViewCompat.addWebMessageListener(view, "WorkStepWakeChime",
+                    Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
+                        if (source != webView || !isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
+                        if (systemSpeech != null) systemSpeech.handleWakeChime(message.getData(), reply);
+                    });
             WebViewCompat.addWebMessageListener(view, "WorkStepAndroid",
                     Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
                         if (!isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
@@ -438,6 +453,9 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView source, String url, android.graphics.Bitmap icon) {
                 if (source != webView) return;
+                // The configured WorkStep page can start its capture graph on standby.
+                source.getSettings().setMediaPlaybackRequiresUserGesture(server == null || !server.contains(url));
+                atlasPerformance.cancel(false);
                 microphonePermissions.clear();
                 if (systemSpeech != null) systemSpeech.stop();
                 notificationProjectId = "";
@@ -451,7 +469,7 @@ public final class MainActivity extends Activity {
                 source.postDelayed(() -> {
                     if (source == webView && generation == pageLoadGeneration && pageLoading) {
                         CrashReports.log(MainActivity.this, "网页主进程", "网页加载超时；路径=" + Uri.parse(url).getPath(), null);
-                        showWebError("网页加载超时，请重新加载");
+                        showWebError(getString(R.string.web_timeout));
                     }
                 }, 180000);
             }
@@ -469,7 +487,7 @@ public final class MainActivity extends Activity {
                         if (source != webView || generation != pageLoadGeneration || pageHadError) return;
                         if ("false".equals(value)) {
                             CrashReports.log(MainActivity.this, "网页主进程", "网页渲染失败；根节点为空；路径=" + Uri.parse(url).getPath(), null);
-                            showWebError("网页未能正常显示，请重新加载");
+                            showWebError(getString(R.string.web_render_failed));
                         }
                     });
                 }, 3000);
@@ -502,7 +520,7 @@ public final class MainActivity extends Activity {
                 if (request.isForMainFrame() || isPageScript(request)) {
                     CrashReports.log(MainActivity.this, "网页主进程", "网页加载失败；错误码=" + error.getErrorCode()
                             + "；路径=" + request.getUrl().getPath(), null);
-                    showWebError("网页加载失败：" + error.getDescription());
+                    showWebError(getString(R.string.web_load_failed, error.getDescription()));
                 }
             }
 
@@ -512,7 +530,7 @@ public final class MainActivity extends Activity {
                 if (source == webView && (request.isForMainFrame() || isPageScript(request))) {
                     CrashReports.log(MainActivity.this, "网页主进程", "网页资源加载失败；HTTP=" + response.getStatusCode()
                             + "；路径=" + request.getUrl().getPath(), null);
-                    showWebError("网页资源加载失败（HTTP " + response.getStatusCode() + "），请重新加载");
+                    showWebError(getString(R.string.web_http_failed, response.getStatusCode()));
                 }
             }
 
@@ -520,8 +538,8 @@ public final class MainActivity extends Activity {
             public void onReceivedSslError(WebView source, SslErrorHandler handler, SslError error) {
                 handler.cancel();
                 if (source == webView) {
-                    CrashReports.log(MainActivity.this, "网页主进程", "HTTPS 证书验证失败", null);
-                    showWebError("HTTPS 证书验证失败");
+                    CrashReports.log(MainActivity.this, "网页主进程", getString(R.string.web_tls_failed), null);
+                    showWebError(getString(R.string.web_tls_failed));
                 }
             }
 
@@ -595,7 +613,7 @@ public final class MainActivity extends Activity {
                 } catch (Exception error) {
                     fileCallback = null;
                     callback.onReceiveValue(null);
-                    Toast.makeText(MainActivity.this, "无法打开文件选择器", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, getString(R.string.file_picker_failed), Toast.LENGTH_SHORT).show();
                     return true;
                 }
             }
@@ -750,7 +768,7 @@ public final class MainActivity extends Activity {
             foregroundRefresh.externalPickerStarted();
         } catch (Exception error) {
             finishFileSelection(null);
-            Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.file_picker_failed), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -820,6 +838,20 @@ public final class MainActivity extends Activity {
                 showAddressScreen(server.origin());
                 return true;
             });
+            menu.getMenu().add(R.string.atlas_capture_performance).setOnMenuItemClickListener(item -> {
+                if (canCapturePerformance()) atlasPerformance.start(this, webView);
+                else Toast.makeText(this, R.string.atlas_open_first, Toast.LENGTH_SHORT).show();
+                return true;
+            });
+            menu.getMenu().add(R.string.keep_screen_on)
+                    .setCheckable(true)
+                    .setChecked(getPreferences(MODE_PRIVATE).getBoolean(KEEP_SCREEN_ON_KEY, true))
+                    .setOnMenuItemClickListener(item -> {
+                        boolean enabled = !item.isChecked();
+                        getPreferences(MODE_PRIVATE).edit().putBoolean(KEEP_SCREEN_ON_KEY, enabled).apply();
+                        updateKeepScreenOn();
+                        return true;
+                    });
             menu.getMenu().add(R.string.reload).setOnMenuItemClickListener(item -> {
                 if (webView != null) webView.reload();
                 return true;
@@ -936,17 +968,17 @@ public final class MainActivity extends Activity {
             CrashReports.log(this, "网页主进程", "转系统浏览器；域名=" + uri.getHost(), null);
             startActivity(new Intent(Intent.ACTION_VIEW, uri));
         } catch (Exception error) {
-            Toast.makeText(this, "无法打开外部链接", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.external_link_failed), Toast.LENGTH_SHORT).show();
         }
     }
 
     private final DownloadListener downloadListener = (url, userAgent, disposition, mime, length) -> {
         if (server == null || !server.contains(url)) {
-            Toast.makeText(this, "只能下载当前服务的文件", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.download_same_origin), Toast.LENGTH_SHORT).show();
             return;
         }
         if (pendingDownload != null) {
-            Toast.makeText(this, "请先完成当前文件的保存选择", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.finish_current_save), Toast.LENGTH_SHORT).show();
             return;
         }
         try {
@@ -966,7 +998,7 @@ public final class MainActivity extends Activity {
             foregroundRefresh.externalPickerStarted();
         } catch (Exception error) {
             pendingDownload = null;
-            Toast.makeText(this, "无法打开保存位置选择器", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.save_picker_failed), Toast.LENGTH_LONG).show();
         }
     };
 
@@ -985,14 +1017,14 @@ public final class MainActivity extends Activity {
                     int status = connection.getResponseCode();
                     if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
                         String location = connection.getHeaderField("Location");
-                        if (location == null) throw new IllegalStateException("服务器未提供下载地址");
+                        if (location == null) throw new IllegalStateException("The server did not provide a download location");
                         address = download.server.resolveSameOrigin(address, location);
                         continue;
                     }
-                    if (status != 200) throw new IllegalStateException("服务器返回 HTTP " + status);
+                    if (status != 200) throw new IllegalStateException("The server returned HTTP " + status);
                     try (InputStream input = connection.getInputStream();
                          OutputStream output = getContentResolver().openOutputStream(document, "w")) {
-                        if (output == null) throw new IllegalStateException("无法写入所选位置");
+                        if (output == null) throw new IllegalStateException("Could not write to the selected location");
                         byte[] buffer = new byte[16384];
                         int count;
                         while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
@@ -1002,7 +1034,7 @@ public final class MainActivity extends Activity {
                     connection.disconnect();
                 }
             }
-            throw new IllegalStateException("下载重定向次数过多");
+            throw new IllegalStateException("Too many download redirects");
         } catch (Exception error) {
             try {
                 DocumentsContract.deleteDocument(getContentResolver(), document);
@@ -1064,6 +1096,11 @@ public final class MainActivity extends Activity {
         Toast.makeText(this, R.string.web_cache_cleared, Toast.LENGTH_SHORT).show();
     }
 
+    private boolean canCapturePerformance() {
+        String url = webView == null ? null : webView.getUrl();
+        return url != null && server != null && server.contains(url);
+    }
+
     private void returnToDevices() {
         if (webView == null) return;
         String destination = WebPageRecovery.devicePicker(server, webView.getUrl());
@@ -1093,7 +1130,7 @@ public final class MainActivity extends Activity {
                     String failure = saveDownload(download, cookie, document);
                     runOnUiThread(() -> {
                         if (isFinishing() || isDestroyed()) return;
-                        Toast.makeText(this, failure == null ? "文件已保存" : "保存失败：" + failure,
+                        Toast.makeText(this, failure == null ? "文件已保存" : getString(R.string.file_save_failed, failure),
                                 Toast.LENGTH_LONG).show();
                     });
                 });
@@ -1108,9 +1145,11 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        atlasPerformance.cancel(true);
         CrashReports.log(this, "网页主进程", "进入后台；监听数量=" + completionWatches.size(), null);
         startCompletionWatchService();
         activityVisible = false;
+        updateKeepScreenOn();
         super.onPause();
     }
 
@@ -1127,6 +1166,7 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activityVisible = true;
+        updateKeepScreenOn();
         CrashReports.log(this, "网页主进程", "返回前台；监听数量=" + completionWatches.size(), null);
         stopCompletionWatchService();
         CrashReports.showIfPresent(this);

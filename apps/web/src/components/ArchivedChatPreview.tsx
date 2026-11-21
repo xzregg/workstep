@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { chatSessionApi, type WorkflowGenHistoryMessage } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import ChatMessageBubble from './ChatMessageBubble'
 import Spinner from './Spinner'
@@ -43,7 +43,7 @@ export default function ArchivedChatPreview({ projectId, sessionId }: { projectI
 
   return <section className="archived-chat-preview" aria-label={t('chatSession.archivePreview')}>
     {loading ? <div role="status"><Spinner size={14} /> {t('common.loading')}</div>
-      : error ? <div role="alert">{error} <Button onClick={() => setAttempt((value) => value + 1)}>{t('common.retry')}</Button></div>
+      : error ? <div role="alert">{localizeErrorDisplay(error)} <Button onClick={() => setAttempt((value) => value + 1)}>{t('common.retry')}</Button></div>
       : messages.length === 0 ? <div>{t('chatSession.archiveNoQuestion')}</div>
       : <>
         {messages.map((message) => <ChatMessageBubble key={message.id}

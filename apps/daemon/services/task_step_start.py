@@ -5,11 +5,16 @@ import uuid
 from pathlib import Path
 from typing import NamedTuple
 
+from agent_assistants.session_state import PROVIDER_HANDOFF_REQUIRED
 from models import Message, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from services.artifact_rounds import next_artifact_round
 from services.pipeline import Step
 from services.prompt import legacy_task_context_hashes
+
+
+class StepProviderHandoffRequired(ValueError):
+    pass
 
 
 class StartedStepState(NamedTuple):
@@ -71,22 +76,27 @@ def start_step_state(
         and last_completed_execution.engine
         else previous_engine
     )
-    # Engine session identifiers are provider-specific: an engine or
-    # provider switch must not resume the old session. The assembled
-    # step prompt still carries supplements, upstream artifacts and
-    # task context (plus the handoff reference when one is pending),
-    # but the new endpoint must create its own session instead of
-    # receiving an incompatible ID.
-    session_provider = effective_provider_id
+    pending_handoff = None
+    if ts.pending_handoff_json:
+        try:
+            value = json.loads(ts.pending_handoff_json)
+            pending_handoff = value if isinstance(value, dict) else None
+        except (TypeError, json.JSONDecodeError):
+            pass
+    provider_changed = (
+        (ts.session_provider is not None or ts.session_id or last_completed_execution)
+        and (ts.session_provider or "") != effective_provider_id
+    )
+    if pending_handoff:
+        target_provider = pending_handoff.get("target_provider") or ""
+        if target_provider != effective_provider_id or pending_handoff.get("target_engine") != step.engine:
+            raise StepProviderHandoffRequired(PROVIDER_HANDOFF_REQUIRED)
+    elif provider_changed:
+        raise StepProviderHandoffRequired(PROVIDER_HANDOFF_REQUIRED)
+
     if ts.session_id and (
-        ts.pending_handoff_json
+        pending_handoff
         or (session_engine and session_engine != step.engine)
-        # 同引擎但供应商变更（含重置为默认后 provider 覆盖被移除）：
-        # 旧会话建立于另一个供应商端点，不能继续 resume。
-        or (
-            session_engine == step.engine
-            and str(ts.session_provider or "").strip() != session_provider
-        )
     ):
         ts.session_id = None
     is_review_retry = (
@@ -105,6 +115,7 @@ def start_step_state(
         ts.started_at = utc_now()
     ts.ended_at = None
     ts.engine = step.engine
+    ts.session_provider = effective_provider_id
     ts.save()
 
     step_run = None
@@ -213,13 +224,6 @@ def start_step_state(
             except (TypeError, ValueError, AttributeError):
                 pass
 
-    pending_handoff = None
-    if ts.pending_handoff_json:
-        try:
-            value = json.loads(ts.pending_handoff_json)
-            pending_handoff = value if isinstance(value, dict) else None
-        except (TypeError, json.JSONDecodeError):
-            pending_handoff = None
     return StartedStepState(
         ts,
         step_run,

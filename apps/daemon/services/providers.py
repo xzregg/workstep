@@ -87,7 +87,7 @@ async def fetch_models(
             if protocol == "anthropic_messages" and (
                 not isinstance(payload, dict) or not isinstance(payload.get("data"), list)
             ):
-                raise ValueError("供应商模型列表响应格式不正确")
+                raise ValueError("Incorrect response format for supplier model list")
             return payload
 
         try:
@@ -173,7 +173,7 @@ async def fetch_and_save_models(
 
 def require_managed_model(provider: dict, model: str) -> None:
     if config_store.managed_gateway_id and config_store.get_provider(str(provider.get('id') or '')) is None:
-        raise ValueError('所选供应商授权已失效，请重新选择供应商')
+        raise ValueError('The selected supplier\'s authorization has expired. Please reselect the supplier.')
     if config_store.managed_gateway_id and provider.get("managed"):
         current = config_store.get_provider(str(provider.get('id') or ''))
         if (current is None
@@ -181,9 +181,9 @@ def require_managed_model(provider: dict, model: str) -> None:
                 or any(current.get(key) != provider.get(key) for key in (
                     'api_key', 'models', 'protocol_base_urls', 'protocols', 'base_url',
                 ))):
-            raise ValueError('所选供应商授权已失效，请重新选择供应商')
+            raise ValueError('The selected supplier\'s authorization has expired. Please reselect the supplier.')
     if provider.get("managed") and model not in provider.get("models", []):
-        raise ValueError("所选模型未获平台供应商授权")
+        raise ValueError("The selected model is not authorized by the platform vendor")
 
 
 async def chat_completion(
@@ -211,18 +211,18 @@ async def chat_completion(
         provider.get("base_url") or provider.get("protocol_base_urls")
     )
     if not has_base_url or not model:
-        raise ValueError("供应商或模型未配置")
+        raise ValueError("Supplier or model not configured")
     protocols = normalize_provider_protocols(
         provider.get("protocols") or provider.get("protocol"),
         str(provider.get("type") or "custom"),
     )
     if "openai_chat_completions" not in protocols:
-        raise ValueError("该供应商不支持 chat/completions 直连")
+        raise ValueError("This vendor does not support direct chat/completions")
     selected = select_provider_protocol(
         provider, protocol or "openai_chat_completions"
     )
     if selected != "openai_chat_completions":
-        raise ValueError("该供应商不支持 chat/completions 直连")
+        raise ValueError("This vendor does not support direct chat/completions")
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -247,10 +247,10 @@ async def chat_completion(
     try:
         content = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError(f"chat/completions 响应格式异常：{data}") from exc
+        raise RuntimeError(f"chat/completions response format is abnormal: {data}") from exc
     content = str(content or "")
     if not content:
-        raise RuntimeError("模型未返回内容，请重试")
+        raise RuntimeError("Model did not return content, please retry")
     if usage_collector is not None:
         usage_collector.update(_response_usage(data, selected))
     return content
@@ -327,7 +327,7 @@ async def text_completion(
         provider.get("base_url") or provider.get("protocol_base_urls")
     )
     if not has_base_url or not model:
-        raise ValueError("供应商或模型未配置")
+        raise ValueError("Supplier or model not configured")
     selected = select_provider_protocol(provider, protocol)
     if selected == "openai_chat_completions":
         return await chat_completion(
@@ -370,7 +370,7 @@ async def text_completion(
         }
         endpoint = "responses"
     else:
-        raise ValueError("该供应商协议不支持单轮文本调用")
+        raise ValueError("This vendor protocol does not support single-turn text calls")
 
     url = provider_endpoint_url(provider, selected, endpoint)
     async with httpx.AsyncClient(
@@ -392,7 +392,7 @@ async def text_completion(
     else:
         result = _responses_text(data)
     if not result:
-        raise RuntimeError("模型未返回内容，请重试")
+        raise RuntimeError("Model did not return content, please retry")
     if usage_collector is not None:
         usage_collector.update(_response_usage(data, selected))
     return result
@@ -424,14 +424,14 @@ async def test_connection(
         duration_ms = int((time.monotonic() - started) * 1000)
         return EngineTestResult(
             success=False,
-            message=f"测试超时（{timeout_seconds:g} 秒）",
+            message=f"Connection test timed out after {timeout_seconds:g} seconds",
             duration_ms=duration_ms,
         )
     except httpx.HTTPStatusError as exc:
         duration_ms = int((time.monotonic() - started) * 1000)
         return EngineTestResult(
             success=False,
-            message=f"连接失败（HTTP {exc.response.status_code}）",
+            message=f"Connection failed (HTTP {exc.response.status_code})",
             duration_ms=duration_ms,
         )
     except Exception as exc:

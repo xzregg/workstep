@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useTaskStore } from '../stores/taskStore'
 import Button from './Button'
 import Input from './Input'
@@ -96,7 +96,7 @@ export default function TaskReviewConfigPanel({ taskId, stepKey, projectId,
         <MarkdownEditor value={draft.prompt} onChange={(prompt) => setDraft((current) => ({ ...current, prompt }))}
           projectId={projectId} placeholder={t('taskDetail.reviewPromptPlaceholder')}
           minHeight={64} maxHeight={160} ariaLabel={t('taskDetail.reviewPromptAria')} />
-        {error && <div role="alert" className="task-review-config-error">{error}</div>}
+        {error && <div role="alert" className="task-review-config-error">{localizeErrorDisplay(error)}</div>}
         <div className="task-review-config-actions">
           <Button variant="ghost" className="task-review-config-save" loading={saving}
             onClick={() => void save()}>

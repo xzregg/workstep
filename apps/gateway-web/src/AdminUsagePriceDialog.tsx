@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 import { ModelPriceFields, modelPriceFields, type ModelPrices } from './ModelPriceFields'
@@ -21,13 +22,13 @@ export function AdminUsagePriceDialog({ models, initialPrices, csrf, onClose, on
     setBusy(true); setError('')
     try {
       const step = await confirmStepUp(csrf,password,passwordRequired)
-      if (!step.ok) throw new Error('管理员密码验证失败。')
+      if (!step.ok) throw new Error('Administrator password verification failed.')
       const response = await fetch('/api/admin/usage/model-prices', { method:'PUT', credentials:'same-origin',
         headers:{'Content-Type':'application/json','X-CSRF-Token':csrf}, body:JSON.stringify({ models, prices }) })
-      if (!response.ok) throw new Error('保存模型价格失败，请重试。')
+      if (!response.ok) throw new Error('Failed to save model price, please try again.')
       const result = await response.json()
       onSaved(result.updated)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '保存模型价格失败。') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Failed to save model price.') }
     finally { setBusy(false) }
   }
   return <>
@@ -41,7 +42,7 @@ export function AdminUsagePriceDialog({ models, initialPrices, csrf, onClose, on
         <ModelPriceFields values={prices} onChange={setPrices}/></fieldset>
       <p>请填写四项非负单价，0 表示免费；每项最多 8 位小数。</p>
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true"/> 正在保存价格…</p>}
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
     </GatewayConfirmDialog>
     {discard && <GatewayConfirmDialog title="放弃价格修改" message="当前价格尚未保存。"
       confirmLabel="放弃并关闭" onConfirm={onClose} onCancel={() => setDiscard(false)}/>}

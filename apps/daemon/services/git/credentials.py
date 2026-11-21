@@ -21,7 +21,7 @@ def load_credentials(path):
             raise ValueError('invalid credentials')
         return data
     except (OSError, ValueError) as exc:
-        raise GitError('无法读取 Git 登录凭据文件。') from exc
+        raise GitError('Unable to read Git login credentials file.') from exc
 
 
 def save_credentials(path, credentials):
@@ -37,7 +37,7 @@ def save_credentials(path, credentials):
         os.replace(temporary, path)
         temporary = None
     except OSError as exc:
-        raise GitError('无法保存 Git 登录凭据文件。') from exc
+        raise GitError('Unable to save Git login credentials file.') from exc
     finally:
         if temporary is not None:
             try:

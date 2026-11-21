@@ -5,7 +5,7 @@ const { validateImage } = require('./write-sandbox-release.cjs')
 
 function validateRelease(release) {
   if (release?.image === null && release.localDocker === true) return
-  if (!release?.image) throw new Error('缺少沙箱镜像发布清单；请先设置 SANDBOX_IMAGE 并运行 node scripts/write-sandbox-release.cjs，再打包桌面端')
+  if (!release?.image) throw new Error('Missing sandbox image release manifest; please set SANDBOX_IMAGE and run node scripts/write-sandbox-release.cjs before packaging the desktop app:')
   validateImage(release.image)
 }
 

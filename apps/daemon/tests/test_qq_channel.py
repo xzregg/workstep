@@ -109,9 +109,9 @@ async def test_qq_reply_chunks_have_distinct_sequences_and_respect_passive_quota
     bodies = [row.kwargs['json'] for row in channel._api.await_args_list]
     assert len(bodies) == (5 if group else 4)
     assert '完整结果请在 WorkStep 查看' in bodies[-1]['content']
-    with pytest.raises(RuntimeError, match='次数'):
+    with pytest.raises(RuntimeError, match='reply count exhausted'):
         await channel.send_text(recipient, '再发')
-    with pytest.raises(ValueError, match='不支持发送'):
+    with pytest.raises(ValueError, match='does not support sending'):
         await channel.send(recipient, OutgoingMessage(attachments=(ChannelAttachment('image', data=b'x'),)))
 
 

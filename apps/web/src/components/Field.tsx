@@ -1,3 +1,4 @@
+import { localizeErrorDisplay } from '../i18n'
 import type { ReactNode } from 'react'
 
 export interface FieldProps {
@@ -31,7 +32,7 @@ export default function Field({ label, htmlFor, required, labelAction, help, err
       )}
       {children}
       <div className="field-hint" aria-live="polite">
-        {error ? <span className="field-error">{error}</span> : help ? <span className="field-help">{help}</span> : null}
+        {error ? <span className="field-error">{localizeErrorDisplay(error)}</span> : help ? <span className="field-help">{help}</span> : null}
       </div>
     </div>
   )

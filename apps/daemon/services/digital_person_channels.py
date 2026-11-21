@@ -42,7 +42,7 @@ async def bind(manager, projects, bot_id, conversation_type, conversation_id, no
     peer = next((r for r in rows if (r['bot_id'],r['conversation_type'],r['conversation_id']) ==
                  (bot_id,conversation_type,conversation_id)), None)
     if peer is None:
-        raise ValueError('请选择已识别的渠道群聊或联系人')
+        raise ValueError('Please select an identified channel group chat or contact')
     value = {key:peer[key] for key in ('id','bot_id','conversation_type','conversation_id','title','bot_name','platform')}
     value.update(notify=notify)
     async with _lock:
@@ -63,7 +63,7 @@ async def send_binding(manager, binding, text):
     bot = next((b for b in data['bots'] if b['id'] == binding['bot_id']), None)
     adapter = manager._adapters.get(binding['bot_id'])
     if not bot or not bot['enabled'] or adapter is None:
-        raise ValueError('机器人未启用或尚未连接')
+        raise ValueError('The bot is disabled or disconnected')
     recipient = IncomingMessage(binding['bot_id'], str(uuid.uuid4()), binding['conversation_type'],
                                 binding['conversation_id'], '', '')
     await adapter.send_text(recipient, text)

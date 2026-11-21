@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { UsageActivityHeatmap } from './UsageActivityHeatmap'
 import { useEffect, useState } from 'react'
 import { AdminRecordTable } from './AdminRecordTable'
@@ -16,10 +17,10 @@ export function AccountUsagePanel({onExpired}:{onExpired:()=>void}) {
   setLoading(true);setError('')
   void fetch(`/api/account/usage?days=${days}`,{credentials:'same-origin',signal:controller.signal}).then(async response=>{
    if(response.status===401){if(!controller.signal.aborted)onExpired();return}
-   if(!response.ok)throw Error('用量加载失败，请重试。')
+   if(!response.ok)throw Error('Failed to load usage, please try again.')
    const result=await response.json()
    if(!controller.signal.aborted)setData(result)
-  }).catch(reason=>{if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'用量加载失败，请重试。')})
+  }).catch(reason=>{if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'Failed to load usage, please try again.')})
    .finally(()=>{if(!controller.signal.aborted)setLoading(false)})
   return ()=>controller.abort()
  },[days,revision,onExpired])
@@ -28,7 +29,7 @@ export function AccountUsagePanel({onExpired}:{onExpired:()=>void}) {
  return <section aria-label="我的用量统计" className="gateway-account-usage">
   <div className="gateway-center-report-heading"><div><h3>我的用量</h3><p className="gateway-center-muted">统计归属当前账号的设备回传用量，按 UTC 日期汇总。</p></div><div className="gateway-center-report-actions"><div className="gateway-center-period" role="group" aria-label="统计时间范围">{[7,30,90].map(value=><button key={value} type="button" aria-pressed={days===value} onClick={()=>setDays(value)}>近 {value} 天</button>)}</div><button type="button" className="gateway-center-refresh" disabled={loading} onClick={()=>setRevision(value=>value+1)}>刷新</button></div></div>
   {loading && <div className="gateway-center-state" role="status"><span className="gateway-spinner"/> 正在加载用量…</div>}
-  {error && <div className="gateway-center-state" role="alert">{error}<button type="button" onClick={()=>setRevision(value=>value+1)}>重试用量</button></div>}
+  {error && <div className="gateway-center-state" role="alert">{localizeGatewayError(error)}<button type="button" onClick={()=>setRevision(value=>value+1)}>重试用量</button></div>}
   {!loading && !error && data && totals && <>
    <dl className="gateway-center-metrics">{[
     ['调用次数',usageCount(totals.event_count),'所选时间范围内'],['总 Token',token(totals.total_tokens),'仅汇总已上报值'],

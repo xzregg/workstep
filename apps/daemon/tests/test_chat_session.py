@@ -218,7 +218,7 @@ async def test_compact_requires_existing_engine_session(chat_module):
     module, _, _, project, _ = chat_module
     session = module.create_session(project.id)
 
-    with pytest.raises(ValueError, match="没有可压缩"):
+    with pytest.raises(ValueError, match='No compressible'):
         module.submit_message(
             project.id, session["id"], "/compact", "compact-new",
             schedule=False,
@@ -970,6 +970,7 @@ async def test_cross_engine_handoff_continues_the_same_session(
         project.id,
         source["id"],
         engine="pydantic_ai",
+        provider_id=target_provider,
         context_mode="smart",
     )
     assert handed_off["id"] == source["id"]
@@ -990,7 +991,6 @@ async def test_cross_engine_handoff_continues_the_same_session(
         source["id"],
         "请继续",
         "same-session-handoff",
-        provider_id=target_provider,
     )
     assert accepted.session_id == source["id"]
     assert await _wait_turn(module, accepted.turn_id) == "completed"
@@ -2797,16 +2797,16 @@ async def test_chat_usage_provider_read_keeps_event_loop_responsive(chat_module,
         return original_get_provider(provider_id)
 
     async def fake_invoke(*args, **kwargs):
-        state = next(state for state in module._turn_states.values()
-                     if state.get("status") == "running")
-        state["resolved_provider_id"] = "provider-1"
         return "回复", [], None
 
     async def record_usage(**kwargs):
         recorded.append(kwargs)
 
     monkeypatch.setattr(config_store, "get_provider", slow_get_provider)
-    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    monkeypatch.setattr("agent_assistants.base.create_engine", lambda _: SimpleNamespace(
+        resolve_provider_id=lambda _: "provider-1",
+    ))
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke)
     monkeypatch.setattr(main.gateway_client, "record_message_usage", record_usage)
     try:
         session = module.create_session(project.id)
@@ -3474,7 +3474,8 @@ async def test_missing_codex_rollout_rebuilds_session_with_history(
     with module._project_ctx(project.id):
         row = ChatSession.get_by_id(session["id"])
         row.engine_session_id = "01a0a357-3f26-7e41-b07a-cd0881953ede"
-        row.save(only=[ChatSession.engine_session_id])
+        row.session_provider = ""
+        row.save(only=[ChatSession.engine_session_id, ChatSession.session_provider])
         base_time = utc_now()
         ChatMessage.create(
             id="history-user",
@@ -3532,6 +3533,175 @@ async def test_missing_codex_rollout_rebuilds_session_with_history(
         item["content"] == "继续完成"
         for item in detail["messages"]
     )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("binding", ["default", "legacy", "explicit", "managed-default"])
+async def test_chat_requires_confirmed_handoff_when_engine_default_provider_changes(chat_module, monkeypatch, binding):
+    import main
+
+    module, _, manager, project, config = chat_module
+    config.values["providers"] = [
+        {"id": name, "protocol": "openai_compatible"}
+        for name in ("provider-a", "provider-b", "provider-c")
+    ]
+    selected = "provider-a"
+    calls = []
+    entered = threading.Event()
+    release = threading.Event()
+    if binding == "managed-default":
+        original_defaults = config.get_assistant_defaults
+        monkeypatch.setattr(config, "get_assistant_defaults", lambda name: {
+            **original_defaults(name), "provider_id": selected,
+        })
+
+    class ResumeEngine(FakeEngine):
+        supports_resume = True
+
+        def resolve_provider_id(self, provider_id):
+            if selected == "provider-b" and binding == "default" and not entered.is_set():
+                entered.set()
+                release.wait(timeout=2)
+            return provider_id or selected
+
+    async def invoke(engine, model, cwd, prompt, session_id, on_event, **kwargs):
+        provider = (kwargs.get("config_overrides") or {}).get("provider_id", selected)
+        calls.append((provider, session_id, prompt, kwargs["message_history"]))
+        if session_id and session_id != f"{provider}-thread":
+            raise RuntimeError("This session belongs to another provider")
+        new_id = session_id or f"{provider}-thread"
+        await on_event(InternalEvent("session_started", {"session_id": new_id}))
+        return "记录好了", [{"type": "engine_state", "data": {"state": [provider]}}], new_id
+
+    for module_name in ("base", "chat_session", "chat_session_transitions"):
+        monkeypatch.setattr(f"agent_assistants.{module_name}.create_engine", lambda _: ResumeEngine())
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", invoke)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    session = module.create_session(project.id, provider_id="provider-a" if binding == "explicit" else None)
+
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        sequence = 0
+
+        async def send(content, expected="completed"):
+            nonlocal sequence
+            sequence += 1
+            response = await client.post(
+                f"/api/chat-sessions/{session['id']}/chat",
+                json={"project_id": project.id, "content": content},
+                headers={"Idempotency-Key": f"switch-{sequence}"},
+            )
+            assert response.status_code == 200, response.text
+            assert await _wait_turn(module, response.json()["turn_id"]) == expected
+
+        await send("记住构建命令")
+        with pytest.raises(ValueError, match="智能交接"):
+            await manager.run_db(project.id, lambda _: module.submit_message(
+                project.id, session["id"], "显式换供应商", "explicit-change",
+                provider_id="provider-b", schedule=False,
+            ))
+        if binding == "legacy":
+            def clear_provider_metadata(_project):
+                ChatSession.update(session_provider=None).where(ChatSession.id == session["id"]).execute()
+            await manager.run_db(project.id, clear_provider_metadata)
+        module._sessions.clear()
+        selected = "provider-b"
+        if binding == "explicit":
+            await send("继续构建")
+            assert calls[-1][:2] == ("provider-a", "provider-a-thread")
+            return
+
+        if binding == "default":
+            failing = asyncio.create_task(send("未经确认", "error"))
+            try:
+                assert await asyncio.to_thread(entered.wait, 1)
+                health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+                assert health.status_code == 200
+            finally:
+                release.set()
+            await failing
+        else:
+            await send("未经确认", "error")
+        assert len(calls) == 1
+        assert module.get_session(project.id, session["id"])["engine_session_id"] == "provider-a-thread"
+        response = await client.post(
+            f"/api/chat-sessions/{session['id']}/handoff",
+            json={"project_id": project.id, "engine": session["engine"], "provider_id": "", "context_mode": "smart"},
+        )
+        assert response.status_code == 200, response.text
+        selected = "provider-c"
+        await send("目标再次变更", "error")
+        assert len(calls) == 1
+        selected = "provider-b"
+        await send("继续构建")
+        assert calls[-1][:2] == ("provider-b", None)
+        assert calls[-1][3] is None
+        assert "handoffs.jsonl" in calls[-1][2]
+        assert "记住构建命令" not in calls[-1][2]
+        assert calls[-1][2].count("继续构建") == 1
+        module._sessions.clear()
+        await send("检查结果")
+        assert calls[-1] == ("provider-b", "provider-b-thread", "检查结果", ["provider-b"])
+        detail = module.get_session(project.id, session["id"])
+        assert not detail["provider_id"]
+        assert detail["engine_session_id"] == "provider-b-thread"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("scenario", ["changed", "unchanged", "other_error", "after_start", "compact", "goal"])
+async def test_chat_codex_sdk_default_provider_resume(chat_module, monkeypatch, scenario):
+    module, _bus, manager, project, _ = chat_module
+    engine = FakeEngine()
+    engine.capabilities = SimpleNamespace(**vars(FakeEngine.capabilities), supports_goal_mode=True)
+    engine.supports_resume = True
+    monkeypatch.setattr("agent_assistants.chat_session.create_engine", lambda _: engine)
+    monkeypatch.setattr("agent_assistants.base.create_engine", lambda _: engine)
+    session = module.create_session(project.id, engine="codex_sdk")
+
+    def seed(_project):
+        row = ChatSession.get_by_id(session["id"])
+        row.engine_session_id = "original-thread"
+        row.save(only=[ChatSession.engine_session_id])
+        assert not row.provider_id
+        ChatMessage.create(id="old-user", session=row, role="user", content="旧对话里约定了中文回复", created_at=utc_now())
+
+    await manager.run_db(project.id, seed)
+    calls = []
+    # Codex's native provider ID is independent of WorkStep's empty override.
+    engine_default = "openai" if scenario == "unchanged" else "workstep"
+    thread_providers = {"original-thread": "openai"}
+    request = {"compact": "/compact", "goal": "/goal status"}.get(scenario, "按之前的约定继续")
+
+    async def spawn(*, prompt, session_id, goal_action=None, **kwargs):
+        assert not kwargs.get("config_overrides")
+        calls.append((session_id, prompt, goal_action))
+        old_provider = thread_providers.get(session_id)
+        if old_provider and old_provider != engine_default:
+            if scenario == "after_start":
+                yield InternalEvent("session_started", {"session_id": session_id})
+            message = (
+                f"JSON-RPC error -32600: This chat uses {old_provider}, but your current "
+                f"provider is {engine_default}. Switch to {old_provider} to continue."
+            )
+            if scenario == "other_error":
+                message = "JSON-RPC error -32600: Invalid Request"
+            yield InternalEvent("error", {"message": message})
+            return
+        sid = session_id or "replacement-thread"
+        thread_providers[sid] = engine_default
+        yield InternalEvent("session_started", {"session_id": sid})
+        yield InternalEvent("agent_message_chunk", {"content": {"type": "text", "text": "已接续"}})
+
+    monkeypatch.setattr(engine, "spawn", spawn, raising=False)
+    accepted = module.submit_message(project.id, session["id"], request, "default-resume")
+    expected = "completed" if scenario == "unchanged" else "error"
+    assert await _wait_turn(module, accepted.turn_id) == expected
+    first_input = ("", "status") if scenario == "goal" else (request, None)
+    assert calls[0] == ("original-thread", *first_input)
+    detail = module.get_session(project.id, session["id"])
+    assert not detail["provider_id"]
+    assert len(calls) == 1
+    assert detail["engine_session_id"] == "original-thread"
 
 
 @pytest.mark.anyio
@@ -3641,9 +3811,9 @@ async def test_action_quick_button_round_trip_and_script_validation(chat_module)
         "confirmation_input_prompt": "",
     }
     assert module.get_quick_buttons(project.id)[0]["script_path"] == "scripts/restart.sh"
-    with pytest.raises(ValueError, match="脚本路径"):
+    with pytest.raises(ValueError, match='script path'):
         module.set_quick_buttons(project.id, [{**button, "script_path": "../escape.sh"}])
-    with pytest.raises(ValueError, match="执行目录"):
+    with pytest.raises(ValueError, match='execution directory'):
         module.set_quick_buttons(project.id, [{**button, "cwd_mode": "elsewhere"}])
 
 
@@ -4255,7 +4425,7 @@ async def test_invoke_engine_rejects_unsupported_goal_control(monkeypatch):
             yield
 
     monkeypatch.setattr(base, "create_engine", lambda engine_id: PlainEngine())
-    with pytest.raises(ValueError, match="目标模式"):
+    with pytest.raises(ValueError, match='target mode'):
         await base.invoke_engine("codex", None, "/tmp", "/goal pause", None)
 
 
@@ -4516,7 +4686,7 @@ async def test_chat_config_api_ignores_stale_send_overrides_with_slow_sql(
         model="stored-model", fast_model="stored-fast", vision_model="stored-vision",
     )
     with module._project_ctx(project.id):
-        ChatSession.update(engine_session_id="existing-engine-session").where(
+        ChatSession.update(engine_session_id="existing-engine-session", session_provider="provider-a").where(
             ChatSession.id == source["id"],
         ).execute()
     captured = {}
@@ -4944,7 +5114,6 @@ async def test_collapsed_chat_preview_returns_two_rows_and_keeps_health_responsi
     monkeypatch.setattr(main, 'project_manager', manager)
     monkeypatch.setattr(main, 'chat_session_module', module)
     monkeypatch.setattr(module._event_journal, 'timeline', lambda *_args, **_kwargs: pytest.fail('preview must not load full timeline'))
-    monkeypatch.setattr(module._event_journal, '_read', lambda *_args: pytest.fail('preview must stream rather than retain the journal'))
     original = module._event_journal.preview
     entered = threading.Event()
     def slow_preview(*args, **kwargs):

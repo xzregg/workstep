@@ -11,6 +11,8 @@ interface Props {
   title: string
   message?: string
   confirmText?: string
+  noConfirm?: boolean
+  hideFooter?: boolean
   cancelText?: string
   secondaryText?: string
   danger?: boolean
@@ -30,7 +32,7 @@ interface Props {
   onCancel: () => void
 }
 
-export default function ConfirmDialog({ open, title, message, confirmText, cancelText, secondaryText, danger, children, loading, confirmDisabled, secondaryLoading, secondaryDisabled, width = 380, zIndex = 2000, onConfirm, onSecondary, onCancel }: Props) {
+export default function ConfirmDialog({ open, title, message, confirmText, noConfirm, hideFooter, cancelText, secondaryText, danger, children, loading, confirmDisabled, secondaryLoading, secondaryDisabled, width = 380, zIndex = 2000, onConfirm, onSecondary, onCancel }: Props) {
   const { t } = useI18n()
   const compact = useCompactLayout()
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -72,9 +74,9 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
         )}
 
         {/* Footer */}
-        <div className="confirm-dialog-footer">
+        {!hideFooter && <div className="confirm-dialog-footer">
           <Button variant="ghost" onClick={onCancel}>{cancelText ?? t('common.cancel')}</Button>
-          <Button
+          {!noConfirm && <Button
             variant={danger ? 'danger' : 'primary'}
             loading={loading}
             disabled={confirmDisabled}
@@ -82,7 +84,7 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
             className="confirm-dialog-confirm"
           >
             {confirmText ?? t('common.confirm')}
-          </Button>
+          </Button>}
           {secondaryText && onSecondary && (
             <Button
               variant="ghost"
@@ -93,7 +95,7 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
               {secondaryText}
             </Button>
           )}
-        </div>
+        </div>}
       </ResizablePanel>
     </div>
   )

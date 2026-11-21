@@ -1651,11 +1651,11 @@ async def test_terminated_manual_review_can_be_set_complete_only_with_artifact(
         await runtime.wait(first)
         review = ReviewRun.get(ReviewRun.task == task)
         await runtime.decide_review(project.id, task.id, "build", review.id, "terminate")
-        with pytest.raises(RuntimeError, match="是否继续调度"):
+        with pytest.raises(RuntimeError, match='whether to continue scheduling'):
             await runtime.decide_review(
                 project.id, task.id, "build", review.id, "set_complete",
             )
-        with pytest.raises(RuntimeError, match="产物"):
+        with pytest.raises(RuntimeError, match='artifacts'):
             await runtime.decide_review(
                 project.id, task.id, "build", review.id, "set_complete",
                 schedule_downstream=schedule_downstream,
@@ -1742,12 +1742,12 @@ async def test_stopped_automatic_review_can_set_step_complete(
         await runtime.wait(first)
         review = ReviewRun.get(ReviewRun.task == task)
         assert (review.mode, review.status, review.error) == (
-            "auto", "failed", "手动停止",
+            "auto", "failed", 'Stopped manually',
         )
         assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "cancelled"
         assert Task.get_by_id(task.id).status == "stopped"
         assert WorkflowRun.get_by_id(first.id).status == "stopped"
-        with pytest.raises(RuntimeError, match="产物"):
+        with pytest.raises(RuntimeError, match='artifacts'):
             await runtime.decide_review(
                 project.id, task.id, "build", review.id, "set_complete",
                 schedule_downstream=schedule_downstream,
@@ -1760,12 +1760,12 @@ async def test_stopped_automatic_review_can_set_step_complete(
         (round_dir / "成品.md").write_text("已完成", encoding="utf-8")
         review.error = "自动审核异常"
         review.save()
-        with pytest.raises(RuntimeError, match="已停止的审核"):
+        with pytest.raises(RuntimeError, match="stopped reviews"):
             await runtime.decide_review(
                 project.id, task.id, "build", review.id, "set_complete",
                 schedule_downstream=schedule_downstream,
             )
-        review.error = "手动停止"
+        review.error = 'Stopped manually'
         review.save()
         if superseded:
             from datetime import timedelta
@@ -1874,7 +1874,7 @@ async def test_failed_execution_with_existing_artifact_can_be_set_complete(
     runtime = WorkflowRuntime(bus, ProjectManagerStub())
     try:
         if other_step_status == "pending":
-            with pytest.raises(RuntimeError, match="产物"):
+            with pytest.raises(RuntimeError, match='artifacts'):
                 await runtime.complete_failed_step(
                     project.id, task.id, "failed-execution", 1,
                     schedule_downstream=schedule_downstream,
@@ -1885,7 +1885,7 @@ async def test_failed_execution_with_existing_artifact_can_be_set_complete(
         round_dir.mkdir(parents=True, exist_ok=True)
         (round_dir / "成品.md").write_text("已完成", encoding="utf-8")
         if schedule_downstream and other_step_status == "awaiting_review":
-            with pytest.raises(RuntimeError, match="其他步骤"):
+            with pytest.raises(RuntimeError, match='Other steps'):
                 await runtime.complete_failed_step(
                     project.id, task.id, "failed-execution", 1,
                     schedule_downstream=True,

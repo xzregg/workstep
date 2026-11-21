@@ -3,7 +3,7 @@ import { isProtectedGitBranch } from './branchProtection'
 import { useGitApi, useGitActionAllowed } from './GitApiContext'
 import { useCallback, useEffect, useState } from 'react'
 import { type GitBranch, type GitStatus, type GitTrackedRemoteBranch } from '../../api/git'
-import { useI18n } from '../../i18n'
+import { useI18n, localizeErrorDisplay } from '../../i18n'
 import Button from '../Button'
 import { useGitStore } from '../../stores/gitStore'
 import Icon from '../Icon'
@@ -138,7 +138,7 @@ export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh
     {pushBranch && <GitBranchPushPanel id={status.id} branch={pushBranch} onClose={() => setPushBranch(null)} onBusy={onPushBusy} onPushed={onPushed} />}
     <div className="git-branch-meta">
       <p className="git-sync-note">{showRemote ? t('git.remoteBranchesLoaded', { count: remoteBranches.length, time: fetchedAt ? new Date(fetchedAt * 1000).toLocaleString() : '—' }) : t('git.localBranchesOnly')}</p>
-      {blocked && <p>{blocked}</p>}{dirtyNote && <p>{dirtyNote}</p>}{notice && <p role="status">{notice}</p>}{error && <p role="alert" className="git-danger">{error}</p>}
+      {blocked && <p>{blocked}</p>}{dirtyNote && <p>{dirtyNote}</p>}{notice && <p role="status">{notice}</p>}{error && <p role="alert" className="git-danger">{localizeErrorDisplay(error)}</p>}
     </div>
     <div className="git-branch-list" role="listbox" aria-label={t('git.branches')}>
       {loading ? <p><Icon name="loader-circle" className="git-spin" size={14} /> {t('git.loading')}</p> : !filtered.length && !filteredRemote.length ? <p>{t('git.noBranches')}</p> : <><div className="git-branch-section">{t('git.localBranches')}</div>{filtered.map(b => <div className="git-branch-row" role="option" aria-selected={b.name === status.branch} key={b.name}>
@@ -152,6 +152,6 @@ export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh
         </div>
       </div>)}{showRemote && <div className="git-branch-section">{t('git.remoteBranches')}</div>}{filteredRemote.map(branch => <div className="git-branch-row git-branch-row--remote" role="option" aria-selected={false} key={branch.name}><span className="git-branch-name">{branch.name}<small>{t('git.remoteBranch')}</small></span><Button size="sm" loading={busy === 'switch'} disabled={!!busy || !!blocked} onClick={() => void run('switch', branch.branch, branch.remote)}>{t('git.switch')}</Button></div>)}</>}
     </div>
-    <ConfirmDialog open={!!deleteBranch} title={t('git.deleteBranchTitle', { branch: deleteBranch?.name || '' })} message={t('git.deleteBranchHint', { branch: deleteBranch?.name || '' })} confirmText={t('git.deleteBranchConfirm')} danger loading={busy === 'delete'} onConfirm={() => void deleteSelectedBranch()} onCancel={() => { if (busy !== 'delete') { setDeleteBranch(null); setDeleteError('') } }}>{deleteError && <p role="alert" className="git-danger">{deleteError}</p>}</ConfirmDialog>
+    <ConfirmDialog open={!!deleteBranch} title={t('git.deleteBranchTitle', { branch: deleteBranch?.name || '' })} message={t('git.deleteBranchHint', { branch: deleteBranch?.name || '' })} confirmText={t('git.deleteBranchConfirm')} danger loading={busy === 'delete'} onConfirm={() => void deleteSelectedBranch()} onCancel={() => { if (busy !== 'delete') { setDeleteBranch(null); setDeleteError('') } }}>{deleteError && <p role="alert" className="git-danger">{localizeErrorDisplay(deleteError)}</p>}</ConfirmDialog>
   </div>
 }

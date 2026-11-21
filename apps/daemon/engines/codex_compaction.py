@@ -45,9 +45,9 @@ async def compact_codex_thread(
     if notifications is None or not callable(
         getattr(notifications, "register_goal_operation", None)
     ):
-        raise RuntimeError("当前 Codex SDK 不支持接收压缩完成事件")
+        raise RuntimeError("Current Codex SDK does not support receiving compression completion events")
     if not callable(getattr(thread, "compact", None)):
-        raise RuntimeError("当前 Codex SDK 不支持手动压缩")
+        raise RuntimeError("Current Codex SDK does not support manual compression")
 
     # thread/compacted carries a turn ID, so the SDK routes it to a turn
     # subscription instead of its global notification queue. Register a
@@ -86,7 +86,7 @@ async def compact_codex_thread(
         while True:
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
-                raise TimeoutError("等待 Codex 压缩完成事件超时")
+                raise TimeoutError("Timed out waiting for Codex compression completion event")
             done, _ = await asyncio.wait(
                 {notification_task}, timeout=min(poll_interval, remaining),
             )
@@ -146,7 +146,7 @@ async def compact_codex_thread(
     finally:
         fail = getattr(route, "fail", None)
         if callable(fail):
-            fail(RuntimeError("压缩通知订阅已结束"))
+            fail(RuntimeError("Compression notification subscription has ended"))
         if notification_task is not None:
             notification_task.cancel()
             await asyncio.gather(notification_task, return_exceptions=True)

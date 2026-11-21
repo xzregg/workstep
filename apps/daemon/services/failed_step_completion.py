@@ -46,7 +46,7 @@ def _persist_failed_step_completion_transaction(
         or message.run_status not in {"failed", "cancelled", "stopped"}
         or not message.step_run_id
     ):
-        raise ValueError("失败执行消息不存在")
+        raise ValueError("Failed execution message does not exist")
     source = StepRun.get_or_none(StepRun.id == message.step_run_id)
     workflow_run = WorkflowRun.get_or_none(
         WorkflowRun.id == task.active_workflow_run_id
@@ -63,19 +63,19 @@ def _persist_failed_step_completion_transaction(
         or task_step is None or task_step.status not in {"failed", "pending", "cancelled"}
         or active_runner
     ):
-        raise RuntimeError("只有已停止且未完成的失败步骤可以设置完成")
+        raise RuntimeError("Only stopped and incomplete failed steps can be marked as completed")
     active_steps = TaskStep.select().where(
         (TaskStep.task == task) &
         (TaskStep.status.in_(["running", "retrying", "rework", "reviewing", "awaiting_review"]))
     )
     if schedule_downstream and active_steps.exists():
-        raise RuntimeError("其他步骤正在执行或等待审核，暂不能调度下游；可选择只设置完成当前步骤")
+        raise RuntimeError("Other steps are executing or awaiting approval; downstream scheduling is temporarily unavailable. You can choose to complete only the current step.")
     if artifact_round < 1 or not any(
         artifact["step_key"] == message.step_key
         and artifact["round"] == artifact_round
         for artifact in list_task_artifacts(project, task_id)
     ):
-        raise RuntimeError("该步骤没有已产生的产物，不能设置完成")
+        raise RuntimeError("No artifacts have been generated for this step, so it cannot be marked as completed")
 
     steps_config = None
     if schedule_downstream:

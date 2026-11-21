@@ -8,10 +8,10 @@ function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window
   const configDirectories = new Set()
   function trusted(event) {
     const window = getWindow()
-    if (!window || event.sender !== window.webContents || !isTrustedNavigation(event.senderFrame?.url, getRootUrl())) throw new Error('沙箱操作来源无效')
+    if (!window || event.sender !== window.webContents || !isTrustedNavigation(event.senderFrame?.url, getRootUrl())) throw new Error('Invalid sandbox operation source')
   }
   async function idle() {
-    if (manager.busy || await hasActiveWork() || manager.busy) throw new Error('当前有任务或会话运行，或无法检查状态；请结束工作后重试')
+    if (manager.busy || await hasActiveWork() || manager.busy) throw new Error('A task or session is currently running, or the status cannot be checked; please retry after ending the work.')
   }
   async function permittedPaths() {
     const existing = (await manager.status()).settings
@@ -19,9 +19,9 @@ function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window
     return new Set([existing.root, existing.project, ...(existing.mounts || []).map(m => m.source), ...projects.map(p => p.path), ...approved])
   }
   async function prepareStage(input, method) {
-    if (manager.busy) throw new Error('沙箱操作正在进行，请稍后重试')
-    if (manager.running) throw new Error('请先关闭沙箱并重启，再准备辅助软件或镜像')
-    if (!input?.root || !(await permittedPaths()).has(input.root)) throw new Error('请通过目录选择按钮授权沙箱目录')
+    if (manager.busy) throw new Error('Sandbox operation in progress, please try again later')
+    if (manager.running) throw new Error('Please close the sandbox and restart, then prepare the auxiliary software or image')
+    if (!input?.root || !(await permittedPaths()).has(input.root)) throw new Error('Please authorize the sandbox directory via the directory selection button')
     return manager[method](input)
   }
   const handlers = {
@@ -50,8 +50,8 @@ function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window
     prepare: async input => {
       await idle()
       const permitted = await permittedPaths()
-      if (!input || ![input.root, input.project, ...(input.mounts || []).map(m => m.source)].every(value => permitted.has(value))) throw new Error('请通过目录选择按钮授权挂载目录')
-      if (manager.running) throw new Error('请先关闭沙箱并重启，再修改沙箱设置')
+      if (!input || ![input.root, input.project, ...(input.mounts || []).map(m => m.source)].every(value => permitted.has(value))) throw new Error('Please authorize the mount directory via the directory selection button')
+      if (manager.running) throw new Error('Please close the sandbox and restart, then modify the sandbox settings')
       return manager.prepare(input)
     },
     switchMode: async enabled => {
@@ -65,17 +65,17 @@ function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window
       const available = await manager.dockerImages()
       if (available.error) throw new Error(available.error)
       const selected = available.images.find(item => item.id === image)
-      if (!selected) throw new Error('请选择扫描结果中的兼容镜像')
+      if (!selected) throw new Error('Please select a compatible image from the scan results')
       await manager.queueImageSwitch(image, selected.tags[0] || null)
       await restart()
     },
     importConfig: async input => {
       await idle()
-      if (typeof input !== 'string' && !configDirectories.has(input?.source)) throw new Error('请通过目录选择按钮授权配置来源')
+      if (typeof input !== 'string' && !configDirectories.has(input?.source)) throw new Error('Please authorize the configuration source via the directory selection button')
       return manager.importConfig(input)
     },
     migrateSettings: async options => { await idle(); return manager.migrateSettings(options) },
-    remove: async () => { await idle(); if (manager.running || (await manager.settings()).enabled) throw new Error('请先关闭沙箱并重启，再删除数据'); return manager.remove() },
+    remove: async () => { await idle(); if (manager.running || (await manager.settings()).enabled) throw new Error('Please close the sandbox and restart, then delete the data'); return manager.remove() },
     logs: async () => {
       await manager.captureLogs().catch(() => {})
       await manager.logWrite

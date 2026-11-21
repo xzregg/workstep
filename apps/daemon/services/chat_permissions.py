@@ -24,7 +24,7 @@ def validate_permission_selection(engine_id: str, mode: str) -> None:
     from engines.core.registry import list_all_engines
     engine = list_all_engines().get(engine_id)
     if engine is None:
-        raise ValueError("权限配置对应的引擎不可用")
+        raise ValueError("The engine corresponding to the permission configuration is unavailable")
     engine.permission_config_overrides(mode)
 
 

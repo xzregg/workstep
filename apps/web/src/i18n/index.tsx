@@ -14,6 +14,7 @@ import { ar } from './locales/ar'
 import { builtinLocales, validateLanguage, type BuiltinLocale, type LanguageDocument, type LanguageSummary } from './languagePack'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 import { appearanceStorage, appearanceScope } from '../utils/appearanceStorage'
+import { translateErrorText } from '../../../../packages/gateway-ui/src/errorText'
 import './languagePreview.css'
 
 export type Locale = string
@@ -75,6 +76,15 @@ export const zhCNT: TFunction = (key, params) => {
  const state = useLocaleStore.getState()
  if (cachedLanguage !== state.language || cachedLocale !== state.locale) { cachedLanguage=state.language; cachedLocale=state.locale; cachedTranslator=state.language ? createLanguageT(state.language) : createT(builtinDictionary(state.locale)) }
  return cachedTranslator(key, params)
+}
+
+export function localizeError(message: string): string {
+  const { locale, language } = useLocaleStore.getState()
+  return translateErrorText(message, language?.manifest.fallback_locale ?? locale, language?.messages)
+}
+
+export function localizeErrorDisplay<T>(value: T): T | string {
+  return typeof value === 'string' ? localizeError(value) : value
 }
 interface LocaleState {
  locale: Locale
@@ -159,6 +169,7 @@ interface I18nContextValue {
   locale: Locale
   setLocale: (locale: Locale) => void
   fallbackLocale: Locale
+  errorText: (message: string) => string
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null)
@@ -171,6 +182,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const installed = useLocaleStore(s => s.installed)
   const t = useMemo(() => language ? createLanguageT(language) : createT(builtinDictionary(locale)), [locale, language])
   const fallbackLocale = language?.manifest.fallback_locale ?? locale
+  const errorText = useMemo(
+    () => (message: string) => translateErrorText(message, fallbackLocale, language?.messages),
+    [fallbackLocale, language],
+  )
   useEffect(() => { if (useLocaleStore.getState().language) void useLocaleStore.getState().refresh().catch(() => {}) }, [])
   useEffect(() => { if (new URLSearchParams(window.location.search).get('language') === 'default') setLocale('zh-CN') }, [setLocale])
 
@@ -178,7 +193,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     document.documentElement.lang = locale
   }, [locale])
 
-  const value = useMemo(() => ({ t, locale, setLocale, fallbackLocale }), [t, locale, setLocale, fallbackLocale])
+  const value = useMemo(() => ({ t, locale, setLocale, fallbackLocale, errorText }), [t, locale, setLocale, fallbackLocale, errorText])
   return <I18nContext.Provider value={value}>{children}{previous && <div className="language-preview-notice" data-skin-recovery role="status"><span>正在预览语言：{language?.manifest.native_name}</span><button type="button" disabled={!installed.some(item => item.manifest.id === language?.manifest.id && item.revision === language.revision)} onClick={() => useLocaleStore.getState().confirmPreview()}>确认使用</button><button type="button" onClick={() => useLocaleStore.getState().cancelPreview()}>取消预览</button><button type="button" onClick={() => setLocale('zh-CN')}>恢复简体中文</button></div>}</I18nContext.Provider>
 }
 

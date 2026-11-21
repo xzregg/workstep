@@ -1,7 +1,7 @@
 import { visibleTemplates } from '../utils/contentLocale'
 import ResizablePanel from './ResizablePanel'
 import { useEffect, useRef, useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import type { GenProposalCard } from '../stores/workflowGenStore'
 import { assistantStarterPrompt, backfillEmptyTitle } from '../utils/assistantTitle'
@@ -283,7 +283,7 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
               background: 'color-mix(in oklab, var(--danger), transparent 94%)',
               borderBottom: '1px solid var(--border-soft)',
             }}>
-              {error}
+              {localizeErrorDisplay(error)}
             </div>
           )}
           <div className="modal-body" style={{ padding: 0, display: 'flex', minHeight: 0, flex: 1, overflow: 'hidden' }}>

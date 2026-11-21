@@ -212,7 +212,7 @@ class DingTalkAdapter(ChannelAdapter):
                 except json.JSONDecodeError:
                     result = {}
                 if isinstance(result, dict) and result.get("errcode") not in (None, 0):
-                    raise RuntimeError("钉钉消息发送失败")
+                    raise RuntimeError("Failed to send DingTalk message")
 
     async def _token(self, session) -> str:
         async with self._token_lock:
@@ -225,7 +225,7 @@ class DingTalkAdapter(ChannelAdapter):
                 result = await response.json()
             token = result.get("accessToken")
             if not token:
-                raise RuntimeError("钉钉主动发送鉴权失败")
+                raise RuntimeError("DingTalk proactive authentication failed")
             self._access_token = token
             self._token_expires_at = time.monotonic() + max(0, float(result.get("expireIn", 0)) - 60)
             return token
@@ -240,7 +240,7 @@ class DingTalkAdapter(ChannelAdapter):
             payload["openConversationId"] = message.conversation_id
         else:
             if not message.sender_id:
-                raise RuntimeError("钉钉主动私聊缺少用户标识")
+                raise RuntimeError("DingTalk proactive private chat missing user identifier")
             endpoint = "oToMessages/batchSend"
             payload["userIds"] = [message.sender_id]
         timeout = aiohttp.ClientTimeout(total=10)
@@ -251,7 +251,7 @@ class DingTalkAdapter(ChannelAdapter):
                 response.raise_for_status()
                 result = await response.json()
             if result.get("errcode") not in (None, 0) or result.get("code") or result.get("invalidUserIdList"):
-                raise RuntimeError("钉钉主动消息发送失败")
+                raise RuntimeError("Failed to send proactive message via DingTalk")
 
 
     def _card_data(self, card: ChannelCard) -> dict:
@@ -288,7 +288,7 @@ class DingTalkAdapter(ChannelAdapter):
                 response.raise_for_status()
                 result = await response.json()
             if result.get('code') or result.get('errcode') not in (None, 0):
-                raise RuntimeError('钉钉卡片操作失败，请检查卡片发送权限和模板配置')
+                raise RuntimeError('DingTalk card operation failed. Please check card sending permissions and template configuration:')
             return result
 
     async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
@@ -456,7 +456,7 @@ class DingTalkAdapter(ChannelAdapter):
                     response.raise_for_status()
                     result = await response.json()
                 if result.get('errcode') not in (None,0) or not result.get('media_id'):
-                    raise RuntimeError('钉钉附件上传失败')
+                    raise RuntimeError('DingTalk attachment upload failed')
                 if attachment.kind == 'image':
                     prepared.append(('sampleImageMsg', {'photoURL':result['media_id']}))
                 else:
@@ -502,7 +502,7 @@ class DingTalkAdapter(ChannelAdapter):
                 response.raise_for_status()
                 result = await response.json()
         if not result.get('downloadUrl'):
-            raise RuntimeError('钉钉附件下载地址获取失败')
+            raise RuntimeError('Failed to get DingTalk attachment download URL')
         data = await fetch_media(result['downloadUrl'], self.CAPABILITIES.limit(attachment.kind),
                                  ('dingtalk.com','alicdn.com','aliyuncs.com'), upgrade_http=True)
         return data, attachment.name

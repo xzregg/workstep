@@ -73,14 +73,16 @@ class CodexClientLease(SessionClientLease):
 
 
 class CodexClientPool(SessionClientPool):
-    def __init__(self, *, idle_seconds=600, max_idle=8, sessions_per_process=5):
+    def __init__(self, *, idle_seconds=600, max_idle=8, sessions_per_process=5, max_idle_workers=2):
         super().__init__(idle_seconds=idle_seconds, max_idle=max_idle)
         if sessions_per_process < 1:
             raise ValueError('sessions_per_process must be positive')
         self.sessions_per_process = sessions_per_process
+        self.max_idle_workers = max_idle_workers
         self._workers = []
         self._reservations = set()
         self._detaching = set()
+        self._idle_closing: dict[tuple[str, str], asyncio.Task] = {}
 
     @staticmethod
     async def _alive(worker):
@@ -95,12 +97,17 @@ class CodexClientPool(SessionClientPool):
     async def acquire(self, cwd, session_id, fingerprint, factory):
         key = (cwd, session_id or uuid.uuid4().hex)
         if self._closed:
-            raise RuntimeError('引擎客户端池已关闭')
+            raise RuntimeError('Engine client pool is closed')
         if key in self._reservations or key in self._detaching or (key in self._entries and self._entries[key].busy):
-            raise RuntimeError('引擎会话正在执行，请等待当前回复完成')
+            raise RuntimeError('Engine session is executing, please wait for the current reply to complete')
         self._reservations.add(key)
         owned = None
         try:
+            idle_cleanup = self._idle_closing.get(key)
+            if idle_cleanup is not None:
+                await asyncio.shield(idle_cleanup)
+                if self._closed:
+                    raise RuntimeError('Engine client pool is closed')
             old = self._entries.get(key)
             if old is not None:
                 old.busy = True
@@ -110,7 +117,7 @@ class CodexClientPool(SessionClientPool):
                     old.timer = None
                 alive = await self._alive(old.worker)
                 if self._closed or self._entries.get(key) is not old:
-                    raise RuntimeError('引擎客户端已关闭')
+                    raise RuntimeError('Engine client has been closed')
                 if alive and old.fingerprint == fingerprint and old.worker.accepting:
                     return old
                 if not alive:
@@ -132,7 +139,7 @@ class CodexClientPool(SessionClientPool):
             for stale in idle[:max(0, len(worker.entries)-self.sessions_per_process)]:
                 await self.discard(stale)
             if self._closed or self._entries.get(key) is not entry:
-                raise RuntimeError('引擎客户端已关闭')
+                raise RuntimeError('Engine client has been closed')
             return entry
         except BaseException:
             if owned is not None and self._entries.get(owned.key) is owned:
@@ -170,6 +177,39 @@ class CodexClientPool(SessionClientPool):
         entry.starting_turn = False
         # The base implementation retains per-session idle timers and LRU.
         await super().release(entry, reusable=True)
+        self._trim_idle_workers()
+
+    def _trim_idle_workers(self):
+        # Walk the pool's idle LRU newest first. A worker with any active
+        # lease, including one waiting for approval, cannot enter this list.
+        idle_workers = dict.fromkeys(
+            entry.worker for entry in reversed(self._entries.values())
+            if not entry.busy and all(not lease.busy for lease in entry.worker.entries)
+        )
+        for worker in list(idle_workers)[self.max_idle_workers:]:
+            self._reclaim_idle_worker(worker)
+
+    def _reclaim_idle_worker(self, worker):
+        entries = tuple(worker.entries)
+        for entry in entries:
+            self._forget(entry)
+        closing = self._schedule_worker_close(worker)
+        keys = tuple(entry.key for entry in entries)
+        self._idle_closing.update(dict.fromkeys(keys, closing))
+
+        def forget_cleanup(_task):
+            for key in keys:
+                if self._idle_closing.get(key) is closing:
+                    self._idle_closing.pop(key)
+
+        closing.add_done_callback(forget_cleanup)
+
+    def _expire(self, entry):
+        if (self._entries.get(entry.key) is entry and not entry.busy
+                and len(entry.worker.entries) == 1):
+            self._reclaim_idle_worker(entry.worker)
+        else:
+            super()._expire(entry)
 
     def _schedule_worker_close(self, worker):
         if worker.closing is None:
@@ -199,7 +239,7 @@ class CodexClientPool(SessionClientPool):
                     if thread.is_alive():
                         thread.join(max(0, deadline-time.monotonic()))
                 if any(t.is_alive() for t in threads):
-                    raise RuntimeError('Codex SDK 后台读取线程未退出')
+                    raise RuntimeError('Codex SDK background read thread did not exit')
                 for name in ('stdin', 'stdout', 'stderr'):
                     stream = getattr(process, name, None)
                     if stream is not None and not stream.closed:
@@ -275,6 +315,8 @@ class CodexClientPool(SessionClientPool):
             self._closing.add(entry.closing)
             entry.closing.add_done_callback(self._on_client_closed)
             entry.closing.add_done_callback(lambda _: self._detaching.discard(entry.key))
+            if entry.worker.entries:
+                self._trim_idle_workers()
         return entry.closing
 
     async def close(self):

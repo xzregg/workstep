@@ -167,5 +167,5 @@ def test_unsupported_engine_is_visible_and_cannot_enable(local,monkeypatch):
     installed(local,monkeypatch)
     monkeypatch.setattr(browser,'engine_compatible',lambda:False)
     assert browser.scan()['engine_compatible'] is False
-    with pytest.raises(ValueError,match='不支持 MCP'):
+    with pytest.raises(ValueError,match='does not support MCP'):
         browser.set_enabled(True)

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from './Button'
 import ResizablePanel from './ResizablePanel'
 import { projectApi, workflowApi, type Project, type WorkflowSummary } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { loadCanvasData, type StepNodeData } from './flowCanvasData'
 import './FlowNodeCopyDialog.css'
 
@@ -94,7 +94,7 @@ export default function FlowNodeCopyDialog({ onClose, onCopy }: Props) {
           {projectsLoading ? (
             <div className="flow-node-copy-notice"><span className="task-status-spinner" aria-hidden="true" />{t('flow.copyNodeLoading')}</div>
           ) : projectsError ? (
-            <div className="flow-node-copy-notice flow-node-copy-error" role="alert">{projectsError}</div>
+            <div className="flow-node-copy-notice flow-node-copy-error" role="alert">{localizeErrorDisplay(projectsError)}</div>
           ) : projects.length === 0 ? (
             <div className="flow-node-copy-notice">{t('flow.copyNodeEmpty')}</div>
           ) : (

@@ -39,7 +39,7 @@ def authorize(project_id):
     require_user_actor()
     actor = get_current_actor()
     if actor and actor.project_id is not None and (actor.project_id != project_id or actor.access_level != 'edit'):
-        raise HTTPException(403, '原型编辑需要项目编辑权限')
+        raise HTTPException(403, 'Prototype editing requires project editing permissions')
 
 
 def workspace(project_id, workspace_id):
@@ -55,7 +55,7 @@ async def io(operation, *args):
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     except FileNotFoundError as exc:
-        raise HTTPException(404, '原型文件或工作区不存在') from exc
+        raise HTTPException(404, 'Prototype file or workspace does not exist') from exc
 
 
 @router.post('/open')
@@ -103,7 +103,7 @@ async def action(workspace_id: str, action: str, project_id: str):
     from main import prototype_module
     if prototype_module and any(s.project_id == project_id and s.extra.get('workspace_id') == workspace_id and s.lock.locked()
                                 for s in prototype_module._sessions.values()):
-        raise HTTPException(409, '请先停止当前修改')
+        raise HTTPException(409, 'Please stop the current modification first')
     return await io(lambda: getattr(workspace(project_id, workspace_id), action)())
 
 
@@ -112,10 +112,10 @@ async def history(workspace_id: str, project_id: str, path: str):
     authorize(project_id)
     from main import prototype_module, project_manager
     if prototype_module is None:
-        raise HTTPException(503, '原型助手未初始化')
+        raise HTTPException(503, 'Prototype assistant not initialized')
     doc = await io(lambda: workspace(project_id, workspace_id).load()['documents'].get(path))
     if not doc:
-        raise HTTPException(404, '原型文档不存在')
+        raise HTTPException(404, 'Prototype document does not exist')
     def operation(_project):
         loaded = prototype_module.history(project_id, doc) or {'messages': []}
         return {**loaded, 'session_id': f'prototype:{project_id}:{doc}'}
@@ -128,11 +128,11 @@ async def chat(workspace_id: str, project_id: str, req: ChatRequest,
     authorize(project_id)
     from main import prototype_module, project_manager
     if prototype_module is None:
-        raise HTTPException(503, '原型助手未初始化')
+        raise HTTPException(503, 'Prototype assistant not initialized')
     def check():
         work = workspace(project_id, workspace_id)
         if work.load()['status'] != 'idle':
-            raise SourceConflict('请先处理工作副本中的未完成修改')
+            raise SourceConflict('Please handle the incomplete modifications in the working copy first')
         work.document(req.path)
         from agent_assistants.prototype import selection_context
         selection_context(work, req.path, req.selection)
@@ -149,10 +149,10 @@ async def stop(workspace_id: str, project_id: str, path: str):
     authorize(project_id)
     from main import prototype_module
     if prototype_module is None:
-        raise HTTPException(503, '原型助手未初始化')
+        raise HTTPException(503, 'Prototype assistant not initialized')
     doc = await io(lambda: workspace(project_id, workspace_id).load()['documents'].get(path))
     if not doc:
-        raise HTTPException(404, '原型文档不存在')
+        raise HTTPException(404, 'Prototype document does not exist')
     return {'stopped': await prototype_module.stop_current(f'prototype:{project_id}:{doc}')}
 
 

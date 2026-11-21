@@ -191,16 +191,16 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
             detail = stderr.decode(errors="replace").strip()
-            raise RuntimeError(detail or "Codex CLI 读取模型列表失败")
+            raise RuntimeError(detail or "Codex CLI failed to read the model list")
 
         try:
             payload = json.loads(stdout)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise RuntimeError("Codex CLI 返回了无效的模型列表") from exc
+            raise RuntimeError("Codex CLI returned an invalid model list") from exc
 
         models = payload.get("models") if isinstance(payload, dict) else None
         if not isinstance(models, list):
-            raise RuntimeError("Codex CLI 返回了无效的模型列表")
+            raise RuntimeError("Codex CLI returned an invalid model list")
 
         return [
             EngineModel(
@@ -336,7 +336,7 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
         if prompt.strip() == "/compact":
             if not session_id:
                 yield InternalEvent(type="error", data={
-                    "message": "没有可压缩的 Codex 会话",
+                    "message": "No compressible Codex session",
                 })
                 return
             try:
@@ -360,12 +360,12 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                     await client.close()
             except Exception as exc:
                 yield InternalEvent(type="error", data={
-                    "message": f"Codex 压缩失败：{exc}",
+                    "message": f"Codex compression failed: {exc}",
                 })
             return
         if any(not image.path for image in images or []):
             yield InternalEvent(type="error", data={
-                "message": "Codex CLI 原生图片输入只支持本地图片路径",
+                "message": "Codex CLI native image input only supports local image paths",
             })
             return
         image_paths = [image.path for image in images or []]
@@ -538,7 +538,7 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                 })
             elif not produced_output and stderr_text:
                 yield InternalEvent(type="error", data={
-                    "message": "codex 未产生任何输出",
+                    "message": "codex did not produce any output",
                     "stderr": stderr_text[-2000:],
                 })
             else:

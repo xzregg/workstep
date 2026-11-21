@@ -302,7 +302,7 @@ class WorkflowGenModule(AssistantRuntime):
             # 显式选择内置引擎并配置了供应商：直接使用内置引擎，
             # 不参与协调引擎回退（其能力由供应商动态配置决定）。
             if create_engine("pydantic_ai") is None:
-                raise ValueError("内置引擎不可用")
+                raise ValueError("Built-in engine unavailable")
             model = (
                 defaults["model"]
                 or config_store.get_engine_default_model("pydantic_ai")

@@ -9,7 +9,7 @@ import {
   type Project,
   type ProjectSettingsResult,
 } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import { useChatListStore } from '../stores/chatSessionStore'
 import Button from './Button'
@@ -202,7 +202,7 @@ function LocalProjectSettingsPanel({
       }
       if (button.kind === 'action' && (!button.actionId.trim() || !button.scriptPath.trim())) {
         setSelectedQuickButtonId(button.id)
-        setButtonsError('请先设置 Action ID 并选择脚本文件')
+        setButtonsError('Please set the Action ID and select the script file first')
         return
       }
     }
@@ -330,7 +330,7 @@ function LocalProjectSettingsPanel({
             </div>
             {loadError && (
               <div role="status" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 12 }}>
-                {loadError}
+                {localizeErrorDisplay(loadError)}
               </div>
             )}
             {loading && !settings ? (

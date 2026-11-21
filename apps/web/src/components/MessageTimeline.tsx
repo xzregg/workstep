@@ -1,5 +1,5 @@
 import { memo, useRef } from 'react'
-import MarkdownMessage from './MarkdownMessage'
+import ProposedPlanMessage from './ProposedPlanMessage'
 import {
   buildMessageTimeline,
   timelineText,
@@ -11,6 +11,7 @@ interface MessageTimelineProps {
   events: MessageTimelineEvent[]
   streaming?: boolean
   projectId?: string
+  suppressTextPlan?: boolean
 }
 
 /**
@@ -23,6 +24,7 @@ function MessageTimeline({
   events,
   streaming = false,
   projectId,
+  suppressTextPlan = false,
 }: MessageTimelineProps) {
   const timeline = buildMessageTimeline(events)
   const initialTextIds = useRef(new Set(timeline.filter(item => item.type === 'text').map(item => item.id)))
@@ -37,7 +39,7 @@ function MessageTimeline({
     // Keep the same shell and first child before/after the first text event.
     // A live paragraph must update the empty renderer, not mount as history.
     return <div className="llm-message-timeline">
-      <MarkdownMessage key="body" content={content} streaming={streaming} projectId={projectId} />
+      <ProposedPlanMessage key="body" content={content} streaming={streaming} projectId={projectId} suppressPlan={suppressTextPlan} />
     </div>
   }
 
@@ -50,16 +52,17 @@ function MessageTimeline({
   return (
     <div className="llm-message-timeline">
       {textItems.map((item, index) => (
-        <MarkdownMessage
+        <ProposedPlanMessage
           key={index === 0 ? 'body' : item.id}
           content={item.content}
           revealInitial={!initialTextIds.current.has(item.id)}
           streaming={streaming && item === textItems[textItems.length - 1] && !trailingContent}
           projectId={projectId}
+          suppressPlan={suppressTextPlan}
         />
       ))}
       {trailingContent && (
-        <MarkdownMessage key="trailing" content={trailingContent} revealInitial={!initialTrailing.current} streaming={streaming} projectId={projectId} />
+        <ProposedPlanMessage key="trailing" content={trailingContent} revealInitial={!initialTrailing.current} streaming={streaming} projectId={projectId} suppressPlan={suppressTextPlan} />
       )}
     </div>
   )

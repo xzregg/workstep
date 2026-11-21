@@ -28,15 +28,15 @@ interface UserSettingsState {
 export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
   messageHistoryPageSize: DEFAULT_MESSAGE_HISTORY_PAGE_SIZE,
   saveMessageHistoryPageSize: async (size) => {
-    if (!validMessageHistoryPageSize(size)) throw new Error('请输入 1–300 之间的整数')
+    if (!validMessageHistoryPageSize(size)) throw new Error('Please enter an integer between 1 and 300')
     const settings = await systemSettingsApi.updateMessageHistoryPageSize(size)
-    if (settings.message_history_page_size !== size) throw new Error('消息加载设置未保存，请重试。')
+    if (settings.message_history_page_size !== size) throw new Error('Message loading settings not saved, please retry.')
     set({ messageHistoryPageSize: size })
   },
   gitScanDepth: 5,
   saveGitScanDepth: async (depth) => {
     const settings = await systemSettingsApi.updateGitScanDepth(depth)
-    if (settings.git_scan_depth !== depth) throw new Error('Git 扫描设置未保存，请检查后台服务版本后重试。')
+    if (settings.git_scan_depth !== depth) throw new Error('Git scan settings not saved. Please check the backend service version and try again.')
     set({ gitScanDepth: settings.git_scan_depth })
   },
   userName: '',
@@ -48,7 +48,7 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
   saveDefaultProjectDirectory: async (directory, restrictFileAccessRoot) => {
     const settings = await systemSettingsApi.updateDefaultProjectDirectory(directory.trim(), restrictFileAccessRoot)
     if (restrictFileAccessRoot !== undefined && settings.restrict_file_access_root !== restrictFileAccessRoot) {
-      throw new Error('文件访问限制未保存，请更新并重启后台服务后重试。')
+      throw new Error('File access restrictions not saved. Please update and restart the backend service, then try again.')
     }
     set({ defaultProjectDirectory: settings.default_project_directory || '', restrictFileAccessRoot: settings.restrict_file_access_root ?? true })
   },
@@ -111,7 +111,7 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
         id: settings?.device_id, deviceId: settings?.device_id || get().deviceId,
         deviceName: settings?.device_name || get().deviceName,
       })
-      if (!next) throw new Error('无法保存浏览器身份')
+      if (!next) throw new Error('Unable to save browser identity')
       set({ userName: next.name, deviceId: next.deviceId, deviceName: next.deviceName, loaded: true })
       return true
     } catch (reason) {

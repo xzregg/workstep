@@ -122,7 +122,7 @@ def prepare_codex_skills(selection: ProjectSkillSelection) -> tuple[Path, str]:
         destination = skills_root / directory
         marker = destination / ".workstep-managed"
         if destination.exists() and not marker.is_file():
-            raise ValueError(f"Codex 技能目录已存在且不属于 WorkStep：{destination}")
+            raise ValueError(f"Codex skill directory already exists and does not belong to WorkStep: {destination}")
         if not _same_directory_sizes(
             source, destination, ignored_target={".workstep-managed"}
         ):

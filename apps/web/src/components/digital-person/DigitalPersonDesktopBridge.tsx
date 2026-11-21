@@ -1,3 +1,4 @@
+import { localizeErrorDisplay } from '../../i18n'
 import {useEffect, useState} from 'react'
 import {useNavigate} from 'react-router-dom'
 import {useProjectStore} from '../../stores/projectStore'
@@ -25,5 +26,5 @@ export default function DigitalPersonDesktopBridge(){
   useProjectStore.getState().setActiveProject(workspace)
   navigate('/companion')
  }),[workspace,profile,navigate])
- return error?<p role="alert" className="digital-person-error">{error}</p>:null
+ return error?<p role="alert" className="digital-person-error">{localizeErrorDisplay(error)}</p>:null
 }

@@ -33,9 +33,9 @@ export interface ExtensionApi {
 }
 
 export function skinFileUrl(skin: SkinDocument, path: string) {
-  if (!/^(?:theme\.(?:js|css)|assets\/[A-Za-z0-9_./-]+)$/.test(path) || path.split('/').some(part => part === '..' || part === '.')) throw new Error('皮肤资源路径无效')
+  if (!/^(?:theme\.(?:js|css)|assets\/[A-Za-z0-9_./-]+)$/.test(path) || path.split('/').some(part => part === '..' || part === '.')) throw new Error('Invalid skin resource path')
   const [base, query] = (skin.file_base ?? '').split('?')
-  if (!base) throw new Error('皮肤资源入口缺失')
+  if (!base) throw new Error('Missing skin resource entry')
   return `${base}/${path}${query ? '?' + query : ''}`
 }
 
@@ -53,24 +53,24 @@ export class ExtensionSession {
   snapshot = () => this.value
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
   private update(value: Snapshot) { this.value = value; this.listeners.forEach(listener => listener()) }
-  private check() { if (this.controller.signal.aborted) throw new Error('皮肤组件已关闭') }
+  private check() { if (this.controller.signal.aborted) throw new Error('The skin component is disabled') }
   storage = (featureId: string) => {
     this.check()
-    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(featureId)) throw new Error('功能 ID 无效')
+    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(featureId)) throw new Error('Invalid function ID')
     return createFeatureStorage(this.scope, this.skin.manifest.id, featureId)
   }
   enabled = (id: string) => !this.controller.signal.aborted && (this.commands.has(id) || skinActionEnabled(id))
   execute = async (id: string, args?: Record<string, unknown>) => { this.check(); return this.commands.has(id) ? this.commands.get(id)!(args) : executeSkinAction(id, args) }
   private register<T extends SkinFeature>(kind: 'features' | 'slots', feature: T) {
     this.check()
-    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(feature.id) || typeof feature.title !== 'string' || !feature.title.trim() || typeof feature.render !== 'function' || this.value[kind].some(item => item.id === feature.id)) throw new Error('皮肤组件定义无效或重复')
-    if (kind === 'slots' && (!('slot' in feature) || !extensionSlots.includes(feature.slot as ExtensionSlotName))) throw new Error('皮肤插槽不存在')
+    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(feature.id) || typeof feature.title !== 'string' || !feature.title.trim() || typeof feature.render !== 'function' || this.value[kind].some(item => item.id === feature.id)) throw new Error('Invalid or duplicate skin component definition')
+    if (kind === 'slots' && (!('slot' in feature) || !extensionSlots.includes(feature.slot as ExtensionSlotName))) throw new Error('Skin slot does not exist')
     this.update({ ...this.value, [kind]: [...this.value[kind], feature] })
     return () => this.update({ ...this.value, [kind]: this.value[kind].filter(item => item !== feature) })
   }
   private registerAvatar(avatar:SkinAvatar) {
     this.check()
-    if(!/^[a-z][a-z0-9_-]{0,63}$/.test(avatar.id)||typeof avatar.render!=='function'||this.value.avatar)throw new Error('皮肤形象定义无效或重复')
+    if(!/^[a-z][a-z0-9_-]{0,63}$/.test(avatar.id)||typeof avatar.render!=='function'||this.value.avatar)throw new Error('Invalid or duplicate skin appearance definition')
     this.update({...this.value,avatar})
     return()=>{if(this.value.avatar!==avatar)return;const value={...this.value};delete value.avatar;this.update(value)}
   }
@@ -80,14 +80,14 @@ export class ExtensionSession {
       if (this.controller.signal.aborted) return
       // An empty theme.js is a valid placeholder for skins without custom behavior.
       if (Object.keys(module).length === 0) return
-      if (typeof module.activate !== 'function') throw new Error('皮肤组件缺少 activate 入口')
+      if (typeof module.activate !== 'function') throw new Error('The skin component is missing the activate entry')
       const cleanup = await module.activate({
         React, components: { Button, Input, ConfirmDialog }, signal: this.controller.signal,
         features: { register: feature => this.register('features', feature) },
         slots: { register: slot => this.register('slots', slot) },
         actions: { register: (id, action) => {
           this.check()
-          if (!id || this.commands.has(id)) throw new Error('扩展动作重复或为空')
+          if (!id || this.commands.has(id)) throw new Error('Extended action is duplicated or empty')
           this.commands.set(id, action)
           return () => { this.commands.delete(id) }
         }, execute: this.execute, enabled: this.enabled },

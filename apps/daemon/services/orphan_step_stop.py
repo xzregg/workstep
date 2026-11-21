@@ -23,7 +23,7 @@ def persist_orphan_stop(task_id, step_key, now, instance_id):
         "reviewing",
         "rework_waiting",
     }:
-        raise ValueError(f"步骤未在运行: {step_key}")
+        raise ValueError(f"Step not running: {step_key}")
 
     workflow_run = None
     if task.active_workflow_run_id:
@@ -35,7 +35,7 @@ def persist_orphan_stop(task_id, step_key, now, instance_id):
         workflow_run is not None
         and lease_held_by_live_owner(workflow_run, now, instance_id)
     ):
-        raise ValueError("任务仍由其他运行器执行，请稍后再试")
+        raise ValueError("The task is still being executed by another runner, please try again later")
 
     active_message = (
         Message.select()
@@ -61,7 +61,7 @@ def persist_orphan_stop(task_id, step_key, now, instance_id):
         ):
             step.session_id = event_path.parent.name
 
-    stop_reason = "手动停止（运行器已不存在）"
+    stop_reason = "Stopped manually because the runner is no longer active"
     step.status = "cancelled"
     step.error = stop_reason
     step.ended_at = now

@@ -75,7 +75,7 @@ async def test_workspace_model_refresh_and_error_do_not_expose_host(monkeypatch)
     import api.engine as engine_api
     from fastapi import HTTPException
     class Engine:
-        def resolve_provider_runtime(self, **kwargs):
+        def resolve_provider_catalog(self, **kwargs):
             raise RuntimeError("private-token at /private/config.json")
     monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
     monkeypatch.setattr(engine_api, "create_engine", lambda _: Engine())
@@ -87,4 +87,4 @@ async def test_workspace_model_refresh_and_error_do_not_expose_host(monkeypatch)
             await engine_api.list_engine_models("codex", refresh=True, project_id="visible")
         assert denied.value.status_code == 403
         result = await engine_api.list_engine_models("codex", project_id="visible")
-        assert result["error"] == "读取模型列表失败"
+        assert result["error"] == 'Failed to load the model list'

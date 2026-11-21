@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { invitationTokenPattern } from './projectInvitationApi'
@@ -17,7 +18,7 @@ export function ProjectInvitationJoinForm() {
         token = url.pathname.match(/^\/project-invitations\/([A-Za-z0-9_-]{43})$/)?.[1] ?? ''
       } catch { token = '' }
     }
-    if (!invitationTokenPattern.test(token)) { setError('请填写当前网关的项目邀请链接或邀请码。'); return }
+    if (!invitationTokenPattern.test(token)) { setError('Please enter the project invitation link or invitation code for the current gateway.'); return }
     setError(''); navigate('/project-invitations/' + token)
   }
   return <section className="gateway-project-invitation-section">
@@ -26,7 +27,7 @@ export function ProjectInvitationJoinForm() {
     <form className="gateway-auth-form" onSubmit={open}>
       <label htmlFor="project-invitation-input">项目邀请链接或邀请码</label>
       <input id="project-invitation-input" value={value} onChange={event => { setValue(event.target.value); setError('') }} />
-      {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+      {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
       <button type="submit" disabled={!value.trim()}>查看邀请</button>
     </form>
   </section>

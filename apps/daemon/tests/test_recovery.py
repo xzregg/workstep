@@ -390,7 +390,7 @@ async def test_recovery_resumes_from_last_completed_node(tmp_path):
             # The interrupted attempt is failed and a fresh attempt is created.
             stale = StepRun.get_by_id("step-b-1")
             assert stale.status == "failed"
-            assert "中断" in stale.error
+            assert 'interrupted' in stale.error
             rerun = StepRun.get(
                 (StepRun.run == run)
                 & (StepRun.step_key == "b")
@@ -895,7 +895,7 @@ async def test_graceful_shutdown_leaves_run_recoverable(tmp_path):
             # The interrupted attempt is failed; a fresh attempt succeeds.
             interrupted = StepRun.get_by_id(in_flight.id)
             assert interrupted.status == "failed"
-            assert "中断" in interrupted.error
+            assert 'interrupted' in interrupted.error
             rerun = StepRun.get(
                 (StepRun.run == run_id)
                 & (StepRun.step_key == "b")
@@ -1041,7 +1041,7 @@ async def test_e2e_three_step_run_resumes_after_crash(tmp_path):
             assert [step_run.status for step_run in b_runs] == [
                 "failed", "succeeded",
             ]
-            assert "中断" in b_runs[0].error
+            assert 'interrupted' in b_runs[0].error
             a_run = StepRun.get(
                 (StepRun.run == run)
                 & (StepRun.step_key == "a")

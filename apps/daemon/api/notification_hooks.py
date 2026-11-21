@@ -20,7 +20,7 @@ async def configuration(workflow_id:str,project_id:str=Query(...)):
 async def save(workflow_id:str,body:SaveNotificationHooks,project_id:str=Query(...)):
     check_edit(project_id)
     ids=[h.id for h in body.hooks if h.id]
-    if len(ids)!=len(set(ids)):raise HTTPException(422,'钩子 ID 重复')
+    if len(ids)!=len(set(ids)):raise HTTPException(422,'Duplicate hook ID')
     await invoke_hook(service.save(project_id,workflow_id,body.hooks))
     return await invoke_hook(service.configuration(project_id,workflow_id))
 

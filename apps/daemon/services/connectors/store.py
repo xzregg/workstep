@@ -33,23 +33,23 @@ class ConnectorDefinition(BaseModel):
     @classmethod
     def name_not_blank(cls, value):
         if not value.strip():
-            raise ValueError('名称不能为空')
+            raise ValueError('Name cannot be empty')
         return value.strip()
 
     def validate_connection(self):
         if self.kind not in {'mcp', 'cli'} or self.transport not in {'stdio', 'http', 'sse'}:
-            raise ValueError('不支持的连接类型')
+            raise ValueError('Unsupported connection type')
         if self.kind == 'cli' or self.transport == 'stdio':
             if not self.command.strip() or '\x00' in self.command:
-                raise ValueError('请填写可执行命令')
+                raise ValueError('Please enter an executable command')
         else:
             url = urlsplit(self.url)
             if url.username or url.password or url.scheme not in {'https', 'http'} or not url.hostname:
-                raise ValueError('请填写有效的 HTTP MCP 地址，凭据请使用请求头字段')
+                raise ValueError('Please provide a valid HTTP MCP address; use request header fields for credentials')
             if url.scheme == 'http' and url.hostname not in {'localhost', '127.0.0.1', '::1'}:
-                raise ValueError('远程连接必须使用 HTTPS')
+                raise ValueError('Remote connections must use HTTPS')
         if any('\n' in key or '\r' in key or '\n' in value or '\r' in value for key, value in self.headers.items()):
-            raise ValueError('请求头不能包含换行')
+            raise ValueError('Request headers cannot contain newlines')
 
 
 class ConnectorStore:
@@ -111,11 +111,11 @@ class ConnectorStore:
         with self._lock:
             previous = next((i for i in self._read()['items'] if i['id'] == value.get('id')), None)
             if value.get('id') and (previous is None or value.get('revision') != previous['revision']):
-                raise ValueError('配置已更新，请刷新后重试')
+                raise ValueError('Configuration updated. Please refresh and try again.')
             item = ConnectorDefinition.model_validate({**(previous or {}), **value})
             item.validate_connection()
             if previous and item.url != previous.get('url') and 'headers' not in value and previous.get('headers'):
-                raise ValueError('地址变化后请重新填写认证信息')
+                raise ValueError('Please re-enter authentication information after the address changes')
             return item.model_dump()
 
     def save(self, value):
@@ -123,9 +123,9 @@ class ConnectorStore:
             data = self._read()
             previous = next((i for i in data['items'] if i['id'] == value.get('id')), None)
             if value.get('id') and previous is None:
-                raise ValueError('连接器不存在')
+                raise ValueError('Connector does not exist')
             if previous and value.get('revision') != previous['revision']:
-                raise ValueError('配置已更新，请刷新后重试')
+                raise ValueError('Configuration updated. Please refresh and try again.')
             merged = {**(previous or {}), **value}
             item = ConnectorDefinition.model_validate(merged)
             item.validate_connection()
@@ -146,13 +146,13 @@ class ConnectorStore:
 
     def select(self, project_id, session_id, identifiers):
         if not project_id or not session_id or len(session_id) > 256:
-            raise ValueError('请选择项目和会话')
+            raise ValueError('Please select a project and session')
         with self._lock:
             data = self._read()
             for identifier in identifiers:
                 item = next((i for i in data['items'] if i['id'] == identifier), None)
                 if item is None or not self.allowed(item, project_id):
-                    raise PermissionError('连接器不在当前项目可用范围内')
+                    raise PermissionError('Connector is not within the scope of the current project')
             data['sessions'][json.dumps([project_id, session_id])] = list(dict.fromkeys(identifiers))
             self._write(data)
 

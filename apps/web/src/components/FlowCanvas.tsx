@@ -232,6 +232,7 @@ export interface FlowCanvasProps {
   /** Persist the edited canvas; FlowCanvas manages dirty state + toast. */
   onSave: (steps: any) => Promise<void> | void
   onDirtyChange?: (dirty: boolean) => void
+  onDebugStep?: (nodeId: string) => void
   /** Project id — used by MarkdownEditor to upload images into the project. */
   projectId?: string
   workflowId?: string
@@ -252,6 +253,7 @@ export interface FlowCanvasProps {
 export interface FlowCanvasHandle {
   /** Current canvas steps JSON ({ nodes, connections }). */
   getSteps: () => any
+  getDraft: () => { workflow: any; error: string | null }
   /** Structural validation; returns an error message or null. */
   validate: () => string | null
   getExecutionWarnings: () => WorkflowExecutionWarning[]
@@ -264,6 +266,7 @@ function FlowCanvasInner({
   taskWorkflowSource,
   onSave,
   onDirtyChange,
+  onDebugStep,
   projectId,
   workflowId,
   toolbarLeft,
@@ -578,8 +581,22 @@ function FlowCanvasInner({
     return null
   }
 
+  const collectDraftNodes = () => {
+    const activeDraft = selectedNode && nodeConfigDraft?.nodeId === selectedNode.nodeId
+      ? { ...nodeConfigDraft, key: (nodeConfigDraft.key ?? '').trim() }
+      : null
+    const nodesToSave = activeDraft
+      ? nodes.map((node) => node.id === String(activeDraft.nodeId) ? { ...node, data: activeDraft } : node)
+      : nodes
+    return { activeDraft, nodesToSave }
+  }
+
   useImperativeHandle(ref, () => ({
     getSteps: () => buildCanvasJson(),
+    getDraft: () => {
+      const { nodesToSave } = collectDraftNodes()
+      return { workflow: buildCanvasJsonFromNodes(nodesToSave, edges), error: computeStepError(nodesToSave) }
+    },
     validate: () => computeStepError(),
     getExecutionWarnings: () => findWorkflowExecutionWarnings(buildCanvasJson()),
     loadSteps: (steps: any) => {
@@ -591,7 +608,7 @@ function FlowCanvasInner({
       setDirty(true)
       setTimeout(() => fitView({ padding: 0.2 }), 100)
     },
-  }), [nodes, edges, nodeConfigError, ref, readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
+  }), [nodes, edges, nodeConfigError, nodeConfigDraft, selectedNode, ref, readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyTemplateSteps = (steps: unknown) => {
     const { nodes: templateNodes, connections } = loadCanvasData(steps)
@@ -649,12 +666,7 @@ function FlowCanvasInner({
 
   const handleSave = async (confirmedWarnings = false) => {
     if (readOnly) return
-    const activeDraft = selectedNode && nodeConfigDraft?.nodeId === selectedNode.nodeId
-      ? { ...nodeConfigDraft, key: (nodeConfigDraft.key ?? '').trim() }
-      : null
-    const nodesToSave = activeDraft
-      ? nodes.map((node) => node.id === String(activeDraft.nodeId) ? { ...node, data: activeDraft } : node)
-      : nodes
+    const { activeDraft, nodesToSave } = collectDraftNodes()
     const stepError = computeStepError(nodesToSave)
     if (stepError) {
       setSaveMsg(t('flow.saveFailed', { error: stepError }))
@@ -853,6 +865,10 @@ function FlowCanvasInner({
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
             {t('flow.editStep')}
           </div>
+          {onDebugStep && <Button type="button" variant="ghost" className="flow-canvas-debug-menu-action" onClick={() => {
+            onDebugStep(contextMenu.nodeId)
+            setContextMenu(null)
+          }}>{t('canvas.debugFromStep')}</Button>}
           <div onClick={() => { setConfirmDeleteId(contextMenu.nodeId); setContextMenu(null) }}
             style={{ padding: '8px 16px', fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface)'}

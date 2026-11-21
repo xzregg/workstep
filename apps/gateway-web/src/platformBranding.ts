@@ -5,7 +5,7 @@ let pending: Promise<PlatformStatus> | undefined
 export function loadPlatformStatus(): Promise<PlatformStatus> {
   if (!pending) {
     pending = fetch('/api/platform/status').then(async response => {
-      if (!response.ok) throw new Error('无法检查平台状态，请刷新重试。')
+      if (!response.ok) throw new Error('Unable to check platform status, please refresh and try again.')
       return await response.json() as PlatformStatus
     }).finally(() => { pending = undefined })
   }

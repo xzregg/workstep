@@ -7,7 +7,7 @@ class WeComDirectory(ChannelDirectoryProvider):
 
     async def fetch_snapshot(self):
         if not all(self.bot.get(key) for key in self.fields):
-            raise DirectoryError('directory_credentials', '请填写企业 ID、通讯录应用 Agent ID 和 Secret')
+            raise DirectoryError('directory_credentials', 'Please enter the enterprise ID, the contact list application\'s Agent ID, and Secret')
         async with self.client() as client:
             root = 'https://qyapi.weixin.qq.com/cgi-bin/'
             token = (await self.request(client, 'GET', root+'gettoken', params={

@@ -13,11 +13,20 @@
 .speech-output-progress { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); font-size: var(--text-body); }
 .speech-output-progress progress { flex: 1 1 120px; min-width: 0; }
 .speech-output-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.speech-output-range-heading { display: flex; align-items: baseline; gap: var(--space-2); }
+.speech-output-range-heading > :first-child { flex: none; white-space: nowrap; }
 .speech-output-settings .speech-output-check { flex-direction: row; align-items: center; }
 .speech-output-settings .speech-output-check input { width: 16px; height: 16px; flex: 0 0 16px; }
 .speech-output-test { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-4); border-top: .5px solid var(--border-soft); }
 .speech-output-hint { margin: 0; }
+.speech-output-range-error { color: var(--danger); }
 .speech-output-actions button { white-space: nowrap; }
+.speech-output-reference { display: grid; gap: var(--space-2); min-width: 0; }
+.speech-output-reference-select { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-3); }
+.speech-output-recording-actions { display: flex; gap: var(--space-3); }
+.speech-output-recording-actions:empty { display: none; }
+.speech-output-reference-example { border-inline-start: .5px solid var(--border); padding-inline-start: var(--space-3); font-size: var(--text-body); }
+.speech-output-reference-example p { margin: var(--space-1) 0 0; overflow-wrap: anywhere; }
 @media (max-width: 1023px) { .speech-output-row { grid-template-columns: minmax(0, 1fr); } }
 
 .speech-output-settings .digital-person-voice { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
@@ -25,6 +34,6 @@
 .speech-output-model-manager > summary { cursor: pointer; font-size: var(--text-body); font-weight: 600; }
 .speech-output-model-manager[open] > :not(summary) { margin-top: var(--space-3); }
 .speech-voice-style { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
-.speech-voice-presets { display: flex; flex-direction: column; gap: var(--space-2); }
-.speech-voice-presets > span { color: var(--text-muted); font-size: var(--text-body); }
+.speech-voice-presets { display: flex; gap: var(--space-2); min-width: 0; overflow-x: auto; padding: var(--space-1); }
+.speech-voice-presets button { flex: 0 0 auto; white-space: nowrap; }
 .speech-voice-presets button[aria-pressed=true] { color: var(--text-accent); border-color: var(--accent); background: var(--surface); }

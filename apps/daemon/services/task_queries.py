@@ -5,6 +5,16 @@ from models import Task, Workflow, ReviewRun, Message
 from models.chat_session import ChatSession
 
 
+def formal_tasks():
+    hidden = Workflow.select(Workflow.id).where(Workflow.debug_source_id.is_null(False))
+    return Task.select().where(Task.workflow_id.is_null() | Task.workflow_id.not_in(hidden))
+
+
+def is_debug_task(task_id):
+    return (Task.select(Task.id).join(Workflow, on=(Task.workflow_id == Workflow.id))
+            .where(Task.id == task_id, Workflow.debug_source_id.is_null(False)).exists())
+
+
 def task_exists(task_id):
     return Task.select().where(Task.id == task_id).exists()
 

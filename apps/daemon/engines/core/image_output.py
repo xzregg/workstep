@@ -27,7 +27,7 @@ def checked_image(data):
     image = Image.open(io.BytesIO(data))
     if image.width * image.height > MAX_IMAGE_PIXELS:
         image.close()
-        raise ValueError('图片像素过大')
+        raise ValueError('Image pixel size is too large')
     return image
 
 
@@ -44,42 +44,42 @@ class ImageOutputNormalizer:
         encoded = source.get('data') or block.get('result')
         if encoded:
             if not isinstance(encoded, str) or len(encoded) > (MAX_IMAGE_BYTES + 2) // 3 * 4:
-                raise ValueError('图片数据过大')
+                raise ValueError('Image data is too large')
             data = base64.b64decode(encoded, validate=True)
         else:
             saved = block.get('savedPath') or block.get('saved_path')
             if not saved:
-                raise ValueError('图片未返回内容')
+                raise ValueError('Image returned no content')
             path = Path(saved)
             path = (self.cwd / path).resolve()
             allowed = [self.cwd.resolve(), (Path.home()/'.codex/generated_images').resolve()]
             if not any(path.is_relative_to(root) for root in allowed):
-                raise ValueError('图片路径不在允许的输出目录')
+                raise ValueError('Image path is not in the allowed output directory')
             with path.open('rb') as stream:
                 data = stream.read(MAX_IMAGE_BYTES + 1)
         if not data or len(data) > MAX_IMAGE_BYTES:
-            raise ValueError('图片为空或过大')
+            raise ValueError('The image is empty or too large')
         with checked_image(data) as image:
             extension = {'PNG': 'png', 'JPEG': 'jpg', 'WEBP': 'webp', 'GIF': 'gif'}.get(image.format)
             if not extension:
-                raise ValueError('图片格式不受支持')
+                raise ValueError('Image format not supported')
             image.verify()
         name = f'generated-{hashlib.sha256(data).hexdigest()}.{extension}'
         root = self.storage_root.resolve()
         uploads = root/'uploads'
         if uploads.is_symlink() or not uploads.resolve().is_relative_to(root):
-            raise ValueError('图片输出目录无效')
+            raise ValueError('Invalid image output directory')
         uploads.mkdir(parents=True, exist_ok=True)
         target = uploads/name
         if target.is_symlink():
-            raise ValueError('图片输出文件无效')
+            raise ValueError('Invalid image output file')
         # Exclusive creation avoids overwriting existing content or following a link.
         try:
             with target.open('xb') as stream:
                 stream.write(data)
         except FileExistsError:
             if target.read_bytes() != data:
-                raise ValueError('图片输出文件冲突')
+                raise ValueError('Image output file conflict')
         return f'.workstep/uploads/{name}'
 
     async def normalize(self, event):

@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { useAdminSession } from './useAdminSession'
 import { AdminSessionStatus } from './AdminSessionStatus'
@@ -45,11 +46,11 @@ export function AdminProvidersPage() {
     void fetch(`/api/admin/providers?${params}`, { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error(response.status === 403
-          ? '当前账号没有供应商管理权限。' : '供应商列表加载失败。')
+          ? 'The current account does not have supplier management permissions.' : 'Failed to load supplier list.')
         const data = await response.json()
         if (!controller.signal.aborted) { setProviders(data.providers ?? []); setTotal(data.total ?? 0) }
       }).catch(reason => {
-        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '供应商列表加载失败。')
+        if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load supplier list.')
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [csrf, filters, revision])
@@ -79,7 +80,7 @@ export function AdminProvidersPage() {
         <option value="asc">升序</option><option value="desc">降序</option></Select>
     </div>
     <AdminListStatus loading={loading} label="正在加载供应商…"/>
-    {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && providers.length === 0 && <p>当前条件下没有供应商。</p>}
     <AdminRecordTable busy={loading} columns={['供应商','状态','模型 / 价格','授权对象','设备应用','操作']}>
@@ -109,7 +110,8 @@ export function AdminProvidersPage() {
     {testFor && csrf && <AdminProviderTestPanel key={testFor.id} providerId={testFor.id}
       providerName={testFor.name} csrf={csrf} onClose={() => setTestFor(null)} />}
     {edit && csrf && <AdminProviderEditorDialog key={edit === 'new' ? 'new' : edit.id}
-      provider={edit === 'new' ? undefined : edit} csrf={csrf} onClose={() => setEdit(null)}
+      provider={edit === 'new' ? undefined : edit} csrf={csrf}
+      onClose={() => { if (edit !== 'new') setRevision(value => value + 1); setEdit(null) }}
       onSaved={() => { setEdit(null); setRevision(value => value + 1) }} />}
     {disable && csrf && <AdminProviderDisableDialog provider={disable} csrf={csrf}
       onClose={() => setDisable(null)} onSaved={() => {

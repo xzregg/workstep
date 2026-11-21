@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GatewayModal } from './GatewayModal'
@@ -33,7 +34,7 @@ export function OrganizationSyncNotice() {
    const response=await fetch('/api/admin/directory-notices/read',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':auth.csrf_token},body:JSON.stringify({source_id:notice.source_id,at:notice.at})})
    if (!response.ok) throw Error()
    setNotices(current=>current.filter(item=>item.source_id!==notice.source_id || item.at!==notice.at))
-  } catch {setError('标记已读失败，请重试。')}
+  } catch {setError('Failed to mark as read, please try again.')}
   finally {pending.current.delete(notice.source_id);setReading([...pending.current])}
  }
  if(!available) return null
@@ -42,7 +43,7 @@ export function OrganizationSyncNotice() {
    {!notices.length && <p>没有未读的组织同步提示。</p>}
    {notices.map(notice=><article key={notice.source_id}><p>{new Date(notice.at).toLocaleString()} · {notice.error ? '同步失败，请检查应用权限和密钥；已配置的自动同步会按策略重试。' : `新增 ${notice.result?.people_added ?? 0} 人 · 资料更新 ${notice.result?.people_updated ?? 0} 人 · 调部门 ${notice.result?.people_transferred ?? 0} 人 · 停用 ${notice.result?.people_departed ?? 0} 人 · 待核实 ${notice.result?.people_unverified ?? 0} 人 · 组织变更 ${(notice.result?.departments_added ?? 0)+(notice.result?.departments_updated ?? 0)+(notice.result?.departments_moved ?? 0)+(notice.result?.departments_deleted ?? 0)} 项`}</p><button type="button" disabled={reading.includes(notice.source_id)} onClick={()=>void read(notice)}>{reading.includes(notice.source_id) && <span className="gateway-spinner"/>}标记已读</button></article>)}
    <Link className="gateway-action-link" to="/admin/settings" onClick={()=>setOpen(false)}>查看应用配置及同步记录</Link>
-   {error && <p role="alert">{error}</p>}
+   {error && <p role="alert">{localizeGatewayError(error)}</p>}
   </GatewayModal>}
  </>
 }

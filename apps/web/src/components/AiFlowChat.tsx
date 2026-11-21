@@ -1,3 +1,4 @@
+import { useProjectProviders } from '../hooks/useProjectProviders'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { randomUuid } from '../utils/uuid'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
@@ -13,9 +14,7 @@ import {
 import {
   assistantApi,
   workflowGenApi,
-  providerApi,
   type AssistantConfigInfo,
-  type ProviderInfo,
 } from '../api/client'
 import { useWorkflowGenStore, type GenProposalCard } from '../stores/workflowGenStore'
 import {
@@ -111,7 +110,7 @@ export default function AiFlowChat({
   const [selectedFastModel, setSelectedFastModel] = useState('')
   const [selectedVisionModel, setSelectedVisionModel] = useState('')
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
-  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const providers = useProjectProviders(projectId)
   const session = useWorkflowGenStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const running = session?.running ?? false
   const messages = session?.messages ?? []
@@ -193,16 +192,6 @@ export default function AiFlowChat({
       })
     return () => { active = false }
   }, [projectId, t])
-
-  useEffect(() => {
-    let active = true
-    providerApi.list(projectId)
-      .then((result) => {
-        if (active) setProviders(result.providers.filter((item) => item.enabled))
-      })
-      .catch(() => { /* provider list is optional for the engine picker */ })
-    return () => { active = false }
-  }, [projectId])
 
   const { loadOlderHistory, resetPagination } = useWorkflowConversationHistory(projectId, workflowId, setSessionId)
 

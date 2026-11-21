@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { CompanySubtitle } from './CompanySubtitle'
 import type { EnterpriseProvider } from './enterpriseProviders'
 import { useEffect, useState } from 'react'
@@ -57,7 +58,7 @@ export function DesktopLoginPage() {
       fetch('/api/auth/registration-policy', {signal:controller.signal}),
     ]).then(async ([response,policy]) => {
         if(controller.signal.aborted)return
-        if(!policy.ok)throw Error('登录方式加载失败，请重新发起认证。')
+        if(!policy.ok)throw Error('Login method loading failed, please re-initiate authentication.')
         const policyData = await policy.json()
         if (controller.signal.aborted) return
         setPasswordEnabled(policyData.password_login_enabled ?? true)
@@ -71,7 +72,7 @@ export function DesktopLoginPage() {
         setStatus('ready')
       })
       .catch((reason) => {
-        if (reason?.name !== 'AbortError') {setError('登录方式加载失败，请重新发起认证。');setStatus('login')}
+        if (reason?.name !== 'AbortError') {setError('Login method loading failed, please re-initiate authentication.');setStatus('login')}
       })
     void fetch('/api/auth/identity-sources', { signal: controller.signal })
       .then(async (response) => {
@@ -89,12 +90,12 @@ export function DesktopLoginPage() {
       const response = await fetch('/api/auth/logout', {
         method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
       })
-      if (!response.ok && response.status !== 401) throw new Error('登出失败，请重试。')
+      if (!response.ok && response.status !== 401) throw new Error('Logout failed, please try again.')
       setCsrf(null)
       setStatus('login')
       window.dispatchEvent(new Event('gateway-auth-changed'))
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '登出失败，请重试。')
+      setError(reason instanceof Error ? reason.message : 'Logout failed, please try again.')
       setStatus('ready')
     }
   }
@@ -109,15 +110,15 @@ export function DesktopLoginPage() {
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
         body: JSON.stringify(request),
       })
-      if (!response.ok) throw new Error('桌面端授权失败，请重新登录后再试。')
+      if (!response.ok) throw new Error('Desktop authorization failed. Please log in again and try.')
       const result = await response.json()
       if (typeof result.callback_url !== 'string'
           || !result.callback_url.startsWith(`${request.redirect_uri ?? 'workstep://auth/callback'}?`)) {
-        throw new Error('授权回调无效。')
+        throw new Error('Invalid authorization callback.')
       }
       window.location.assign(result.callback_url)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '授权失败，请重试。')
+      setError(reason instanceof Error ? reason.message : 'Authorization failed, please try again.')
       setStatus('ready')
     }
   }
@@ -131,13 +132,13 @@ export function DesktopLoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       })
-      if (!response.ok) throw new Error('用户名或密码不正确，或账号尚未获准登录。')
+      if (!response.ok) throw new Error('Incorrect username or password, or the account is not authorized to log in.')
       const result = await response.json()
       setCsrf(result.csrf_token)
       window.dispatchEvent(new Event('gateway-auth-changed'))
       await authorize(result.csrf_token)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '登录失败，请重试。')
+      setError(reason instanceof Error ? reason.message : 'Login failed, please try again.')
       setStatus('login')
     }
   }
@@ -150,15 +151,15 @@ export function DesktopLoginPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ return_to: `/desktop/login?${new URLSearchParams(request!).toString()}` }),
       })
-      if (!response.ok) throw new Error('扫码登录暂时不可用，请稍后重试。')
+      if (!response.ok) throw new Error('QR code login is temporarily unavailable. Please try again later.')
       const result = await response.json()
       if (typeof result.authorization_url !== 'string'
           || !result.authorization_url.startsWith('https://')) {
-        throw new Error('身份源返回了无效的登录地址。')
+        throw new Error('The identity source returned an invalid login address.')
       }
       window.location.assign(result.authorization_url)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '扫码登录失败，请重试。')
+      setError(reason instanceof Error ? reason.message : 'QR code login failed, please try again.')
       setStatus('login')
     }
   }
@@ -192,7 +193,7 @@ export function DesktopLoginPage() {
         </div>
       </div>}
       {status === 'submitting' && <p className="gateway-device-auth-progress" role="status"><span className="gateway-spinner" aria-hidden="true" />正在处理，请稍候…</p>}
-      {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+      {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
       {request.redirect_uri
         ? <p className="gateway-device-auth-return"><a className="gateway-action-link" href={new URL('/?gateway_auth=cancelled', request.redirect_uri).href}>返回本地工作台</a></p>
         : <p className="gateway-device-auth-return"><a className="gateway-action-link" href="workstep://auth/cancel">返回本地工作台</a></p>}

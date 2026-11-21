@@ -14,7 +14,7 @@ def exclusive_engine_run(function):
     @wraps(function)
     async def run(self, *args, **kwargs):
         if getattr(self, '_engine_run_active', False):
-            raise RuntimeError('同一引擎实例正在执行，请等待当前回复完成')
+            raise RuntimeError('A same engine instance is already running, please wait for the current reply to complete:')
         self._engine_run_active = True
         try:
             async with aclosing(function(self, *args, **kwargs)) as stream:
@@ -48,12 +48,12 @@ class SessionClientPool:
     async def acquire(self, cwd: str, session_id: str | None, fingerprint: str,
                       factory: Callable[[], Any]) -> SessionClientLease:
         if self._closed:
-            raise RuntimeError('引擎客户端池已关闭')
+            raise RuntimeError('Engine client pool is closed')
         key = (cwd, session_id or uuid.uuid4().hex)
         entry = self._entries.get(key)
         if entry is not None:
             if entry.busy:
-                raise RuntimeError('引擎会话正在执行，请等待当前回复完成')
+                raise RuntimeError('Engine session is executing, please wait for the current reply to complete')
             entry.busy = True
             if entry.timer:
                 entry.timer.cancel()
@@ -69,7 +69,7 @@ class SessionClientPool:
                         proc is not None and await asyncio.to_thread(proc.poll) is None
                     )
                 if self._closed or self._entries.get(key) is not entry:
-                    raise RuntimeError('引擎客户端已关闭')
+                    raise RuntimeError('Engine client has been closed')
                 if entry.fingerprint == fingerprint and alive:
                     return entry
             except BaseException:
@@ -82,7 +82,7 @@ class SessionClientPool:
                 replacement = SessionClientLease(key, fingerprint, factory())
                 if self._closed:
                     await self._close_entry(replacement)
-                    raise RuntimeError('引擎客户端池已关闭')
+                    raise RuntimeError('Engine client pool is closed')
                 self._entries[key] = replacement
                 return replacement
             except BaseException:
@@ -96,10 +96,10 @@ class SessionClientPool:
     def bind(self, entry: SessionClientLease, session_id: str, thread: Any) -> None:
         key = (entry.key[0], session_id)
         if self._entries.get(entry.key) is not entry or self._closed:
-            raise RuntimeError('引擎客户端已关闭')
+            raise RuntimeError('Engine client has been closed')
         if key != entry.key:
             if key in self._entries:
-                raise RuntimeError('引擎会话已被其他执行占用')
+                raise RuntimeError('Engine session is already occupied by another execution')
             self._entries.pop(entry.key)
             entry.key = key
             self._entries[key] = entry
@@ -204,7 +204,7 @@ class ManagedConnection:
 
     async def open(self):
         if self._closed:
-            raise RuntimeError('引擎连接已关闭')
+            raise RuntimeError('Engine connection closed')
         if self._owner is None:
             self._ready = asyncio.get_running_loop().create_future()
             self._ready.add_done_callback(lambda future: future.exception() if not future.cancelled() else None)

@@ -4,7 +4,7 @@ import test from 'node:test'
 import {act} from 'react'
 import {createRoot} from 'react-dom/client'
 import {MemoryRouter} from 'react-router-dom'
-import {I18nProvider} from '../src/i18n'
+import {I18nProvider,useLocaleStore} from '../src/i18n'
 import DigitalPersonCompanion from '../src/components/digital-person/DigitalPersonCompanion'
 import DigitalPersonSettings from '../src/components/digital-person/DigitalPersonSettings'
 import DigitalPersonActivity from '../src/components/digital-person/DigitalPersonActivity'
@@ -85,9 +85,11 @@ test('activity loads small pages, opens details on demand, and retries failed de
  }finally{await act(async()=>root.unmount());element.remove();Object.assign(digitalRuntimeApi,originals);await window.happyDOM.close()}
 })
 
-test('activity keeps delegation notifications separate from thought records',async()=>{
+test('activity shows proactive thought records above delegation notifications',async()=>{
  const {window}=installDomEnvironment();const element=document.body.appendChild(document.createElement('div')),root=createRoot(element)
  const original=digitalRuntimeApi.records
+ const {locale}=useLocaleStore.getState()
+ useLocaleStore.setState({locale:'zh-CN'})
  digitalRuntimeApi.records=async()=>({checking:false,run_total:1,runs:[{id:'thought',status:'silent',summary:'主动思考的摘要',created_at:'2026-11-14T01:00:00Z'}],delegation_total:1,delegations:[{id:'work',instruction:'不应出现在运行记录的委派通知',notification_state:'pending'}]}) as any
  try{
   await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonActivity/></I18nProvider></MemoryRouter>))
@@ -96,9 +98,20 @@ test('activity keeps delegation notifications separate from thought records',asy
   assert.ok(element.querySelector('[data-open-execution]'))
   assert.match(element.querySelector('[data-kind=delegations]')!.textContent!,/未通知/)
   assert.doesNotMatch(element.querySelector('[data-kind=runs]')!.textContent!,/委派通知/)
-  assert.match(element.querySelector('[data-kind=runs] h3')!.textContent!,/运行记录/)
+  const sections=[...element.querySelectorAll('.digital-person-activity-section')]
+  assert.deepEqual(sections.map(section=>section.getAttribute('data-kind')),['runs','delegations'])
+  assert.equal(sections[0].getAttribute('aria-label'),'主动思考记录')
   assert.doesNotMatch(element.querySelector('[data-kind=delegations]')!.textContent!,/执行中|已完成/)
- }finally{await act(async()=>root.unmount());element.remove();digitalRuntimeApi.records=original;await window.happyDOM.close()}
+  const openExecution=element.querySelector<HTMLButtonElement>('[data-open-execution]')!
+  openExecution.focus()
+  await act(async()=>openExecution.click())
+  const dialog=document.querySelector('.digital-person-delegation-dialog')
+  assert.equal(dialog?.getAttribute('aria-label'),'不应出现在运行记录的委派通知')
+  assert.ok(element.contains(openExecution),'the activity list stays mounted')
+  await act(async()=>document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
+  assert.equal(document.querySelector('.digital-person-delegation-dialog'),null)
+  assert.equal(document.activeElement,openExecution)
+ }finally{await act(async()=>root.unmount());element.remove();digitalRuntimeApi.records=original;useLocaleStore.setState({locale});await window.happyDOM.close()}
 })
 
 test('activity deduplicates in-flight refreshes and recovers detail errors',async()=>{

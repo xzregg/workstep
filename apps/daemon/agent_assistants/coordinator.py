@@ -30,6 +30,7 @@ from agent_assistants.archive_experience import (
 )
 from agent_assistants.coordinator_actions import CoordinatorActionService
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
+from agent_assistants.session_state import PROVIDER_HANDOFF_REQUIRED, provider_context_changed
 from agent_assistants.coordinator_context import (
     COORDINATOR_ROLE_RULES,
     COORDINATOR_CHANNEL,
@@ -197,7 +198,7 @@ class CoordinatorModule:
                 continue
             if turn.status == "running" and turn.execution_scope == "scheduled":
                 turn.status = "failed"
-                turn.error = "定时执行因服务重启中断，未自动重放"
+                turn.error = "Scheduled execution interrupted due to service restart, not automatically replayed"
                 turn.ended_at = now
                 turn.save()
                 Message.update(run_status="failed", content=turn.error, ended_at=now).where(Message.id == turn.assistant_message_id).execute()
@@ -235,7 +236,7 @@ class CoordinatorModule:
             if proposal.id in executing_actions:
                 continue
             proposal.status = "failed"
-            proposal.error = "协调助手操作中断，请重新发起"
+            proposal.error = "Coordination assistant operation interrupted, please restart"
             proposal.updated_at = now
             proposal.save()
             failed_actions += 1
@@ -399,7 +400,7 @@ class CoordinatorModule:
                     )
                 )
                 if len(selected) != len(set(pending_insert_ids)):
-                    raise PendingInsertBatchChanged("待插入消息已发送或删除，请刷新队列")
+                    raise PendingInsertBatchChanged("The message to be inserted has been sent or deleted. Please refresh the queue.")
             engine, model, _, _ = self._resolve_engine_models(task)
             context_step_key = self._single_active_step(task)
             now = utc_now()
@@ -427,6 +428,7 @@ class CoordinatorModule:
                     if session is not None:
                         session.session_id = None
                         session.engine_state_json = None
+                        session.session_provider = None
                         session.summary = None
                         session.summary_through_sequence = None
                         session.status = "reset"
@@ -641,9 +643,9 @@ class CoordinatorModule:
             if normalized_provider:
                 provider = config_store.get_provider(normalized_provider)
                 if provider is None:
-                    raise ValueError("供应商不存在")
+                    raise ValueError("Provider not found")
                 if not provider.get("enabled", True):
-                    raise ValueError("所选供应商已停用")
+                    raise ValueError("Selected provider is disabled")
             if not is_supported_effort(
                 normalized_effort,
                 normalized_engine or task.coordinator_engine or "",
@@ -679,7 +681,7 @@ class CoordinatorModule:
                 current_engine = normalized_engine or self._resolve_engine_models(task)[0]
                 candidate = create_engine(current_engine or "")
                 if candidate is None or not candidate.supports_provider(provider):
-                    raise ValueError("供应商协议与协调引擎不兼容")
+                    raise ValueError("Provider protocol is incompatible with the coordinator engine")
 
             previous = {
                 "engine": task.coordinator_engine,
@@ -709,6 +711,7 @@ class CoordinatorModule:
             if session is not None and config_changed:
                 session.status = "reset"
                 session.session_id = None
+                session.engine_state_json = None
                 session.version += 1
                 session.updated_at = utc_now()
                 session.save()
@@ -822,6 +825,8 @@ class CoordinatorModule:
             journal_ref = prepared["journal_ref"]
 
             try:
+                if prepared["provider_changed"]:
+                    raise ValueError(PROVIDER_HANDOFF_REQUIRED)
                 await self._publish_message_event(
                     project_id,
                     task_id,
@@ -951,6 +956,7 @@ class CoordinatorModule:
                     raw,
                     turn_id,
                     on_event=capture_repair_input,
+                    provider_id=provider_id,
                 )
                 events.extend(repair_events)
                 for event in repair_events:
@@ -1006,6 +1012,7 @@ class CoordinatorModule:
                         raw,
                         turn_id,
                         on_event=capture_repair_input,
+                        provider_id=provider_id,
                     )
                     events.extend(repair_events)
                     for event in repair_events:
@@ -1048,16 +1055,10 @@ class CoordinatorModule:
                     {"type": "status", "data": {"status": "succeeded"}},
                 )
                 journal_snapshot = await self._event_journal.asnapshot(journal_ref)
-                usage_provider_id = provider_id
                 usage_provider = None
-                if turn.engine:
-                    usage_engine = await asyncio.to_thread(create_engine, turn.engine)
-                    resolve_provider_id = getattr(usage_engine, "resolve_provider_id", None)
-                    if callable(resolve_provider_id):
-                        usage_provider_id = await asyncio.to_thread(resolve_provider_id, provider_id)
-                if usage_provider_id:
+                if provider_id:
                     def load_usage_provider():
-                        provider = config_store.get_provider(usage_provider_id)
+                        provider = config_store.get_provider(provider_id)
                         return ({key: provider.get(key) for key in
                                  ("id", "prices", "managed_revision")}
                                 if provider else None)
@@ -1073,6 +1074,7 @@ class CoordinatorModule:
                         requested,
                         result,
                         journal_snapshot,
+                        provider_id=provider_id,
                         project=self._project_manager.get_project_by_id(project_id),
                     ),
                 )
@@ -1081,7 +1083,7 @@ class CoordinatorModule:
                 await gateway_client.record_message_usage(
                     project_id=project_id, task_id=task_id, message_id=assistant.id,
                     run_id=turn_id, model=turn_model, occurred_at=assistant.ended_at,
-                    provider=usage_provider, provider_id=usage_provider_id or None,
+                    provider=usage_provider, provider_id=provider_id or None,
                     usage_json=extract_usage_json(events),
                     user_id=prepared["creator_id"], session_id=session_id,
                 )
@@ -1243,7 +1245,7 @@ class CoordinatorModule:
         assistant.started_at = turn.started_at
         assistant.save()
         from types import SimpleNamespace
-        session = (SimpleNamespace(session_id=None, engine_state_json=None)
+        session = (SimpleNamespace(session_id=None, engine_state_json=None, session_provider=None)
                    if turn.execution_scope == "scheduled"
                    else self._prepare_session(task, turn.engine or "", turn.model))
         engine_state = None
@@ -1254,15 +1256,33 @@ class CoordinatorModule:
                 engine_state = None
         _, _, fast_model, vision_model = self._resolve_engine_models(task)
         provider_id = self._resolve_provider_id(task)
-        thinking_effort = self._resolve_thinking_effort(task)
+        engine = create_engine(turn.engine) if turn.engine else None
+        resolve_provider_id = getattr(engine, "resolve_provider_id", None)
+        if callable(resolve_provider_id):
+            provider_id = resolve_provider_id(provider_id)
         user_message = Message.get_by_id(turn.user_message_id)
+        switching_provider = False
+        if turn.execution_scope != "scheduled" and provider_context_changed(session.session_provider, provider_id):
+            switching_provider = bool(
+                session.session_provider is not None or session.session_id or engine_state is not None
+                or Message.select().where(
+                    Message.task == task, Message.channel == COORDINATOR_CHANNEL,
+                    Message.role == "assistant", Message.sequence < user_message.sequence,
+                    Message.sequence >= session.context_reset_sequence,
+                    Message.run_status.in_(["succeeded", "completed"]),
+                ).exists()
+            )
+        if turn.execution_scope != "scheduled" and not switching_provider:
+            session.session_provider = provider_id
+            session.save(only=[CoordinatorSession.session_provider])
+        thinking_effort = self._resolve_thinking_effort(task)
         previous_channel = Message.select(Message.id).where(
             (Message.task == task) & (Message.channel == COORDINATOR_CHANNEL)
             & (Message.role == 'user') & (Message.sequence <= user_message.sequence)
             & Message.prompt_json.contains('"channel_source"')
         ).exists()
         prompt, system_prompt, artifacts = assemble_context(
-            project, task, turn, root_dir=coordinator_root, separate_instructions=True
+            project, task, turn, root_dir=coordinator_root, separate_instructions=True,
         )
         source_context = request_source_prompt(user_message, previous_channel=previous_channel)
         if source_context:
@@ -1285,6 +1305,7 @@ class CoordinatorModule:
             "coordinator_root": coordinator_root,
             "session_id": session.session_id,
             "engine_state": engine_state,
+            "provider_changed": switching_provider,
             "fast_model": fast_model,
             "provider_id": provider_id,
             "thinking_effort": thinking_effort,
@@ -1306,7 +1327,7 @@ class CoordinatorModule:
         requested,
         result,
         journal_snapshot,
-        *, project=None,
+        *, project=None, provider_id="",
     ):
         turn = CoordinatorTurn.get_by_id(turn_id)
         assistant = Message.get_by_id(turn.assistant_message_id)
@@ -1334,6 +1355,7 @@ class CoordinatorModule:
         if turn.execution_scope == "main":
             session = CoordinatorSession.get_by_id(task_id)
             session.session_id = session_id
+            session.session_provider = provider_id
             session.status = "active"
             session.last_error = None
             for engine_event in events:
@@ -1374,12 +1396,16 @@ class CoordinatorModule:
 
     def _archive_settings(self, task: Task) -> dict:
         engine_id, model, fast_model, _ = self._resolve_engine_models(task)
+        provider_id = self._resolve_provider_id(task)
+        resolve_provider_id = getattr(create_engine(engine_id), "resolve_provider_id", None)
+        if callable(resolve_provider_id):
+            provider_id = resolve_provider_id(provider_id)
         return {
             "engine_id": engine_id,
             "model": model,
             "fast_model": fast_model,
             "thinking_effort": self._resolve_thinking_effort(task),
-            "provider_id": self._resolve_provider_id(task),
+            "provider_id": provider_id,
         }
 
     def _resolve_engine_models(
@@ -1584,11 +1610,11 @@ class CoordinatorModule:
                 **spawn_kwargs,
             )
 
-        get_defaults = getattr(config_store, "get_assistant_defaults", None)
-        assistant_defaults = (
-            await asyncio.to_thread(get_defaults, "task_coordinator") if callable(get_defaults) else {}
-        )
-        provider_id = provider_id or assistant_defaults.get("provider_id", "")
+        if provider_id is None:
+            get_defaults = getattr(config_store, "get_assistant_defaults", None)
+            if callable(get_defaults):
+                assistant_defaults = await asyncio.to_thread(get_defaults, "task_coordinator")
+                provider_id = assistant_defaults.get("provider_id") or None
         config_overrides = (
             {"provider_id": provider_id} if provider_id else None
         )
@@ -1612,6 +1638,7 @@ class CoordinatorModule:
                 assign_session_on_no_resume=True,
                 workstep_tools=COORDINATOR_CONFIG.workstep_tools,
                 config_overrides=config_overrides,
+                resolved_provider_id=provider_id,
             )
 
     def _parse_result(self, raw: str) -> dict:
@@ -1644,6 +1671,7 @@ class CoordinatorModule:
         raw: str,
         turn_id: str | None = None,
         on_event: Callable[[InternalEvent], Awaitable[None]] | None = None,
+        provider_id: str | None = None,
     ) -> tuple[dict, list[dict]]:
         try:
             return self._parse_result(raw), []
@@ -1661,6 +1689,7 @@ class CoordinatorModule:
                 turn_id=turn_id,
                 on_event=on_event,
                 system_prompt=repair_system_prompt,
+                provider_id=provider_id,
             )
             if on_event is not None:
                 events = [event for event in events if event.get("type") != "prompt_input"]

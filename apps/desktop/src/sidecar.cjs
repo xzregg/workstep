@@ -178,7 +178,7 @@ function stopSidecar(child, graceMs = 10_000) {
       await new Promise((resolve, reject) => {
         const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
         killer.once('error', reject)
-        killer.once('exit', code => code === 0 || !running(child) ? resolve() : reject(new Error('后台进程树终止失败')))
+        killer.once('exit', code => code === 0 || !running(child) ? resolve() : reject(new Error('Failed to terminate the background process tree')))
       })
     } else if (running(child)) {
       await waitForExit(child, graceMs, () => child.kill())
@@ -193,7 +193,7 @@ function stopSidecar(child, graceMs = 10_000) {
       signalOwnedGroup(child, 'SIGKILL')
     }
     await waitForExit(child, 2000)
-    if (running(child)) throw new Error('后台进程未能退出')
+    if (running(child)) throw new Error('Background process failed to exit')
   })()
   return child.workstepStopPromise
 }

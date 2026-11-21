@@ -34,14 +34,14 @@ async def project_scope(request: Request, scoped_project: str | None = Query(Non
     path = request.url.path
     if path.startswith('/api/git/projects/'):
         if request.path_params.get('project_id') != scoped_project:
-            raise HTTPException(403, 'Git 项目不匹配。')
+            raise HTTPException(403, 'Git project mismatch.')
         return
     if path.startswith('/api/git/worktrees/') and not path.endswith('/identity/global') and '/credentials' not in path:
         directory = git_service.directories.get(request.path_params.get('id'))
         if not directory or scoped_project not in directory['project_ids']:
-            raise HTTPException(403, 'Git 工作目录不属于当前项目。')
+            raise HTTPException(403, 'Git working directory does not belong to the current project.')
         return
-    raise HTTPException(403, '远程项目不能修改全局 Git 设置。')
+    raise HTTPException(403, 'Remote projects cannot modify global Git settings.')
 
 
 router = APIRouter(prefix='/api/git', tags=['git'], dependencies=[Depends(project_scope), Depends(file_access_scope)])
@@ -51,7 +51,7 @@ def _task_project(project_id: str):
     from services.project import project_manager
     project = project_manager.get_project_by_id(project_id)
     if project is None:
-        raise HTTPException(404, '项目不存在。')
+        raise HTTPException(404, 'Project not found.')
     return project
 
 
@@ -61,9 +61,9 @@ async def _task_exists(project_id: str, task_id: str, *, editable: bool = False)
     from services.task_queries import task_workspace_state
     task = await project_manager.run_db(project_id, lambda _project: task_workspace_state(task_id))
     if task is None:
-        raise HTTPException(404, '任务不存在。')
+        raise HTTPException(404, 'Task not found.')
     if editable and (task['has_active_execution'] or task['status'] == 'queued'):
-        raise HTTPException(409, '任务运行或排队时不能移除工作目录。')
+        raise HTTPException(409, 'Cannot remove the working directory while the task is running or queued.')
     return task
 
 
@@ -128,7 +128,7 @@ async def start_scan():
 @router.get('/scans/{id}')
 async def scan_progress(id: str):
     if id not in git_service.jobs:
-        raise HTTPException(404, '扫描记录不存在，请重新扫描。')
+        raise HTTPException(404, 'Scan record does not exist, please rescan.')
     return git_service.jobs[id]
 
 
@@ -145,7 +145,7 @@ async def project_repositories(project_id: str, refresh: bool = False):
         while job['state'] == 'running':
             await asyncio.sleep(0.05)
         if job['state'] != 'complete':
-            raise HTTPException(503, 'Git 仓库扫描失败，请重试。')
+            raise HTTPException(503, 'Git repository scan failed, please retry.')
     snapshot = git_service.snapshot
     return {**snapshot, 'projects': [p for p in snapshot['projects'] if p['id'] == project_id],
         'errors': [e for e in snapshot['errors'] if e.get('project_id') == project_id], 'repositories': [
@@ -193,14 +193,14 @@ class GitIdentityRequest(BaseModel):
     def valid_identity(cls, value):
         value = value.strip()
         if not value or any(c in value for c in '\r\n\0'):
-            raise ValueError('用户名和邮箱不能为空或包含换行符')
+            raise ValueError('Username and email cannot be empty or contain newlines')
         return value
 
     @field_validator('email')
     @classmethod
     def valid_email(cls, value):
         if '@' not in value or value.startswith('@') or value.endswith('@'):
-            raise ValueError('邮箱格式无效')
+            raise ValueError('Invalid email format')
         return value
 
 
@@ -253,7 +253,7 @@ class CommitRequest(BaseModel):
     @classmethod
     def nonempty(cls, value):
         if not value.strip() or '\0' in value:
-            raise ValueError('提交说明不能为空或包含空字符')
+            raise ValueError('Submission description cannot be empty or contain null characters')
         return value.strip()
 
 
@@ -311,7 +311,7 @@ class GitAuth(BaseModel):
     @classmethod
     def no_control_characters(cls, value):
         if any(c in value for c in '\r\n\0'):
-            raise ValueError('凭据不能包含换行符或空字符')
+            raise ValueError('Credentials must not contain newlines or null characters')
         return value
 
 
@@ -431,7 +431,7 @@ async def recovery_preview(id: str, body: RecoveryRequest):
 @router.post('/worktrees/{id}/recovery/apply')
 async def recovery_apply(id: str, body: RecoveryRequest):
     if not body.expected_head:
-        raise HTTPException(422, '缺少预览时的目标提交。')
+        raise HTTPException(422, 'Missing target commit for preview.')
     return await result(git_service.recovery_apply(id, body.mode, body.target, body.expected_head,
                                                    body.commit, body.operation_id))
 

@@ -1,4 +1,4 @@
-import './helpers/domEnv'
+import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Window } from 'happy-dom'
@@ -576,3 +576,41 @@ test('permission mode remains editable and updates immediately while running', a
     await window.happyDOM.close()
   }
 })
+
+for (const outcome of ['accepted', 'failed', 'accepted-with-new-draft', 'failed-with-new-draft'] as const) {
+  test(`sending clears the composer before HTTP acknowledgement: ${outcome}`, async () => {
+    const { window } = installDomEnvironment()
+    const restoreApis = installApiStubs()
+    useProjectStore.setState({ projects: [project] as never, activeProject: project as never, loading: false })
+    useChatListStore.setState({ sessionsByProject: {}, quickButtons: [], listLoadingByProject: {} })
+    useChatSessionStore.setState({ sessions: {} })
+    let resolve!: (value: never) => void
+    let reject!: (reason: Error) => void
+    let sends = 0
+    chatSessionApi.chat = () => { sends++; return new Promise((yes, no) => { resolve = yes; reject = no }) }
+    localStorage.setItem('workstep-chat-draft:session-1', '已发送的正文')
+    const container = document.body.appendChild(document.createElement('div'))
+    const root = await renderChat(container)
+    try {
+      const button = container.querySelector<HTMLButtonElement>('.chat-input-send')!
+      await act(async () => { button.click(); button.click() })
+      assert.equal(sends, 1, 'repeated clicks must not duplicate the pending request')
+      assert.equal(container.querySelector('textarea')!.value, '', 'clear without waiting for the HTTP response')
+      assert.equal(localStorage.getItem('workstep-chat-draft:session-1'), null)
+      if (outcome.endsWith('new-draft')) {
+        await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === '填入草稿')!.click())
+      }
+      await act(async () => {
+        if (outcome.startsWith('failed')) reject(new Error('发送失败'))
+        else resolve({ session_id: 'session-1', accepted: true } as never)
+      })
+      const expected = outcome.endsWith('new-draft') ? '切页后还在' : outcome === 'failed' ? '已发送的正文' : ''
+      assert.equal(container.querySelector('textarea')!.value, expected)
+      assert.equal(localStorage.getItem('workstep-chat-draft:session-1') ?? '', expected)
+    } finally {
+      await act(async () => root.unmount())
+      restoreApis()
+      await window.happyDOM.close()
+    }
+  })
+}

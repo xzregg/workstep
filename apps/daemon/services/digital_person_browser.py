@@ -129,7 +129,7 @@ async def run_command(command, env):
         await process.wait()
         raise
     if code:
-        raise ValueError('浏览器组件下载失败，请检查网络后重试')
+        raise ValueError('Browser component download failed. Please check your network and try again.')
 
 
 async def install():
@@ -137,7 +137,7 @@ async def install():
     if found['cli'] and found['browser']:
         return
     if not found['node'] or not found['npm']:
-        raise ValueError('请先安装 Node.js 20 或更新版本，再重新扫描')
+        raise ValueError('Please install Node.js 20 or a newer version, then rescan')
     await asyncio.to_thread(directory().mkdir, parents=True, exist_ok=True)
     env = {**os.environ, 'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD': '1',
            'PLAYWRIGHT_BROWSERS_PATH': os.environ.get('PLAYWRIGHT_BROWSERS_PATH') or str(directory() / 'browsers')}
@@ -146,11 +146,11 @@ async def install():
                            '--save-exact', f'@playwright/mcp@{MCP_VERSION}'], env)
         found = await asyncio.to_thread(detect)
     if not found['cli']:
-        raise ValueError('浏览器组件未通过安装校验，请重新安装')
+        raise ValueError('Browser component failed installation verification. Please reinstall.')
     if not found['browser']:
         await run_command([found['node'], found['package']['core_cli'], 'install', 'chromium'], env)
     if not (await asyncio.to_thread(scan))['ready']:
-        raise ValueError('未检测到可用浏览器，请重新安装')
+        raise ValueError('No available browser detected. Please reinstall.')
 
 
 async def start_install():
@@ -179,10 +179,10 @@ def _set_enabled(enabled):
     previous = connector_store.resolve(state.get('connector_id', '')) if state.get('connector_id') else None
     if enabled:
         if not engine_compatible():
-            raise ValueError('当前数字人引擎不支持 MCP 连接器，请先切换引擎')
+            raise ValueError('The current digital human engine does not support MCP connectors. Please switch to a different engine.')
         found = detect()
         if not found['cli'] or not found['browser']:
-            raise ValueError('请先安装浏览器操作组件')
+            raise ValueError('Please install the browser operation component first')
         args = [str(found['cli']), '--headless', '--isolated', '--executable-path', str(found['browser'])]
         if found['builtin'] and sys.platform == 'linux' and os.geteuid() == 0:
             args.append('--no-sandbox')

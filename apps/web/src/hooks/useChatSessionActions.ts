@@ -7,6 +7,7 @@ import type { ChatEngineConfigState } from '../utils/chatEngineConfig'
 import { randomUuid } from '../utils/uuid'
 import { watchPendingCompletion, unwatchPendingCompletion, watchAcceptedCompletion } from '../utils/completionNotifications'
 import { flushWsSubscriptionNow } from './useWebSocket'
+import type { PrepareCameraMessage } from '../components/digital-person/DigitalPersonCamera'
 
 interface Options {
   sessionId: string | null
@@ -19,13 +20,14 @@ interface Options {
   effectiveEngine: string
   onSessionIdChange: (id: string) => void
   onTitleChange: (title: string) => void
-  prepareContent?: (content: string, onFaces?: (ids:string[])=>void) => Promise<string>
+  prepareContent?: PrepareCameraMessage
+  onReplyAccepted?: (sessionId: string, replyId: string) => void
 }
 
 /** Owns a chat turn's send, live-insert, stop and error recovery lifecycle. */
 export function useChatSessionActions({
   sessionId, projectId, running, permissionMode, planMode,
-  goalMode, effectiveEngine, onSessionIdChange, onTitleChange, prepareContent,
+  goalMode, effectiveEngine, onSessionIdChange, onTitleChange, prepareContent, onReplyAccepted,
 }: Options) {
   const { t } = useI18n()
   const [sendError, setSendError] = useState('')
@@ -36,7 +38,7 @@ export function useChatSessionActions({
     setStopping(false)
   }, [sessionId, projectId])
 
-  const sendMessageNow = useCallback(async (content: string, goalCommand = false, prepared = false, facePersonIds:string[]=[]): Promise<boolean> => {
+  const sendMessageNow = useCallback(async (content: string, goalCommand = false, prepared = false, facePersonIds:string[]=[], recentFaces?:boolean): Promise<boolean> => {
     if (!content || !sessionId) {
       if (!sessionId) setSendError(t('chatSession.noSession'))
       return false
@@ -44,7 +46,7 @@ export function useChatSessionActions({
     if (!projectId) return false
     setSendError('')
     try {
-      if (!prepared && !goalCommand && !content.trimStart().startsWith('/')) content = await prepareContent?.(content,ids=>{facePersonIds=ids}) ?? content
+      if (!prepared && !goalCommand && !content.trimStart().startsWith('/')) content = await prepareContent?.(content,(ids,recent)=>{facePersonIds=ids;recentFaces=recent}) ?? content
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
       return false
@@ -56,6 +58,7 @@ export function useChatSessionActions({
     try {
       const accepted = await chatSessionApi.chat(sessionId, projectId, content, randomUuid(), {
         face_person_ids: facePersonIds.length?facePersonIds:undefined,
+        ...(facePersonIds.length&&recentFaces?{face_context_recent:true}:{}),
         permission_mode: permissionMode || undefined,
         plan_mode: goalCommand ? false : planMode || undefined,
         goal_mode: goalCommand ? false : goalMode && effectiveEngine === 'codex_sdk' || undefined,
@@ -85,6 +88,7 @@ export function useChatSessionActions({
         watchPendingCompletion(projectId, { sessionId: finalSessionId })
       }
       watchAcceptedCompletion(projectId, { sessionId: finalSessionId }, accepted.assistant_message_id)
+      if (accepted.assistant_message_id) onReplyAccepted?.(finalSessionId, accepted.assistant_message_id)
       // The turn is already accepted. A catalog refresh cannot fail that send
       // or keep the composer waiting for a separate network request.
       void chatSessionApi.list(projectId).then(({ sessions }) => {
@@ -102,7 +106,7 @@ export function useChatSessionActions({
       return false
     }
   }, [sessionId, projectId, permissionMode, planMode, goalMode,
-    effectiveEngine, onSessionIdChange, onTitleChange, prepareContent, t])
+    effectiveEngine, onSessionIdChange, onTitleChange, prepareContent, onReplyAccepted, t])
 
   const sendPendingContent = useCallback(async (
     content: string, pendingInsertIds: string[],
@@ -110,14 +114,14 @@ export function useChatSessionActions({
     if (!sessionId || !projectId) return false
     if (!running) return sendMessageNow(content)
     setSendError('')
-    let facePersonIds:string[]=[]
+    let facePersonIds:string[]=[],recentFaces:boolean|undefined
     try {
-      if (!content.trimStart().startsWith('/')) content = await prepareContent?.(content,ids=>{facePersonIds=ids}) ?? content
+      if (!content.trimStart().startsWith('/')) content = await prepareContent?.(content,(ids,recent)=>{facePersonIds=ids;recentFaces=recent}) ?? content
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
       return false
     }
-    if(facePersonIds.length)return sendMessageNow(content,false,true,facePersonIds)
+    if(facePersonIds.length)return sendMessageNow(content,false,true,facePersonIds,recentFaces)
     const optimisticId = useChatSessionStore.getState().addUserMessage(sessionId, content)
     flushWsSubscriptionNow()
     const dropOptimistic = () => {
@@ -128,8 +132,8 @@ export function useChatSessionActions({
       useChatSessionStore.getState().confirmUserMessage(sessionId, optimisticId, accepted.message_id, accepted.created_at)
       return true
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : ''
-      if (message.includes('待插入消息已被处理')) return true
+      const message = reason instanceof ApiError ? reason.rawMessage : reason instanceof Error ? reason.message : ''
+      if (message.includes('Pending message has already been processed') || message.includes('待插入消息已被处理')) return true
       // 上一轮在前端判忙、后端已收尾：按 409 状态兜底（文本匹配只做兼容），
       // 走普通发送开新一轮；其它错误撤掉乐观气泡。
       const turnGone = reason instanceof ApiError

@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import Select from './GatewaySelect'
 import { PlatformAddress } from './PlatformAddress'
 import { useEffect, useState } from 'react'
@@ -27,11 +28,11 @@ export function ClientDownloadPage() {
     const controller = new AbortController()
     void fetch('/api/client-releases', { signal: controller.signal })
       .then(async (response) => {
-        if (!response.ok) throw new Error('安装包目录加载失败。')
+        if (!response.ok) throw new Error('Failed to load installation package directory.')
         const data = await response.json()
         if (!controller.signal.aborted) { setReleases(data.releases ?? []); setAddress(data.public_origin ?? window.location.origin) }
       })
-      .catch((reason) => { if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '安装包目录加载失败。') })
+      .catch((reason) => { if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : 'Failed to load installation package directory.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [])
@@ -75,7 +76,7 @@ export function ClientDownloadPage() {
       </Select>
     </div>
     {loading && <p role="status">正在获取安装包…</p>}
-    {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+    {error && <p className="gateway-auth-error" role="alert">{localizeGatewayError(error)}</p>}
     {!loading && !error && selected.length === 0 && <p>此系统和架构暂未发布安装包。</p>}
     <ul className="gateway-device-list">{selected.map((release) => <li key={release.id}>
       <div>

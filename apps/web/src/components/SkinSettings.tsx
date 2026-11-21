@@ -7,7 +7,7 @@ import Select from './Select'
 import ConfirmDialog from './ConfirmDialog'
 import EngineSelect from './EngineSelect'
 import { skinsApi, type SkinSummary, type SkinWorkspace } from '../api/skins'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { loadDraft, saveDraft } from '../utils/chatDraft'
 import SkinStudio from './SkinStudio'
 import { useProjectStore } from '../stores/projectStore'
@@ -82,7 +82,7 @@ export default function SkinSettings({ preferences, onRefresh }: { preferences?:
         catch (error) { if (error instanceof ApiError && error.status === 409) { if (mounted.current) setImporting(file) } else throw error }
       })
     }} />
-    {error && <p role="alert" className="skin-settings-error">{error}</p>}
+    {error && <p role="alert" className="skin-settings-error">{localizeErrorDisplay(error)}</p>}
     {previewing && <div role="status" className="skin-settings-preview-notice"><span>{t('skins.previewing')}</span><div className="settings-action-group"><Button onClick={() => saveSkin(active)}>{t('skins.apply')}</Button><Button onClick={cancelSkinPreview}>{t('skins.cancelPreview')}</Button></div></div>}
     <SkinLibrary toolbarActions={!remote && <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}><Icon name="download" size={15} />{t('skins.import')}</Button>} documents={documents} activeId={active.manifest.id} activeRevision={active.revision} preferredSkin={checked} busy={busy} canManage={!remote}
       onCreate={base => void start(base)} onPreview={previewSkin} onApply={saveSkin}

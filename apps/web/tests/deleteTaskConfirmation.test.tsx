@@ -9,7 +9,7 @@ import type { Task } from '../src/api/client'
 import DeleteTaskConfirmation from '../src/components/DeleteTaskConfirmation'
 import TaskTableView from '../src/components/TaskTableView'
 
-test('task deletion asks whether to remove its Git workspace and resets that choice', async () => {
+test('task deletion includes the full task workspace and artifacts', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
@@ -19,17 +19,10 @@ test('task deletion asks whether to remove its Git workspace and resets that cho
   ))
   try {
     await render(true)
-    const checkbox = document.querySelector<HTMLInputElement>('[role="dialog"] input[type="checkbox"]')!
-    assert.equal(checkbox.checked, true)
+    assert.equal(document.querySelector('[role="dialog"] input[type="checkbox"]'), null)
     assert.match(document.querySelector('[role="dialog"]')?.textContent || '', /workspace|工作区/i)
-    await act(async () => checkbox.click())
-    assert.equal(checkbox.checked, false)
-    assert.match(document.querySelector('[role="dialog"]')?.textContent || '', /manually|手动/i)
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].at(-1)!.click())
-    assert.deepEqual(choices, [false])
-    await render(false)
-    await render(true)
-    assert.equal(document.querySelector<HTMLInputElement>('[role="dialog"] input[type="checkbox"]')?.checked, true)
+    assert.deepEqual(choices, [true])
   } finally {
     await act(async () => root.unmount())
     container.remove()
@@ -54,9 +47,8 @@ test('bulk task deletion passes the workspace choice to every selected task', as
     await act(async () => container.querySelector<HTMLInputElement>('input[aria-label="选择全部可操作任务"]')!.click())
     const bulkDelete = [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('批量删除'))!
     await act(async () => bulkDelete.click())
-    await act(async () => document.querySelector<HTMLInputElement>('[role="dialog"] input[type="checkbox"]')!.click())
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].at(-1)!.click())
-    assert.deepEqual(calls.sort(), [['one', false], ['two', false]])
+    assert.deepEqual(calls.sort(), [['one', true], ['two', true]])
   } finally {
     await act(async () => root.unmount())
     container.remove()

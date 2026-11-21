@@ -58,6 +58,7 @@ from services.skins import skin_manager
 from api.engine import router as engine_router
 from api.provider import router as provider_router
 from api.workflow import router as workflow_router
+from api.workflow_debug import router as workflow_debug_router
 from api.prototype import router as prototype_router
 from agent_assistants.prototype import PrototypeModule
 from api.workflow_gen import router as workflow_gen_router
@@ -142,7 +143,7 @@ def _local_actor() -> ActorSnapshot:
         )
     user_name = config_store.get_user_name()
     if not user_name:
-        raise ValueError("请先在系统设置中填写使用者名称")
+        raise ValueError("Please enter the user name in System Settings first")
     return ActorSnapshot(
         actor_id=device["device_id"],
         user_name=user_name,
@@ -326,6 +327,7 @@ async def _application_lifespan(app: FastAPI):
     finally:
         from services.speech import service as speech_service
         from services.speech_output import service as speech_output_service
+        from services.wake_audio import wake_audio
         from services.decision_models import service as decision_model_service
         from services.engine_runtime import runtime_manager
         from services.custom_engines import custom_engine_manager
@@ -368,6 +370,7 @@ async def _application_lifespan(app: FastAPI):
             steps.append(("task_service", shutdown_task_service))
         steps.extend([
             ("speech", speech_service.close),
+            ("wake_audio", wake_audio.close),
             ("speech_output", speech_output_service.close),
             ("decision_models", decision_model_service.close),
             ("codex_clients", close_codex_clients),
@@ -439,6 +442,7 @@ app.include_router(languages_router)
 app.include_router(appearance_router)
 app.include_router(provider_router)
 app.include_router(workflow_router)
+app.include_router(workflow_debug_router)
 app.include_router(prototype_router)
 app.include_router(workflow_gen_router)
 app.include_router(task_draft_router)

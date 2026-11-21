@@ -1,4 +1,4 @@
-import type {OrbValues} from './presenceOrb'
+interface OrbValues {radius:number;spin:number;scatter:number;pulse:number;heat:number;rotation:number}
 export type PresencePhase='idle'|'listening'|'thinking'|'working'|'speaking'
 const targets:Record<PresencePhase,Omit<OrbValues,'rotation'>>={
  idle:{radius:.82,spin:.10,scatter:0,pulse:.10,heat:0},

@@ -95,21 +95,21 @@ async def send_notification(hook, payload, *, client=None, now=None):
                 body = bytearray()
                 async for chunk in response.aiter_bytes():
                     body.extend(chunk)
-                    if len(body)>16384: raise DeliveryError('平台响应超过限制')
+                    if len(body)>16384: raise DeliveryError('Platform response exceeded limit')
                 try:
                     data = json.loads(body)
                     code = data.get('code', data.get('StatusCode')) if feishu else data.get('errcode')
                 except (ValueError, AttributeError):
-                    raise DeliveryError('平台响应格式无效') from None
+                    raise DeliveryError('Invalid platform response format') from None
                 if type(code) is not int:
-                    raise DeliveryError('平台响应格式无效')
+                    raise DeliveryError('Invalid platform response format')
                 if code != 0:
                     retry_codes = {11232,-1} if feishu else {130101,45009,-1}
-                    raise DeliveryError(f'平台错误码 {code}', retryable=code in retry_codes)
+                    raise DeliveryError(f'Platform error code {code}', retryable=code in retry_codes)
         except httpx.TimeoutException:
-            raise DeliveryError('连接超时',retryable=True) from None
+            raise DeliveryError('Connection timed out',retryable=True) from None
         except httpx.RequestError:
-            raise DeliveryError('网络连接失败',retryable=True) from None
+            raise DeliveryError('Network connection failed',retryable=True) from None
     if client is not None:
         await post(client)
     else:

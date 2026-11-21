@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import ConfirmDialog from './ConfirmDialog'
-import './DeleteTaskConfirmation.css'
 
 interface Props {
   open: boolean
@@ -13,8 +11,6 @@ interface Props {
 
 export default function DeleteTaskConfirmation({ open, count, busy = false, onConfirm, onCancel }: Props) {
   const { t } = useI18n()
-  const [deleteWorkspace, setDeleteWorkspace] = useState(true)
-  useEffect(() => { if (open) setDeleteWorkspace(true) }, [open])
 
   return <ConfirmDialog
     open={open}
@@ -23,13 +19,7 @@ export default function DeleteTaskConfirmation({ open, count, busy = false, onCo
     confirmText={t(count > 1 ? 'taskList.bulkDelete' : 'common.delete')}
     danger
     loading={busy}
-    onConfirm={() => onConfirm(deleteWorkspace)}
+    onConfirm={() => onConfirm(true)}
     onCancel={() => { if (!busy) onCancel() }}
-  >
-    <label className="delete-task-workspace-choice">
-      <input type="checkbox" checked={deleteWorkspace} onChange={event => setDeleteWorkspace(event.target.checked)} />
-      <span>{t('taskList.deleteWorkspaceWithTask')}</span>
-    </label>
-    {!deleteWorkspace && <p className="delete-task-workspace-hint">{t('taskList.keepTaskWorkspaceHint')}</p>}
-  </ConfirmDialog>
+  />
 }

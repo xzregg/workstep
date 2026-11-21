@@ -1,11 +1,11 @@
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import ActionConfirmDialog from './ActionConfirmDialog'
 import { useProjectActions } from './useActionRuns'
 
 export function ProjectActionMessages({ state }: { state: ReturnType<typeof useProjectActions> }) {
   const { t } = useI18n()
   return <>
-    {state.error && <div role="alert" style={{ color: 'var(--danger)' }}>{state.error}</div>}
+    {state.error && <div role="alert" style={{ color: 'var(--danger)' }}>{localizeErrorDisplay(state.error)}</div>}
     <ActionConfirmDialog
       button={state.pending} directory={t('actionShortcuts.projectDirectory')} loading={state.busy}
       onCancel={() => state.setPending(null)}

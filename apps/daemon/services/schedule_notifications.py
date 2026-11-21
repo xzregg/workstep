@@ -16,10 +16,10 @@ from services.schedule_rules import ScheduleValidationError
 def notification_run_status(project_id, schedule_id, run_id):
     run = ScheduleRun.get_or_none((ScheduleRun.id == run_id) & (ScheduleRun.schedule == schedule_id))
     if run is None:
-        raise ValueError("执行记录不存在")
+        raise ValueError("Execution record does not exist")
     sent = run.notification_status == "sent"
     return {"ok": sent, "sent": sent, "notification_status": run.notification_status,
-            "error": None if sent else run.notification_error or "通知尚未发送成功"}
+            "error": None if sent else run.notification_error or "Notification has not been sent successfully"}
 
 
 def notification_options(project_id, task_id=None):
@@ -53,7 +53,7 @@ def notification_options(project_id, task_id=None):
 async def all_notification_options(projects, project_id, task_id=None):
     """Materialize each project's sessions inside its own database executor."""
     if projects.get_project_by_id(project_id) is None:
-        raise ValueError('项目不存在')
+        raise ValueError('Project not found')
     project_ids = [project.id for project in projects.iter_projects()]
     results = await asyncio.gather(*(
         projects.run_db(pid, lambda _, pid=pid: notification_options(pid, task_id if pid == project_id else None))
@@ -83,7 +83,7 @@ def normalize_notification(project_id, value, task_id=None):
         if owner and owner != project_id and bot and bot.get('enabled'):
             return {'enabled': True, 'target': target}
     if not isinstance(target, dict) or not any(choice['target'] == target for choice in options['choices']):
-        raise ScheduleValidationError('通知目标不存在或已停用')
+        raise ScheduleValidationError('The notification target does not exist or has been disabled')
     return {'enabled': True, 'target': target}
 
 
@@ -115,7 +115,7 @@ async def deliver_notification(module, project_id, run_id, *, retry=False):
                 try:
                     destination = channel_destination(session.id)
                     if destination != config:
-                        raise ValueError('渠道会话映射已变化')
+                        raise ValueError('Channel session mapping has changed')
                 except ValueError as exc:
                     run.notification_status, run.notification_error = 'failed', str(exc)
                     run.save(); return None
@@ -157,13 +157,13 @@ async def deliver_notification(module, project_id, run_id, *, retry=False):
     status, error = 'sent', None
     try:
         if module._notification_sender is None:
-            raise RuntimeError('渠道服务不可用')
+            raise RuntimeError('Channel service unavailable')
         target, text = prepared
         result = await asyncio.wait_for(module._notification_sender.send_schedule_notification(project_id=project_id, text=text, **target), timeout=30)
         if not result.get('sent'):
-            raise RuntimeError(result.get('error') or '渠道未确认发送成功')
+            raise RuntimeError(result.get('error') or 'Channel did not confirm successful send')
     except asyncio.CancelledError:
-        status, error = 'failed', '通知发送中断，结果未知，请核对后重试'
+        status, error = 'failed', 'Notification delivery was interrupted. Check whether it arrived before retrying.'
         raise
     except Exception as exc:
         status, error = 'failed', str(exc)

@@ -39,16 +39,16 @@ LIST_FIELDS = {
 async def _create_project_action_on_existing_daemon(args, client, script_content: str) -> dict:
     """Use the project quick-button API when the daemon predates action-create."""
     if not ACTION_ID.fullmatch(args.action_id):
-        raise ValueError("Action ID 无效")
+        raise ValueError("Invalid Action ID")
     script_file = Path(args.script_file)
     if script_file.suffix not in {".sh", ".bash", ".py"}:
-        raise ValueError("Action 脚本必须是 .sh、.bash 或 .py 文件")
+        raise ValueError("Action scripts must be .sh, .bash, or .py files")
     if not script_content.strip() or len(script_content.encode("utf-8")) > 128 * 1024:
-        raise ValueError("Action 脚本为空或过大")
+        raise ValueError("Action script is empty or too large")
     projects = (await client.call("workstep_list_projects", {}))["projects"]
     project = next((item for item in projects if item["id"] == args.project_id), None)
     if project is None:
-        raise ValueError("项目不存在")
+        raise ValueError("Project not found")
     buttons = (await client.call("workstep_get_project_quick_buttons", {
         "project_id": args.project_id,
     }))["buttons"]
@@ -60,7 +60,7 @@ async def _create_project_action_on_existing_daemon(args, client, script_content
         "confirmation_input_prompt": args.input_prompt or "",
     }])[0]
     if any(item.get("id") == button["id"] or item.get("action_id") == args.action_id for item in buttons):
-        raise FileExistsError("项目中已存在同名 Action")
+        raise FileExistsError("An action with the same name already exists in the project")
     normalize_quick_buttons([*buttons, button])
     root = Path(project["path"]).resolve()
     from services.project_storage import data_directory
@@ -141,13 +141,19 @@ def build_parser() -> argparse.ArgumentParser:
                 help="include full data instead of list summaries",
             )
 
-    message = subparsers.add_parser('message', help='read an original chat message by session and message IDs')
+    message = subparsers.add_parser('message', help='read or send project chat messages')
     message_sub = message.add_subparsers(dest='subcommand', required=True)
     message_get = message_sub.add_parser('get', help='read one persisted message without memory search')
     message_get.add_argument('--session', dest='session_id', required=True)
     message_get.add_argument('--message', dest='message_id', required=True)
     message_get.add_argument('--project', dest='project_id', help='explicit project ID, useful for legacy sessions')
     add_json(message_get)
+    message_send = message_sub.add_parser('send', help='queue a turn in an existing project conversation')
+    message_send.add_argument('--project', dest='project_id', required=True)
+    message_send.add_argument('--session', dest='session_id', required=True)
+    message_send.add_argument('--content', required=True)
+    message_send.add_argument('--idempotency-key', help='stable key for retries against the same daemon')
+    add_json(message_send)
 
     memory = subparsers.add_parser('memory', help='search memory with intent-derived text clues or date bounds')
     memory_sub = memory.add_subparsers(dest='subcommand', required=True,metavar='{search,history,read}')
@@ -164,6 +170,8 @@ def build_parser() -> argparse.ArgumentParser:
         elif operation != 'pending':
             if operation == 'search':
                 reader.add_argument('--query', default='')
+                reader.add_argument('--knowledge-only', action='store_true', default=None,
+                                    help='search organized knowledge only, including when date bounds are supplied')
                 for dimension in ('person','event','object','place','time'):
                     reader.add_argument('--'+dimension, default='', help='exact typed entity name or alias; combine dimensions with AND; --time is a stored tag')
                 reader.add_argument('--relation', default='', help='literal relationship substring, anchored to selected person/object; implies knowledge search')
@@ -178,14 +186,27 @@ def build_parser() -> argparse.ArgumentParser:
         reader.add_argument('--verbose', action='store_true', help='include full memory response and internal metadata')
         add_json(reader)
 
-    person = subparsers.add_parser('digital-person', help='delegate work through the device companion')
+    person = subparsers.add_parser('digital-person', help='manage standing memory, trigger reflection, or delegate work through the device companion')
     person_sub = person.add_subparsers(dest='subcommand', required=True)
+    remember = person_sub.add_parser('remember', help='append an explicitly requested standing agreement')
+    remember.add_argument('--rule', required=True, help='one enduring rule on a single line')
+    add_json(remember)
+    add_json(person_sub.add_parser('check', help='trigger one companion reflection in the background and return immediately'))
     add_json(person_sub.add_parser('stop', help='stop the active companion assessment cycle'))
-    delegate = person_sub.add_parser('delegate', help='start a tracked project execution session')
+    delegations = person_sub.add_parser('delegations', help='list recent delegations or read one by ID')
+    delegation_filter = delegations.add_mutually_exclusive_group(required=True)
+    delegation_filter.add_argument('--project', dest='project_id')
+    delegation_filter.add_argument('--id', dest='delegation_id')
+    delegations.add_argument('--session', dest='origin_session_id', required=True)
+    add_json(delegations)
+    delegate = person_sub.add_parser('delegate', help='start or continue a tracked project execution session')
     delegate.add_argument('--project', dest='project_id', required=True)
     delegate.add_argument('--instruction', required=True)
     delegate.add_argument('--session', dest='origin_session_id', required=True)
     delegate.add_argument('--idempotency-key', dest='request_id', required=True)
+    delegate_target = delegate.add_mutually_exclusive_group()
+    delegate_target.add_argument('--continue-from', dest='continuation_of', help='prior delegation ID from digital-person delegations')
+    delegate_target.add_argument('--target-session', dest='target_session_id', help='existing project conversation to track as a delegation')
     add_json(delegate)
 
     context = subparsers.add_parser("context", help="read current execution context")
@@ -328,6 +349,12 @@ def build_parser() -> argparse.ArgumentParser:
     channel_bind.add_argument("--project", dest="project_id", required=True)
     channel_bind.add_argument("--task", dest="task_id", required=True)
     add_json(channel_bind)
+    channel_unbind = channel_sub.add_parser("unbind", help="remove a task's discussion-group binding")
+    for option, field in (("project", "project_id"), ("task", "task_id"), ("bot", "bot_id"), ("group", "group_id")):
+        channel_unbind.add_argument(f"--{option}", dest=field, required=True)
+    channel_unbind.add_argument("--notify", action=argparse.BooleanOptionalAction, default=False,
+                                help="send an unbind notice to the removed group")
+    add_json(channel_unbind)
     channel_contacts = channel_sub.add_parser("contacts", help="search the bot's cached directory")
     channel_contacts.add_argument("--project", dest="project_id", required=True)
     channel_contacts.add_argument("--bot", dest="bot_id", required=True)
@@ -546,6 +573,12 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
     client = client or WorkstepClient(base_url=args.url)
     command = args.command
     if command == 'message':
+        if args.subcommand == 'send':
+            return await client.call('workstep_send_message', {
+                'project_id': args.project_id, 'session_id': args.session_id,
+                'content': args.content, 'idempotency_key': args.idempotency_key,
+                'confirm': 'yes',
+            })
         return await client.call('workstep_get_message', {
             'session_id': args.session_id, 'message_id': args.message_id,
             **({'project_id': args.project_id} if args.project_id else {}),
@@ -554,15 +587,24 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
         if args.subcommand == 'pending':
             return await client.call('workstep_memory_pending', {})
         fields = ('filter_project_id', 'filter_session_id', 'limit', 'memory_id', 'offset', 'events') if args.subcommand == 'read' else (
-            'filter_project_id', 'filter_session_id', 'limit', 'query', 'cursor', 'snapshot', 'since', 'before', 'period', 'timezone_name', 'include_sources', 'source_chars', 'person', 'event', 'object', 'place', 'time', 'relation')
+            'filter_project_id', 'filter_session_id', 'limit', 'query', 'cursor', 'snapshot', 'since', 'before', 'period', 'timezone_name', 'include_sources', 'source_chars', 'person', 'event', 'object', 'place', 'time', 'relation', 'knowledge_only')
         operation = 'search' if args.subcommand == 'history' else args.subcommand
         return await client.call('workstep_memory_' + operation, {
             key: getattr(args, key) for key in fields if getattr(args, key, None) is not None})
     if command == 'digital-person':
+        if args.subcommand == 'remember':
+            return await client.call('workstep_remember_digital_person_rule', {'rule': args.rule, 'confirm': 'yes'})
+        if args.subcommand == 'check':
+            return await client.call('workstep_check_digital_person', {'background': True, 'confirm': 'yes'})
         if args.subcommand == 'stop':
             return await client.call('workstep_stop_digital_person_check', {'confirm':'yes'})
+        if args.subcommand == 'delegations':
+            return await client.call('workstep_list_digital_person_delegations', {
+                key: getattr(args, key) for key in ('project_id', 'origin_session_id', 'delegation_id')
+                if getattr(args, key, None) is not None})
         return await client.call('workstep_delegate_digital_person', {
-            **{key: getattr(args, key) for key in ('project_id', 'instruction', 'origin_session_id', 'request_id')}, 'confirm': 'yes'})
+            **{key: getattr(args, key) for key in ('project_id', 'instruction', 'origin_session_id', 'request_id', 'continuation_of', 'target_session_id')
+               if getattr(args, key) is not None}, 'confirm': 'yes'})
     if command == "context":
         from services.conversation_context import current_conversation
         return current_conversation()
@@ -580,14 +622,19 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 "session_id": args.session_id, "project_id": args.project_id,
                 "task_id": args.task_id, "confirm": "yes",
             })
+        if args.subcommand == "unbind":
+            return await client.call("workstep_unbind_channel_group", {
+                **{key: getattr(args, key) for key in ("project_id", "task_id", "bot_id", "group_id", "notify")},
+                "confirm": "yes",
+            })
         if (args.session_id and args.bot_id) or (not args.session_id and not args.bot_id):
-            raise ValueError("按会话发送只需 --session；指定 --user 或 --group 时必须同时指定 --bot")
+            raise ValueError("Sending by session requires only --session; when specifying --user or --group, --bot must also be specified")
         arguments = {"project_id": args.project_id, "text": args.text, "confirm": "yes"}
         arguments.update({key: getattr(args, key) for key in ("session_id", "bot_id", "user_id", "group_id", "user_name", "contact_id") if getattr(args, key)})
         if not args.text.strip() and not args.image and not args.file:
-            raise ValueError("至少提供 --text、--image 或 --file")
+            raise ValueError("Provide at least one of --text, --image, or --file")
         if len(args.image) + len(args.file) > 10:
-            raise ValueError("单次最多发送 10 个附件")
+            raise ValueError("Maximum of 10 attachments can be sent at a time")
         attachments = []
         for kind, paths in (("image", args.image), ("file", args.file)):
             for path in paths:
@@ -598,7 +645,7 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                     with source.open("rb") as stream:
                         data = stream.read(limit + 1)
                     if not data or len(data) > limit:
-                        raise ValueError("附件为空或超过渠道大小限制")
+                        raise ValueError("Attachment is empty or exceeds channel size limit")
                     return source.name, base64.b64encode(data).decode("ascii")
                 name, encoded = await asyncio.to_thread(read_attachment)
                 uploaded = await client.call("workstep_upload_channel_attachment", {
@@ -608,7 +655,7 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 if uploaded.get("ok") is False:
                     return uploaded
                 if not uploaded.get("url"):
-                    return {"ok": False, "error": "附件上传没有返回路径"}
+                    return {"ok": False, "error": "Attachment upload did not return a path"}
                 attachments.append({"kind": kind, "path": uploaded["url"]})
         if attachments:
             arguments["attachments"] = attachments
@@ -823,7 +870,7 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
             data = await asyncio.to_thread(Path(args.config_file).read_text, encoding="utf-8")
             payload = json.loads(data)
             if not isinstance(payload, dict) or set(payload) - {"values", "clear", "confirmed", "provider_id", "model"}:
-                raise ValueError("配置文件字段无效")
+                raise ValueError("Invalid configuration file field")
             return await client.call("workstep_custom_engine_configure", {**arguments, **payload})
         if action == "register":
             return await client.call("workstep_custom_engine_register", {**arguments, "replace": args.replace})
@@ -992,7 +1039,7 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
             )
     return {
         "ok": False,
-        "error": f"未知命令：{command} {getattr(args, 'subcommand', '')}",
+        "error": f"Unknown command: {command} {getattr(args, 'subcommand', '')}",
     }
 
 

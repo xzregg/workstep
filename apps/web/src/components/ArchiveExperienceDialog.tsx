@@ -1,11 +1,12 @@
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useEffect, useRef, useState } from 'react'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useTaskStore, type LiveMessage } from '../stores/taskStore'
 import { randomUuid } from '../utils/uuid'
 import ConfirmDialog from './ConfirmDialog'
 import ArchiveExperienceProgress from './ArchiveExperienceProgress'
 import MarkdownEditor from './MarkdownEditor'
+import ArchiveWorkspaceChoice from './ArchiveWorkspaceChoice'
 
 type Phase = 'loading' | 'intro' | 'generating' | 'stopping' | 'stopped' | 'failed'
   | 'review' | 'empty' | 'saving' | 'archiving'
@@ -19,13 +20,15 @@ interface Props {
 
 /** Owns the archive experience draft, generation lifecycle, and confirmation UI. */
 export default function ArchiveExperienceDialog({ task, projectId, onClose, onArchived }: Props) {
-  const { can } = useGatewayProjectPermissions(projectId)
+  const { can, bound } = useGatewayProjectPermissions(projectId)
+  const canCleanWorkspace = !bound && can('file.edit')
   const { t } = useI18n()
   const getDraft = useTaskStore((state) => state.getArchiveExperienceDraft)
   const prepareDraft = useTaskStore((state) => state.prepareArchiveExperience)
   const stopDraftRequest = useTaskStore((state) => state.stopArchiveExperience)
   const confirmArchive = useTaskStore((state) => state.confirmArchiveExperience)
   const archiveDirectly = useTaskStore((state) => state.archiveTask)
+  const [deleteWorkspace, setDeleteWorkspace] = useState(true)
   const [experience, setExperience] = useState('')
   const [error, setError] = useState('')
   const [phase, setPhase] = useState<Phase>('loading')
@@ -38,6 +41,7 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
 
   useEffect(() => {
     let active = true
+    setDeleteWorkspace(true)
     setExperience('')
     setError('')
     setPhase('loading')
@@ -91,7 +95,7 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
       setError('')
       setPhase('archiving')
       try {
-        await confirmArchive(task.id, projectId, '')
+        await confirmArchive(task.id, projectId, '', canCleanWorkspace && deleteWorkspace)
         onArchived(task.id)
       } catch (reason) {
         setError(t('taskList.archiveExperienceDirectArchiveFailed', {
@@ -125,7 +129,7 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
     setError('')
     setPhase('saving')
     try {
-      await confirmArchive(task.id, projectId, reviewed)
+      await confirmArchive(task.id, projectId, reviewed, canCleanWorkspace && deleteWorkspace)
       onArchived(task.id)
     } catch (reason) {
       setError(t('taskList.archiveExperienceSaveFailed', {
@@ -147,7 +151,7 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
         await stopDraftRequest(task.id, projectId, messageId)
         stoppedActiveDraft = true
       }
-      await archiveDirectly(task.id, projectId)
+      await archiveDirectly(task.id, projectId, canCleanWorkspace && deleteWorkspace)
       onArchived(task.id)
     } catch (reason) {
       setError(t('taskList.archiveExperienceDirectArchiveFailed', {
@@ -167,7 +171,9 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
   if (!can('file.edit')) return <ConfirmDialog open title={t('taskList.archiveTask')}
     message={t('taskList.archiveExperienceIntroMessage', { title: task.title || t('taskList.thatTask') })}
     confirmText={t('taskList.archiveExperienceDirectArchive')} loading={phase === 'archiving'}
-    onConfirm={handleDirectArchive} onCancel={handleCancel} />
+    onConfirm={handleDirectArchive} onCancel={handleCancel}>
+    {error && <p role="alert">{localizeErrorDisplay(error)}</p>}
+  </ConfirmDialog>
 
   return <ConfirmDialog open title={t('taskList.archiveTask')}
     message={phase === 'review' || phase === 'saving' ? t('taskList.archiveExperienceReviewMessage')
@@ -194,6 +200,7 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
     confirmDisabled={phase === 'loading' || phase === 'stopping' || phase === 'archiving'
       || ((phase === 'review' || phase === 'saving') && !experience.trim())}
     width={680} onConfirm={handleConfirm} onSecondary={handleDirectArchive} onCancel={handleCancel}>
+    {canCleanWorkspace && <ArchiveWorkspaceChoice checked={deleteWorkspace} disabled={phase === 'saving' || phase === 'archiving'} onChange={setDeleteWorkspace} />}
     {showProgress && projectId && <div className="archive-experience-section">
       <ArchiveExperienceProgress message={visibleProgressMessage} projectId={projectId}
         running={phase === 'generating' || phase === 'stopping' || phase === 'archiving'}
@@ -221,6 +228,6 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
         {t('taskList.archiveExperienceLength', { count: experience.length })}
       </div>
     </div>}
-    {error && <div className="archive-experience-error" role="alert">{error}</div>}
+    {error && <div className="archive-experience-error" role="alert">{localizeErrorDisplay(error)}</div>}
   </ConfirmDialog>
 }

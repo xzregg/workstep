@@ -254,7 +254,7 @@ test('runtime downloads are checked before committing archives', async () => {
     assert.equal(progress.received, data.length)
     await assert.rejects(download({ ...asset, sha256: '0'.repeat(64) }, destination, null, async () => new Response(data)), /校验/)
     assert.equal(await fs.readFile(destination, 'utf8'), String(data))
-    await assert.rejects(fs.stat(destination + '.partial'))
+    assert.deepEqual(await fs.readdir(base), ['runtime.tar'])
     assert.throws(() => validateArchiveEntries('bin/podman\n../escape'), /越界/)
     assert.throws(() => validateArchiveEntries('C:\\escape'), /越界/)
   } finally { await fs.rm(base, { recursive: true, force: true }) }
@@ -349,6 +349,7 @@ test('preparation, restart, container health and cleanup preserve project and HO
     const manager = new SandboxManager({ stateDir: path.join(base, 'state'), platform: 'linux', arch: 'x64', image: 'ghcr.io/test/workstep@sha256:' + 'a'.repeat(64),
       install: async () => ({ executable: '/managed/podman', helpers: [] }), execute: async (_file, args) => {
         calls.push(args)
+        if (args.includes('image') && args.includes('inspect')) return releaseImageInspection()
         if (args.includes('ps')) return exists ? '[{"Id":"owned"}]' : '[]'
         if (args.includes('run')) { running = true; exists = true }
         if (args.includes('stop')) running = false
@@ -490,6 +491,24 @@ test('managed gateway uses guest paths on virtualized platforms', () => {
 })
 
 
+function releaseImageInspection(architecture = 'amd64') {
+  return JSON.stringify([{ Os: 'linux', Architecture: architecture, Id: 'a'.repeat(64),
+    Config: { Entrypoint: ['/usr/local/bin/workstep-entrypoint'] } }])
+}
+
+test('release image acquisition reuses validated layers and rejects an incompatible pull', async () => {
+  const manager = new SandboxManager({ stateDir: os.tmpdir(), platform: 'linux', arch: 'x64' })
+  const calls = []
+  const command = async args => {
+    calls.push(args[0])
+    return releaseImageInspection(args.at(-1) === 'incompatible' ? 'arm64' : 'amd64')
+  }
+  assert.equal(await manager.acquireReleaseImage(command, 'cached', true), 'sha256:' + 'a'.repeat(64))
+  assert.deepEqual(calls, ['image'])
+  await assert.rejects(manager.acquireReleaseImage(command, 'incompatible'), /架构不匹配/)
+  assert.deepEqual(calls, ['image', 'pull', 'image'])
+})
+
 for (const conflict of [false, true]) {
   test(`sandbox prefers fixed port and retries only a bind conflict: ${conflict}`, async () => {
     const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-port-'))
@@ -500,6 +519,7 @@ for (const conflict of [false, true]) {
       const manager = new SandboxManager({ stateDir: path.join(base, 'state'), platform: 'linux', arch: 'x64', image: 'ghcr.io/test/workstep@sha256:' + 'a'.repeat(64),
         install: async () => ({ executable: '/managed/podman', helpers: [] }), execute: async (_file, args) => {
           calls.push(args)
+          if (args.includes('image') && args.includes('inspect')) return releaseImageInspection()
           if (args.includes('ps')) return '[]'
           if (args.includes('run') && conflict && args.includes('0.0.0.0:8766:8765')) throw new Error('bind: address already in use')
           if (args.includes('port')) return conflict ? '[::]:45678' : '0.0.0.0:8766'

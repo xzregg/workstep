@@ -18,7 +18,7 @@ def test_native_permission_values_are_engine_bound_and_field_validated():
         "sandbox_mode": "workspace-write", "approval_policy": "on-request",
     }
     from engines.claude_code import ClaudeCodeEngine
-    with pytest.raises(ValueError, match="引擎"):
+    with pytest.raises(ValueError, match='current engine'):
         ClaudeCodeEngine.permission_config_overrides(value)
     for invalid in ({"provider_id": "unrelated"}, {"sandbox_mode": "invented"}):
         with pytest.raises(ValueError):

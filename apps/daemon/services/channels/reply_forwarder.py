@@ -54,7 +54,7 @@ class ChannelReplyForwarder:
                 await self._bus.publish({
                     'type': 'CUSTOM', 'name': 'channel_bots.reply_error',
                     'session_id': event.get('session_id'), 'project_id': event.get('project_id'),
-                    'value': {'message_id': event.get('messageId'), 'error': '渠道回复推送失败，请检查机器人连接及发送权限。'},
+                    'value': {'message_id': event.get('messageId'), 'error': 'Channel reply push failed. Please check the bot connection and send permissions.'},
                 })
 
     async def _forward(self, event):

@@ -22,8 +22,7 @@ def coordinator_source_env() -> dict[str, str]:
     return {COORDINATOR_TURN_ENV: turn_id} if turn_id else {}
 
 
-def coordinator_message_fields(task, turn_id: str) -> dict:
-    """Resolve a verified source in the project's database executor."""
+def _running_turn(task, turn_id: str):
     from models import CoordinatorTurn
 
     turn = CoordinatorTurn.get_or_none(
@@ -31,7 +30,22 @@ def coordinator_message_fields(task, turn_id: str) -> dict:
         & (CoordinatorTurn.status == "running")
     )
     if turn is None:
-        raise ValueError("协调消息来源已失效或不属于当前任务")
+        raise ValueError("The coordination message source has expired or does not belong to the current task")
+    return turn
+
+
+def coordinator_group_recipient(task_id: str, turn_id: str) -> tuple[str, str]:
+    from services.channels.source_prompt import stored_message_source
+
+    source = stored_message_source(_running_turn(task_id, turn_id).user_message)
+    if source.get('conversation_type') != 'group' or not source.get('bot_id') or not source.get('conversation_id'):
+        raise ValueError('The current coordination request is not a channel group message')
+    return source['bot_id'], source['conversation_id']
+
+
+def coordinator_message_fields(task, turn_id: str) -> dict:
+    """Resolve a verified source in the project's database executor."""
+    turn = _running_turn(task, turn_id)
     user = turn.user_message
     return {
         "author_id": "coordinator", "author_username": "coordinator",

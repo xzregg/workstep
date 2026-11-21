@@ -48,7 +48,7 @@ def compile_handoff(
         selected: list[dict[str, str]] = []
     elif mode == "full":
         if sum(len(item["content"]) for item in visible) > MAX_FULL_HANDOFF_CHARS:
-            raise ValueError("完整聊天记录过长，请改用智能交接")
+            raise ValueError("The complete chat history is too long, please use smart handover instead")
         selected = visible
     else:
         selected = visible[-SMART_RECENT_MESSAGES:]
@@ -100,7 +100,7 @@ def render_handoff(package: dict[str, Any]) -> str:
     payload = {
         key: value
         for key, value in package.items()
-        if key != "consumed"
+        if key not in {"consumed", "effective_provider"}
     }
     return (
         "<workstep_context_handoff>\n"

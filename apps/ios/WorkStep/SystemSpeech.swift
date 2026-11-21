@@ -21,7 +21,7 @@ private final class SystemUtterance: AVSpeechUtterance {
     func handle(_ value: [String: Any], reply: @escaping ([String: String]) -> Void) {
         guard let request = SystemSpeechRequest(value) else {
             if let id = value["id"] as? String, !id.isEmpty, id.count <= 128 {
-                reply(["id": id, "status": "error", "error": "语音参数无效"])
+                reply(["id": id, "status": "error", "error": "Invalid speech parameters"])
             }
             return
         }
@@ -30,10 +30,10 @@ private final class SystemUtterance: AVSpeechUtterance {
             return
         }
         guard current == nil else {
-            reply(["id": request.id, "status": "error", "error": "系统语音正在播放，请先停止"]); return
+            reply(["id": request.id, "status": "error", "error": "Stop the current system speech playback first"]); return
         }
         guard let voice = AVSpeechSynthesisVoice(language: "zh-CN") else {
-            reply(["id": request.id, "status": "error", "error": "手机未安装中文音色，请在系统设置中安装"]); return
+            reply(["id": request.id, "status": "error", "error": "Install a Chinese voice in System Settings"]); return
         }
         let utterance = SystemUtterance(string: request.text)
         utterance.voice = voice

@@ -26,7 +26,7 @@ def _check_origin(request: Request):
     # The project RPC dispatcher has already authenticated the connection and
     # bound this request to its project; it intentionally drops browser headers.
     if authenticated_remote_dispatch() is None and not browser_origin_allowed(request):
-        raise HTTPException(status_code=403, detail="通知订阅要求同源请求")
+        raise HTTPException(status_code=403, detail="Notification subscription requires same-origin requests")
 
 
 @router.get("/public-key")
@@ -38,7 +38,7 @@ async def public_key(request: Request):
 async def recent(request: Request, project_id: str = Query(min_length=1), since: float = 0):
     actor = get_current_actor()
     if actor is not None and actor.project_id is not None and actor.project_id != project_id:
-        raise HTTPException(status_code=403, detail="不能查看其他项目")
+        raise HTTPException(status_code=403, detail="Cannot view other projects")
     return {"events": request.app.state.completion_push.recent_for_project(project_id, since)}
 
 
@@ -47,7 +47,7 @@ async def register(request: Request, body: RegisterRequest):
     _check_origin(request)
     actor = get_current_actor()
     if actor is not None and actor.project_id is not None and actor.project_id != body.project_id:
-        raise HTTPException(status_code=403, detail="不能订阅其他项目")
+        raise HTTPException(status_code=403, detail="Cannot subscribe to other projects")
     try:
         await request.app.state.completion_push.register(
             body.subscription.model_dump(), body.project_id, body.project_name,

@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { digitalPersonApi, digitalRuntimeApi, voiceWakeApi } from '../src/api/digitalPerson'
 import { assistantApi, providerApi } from '../src/api/client'
+import { speechApi } from '../src/api/speech'
 import { speechOutputApi } from '../src/api/speechOutput'
 import { outputStatus } from './fixtures/speechOutput'
 import DigitalPersonSettings from '../src/components/digital-person/DigitalPersonSettings'
@@ -23,7 +24,7 @@ test('body settings routes head to engine and memory, preserves identity presets
   const click = async (selector: string) => act(async () => { const button = host.querySelector<HTMLButtonElement>(selector); assert.ok(button, selector); button.click() })
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><DigitalPersonSettings onClose={() => {}} /></I18nProvider></MemoryRouter>))
-    assert.equal(host.querySelector('.digital-person-header h1')?.textContent, '数字形象')
+    assert.equal(host.querySelector('.digital-person-header h1')?.textContent, '数据中枢')
     assert.equal(host.querySelector('.digital-person-header-title > button')?.textContent,'初始引导')
     assert.doesNotMatch(host.querySelector('.digital-person-actions')!.textContent!,/初始引导/)
     await click('.digital-person-header-title > button')
@@ -41,7 +42,9 @@ test('body settings routes head to engine and memory, preserves identity presets
     assert.equal(sidebar.children[1]?.className,'digital-person-body-map')
     assert.doesNotMatch(sidebar.textContent!,/其他设置|基本选项/)
     assert.equal(host.querySelector('#digital-person-panel .digital-person-secondary-nav'),null)
-    assert.equal(host.querySelector<HTMLDetailsElement>('.digital-person-card-details')?.open,true,'desktop duties start expanded')
+    const namecard = host.querySelector('.digital-person-card')
+    assert.ok(namecard)
+    assert.doesNotMatch(namecard.textContent!, /职责|跟进工作/, 'namecard does not display duties')
     assert.ok(host.querySelector('.digital-person-card .digital-person-relationship'))
     assert.equal(host.querySelector('.digital-person-body-navigation .digital-person-relationship'),null)
     const bodyNavigation=host.querySelector('.digital-person-body-navigation')
@@ -75,6 +78,7 @@ test('body settings routes head to engine and memory, preserves identity presets
     assert.equal(host.querySelector('.digital-person-relationship'),null,'relationship only belongs to the namecard')
     await click('.digital-person-secondary-nav [data-settings-tab=identity]')
     assert.match(host.querySelector('.digital-person-secondary-nav [data-settings-tab=identity]')!.textContent!, /人设与职责/)
+    assert.ok(host.querySelector('[data-document=duties] .markdown-editor-root'), 'duties remain editable in identity settings')
     assert.equal(host.querySelectorAll('.digital-person-documents .markdown-editor-root').length, 3)
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>('.digital-person-document-tags button')].find(button => button.textContent === '耐心')!.click())
     await click('[data-body-part=heart]')
@@ -87,7 +91,7 @@ test('body settings routes head to engine and memory, preserves identity presets
 })
 
 
-test('digital appearance selects unified output, guards drafts and retains saved voice when saving avatar', async () => {
+test('digital voice uses the full output settings, guards drafts and preserves the avatar', async () => {
   const { window } = installDomEnvironment(), host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
   useLocaleStore.setState({ locale: 'zh-CN' })
   const oldOutput = { ...speechOutputApi }, oldPerson = { ...digitalPersonApi }, activity = digitalRuntimeApi.activity
@@ -104,9 +108,12 @@ test('digital appearance selects unified output, guards drafts and retains saved
     await click('[data-body-part=mouth]')
     assert.ok(host.querySelector('.speech-output-settings'), 'mouth opens the same output settings as global settings')
     assert.equal(gets, 1, 'reuse the already-loaded profile on initial output mount')
-    assert.equal(host.querySelector('.speech-output-settings input[type=radio]'), null)
-    assert.equal(host.querySelector('[data-output-model]'), null)
-    assert.equal(host.querySelector('.speech-output-model-manager'), null)
+    assert.equal(host.querySelector('[data-settings-tab=appearance] span')?.textContent, '声音')
+    assert.equal(host.querySelector('.digital-person-appearance-form'), null)
+    assert.equal(host.querySelector('.digital-person-form-actions'), null)
+    assert.ok(host.querySelector('.speech-output-settings input[type=radio]'))
+    assert.ok(host.querySelector('[data-output-model]'))
+    assert.ok(host.querySelector('.speech-output-model-manager'))
     assert.ok(host.querySelector('.speech-output-settings select'), 'voice remains selectable')
     const rate = host.querySelector<HTMLInputElement>('.speech-output-row input')!
     await act(async () => {
@@ -114,7 +121,6 @@ test('digital appearance selects unified output, guards drafts and retains saved
       rate.dispatchEvent(new window.Event('input', { bubbles: true }))
       host.querySelector<HTMLInputElement>('.speech-output-check input')!.click()
     })
-    assert.equal(host.querySelector<HTMLButtonElement>('.digital-person-form-actions button')!.disabled, true)
     await click('[data-body-part=feet]')
     assert.match(document.body.textContent!, /放弃未保存/)
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '取消')!.click())
@@ -122,17 +128,7 @@ test('digital appearance selects unified output, guards drafts and retains saved
     assert.equal(selected, '46')
     assert.equal(profile.voice_rate, 1.3)
     assert.equal(profile.auto_speak, true)
-    const avatar = host.querySelector<HTMLSelectElement>('.digital-person-appearance-form select')!
-    await act(async () => { avatar.value = 'spark'; avatar.dispatchEvent(new window.Event('change', { bubbles: true })) })
-    const saveAvatar = digitalPersonApi.save
-    let release!: () => void
-    digitalPersonApi.save = async value => { await new Promise<void>(resolve => { release = resolve }); return saveAvatar(value) }
-    await click('.digital-person-form-actions button')
-    assert.equal(host.querySelector<HTMLFieldSetElement>('.speech-output-settings fieldset')!.disabled, true)
-    await act(async () => { release(); await new Promise(resolve => setImmediate(resolve)) })
-    assert.equal(profile.avatar, 'spark')
-    assert.equal(profile.voice_rate, 1.3)
-    assert.equal(profile.auto_speak, true)
+    assert.equal(profile.avatar, 'robot')
   } finally {
     await act(async () => root.unmount()); await window.happyDOM.close()
     Object.assign(speechOutputApi, oldOutput); Object.assign(digitalPersonApi, oldPerson); digitalRuntimeApi.activity = activity
@@ -140,23 +136,29 @@ test('digital appearance selects unified output, guards drafts and retains saved
 })
 
 
-test('ears only edits wake parameters without model management or microphone capture', async () => {
+test('ears opens the shared speech input settings and offers wake settings separately', async () => {
   const { window } = installDomEnvironment(), host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
   useLocaleStore.setState({ locale: 'zh-CN' })
-  const oldPerson = { ...digitalPersonApi }, oldWake = { ...voiceWakeApi }, activity = digitalRuntimeApi.activity
+  const oldPerson = { ...digitalPersonApi }, oldWake = { ...voiceWakeApi }, activity = digitalRuntimeApi.activity, speechStatus = speechApi.status
   digitalPersonApi.get = async () => ({ enabled: true, onboarding_completed: true, name: '小研', role: '伙伴', personality: '', duties: '工作', avatar: 'robot', greeting: '你好' })
   digitalRuntimeApi.activity = async () => ({ feedback: {}, suggestions: [], runs: [], answers: [], delegations: [], checking: false })
   voiceWakeApi.get = async () => ({ keyword: '你好小研', sensitivity: 'balanced' } as any)
+  speechApi.status = async () => ({ enabled:true, ready:true, language:'auto', model_id:'demo', languages:['auto'], service:'stopped', models:[] })
   let saved = ''
   voiceWakeApi.save = async value => { saved = value.keyword; return value as any }
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><DigitalPersonSettings onClose={() => {}} /></I18nProvider></MemoryRouter>))
     await act(async () => host.querySelector<HTMLButtonElement>('[data-body-part=ears]')!.click())
-    assert.ok(host.querySelector('.voice-wake-settings'))
-    assert.equal(host.querySelector('.speech-settings'), null)
-    assert.equal(host.querySelector('[data-test-wake]'), null)
+    assert.ok(host.querySelector('.speech-input-connection'))
+    assert.equal(host.querySelector('#speech-tab-input')?.getAttribute('aria-selected'), 'true')
+    assert.equal(host.querySelector('#speech-tab-output, #speech-panel-output'), null)
+    await act(async () => host.querySelector<HTMLButtonElement>('#speech-tab-wake')!.click())
+    assert.equal(host.querySelectorAll('#speech-panel-wake .voice-wake-settings').length, 1)
+    assert.equal(host.querySelector('#speech-panel-wake h2'), null)
+    assert.ok(host.querySelector('[data-test-wake]'))
+    assert.ok(host.querySelector('.voice-wake-settings [role=switch]'))
     assert.equal(host.querySelector('.digital-person-wake'), null)
-    const input = host.querySelector<HTMLInputElement>('.voice-wake-settings input')!
+    const input = host.querySelector<HTMLInputElement>('.voice-wake-settings input[name=wake_keyword]')!
     await act(async () => {
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, '你好伙伴')
       input.dispatchEvent(new window.Event('input', { bubbles: true }))
@@ -165,6 +167,6 @@ test('ears only edits wake parameters without model management or microphone cap
     assert.equal(saved, '你好伙伴')
   } finally {
     await act(async () => root.unmount()); await window.happyDOM.close()
-    Object.assign(digitalPersonApi, oldPerson); Object.assign(voiceWakeApi, oldWake); digitalRuntimeApi.activity = activity
+    Object.assign(digitalPersonApi, oldPerson); Object.assign(voiceWakeApi, oldWake); digitalRuntimeApi.activity = activity; speechApi.status = speechStatus
   }
 })

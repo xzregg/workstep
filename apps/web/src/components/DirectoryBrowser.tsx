@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import Button from './Button'
 import Input from './Input'
 import Spinner from './Spinner'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import { fsApi, type DirectoryBrowseResult, type DirectoryEntry } from '../api/client'
 
 interface Props {
@@ -154,13 +154,13 @@ export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }
           </div>
           {createError && (
             <div style={{ marginTop: 6, color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>
-              {createError}
+              {localizeErrorDisplay(createError)}
             </div>
           )}
         </div>
       )}
 
-      {browseError && <div role="alert" style={{ padding: '8px 12px', color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{browseError}</div>}
+      {browseError && <div role="alert" style={{ padding: '8px 12px', color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{localizeErrorDisplay(browseError)}</div>}
       {/* File list */}
       <div style={{
         maxHeight: 300, overflowY: 'auto',

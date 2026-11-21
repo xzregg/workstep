@@ -141,7 +141,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         run, so built-in tools convert failures into error values the model can
         read and correct from instead of killing the agent turn.
         """
-        message = f"工具执行失败（{type(exc).__name__}）：{exc}"
+        message = f"Tool execution failed ({type(exc).__name__}): {exc}"
         annotation = str(return_annotation)
         if "list" in annotation:
             return [message]
@@ -157,10 +157,10 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         无工具、无项目上下文、无会话记忆：仅用于轻量单轮改写等快速场景。
         """
         if not await asyncio.to_thread(cls.is_installed):
-            raise RuntimeError("Pydantic AI 未安装")
+            raise RuntimeError("Pydantic AI is not installed")
         get_config = getattr(config_store, "get_pydantic_ai_engine_config", None)
         if get_config is None:
-            raise RuntimeError("Pydantic AI 尚未配置")
+            raise RuntimeError("Pydantic AI is not configured")
         config = await asyncio.to_thread(get_config)
         model_name = str(config.get("model") or "")
         try:
@@ -173,7 +173,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
             raise RuntimeError(str(exc)) from exc
         provider = await asyncio.to_thread(config_store.get_provider, runtime.provider_id)
         if provider is None or not provider.get("base_url") or not model_name:
-            raise RuntimeError("Pydantic AI 尚未配置供应商和模型")
+            raise RuntimeError("Pydantic AI has not been configured with a provider and model")
         if usage_details is not None:
             from services.gateway_client.usage import snapshot_usage_provider
 
@@ -307,10 +307,10 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
     ) -> None:
         provider_id = str(values.get("provider_id") or "").strip()
         if not provider_id:
-            raise ValueError("请选择供应商")
+            raise ValueError("Select a provider")
         provider = await asyncio.to_thread(config_store.get_provider, provider_id)
         if provider is None or not provider.get("enabled", True):
-            raise ValueError("所选供应商不存在或已停用")
+            raise ValueError("Selected provider was not found or is disabled")
         def save() -> None:
             current = config_store.get_pydantic_ai_engine_config()
             config_store.set_pydantic_ai_engine_config(
@@ -565,7 +565,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
                     ) in PYDANTIC_PLANNING_TOOL_NAMES:
                         await self._publish_plan_snapshot(on_event)
                 if result is None:
-                    raise RuntimeError("Pydantic AI 未返回执行结果")
+                    raise RuntimeError("Pydantic AI did not return execution results")
                 return result
         finally:
             # An interrupted run has no accepted final result. Keep its partial
@@ -1266,7 +1266,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         if provider is None or not provider.get("base_url") or not model_name:
             yield InternalEvent(
                 type="error",
-                data={"message": "Pydantic AI 尚未配置供应商和模型"},
+                data={"message": "Pydantic AI has not been configured with a provider and model"},
             )
             return
 

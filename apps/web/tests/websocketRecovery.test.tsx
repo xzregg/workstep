@@ -433,3 +433,39 @@ test('recent cross-project targets receive status-only task and session subscrip
     await window.happyDOM.close()
   }
 })
+
+test('atlas accepts knowledge rows from a successful memory CLI call on its subscribed session', async () => {
+  const {atlasToolEvent,trackAtlasCalls}=await import('../src/components/digital-person/atlasToolEvents')
+  const {window}=installDomEnvironment()
+  const original=globalThis.WebSocket
+  globalThis.WebSocket=Socket as never
+  Socket.instances=[]
+  const root=createRoot(document.body.appendChild(document.createElement('div')))
+  const results:string[][]=[]
+  const accept=trackAtlasCalls('p','s',result=>results.push(result.ids))
+  window.addEventListener(atlasToolEvent,event=>accept((event as unknown as CustomEvent).detail))
+  function Harness(){useWebSocket();return null}
+  try{
+    await act(async()=>root.render(<Harness/>))
+    const socket=Socket.instances[0]
+    const scope={channel:'session_chat',project_id:'p',session_id:'s',messageId:'msg'}
+    await act(async()=>{
+      socket.open()
+      for(const [id,cmd] of [['a','workstep memory search --query test'],['b','echo knowledge:9'],['c','workstep memory search']]){
+        socket.receive({...scope,type:'TOOL_CALL_START',toolCallId:id,name:'Bash'})
+        socket.receive({...scope,type:'TOOL_CALL_ARGS',toolCallId:id,args:{cmd}})
+      }
+      const event={...scope,type:'TOOL_CALL_RESULT',output:'knowledge:2 | title\nsee knowledge:9 in prose\nknowledge:4 | second'}
+      socket.receive({...event,toolCallId:'a',session_id:'elsewhere'})
+      socket.receive({...event,toolCallId:'b'})
+      socket.receive({...event,toolCallId:'c',isError:true})
+      socket.receive({...event,toolCallId:'a'})
+      socket.receive({...event,toolCallId:'a'})
+    })
+    assert.deepEqual(results,[['knowledge:2','knowledge:4']])
+  }finally{
+    await act(async()=>root.unmount())
+    globalThis.WebSocket=original
+    await window.happyDOM.close()
+  }
+})

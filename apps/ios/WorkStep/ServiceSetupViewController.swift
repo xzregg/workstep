@@ -121,7 +121,7 @@ final class ServiceSetupViewController: UIViewController, UITextFieldDelegate {
         guard request == nil else { return }
         do {
             let candidate = try ServerAddress(address.text ?? "")
-            guard try book.add(candidate.origin) else { errorLabel.text = "这个地址已保存"; return }
+            guard try book.add(candidate.origin) else { errorLabel.text = "This server address is already saved."; return }
             defaults.set(book.origins, forKey: "servers")
             selectedOrigin = candidate.origin
             address.text = candidate.origin
@@ -170,7 +170,7 @@ final class ServiceSetupViewController: UIViewController, UITextFieldDelegate {
                 guard let self, !self.cancelled else { return }
                 self.request = nil; self.spinner.stopAnimating(); self.address.isEnabled = true; self.updateButtons()
                 if valid { self.onConnect?(server); self.dismiss(animated: true) }
-                else { self.errorLabel.text = "连接失败：请检查服务地址、网络、局域网权限和证书，再重试。" }
+                else { self.errorLabel.text = "Could not connect. Check the server address, network, local network permission, and certificate, then try again." }
             }
         }
         updateButtons()

@@ -80,8 +80,10 @@ async def edit_pending_insert(insert_id: str, req: PendingInsertUpdateRequest):
             req.project_id,
             lambda: update_pending_insert(insert_id, req.content),
         )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=404 if "不存在" in str(exc) else 400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.put("/reorder")

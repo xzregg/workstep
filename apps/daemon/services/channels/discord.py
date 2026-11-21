@@ -34,7 +34,7 @@ class DiscordAdapter(SocialAdapter):
         async with websockets.connect(uri, open_timeout=15, max_size=2 * 1024 * 1024) as socket:
             hello = json.loads(await asyncio.wait_for(socket.recv(), 15))
             if hello.get('op') != 10:
-                raise RuntimeError('Discord 握手失败')
+                raise RuntimeError('Discord handshake failed')
             interval = hello['d']['heartbeat_interval'] / 1000
             acknowledged = True
             async def heartbeat():

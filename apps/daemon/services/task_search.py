@@ -54,7 +54,8 @@ async def search_tasks(project_manager, *, actor, project_id, query, status, eng
         if end_datetime is not None:
             conditions.append(Task.created_at <= end_datetime)
 
-        task_query = Task.select()
+        from services.task_queries import formal_tasks
+        task_query = formal_tasks()
         if conditions:
             task_query = task_query.where(*conditions)
         return [
@@ -98,7 +99,8 @@ async def list_sessions(project_manager, project_id, limit, offset):
     from models import Task
 
     def load_project_tasks(pid: str, *, bounded: bool) -> list[dict]:
-        query = Task.select().order_by(Task.updated_at.desc())
+        from services.task_queries import formal_tasks
+        query = formal_tasks().order_by(Task.updated_at.desc())
         if bounded:
             query = query.limit(limit).offset(offset)
         return [

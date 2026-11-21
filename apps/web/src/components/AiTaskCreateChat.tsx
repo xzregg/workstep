@@ -1,13 +1,12 @@
+import { useProjectProviders } from '../hooks/useProjectProviders'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { randomUuid } from '../utils/uuid'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
 import {
   assistantApi,
-  providerApi,
   taskDraftApi,
   type AssistantConfigInfo,
-  type ProviderInfo,
 } from '../api/client'
 import { useI18n } from '../i18n'
 import { useTaskDraftStore, type TaskDraftResult } from '../stores/taskDraftStore'
@@ -69,7 +68,7 @@ export default function AiTaskCreateChat({
   const [selectedFastModel, setSelectedFastModel] = useState('')
   const [selectedVisionModel, setSelectedVisionModel] = useState('')
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
-  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const providers = useProjectProviders(projectId)
   const {
     enhance,
     onInputChange: enhanceInputChanged,
@@ -131,16 +130,6 @@ export default function AiTaskCreateChat({
       })
     return () => { active = false }
   }, [projectId, t])
-
-  useEffect(() => {
-    let active = true
-    providerApi.list(projectId)
-      .then((result) => {
-        if (active) setProviders(result.providers.filter((item) => item.enabled))
-      })
-      .catch(() => { /* provider list is optional for the engine picker */ })
-    return () => { active = false }
-  }, [projectId])
 
   useEffect(() => {
     if (initialMessage) setInput(initialMessage)

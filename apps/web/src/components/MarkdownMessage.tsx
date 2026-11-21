@@ -63,6 +63,7 @@ function MarkdownMessage({
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const animateInitialReveal = useRef(revealInitial || content.length === 0)
+  const selectionResumeContent = useRef<string | null>(null)
   const effects = useActiveSkin().effects
   const latestRenderRef = useRef({ content, streaming })
   latestRenderRef.current = { content, streaming }
@@ -92,6 +93,7 @@ function MarkdownMessage({
         root && selection && !selection.isCollapsed
         && ((anchor && root.contains(anchor)) || (focus && root.contains(focus))),
       )
+      if (!selectedInside) selectionResumeContent.current = latestRenderRef.current.content
       setSelectionSnapshot((current) => {
         if (selectedInside) return current ?? latestRenderRef.current
         return null
@@ -131,8 +133,9 @@ function MarkdownMessage({
       <SmoothMessageHeight active={revealing || settling}>
       <MarkdownContent
         content={revealedContent}
-        animateReveal={reveal === 'a' && !plainText && effects?.reveal !== false && (revealing || settling)}
+        animateReveal={reveal === 'a' && !plainText && effects?.reveal !== false && (revealing || settling) && selectionResumeContent.current !== renderedContent}
         animateInitialReveal={animateInitialReveal.current}
+        freezeReveal={selectionSnapshot !== null}
         streaming={renderedStreaming}
         projectId={projectId}
         className={className}

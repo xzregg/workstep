@@ -14,7 +14,7 @@ _WHITESPACE_RE = re.compile(r"\s")
 def _reject_whitespace(value: str) -> str:
     """Reject names containing whitespace (space, tab, etc.)."""
     if _WHITESPACE_RE.search(value):
-        raise ValueError("名称不能包含空白字符（空格、Tab 等）")
+        raise ValueError("Name cannot contain whitespace characters (spaces, tabs, etc.)")
     return value
 
 

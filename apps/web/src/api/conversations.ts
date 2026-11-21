@@ -431,6 +431,7 @@ export interface ChatSessionHandoffInput {
 
 export interface ChatMessageOptions {
   face_person_ids?: string[]
+  face_context_recent?: boolean
   /** Legacy callers may pass these; shared execution config is configured separately. */
   engine?: string
   model?: string
@@ -547,6 +548,7 @@ export const chatSessionApi = {
         project_id: projectId,
         content,
         face_person_ids: options.face_person_ids?.length?options.face_person_ids:undefined,
+        face_context_recent: options.face_person_ids?.length&&options.face_context_recent?true:undefined,
         permission_mode: options.permission_mode || undefined,
         plan_mode: options.plan_mode || undefined,
         goal_mode: options.goal_mode || undefined,

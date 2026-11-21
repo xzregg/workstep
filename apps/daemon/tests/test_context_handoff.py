@@ -70,6 +70,6 @@ def test_full_handoff_rejects_silently_truncated_history():
     try:
         compile_handoff(oversized, "full", source_session_id="source-1")
     except ValueError as exc:
-        assert "智能交接" in str(exc)
+        assert 'smart handover' in str(exc)
     else:
         raise AssertionError("oversized full history must be rejected")

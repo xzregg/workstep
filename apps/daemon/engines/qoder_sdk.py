@@ -286,9 +286,9 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         confirmed = confirmed or {}
         mode = str(values.get("permission_mode") or "default").strip()
         if mode not in QODER_PERMISSION_MODES:
-            raise ValueError("不支持的权限模式")
+            raise ValueError("Unsupported permission mode")
         if mode == "bypassPermissions" and not confirmed.get("permission_mode"):
-            raise ValueError("bypassPermissions 需要明确确认风险")
+            raise ValueError("bypassPermissions requires explicit confirmation of the risk")
 
         token: str | None = None
         if clear.get("personal_access_token"):
@@ -303,9 +303,9 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
             try:
                 turns = int(max_turns)
             except ValueError:
-                raise ValueError("最大轮数必须是正整数")
+                raise ValueError("Maximum number of rounds must be a positive integer")
             if turns <= 0:
-                raise ValueError("最大轮数必须是正整数")
+                raise ValueError("Maximum number of rounds must be a positive integer")
 
         include_partial = str(
             values.get("include_partial_messages") or ""
@@ -346,7 +346,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         prompt = await asyncio.to_thread(render_image_prompt, prompt, images)
         if not self._sdk_available():
             yield InternalEvent(
-                type="error", data={"message": "qoder-agent-sdk 未安装"}
+                type="error", data={"message": "qoder-agent-sdk not installed"}
             )
             return
         binary = await asyncio.to_thread(self.resolve_binary)
@@ -358,8 +358,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         if not await asyncio.to_thread(self.is_configured):
             yield InternalEvent(type="error", data={
                 "message": (
-                    "Qoder 尚未登录：请运行 qodercli login，或在设置中配置 "
-                    "Personal Access Token"
+                    "Sign in to Qoder with `qodercli login` or set a personal access token in Settings."
                 ),
             })
             return
@@ -376,7 +375,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         except Exception as exc:
             yield InternalEvent(
                 type="error",
-                data={"message": f"qoder-agent-sdk 未安装：{exc}"},
+                data={"message": f"qoder-agent-sdk not installed: {exc}"},
             )
             return
 
@@ -554,7 +553,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
                             data={
                                 "message_id": message_id,
                                 "status": "error",
-                                "detail": "引擎执行已结束，无法接收新消息",
+                                "detail": "Engine execution has ended, unable to receive new messages",
                             },
                         ))
                     else:
@@ -651,7 +650,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
                     yield InternalEvent(type="live_message", data={
                         "message_id": message_id,
                         "status": "error",
-                        "detail": "引擎执行已结束，无法接收新消息",
+                        "detail": "Engine execution has ended, unable to receive new messages",
                     })
             for task in (receive_task, query_task, watchdog_task):
                 if task is not None and not task.done():

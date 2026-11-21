@@ -2,7 +2,7 @@ import AppLoading from './AppLoading'
 import ResizablePanel from './ResizablePanel'
 import { useEffect, useState, type ReactNode } from 'react'
 import { remoteProjectApi } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button, { ButtonLink } from './Button'
 import Input from './Input'
 import './RemoteAccessGate.css'
@@ -98,7 +98,7 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
           />
           {error && (
             <div role="status" className="remote-access-error">
-              {error}
+              {localizeErrorDisplay(error)}
             </div>
           )}
         </div>

@@ -10,7 +10,7 @@ export async function workspaceCatalogPath(path: string, projectId = ''): Promis
       projectId = projectId || params.get('project_id') || session.host_project_id
       const allowed = session.projects?.some(project => project.host_project_id === projectId)
         ?? (projectId === session.host_project_id)
-      if (!allowed) throw new Error('项目范围不匹配')
+      if (!allowed) throw new Error('Project scope mismatch')
       params.delete('refresh')
       params.delete('with_share')
     }

@@ -22,7 +22,7 @@ def require_catalog_project(project_id: str) -> bool:
     actor = get_current_actor()
     if actor and actor.project_id is not None:
         if project_id != actor.project_id:
-            raise PermissionError("项目范围不匹配")
+            raise PermissionError("Project scope mismatch")
         return True
     return False
 

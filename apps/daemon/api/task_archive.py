@@ -2,12 +2,13 @@
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import Field
 from starlette.responses import JSONResponse
 
 from api.task_context import _project, _require_scoped_task, _run_db, _release_task_channel_bindings
 from schemas.base import BaseSchema
+from services.coordinator_source import COORDINATOR_TURN_HEADER, coordinator_group_recipient
 from services.task_archive import (
     load_archive_experience_draft, normalize_archive_experience,
     snapshot_archive_initiator, persist_archive_draft, persist_experience_and_archive,
@@ -20,12 +21,47 @@ class ArchiveTaskRequest(BaseSchema):
     task_id: str
 
 
+class NotifyArchiveTaskRequest(ArchiveTaskRequest):
+    notify: bool = False
+    delete_workspace: bool = False
+
+
 class ArchiveLanguageRequest(BaseSchema):
     locale: str = Field(default="zh-CN", max_length=64)
 
 
 class ConfirmArchiveExperienceRequest(ArchiveLanguageRequest):
     experience: str
+    notify: bool = False
+    delete_workspace: bool = False
+
+
+async def _clean_archive_workspace(pid, task_id):
+    from api.task_workspace_cleanup import clean_task_workspaces
+    from services.remote_access import get_current_actor
+
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None:
+        raise HTTPException(403, "Archive workspace cleanup is available on the host only")
+    await clean_task_workspaces(pid, task_id, True, operation="archived")
+
+
+async def _archive_notice_group(pid, task_id, notify, turn_id):
+    if not notify:
+        return None
+    if not turn_id:
+        raise HTTPException(status_code=422, detail="Archive notification requires a current group coordinator turn")
+    try:
+        return await _run_db(pid, lambda: coordinator_group_recipient(task_id, turn_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+async def _archive_result(pid, task_id, notify_group, **result):
+    notification = await _release_task_channel_bindings(pid, task_id, notify_group=notify_group)
+    if notify_group:
+        result['notification'] = notification
+    return result
 
 
 @router.get("/{task_id}/archive-experience/draft")
@@ -56,12 +92,16 @@ async def get_archive_experience_draft(
 
 
 @router.post("/archive")
-async def archive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="project_id")):
+async def archive_task(req: NotifyArchiveTaskRequest, pid: str = Query(..., alias="project_id"),
+                       turn_id: str | None = Header(None, alias=COORDINATOR_TURN_HEADER)):
     """Archive a task so it disappears from the active board."""
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     await _require_scoped_task(pid, req.task_id)
+    notify_group = await _archive_notice_group(pid, req.task_id, req.notify, turn_id)
+    if req.delete_workspace:
+        await _clean_archive_workspace(pid, req.task_id)
     try:
         archived = await _run_db(
             pid,
@@ -71,8 +111,7 @@ async def archive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="pro
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not archived:
         raise HTTPException(status_code=404, detail="Task not found")
-    await _release_task_channel_bindings(pid, req.task_id)
-    return {"archived": archived}
+    return await _archive_result(pid, req.task_id, notify_group, archived=archived)
 
 
 @router.post("/{task_id}/archive-experience/prepare")
@@ -174,6 +213,7 @@ async def confirm_archive_experience(
     task_id: str,
     req: ConfirmArchiveExperienceRequest,
     pid: str = Query(..., alias="project_id"),
+    turn_id: str | None = Header(None, alias=COORDINATOR_TURN_HEADER),
 ):
     """Append the reviewed experience to project memory, then archive the task."""
     from main import project_manager, task_service
@@ -181,21 +221,25 @@ async def confirm_archive_experience(
     if not project_manager or not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     await _require_scoped_task(pid, task_id)
+    notify_group = await _archive_notice_group(pid, task_id, req.notify, turn_id)
     experience = req.experience.strip()
+    if len(experience) > 800:
+        raise HTTPException(status_code=422, detail="Experience exceeds 800 characters")
     if not experience:
         draft = await _run_db(pid, lambda: load_archive_experience_draft(task_id))
         if draft is None or draft["has_experience"]:
             raise HTTPException(status_code=422, detail="Experience cannot be empty")
+        if req.delete_workspace:
+            await _clean_archive_workspace(pid, task_id)
         try:
             archived = await _run_db(pid, lambda: task_service.archive_task(task_id, pid))
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if not archived:
             raise HTTPException(status_code=404, detail="Task not found")
-        await _release_task_channel_bindings(pid, task_id)
-        return {"archived": True, "memory_saved": False}
-    if len(experience) > 800:
-        raise HTTPException(status_code=422, detail="Experience exceeds 800 characters")
+        return await _archive_result(pid, task_id, notify_group, archived=True, memory_saved=False)
+    if req.delete_workspace:
+        await _clean_archive_workspace(pid, task_id)
     project = _project(pid)
 
     try:
@@ -210,8 +254,7 @@ async def confirm_archive_experience(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    await _release_task_channel_bindings(pid, task_id)
-    return {"archived": archived, "memory_saved": memory_saved}
+    return await _archive_result(pid, task_id, notify_group, archived=archived, memory_saved=memory_saved)
 
 
 @router.post("/unarchive")

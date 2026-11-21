@@ -1,3 +1,4 @@
+import { localizeGatewayError } from './gatewayErrorText'
 import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -41,7 +42,7 @@ export function AdminSkillActionDialog({ action, csrf, onDone, onClose }: {
     const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
     try {
       const step = await confirmStepUp(csrf, password, passwordRequired)
-      if (!step.ok) throw new Error('管理员密码验证失败。')
+      if (!step.ok) throw new Error('Administrator password verification failed.')
       let url: string
       let method = 'POST'
       let body: Record<string, unknown> | undefined
@@ -69,11 +70,11 @@ export function AdminSkillActionDialog({ action, csrf, onDone, onClose }: {
       const response = await fetch(url, { method, credentials: 'same-origin', headers,
         body: body ? JSON.stringify(body) : undefined })
       if (!response.ok) throw new Error(response.status === 409
-        ? '操作冲突：请先处理已有项目分配或刷新版本状态。' : 'Skill 操作失败。')
+        ? 'Operation conflict: Please handle existing project assignments or refresh the version status.' : 'Skill operation failed.')
       const result = method === 'DELETE' ? null : await response.json()
       onDone(action.kind === 'create' ? result?.id : undefined)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Skill 操作失败。')
+      setError(reason instanceof Error ? reason.message : 'Skill operation failed.')
     } finally { setBusy(false) }
   }
 
@@ -101,7 +102,7 @@ export function AdminSkillActionDialog({ action, csrf, onDone, onClose }: {
         onChange={event => setReason(event.target.value)} /></label>}
     </div>
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在处理 Skill…</p>}
-    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+    {error && <p role="alert" className="gateway-auth-error">{localizeGatewayError(error)}</p>}
   </GatewayConfirmDialog>
   {discard && <GatewayConfirmDialog title="放弃 Skill 操作"
     message="已填写的字段将被清除。" confirmLabel="放弃并关闭" cancelLabel="继续编辑"

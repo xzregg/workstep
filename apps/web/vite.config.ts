@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
 
 export default defineConfig(({ mode }) => ({
   ...(mode === 'gateway-share' ? {
@@ -27,7 +28,10 @@ export default defineConfig(({ mode }) => ({
   plugins: [react()],
   resolve: {
     dedupe: ['react','react-dom','react-router-dom'],
-    alias: { '@workstep/gateway-ui/SearchableSelect': fileURLToPath(new URL('../../packages/gateway-ui/src/SearchableSelect.tsx', import.meta.url)) },
+    alias: {
+      // The browser entry creates a DOM element; worker parsing needs the pure decoder.
+      'decode-named-character-reference': createRequire(import.meta.url).resolve('decode-named-character-reference'),
+      '@workstep/gateway-ui/SearchableSelect': fileURLToPath(new URL('../../packages/gateway-ui/src/SearchableSelect.tsx', import.meta.url)) },
   },
   server: {
     proxy: {

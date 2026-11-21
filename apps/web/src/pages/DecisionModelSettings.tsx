@@ -7,7 +7,7 @@ import Spinner from '../components/Spinner'
 import DecisionModelResource from '../components/DecisionModelResource'
 import DecisionServiceModels from '../components/DecisionServiceModels'
 import DecisionProxySettings from '../components/DecisionProxySettings'
-import { useI18n, type TKey } from '../i18n'
+import { useI18n, type TKey, localizeErrorDisplay } from '../i18n'
 import './DecisionModelSettings.css'
 
 type ExternalDraft = { base_url: string; model: string; api_key: string | null }
@@ -79,7 +79,7 @@ export default function DecisionModelSettings({ onDirtyChange }: { onDirtyChange
     catch (e) { if (mounted.current && !controller.signal.aborted) setError(e instanceof Error ? e.message : String(e)) }
     finally { if (mounted.current) setBusy('') }
   }
-  if (!status) return <div className="decision-settings">{error ? <><p role="alert">{error}</p><Button onClick={() => void initialize()}>{t('common.retry')}</Button></> : <Spinner />}</div>
+  if (!status) return <div className="decision-settings">{error ? <><p role="alert">{localizeErrorDisplay(error)}</p><Button onClick={() => void initialize()}>{t('common.retry')}</Button></> : <Spinner />}</div>
   const models = status.models ?? [{ id: 'laya-multilingual', resource_kind: 'model' as const, name: t('decisionModels.modelName'), description: t('decisionModels.modelHint'), size_bytes: status.resources.model.size_bytes ?? 0 }]
   const selectedModel = models.find(model => model.id === form.managed_model) ?? models[0]
   const ready = Boolean(status.resources[selectedModel.runtime_kind ?? 'runtime']?.installed) && Boolean(status.resources[selectedModel.resource_kind]?.installed)
@@ -130,7 +130,7 @@ export default function DecisionModelSettings({ onDirtyChange }: { onDirtyChange
         </div><div className="decision-test-row"><Button disabled={Boolean(busy) || !validDraft} loading={busy === 'test'} onClick={() => void test()}>{t('decisionModels.test')}</Button></div>
       </section><p className="decision-hint">{t('decisionModels.hostHint')}</p><p className="decision-hint">{t('decisionModels.externalHint')}</p>
     </>}
-    {error && <p role="alert" className="decision-error">{error}</p>}{result !== null && <p role="status" className="decision-success">{t('decisionModels.testSuccess', { ms: result })}</p>}
+    {error && <p role="alert" className="decision-error">{localizeErrorDisplay(error)}</p>}{result !== null && <p role="status" className="decision-success">{t('decisionModels.testSuccess', { ms: result })}</p>}
     <p className="decision-hint">{t('decisionModels.noScenes')}</p>
     <footer className="decision-footer"><span>{t(dirty ? 'decisionModels.unsaved' : 'decisionModels.saved')}</span><div><Button disabled={Boolean(busy) || !dirty} onClick={() => { if (saved) setForm(saved); setError(''); setResult(null) }}>{t('decisionModels.revert')}</Button><Button variant="primary" disabled={Boolean(busy) || !validDraft} loading={busy === 'save'} onClick={() => void save()}>{t('decisionModels.save')}</Button></div></footer>
     <ConfirmDialog open={deleting !== null} title={t('decisionModels.deleteTitle', { resource: deleting === 'runtime-gguf' ? t('decisionModels.nativeRuntime') : deleting === 'runtime' ? t('decisionModels.runtime') : models.find(model => model.resource_kind === deleting)?.name ?? t('decisionModels.modelName') })} message={t('decisionModels.deleteHint')} danger onCancel={() => setDeleting(null)} onConfirm={() => { const kind = deleting; setDeleting(null); if (kind) void mutate('delete', () => api.delete(kind)) }} />

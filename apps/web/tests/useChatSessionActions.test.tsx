@@ -23,16 +23,17 @@ for(const mode of ['normal','running','prepared'] as const)test(`recognized face
   actions=useChatSessionActions({sessionId:'face-send',projectId:'p',running:mode==='running',
    engineConfig:{engine:'codex',providerId:'',model:'',fastModel:'',visionModel:'',thinkingEffort:''},
    permissionMode:'',planMode:false,goalMode:false,effectiveEngine:'codex',onSessionIdChange(){},onTitleChange(){},
-   prepareContent:async(content,onFaces)=>{captures++;onFaces?.(['face-1']);return content+'\n\n![camera](.workstep/uploads/camera.jpg)'},
+   prepareContent:async(content,onFaces)=>{captures++;onFaces?.(['face-1'],mode==='running');return content+'\n\n![camera](.workstep/uploads/camera.jpg)'},
   });return null
  }
  try{
   await act(async()=>root.render(<I18nProvider><Harness/></I18nProvider>))
   await act(async()=>{
-   const sent=mode==='running'?await actions.sendPendingContent('我是谁',[]):await actions.sendMessageNow('我是谁',false,mode==='prepared',mode==='prepared'?['face-1']:[])
+   const sent=mode==='running'?await actions.sendPendingContent('我是谁',[]):await actions.sendMessageNow('我是谁',false,mode==='prepared',mode==='prepared'?['face-1']:[],mode==='prepared')
    assert.equal(sent,true,actions.sendError)
   })
   assert.equal(requests.length,1);assert.deepEqual(requests[0].face_person_ids,['face-1'])
+  assert.equal(requests[0].face_context_recent,mode==='normal'?undefined:true)
   assert.equal(captures,mode==='prepared'?0:1)
   assert.doesNotMatch(requests[0].content,/face-1|人脸识别/)
  }finally{await act(async()=>root.unmount());globalThis.fetch=oldFetch;chatSessionApi.list=oldList;useChatSessionStore.getState().resetSession('face-send');await window.happyDOM.close()}

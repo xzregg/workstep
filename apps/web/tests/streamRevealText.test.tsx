@@ -101,6 +101,7 @@ test('selecting a partially revealed text node freezes its remaining suffix', as
     const node=host.firstChild,range=document.createRange()
     range.selectNodeContents(host)
     window.getSelection()!.addRange(range)
+    document.dispatchEvent(new window.Event('selectionchange'))
     await clock.advance(90)
     assert.equal(host.textContent,'甲乙')
     assert.ok(host.firstChild===node)
@@ -160,6 +161,37 @@ test('closing Markdown syntax preserves old visible text in remounted inline nod
     assert.equal(host.textContent,'稳定正文 之前的强调文字 新字')
   } finally {
     await act(async()=>root.unmount());clock.restore();await window.happyDOM.close()
+  }
+})
+
+test('streamed web citations do not replace a table text node or interrupt its reveal', async () => {
+  const { window, document } = installDomEnvironment()
+  const clock = frameClock(), host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
+  const render = (content: string) => act(async () => root.render(<I18nProvider><MarkdownContent content={content} streaming animateReveal /></I18nProvider>))
+  const body = '| 说明 |\n| --- |\n| 已有内容'
+  const citation = 'citeturn2view0'
+  try {
+    await render(body)
+    await clock.advance(90)
+    const cell = host.querySelector('td')
+    assert.equal(cell?.textContent, '已有内容')
+    const text = cell?.firstChild
+    for (let length = 1; length <= citation.length; length++) {
+      await render(body + citation.slice(0, length))
+      await clock.advance(90 + length * 90)
+      assert.equal(cell?.textContent, '已有内容')
+      assert.equal(cell?.firstChild, text)
+      assert.equal(clock.size, 0)
+    }
+    await render(body + citation + '新增文字 |')
+    assert.equal(cell?.textContent, '已有内容')
+    await clock.advance(90 + citation.length * 90)
+    assert.equal(cell?.textContent, '已有内容新')
+    await clock.advance(270 + citation.length * 90)
+    assert.equal(cell?.textContent, '已有内容新增文字')
+    assert.equal(host.querySelector('td')?.firstChild, text)
+  } finally {
+    await act(async () => root.unmount()); clock.restore(); await window.happyDOM.close()
   }
 })
 
@@ -264,4 +296,72 @@ test('the streaming caret never switches paragraphs or headings to inline layout
   assert.doesNotMatch(css,/\.markdown-message\.is-streaming[^{}]+\{\s*display:\s*inline;/)
   assert.match(css,/nth-last-child\(2\)::after/,'the caret belongs inside the existing block')
   assert.doesNotMatch(css,/\.stream-reveal-char\s*\{/,'old glyphs must not acquire animation paint groups')
+})
+
+
+test('appending a new paragraph reuses the parsed earlier blocks', async () => {
+  const { window, document } = installDomEnvironment()
+  const host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
+  let resolutions = 0
+  const resolver = (src: string) => { resolutions++; return src }
+  const render = (content: string) => act(async () => root.render(<I18nProvider><MarkdownAssetUrlProvider resolver={resolver}>
+    <MarkdownContent content={content} streaming />
+  </MarkdownAssetUrlProvider></I18nProvider>))
+  const prefix = '- 列表项\n\n![先前图片](https://example.com/a.png)\n\n| 说明 |\n| --- |\n| ![表格图片](https://example.com/b.png) |\n\n'
+  try {
+    await render(prefix + '正在输出')
+    const image = host.querySelector('img')
+    const table = host.querySelector('table')
+    assert.ok(table)
+    await render(prefix + '正在输出新段落 **强调**citeturn2view')
+    await render(prefix + '正在输出新段落 **强调**citeturn2view0')
+    assert.equal(resolutions, 2, 'appending text must not reparse earlier prose or tables')
+    assert.equal(host.querySelector('img'), image)
+    assert.equal(host.querySelector('table'), table)
+    assert.equal(host.querySelector('strong')?.textContent, '强调')
+  } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close()
+  }
+})
+
+test('structured JSON replies display literal content without interpreting strings as Markdown', async () => {
+  const { window, document } = installDomEnvironment()
+  const host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
+  const body = '{"summary":"**原始证据** [memory:123]", "decision":"silent"}'
+  try {
+    await act(async () => root.render(<I18nProvider><MarkdownContent content={'<json>' + body + '</json>'} /></I18nProvider>))
+    assert.equal(host.querySelector('.markdown-message')?.textContent, body)
+    assert.equal(host.querySelector('strong'), null)
+  } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close()
+  }
+})
+
+
+test('glyph frames do not query the browser selection and force layout on every paint', async () => {
+  const { window, document } = installDomEnvironment()
+  const clock = frameClock(), host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
+  try {
+    await act(async () => root.render(<StreamRevealText text="甲乙丙丁戊己庚辛" enabled />))
+    const selection = mock.method(window, 'getSelection', () => null)
+    try {
+      await clock.advance(0); await clock.advance(30); await clock.advance(90)
+      assert.equal(selection.mock.callCount(), 0)
+      assert.equal(host.textContent, '甲乙丙丁戊己庚辛')
+    } finally { selection.mock.restore() }
+  } finally {
+    await act(async () => root.unmount()); clock.restore(); await window.happyDOM.close()
+  }
+})
+
+test('settled history text does not register selection readers for every Markdown leaf', async () => {
+  const {window,document}=installDomEnvironment()
+  const host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+  let reads=0
+  const spy=mock.method(window,'getSelection',()=>{reads++;return null})
+  try {
+    await act(async()=>root.render(<>{Array.from({length:500},(_,i)=><StreamRevealText key={i} text="历史正文" enabled={false}/>)}</>))
+    document.dispatchEvent(new window.Event('selectionchange'))
+    assert.equal(reads,0,'inactive leaves must not compete with composer selection')
+  } finally {await act(async()=>root.unmount());spy.mock.restore();await window.happyDOM.close()}
 })

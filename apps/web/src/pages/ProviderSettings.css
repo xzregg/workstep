@@ -23,6 +23,10 @@
 .provider-settings-model-status { margin-top: 4px; font-size: calc(11px * var(--font-scale)); }
 .provider-settings-model-status--empty { color: var(--meta); }
 .provider-settings-card-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+.provider-settings-toggle { display: inline-flex; align-items: center; gap: var(--space-2); }
+.provider-settings-toggle .settings-switch { flex-shrink: 0; background: var(--border); }
+.provider-settings-toggle .settings-switch[aria-checked="true"] { background: var(--accent); }
+.provider-settings-toggle .settings-switch:disabled { cursor: not-allowed; opacity: .55; }
 .provider-settings-action { min-width: 54px; height: 30px; justify-content: center; }
 .provider-settings-action--wide { min-width: 62px; }
 .provider-settings-action--copy { min-width: 76px; }
@@ -32,3 +36,4 @@
 .provider-settings-badge--disabled { background: var(--surface); color: var(--meta); }
 .provider-settings-badge--verified { background: color-mix(in oklab, var(--success), transparent 88%); color: var(--success); }
 .provider-settings-badge--unverified { background: color-mix(in oklab, var(--warn), transparent 88%); color: var(--warn); }
+.provider-settings-badge--failed { background: color-mix(in oklab, var(--danger), transparent 88%); color: var(--danger); }

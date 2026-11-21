@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, request } from '../api/transport'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Spinner from './Spinner'
 import Icon from './Icon'
 import { DeviceTabs } from '@workstep/gateway-ui/DeviceTabs'
@@ -74,6 +74,6 @@ export default function GatewayDeviceTabs({currentDeviceId,header}: {currentDevi
     <DeviceTabs showRefresh={!header} devices={devices} currentDeviceId={currentDeviceId} disabled={opening!==null} disableOffline
       onSelect={id=>{const device=devices.find(item=>item.id===id);if(device)void select(device)}} onRefresh={()=>setRevision(value=>value+1)}/>
     {(opening || (loading && !devices.length)) && <p role="status"><Spinner size={16}/>{t('gatewayRemote.loading')}</p>}
-    {error && <p role="alert">{error}</p>}
+    {error && <p role="alert">{localizeErrorDisplay(error)}</p>}
   </section>
 }

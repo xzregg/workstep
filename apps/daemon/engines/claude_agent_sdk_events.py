@@ -190,7 +190,7 @@ class ClaudeAgentSDKEventMapper:
                         data={"session_id": str(session_id)},
                     ))
             elif subtype == "error":
-                error = getattr(msg, "message", None) or "Claude Agent SDK 启动失败"
+                error = getattr(msg, "message", None) or "Claude Agent SDK failed to start"
                 events.append(InternalEvent(type="error", data={"message": str(error)}))
             elif "compact" in subtype.lower():
                 data = getattr(msg, "data", None) or {}

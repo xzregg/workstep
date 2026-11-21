@@ -22,6 +22,8 @@
 - [Release checklist](releasing.md) — unsigned desktop packaging, SBOM, checksums, approval, and clean-machine validation.
 - [Plan index](../plans/README.md) — remaining proposals, evolving behavior boundaries, and pending acceptance.
 - [统一设计规范](../DESIGN.md) — 工作台、官网与平台后台的视觉规格、组件选型、响应式及界面验收唯一入口。
+- [工作台组件展台](ui.html) — 本地浏览器可直接打开的桌面／手机交互示例；规范以 `DESIGN.md` 为准。
+- [后台页面模板](ui.html#admin) — 桌面分组侧栏、移动端菜单抽屉，以及供应商列表的多条件查询、状态筛选、排序和行操作。
 
 Repository-agent instructions start at the root [`AGENTS.md`](../AGENTS.md), which indexes the scoped rules for [daemon](../apps/daemon/AGENTS.md), [Web](../apps/web/AGENTS.md), [desktop](../apps/desktop/AGENTS.md), and [landing/manual](../apps/landing/AGENTS.md). Read the rules for every application touched; merge and release work must also read the landing/manual rules. Detailed architecture and engine contracts live in the corresponding documents above.
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { scheduleApi, type ProjectSchedule, type SchedulePayload, type ScheduleRule } from '../api/schedule'
 import { useChatListStore } from '../stores/chatSessionStore'
 import { useScheduleDraftState, type ScheduleEditorState } from '../hooks/useScheduleDraftState'
-import { useI18n } from '../i18n'
+import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import Field from './Field'
 import Input from './Input'
@@ -56,7 +56,7 @@ export default function ConversationScheduleEditor({ projectId, schedule, onSave
       {(sessions || []).filter(session => !session.archived).map(session => <option key={session.id} value={session.id}>{session.title || session.id} ({session.source === 'channel' ? session.channel_platform || t('schedules.channelConversation') : t('schedules.localConversation')})</option>)}
     </Select></Field>
     {loading && <span className="task-status-spinner" />}
-    {loadError && <div role="alert" className="task-schedule-error">{loadError}<Button onClick={() => void fetchSessions(projectId, true)}>{t('schedules.notificationReload')}</Button></div>}
+    {loadError && <div role="alert" className="task-schedule-error">{localizeErrorDisplay(loadError)}<Button onClick={() => void fetchSessions(projectId, true)}>{t('schedules.notificationReload')}</Button></div>}
     <Field label={t('schedules.sessionInstruction')} required><MarkdownEditor value={instruction} onChange={setInstruction} projectId={projectId} /></Field>
     <ScheduleRuleEditor value={rule} onChange={setRule} />
     {selected && <div className="task-schedule-preview">{selected.source === 'channel'
@@ -64,7 +64,7 @@ export default function ConversationScheduleEditor({ projectId, schedule, onSave
       : t('schedules.sessionLocalReply')}</div>}
     <div className="conversation-schedule-lifecycle">{t('schedules.sessionLifecycle')}</div>
     <div className="task-schedule-preview">{t('schedules.nextRuns')}: {preview.slice(0, 3).map(value => new Date(value).toLocaleString()).join(' / ') || '—'}</div>
-    {error && <div role="alert" className="task-schedule-error">{error}</div>}
+    {error && <div role="alert" className="task-schedule-error">{localizeErrorDisplay(error)}</div>}
     <Button variant="primary" data-save-session-schedule loading={busy} disabled={!name.trim() || !selected || !instruction.trim() || !preview.length || loading || Boolean(loadError)} onClick={() => void save()}>{t('common.save')}</Button>
   </div>
 }

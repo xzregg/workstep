@@ -14,7 +14,7 @@ preferences = AppearancePreferences(CONFIG_DIR / 'runtime' / 'appearance-prefere
 
 def scope_for(request: Request) -> str | None:
     if request.query_params:
-        raise HTTPException(400, '个人外观接口不接受身份或项目参数')
+        raise HTTPException(400, 'Personal appearance API does not accept identity or project parameters')
     actor = getattr(request.state, 'managed_actor', None)
     service = getattr(request.app.state, 'gateway_client', None)
     config = getattr(service, 'managed_config', None)
@@ -27,7 +27,7 @@ async def reply(scope, operation):
     try:
         selection = await asyncio.to_thread(operation)
     except OSError as exc:
-        raise HTTPException(503, '个人外观设置暂时无法读写，请重试') from exc
+        raise HTTPException(503, 'Personal appearance settings are temporarily unavailable for read/write operations. Please try again.') from exc
     return JSONResponse({'scope': scope, 'preferences': selection}, headers={'Cache-Control': 'no-store'})
 
 
@@ -43,7 +43,7 @@ async def get_preferences(request: Request):
 async def patch_preferences(request: Request, body: AppearancePatch):
     scope = scope_for(request)
     if scope is None:
-        raise HTTPException(403, '需要已认证的网关用户身份')
+        raise HTTPException(403, 'Authenticated gateway user identity is required')
     if request.headers.get('X-Appearance-Scope') != scope:
-        raise HTTPException(409, '个人外观身份已变化，请刷新后重试')
+        raise HTTPException(409, 'Personal appearance identity has changed, please refresh and try again')
     return await reply(scope, lambda: preferences.update(scope, body.model_dump(exclude_unset=True)))

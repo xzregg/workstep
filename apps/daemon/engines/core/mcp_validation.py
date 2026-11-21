@@ -45,11 +45,11 @@ server.run(transport="stdio")
             base_config = {'provider_id': provider} if provider else {}
             configured = await engine.configure_mcp_servers(servers, base_config)
             if not isinstance(configured, dict):
-                raise AssertionError('MCP 配置接口未返回字典')
+                raise AssertionError('MCP configuration interface did not return a dictionary')
             kwargs = {'config_overrides': configured, 'model': model or None}
             if turn:
                 if not session_id:
-                    raise AssertionError('MCP 恢复探测缺少真实会话 ID')
+                    raise AssertionError('MCP recovery probe missing real session ID')
                 kwargs['session_id'] = session_id
             prompt = (f'Use only the MCP tool {tool_name} from server workstep_validation. '
                       f'Call it with nonce={nonce} (the nonce argument must be exactly that value), '
@@ -60,11 +60,11 @@ server.run(transport="stdio")
                 if observe:
                     observe(event)
                 if event.type == 'error':
-                    raise AssertionError('MCP 引擎调用失败')
+                    raise AssertionError('MCP engine call failed')
                 if event.type == 'session_started':
                     actual = event.data['session_id']
                     if turn and actual != session_id:
-                        raise AssertionError('MCP 探测未恢复原生会话')
+                        raise AssertionError('MCP probe failed to restore native session')
                     session_id = actual
                 if event.type == 'agent_message_chunk':
                     chunks.append(event.data['content']['text'])
@@ -75,11 +75,11 @@ server.run(transport="stdio")
                                    if option.get('kind') == 'allow_once'), None)
                     if not name.endswith(tool_name) or not option:
                         await engine.respond_interaction(event.data, {'outcome': {'outcome': 'cancelled'}})
-                        raise AssertionError('MCP 探测请求了非测试工具或无法单次批准')
+                        raise AssertionError('MCP probe requested a non-test tool or could not be approved in a single step')
                     await engine.approve_tool_option(event.data['interaction_id'], option['option_id'])
             received = await asyncio.to_thread(lambda: receipt.is_file() and receipt.read_text(encoding='utf-8') == nonce)
             if not received or not ''.join(chunks).strip():
-                raise AssertionError('MCP 服务未收到真实调用，不能仅凭文本或事件宣称支持')
+                raise AssertionError('MCP service did not receive a real invocation; it cannot claim support based solely on text or events.')
     finally:
         try:
             await engine.stop()
