@@ -241,7 +241,7 @@ async def test_interrupted_operation_survives_restart(runtime_client):
     }))
     state = (await client.get('/api/engine/codex_sdk/runtime/operation')).json()
     assert state['status'] == 'failed'
-    assert '重启' in state['message']
+    assert state['message'] == 'A backend restart interrupted installation. Retry or roll back.'
     assert (await client.get('/api/engine/codex_sdk/runtime')).json()['rollback_version'] == '0.149.0'
 
 

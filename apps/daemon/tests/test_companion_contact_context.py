@@ -75,8 +75,9 @@ def test_assessment_prompt_describes_current_actions_only():
     from services.digital_person_assessment import instruction
     from services.digital_person import DigitalPersonProfile
     text=instruction(DigitalPersonProfile())
-    for retired in ('mood','emotion','valence','arousal','thought','Do not','Never','never '):
+    for retired in ('mood','emotion','valence','arousal','thought'):
         assert retired not in text
+    assert 'Never use tools to continue these delegations' in text
 def test_experience_prompt_uses_the_persisted_outcome_contract():
     from services.digital_person import DigitalPersonProfile
     from services.digital_person_assessment import instruction

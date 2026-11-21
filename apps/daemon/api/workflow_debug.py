@@ -1,7 +1,6 @@
 """Local workflow debug catalog. Runs use the public workflow runtime methods."""
 
 import asyncio
-import json
 import time
 
 from weakref import WeakValueDictionary
@@ -12,14 +11,13 @@ from pydantic import Field
 from api.task import DeleteTaskRequest, delete_task
 from api.task_context import _project, _run_db
 from api.workflow import _validate_steps
-from models import Task
 from schemas.base import BaseSchema
 from services.config import DEFAULT_EXECUTION_ENGINE, config_store
 from services.messages import current_actor_task_fields
 from services.remote_access import get_current_actor
-from services.task_state import task_has_active_execution
 from services.workflow_debug import (
-    compile_debug, create_debug_task, debug_workflow, prepare_debug_restart, save_debug_workflow,
+    compile_debug, create_debug_task, debug_records, debug_task_active, debug_task_ids,
+    prepare_debug_restart, save_debug_workflow,
 )
 
 router = APIRouter(prefix="/api/workflow-debug", tags=["流程调试"])
@@ -79,20 +77,10 @@ async def operate(pid, action):
         raise HTTPException(409, str(exc)) from exc
 
 
-def records(source_id):
-    _, debug = debug_workflow(source_id)
-    if debug is None:
-        return {"workflow_id": None, "workflow": None, "tasks": []}
-    rows = Task.select().where(Task.workflow_id == debug.id).order_by(Task.created_at.desc())
-    return {"workflow_id": debug.id, "workflow": json.loads(debug.steps_json),
-            "tasks": [{"id": row.id, "title": row.title, "status": row.status,
-                       "created_at": row.created_at} for row in rows]}
-
-
 @router.get("/{source_id}")
 async def history(source_id: str, pid: str = Query(..., alias="project_id")):
     local_only(pid)
-    return await operate(pid, lambda: records(source_id))
+    return await operate(pid, lambda: debug_records(source_id))
 
 
 @router.post("/{source_id}/start")
@@ -145,27 +133,13 @@ async def restart(source_id: str, task_id: str, body: DebugRestart, pid: str = Q
     return {"started": True}
 
 
-def task_ids(source_id, task_id=None):
-    _, debug = debug_workflow(source_id)
-    if debug is None:
-        return []
-    query = Task.select(Task.id).where(Task.workflow_id == debug.id)
-    if task_id is not None:
-        query = query.where(Task.id == task_id)
-    return [row.id for row in query]
-
-
 async def stop_task(pid, task_id):
     from main import workflow_runtime
 
     await workflow_runtime.cancel(task_id, action="task.pause")
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
-        def active():
-            task = Task.get_or_none(Task.id == task_id)
-            return task is not None and task_has_active_execution(task)
-
-        if task_id not in workflow_runtime._runners and not await _run_db(pid, active):
+        if task_id not in workflow_runtime._runners and not await _run_db(pid, lambda: debug_task_active(task_id)):
             return
         await asyncio.sleep(.05)
     raise HTTPException(409, "Debug task did not stop in time")
@@ -174,7 +148,7 @@ async def stop_task(pid, task_id):
 @router.post("/{source_id}/tasks/{task_id}/stop")
 async def stop(source_id: str, task_id: str, pid: str = Query(..., alias="project_id")):
     local_only(pid)
-    if not await operate(pid, lambda: task_ids(source_id, task_id)):
+    if not await operate(pid, lambda: debug_task_ids(source_id, task_id)):
         raise HTTPException(404, "Debug task not found")
     await stop_task(pid, task_id)
     return {"stopped": True}
@@ -185,7 +159,7 @@ async def stop(source_id: str, task_id: str, pid: str = Query(..., alias="projec
 async def clear(source_id: str, pid: str = Query(..., alias="project_id"), task_id: str | None = None):
     local_only(pid)
     async with operation_lock(pid, source_id):
-        ids = await operate(pid, lambda: task_ids(source_id, task_id))
+        ids = await operate(pid, lambda: debug_task_ids(source_id, task_id))
         if task_id and not ids:
             raise HTTPException(404, "Debug task not found")
         for selected in ids:

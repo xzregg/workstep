@@ -4,6 +4,19 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+## 1.0.24
+
+- Expose native engine permission choices and service-tier capabilities from the shared engine catalog, keeping planning controls separate from permission modes.
+- Require explicit handoff when changing a conversation or task's provider, rather than silently reusing a session across providers.
+- Bound collapsed running-process previews and load complete event details on expansion; prevent an empty execution-config cache from interrupting legacy history hydration.
+- Add host-local workflow debugging from a selected draft step with explicit upstream samples, separate debug task history, and existing runtime cancellation and cleanup.
+- Keep workflow-debug database queries in the service layer and project executor, with a slow-read health-response regression.
+- Add an evidence-backed memory star map, on-demand knowledge details, delegation views and scoped digital-person conversation actions.
+- Improve voice input, wake-word handling, speech playback and local model management, including explicit download sources, pause, resume and resource cleanup controls.
+- Reuse managed desktop resource downloads and preserve platform-specific Android and iOS media and installation behavior.
+- Refresh saved provider model selection and keep gateway-managed provider records read-only in the workbench.
+- Localize recognized runtime errors while preserving dynamic details and authorization boundaries; align regression fixtures with native permission, workflow, archive and localization contracts without skipping test cases.
+
 - Refresh security-affected Python, web and Electron dependencies, synchronize desktop and container exports, and verify packaging glob compatibility. Raise the source-install Python minimum to 3.11.5.
 - Fix Codex shutdown callbacks, reader cleanup and approval isolation across shared sessions; keep stale approvals invalid after transport failure.
 - Bound model-authored A2UI message counts, collections, nesting, text and total nodes before schema validation; parse pretty-printed JSON once while preserving ordinary interactive content.

@@ -30,7 +30,7 @@ test('table view supports selecting individual and all actionable tasks', () => 
 test('table selection offers confirmed bulk archive and delete actions', () => {
   assert.match(tableSource, /t\('taskList\.bulkArchive'\)/)
   assert.match(tableSource, /t\('taskList\.bulkDelete'\)/)
-  assert.match(tableSource, /await Promise\.all\(selectedIds\.map\(onArchiveTask\)\)/)
+  assert.match(tableSource, /await Promise\.all\(selectedIds\.map\(id => onArchiveTask\(id, canCleanWorkspace && archiveWorkspace\)\)\)/)
   assert.match(tableSource, /await Promise\.all\(selectedIds\.map\(id => onDeleteTask\(id, deleteWorkspace\)\)\)/)
   assert.match(tableSource, /<ConfirmDialog/)
   assert.match(tableSource, /<DeleteTaskConfirmation/)

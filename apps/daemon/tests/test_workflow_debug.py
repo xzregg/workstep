@@ -1,6 +1,7 @@
 """Debug tasks exercise the existing runtime from an explicit artifact round."""
 
 import asyncio
+import threading
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,40 @@ DRAFT = {
     ],
     "connections": [{"from": 1, "to": 2, "fromPort": 0, "toPort": 0, "kind": "solid"}],
 }
+
+
+@pytest.mark.anyio
+async def test_debug_history_slow_database_read_keeps_health_responsive(api_context, monkeypatch):
+    from api import workflow_debug
+
+    client, tmp_path = api_context
+    directory = tmp_path / 'debug-history-canary'
+    directory.mkdir()
+    pid = (await client.post('/api/project/init', json={'path': str(directory)})).json()['id']
+    await _create_test_workflow(client, pid)
+    source = (await client.get('/api/workflow/list', params={'project_id': pid})).json()['workflows'][0]['id']
+    entered, release = threading.Event(), threading.Event()
+    original = workflow_debug.debug_records
+
+    def slow_records(source_id):
+        assert threading.current_thread() is not threading.main_thread()
+        entered.set()
+        assert release.wait(3), 'test must release the isolated database read'
+        return original(source_id)
+
+    monkeypatch.setattr(workflow_debug, 'debug_records', slow_records)
+    pending = asyncio.create_task(client.get(f'/api/workflow-debug/{source}', params={'project_id': pid}))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert not pending.done()
+        health = await asyncio.wait_for(client.get('/api/health'), .2)
+        assert health.status_code == 200
+        assert not pending.done(), 'health must complete before the database read is released'
+    finally:
+        release.set()
+        response = await pending
+    assert response.status_code == 200
+    assert response.json() == {'workflow_id': None, 'workflow': None, 'tasks': []}
 
 
 @pytest.mark.anyio

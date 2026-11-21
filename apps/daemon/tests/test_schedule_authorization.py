@@ -143,10 +143,10 @@ async def test_scheduled_creation_does_not_borrow_actor_or_confuse_authorities(m
 @pytest.mark.anyio
 @pytest.mark.parametrize("case,detail", [
     ("missing-creator", 'Managed\\ capability\\ denied:\\ task\\.create（Scheduled\\ rule\\ lacks\\ creator\\ identity;\\ please\\ have\\ a\\ user\\ with\\ task\\ creation\\ permissions\\ resave\\ the\\ rule\\.）'),
-    ("missing-policy", "网关权限快照尚未就绪"),
-    ("expired-policy", "网关权限快照已过期"),
-    ("legacy-local", "定时规则创建人与当前网关用户不匹配"),
-    ("denied", "定时规则创建人没有目标项目的任务创建权限"),
+    ("missing-policy", "Gateway permissions are not ready"),
+    ("expired-policy", "Gateway permissions have expired"),
+    ("legacy-local", "The schedule owner differs from the current gateway user"),
+    ("denied", "The schedule owner cannot create tasks in the target project"),
 ])
 async def test_schedule_denial_explains_required_repair(monkeypatch, case, detail):
     import main

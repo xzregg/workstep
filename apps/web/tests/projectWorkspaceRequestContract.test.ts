@@ -29,7 +29,7 @@ test('remote workspace request bodies, path resources, templates and preview sha
   for (const url of urls) assert.notEqual(new URL(url,'http://workstep.local').searchParams.get('with_share'),'true',url)
   for (const url of urls) assert.equal(new URL(url,'http://workstep.local').searchParams.get('project_id'),'visible',url)
   const count = urls.length
-  await assert.rejects(() => fsApi.createEntry('private',undefined,'','escape','directory'), /项目范围不匹配/)
+  await assert.rejects(() => fsApi.createEntry('private',undefined,'','escape','directory'), /Project scope mismatch/)
   assert.equal(urls.length,count)
  } finally { globalThis.fetch=original; useGatewaySessionStore.setState({ session:null }); await window.happyDOM.close() }
 })

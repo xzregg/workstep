@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { validateLanguage, languageCatalog } from '../src/i18n/languagePack.ts'
 import { flatten } from '../src/i18n/index.tsx'
 import { zhCN } from '../src/i18n/locales/zh-CN.ts'
+import errors from '../../../packages/gateway-ui/src/errors/source.json' with { type: 'json' }
 import { languagesApi } from '../src/api/languages.ts'
 import { createLanguageT, useLocaleStore } from '../src/i18n/index.tsx'
 const document = () => ({manifest: {schema_version: 1, id: 'spanish', locale: 'es-ES', name: '西班牙语', native_name: 'Español', version: '1.0.0', direction: 'ltr', fallback_locale: 'en-US', catalog_revision: languageCatalog.revision}, revision: 'a'.repeat(64), messages: {...Object.fromEntries(languageCatalog.required_keys.map(key => [key, languageCatalog.messages[key]])), 'nav.settings': 'Ajustes'}})
@@ -37,7 +38,10 @@ test('preview cancellation restores language and confirmation retains it', () =>
 })
 
 test('generated catalog exactly matches nonempty source translations', () => {
- assert.deepEqual(languageCatalog.messages, Object.fromEntries(Object.entries(flatten(zhCN)).filter(([,text]) => text.trim())))
+ assert.deepEqual(languageCatalog.messages, {
+  ...Object.fromEntries(Object.entries(flatten(zhCN)).filter(([,text]) => text.trim())),
+  ...Object.fromEntries(errors.map(([id, , chinese]) => [`errors.${id}`, chinese])),
+ })
 })
 test('failed or late downloads preserve the newer selection; catalog loads are deduplicated', async () => {
  const oldGet=languagesApi.get, oldList=languagesApi.list

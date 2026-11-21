@@ -207,7 +207,7 @@ async def test_base_engine_connection_test_reports_timeout_when_engine_swallows_
     result = await engine.test_connection(str(tmp_path), timeout_seconds=0.05)
 
     assert result.success is False
-    assert result.message == "测试超时（0.05 秒）"
+    assert result.message == "Connection test timed out after 0.05 seconds"
 
 
 @pytest.mark.anyio

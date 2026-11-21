@@ -3,11 +3,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { I18nProvider } from '../src/i18n'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 import DecisionServiceModels from '../src/components/DecisionServiceModels'
 import { decisionModelsApi } from '../src/api/decisionModels'
 
 function button(text: string) { return [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text)! }
+
+useLocaleStore.setState({ locale: 'zh-CN', language: null })
 test('model discovery is explicit, searchable and does not choose or save automatically', async () => {
  const { window } = installDomEnvironment();const root=createRoot(document.body.appendChild(document.createElement('div')))
  const original={...decisionModelsApi};let reads=0;let selected='';let signal: AbortSignal | undefined

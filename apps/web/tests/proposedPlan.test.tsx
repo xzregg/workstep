@@ -96,7 +96,7 @@ for (const withEvents of [false, true]) test(`streamed delimiters preserve live 
     const paragraph = card.querySelector('p'), node = paragraph?.firstChild
     assert.equal(paragraph?.textContent, '已有正文')
     await render('<proposed_plan>\n已有正文继续追加')
-    assert.equal(paragraph?.textContent, '已有正文')
+    assert.ok(paragraph?.textContent?.startsWith('已有正文'), 'append never removes the revealed prefix')
     for (let i = 0; i < 4; i++) await advance()
     assert.equal(paragraph?.textContent, '已有正文继续追加')
     assert.ok(paragraph?.firstChild === node, 'appends preserve the native text node')

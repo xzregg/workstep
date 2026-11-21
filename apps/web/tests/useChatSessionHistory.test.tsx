@@ -1,7 +1,7 @@
 import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import { useUserSettingsStore } from '../src/stores/userSettingsStore'
-import test from 'node:test'
+import test, { beforeEach } from 'node:test'
 import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { chatSessionApi } from '../src/api/client'
@@ -9,6 +9,11 @@ import { I18nProvider } from '../src/i18n'
 import { useChatSessionHistory } from '../src/hooks/useChatSessionHistory'
 import { useChatSessionStore } from '../src/stores/chatSessionStore'
 import ProcessTrace from '../src/components/ProcessTrace'
+
+beforeEach(() => {
+  // History tests mock history APIs, not the unrelated startup settings request.
+  useUserSettingsStore.setState({ loaded: true, loading: false, messageHistoryPageSize: 20 })
+})
 
 for (const running of [true, false]) test(`summary-only messages load the collapsed preview automatically only while running=${running}`, async () => {
   const { window } = installDomEnvironment()
@@ -21,7 +26,8 @@ for (const running of [true, false]) test(`summary-only messages load the collap
     return message ? <ProcessTrace events={message.events || []} running={message.status === 'running'}
       eventSummary={message.event_summary} detailsAvailable={message.event_detail?.available}
       detailsLoaded={message.event_detail?.loaded} detailsLoading={message.event_detail?.loading}
-      detailsError={message.event_detail?.error} onLoadDetails={() => void history.loadMessageEvents(message.id)} /> : null
+      detailsPreviewLoaded={message.event_detail?.preview_loaded}
+      detailsError={message.event_detail?.error} onLoadDetails={preview => void history.loadMessageEvents(message.id, undefined, preview)} /> : null
   }
   try {
     useChatSessionStore.setState({ sessions: {} })
@@ -54,7 +60,7 @@ for (const running of [true, false]) test(`summary-only messages load the collap
       await act(async () => document.querySelector<HTMLElement>('.process-trace-session-summary')!.click())
       assert.equal(document.querySelectorAll('.process-trace-preview-item').length, 2)
       assert.match(document.querySelector('.process-trace-preview')!.textContent!, /新的实时进度/)
-      assert.equal(detailRequests, 1, 'expanding reuses the in-flight or loaded event details')
+      assert.equal(detailRequests, 2, 'expanding loads complete details after the bounded preview')
     }
   } finally {
     await act(async () => root.unmount())

@@ -52,7 +52,7 @@ for (const cancelled of [false, true]) {
       <I18nProvider><AssistantChatPanel projectId="" title="Chat" messages={[
         { id: 'plan', role: 'assistant', content: '', status, events },
         ...(laterMessage ? [{ id: 'answer', role: 'user' as const, content: '继续', status: 'succeeded' as const }] : []),
-      ]} running={status === 'running'} stopping={false} input="草稿" locale="zh-CN" config={{} as never}
+      ]} running={status === 'running'} stopping={false} input="草稿" locale="zh-CN" config={{ engines: [], engine: '', defaultEngine: '', model: '', fastModel: '', onEngineChange() {}, onModelChange() {}, onFastModelChange() {} }}
         copy={{ emptyIntro: '', thinking: '', me: '用户', meInitials: 'U', agent: '助手', agentInitials: 'AI', placeholder: '', fullPrompt: '', closePrompt: '' }}
         attachmentPrefix="test" onInputChange={() => {}} onSend={() => {}} onStop={() => {}}
         onSendContent={async content => { sent.push(content); return true }}

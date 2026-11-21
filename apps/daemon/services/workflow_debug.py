@@ -30,6 +30,32 @@ def debug_workflow(source_id):
     return source, Workflow.get_or_none(Workflow.debug_source_id == source.id)
 
 
+def debug_records(source_id):
+    """Materialize history inside the caller's project database executor."""
+    _, debug = debug_workflow(source_id)
+    if debug is None:
+        return {"workflow_id": None, "workflow": None, "tasks": []}
+    rows = Task.select().where(Task.workflow_id == debug.id).order_by(Task.created_at.desc())
+    return {"workflow_id": debug.id, "workflow": json.loads(debug.steps_json),
+            "tasks": [{"id": row.id, "title": row.title, "status": row.status,
+                       "created_at": row.created_at} for row in rows]}
+
+
+def debug_task_ids(source_id, task_id=None):
+    _, debug = debug_workflow(source_id)
+    if debug is None:
+        return []
+    query = Task.select(Task.id).where(Task.workflow_id == debug.id)
+    if task_id is not None:
+        query = query.where(Task.id == task_id)
+    return [row.id for row in query]
+
+
+def debug_task_active(task_id):
+    task = Task.get_or_none(Task.id == task_id)
+    return task is not None and task_has_active_execution(task)
+
+
 def require_idle(debug):
     if debug is None:
         return

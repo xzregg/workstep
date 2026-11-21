@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import {act} from 'react'
 import {createRoot} from 'react-dom/client'
 import {Link,MemoryRouter,useLocation} from 'react-router-dom'
-import {I18nProvider} from '../src/i18n'
+import {I18nProvider,useLocaleStore} from '../src/i18n'
 import DigitalPersonHomePage,{DigitalPersonHomeRoute} from '../src/pages/DigitalPersonHomePage'
 import {useProjectStore} from '../src/stores/projectStore'
 import {useChatSessionStore} from '../src/stores/chatSessionStore'
@@ -12,6 +12,8 @@ import {digitalPersonApi,digitalRuntimeApi} from '../src/api/digitalPerson'
 import {chatSessionApi,assistantApi,providerApi} from '../src/api/client'
 import {speechOutputApi} from '../src/api/speechOutput'
 import {outputStatus} from './fixtures/speechOutput'
+
+useLocaleStore.setState({locale:'zh-CN',language:null})
 import {SpeechOutputPlayer} from '../src/utils/speechOutput'
 const home={id:'home',name:'默认工作区',path:'/home',is_default_workspace:true,workflows:[]}
 const profile={enabled:true,name:'小研',role:'研发伙伴',personality:'直接',duties:'跟进',greeting:'你好',avatar:'robot' as const}

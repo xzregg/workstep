@@ -31,7 +31,7 @@ for (const [status, running, content] of [
       return <>
         <AssistantChatPanel projectId="" title="Chat" messages={[{
           id: 'failed-message', role: 'assistant', content, status, error: status === 'error' ? '达到用量上限' : undefined,
-        }]} running={running} stopping={false} input="" locale="zh-CN" config={{} as never}
+        }]} running={running} stopping={false} input="" locale="zh-CN" config={{ engines: [], engine: '', defaultEngine: '', model: '', fastModel: '', onEngineChange() {}, onModelChange() {}, onFastModelChange() {} }}
           copy={{ emptyIntro: '', thinking: '', me: '用户', meInitials: 'U', agent: '助手', agentInitials: 'AI', placeholder: '', fullPrompt: '', closePrompt: '' }}
           attachmentPrefix="test" onInputChange={() => {}} onSend={() => {}}
           onSendContent={async () => true} onStop={() => {}}

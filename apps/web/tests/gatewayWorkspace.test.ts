@@ -44,9 +44,9 @@ test('project workspace loads only its signed project and deduplicates session l
     assert.equal(access.can_manage, false)
     assert.equal(access.gateway_url, 'http://localhost:8700')
     assert.equal(access.grants[0]?.subject_name, 'Backend')
-    await assert.rejects(projectApi.publication('private-2'), /项目/)
+    await assert.rejects(projectApi.publication('private-2'), /The project is not within the current authorization scope/)
     globalThis.fetch = async () => Response.json({ id: 'private-2', name: 'Private' })
-    await assert.rejects(projectApi.list(), /项目/)
+    await assert.rejects(projectApi.list(), /project/i)
   } finally {
     globalThis.fetch = oldFetch
     if (oldWindow) Object.defineProperty(globalThis, 'window', oldWindow)
@@ -83,7 +83,7 @@ test('workspace catalog adapters always include the signed project and reject an
       '/api/engine/coordinator/config?project_id=host-1', '/api/assistant/list?project_id=host-1',
       '/api/provider/list?project_id=host-1', '/api/engine/codex/models?provider_id=allowed&project_id=host-1',
     ])
-    await assert.rejects(providerApi.list('private'), /项目/)
+    await assert.rejects(providerApi.list('private'), /Project scope mismatch/)
     assert.equal(calls.length, 6)
   } finally {
     globalThis.fetch = oldFetch
