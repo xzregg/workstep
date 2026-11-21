@@ -82,9 +82,8 @@ async def test_coordinator_dispatch_preserves_source_and_does_not_block_health(a
     class DispatchCoordinator(CoordinatorFakeEngine):
         async def spawn(self, **kwargs):
             instructions = kwargs.get("system_prompt") or kwargs["prompt"]
-            assert "After step operations are accepted, finish this coordinator reply immediately" in instructions
-            assert "Do not poll, sleep or keep this turn open" in instructions
-            assert "Only wait for step completion when the user explicitly asks" in instructions
+            assert "Once operations are accepted, report queued/started/delivered and finish." in instructions
+            assert "Wait for completion only when explicitly asked." in instructions
             assert "for code delivery, wait for requested development/review" not in instructions
             result = await tools.call("workstep_start_step" if operation == "start" else "workstep_send_step_message", {
                 "project_id": project_id, "task_id": task_id, "step_key": step_key,
