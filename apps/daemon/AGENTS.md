@@ -44,6 +44,7 @@ uv run --no-sync pytest
 - 内部事件用 ACP，对外实时与历史回放共用 AG-UI 翻译层。修改 WebSocket、订阅或事件日志前必须阅读[技术架构与订阅](../../docs/architecture.md#技术架构已确定)及[数据模型](../../docs/architecture.md#数据模型)。
 - 项目数据路径必须通过 `Project.workstep_dir` 或线程内 `data_directory` 解析，不得写死根目录 `.workstep`。修改存储前必须阅读[数据模型](../../docs/architecture.md#数据模型)与[存储迁移](../../docs/project-storage.md)。
 - 新增或扩展助手必须复用 `AssistantConfig` / `AssistantRuntime`，不得复制会话、流式、停止及审批基础设施；修改前必须阅读[助手开发约束](../../docs/architecture.md#助手开发约束)，覆盖会话隔离和既有助手回归。
+- **渠道来源的注入边界**：所有渠道的项目聊天与任务协调助手，都必须通过统一的 `system_prompt` 参数传递渠道背景（平台、会话、发送者等）。助手、渠道适配器和消息持久化层不得把来源拼进用户正文，也不得按平台或引擎在业务层另设正文路径。原生指令传输与仅支持正文的兼容降级由引擎层负责。修改相关链路时，运行 `test_channel_prompt.py` 和 `test_channel_coordinator_source.py`。
 
 ## 项目与流程
 

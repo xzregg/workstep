@@ -153,7 +153,7 @@ try{
    if(kind==='reflection'){
     const panel=page.locator('.digital-home-detail-panel--reflection')
     assert.ok(await panel.locator('footer .digital-home-detail-pages').isVisible())
-    await panel.locator('.digital-home-detail-run>.btn').first().click()
+    await panel.locator('.digital-home-detail-run .digital-run-detail-toggle').first().click()
     await panel.locator('.digital-person-run-detail p').first().waitFor()
     assert.match(await panel.locator('.digital-person-run-detail').innerText(),/好感度 0/)
     const footer=await panel.locator('footer').boundingBox(),content=await panel.locator('.digital-home-detail-content').boundingBox()

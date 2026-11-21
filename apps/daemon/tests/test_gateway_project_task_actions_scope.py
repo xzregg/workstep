@@ -309,6 +309,16 @@ async def test_project_bridge_chat_create_load_send_reload(api_context, monkeypa
         assert (await request("GET", path, query_project="private"))[0] == 403
         assert (await request("POST", path + "/chat", {
             "project_id": project_id, "content": "只读禁止写入"}, level="read"))[0] == 403
+        archive = {"project_id": project_id, "archived": True, "ordinary_only": True}
+        assert (await request("PATCH", path + "/archive", archive, level="read"))[0] == 403
+        assert (await request("PATCH", path + "/archive", archive, query_project="private"))[0] == 403
+        assert (await request("PATCH", path + "/archive", {**archive, "project_id": "private"}))[0] == 403
+        assert (await request("PATCH", path + "/archive", archive))[0] == 409
+
+        status, empty = await request("POST", "/api/chat-sessions", {"project_id": project_id, "engine": "claude"})
+        assert status == 200, empty
+        status, removed = await request("PATCH", f"/api/chat-sessions/{empty['id']}/archive", archive)
+        assert status == 200 and removed["deleted"] is True
     finally:
         await module.shutdown()
         await bus.close()

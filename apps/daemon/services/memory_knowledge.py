@@ -42,6 +42,11 @@ def ensure_schema():
           CREATE TABLE IF NOT EXISTS memory_changes (
             id INTEGER PRIMARY KEY, old_id INTEGER, new_id INTEGER NOT NULL,
             operation TEXT NOT NULL, created_at TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS memory_reflection_additions (
+            id INTEGER PRIMARY KEY, run_id TEXT NOT NULL,
+            knowledge_id INTEGER REFERENCES memory_knowledge(id) ON DELETE SET NULL);
+          CREATE INDEX IF NOT EXISTS memory_reflection_additions_run ON memory_reflection_additions(run_id);
+          CREATE INDEX IF NOT EXISTS memory_reflection_additions_knowledge ON memory_reflection_additions(knowledge_id);
           CREATE TRIGGER IF NOT EXISTS memory_knowledge_changed AFTER UPDATE OF source_hash,forgotten,scope ON memories
           WHEN old.source_hash != new.source_hash OR old.scope != new.scope OR new.forgotten=1
           BEGIN
@@ -182,7 +187,7 @@ def _validate(item, available):
                 supersedes=supersedes, conflict=item.get('conflict') is True)
 
 
-def store_extraction(payload, rows, existing_ids=(), *, report=False, strict=False, connection=None):
+def store_extraction(payload, rows, existing_ids=(), *, report=False, strict=False, connection=None, reflection_run_id=None):
     """Atomically reject stale/foreign evidence. Invalid items never become facts."""
     if connection is None:
         ensure_schema()
@@ -247,6 +252,9 @@ def store_extraction(payload, rows, existing_ids=(), *, report=False, strict=Fal
             if not cursor.rowcount:
                 continue
             kid = cursor.lastrowid
+            if reflection_run_id is not None:
+                db.execute('INSERT INTO memory_reflection_additions(run_id,knowledge_id) VALUES(?,?)',
+                           (reflection_run_id,kid))
             for mid in ids:
                 db.execute('INSERT INTO memory_knowledge_sources VALUES(?,?,?)',(kid,mid,available[mid]['source_hash']))
             for entity in value['entities']:

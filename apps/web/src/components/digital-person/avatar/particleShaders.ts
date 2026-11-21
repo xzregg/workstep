@@ -33,7 +33,7 @@ void main(){
    gl_PointSize=size*(.83+1.1*pow(seed,3.))*(pass>.5?2.6:1.);
    return;
  }
- float voice=smoothstep(.012,.64,energy);
+ float voice=smoothstep(.035,.92,sqrt(energy));
  vec3 center=vec3(${shellOrigin[0]},${shellOrigin[1]},0.);
  vec3 q=p-center;float particleFade=1.;
  float toolSignal=0.,completionSignal=0.;
@@ -45,7 +45,8 @@ void main(){
    float pulse=sin(seconds*1.7+coreRadius*19.+q.y*13.);
    q.xz=rot(seconds*(.50+1.1*exp(-9.*coreRadius))+.21*pulse)*q.xz;
    q.y+=.018*pulse*sin(q.x*10.+q.z*13.-seconds);
-   q*=1.+.07*pulse+.21*coreBeat-.13*heartbeat(seconds+.13);
+   float resting=1.-.78*voice;
+   q*=1.+.07*pulse+resting*(.21*coreBeat-.13*heartbeat(seconds+.13))+.45*voice;
    if(id==3. && seed<.76){
      float group=floor(seed*8./.76);
      vec2 flight=vec2(0.);
@@ -55,7 +56,7 @@ void main(){
      if(flight.y>0. && age>0. && age<1.20){
        if(age<1.){
          vec3 drift=normalize(q+vec3(.04*sin(seed*723.),.05*cos(seed*283.),.035));
-         float distance=(1.-exp(-2.1*age))*(.19+.25*variation)*(.55+.65*flight.y);
+         float distance=(1.-exp(-3.8*age))*(.16+.25*variation)*(.35+.80*flight.y);
          q+=drift*distance;
          q.xy+=vec2(-drift.y,drift.x)*.065*age*variation;
          particleFade=1.-smoothstep(.45,1.,age);
@@ -91,12 +92,12 @@ void main(){
  gl_Position=vec4(1.10*(1.+breath)*proj*p.xy*fit,-p.z*.35,1.);
  color=mix(vec3(.027,.37,.83),vec3(.60,.99,1.),f*.58+meta.y*.38);
  if(id==3.){
-   float core=1.-smoothstep(.074,.194,length(position-center));
+   float core=1.-smoothstep(.074+.024*voice,.194+.042*voice,length(position-center));
    color=mix(vec3(.15,.73,1.),vec3(1.,1.,.91),.91*core+.09*meta.y);
  }
  alpha=meta.y*(.40+f*.86)*light;
- if(id==3.)alpha*=(1.41+.62*coreBeat+.32*voice+.53*release)*particleFade;
- if(id==4.){color=vec3(.57,.91,1.);alpha*=.028+.052*coreBeat+afterglow*.078;}
+ if(id==3.)alpha*=(1.41+.62*coreBeat*(1.-.78*voice)+1.20*voice+.53*release)*particleFade;
+ if(id==4.){color=mix(vec3(.57,.91,1.),vec3(.90,1.,.97),voice);alpha*=.028+.052*coreBeat*(1.-.78*voice)+afterglow*.17;}
  if(id==5.){
    color=mix(vec3(.15,.65,.99),vec3(.83,.99,1.),f);
    alpha*=(1.59+1.10*f+.56*flow+.95*beat+.40*toolSignal+.44*completionSignal);
@@ -115,7 +116,8 @@ void main(){
    alpha*=.84+.34*flow+.42*beat+.30*strand-.20*fiber+1.55*toolSignal+1.38*completionSignal+.30*voice;
  }
  alpha*=1.-.59*mood.z;
- gl_PointSize=size*(1.+breath)*proj*(id==4.?6.5:.83+f*.65+pow(seed,8.)*.82)*(pass>.5?4.8+1.15*shellGlow:1.+.24*shellGlow);
+ float speechSize=id==3.||id==4.?1.+.36*voice:1.;
+ gl_PointSize=size*(1.+breath)*proj*speechSize*(id==4.?6.5:.83+f*.65+pow(seed,8.)*.82)*(pass>.5?4.8+1.15*shellGlow:1.+.24*shellGlow);
 
 }`;
 export const fragment=`precision mediump float;varying mediump vec3 color;varying mediump float alpha;varying mediump float shellGlow;uniform float pass;

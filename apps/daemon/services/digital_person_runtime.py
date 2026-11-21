@@ -270,7 +270,7 @@ class DigitalPersonRuntime:
                 'delegation_pending': any((d.get('followup_state') == 'pending' if d.get('followup_state')
                                            else not d.get('notified'))
                                           or notification(d)['notification_state'] == 'notifying' for d in delegations),
-                'delegations': [{**{key: row.get(key) for key in ('id', 'project_id', 'session_id', 'message_id', 'turn_id', 'status', 'followup_state', 'created_at')},
+                'delegations': [{**{key: row.get(key) for key in ('id', 'project_id', 'session_id', 'message_id', 'turn_id', 'title', 'status', 'followup_state', 'created_at')},
                                  'instruction': str(row.get('instruction') or '')[:120], **notification(row)}
                                 for row in delegations[delegation_offset:delegation_offset + limit]],
                 'runs': [{**{key: row.get(key) for key in ('id', 'status', 'created_at')},
@@ -334,6 +334,13 @@ class DigitalPersonRuntime:
             return result
         return await self.projects.run_db(home.id, read)
 
+    async def run_knowledge(self, run_id):
+        from services import memory_atlas
+        detail = await self.run_detail(run_id)
+        if detail.get('processing', {}).get('memories') == 0:
+            return {'status': 'empty', 'items': [], 'unavailable': 0}
+        return await memory_atlas.reflection_additions(self.projects, run_id)
+
     async def feedback(self, message_id, value):
         if value not in (-1, 0, 1):
             raise ValueError('Feedback can only be -1, 0, or 1')
@@ -358,19 +365,23 @@ class DigitalPersonRuntime:
                 return {'items': []}
             snapshot, = await self.delegation_management.read([item], include_content=True)
             return {'items': [redact({key: snapshot.get(key) for key in (
-                'id', 'project_id', 'session_id', 'message_id', 'instruction', 'status',
+                'id', 'project_id', 'session_id', 'message_id', 'title', 'instruction', 'status',
                 'followup_state', 'question', 'created_at',
             )} | {'goal': snapshot.get('root_instruction') or snapshot['instruction'],
                   'result': snapshot['content']})]}
-        return {'items': [{key: item.get(key) for key in ('id', 'session_id', 'instruction', 'status', 'followup_state', 'created_at')}
+        return {'items': [{key: item.get(key) for key in ('id', 'session_id', 'title', 'instruction', 'status', 'followup_state', 'created_at')}
                           for item in items[:20]]}
 
     async def delegate(self, project_id, instruction, origin_session_id='', request_id='', continuation_of='',
-                       *, automatic_result_id=None, target_session_id=''):
+                       *, automatic_result_id=None, target_session_id='', title=None):
         if not (await asyncio.to_thread(digital_person.get_profile)).enabled:
             raise ValueError('Please enable the digital human first')
         if not instruction.strip() or len(instruction) > 12000:
             raise ValueError('Please provide valid execution requirements')
+        if title is not None:
+            title = title.strip()
+            if not title or len(title) > 60 or len(title.splitlines()) != 1:
+                raise ValueError('Delegation title must be one line of 1 to 60 characters')
         target = self.projects.get_project_by_id(project_id)
         if not target:
             raise ValueError('Target project does not exist')
@@ -386,12 +397,15 @@ class DigitalPersonRuntime:
             state = await self.state()
             if not origin_session_id:
                 origin_session_id = (await self.main_session())['id']
+            previous = next((item for item in state['delegations'] if item['id'] == continuation_of), None) if continuation_of else None
+            delegation_title = title or (previous.get('title') if previous else None)
             existing = next((d for d in state['delegations'] if d['request_id'] == request_id), None)
             if existing:
                 existing_target = existing.get('target_session_id', '')
                 if (existing['project_id'], existing['instruction'], existing['origin_session_id'],
-                        existing_target, '' if existing_target else existing.get('continuation_of', '')) != (
-                    project_id, instruction, origin_session_id, target_session_id, continuation_of,
+                        existing_target, '' if existing_target else existing.get('continuation_of', ''),
+                        existing.get('title')) != (
+                    project_id, instruction, origin_session_id, target_session_id, continuation_of, delegation_title,
                 ):
                     raise ValueError('Request identifier already used for another delegation')
                 return existing
@@ -400,7 +414,6 @@ class DigitalPersonRuntime:
             ).scalar())
             if origin_archived is None or (target_session_id and origin_archived):
                 raise ValueError('The source session is archived or does not belong to the digital human workspace')
-            previous = next((item for item in state['delegations'] if item['id'] == continuation_of), None) if continuation_of else None
             if continuation_of and (not previous or previous['project_id'] != project_id
                                     or previous['origin_session_id'] != origin_session_id):
                 raise ValueError('The delegation to be continued does not belong to the current source session or target project')
@@ -429,7 +442,7 @@ class DigitalPersonRuntime:
                         ChatMessage.status.in_(('queued', 'running', 'stopping')),
                     ).exists()
                 else:
-                    session_id = self.chats.create_session(project_id, title=instruction[:60])['id']
+                    session_id = self.chats.create_session(project_id, title=delegation_title or instruction[:60])['id']
                 if automatic_result_id:
                     from agent_assistants.chat_session import ChatAccepted
                     from models.base import db_proxy
@@ -470,6 +483,7 @@ class DigitalPersonRuntime:
             item = {'id': str(uuid.uuid4()), 'request_id': request_id, 'project_id': project_id,
                     'session_id': accepted.session_id, 'origin_session_id': origin_session_id,
                     'message_id': accepted.assistant_message_id, 'instruction': instruction,
+                    **({'title': delegation_title} if delegation_title else {}),
                     'turn_id': accepted.turn_id, 'continuation_of': previous['id'] if previous else '',
                     **({'target_session_id': target_session_id} if target_session_id else {}),
                     'status': 'queued' if busy else 'running', 'created_at': utc_now(), 'notified': False,
@@ -938,8 +952,8 @@ class DigitalPersonRuntime:
                 # delivery effects; a stale replacement must not change affinity.
                 result = await asyncio.to_thread(assessment.commit,batch_context.get('reflection_batch',[]),memories,run['id'],existing_ids)
                 committed = True
-                await management.apply(actions, eligible, profile)
                 run['memory_processing'] = {'status':'idle','mode':'unified','knowledge':result}
+                await management.apply(actions, eligible, profile)
                 await asyncio.to_thread(memory_index.mutate_state,'memory_worker',lambda s:s.update(
                     status='idle',mode='unified',error_type=None,retry_at=0,knowledge=result,finished_at=utc_now().isoformat()))
                 for group in groups:

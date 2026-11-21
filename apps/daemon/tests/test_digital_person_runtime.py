@@ -421,7 +421,7 @@ async def test_quiet_time_defers_and_keeps_pending_work(runtime,monkeypatch):
     assert detail['summary']==''
     assert detail['outcome']['sent']==0
 
-@pytest.mark.parametrize('endpoint', ['activity', 'activity/records', 'runs/canary-run', 'check', 'feedback'])
+@pytest.mark.parametrize('endpoint', ['activity', 'activity/records', 'runs/canary-run', 'runs/canary-run/knowledge', 'check', 'feedback'])
 async def test_runtime_api_stays_responsive_under_slow_database(runtime,monkeypatch,endpoint):
     import threading
     import main
@@ -430,7 +430,7 @@ async def test_runtime_api_stays_responsive_under_slow_database(runtime,monkeypa
     from httpx import AsyncClient,ASGITransport
     from services import digital_person_runtime as service
     runtime, project, _=runtime
-    if endpoint == 'runs/canary-run':
+    if endpoint.startswith('runs/canary-run'):
         await runtime.mutate(lambda state: state['runs'].append({'id': 'canary-run', 'summary': 'done'}))
     if endpoint == 'feedback':
         from models.chat_session import ChatMessage
@@ -476,6 +476,7 @@ async def test_runtime_api_host_scope_rejects_project_identity(runtime,monkeypat
             assert (await client.get('/api/digital-person/delegations', params={'delegation_id': 'prior', 'origin_session_id': 'source'})).status_code==403
             assert (await client.post('/api/digital-person/delegate', json={'project_id': 'other', 'instruction': 'follow up', 'request_id': 'denied', 'continuation_of': 'prior'})).status_code==403
             assert (await client.get('/api/digital-person/runs/private')).status_code==403
+            assert (await client.get('/api/digital-person/runs/private/knowledge')).status_code==403
             assert (await client.post('/api/digital-person/check')).status_code==403
             assert (await client.post('/api/digital-person/check?background=true')).status_code==403
 
@@ -625,7 +626,7 @@ async def test_delegate_continuation_reuses_session_and_queues_in_order(runtime,
 
     monkeypatch.setattr(current.chats, '_prepare_turn_context', pause_first)
     monkeypatch.setattr(current.chats, '_invoke', invoke)
-    first = await current.delegate(target.id, '初始需求', origin, 'first')
+    first = await current.delegate(target.id, '初始需求', origin, 'first', title='完善登录')
     await asyncio.wait_for(entered.wait(), 1)
     try:
         assert (await current.list_delegations(target.id, origin))['items'][0]['id'] == first['id']
@@ -636,6 +637,7 @@ async def test_delegate_continuation_reuses_session_and_queues_in_order(runtime,
         third = await current.delegate(target.id, '追加找回密码', origin, 'third', first['id'])
         assert second['status'] == third['status'] == 'queued'
         assert second['session_id'] == third['session_id'] == first['session_id']
+        assert second['title'] == third['title'] == '完善登录'
         assert second['message_id'] != first['message_id']
         replay = await current.delegate(target.id, '追加验证码', origin, 'second', first['id'])
         assert (replay['id'], replay['message_id']) == (second['id'], second['message_id'])
@@ -675,9 +677,11 @@ async def test_delegate_existing_conversation_registers_and_follows_it(runtime, 
     current, _, _ = runtime
     target = await asyncio.to_thread(current.projects.init_project, tmp_path / 'adopt-chat')
     origin = (await current.main_session())['id']
-    session = await current.projects.run_db(target.id, lambda _: current.chats.create_session(target.id))
+    session = await current.projects.run_db(target.id, lambda _: current.chats.create_session(target.id, title='已有会话'))
     sid = session['id']
     monkeypatch.setattr(main, 'digital_person_runtime', current)
+    monkeypatch.setattr(main, 'project_manager', current.projects)
+    monkeypatch.setattr(main, 'chat_session_module', current.chats)
     started, finish = asyncio.Event(), asyncio.Event()
     prompts = []
 
@@ -716,7 +720,7 @@ async def test_delegate_existing_conversation_registers_and_follows_it(runtime, 
             denied = await http.post('/api/digital-person/delegate/existing', json=payload)
         assert denied.status_code == 403
     argv = ['digital-person', 'delegate', '--project', target.id, '--session', origin,
-            '--target-session', sid, '--instruction', '接着执行', '--idempotency-key', 'adopt']
+            '--target-session', sid, '--title', '核对现有结果', '--instruction', '接着执行', '--idempotency-key', 'adopt']
     try:
         await asyncio.wait_for(started.wait(), 2)
         args = build_parser().parse_args(argv)
@@ -732,6 +736,8 @@ async def test_delegate_existing_conversation_registers_and_follows_it(runtime, 
         assert adopted['followup_state'] == 'pending'
         replay = await dispatch(args, client)
         assert (replay['id'], replay['message_id']) == (adopted['id'], adopted['message_id'])
+        archive = build_parser().parse_args(['session', 'archive', '--project', target.id, '--session', sid])
+        assert await dispatch(archive, client) == {'ok': False, 'error': 'Chat session is running'}
         assert len(prompts) == 1
     finally:
         finish.set()
@@ -743,6 +749,8 @@ async def test_delegate_existing_conversation_registers_and_follows_it(runtime, 
     assert [item['id'] for item in eligible] == [adopted['id']]
     result, = (await current.list_delegations(target.id, origin, adopted['id']))['items']
     assert result['status'] == 'completed' and result['result'] == '委派执行完成'
+    assert result['title'] == '核对现有结果'
+    assert await current.projects.run_db(target.id, lambda _: ChatSession.get_by_id(sid).title) == '已有会话'
     activity, = (await current.activity_records())['delegations']
     assert (activity['id'], activity['session_id']) == (adopted['id'], sid)
     assert '已有对话结果' in prompts[1] and '接着执行' in prompts[1]
@@ -759,11 +767,14 @@ async def test_delegate_existing_conversation_registers_and_follows_it(runtime, 
         await current.delegate(target.id, '不能发送', origin, 'wrong-project', target_session_id=origin)
     with pytest.raises(ValueError, match='source session'):
         await current.delegate(target.id, '不能发送', sid, 'invalid-origin', target_session_id=sid)
-    await current.projects.run_db(target.id, lambda _: ChatSession.update(archived=True).where(
-        ChatSession.id == sid,
-    ).execute())
+    before_archive = (await current.state())['delegations']
+    result = await dispatch(archive, client)
+    assert result['id'] == sid and result['archived'] is True
+    assert (await current.state())['delegations'] == before_archive
     with pytest.raises(ValueError, match='archived'):
         await current.delegate(target.id, '不能发送', origin, 'archived', target_session_id=sid)
+    with pytest.raises(ValueError, match='archived'):
+        await current.delegate(target.id, '不能续办', origin, 'archived-continuation', second['id'])
     assert len((await current.state())['delegations']) == 2
 
 
@@ -773,6 +784,7 @@ async def test_delegate_continuation_api_does_not_block_health(runtime, monkeypa
     from fastapi import FastAPI
     from httpx import ASGITransport, AsyncClient
     from api.digital_person import router
+    from models.chat_session import ChatMessage, ChatSession
 
     current, _, _ = runtime
     target = await asyncio.to_thread(current.projects.init_project, tmp_path / 'continuation-canary')
@@ -783,8 +795,6 @@ async def test_delegate_continuation_api_does_not_block_health(runtime, monkeypa
         return '完成', [], 'worker-thread'
 
     monkeypatch.setattr(current.chats, '_invoke', invoke)
-    first = await current.delegate(target.id, '开始', origin, 'first')
-    await current.chats.await_turn(first['turn_id'], timeout=2)
     entered, release = threading.Event(), threading.Event()
     submit = current.chats.submit_message
 
@@ -793,7 +803,6 @@ async def test_delegate_continuation_api_does_not_block_health(runtime, monkeypa
         assert release.wait(2)
         return submit(*args, **kwargs)
 
-    monkeypatch.setattr(current.chats, 'submit_message', slow_submit)
     app = FastAPI()
     app.include_router(router)
 
@@ -803,10 +812,31 @@ async def test_delegate_continuation_api_does_not_block_health(runtime, monkeypa
 
     scope = {'project_id': target.id, 'origin_session_id': origin}
     async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
+        instruction = '核对登录流程并记录测试结论。' * 20
+        payload = {**scope, 'instruction': instruction, 'title': '  核对登录流程  ', 'request_id': 'first'}
+        for invalid in ('   ', '第一行\n第二行', '长' * 61):
+            assert (await client.post('/api/digital-person/delegate', json={**payload, 'title': invalid})).status_code == 400
+        created = await client.post('/api/digital-person/delegate', json=payload)
+        assert created.status_code == 200, created.text
+        first = created.json()
+        await current.chats.await_turn(first['turn_id'], timeout=2)
+        assert first['title'] == '核对登录流程' and first['instruction'] == instruction
+        assert (await current.state())['delegations'][0]['title'] == first['title']
+        assert await current.projects.run_db(target.id, lambda _: ChatSession.get_by_id(first['session_id']).title) == first['title']
+        assert await current.projects.run_db(target.id, lambda _: ChatMessage.select(ChatMessage.content).where(
+            ChatMessage.session == first['session_id'], ChatMessage.role == 'user',
+        ).scalar()) == instruction
+        replay = await client.post('/api/digital-person/delegate', json={**payload, 'title': first['title']})
+        assert replay.json()['id'] == first['id']
+        assert (await client.post('/api/digital-person/delegate', json={**payload, 'title': '另一标题'})).status_code == 400
         listed = await client.get('/api/digital-person/delegations', params=scope)
         assert listed.json()['items'][0]['id'] == first['id']
+        assert listed.json()['items'][0]['title'] == first['title']
+        activity, = (await current.activity_records())['delegations']
+        assert activity['title'] == first['title'] and activity['instruction'] == instruction[:120]
+        monkeypatch.setattr(current.chats, 'submit_message', slow_submit)
         pending = asyncio.create_task(client.post('/api/digital-person/delegate', json={
-            **scope, 'instruction': '追加需求', 'request_id': 'continue', 'continuation_of': first['id'],
+            **scope, 'instruction': '追加需求', 'title': '补查权限', 'request_id': 'continue', 'continuation_of': first['id'],
         }))
         try:
             assert await asyncio.to_thread(entered.wait, 2)
@@ -816,7 +846,9 @@ async def test_delegate_continuation_api_does_not_block_health(runtime, monkeypa
         response = await pending
     assert response.status_code == 200, response.text
     assert response.json()['session_id'] == first['session_id']
+    assert response.json()['title'] == '补查权限'
     await current.chats.await_turn(response.json()['turn_id'], timeout=2)
+    assert await current.projects.run_db(target.id, lambda _: ChatSession.get_by_id(first['session_id']).title) == first['title']
 
 async def test_failed_local_delivery_does_not_block_channels_and_retry_skips_success(runtime,monkeypatch):
     runtime, project, _=runtime
@@ -1021,10 +1053,13 @@ async def test_bound_channel_injects_only_changed_digital_person_context(runtime
         await send(1, 'alice')
         assert calls[-1][1] is None and 'Name: 渠道数字人' in calls[-1][2]
         assert 'workstep-ui' not in calls[-1][2]
+        assert calls[-1][0] == '你好'
+        assert '"sender_id": "alice"' in calls[-1][2]
         module._sessions.clear()
         await send(2, 'bob')
-        assert calls[-1][1:] == ('channel-thread', '')
-        assert 'bob' in calls[-1][0] and 'alice' in calls[0][0]
+        assert calls[-1][:2] == ('你好', 'channel-thread')
+        assert '"sender_id": "bob"' in calls[-1][2]
+        assert 'Name: 渠道数字人' not in calls[-1][2]
 
         original_execute = project.db.execute_sql
         entered, release = threading.Event(), threading.Event()
@@ -1046,10 +1081,32 @@ async def test_bound_channel_injects_only_changed_digital_person_context(runtime
             await pending
         assert calls[-1][2] == ''
 
-        store.set('digital_person', {'enabled': True, 'name': '新人设'})
+        from services import digital_person
+        monkeypatch.setattr(digital_person, 'PROJECT_DELEGATION_PROMPT', 'Updated delegation instructions')
         await send(4, 'bob')
+        assert calls[-1][2] == 'Updated delegation instructions'
+
+        store.set('digital_person', {'enabled': True, 'name': '新人设'})
+        await send(5, 'bob')
         assert 'Name: 新人设' in calls[-1][2]
-        assert len(calls) == 4
+        assert 'Updated delegation instructions' not in calls[-1][2]
+        await send(6, 'bob')
+        assert calls[-1] == ('你好', 'channel-thread', '')
+        assert len(calls) == 6
+
+        from models.chat_session import ChatMessage
+        rows = await current.projects.run_db(project.id, lambda _: list(
+            ChatMessage.select(ChatMessage.role, ChatMessage.content, ChatMessage.prompt).dicts()
+        ))
+        assert len(rows) == 12
+        assert all(row['content'] == ('你好' if row['role'] == 'user' else '收到') for row in rows)
+        source_updates = [row['prompt'] for row in rows if 'Current channel source' in (row['prompt'] or '')]
+        assert len(source_updates) == 2
+        for snapshot in source_updates:
+            instructions, body = snapshot.split('### 正文（user）', 1)
+            assert '### 独立指令（developer）' in instructions
+            assert body.strip() == '```text\n你好\n```'
+        assert manager._adapters[bot['id']].sent == [('room', '收到')] * 6
     finally:
         await manager.shutdown()
 
@@ -1277,6 +1334,7 @@ async def test_activity_records_api_paginates_previews_and_loads_detail_on_deman
         state['delegations'] = [{'id': f'work-{i}', 'project_id': 'p', 'session_id': f's{i}',
                                  'instruction': '执行要求' * 1000, 'status': 'running' if i == 0 else 'completed',
                                  'created_at': f'2026-11-14T01:{i:02}:00', 'request_id': 'private'} for i in range(12)]
+        state['runs'][0]['activity_summary'] = '整理 4 条消息（2 个会话），新增 1 条记忆'
     await runtime.mutate(seed)
     app = FastAPI(); app.include_router(router)
     async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
@@ -1292,6 +1350,10 @@ async def test_activity_records_api_paginates_previews_and_loads_detail_on_deman
         assert {r['id'] for r in second['runs']}.isdisjoint(r['id'] for r in first['runs'])
         detail = (await client.get('/api/digital-person/runs/run-0')).json()
         assert detail['summary'] == '结果' * 1000
+        preview = await client.get('/api/digital-person/runs/run-0/knowledge')
+        assert preview.headers['cache-control'] == 'no-store'
+        assert preview.json() == {'status':'legacy','items':[],'unavailable':0}
+        assert (await client.get('/api/digital-person/runs/missing/knowledge')).status_code == 404
         assert (await client.get('/api/digital-person/runs/missing')).status_code == 404
         assert (await client.get('/api/digital-person/activity/records?limit=101')).status_code == 422
         assert (await client.get('/api/digital-person/activity/records?run_offset=-1')).status_code == 422

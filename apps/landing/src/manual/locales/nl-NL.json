@@ -93,7 +93,8 @@
         "tips": [
           "Accountabonnementen, API-inloggegevens en facturering worden bepaald door de serviceprovider. Het installeren van een SDK levert geen inloggegevens op.",
           "Als u bij het bewerken van een provider de sleutel leeg laat, blijft de oude waarde behouden. Voer een nieuwe sleutel in om deze te vervangen en verberg sleutels voordat u schermafbeeldingen maakt of de configuratie deelt.",
-          "In de door de onderneming beheerde modus kunnen providers door het platform worden toegewezen. Gebruik een geautoriseerde provider in plaats van deze opnieuw toe te voegen."
+          "In de door de onderneming beheerde modus kunnen providers door het platform worden toegewezen. Gebruik een geautoriseerde provider in plaats van deze opnieuw toe te voegen.",
+          "Modellen ophalen bundelt protocollen voor één selectie en slaat na bevestiging op; mislukte protocollen behouden hun cache. Bewerk gateway-beheerde aanbieders alleen daar. Chatplanning en rechten staan los; een andere aanbieder vereist expliciete overdracht. Ingeklapte sporen zijn voorbeelden; uitklappen laadt alle details."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Werkstromen bewerken",
     "summary": "Verdeel het werk in stappen en configureer uitvoeringsengines, invoer, uitvoer en beoordelingsregels.",
     "sections": [
+      {
+        "title": "Een workflowconcept debuggen",
+        "steps": [
+          "Kies op het lokale hostcanvas Debuggen of Debuggen vanaf deze stap, vul taak en voorgaande voorbeelden in en start. Het concept draait echt en kan bestanden wijzigen of geld kosten. Stop of wis de aparte geschiedenis; dit voltooit geen productietaak."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Een workflowconcept debuggen",
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
+        }
+      },
       {
         "title": "Stappen toevoegen en verbinden",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Een berichtconcept inspreken",
         "steps": [
-          "Open «Instellingen → Spraakinstellingen → Invoer» en kies een lokaal model, cloudprovider of eigen externe dienst. Download lokaal eerst runtime en model, en kies «Dit model gebruiken». Paraformer ondersteunt Mandarijn, Kantonees en Engels; Zipformer Mandarijn en Engels. Sla op en controleer met «Microfoon testen». De modellen staan op de WorkStep-host.",
+          "Open «Instellingen → Spraakinstellingen → Invoer» en kies een lokaal model, cloudprovider of eigen externe dienst. Download lokaal eerst runtime en model, en kies «Dit model gebruiken». Paraformer ondersteunt Mandarijn, Kantonees en Engels; SenseVoice Mandarijn en Engels. Sla op en controleer met «Microfoon testen». De modellen staan op de WorkStep-host.",
           "Gebruik op de computer de microfoonknop. Tik op de telefoon bij een leeg concept rechtsonder op het luidsprekertje; met tekst verschijnt de verzendknop. Lang indrukken behoudt systeemtekstselectie. Controleer na opname de transcriptie en verzend handmatig. Maximaal twee minuten per opname; annuleren verzendt niets."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Stel communicatiestijl, hoofdgesprek, proactieve reflectie en kanaalontvangst in. Bekijk herinneringen met bronnen en schakel zo nodig stem en persoonsherkenning in.",
     "sections": [
       {
+        "title": "De geheugenkaart verkennen",
+        "steps": [
+          "Open Instellingen → Gegevenscentrum (voorheen Digitale persoon). Schakel op de startpagina naar de geheugenkaart, verschuif, zoom en kies een ster voor kennis en oorspronkelijke bronnen. Er worden maximaal 500 sterren getoond, niet het hele geheugen."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "De geheugenkaart verkennen",
+          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
+        }
+      },
+      {
         "title": "Persoonlijkheid, verantwoordelijkheden en hoofdgesprek instellen",
         "steps": [
           "Open «Instellingen → Digitale persoon → Eerste begeleiding», vul de naam in en bewerk persoonlijkheid, verantwoordelijkheden en vast geheugen onder «Persoonlijkheid en verantwoordelijkheden». Gebruik voorinstellingen of importeer uit het rollencentrum, configureer een beschikbare engine en kies «Voltooien en inschakelen».",
@@ -1630,7 +1653,8 @@
           "Probeer de melding opnieuw bij bezorgfouten. Controleer reflectievoltooiing en berichtbezorging apart. Automatische reflectie uitzetten pauzeert geplande controles; gewone chat en handmatige reflectie blijven werken."
         ],
         "tips": [
-          "Het standaardinterval is 5 minuten. Proactief contact toestaan betekent niet elke ronde een bericht; zonder nieuwe gebeurtenissen kan een ronde stil eindigen. Modeloproepen kunnen geld kosten; het overzicht is geen volledige gedachteketen."
+          "Het standaardinterval is 5 minuten. Proactief contact toestaan betekent niet elke ronde een bericht; zonder nieuwe gebeurtenissen kan een ronde stil eindigen. Modeloproepen kunnen geld kosten; het overzicht is geen volledige gedachteketen.",
+          "Een delegatietitel heeft maximaal 60 tekens en vervangt nooit de volledige instructie. Vervolgopdrachten kunnen de titel erven; bestaande chats worden niet hernoemd. Het aantal nieuwe herinneringen opent samenvattingen, de rechterpijl het volledige verslag. Nul blijft verborgen; stilte is geen bezorgfout."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Microfoon, camera en afspelen vereisen afzonderlijke systeem-/sitetoestemming. Externe diensten ontvangen relevante audio. Werkelijk geluid op telefoon en desktop vereist nog controle op die apparaten.",
-          "Alleen nieuwe antwoorden worden voorgelezen. Het volledige gesprekspaneel openen pauzeert automatisch voorlezen; sluiten haalt oude inhoud niet in. Verwacht geen doorlopend luisteren met vergrendeld scherm of gesloten app."
+          "Alleen nieuwe antwoorden worden voorgelezen. Het volledige gesprekspaneel openen pauzeert automatisch voorlezen; sluiten haalt oude inhoud niet in. Verwacht geen doorlopend luisteren met vergrendeld scherm of gesloten app.",
+          "Het eerste spraakdeel wordt direct gemaakt; latere zinnen worden maximaal 350ms gebundeld, volgens modellimieten gesplitst en bij voltooiing afgewerkt. Stoppen, dempen of van chat wisselen wist wachtende audio. Kies een downloadbron, pauzeer, hervat of ruim op; controleer vóór gebruik. De microfoon wordt niet automatisch aangezet."
         ],
         "screenshot": {
           "id": "speech-output",

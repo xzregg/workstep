@@ -42,6 +42,8 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert "WORKSTEP_ACTION_INPUT" in text
     assert "python -m cli message send --project <project_id> --session <session_id> --content" in text
     assert "workstep_send_message" in text
+    assert "python -m cli session archive --project <project_id> --session <session_id> --json" in text
+    assert "workstep_archive_chat_session" in text
     assert "python -m cli project action-create" in text
     assert "python -m cli project quick-buttons" in text
     assert "python -m cli workflow quick-buttons" in text

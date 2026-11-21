@@ -2,6 +2,7 @@ import type { AssistantChatMessage } from '../../stores/assistantStore'
 
 export type DigitalPersonUiAction =
   | { action: 'conversation.open'; title: string; project?: string }
+  | { action: 'conversation.open'; project_id: string; session_id: string }
   | { action: 'window.close' }
 
 const marker = '```workstep-ui'
@@ -15,7 +16,15 @@ function parseAction(json: string): DigitalPersonUiAction | undefined {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return
     const keys = Object.keys(value)
     if (value.action === 'window.close' && keys.length === 1) return { action: value.action }
-    if (value.action !== 'conversation.open' || !keys.every(key => ['action', 'title', 'project'].includes(key))) return
+    if (value.action !== 'conversation.open') return
+    if (keys.includes('project_id') || keys.includes('session_id')) {
+      if (keys.length !== 3 || typeof value.project_id !== 'string' || typeof value.session_id !== 'string') return
+      const project_id = value.project_id.trim()
+      const session_id = value.session_id.trim()
+      if (project_id && session_id) return { action: value.action, project_id, session_id }
+      return
+    }
+    if (!keys.every(key => ['action', 'title', 'project'].includes(key))) return
     const title = typeof value.title === 'string' ? value.title.trim() : ''
     const project = typeof value.project === 'string' ? value.project.trim() : ''
     if (!title || (keys.includes('project') && !project)) return

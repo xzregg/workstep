@@ -21,7 +21,7 @@ test('delegation opens its execution conversation in a dialog without changing t
  let route='',inspected=0,finishReceipt=()=>{};const requests:string[]=[],receipts:unknown[]=[]
  Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.hasFocus=()=>true
  function Location(){route=useLocation().pathname+useLocation().search;return null}
- digitalRuntimeApi.records=async()=>({checking:false,run_total:0,delegation_total:2,runs:[],delegations:[{id:'d',project_id:'target',session_id:'execution',instruction:'检查委派执行内容',status:'running',message_id:'result',result_viewed:null},{id:'missing',project_id:'deleted',session_id:'unknown',instruction:'项目已移除的委派',status:'completed'}]})
+ digitalRuntimeApi.records=async()=>({checking:false,run_total:0,delegation_total:2,runs:[],delegations:[{id:'d',project_id:'target',session_id:'execution',title:'核对执行结果',instruction:'检查委派执行内容',status:'running',message_id:'result',result_viewed:null},{id:'missing',project_id:'deleted',session_id:'unknown',instruction:'项目已移除的委派',status:'completed'}]})
  globalThis.fetch=async(input,options)=>{
   const url=String(input);requests.push(url)
   if(url.includes('/chat-sessions/execution/read')){receipts.push(JSON.parse(String(options?.body)));return new Promise<Response>(resolve=>{finishReceipt=()=>resolve(Response.json({read:true}))})}
@@ -33,11 +33,15 @@ test('delegation opens its execution conversation in a dialog without changing t
   await act(async()=>root.render(<MemoryRouter initialEntries={['/digital-person']}><I18nProvider><Location/><DigitalPersonHomeInsights active name="小研" state="idle" activity={null} affect={null} chatShown={false} onInspect={()=>inspected++}/></I18nProvider></MemoryRouter>))
   const entry=host.querySelector<HTMLButtonElement>('.digital-home-work-summary')!
   assert.equal(entry.tagName,'BUTTON');assert.equal(requests.length,0,'execution history is only loaded on click')
+  assert.equal(entry.title,'核对执行结果')
+  assert.match(entry.textContent!,/核对执行结果/)
+  assert.doesNotMatch(entry.textContent!,/检查委派执行内容/)
+  assert.match(host.textContent!,/项目已移除的委派/)
   entry.focus();await act(async()=>entry.click())
   for(let i=0;i<200&&!document.querySelector('.digital-person-delegation-content textarea');i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,25))})
   const dialog=document.querySelector<HTMLElement>('.digital-person-delegation-dialog')!
   assert.ok(dialog);assert.match(dialog.textContent!,/这是对应委派的真实对话/);assert.ok(dialog.querySelector('textarea'))
-  assert.equal(dialog.querySelector('header h2')?.textContent,'检查委派执行内容')
+  assert.equal(dialog.querySelector('header h2')?.textContent,'核对执行结果')
   assert.equal(dialog.querySelector('.digital-person-delegation-project')?.textContent,'执行项目')
   assert.equal(dialog.querySelector('.assistant-chat-header'),null,'the dialog supplies the only conversation header')
   assert.equal(route,'/digital-person');assert.equal(useProjectStore.getState().activeProject?.id,'home');assert.equal(inspected,1)

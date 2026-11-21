@@ -93,7 +93,8 @@
         "tips": [
           "Abonnement, clé API et facturation dépendent du fournisseur. Installer un SDK ne fournit pas automatiquement des identifiants.",
           "En modification, une clé vide conserve la valeur existante ; saisissez-en une nouvelle pour la remplacer. Masquez les clés avant capture ou partage.",
-          "En mode géré d’entreprise, des fournisseurs peuvent être attribués par la plateforme. Utilisez ceux autorisés sans les recréer."
+          "En mode géré d’entreprise, des fournisseurs peuvent être attribués par la plateforme. Utilisez ceux autorisés sans les recréer.",
+          "La récupération des modèles regroupe les protocoles pour une sélection unique, enregistrée après confirmation ; un protocole en échec garde son cache. Modifiez les fournisseurs gérés par la passerelle dans celle-ci uniquement. Planification et permissions sont distinctes ; changer de fournisseur exige un transfert explicite. Les traces repliées sont des aperçus ; développez-les pour charger tous les détails."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Modifier les flux",
     "summary": "Décomposez le travail et configurez moteurs, entrées, sorties et règles de revue.",
     "sections": [
+      {
+        "title": "Déboguer un brouillon de flux",
+        "steps": [
+          "Sur le canevas local de l’hôte, choisissez Déboguer ou Déboguer depuis cette étape, renseignez la tâche et les exemples amont, puis démarrez. Le brouillon s’exécute réellement et peut modifier des fichiers ou coûter de l’argent. Arrêtez ou effacez son historique séparé ; ce n’est pas la fin d’une tâche de production."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Déboguer un brouillon de flux",
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
+        }
+      },
       {
         "title": "Ajouter et relier des étapes",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Dicter un brouillon de message",
         "steps": [
-          "Ouvrez « Paramètres → Paramètres vocaux → Entrée » et choisissez un modèle local, un fournisseur cloud ou un service distant auto-hébergé. En local, téléchargez environnement et modèle puis cliquez sur « Utiliser ce modèle ». Paraformer prend en charge mandarin, cantonais et anglais ; Zipformer, mandarin et anglais. Enregistrez puis vérifiez avec « Tester le microphone ». Le modèle est installé sur l’hôte WorkStep.",
+          "Ouvrez « Paramètres → Paramètres vocaux → Entrée » et choisissez un modèle local, un fournisseur cloud ou un service distant auto-hébergé. En local, téléchargez environnement et modèle puis cliquez sur « Utiliser ce modèle ». Paraformer prend en charge mandarin, cantonais et anglais ; SenseVoice, mandarin et anglais. Enregistrez puis vérifiez avec « Tester le microphone ». Le modèle est installé sur l’hôte WorkStep.",
           "Sur ordinateur, utilisez l’entrée microphone. Sur téléphone, avec un brouillon vide, touchez le petit haut-parleur en bas à droite pour enregistrer ; avec du texte, le bouton Envoyer apparaît. L’appui long conserve la sélection système. Vérifiez le brouillon transcrit puis envoyez manuellement. Deux minutes maximum par enregistrement ; annuler n’envoie rien."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Configurez communication, chat principal, réflexion et accueil sur les canaux ; consultez des souvenirs sourcés et activez voix ou reconnaissance des personnes au besoin.",
     "sections": [
       {
+        "title": "Explorer la carte mémoire",
+        "steps": [
+          "Ouvrez Paramètres → Centre de données (anciennement Personnage numérique). Depuis l’accueil, passez à la carte mémoire, déplacez-la, zoomez et sélectionnez une étoile pour consulter les connaissances et leurs sources. Au maximum 500 étoiles sont affichées, pas toute la mémoire."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Explorer la carte mémoire",
+          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
+        }
+      },
+      {
         "title": "Configurer personnalité, responsabilités et chat principal",
         "steps": [
           "Ouvrez « Paramètres → Figure numérique → Guide initial », renseignez le nom et éditez personnalité, responsabilités et mémoire permanente dans « Personnalité et responsabilités ». Utilisez les préréglages ou importez du centre de rôles, configurez un moteur disponible puis « Terminer et activer ».",
@@ -1630,7 +1653,8 @@
           "Réessayez la notification si sa livraison échoue. Vérifiez séparément fin de réflexion et remise du message. Désactiver la réflexion automatique suspend les contrôles planifiés, mais laisse chat et réflexion manuelle disponibles."
         ],
         "tips": [
-          "L’intervalle par défaut est 5 minutes. Autoriser le contact proactif ne signifie pas un message à chaque tour ; sans événement en attente, le tour peut finir silencieusement. Les appels peuvent être facturés ; le résumé n’est pas la chaîne complète de pensée."
+          "L’intervalle par défaut est 5 minutes. Autoriser le contact proactif ne signifie pas un message à chaque tour ; sans événement en attente, le tour peut finir silencieusement. Les appels peuvent être facturés ; le résumé n’est pas la chaîne complète de pensée.",
+          "Le titre de délégation accepte 60 caractères sans remplacer l’instruction complète. Une continuation peut le reprendre, sans renommer une conversation existante. Le nombre de souvenirs ajoutés ouvre les résumés ; la flèche droite ouvre le dossier complet. Zéro est masqué ; le silence ne signifie pas un échec d’envoi."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Microphone, caméra et lecture exigent leurs autorisations système ou site séparées. Les services distants reçoivent l’audio concerné. Le son réel doit être vérifié sur les appareils mobiles et de bureau.",
-          "Seules les nouvelles réponses sont lues. Ouvrir le panneau complet suspend la lecture automatique ; le fermer ne rejoue pas les anciens contenus. Ne présumez pas d’une écoute continue écran verrouillé ou application fermée."
+          "Seules les nouvelles réponses sont lues. Ouvrir le panneau complet suspend la lecture automatique ; le fermer ne rejoue pas les anciens contenus. Ne présumez pas d’une écoute continue écran verrouillé ou application fermée.",
+          "Le premier segment vocal est synthétisé immédiatement ; les suivants sont regroupés pendant au plus 350ms, divisés selon les limites du modèle et finalisés à la fin. Arrêter, couper le son ou changer de conversation vide l’audio en attente. Choisissez une source, suspendez, reprenez ou nettoyez les ressources ; vérifiez avant usage. Le microphone reste à activer explicitement."
         ],
         "screenshot": {
           "id": "speech-output",

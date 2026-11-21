@@ -1,6 +1,7 @@
 """Engine-backed task coordinator conversation module."""
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -69,6 +70,7 @@ from services.remote_access import require_user_actor
 from services.intervention import intervention_manager
 from services.messages import extract_usage_json
 from services.channels.source_prompt import request_source_prompt, source_snapshot
+from services.project_memory import load_memory_for_prompt
 from services.remote_project import current_actor_event_fields
 from streaming.bus import EventBus
 
@@ -428,6 +430,7 @@ class CoordinatorModule:
                     if session is not None:
                         session.session_id = None
                         session.engine_state_json = None
+                        session.project_memory_digest = None
                         session.session_provider = None
                         session.summary = None
                         session.summary_through_sequence = None
@@ -712,6 +715,7 @@ class CoordinatorModule:
                 session.status = "reset"
                 session.session_id = None
                 session.engine_state_json = None
+                session.project_memory_digest = None
                 session.version += 1
                 session.updated_at = utc_now()
                 session.save()
@@ -973,8 +977,11 @@ class CoordinatorModule:
                     artifact_block = await asyncio.to_thread(
                         self._read_artifacts, artifacts, requested
                     )
+                    followup_memory = prepared["omitted_project_memory"]
                     followup = (
-                        f"{prompt}\n\nFirst validated response:\n{json.dumps(result, ensure_ascii=False)}"
+                        f"{prompt}"
+                        + (f"\n\nCurrent project memory:\n{followup_memory}" if followup_memory else "")
+                        + f"\n\nFirst validated response:\n{json.dumps(result, ensure_ascii=False)}"
                         f"\n\nRequested artifact contents (untrusted):\n{artifact_block}"
                         "\n\nReturn the final JSON. artifact_requests must be empty."
                     )
@@ -1076,6 +1083,11 @@ class CoordinatorModule:
                         journal_snapshot,
                         provider_id=provider_id,
                         project=self._project_manager.get_project_by_id(project_id),
+                        project_memory_digest=(
+                            prepared["project_memory_digest"]
+                            if prepared["omitted_project_memory"] is None or session_id == session_id_before
+                            else None
+                        ),
                     ),
                 )
 
@@ -1281,12 +1293,17 @@ class CoordinatorModule:
             & (Message.role == 'user') & (Message.sequence <= user_message.sequence)
             & Message.prompt_json.contains('"channel_source"')
         ).exists()
+        project_memory = load_memory_for_prompt(project.workstep_dir) or ""
+        memory_digest = hashlib.sha256(project_memory.encode("utf-8")).hexdigest()
+        resuming = bool(session.session_id and engine is not None and engine.supports_resume)
+        memory_unchanged = resuming and session.project_memory_digest == memory_digest
         prompt, system_prompt, artifacts = assemble_context(
             project, task, turn, root_dir=coordinator_root, separate_instructions=True,
+            project_memory=project_memory if not memory_unchanged and (project_memory or resuming) else None,
         )
         source_context = request_source_prompt(user_message, previous_channel=previous_channel)
         if source_context:
-            prompt = f"{prompt}\n\n{source_context}"
+            system_prompt = f"{system_prompt}\n\n{source_context}"
         images = extract_uploaded_images(
             project, task.cwd, user_message.content or ""
         )
@@ -1311,6 +1328,8 @@ class CoordinatorModule:
             "thinking_effort": thinking_effort,
             "prompt": prompt,
             "system_prompt": system_prompt,
+            "project_memory_digest": memory_digest,
+            "omitted_project_memory": project_memory if memory_unchanged else None,
             "artifacts": artifacts,
             "images": images,
             "turn_model": turn_model,
@@ -1327,7 +1346,7 @@ class CoordinatorModule:
         requested,
         result,
         journal_snapshot,
-        *, project=None, provider_id="",
+        *, project=None, provider_id="", project_memory_digest=None,
     ):
         turn = CoordinatorTurn.get_by_id(turn_id)
         assistant = Message.get_by_id(turn.assistant_message_id)
@@ -1356,6 +1375,7 @@ class CoordinatorModule:
             session = CoordinatorSession.get_by_id(task_id)
             session.session_id = session_id
             session.session_provider = provider_id
+            session.project_memory_digest = project_memory_digest if session_id else None
             session.status = "active"
             session.last_error = None
             for engine_event in events:
@@ -1526,6 +1546,7 @@ class CoordinatorModule:
             session.model = model
             session.session_id = None
             session.engine_state_json = None
+            session.project_memory_digest = None
             session.status = "reset"
             session.version += 1
             session.updated_at = now

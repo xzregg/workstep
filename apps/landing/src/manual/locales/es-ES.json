@@ -93,7 +93,8 @@
         "tips": [
           "Las suscripciones de cuentas, las credenciales API y la facturación las determina el proveedor de servicios. La instalación de un SDK no proporciona credenciales.",
           "Al editar un proveedor, dejar la clave en blanco conserva el valor anterior. Ingrese una nueva clave para reemplazarla y oculte las claves antes de realizar capturas de pantalla o compartir la configuración.",
-          "En el modo administrado por empresa, la plataforma puede asignar proveedores. Utilice un proveedor autorizado en lugar de agregarlo nuevamente."
+          "En el modo administrado por empresa, la plataforma puede asignar proveedores. Utilice un proveedor autorizado en lugar de agregarlo nuevamente.",
+          "Obtener modelos reúne protocolos para una sola selección y guarda tras confirmar; los protocolos fallidos conservan la caché. Edite proveedores administrados por la pasarela solo allí. Planificación y permisos son independientes; cambiar de proveedor requiere un traspaso explícito. Las trazas plegadas son vistas previas; expándalas para cargar los detalles completos."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Editar flujos de trabajo",
     "summary": "Divida el trabajo en pasos y configure motores de ejecución, entradas, salidas y reglas de revisión.",
     "sections": [
+      {
+        "title": "Depurar un borrador de flujo",
+        "steps": [
+          "En el lienzo local del anfitrión elija Depurar o Depurar desde este paso, introduzca la tarea y muestras anteriores e inicie. El borrador se ejecuta realmente y puede modificar archivos o generar costes. Detenga o borre su historial separado; no implica completar una tarea de producción."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Depurar un borrador de flujo",
+          "caption": "Interfaz china real del entorno de demostración fijo. Muestra ajustes, accesos o listas vacías; durante esta captura no se llamó a ningún modelo ni se enviaron mensajes."
+        }
+      },
       {
         "title": "Agregar y conectar pasos",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Dictar un borrador de mensaje",
         "steps": [
-          "Abra «Configuración → Ajustes de voz → Entrada» y elija un modelo local, proveedor en la nube o servicio remoto propio. Para uso local, descargue el entorno y el modelo y pulse «Usar este modelo». Paraformer admite mandarín, cantonés e inglés; Zipformer, mandarín e inglés. Guarde y compruebe el resultado con «Probar micrófono». El modelo se instala en el anfitrión WorkStep.",
+          "Abra «Configuración → Ajustes de voz → Entrada» y elija un modelo local, proveedor en la nube o servicio remoto propio. Para uso local, descargue el entorno y el modelo y pulse «Usar este modelo». Paraformer admite mandarín, cantonés e inglés; SenseVoice, mandarín e inglés. Guarde y compruebe el resultado con «Probar micrófono». El modelo se instala en el anfitrión WorkStep.",
           "En el ordenador use el acceso del micrófono. En el móvil, con el borrador vacío, pulse el pequeño altavoz inferior derecho para grabar; si hay texto, aparece Enviar. La pulsación larga conserva la selección de texto del sistema. Revise el borrador transcrito al terminar y envíelo manualmente. Máximo dos minutos por grabación; cancelar no envía."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Configure estilo de comunicación, chat principal, reflexión y atención en canales; consulte recuerdos con fuentes y active voz y reconocimiento de personas cuando lo necesite.",
     "sections": [
       {
+        "title": "Explorar el mapa de recuerdos",
+        "steps": [
+          "Abra Ajustes → Centro de datos (antes Persona digital). En el inicio cambie al mapa de recuerdos, desplácese, amplíe y seleccione una estrella para consultar conocimiento y fuentes originales. Se muestran como máximo 500 estrellas, no toda la memoria."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Explorar el mapa de recuerdos",
+          "caption": "Interfaz china real del entorno de demostración fijo. Muestra ajustes, accesos o listas vacías; durante esta captura no se llamó a ningún modelo ni se enviaron mensajes."
+        }
+      },
+      {
         "title": "Configurar personalidad, responsabilidades y conversación principal",
         "steps": [
           "Abra «Configuración → Figura digital → Guía inicial», escriba el nombre y edite personalidad, responsabilidades y memoria permanente en «Personalidad y responsabilidades». Use preajustes o importe del centro de roles, configure un motor disponible y pulse «Completar y activar».",
@@ -1630,7 +1653,8 @@
           "Si falla la entrega, reintente la notificación; compruebe por separado reflexión terminada y mensaje entregado. Desactivar la reflexión automática pausa las comprobaciones programadas, pero mantiene chat y reflexión manual."
         ],
         "tips": [
-          "El intervalo predeterminado es 5 minutos. Permitir contacto proactivo no implica un mensaje en cada ronda; sin eventos pendientes puede finalizar en silencio. El modelo puede generar costes y el resumen no es una cadena completa de pensamiento."
+          "El intervalo predeterminado es 5 minutos. Permitir contacto proactivo no implica un mensaje en cada ronda; sin eventos pendientes puede finalizar en silencio. El modelo puede generar costes y el resumen no es una cadena completa de pensamiento.",
+          "El título delegado admite 60 caracteres y no sustituye la instrucción completa. Una continuación puede heredarlo sin renombrar chats existentes. Pulse el número de recuerdos añadidos para ver resúmenes o la flecha derecha para el registro completo. Cero se oculta; silencio no equivale a fallo de entrega."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Micrófono, cámara y reproducción requieren sus permisos de sistema o sitio por separado. Los servicios remotos reciben el audio correspondiente. Verifique el sonido real en cada móvil u ordenador.",
-          "Solo se leen respuestas nuevas. Abrir el panel de conversación completa pausa la lectura automática; cerrarlo no reproduce lo anterior. No presuponga escucha continua con pantalla bloqueada o aplicación cerrada."
+          "Solo se leen respuestas nuevas. Abrir el panel de conversación completa pausa la lectura automática; cerrarlo no reproduce lo anterior. No presuponga escucha continua con pantalla bloqueada o aplicación cerrada.",
+          "El primer segmento de voz se sintetiza inmediatamente; los posteriores agrupan frases hasta 350ms, se dividen según el modelo y procesan el resto al finalizar. Detener, silenciar o cambiar de chat borra el audio pendiente. Las descargas permiten elegir origen, pausar, reanudar y limpiar; verifique antes de usar. El micrófono no se activa automáticamente."
         ],
         "screenshot": {
           "id": "speech-output",

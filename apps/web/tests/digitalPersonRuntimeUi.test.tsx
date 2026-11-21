@@ -61,13 +61,18 @@ test('first enable guides configuration and only activates after finishing',asyn
 })
 test('activity loads small pages, opens details on demand, and retries failed delivery',async()=>{
  const {window}=installDomEnvironment();const element=document.body.appendChild(document.createElement('div')),root=createRoot(element)
+ const {locale}=useLocaleStore.getState()
+ useLocaleStore.setState({locale:'zh-CN'})
  const originals={...digitalRuntimeApi};const pages:number[]=[];let retried='',details=0,heavyLoads=0
  digitalRuntimeApi.activity=async()=>{heavyLoads++;throw new Error('full overview must not load')}
  digitalRuntimeApi.records=async(runOffset=0)=>{
   pages.push(runOffset)
   return {checking:false,run_total:7,delegation_total:0,delegations:[],runs:Array.from({length:runOffset?2:5},(_,i)=>({id:`run-${runOffset+i}`,status:'delivery_failed',created_at:'2026-11-14T01:00:00Z',summary:'简短结果'}))}
  }
- digitalRuntimeApi.runDetail=async id=>{details++;return {id,status:'delivery_failed',created_at:'2026-11-14T01:00:00Z',summary:'完整结果仅在展开后读取',error:'通知投递失败'}}
+ digitalRuntimeApi.runDetail=async id=>{details++;return {
+  id,status:'delivery_failed',created_at:'2026-11-14T01:00:00Z',summary:'完整结果仅在展开后读取',
+  outcome:{sent:1,failed:1,affinity_increased:0,affinity_decreased:0,...(!retried?{delivery_failure_reasons:['渠道连接超时']}:{})},
+ }}
  digitalRuntimeApi.retryDelivery=async id=>{retried=id;return {}}
  try{
   await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonActivity/></I18nProvider></MemoryRouter>))
@@ -76,13 +81,15 @@ test('activity loads small pages, opens details on demand, and retries failed de
   assert.doesNotMatch(element.textContent!,/完整结果/)
   await act(async()=>element.querySelector<HTMLButtonElement>('[data-run-id="run-0"] button[aria-expanded]')!.click())
   assert.equal(details,1);assert.match(element.textContent!,/完整结果仅在展开后读取/)
-  assert.match(element.querySelector('[role=alert]')!.textContent!,/通知投递失败/)
+  assert.match(element.querySelector('[role=alert]')!.textContent!,/通知发送失败.*渠道连接超时/)
+  assert.match(element.querySelector('.digital-run-notification')!.textContent!,/已发送 1 条/)
   await act(async()=>element.querySelector<HTMLButtonElement>('[data-retry-delivery]')!.click())
   assert.equal(retried,'run-0')
+  assert.match(element.querySelector('[role=alert]')!.textContent!,/通知发送失败.*原因未记录/)
   await act(async()=>element.querySelector<HTMLButtonElement>('[data-kind=runs] [data-next-page]')!.click())
   assert.equal(pages.at(-1),5);assert.equal(element.querySelectorAll('[data-run-id]').length,2)
   assert.equal(element.querySelector('[data-run-id="run-0"]'),null)
- }finally{await act(async()=>root.unmount());element.remove();Object.assign(digitalRuntimeApi,originals);await window.happyDOM.close()}
+ }finally{await act(async()=>root.unmount());element.remove();useLocaleStore.setState({locale});Object.assign(digitalRuntimeApi,originals);await window.happyDOM.close()}
 })
 
 test('activity shows proactive thought records above delegation notifications',async()=>{
@@ -90,7 +97,7 @@ test('activity shows proactive thought records above delegation notifications',a
  const original=digitalRuntimeApi.records
  const {locale}=useLocaleStore.getState()
  useLocaleStore.setState({locale:'zh-CN'})
- digitalRuntimeApi.records=async()=>({checking:false,run_total:1,runs:[{id:'thought',status:'silent',summary:'主动思考的摘要',created_at:'2026-11-14T01:00:00Z'}],delegation_total:1,delegations:[{id:'work',instruction:'不应出现在运行记录的委派通知',notification_state:'pending'}]}) as any
+ digitalRuntimeApi.records=async()=>({checking:false,run_total:1,runs:[{id:'thought',status:'silent',summary:'主动思考的摘要',created_at:'2026-11-14T01:00:00Z'}],delegation_total:1,delegations:[{id:'work',title:'核对执行结果',instruction:'不应出现在运行记录的委派通知',notification_state:'pending'}]}) as any
  try{
   await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonActivity/></I18nProvider></MemoryRouter>))
   assert.match(element.textContent!,/主动思考的摘要/)
@@ -103,10 +110,11 @@ test('activity shows proactive thought records above delegation notifications',a
   assert.equal(sections[0].getAttribute('aria-label'),'主动思考记录')
   assert.doesNotMatch(element.querySelector('[data-kind=delegations]')!.textContent!,/执行中|已完成/)
   const openExecution=element.querySelector<HTMLButtonElement>('[data-open-execution]')!
+  assert.equal(openExecution.textContent,'核对执行结果')
   openExecution.focus()
   await act(async()=>openExecution.click())
   const dialog=document.querySelector('.digital-person-delegation-dialog')
-  assert.equal(dialog?.getAttribute('aria-label'),'不应出现在运行记录的委派通知')
+  assert.equal(dialog?.getAttribute('aria-label'),'核对执行结果')
   assert.ok(element.contains(openExecution),'the activity list stays mounted')
   await act(async()=>document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
   assert.equal(document.querySelector('.digital-person-delegation-dialog'),null)

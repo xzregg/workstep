@@ -75,7 +75,7 @@ export default function DigitalPersonWorkspace({profile,activity,running,childre
     <section className="digital-console-section">
       <div className="digital-console-section-heading"><Icon name="workflow" size={15}/><h3>{t('digitalPerson.delegations')}</h3><span>{pending.length}</span></div>
       {!activity?.delegations.length && <p className="digital-console-empty">{t('digitalPerson.noDelegations')}</p>}
-      {activity?.delegations.slice(-4).reverse().map(item=><button className="digital-console-work" key={item.id} onClick={()=>openWork(item)}><span>{item.instruction}</span><small>{item.status==='running'?t('digitalPerson.workRunning'):status(item.status)}</small><Icon name="chevron-right" size={14}/></button>)}
+      {activity?.delegations.slice(-4).reverse().map(item=><button className="digital-console-work" key={item.id} onClick={()=>openWork(item)}><span>{item.title || item.instruction}</span><small>{item.status==='running'?t('digitalPerson.workRunning'):status(item.status)}</small><Icon name="chevron-right" size={14}/></button>)}
     </section>
     <section className="digital-console-section">
       <div className="digital-console-section-heading"><Icon name="clock" size={15}/><h3>{t('digitalPerson.activity')}</h3></div>

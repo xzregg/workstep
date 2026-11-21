@@ -16,6 +16,7 @@ def test_existing_conversations_gain_reset_boundaries_without_losing_identity(tm
     CoordinatorSession.create(task=task, engine='claude', session_id='old-task-engine', created_at=now, updated_at=now)
     db.execute_sql('ALTER TABLE chat_sessions DROP COLUMN context_reset_at')
     db.execute_sql('ALTER TABLE coordinator_sessions DROP COLUMN context_reset_sequence')
+    db.execute_sql('ALTER TABLE coordinator_sessions DROP COLUMN project_memory_digest')
     for table in ('chat_sessions', 'coordinator_sessions', 'gen_sessions', 'prototype_sessions'):
         db.execute_sql(f'ALTER TABLE {table} DROP COLUMN session_provider')
     db.close()
@@ -30,6 +31,7 @@ def test_existing_conversations_gain_reset_boundaries_without_losing_identity(tm
             assert coordinator.session_id == 'old-task-engine'
             assert coordinator.context_reset_sequence == 0
             assert coordinator.session_provider is None
+            assert coordinator.project_memory_digest is None
             for table in ('gen_sessions', 'prototype_sessions'):
                 assert 'session_provider' in {column.name for column in db.get_columns(table)}
         finally:

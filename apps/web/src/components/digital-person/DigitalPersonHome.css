@@ -172,6 +172,10 @@
 .digital-home-presence-info .digital-home-atlas-toggle>span{
  padding:2px var(--space-2);border:1px solid color-mix(in srgb,currentColor 45%,transparent);border-radius:var(--radius-sm);
 }
+/* The stage theme switches instantly, so keep the surrounding controls legible in the same frame. */
+.digital-home :is(.digital-home-header,.digital-home-presence-info) .btn{
+ transition-property:background-color,box-shadow;
+}
 @media(max-width:1023px){
  .digital-home-presence-info{pointer-events:none}
  .digital-home-presence-info>.btn{pointer-events:auto}

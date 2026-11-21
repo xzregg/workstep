@@ -12,7 +12,7 @@ from services.artifact_rounds import iter_artifact_rounds, select_upstream_round
 from services.git.task_workspace import TaskGitWorkspace
 from services.pipeline import Step
 from services.project_storage import data_directory
-from services.project_memory import read_memory_bytes
+from services.project_memory import load_memory_for_prompt
 
 # Config path relative to this file
 _OUTPUT_TYPES_PATH = Path(__file__).resolve().parent.parent / "data" / "output-types.json"
@@ -73,24 +73,6 @@ def render_step_prompt(
 
     return _STEP_TEMPLATE_VARIABLE.sub(replace, template)
 
-def _load_project_memory(artifacts_dir: Path, limit: int = 50_000) -> str | None:
-    """Read the project's .workstep/MEMORY.md for prompt injection.
-
-    The pipeline engine reads the file so every engine sees the memory
-    content directly in the prompt; engines are not instructed to read or
-    update the file themselves. Returns None when the file is missing/empty.
-    """
-    try:
-        raw = read_memory_bytes(artifacts_dir.parent)
-        if raw is None:
-            return None
-        content = raw.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n").strip()
-    except OSError:
-        return None
-    if not content:
-        return None
-    return content[:limit]
-
 
 def _load_output_type_constraints() -> dict[str, str]:
     """Load output type constraints from the shared config file."""
@@ -146,7 +128,7 @@ def _task_background_parts(
         "Task Git workspace": _task_git_workspace_context(
             task, artifacts_dir, include_directory=not separate_instructions,
         ).strip(),
-        "Project memory": _load_project_memory(artifacts_dir) or "",
+        "Project memory": load_memory_for_prompt(artifacts_dir.parent) or "",
         "Task": "\n".join(value for value in (
             str(task.title or "").strip(), _task_description_for_prompt(task),
         ) if value),

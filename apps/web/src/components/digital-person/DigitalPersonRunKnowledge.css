@@ -1,0 +1,135 @@
+.digital-run-header {
+  position: relative;
+  container-type: inline-size;
+}
+
+.digital-run-header .digital-run-detail-toggle {
+  position: static;
+  padding: 0;
+  align-self: start;
+  border: 0;
+}
+
+/* Keep the row clickable while the two disclosure buttons remain siblings. */
+.digital-run-detail-toggle::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.digital-run-knowledge {
+  display: inline-flex;
+  max-inline-size: 100%;
+  align-items: center;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.digital-run-knowledge-text {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.digital-run-knowledge-compact {
+  display: none;
+}
+
+@container (max-width: 310px) {
+  .digital-run-knowledge-full {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .digital-run-knowledge-compact {
+    display: inline;
+  }
+
+  .digital-run-knowledge-compact::before {
+    content: attr(data-text);
+  }
+}
+
+.digital-run-knowledge .digital-run-knowledge-toggle {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  height: auto;
+  min-height: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: normal;
+  text-align: start;
+  vertical-align: baseline;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.digital-run-knowledge .digital-run-knowledge-toggle:active {
+  background: var(--surface);
+}
+
+@media (hover: hover) {
+  .digital-run-knowledge .digital-run-knowledge-toggle:hover {
+    background: var(--surface);
+  }
+}
+
+.digital-run-knowledge-toggle svg {
+  margin-inline-start: var(--space-1);
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+
+.digital-run-knowledge-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.digital-run-knowledge-preview {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  padding: var(--space-3);
+  background: var(--surface);
+  border: .5px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  overflow-wrap: anywhere;
+}
+
+.digital-run-knowledge-preview p,
+.digital-run-knowledge-preview ul {
+  margin: 0;
+}
+
+.digital-run-knowledge-preview ul {
+  padding-inline-start: var(--space-5);
+}
+
+.digital-run-knowledge-preview li {
+  white-space: pre-wrap;
+}
+
+.digital-run-knowledge-preview li + li {
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 1023px) {
+  .digital-run-knowledge .digital-run-knowledge-toggle {
+    font-size: inherit !important;
+    min-height: var(--mobile-control-touch);
+  }
+
+  /* Settings applies a fixed height to its regular mobile buttons. */
+  .settings-layout .settings-content .digital-person-activity .digital-run-knowledge button.btn.digital-run-knowledge-toggle {
+    height: auto !important;
+    min-height: var(--mobile-control-touch) !important;
+  }
+}

@@ -91,14 +91,16 @@ def test_digital_person_prompt_scaffolding_is_english(monkeypatch):
 
 def test_channel_source_prompt_scaffolding_is_english():
     from services.channels.base import IncomingMessage
-    from services.channels.bots import _context_content
+    import json
+    from types import SimpleNamespace
+    from services.channels.source_prompt import message_source, request_source_prompt
 
     for conversation_type in ("single", "group"):
         message = IncomingMessage(bot_id="bot", message_id="message",
             conversation_type=conversation_type, conversation_id="room",
             sender_id="sender", text="Request")
-        for include_session in (False, True):
-            text = _context_content(message, "test", include_session=include_session)
-            assert not CJK_RE.search(text)
-            assert '"sender_id": "sender"' in text
-            assert text.endswith("\n\nRequest")
+        user = SimpleNamespace(prompt_json=json.dumps({"channel_source": message_source(message, "test")}))
+        text = request_source_prompt(user)
+        assert not CJK_RE.search(text)
+        assert '"sender_id": "sender"' in text
+        assert message.text not in text

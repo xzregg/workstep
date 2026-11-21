@@ -106,6 +106,16 @@ async def run_detail(run_id: str):
         raise HTTPException(404, str(exc)) from exc
 
 
+@router.get('/runs/{run_id}/knowledge')
+async def run_knowledge(run_id: str, response: Response):
+    try:
+        result = await runtime().run_knowledge(run_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    response.headers['Cache-Control'] = 'no-store'
+    return result
+
+
 @router.get('/memory')
 async def memory(session_id: str = '', query: str = Query(default='', max_length=1000),
                  since: datetime | None = None, before: datetime | None = None,
@@ -185,6 +195,7 @@ class DelegateRequest(service.BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     project_id: str
+    title: str | None = None
     instruction: str = service.Field(min_length=1, max_length=12000)
     origin_session_id: str = ""
     request_id: str = service.Field(min_length=1, max_length=200)

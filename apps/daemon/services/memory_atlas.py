@@ -71,6 +71,26 @@ def _encode_links(links):
     return [{'from': f'knowledge:{a}', 'to': f'knowledge:{b}'} for a, b in links]
 
 
+def _reflection_additions(project_ids, run_id):
+    memory_knowledge.ensure_schema()
+    # Keep the receipt when its target disappears, and apply atlas visibility
+    # to the join so hidden targets contribute only to the unavailable count.
+    visible = memory_knowledge.catalog_evidence_condition(project_ids) if project_ids else '0'
+    with index.connect() as db:
+        rows = db.execute(
+            """SELECT k.id, k.summary FROM memory_reflection_additions a
+               LEFT JOIN memory_knowledge k ON k.id=a.knowledge_id
+                 AND k.state IN ('active','conflict') AND (k.valid_until IS NULL OR k.valid_until>?)
+                 AND """ + visible + ' WHERE a.run_id=? ORDER BY a.id',
+            (datetime.now(timezone.utc).isoformat(), *project_ids, run_id)).fetchall()
+    items = [{'id': f"knowledge:{row['id']}", 'summary': row['summary']} for row in rows if row['id'] is not None]
+    return {'status': 'available' if rows else 'legacy', 'items': items, 'unavailable': len(rows) - len(items)}
+
+
+async def reflection_additions(projects, run_id):
+    return await asyncio.to_thread(_reflection_additions, memory.allowed_projects(projects), run_id)
+
+
 async def page(projects, cursor, limit, ids=()):
     rows, links = await asyncio.to_thread(_markers, memory.allowed_projects(projects), cursor, limit, ids)
     return {

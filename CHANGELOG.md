@@ -12,10 +12,14 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 - Add host-local workflow debugging from a selected draft step with explicit upstream samples, separate debug task history, and existing runtime cancellation and cleanup.
 - Keep workflow-debug database queries in the service layer and project executor, with a slow-read health-response regression.
 - Add an evidence-backed memory star map, on-demand knowledge details, delegation views and scoped digital-person conversation actions.
+- Give delegated work concise, optional titles without replacing execution instructions or renaming existing conversations; reuse authorized initial history without overwriting newer streamed replies.
+- Expand newly created memory summaries independently of complete reflection records, with distinct silent-completion and notification-failure states.
+- Synthesize the first speech segment immediately and batch subsequent sentences within a bounded delay, respecting model limits and clearing pending playback on stop, mute or conversation changes.
 - Improve voice input, wake-word handling, speech playback and local model management, including explicit download sources, pause, resume and resource cleanup controls.
 - Reuse managed desktop resource downloads and preserve platform-specific Android and iOS media and installation behavior.
 - Refresh saved provider model selection and keep gateway-managed provider records read-only in the workbench.
 - Localize recognized runtime errors while preserving dynamic details and authorization boundaries; align regression fixtures with native permission, workflow, archive and localization contracts without skipping test cases.
+- Update the user manual in all 26 supported languages with current memory-atlas, delegation, speech, provider and workflow-debug guidance and sanitized screenshots from an isolated demonstration instance.
 
 - Refresh security-affected Python, web and Electron dependencies, synchronize desktop and container exports, and verify packaging glob compatibility. Raise the source-install Python minimum to 3.11.5.
 - Fix Codex shutdown callbacks, reader cleanup and approval isolation across shared sessions; keep stale approvals invalid after transport failure.

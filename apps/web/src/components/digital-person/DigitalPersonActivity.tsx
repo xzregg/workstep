@@ -7,6 +7,7 @@ import StatusBadge from '../StatusBadge'
 import { DIGITAL_ACTIVITY_CHANGED } from './useDigitalActivity'
 import Spinner from '../Spinner'
 import DigitalPersonRunDetail from './DigitalPersonRunDetail'
+import DigitalPersonRunKnowledge from './DigitalPersonRunKnowledge'
 import DigitalPersonDelegationDialog from './DigitalPersonDelegationDialog'
 import './DigitalPersonActivity.css'
 
@@ -65,7 +66,7 @@ export default function DigitalPersonActivity({checking = false, titleId}: {chec
     setBusy(key); setError('')
     try {await fn(); setRevision(v=>v+1)} catch(e) {setError(String(e))} finally {setBusy('')}
   }
-  const status=(value:string)=>t(`digitalPerson.status${value.charAt(0).toUpperCase()+value.slice(1)}` as never)
+  const status=(value:string)=>value==='delivery_failed'?t('digitalPerson.runNotificationFailed'):t(`digitalPerson.status${value.charAt(0).toUpperCase()+value.slice(1)}` as never)
   const badge=(value:string)=><StatusBadge status={value} label={status(value)} loading={['running','notifying'].includes(value)}/>
   const timestamp=(value:string)=>{
     const date=new Date(value)
@@ -84,19 +85,27 @@ export default function DigitalPersonActivity({checking = false, titleId}: {chec
     {data && <>
       <ActivitySection kind="runs" title={t('digitalPerson.proactiveThoughtRecords')} total={data.run_total} page={runPage} loading={loading || !!busy} onPage={page=>{setOpenRun(null);setRunPage(page)}}>
         {!data.runs.length && <p className="digital-person-activity-empty">{t('digitalPerson.noThoughtRecords')}</p>}
-        {data.runs.map(run=><div className="digital-person-run" data-run-id={run.id} key={run.id}>
-          <button type="button" className="digital-person-run-toggle" aria-expanded={openRun===run.id} aria-controls={`digital-run-${run.id}`} onClick={()=>setOpenRun(openRun===run.id?null:run.id)}>
-            <span className="digital-person-activity-title">{run.summary || status(run.status)}</span>
-            <time dateTime={run.created_at} title={new Date(run.created_at).toLocaleString()}>{timestamp(run.created_at)}</time>
-            {badge(run.status)}<Icon name={openRun===run.id?'chevron-down':'chevron-right'} size={14}/>
-          </button>
-          {openRun===run.id && <DigitalPersonRunDetail key={run.id} id={run.id} onRetryDelivery={()=>action('retry',()=>digitalRuntimeApi.retryDelivery(run.id))} busy={!!busy}/>}
-        </div>)}
+        {data.runs.map(run=>{
+          const expanded=openRun===run.id
+          return <div className="digital-person-run" data-run-id={run.id} key={run.id}>
+            <DigitalPersonRunKnowledge runId={run.id} processing={run.processing} fallback={run.summary || status(run.status)}>
+              {(summary,summaryId)=><div className="digital-person-run-header digital-run-header">
+                <div className={run.processing?'digital-person-run-processing':'digital-person-activity-title'}>{summary}</div>
+                <time dateTime={run.created_at} title={new Date(run.created_at).toLocaleString()}>{timestamp(run.created_at)}</time>
+                {badge(run.status)}
+                <Button type="button" variant="icon" className="digital-person-run-toggle digital-run-detail-toggle" aria-labelledby={summaryId} aria-expanded={expanded} aria-controls={expanded?`digital-run-${run.id}`:undefined} onClick={()=>setOpenRun(expanded?null:run.id)}>
+                  <Icon name={expanded?'chevron-down':'chevron-right'}/>
+                </Button>
+              </div>}
+            </DigitalPersonRunKnowledge>
+            {expanded && <DigitalPersonRunDetail key={run.id} id={run.id} processingInList={!!run.processing} onRetryDelivery={()=>action('retry',()=>digitalRuntimeApi.retryDelivery(run.id))} busy={!!busy}/>}
+          </div>
+        })}
       </ActivitySection>
       <ActivitySection kind="delegations" title={t('digitalPerson.delegationNotifications')} total={data.delegation_total} page={delegationPage} loading={loading || !!busy} onPage={setDelegationPage}>
         {!data.delegations.length && <p className="digital-person-activity-empty">{t('digitalPerson.noDelegationNotifications')}</p>}
         {data.delegations.map(item=><div className="digital-person-delegation-row" key={item.id}>
-          <Button data-open-execution variant="ghost" className="digital-person-activity-open" aria-haspopup="dialog" title={t('digitalPerson.viewExecution')} onClick={()=>setDelegation(item)}><span className="digital-person-activity-title">{item.instruction}</span><Icon name="panel-top" size={14}/></Button>
+          <Button data-open-execution variant="ghost" className="digital-person-activity-open" aria-haspopup="dialog" title={t('digitalPerson.viewExecution')} onClick={()=>setDelegation(item)}><span className="digital-person-activity-title">{item.title || item.instruction}</span><Icon name="panel-top" size={14}/></Button>
           <div className="digital-person-activity-row-actions">
             <span title={item.notification_state==='read'?t('digitalPerson.notificationRead'):item.notification_state==='deferred'?t('digitalPerson.notificationDeferred'):['delivery_failed','failed','interrupted'].includes(item.notification_state || '')?t('digitalPerson.notificationFailed'):undefined}>
               <StatusBadge status={item.notification_state==='notified'?'succeeded':['delivery_failed','failed','interrupted'].includes(item.notification_state || '')?'failed':'queued'}

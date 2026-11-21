@@ -141,6 +141,34 @@ test('synthesis preparation emits a scoped busy state even before audio starts',
  }finally{await act(async()=>root.unmount());Object.assign(speechOutputApi,original);await window.happyDOM.close()}
 })
 
+test('automatic speech merges sentences from separate renders and includes the final tail', async () => {
+  const { window } = installDomEnvironment(), root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { ...speechOutputApi }, started: string[] = []
+  let finishOpening!: (value: { done: boolean }) => void
+  speechOutputApi.status = async () => ({ ...outputStatus, settings: { ...outputStatus.settings, mode: 'remote' } })
+  speechOutputApi.start = async text => { started.push(text); return { id: String(started.length) } }
+  speechOutputApi.next = async id => id === '1' ? new Promise(resolve => { finishOpening = resolve }) : { done: true }
+  speechOutputApi.cancel = async () => {}
+  const profile = { enabled: true, name: '助手', role: '', personality: '', duties: '', avatar: 'robot' as const, greeting: '', auto_speak: true }
+  const render = (content: string, status: AssistantChatMessage['status'] = 'running') => act(async () => root.render(
+    <I18nProvider><DigitalPersonSpeech profile={profile} projectId="batch-stream" sessionId="s"
+      messages={[{ id: 'reply', role: 'assistant', content, status }]} active /></I18nProvider>))
+  try {
+    await render('首句。')
+    await render('首句。第二句。')
+    await render('首句。第二句。她问：“第三句？！”还有尾巴')
+    assert.deepEqual(started, ['首句。'])
+    await render('首句。第二句。她问：“第三句？！”还有尾巴', 'succeeded')
+    assert.deepEqual(started, ['首句。', '第二句。她问：“第三句？！”还有尾巴'])
+    await act(async () => finishOpening({ done: true }))
+    assert.equal(started.length, 2)
+  } finally {
+    await act(async () => { root.unmount(); finishOpening?.({ done: true }) })
+    Object.assign(speechOutputApi, original)
+    await window.happyDOM.close()
+  }
+})
+
 test('retry keeps streaming text after a failure and stop clears the retry action', async () => {
   const {window}=installDomEnvironment(), root=createRoot(document.body.appendChild(document.createElement('div')))
   const original={...speechOutputApi}, started:string[]=[]

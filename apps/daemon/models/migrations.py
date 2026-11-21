@@ -144,6 +144,7 @@ _ADDITIVE_COLUMNS = {
     "coordinator_sessions": {
         "context_reset_sequence": "INTEGER NOT NULL DEFAULT 0",
         "session_provider": "TEXT",
+        "project_memory_digest": "TEXT",
     },
     "tasks": {
         "status": "TEXT NOT NULL DEFAULT 'ready'",

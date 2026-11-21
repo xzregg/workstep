@@ -38,7 +38,7 @@ test('software and image preparation happen before project selection, cached ima
     assert.equal(calls.filter(a => a.includes('save')).length, saves, 'unchanged cache is reused')
     await fs.writeFile(path.join(root, 'podman/cache/image-seed.tar'), 'corrupt archive')
     const settings = { root, project, mounts: [], registeredProjects: [project] }
-    await assert.rejects(manager.prepare(settings), /缓存校验/)
+    await assert.rejects(manager.prepare(settings), /Image cache validation failed/)
     await manager.prepareImage({ root })
     await manager.prepare(settings)
     assert.ok(!calls.some(a => a.includes('load')), 'cached image already present in Podman is not loaded a second time')
@@ -71,7 +71,7 @@ test('slow runtime work leaves status responsive and prevents overlapping mutati
     await started
     await new Promise(resolve => setTimeout(resolve, 10))
     assert.equal((await manager.status()).phase, 'download')
-    await assert.rejects(manager.prepareRuntime({ root: path.join(base, 'sandbox') }), /正在进行/)
+    await assert.rejects(manager.prepareRuntime({ root: path.join(base, 'sandbox') }), /Sandbox operation in progress/)
     release(); await preparing
     await manager.remove()
   } finally { release(); await fs.rm(base, { recursive: true, force: true }) }
@@ -96,8 +96,8 @@ test('image inspection normalizes Podman IDs while rejecting incompatible images
   const inspect = overrides => manager.inspectImage(async () => JSON.stringify([{ ...details, ...overrides }]), 'local-image')
   assert.equal(await inspect({}), 'sha256:' + digest)
   assert.equal(await inspect({ Id: 'sha256:' + digest }), 'sha256:' + digest)
-  await assert.rejects(inspect({ Architecture: 'amd64' }), /架构/)
-  await assert.rejects(inspect({ Os: 'windows' }), /系统/)
-  await assert.rejects(inspect({ Config: { Entrypoint: ['/bin/sh'] } }), /入口/)
+  await assert.rejects(inspect({ Architecture: 'amd64' }), /Image architecture mismatch/)
+  await assert.rejects(inspect({ Os: 'windows' }), /Image system mismatch/)
+  await assert.rejects(inspect({ Config: { Entrypoint: ['/bin/sh'] } }), /Image missing WorkStep entry/)
   await assert.rejects(inspect({ Id: 'bad-id' }), /ID/)
 })

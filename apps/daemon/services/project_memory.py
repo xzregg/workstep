@@ -37,6 +37,18 @@ def read_memory_bytes(data_root: Path) -> bytes | None:
         return stream.read()
 
 
+def load_memory_for_prompt(data_root: Path, limit: int = 50_000) -> str | None:
+    """Return normalized project memory, bounded for use in a model prompt."""
+    try:
+        raw = read_memory_bytes(data_root)
+    except OSError:
+        return None
+    if raw is None:
+        return None
+    content = raw.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n").strip()
+    return content[:limit] if content else None
+
+
 def write_memory_bytes(data_root: Path, content: bytes) -> None:
     path = resolve_memory_path(data_root)
     path.parent.mkdir(parents=True, exist_ok=True)

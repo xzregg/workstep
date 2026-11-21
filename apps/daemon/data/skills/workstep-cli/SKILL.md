@@ -1,6 +1,6 @@
 ---
 name: workstep-cli
-description: Manage WorkStep projects, workflows, tasks, quick buttons, engines and schedules. Trigger proactive reflection. Query historical memories, user preferences and reusable experience. Decide whether retrieval is needed; also use for reminders.
+description: Manage WorkStep projects, conversations, workflows, tasks, quick buttons, engines and schedules. Trigger proactive reflection. Query historical memories, user preferences and reusable experience. Decide whether retrieval is needed; also use for reminders.
 ---
 
 # WorkStep CLI
@@ -30,8 +30,8 @@ Use `context get --json` for the current project/conversation IDs
 
 | Need | Read |
 | --- | --- |
-| Save standing agreements, trigger/stop digital-person reflection or delegate work | [Digital person](references/digital-person.md) |
-| Send an instruction to an existing project chat or read an original message | [Messages](references/messages.md) |
+| Save standing agreements, trigger/stop digital-person reflection or delegate work with a short title | [Digital person](references/digital-person.md) |
+| Archive a project conversation, send an instruction or read an original message | [Project conversations](references/messages.md) |
 | Historical memories, experience, original evidence and time review | [Memory](references/memory.md) |
 | Summary/detail output, fields, limits and pagination | [Output](references/output.md) |
 | Projects, quick buttons and Actions | [Projects](references/projects.md) |

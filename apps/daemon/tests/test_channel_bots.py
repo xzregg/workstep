@@ -243,7 +243,7 @@ async def test_unbound_chat_uses_default_project_and_duplicate_is_ignored(bots):
     )
     await adapters[bot["id"]].on_message(message)
     await adapters[bot["id"]].on_message(message)
-    assert [(pid, sid, content.rsplit("\n\n", 1)[-1]) for pid, sid, content in project_chats] == [(first.id, None, "你好")]
+    assert project_chats == [(first.id, None, "你好")]
     assert adapters[bot["id"]].sent == [("user-1", f"项目回复：{project_chats[0][2]}")]
 
 
@@ -563,7 +563,7 @@ async def test_queued_channel_messages_show_waiting_and_reuse_latest_session(bot
     adapter.start_reply = start_reply
     async def respond(project_id, session_id, content, *args):
         sessions.append(session_id)
-        if content.endswith("\n\nfirst"):
+        if content == "first":
             first_running.set()
             await release.wait()
         return session_id or "new-session", "回答"
@@ -631,7 +631,7 @@ async def test_group_names_senders_and_initiator_are_retained_and_passed_to_assi
     source = (await manager._load())['session_sources']['session-1']
     assert source['initiator_name'] == '小王'
     assert source['sender_id'] == 'u1'
-    assert '研发群' in chats[-1][2] and 'room' in chats[-1][2] and '小王' in chats[-1][2]
+    assert chats[-1][2] == '你好'
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
         response = await client.post('/api/task/task-1/discussion-groups', json={
             'project_id': project.id, 'bot_id': bot['id'], 'group_id': 'room', 'group_name': '任务讨论群',
@@ -660,10 +660,11 @@ async def test_private_source_preserves_initiator_and_updates_current_sender(bot
     source = (await manager._load())['session_sources']['session-1']
     assert source['initiator_name'] == '小王'
     assert source['sender_name'] == '王同学'
-    assert 'u1' in chats[-1][2] and '王同学' in chats[-1][2]
+    assert chats[-1][2] == '你好'
 
 
-async def test_channel_background_uses_separate_instruction_and_survives_reload(bots, monkeypatch):
+@pytest.mark.parametrize("engine_id", ["codex_sdk", "claude_agent_sdk"])
+async def test_channel_background_uses_separate_instruction_and_survives_reload(bots, monkeypatch, engine_id):
     from engines.core.events import InternalEvent
     import agent_assistants.channel_chat as channel_module
 
@@ -671,8 +672,8 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
     module = ChannelChatModule(manager._event_bus, manager._project_manager, register=False)
     monkeypatch.setattr(module, "_validate_engine", lambda _engine: None)
     monkeypatch.setattr(module._config, "validate_engine", lambda _engine: None)
-    monkeypatch.setattr(module, "_resolve_engine_models", lambda: ("codex_sdk", "gpt-6.1-sol", None))
-    monkeypatch.setattr(module._config, "resolve_engine_models", lambda: ("codex_sdk", "gpt-6.1-sol", None))
+    monkeypatch.setattr(module, "_resolve_engine_models", lambda: (engine_id, "gpt-6.1-sol", None))
+    monkeypatch.setattr(module._config, "resolve_engine_models", lambda: (engine_id, "gpt-6.1-sol", None))
     monkeypatch.setattr(module, "get_system_prompt", lambda _project: "Project role")
     monkeypatch.setattr(channel_module, "config_store", manager._store)
     selected_provider = ""
@@ -684,13 +685,13 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
     ))
     monkeypatch.setattr("agent_assistants.chat_session.create_engine", lambda _id: SimpleNamespace(supports_resume=True))
     monkeypatch.setattr("services.config.config_store.get_assistant_defaults", lambda _id: {
-        "engine": "codex_sdk", "model": "gpt-6.1-sol",
+        "engine": engine_id, "model": "gpt-6.1-sol",
     })
     calls = []
     events_queue = manager._event_bus.subscribe()
 
     async def invoke(engine, model, cwd, prompt, session_id, on_event, **kwargs):
-        assert not kwargs.get("system_prompt_each_turn", False)
+        assert kwargs.get("system_prompt_each_turn") is True
         calls.append((prompt, session_id, kwargs["system_prompt"]))
         await on_event(InternalEvent(type="prompt_input", data={
             "engine": engine, "attempt": 1, "session_id": session_id,
@@ -737,14 +738,14 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
         assert len(calls) == 2
         assert [call[1] for call in calls] == [None, "engine-session"]
         for prompt, _, instruction in calls:
-            assert "group:123" in prompt and "研发群" in prompt
-            assert prompt.endswith("你好")
-            assert "研发机器人" in prompt and "dingtalk" in prompt
-            assert "Project role" in instruction
-            assert "Channel session background" not in instruction
-            assert "小王" in prompt
+            assert "group:123" in instruction and "研发群" in instruction
+            assert prompt == "你好"
+            assert "研发机器人" in instruction and "dingtalk" in instruction
+            assert "小王" in instruction
             assert "never-inject-secret" not in prompt + instruction
-        assert '"sender_name": "小李"' in calls[1][0]
+        assert "Project role" in calls[0][2]
+        assert ("Project role" in calls[1][2]) == (engine_id != "codex_sdk")
+        assert '"sender_name": "小李"' in calls[1][2]
         session_id = (await manager._load())["sessions"][f"{bot['id']}:group:group:123"]
         messages = await manager._project_manager.run_db(project.id, lambda _project: [
             message.prompt for message in ChatMessage.select().where(ChatMessage.session == session_id)
@@ -773,8 +774,9 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
             conversation_id="another-group", sender_id="u3", text="新群",
         ))
         assert calls[-1][1] is None
-        assert "another-group" in calls[-1][0] and "group:123" not in calls[-1][0]
-        assert '"conversation_name": ""' in calls[-1][0]
+        assert calls[-1][0] == "新群"
+        assert "another-group" in calls[-1][2] and "group:123" not in calls[-1][2]
+        assert '"conversation_name": ""' in calls[-1][2]
 
         async def send_to_original_group(message_id, text):
             await manager.handle_message(IncomingMessage(
@@ -791,13 +793,13 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
         from agent_assistants.chat_session import ChatSessionModule
         workbench = ChatSessionModule(manager._event_bus, manager._project_manager)
         monkeypatch.setattr(workbench, "_validate_engine", lambda _engine: None)
-        monkeypatch.setattr(workbench, "_resolve_engine_models", lambda: ("codex_sdk", None, None))
+        monkeypatch.setattr(workbench, "_resolve_engine_models", lambda: (engine_id, None, None))
         monkeypatch.setattr(main, "chat_session_module", workbench)
         monkeypatch.setattr(main, "project_manager", manager._project_manager)
         async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
             confirmed = await client.post(
                 f"/api/chat-sessions/{session_id}/handoff",
-                json={"project_id": project.id, "engine": "codex_sdk", "provider_id": "", "context_mode": "smart"},
+                json={"project_id": project.id, "engine": engine_id, "provider_id": "", "context_mode": "smart"},
             )
             assert confirmed.status_code == 200, confirmed.text
 

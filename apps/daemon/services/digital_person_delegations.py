@@ -25,6 +25,14 @@ FOLLOWUP_LABELS = {
     'completed': 'Closed', 'needs_user': 'Needs input',
     'stopped': 'Tracking stopped', 'superseded': 'Newer turn',
 }
+DELEGATION_REVIEW_RULES = (
+    'Compare the full reply with the original goal. Treat completion claims as reports. '
+    'If material gaps remain (untested cases, missing deliverables, or uncertain results), '
+    'continue in the original chat when the worker can resolve them. Ask for the specific check '
+    'or fix and its evidence, even if the reply says done. Ignore caveats outside the goal. '
+    'Use needs_user for a blocker requiring the user or repeated attempts without progress. '
+    'To complete, include evidence as a verbatim excerpt of the concrete result from the latest reply.'
+)
 
 
 def _inline_text(text, limit):
@@ -238,7 +246,8 @@ class DelegationManagement:
                 saved = item.get('followup_decision')
                 question = (item['question'] or {}).get('id')
                 if saved and item.get('decision_question') == question:
-                    await self._apply_one(item, saved, profile)
+                    if await self._apply_one(item, saved, profile) is False:
+                        undecided.append(item)
                 else:
                     undecided.append(item)
         return undecided
@@ -272,9 +281,10 @@ class DelegationManagement:
             return settled
 
         saved = await self.runtime.projects.run_db(home.id, read)
+        applied = set()
         if saved:
-            await self.apply(list(saved.values()), eligible, profile, foreground=True)
-        return [item for item in eligible if item['id'] not in saved]
+            applied = await self.apply(list(saved.values()), eligible, profile, foreground=True)
+        return [item for item in eligible if item['id'] not in applied]
 
     async def attach(self, context, eligible):
         groups = context.get('_groups', [context])
@@ -297,12 +307,15 @@ class DelegationManagement:
     async def apply(self, actions, eligible, profile, *, foreground=False):
         sources = {item['id']: item for item in eligible}
         validate_actions(actions, sources)
+        applied = set()
         async with self.lock:
             for action in actions:
                 item = sources[action['id']]
                 if not allows_action(item, action):
                     continue
-                await self._apply_one(item, redact(action), profile, foreground=foreground)
+                if await self._apply_one(item, redact(action), profile, foreground=foreground) is not False:
+                    applied.add(item['id'])
+        return applied
 
     async def _apply_one(self, item, action, profile, *, foreground=False):
         runtime = self.runtime
@@ -351,13 +364,31 @@ class DelegationManagement:
             await self._finish(item, 'continued')
             return
         if item['status'] in TERMINAL:
-            latest = await runtime.projects.run_db(item['project_id'], lambda _: (
-                ChatMessage.select(ChatMessage.id).where(ChatMessage.session == item['session_id'],
-                    ChatMessage.role == 'assistant').order_by(ChatMessage.created_at.desc()).scalar()
-            ))
+            completing = saved['action'] == 'complete'
+
+            def latest_result(_):
+                fields = [ChatMessage.id]
+                if completing:
+                    fields.append(ChatMessage.content)
+                row = ChatMessage.select(*fields).where(ChatMessage.session == item['session_id'],
+                    ChatMessage.role == 'assistant').order_by(ChatMessage.created_at.desc()).first()
+                return (row.id, row.content if completing else '') if row else (None, '')
+
+            latest, content = await runtime.projects.run_db(item['project_id'], latest_result)
             if latest != item['message_id']:
                 await self._finish(item, 'superseded')
                 return
+            if completing:
+                evidence = saved.get('evidence')
+                excerpt = ' '.join(evidence.split()) if isinstance(evidence, str) else ''
+                if not excerpt or len(excerpt) > 320 or excerpt not in ' '.join(redact(content).split()):
+                    def release(state):
+                        target = next(row for row in state['delegations'] if row['id'] == item['id'])
+                        if target.get('followup_decision') == saved:
+                            target.pop('followup_decision', None)
+                            target.pop('decision_question', None)
+                    await runtime.mutate(release)
+                    return False
         if foreground:
             await self._finish(item, 'pending' if item['question'] else
                                'completed' if saved['action'] == 'complete' else 'needs_user',

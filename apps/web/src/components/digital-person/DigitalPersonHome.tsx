@@ -208,7 +208,7 @@ export default function DigitalPersonHome(props:Props){
     readingId={output.readingId} onToggleSpeech={toggleCaptionSpeech}/>}
    {transcriptVisible&&<section className="digital-home-chat" aria-label={t('digitalPerson.homeTranscript')}><header><h2>{t('digitalPerson.homeTranscript')}</h2><Button variant="ghost" onClick={()=>setChatShown(false)} aria-label={t('common.close')}><Icon name="x" size={18}/></Button></header>{props.children}</section>}
    {conversationWindow&&<DigitalPersonConversationDialog key={conversationWindow.id} projectId={conversationWindow.projectId}
-    initialSessionId={conversationWindow.sessionId} title={conversationWindow.title} onClose={ui.close}
+    initialSessionId={conversationWindow.sessionId} initialHistory={conversationWindow.initialHistory} title={conversationWindow.title} onClose={ui.close}
     floating={{anchor:avatarAnchor,closing:conversationWindow.closing,onExited:()=>ui.finishClosing(conversationWindow.id)}}/>}
   </div>
   {(props.error||dialogue.error)&&<p className="digital-home-error" role="alert">{props.error||t(dialogue.error as never)}</p>}

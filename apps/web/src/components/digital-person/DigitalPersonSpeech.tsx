@@ -3,7 +3,7 @@ import type { DigitalPersonProfile } from '../../api/digitalPerson'
 import { OUTPUT_CHANGED, type OutputSettings } from '../../api/speechOutput'
 import { useI18n, localizeErrorDisplay } from '../../i18n'
 import type { AssistantChatMessage } from '../../stores/assistantStore'
-import { primeSpeechOutput, SpeechOutputPlayer, speechText, takeSpeechSentences } from '../../utils/speechOutput'
+import { primeSpeechOutput, SpeechOutputPlayer, speechText, streamingSpeechLimit, takeSpeechSentences } from '../../utils/speechOutput'
 import { loadSpeechOutputSettings, invalidateSpeechOutputSettings } from '../../utils/speechOutputSettings'
 import {DIGITAL_OUTPUT_FRAME,STOP_DIGITAL_SPEECH,type DigitalOutputFrame} from './digitalPersonVoiceEvents'
 import {captionContent} from './DigitalPersonCaptions'
@@ -24,7 +24,7 @@ export default function DigitalPersonSpeech({ ref, profile, projectId, sessionId
   const [hasRemaining, setHasRemaining] = useState(false)
   const player = useRef<SpeechOutputPlayer | null>(null)
   const manual = useRef<{id:string} | null>(null)
-  const recovery = useRef<{remaining: string[]; readingId?: string} | null>(null)
+  const recovery = useRef<{remaining: string[]; submitted: number; readingId?: string} | null>(null)
   const tracked = useRef({ id: '', consumed: 0, text: '', started: false, suppressed: false })
   const outputFrame=useRef({playing:false,level:0,busy:false,metered:false})
   const publishOutput=useCallback(()=>window.dispatchEvent(new window.CustomEvent<DigitalOutputFrame>(DIGITAL_OUTPUT_FRAME,{detail:{projectId,sessionId,...outputFrame.current,readingId:manual.current?.id}})),[projectId,sessionId])
@@ -74,21 +74,21 @@ export default function DigitalPersonSpeech({ ref, profile, projectId, sessionId
     return()=>window.removeEventListener(STOP_DIGITAL_SPEECH,interrupt)
   },[projectId,sessionId,stop])
 
-  const rememberFailure = (reason: unknown, remaining: string[], readingId?: string) => {
-    recovery.current = { remaining, readingId }
+  const rememberFailure = (reason: unknown, remaining: string[], readingId?: string, submitted = 0) => {
+    recovery.current = { remaining, submitted, readingId }
     setHasRemaining(remaining.length > 0)
     setError(reason instanceof Error ? reason.message : String(reason))
   }
 
   const makePlayer = (config:OutputSettings, readingId?: string) => {
     outputFrame.current.metered=config.mode!=='system'&&config.volume>0
-    const result = new SpeechOutputPlayer({ projectId, coalesce:true, digitalSessionId: sessionId ?? undefined,
+    const result = new SpeechOutputPlayer({ projectId, coalesce: !!readingId, batchStreaming: !readingId, digitalSessionId: sessionId ?? undefined,
       settings: { ...config, rate: profile.voice_rate ?? config.rate }, systemVoice: profile.voice_name,
       onPlayback: value=>{if(player.current===result){outputFrame.current.playing=value;publishOutput()}},
       onLevel: value=>{if(player.current===result){outputFrame.current.level=value;publishOutput()}},
       onInterrupt: () => { if (player.current === result) { tracked.current.suppressed = true; stop() } },
       onState: value=>{if(player.current===result){if(!value)manual.current=null;setPlaying(value);outputFrame.current.busy=value;publishOutput()}},
-      onRecovery: (reason, remaining) => { if (player.current === result) rememberFailure(reason, remaining, readingId) } })
+      onRecovery: (reason, remaining, submitted) => { if (player.current === result) rememberFailure(reason, remaining, readingId, submitted) } })
     player.current = result
     return result
   }
@@ -103,10 +103,10 @@ export default function DigitalPersonSpeech({ ref, profile, projectId, sessionId
       if (recovery.current !== pending || !outputFrame.current.busy) return
       recovery.current = null; setHasRemaining(false); setError('')
       if (pending.readingId) manual.current = { id: pending.readingId }
-      makePlayer(config, pending.readingId).enqueue(pending.remaining)
+      makePlayer(config, pending.readingId).enqueue(pending.remaining, { final: !!pending.readingId || reply?.status === 'succeeded', submitted: pending.submitted })
     } catch (reason) {
       if (recovery.current !== pending || !outputFrame.current.busy) return
-      stop(true); rememberFailure(reason, pending.remaining, pending.readingId)
+      stop(true); rememberFailure(reason, pending.remaining, pending.readingId, pending.submitted)
     }
   }
 
@@ -157,7 +157,7 @@ export default function DigitalPersonSpeech({ ref, profile, projectId, sessionId
     const text = speechText(reply.content, final)
     if (!text.startsWith(tracked.current.text.slice(0, tracked.current.consumed))) { stop(); tracked.current.suppressed = true; return }
     tracked.current.text = text
-    const { sentences, rest } = takeSpeechSentences(text.slice(tracked.current.consumed), final, !tracked.current.started)
+    const { sentences, rest } = takeSpeechSentences(text.slice(tracked.current.consumed), final, !tracked.current.started, streamingSpeechLimit(settings))
     tracked.current.consumed = text.length - rest.length
     if (sentences.length) {
       tracked.current.started = true
@@ -167,9 +167,9 @@ export default function DigitalPersonSpeech({ ref, profile, projectId, sessionId
       } else {
         setError('')
         const current = player.current || makePlayer(settings)
-        current.enqueue(sentences)
+        current.enqueue(sentences, { final })
       }
-    }
+    } else if (final) player.current?.enqueue([], { final })
     // Queue ownership is scoped to the existing chat/session, not every token render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reply?.id, reply?.content, reply?.status, reply?.proactive, profile.auto_speak, settings, active, muted, blockNew])

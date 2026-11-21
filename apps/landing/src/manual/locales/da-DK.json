@@ -93,7 +93,8 @@
         "tips": [
           "Kontoabonnementer, API-legitimationsoplysninger og fakturering bestemmes af tjenesteudbyderen. Installation af en SDK giver ikke legitimationsoplysninger.",
           "Når du redigerer en udbyder, bevares den gamle værdi ved at lade nøglen være tom. Indtast en ny nøgle for at erstatte den, og skjul nøgler før skærmbilleder eller delingskonfiguration.",
-          "I virksomhedsadministreret tilstand kan udbydere tildeles af platformen. Brug en autoriseret udbyder i stedet for at tilføje den igen."
+          "I virksomhedsadministreret tilstand kan udbydere tildeles af platformen. Brug en autoriseret udbyder i stedet for at tilføje den igen.",
+          "Hent modeller samler protokoller til ét valg og gemmer efter bekræftelse; mislykkede protokoller bevarer cachen. Gatewaystyrede udbydere redigeres kun i gatewayen. Chatplanlægning og tilladelser er adskilt; udbyderskift kræver udtrykkelig overdragelse. Foldede spor viser forhåndsvisning; udvid for alle detaljer."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Rediger arbejdsgange",
     "summary": "Del arbejdet op i trin, og konfigurer udførelsesmotorer, input, output og gennemgangsregler.",
     "sections": [
+      {
+        "title": "Fejlfind en arbejdsgangskladde",
+        "steps": [
+          "Vælg Fejlfinding eller Fejlfinding fra dette trin på værtens lokale lærred, angiv opgave og eksempler fra tidligere trin og start. Kladden køres reelt og kan ændre filer eller koste penge. Stop eller ryd den særskilte historik; det afslutter ikke en produktionsopgave."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Fejlfind en arbejdsgangskladde",
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
+        }
+      },
       {
         "title": "Tilføj og tilslut trin",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Udfyld en beskedkladde med stemmen",
         "steps": [
-          "Åbn „Indstillinger → Taleindstillinger → Input“, og vælg lokal model, cloududbyder eller egen fjerntjeneste. Hent først kørselsmiljø og model lokalt, og klik „Brug denne model“. Paraformer understøtter mandarin, kantonesisk og engelsk; Zipformer mandarin og engelsk. Gem, og kontrollér med „Test mikrofon“. Modellen installeres på WorkStep-værten.",
+          "Åbn „Indstillinger → Taleindstillinger → Input“, og vælg lokal model, cloududbyder eller egen fjerntjeneste. Hent først kørselsmiljø og model lokalt, og klik „Brug denne model“. Paraformer understøtter mandarin, kantonesisk og engelsk; SenseVoice mandarin og engelsk. Gem, og kontrollér med „Test mikrofon“. Modellen installeres på WorkStep-værten.",
           "Brug mikrofonindgangen på computer. På telefon starter den lille højttaler nederst til højre optagelse, når kladden er tom; med tekst vises Send. Langt tryk bevarer systemets tekstmarkering. Kontrollér transskriptionskladden efter optagelse, og send manuelt. Højst to minutter ad gangen; annullering sender ikke."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Konfigurér kommunikationsstil, hovedsamtale, proaktiv refleksion og kanalbetjening. Se minder med kilder, og aktivér lyd og persongenkendelse efter behov.",
     "sections": [
       {
+        "title": "Udforsk hukommelseskortet",
+        "steps": [
+          "Åbn Indstillinger → Datacenter (tidligere Digital person). Skift til hukommelseskortet på startsiden, flyt, zoom og vælg en stjerne for viden og oprindelige kilder. Der vises højst 500 stjerner, ikke hele hukommelsen."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Udforsk hukommelseskortet",
+          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
+        }
+      },
+      {
         "title": "Konfigurér personlighed, ansvar og hovedsamtale",
         "steps": [
           "Åbn „Indstillinger → Digital figur → Førstegangsvejledning“, skriv navnet, og redigér personlighed, ansvar og faste minder under „Personlighed og ansvar“. Brug forvalg eller importér fra rollecentret, konfigurér en tilgængelig motor, og vælg „Afslut og aktivér“.",
@@ -1630,7 +1653,8 @@
           "Fejlet levering kan forsøges igen som notifikation. Kontrollér færdig refleksion og modtaget besked hver for sig. Slukning af automatisk refleksion pauser planlagte kontroller; almindelig chat og manuel refleksion bevares."
         ],
         "tips": [
-          "Standardintervallet er 5 minutter. Tilladelse til proaktiv kontakt giver ikke beskeder hver runde; uden ventende hændelser kan runden ende stille. Modelkald kan koste penge, og resuméet er ikke en fuld tankekæde."
+          "Standardintervallet er 5 minutter. Tilladelse til proaktiv kontakt giver ikke beskeder hver runde; uden ventende hændelser kan runden ende stille. Modelkald kan koste penge, og resuméet er ikke en fuld tankekæde.",
+          "Delegationstitler må have 60 tegn og erstatter ikke hele instruktionen. Fortsættelser kan arve titlen; eksisterende chats omdøbes ikke. Antallet af nye minder åbner resuméer, højrepilen hele posten. Nul skjules; stilhed er ikke en leveringsfejl."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Mikrofon, kamera og afspilning kræver hver deres system-/webstedstilladelser. Fjerntjenester modtager den relevante lyd. Faktisk lyd på telefon og computer skal stadig efterprøves på enheden.",
-          "Kun nye svar læses op. Åbning af hele samtalepanelet pauser automatisk oplæsning; lukning afspiller ikke gammelt indhold. Forvent ikke fortsat lytning med låst skærm eller lukket app."
+          "Kun nye svar læses op. Åbning af hele samtalepanelet pauser automatisk oplæsning; lukning afspiller ikke gammelt indhold. Forvent ikke fortsat lytning med låst skærm eller lukket app.",
+          "Første talesegment dannes straks; senere sætninger samles i højst 350ms, opdeles efter modellens grænser og færdiggøres ved afslutning. Stop, lydløs eller chatskift fjerner ventende lyd. Ressourcer kan vælge downloadkilde, pauses, genoptages eller ryddes; kontrollér før brug. Mikrofonen tændes ikke automatisk."
         ],
         "screenshot": {
           "id": "speech-output",

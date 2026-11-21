@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from services.prompt import _load_project_memory
+from services.project_memory import load_memory_for_prompt
 from services.task_archive import persist_experience_and_archive
 
 
@@ -37,7 +37,7 @@ def test_prompt_memory_preserves_regular_files_and_in_root_links(tmp_path, linke
         memory.symlink_to(target)
     else:
         memory.write_text("  已有约定  ", encoding="utf-8")
-    assert _load_project_memory(data / "artifacts", limit=3) == "已有约"
+    assert load_memory_for_prompt(data, limit=3) == "已有约"
 
 
 def test_prompt_memory_does_not_include_outside_symlink_target(tmp_path):
@@ -46,15 +46,15 @@ def test_prompt_memory_does_not_include_outside_symlink_target(tmp_path):
     outside = tmp_path / "private.md"
     outside.write_text("OUTSIDE_PRIVATE_CONTENT", encoding="utf-8")
     (data / "MEMORY.md").symlink_to(outside)
-    content = _load_project_memory(data / "artifacts")
+    content = load_memory_for_prompt(data)
     print("PPV_REACHED", flush=True)
     assert content is None
 
 
 def test_prompt_memory_preserves_universal_newline_and_limit(tmp_path):
     (tmp_path / "MEMORY.md").write_bytes(b"first\r\nsecond\rthird")
-    assert _load_project_memory(tmp_path / "artifacts") == "first\nsecond\nthird"
-    assert _load_project_memory(tmp_path / "artifacts", limit=12) == "first\nsecond"
+    assert load_memory_for_prompt(tmp_path) == "first\nsecond\nthird"
+    assert load_memory_for_prompt(tmp_path, limit=12) == "first\nsecond"
 
 
 @pytest.fixture

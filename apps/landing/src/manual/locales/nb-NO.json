@@ -93,7 +93,8 @@
         "tips": [
           "Kontoabonnement, API-legitimasjon og fakturering bestemmes av tjenesteleverandøren. Installering av en SDK gir ikke legitimasjon.",
           "Når du redigerer en leverandør, beholdes den gamle verdien ved å la nøkkelen stå tom. Skriv inn en ny nøkkel for å erstatte den, og skjul nøkler før skjermbilder eller delingskonfigurasjon.",
-          "I bedriftsadministrert modus kan leverandører tildeles av plattformen. Bruk en autorisert leverandør i stedet for å legge den til igjen."
+          "I bedriftsadministrert modus kan leverandører tildeles av plattformen. Bruk en autorisert leverandør i stedet for å legge den til igjen.",
+          "Hent modeller samler protokoller til ett valg og lagrer etter bekreftelse; mislykkede protokoller beholder mellomlageret. Gatewaystyrte leverandører redigeres bare i gatewayen. Samtaleplanlegging og tillatelser er separate; leverandørbytte krever uttrykkelig overlevering. Sammenfoldede spor viser forhåndsvisning; utvid for alle detaljer."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Rediger arbeidsflyter",
     "summary": "Del arbeidet inn i trinn og konfigurer utførelsesmotorer, innganger, utganger og gjennomgangsregler.",
     "sections": [
+      {
+        "title": "Feilsøk et arbeidsflytutkast",
+        "steps": [
+          "Velg Feilsøk eller Feilsøk fra dette trinnet på vertens lokale lerret, angi oppgave og tidligere inndataeksempler og start. Utkastet kjøres faktisk og kan endre filer eller koste penger. Stopp eller tøm den separate historikken; dette fullfører ikke en produksjonsoppgave."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Feilsøk et arbeidsflytutkast",
+          "caption": "Det faktiske kinesiske grensesnittet fra det faste demomiljøet. Viser innstillinger, innganger eller tomme lister; ingen modell ble kalt og ingen melding sendt under dette opptaket."
+        }
+      },
       {
         "title": "Legg til og koble til trinn",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Fyll et meldingsutkast med stemmen",
         "steps": [
-          "Åpne «Innstillinger → Taleinnstillinger → Inndata» og velg lokal modell, skyleverandør eller egen ekstern tjeneste. Last først ned kjøremiljø og lokal modell, og velg «Bruk denne modellen». Paraformer støtter mandarin, kantonesisk og engelsk; Zipformer mandarin og engelsk. Lagre og kontroller med «Test mikrofon». Modellene installeres på WorkStep-verten.",
+          "Åpne «Innstillinger → Taleinnstillinger → Inndata» og velg lokal modell, skyleverandør eller egen ekstern tjeneste. Last først ned kjøremiljø og lokal modell, og velg «Bruk denne modellen». Paraformer støtter mandarin, kantonesisk og engelsk; SenseVoice mandarin og engelsk. Lagre og kontroller med «Test mikrofon». Modellene installeres på WorkStep-verten.",
           "Bruk mikrofoninngangen på datamaskinen. På telefon trykker du på den lille høyttaleren nederst til høyre når utkastet er tomt; med tekst vises sendeknappen. Langt trykk beholder systemets tekstmerking. Kontroller transkripsjonen etter opptak og send manuelt. Maksimalt to minutter per opptak; avbryt sender ingenting."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Konfigurer samtalestil, hovedsamtale, aktiv refleksjon og kanalmottak. Se kildebelagt hukommelse og aktiver lyd og persongjenkjenning ved behov.",
     "sections": [
       {
+        "title": "Utforsk minnekartet",
+        "steps": [
+          "Åpne Innstillinger → Datasenter (tidligere Digital person). Bytt til minnekartet på startsiden, flytt, zoom og velg en stjerne for kunnskap og opprinnelige kilder. Høyst 500 stjerner vises, ikke hele minnet."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Utforsk minnekartet",
+          "caption": "Det faktiske kinesiske grensesnittet fra det faste demomiljøet. Viser innstillinger, innganger eller tomme lister; ingen modell ble kalt og ingen melding sendt under dette opptaket."
+        }
+      },
+      {
         "title": "Konfigurer personlighet, oppgaver og hovedsamtale",
         "steps": [
           "Åpne «Innstillinger → Digital person → Førstegangsveiledning», fyll inn navn og rediger personlighet, oppgaver og varig hukommelse under «Personlighet og oppgaver». Bruk forhåndsvalg eller importer fra rollesenteret, velg en tilgjengelig motor og avslutt med «Fullfør og aktiver».",
@@ -1630,7 +1653,8 @@
           "Prøv varslingen på nytt ved leveringsfeil. Kontroller fullført refleksjon og levert melding separat. Avslått automatisk refleksjon stanser periodiske kontroller; vanlig chat og manuell refleksjon er fortsatt tilgjengelig."
         ],
         "tips": [
-          "Standardintervallet er 5 minutter. Tillatelse til aktiv kontakt betyr ikke melding hver runde; uten ventende hendelser kan runden ende stille. Modellkall kan koste penger, og sammendraget er ikke en full tankerekke."
+          "Standardintervallet er 5 minutter. Tillatelse til aktiv kontakt betyr ikke melding hver runde; uten ventende hendelser kan runden ende stille. Modellkall kan koste penger, og sammendraget er ikke en full tankerekke.",
+          "Delegeringstitler kan ha 60 tegn og erstatter ikke hele instruksjonen. Fortsettelser kan arve tittelen; eksisterende samtaler omdøpes ikke. Antall nye minner åpner sammendrag, høyrepilen hele oppføringen. Null skjules; stillhet er ikke leveringsfeil."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Mikrofon, kamera og avspilling krever egne system-/nettstedstillatelser. Eksterne tjenester mottar relevant lyd. Faktisk lyd på telefon og datamaskin må fortsatt verifiseres på enhetene.",
-          "Bare nye svar leses opp. Å åpne hele samtalepanelet setter automatisk opplesning på pause; lukking spiller ikke av gammelt innhold. Ikke anta fortsatt lytting ved låst skjerm eller lukket app."
+          "Bare nye svar leses opp. Å åpne hele samtalepanelet setter automatisk opplesning på pause; lukking spiller ikke av gammelt innhold. Ikke anta fortsatt lytting ved låst skjerm eller lukket app.",
+          "Første talesegment lages straks; senere setninger samles i opptil 350ms, deles etter modellgrenser og fullføres ved avslutning. Stopp, demping eller samtalebytte tømmer ventende lyd. Ressurser kan velge nedlastingskilde, pauses, fortsettes og ryddes; kontroller før bruk. Mikrofonen slås ikke på automatisk."
         ],
         "screenshot": {
           "id": "speech-output",

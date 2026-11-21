@@ -92,10 +92,12 @@ async def test_channel_source_is_persisted_and_applied_to_current_turn_after_res
                 await asyncio.sleep(.01)
         assert len(SourceEngine.calls)==2
         for index,call in enumerate(SourceEngine.calls,1):
-            assert f'"conversation_id": "group-{index}"' in call['prompt']
-            assert f'"sender_id": "user-{index}"' in call['prompt']
-            assert 'must-not-reach-engine' not in call['prompt']
-            assert 'Channel request background' not in (call.get('system_prompt') or '')
+            instruction = call['prompt'] if mode == 'body' else call['system_prompt']
+            assert f'"conversation_id": "group-{index}"' in instruction
+            assert f'"sender_id": "user-{index}"' in instruction
+            assert 'must-not-reach-engine' not in instruction
+            if mode != 'body':
+                assert 'Channel request background' not in call['prompt']
             from agent_assistants.coordinator_context import COORDINATOR_ROLE_RULES
             assert call['prompt'].count(COORDINATOR_ROLE_RULES) == (1 if mode == 'body' else 0)
             if mode == 'developer':
@@ -114,11 +116,12 @@ async def test_channel_source_is_persisted_and_applied_to_current_turn_after_res
         async with asyncio.timeout(3):
             while len(SourceEngine.calls)<3 or fresh._active_tasks:
                 await asyncio.sleep(.01)
-        instruction = SourceEngine.calls[2]['prompt']
+        call = SourceEngine.calls[2]
+        instruction = call['prompt'] if mode == 'body' else call['system_prompt']
         assert '"origin": "workstep"' in instruction
         assert '"sender_id": "web-user"' in instruction
         assert 'group-2' not in instruction
-        assert instruction.count(COORDINATOR_ROLE_RULES) == (1 if mode == 'body' else 0)
+        assert instruction.count(COORDINATOR_ROLE_RULES) == 1
         if mode == 'developer':
             assert COORDINATOR_ROLE_RULES in SourceEngine.calls[2]['system_prompt']
     finally:

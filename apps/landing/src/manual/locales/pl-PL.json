@@ -93,7 +93,8 @@
         "tips": [
           "Subskrypcje kont, dane uwierzytelniające API i rozliczenia są ustalane przez usługodawcę. Zainstalowanie SDK nie zapewnia poświadczeń.",
           "Podczas edytowania dostawcy pozostawienie klucza pustego powoduje zachowanie starej wartości. Wprowadź nowy klucz, aby go zastąpić, i ukryj klucze przed wykonaniem zrzutów ekranu lub udostępnieniem konfiguracji.",
-          "W trybie zarządzanym przez przedsiębiorstwo platforma może wyznaczać dostawców. Skorzystaj z autoryzowanego dostawcy, zamiast dodawać go ponownie."
+          "W trybie zarządzanym przez przedsiębiorstwo platforma może wyznaczać dostawców. Skorzystaj z autoryzowanego dostawcy, zamiast dodawać go ponownie.",
+          "Pobieranie modeli łączy protokoły do jednego wyboru i zapisuje po potwierdzeniu; błędny protokół zachowuje pamięć podręczną. Dostawców zarządzanych przez bramę edytuj tylko w niej. Planowanie i uprawnienia czatu są niezależne; zmiana dostawcy wymaga jawnego przekazania. Zwinięte ślady to podgląd, rozwinięcie ładuje pełne dane."
         ],
         "screenshot": {
           "id": "provider-create-test",
@@ -327,6 +328,17 @@
     "title": "Edytuj przepływy pracy",
     "summary": "Podziel pracę na etapy i skonfiguruj silniki wykonawcze, dane wejściowe, wyjściowe i reguły przeglądu.",
     "sections": [
+      {
+        "title": "Debugowanie szkicu przepływu",
+        "steps": [
+          "Na lokalnym płótnie hosta wybierz debugowanie lub debugowanie od tego kroku, wpisz zadanie i próbki wejściowe, po czym rozpocznij. Szkic jest naprawdę wykonywany i może zmieniać pliki lub naliczać opłaty. Zatrzymuj albo czyść oddzielną historię; nie oznacza to ukończenia zadania produkcyjnego."
+        ],
+        "screenshot": {
+          "id": "workflow-debug",
+          "alt": "Debugowanie szkicu przepływu",
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
+        }
+      },
       {
         "title": "Dodawaj i łącz kroki",
         "steps": [
@@ -875,7 +887,7 @@
       {
         "title": "Wprowadzanie szkicu głosem",
         "steps": [
-          "Otwórz «Ustawienia → Ustawienia głosu → Wejście» i wybierz model lokalny, dostawcę chmurowego lub własną usługę zdalną. Lokalnie pobierz środowisko i model, potem kliknij «Użyj tego modelu». Paraformer obsługuje mandaryński, kantoński i angielski, Zipformer mandaryński i angielski. Zapisz i sprawdź «Test mikrofonu». Modele instaluje się na hoście WorkStep.",
+          "Otwórz «Ustawienia → Ustawienia głosu → Wejście» i wybierz model lokalny, dostawcę chmurowego lub własną usługę zdalną. Lokalnie pobierz środowisko i model, potem kliknij «Użyj tego modelu». Paraformer obsługuje mandaryński, kantoński i angielski, SenseVoice mandaryński i angielski. Zapisz i sprawdź «Test mikrofonu». Modele instaluje się na hoście WorkStep.",
           "Na komputerze użyj mikrofonu; na telefonie przy pustym szkicu kliknij głośniczek na dole po prawej. Gdy jest tekst, widoczny jest przycisk wysyłania. Długie naciśnięcie zachowuje systemowe zaznaczanie tekstu. Po nagraniu sprawdź transkrypcję i wyślij ręcznie. Limit to dwie minuty; anulowanie niczego nie wysyła."
         ],
         "tips": [
@@ -1590,6 +1602,17 @@
     "summary": "Skonfiguruj styl rozmowy, główną konwersację, samodzielną refleksję i obsługę kanałów. Przeglądaj pamięć ze źródłami, a w razie potrzeby włącz głos i rozpoznawanie osób.",
     "sections": [
       {
+        "title": "Przeglądanie mapy pamięci",
+        "steps": [
+          "Otwórz Ustawienia → Centrum danych (dawniej Cyfrowa postać). Na stronie głównej przełącz mapę pamięci, przesuwaj, powiększaj i wybieraj gwiazdy, aby sprawdzać wiedzę i źródła. Widocznych jest najwyżej 500 gwiazd, nie cała pamięć."
+        ],
+        "screenshot": {
+          "id": "memory-atlas",
+          "alt": "Przeglądanie mapy pamięci",
+          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
+        }
+      },
+      {
         "title": "Osobowość, obowiązki i główna rozmowa",
         "steps": [
           "Otwórz «Ustawienia → Cyfrowa osoba → Pierwsze kroki», wpisz imię i edytuj osobowość, obowiązki oraz stałą pamięć w «Osobowość i obowiązki». Użyj ustawień wstępnych lub importu z centrum ról, skonfiguruj dostępny silnik i wybierz «Zakończ i włącz».",
@@ -1630,7 +1653,8 @@
           "Po błędzie dostarczenia można ponowić powiadomienie. Osobno sprawdź zakończenie refleksji i doręczenie. Wyłączenie automatycznej refleksji wstrzymuje kontrole okresowe; zwykły czat i ręczna refleksja działają nadal."
         ],
         "tips": [
-          "Domyślny odstęp to 5 minut. Zgoda na aktywny kontakt nie oznacza wiadomości w każdej rundzie; bez oczekujących zdarzeń runda może skończyć się cicho. Wywołania modelu mogą kosztować; podsumowanie nie jest pełnym łańcuchem rozumowania."
+          "Domyślny odstęp to 5 minut. Zgoda na aktywny kontakt nie oznacza wiadomości w każdej rundzie; bez oczekujących zdarzeń runda może skończyć się cicho. Wywołania modelu mogą kosztować; podsumowanie nie jest pełnym łańcuchem rozumowania.",
+          "Tytuł delegacji ma do 60 znaków i nie zastępuje pełnej instrukcji. Kontynuacja może go odziedziczyć bez zmiany nazw istniejących czatów. Liczba nowych wspomnień otwiera podsumowania, prawa strzałka pełny zapis. Zero jest ukryte; cisza nie oznacza błędu dostarczenia."
         ],
         "screenshot": {
           "id": "digital-person-activity",
@@ -1663,7 +1687,8 @@
         ],
         "tips": [
           "Mikrofon, kamera i odtwarzanie wymagają osobnych zgód systemu/witryny. Usługi zdalne otrzymują odpowiedni dźwięk. Rzeczywisty dźwięk telefonu i komputera wymaga nadal testu urządzeń.",
-          "Odczytywane są tylko nowe odpowiedzi. Otwarcie pełnego panelu rozmowy wstrzymuje automatyczny odczyt; po zamknięciu stare treści nie są nadrabiane. Nie zakładaj nasłuchu przy zablokowanym ekranie lub zamkniętej aplikacji."
+          "Odczytywane są tylko nowe odpowiedzi. Otwarcie pełnego panelu rozmowy wstrzymuje automatyczny odczyt; po zamknięciu stare treści nie są nadrabiane. Nie zakładaj nasłuchu przy zablokowanym ekranie lub zamkniętej aplikacji.",
+          "Pierwszy fragment mowy powstaje natychmiast; kolejne zdania są łączone przez maksymalnie 350ms, dzielone według limitów modelu, a reszta przetwarzana na końcu. Stop, wyciszenie lub zmiana czatu usuwa oczekujące audio. Zasoby umożliwiają wybór źródła, pauzę, wznowienie i czyszczenie; sprawdź je przed użyciem. Mikrofon nie włącza się sam."
         ],
         "screenshot": {
           "id": "speech-output",

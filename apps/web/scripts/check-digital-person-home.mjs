@@ -3,27 +3,47 @@ import path from 'node:path'
 import assert from 'node:assert/strict'
 import {build} from 'vite'
 import {chromium} from '../../desktop/node_modules/playwright-core/index.mjs'
-const root=path.resolve(import.meta.dirname,'..'),artifacts=path.resolve(root,'../../tmp/digital-person-home'),out=path.join(artifacts,'browser')
+const byId=process.argv.includes('--conversation-by-id')
+const workbench=process.argv.includes('--workbench-ui-actions')
+const root=path.resolve(import.meta.dirname,'..'),artifacts=path.resolve(root,workbench?'../../tmp/digital-person-workbench-ui':byId?'../../tmp/digital-person-conversation-by-id':'../../tmp/digital-person-home'),out=path.join(artifacts,'browser')
 await fs.mkdir(artifacts,{recursive:true})
 await build({root,logLevel:'error',publicDir:false,build:{outDir:out,emptyOutDir:true,rolldownOptions:{input:path.join(root,'tests/fixtures/digital-person-home/index.html')}}})
 const html=await fs.readFile(path.join(out,'tests/fixtures/digital-person-home/index.html'))
 const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--enable-unsafe-swiftshader']})
 const results=[]
-const conversationOnly=process.argv.includes('--conversation-only')
+const conversationOnly=byId||process.argv.includes('--conversation-only')
 try{
  for(const [width,height]of [[320,568],[320,700],[390,844],[1023,900],[1024,900],[1440,1024]]){
   const page=await browser.newPage({viewport:{width,height}}),errors=[]
+  if(workbench)page.setDefaultTimeout(8000)
+  const conversationRequests=[]
+  let turns=0
   page.on('pageerror',e=>errors.push(e.stack||e.message))
   await page.route('**/*',async route=>{
    const url=new URL(route.request().url())
    if(url.hostname!=='home.invalid')return route.abort()
    if(url.pathname==='/api/fs/serve/companion-test.webp')return route.fulfill({body:await fs.readFile(path.join(root,'src/assets/digital-person-body-relaxed.webp')),contentType:'image/webp'})
    if(url.pathname==='/api/digital-person/affect')return route.fulfill({status:503,json:{detail:'Simulated unavailable relationship'}})
-   if(url.pathname==='/api/chat-sessions')return route.fulfill({json:{sessions:[{id:'preview',title:'发布复盘'}]}})
-   if(url.pathname==='/api/chat-sessions/preview')return route.fulfill({json:{id:'preview',project_id:'p',title:'发布复盘',engine:'pydantic_ai',messages:[{id:'preview-message',role:'user',status:'succeeded',content:'这是一段用于验收的模拟对话。'}]}})
-   if(url.pathname==='/api/assistant/list')return route.fulfill({json:{assistants:[{name:'chat_session',configured:{engine:'pydantic_ai'},available_engines:[{id:'pydantic_ai',name:'Pydantic AI',installed:true,enabled:true,configured:true}]}]}})
+   if(workbench&&url.pathname==='/api/digital-person')return route.fulfill({json:{enabled:true,name:'小研'}})
+   if(workbench&&url.pathname==='/api/digital-person/activity')return route.fulfill({json:{main_session_id:'main',delegations:[],runs:[],feedback:{}}})
+   if(workbench&&url.pathname==='/api/chat-sessions/main')return route.fulfill({json:{id:'main',project_id:'demo',title:'数据中枢对话',engine:'pydantic_ai',message_count:1,messages:[{id:'old',role:'assistant',status:'succeeded',content:['```workstep-ui','{"action":"conversation.open","project_id":"p","session_id":"preview"}','```'].join('\n')}]}})
+   if(workbench&&url.pathname==='/api/chat-sessions/main/chat'){
+    turns++
+    return route.fulfill({json:{session_id:'main',turn_id:'user-'+turns,assistant_message_id:'reply-'+turns,status:'running',engine:'pydantic_ai'}})
+   }
+   if(url.pathname==='/api/chat-sessions'){
+    conversationRequests.push('list')
+    return route.fulfill({json:{sessions:[{id:'preview',title:'发布复盘'}]}})
+   }
+   if(url.pathname==='/api/chat-sessions/preview'){
+    conversationRequests.push(url.searchParams.get('project_id'))
+    return route.fulfill({json:{id:'preview',project_id:'p',title:'发布复盘',engine:'pydantic_ai',messages:[{id:'preview-message',role:'user',status:'succeeded',content:'这是一段用于验收的模拟对话。'}]}})
+   }
+   if(url.pathname==='/api/chat-sessions/forbidden')return route.fulfill({status:403,json:{detail:'Project scope denied'}})
+   if(url.pathname==='/api/chat-sessions/missing')return route.fulfill({status:404,json:{detail:'Chat session not found'}})
+   if(url.pathname==='/api/assistant/list')return route.fulfill({json:{assistants:['chat_session','digital_person'].map(name=>({name,configured:{engine:'pydantic_ai'},available_engines:[{id:'pydantic_ai',name:'Pydantic AI',installed:true,enabled:true,configured:true}]}))}})
    if(url.pathname.startsWith('/api/'))return route.fulfill({json:{providers:[],buttons:[],runs:[],active_action_ids:[],sessions:[]}})
-   if(url.pathname==='/')return route.fulfill({body:html,contentType:'text/html'})
+   if(url.pathname==='/'||(workbench&&url.pathname==='/chat'))return route.fulfill({body:html,contentType:'text/html'})
    const filename=path.resolve(out,decodeURIComponent(url.pathname).replace(/^\//,''))
    if(!filename.startsWith(out+path.sep))return route.abort()
    try{return route.fulfill({body:await fs.readFile(filename),contentType:{'.js':'text/javascript','.css':'text/css','.webp':'image/webp','.png':'image/png'}[path.extname(filename)]||'application/octet-stream'})}catch{return route.fulfill({status:404,body:''})}
@@ -41,19 +61,53 @@ try{
     return canvas.captureStream(5)
    }})
   })
-  await page.goto('https://home.invalid/')
+  await page.goto(workbench?'https://home.invalid/chat?workbench':'https://home.invalid/')
+  if(workbench){
+   const submit=async(id,session_id)=>{
+    const input=page.locator('.chat-workspace-pane textarea').first()
+    await input.fill('打开 GitHub 会话')
+    const accepted=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/chat-sessions/main/chat')
+    await Promise.all([accepted,page.locator('.chat-workspace-pane .chat-input-send').first().click()])
+      .catch(async error=>{throw new Error(`${error.message}\n${errors.join('\n')}\n${await page.locator('body').innerText()}`)})
+    await page.locator('[data-message-id="'+id+'"]').waitFor({state:'attached'})
+    await page.evaluate(({id,session_id})=>window.finishWorkbenchTurn(id,{action:'conversation.open',project_id:'p',session_id}),{id,session_id})
+   }
+   await page.getByText('数据中枢对话',{exact:true}).first().waitFor({state:'attached'})
+   const workspace=page.locator('[data-workbench-route]')
+   const initialRoute=await workspace.getAttribute('data-workbench-route')
+   assert.equal(await page.getByRole('dialog',{name:'发布复盘'}).count(),0)
+   assert.equal(conversationRequests.filter(project=>project==='p').length,0,'history must not replay the old action')
+   await submit('reply-1','preview')
+   const dialog=page.getByRole('dialog',{name:'发布复盘'})
+   await dialog.getByText('这是一段用于验收的模拟对话。').waitFor({timeout:5000})
+   assert.equal(conversationRequests.filter(project=>project==='p').length,1)
+   assert.equal(await workspace.getAttribute('data-workbench-route'),initialRoute)
+   assert.doesNotMatch(await workspace.innerText(),/workstep-ui/)
+   await page.screenshot({path:path.join(artifacts,'workbench-'+width+'-'+height+'.png')})
+   await dialog.getByRole('button',{name:'关闭',exact:true}).click()
+   await dialog.waitFor({state:'detached'})
+   await submit('reply-2','forbidden')
+   await page.getByText('你没有权限查看这段对话。',{exact:true}).waitFor()
+   assert.equal(await dialog.count(),0)
+   assert.deepEqual(errors,[])
+   results.push({width,height,workbench:true})
+   await page.close()
+   continue
+  }
   assert.equal(await page.locator('.digital-affect').count(),0)
   await page.locator('.digital-home').waitFor({timeout:5000}).catch(error=>{
    if(errors.length)throw new Error(errors.join('\n'))
    throw error
   })
   const dock=await page.locator('.digital-home-voice-dock').boundingBox()
-  await page.evaluate(()=>window.homeFixture.uiAction('fixture-open',{action:'conversation.open',project:'视频功能项目',title:'发布复盘'}))
+  const target=byId?{project_id:'p',session_id:'preview'}:{project:'视频功能项目',title:'发布复盘'}
+  await page.evaluate(target=>window.homeFixture.uiAction('fixture-open',{action:'conversation.open',...target}),target)
   const conversation=page.getByRole('dialog',{name:'发布复盘'})
   await conversation.getByText('这是一段用于验收的模拟对话。').waitFor({timeout:10000}).catch(async error=>{
    throw new Error(`${error.message}\n${errors.join('\n')}\n${await page.locator('body').innerText()}`)
   })
   await conversation.evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished))})
+  if(byId)assert.deepEqual(conversationRequests,['p'],'opening by ID uses only the authorized first page')
   const panelBox=await conversation.boundingBox()
   assert.ok(panelBox.x>=0&&panelBox.y>=0&&panelBox.x+panelBox.width<=width&&panelBox.y+panelBox.height<=dock.y+1)
   assert.equal(await page.locator('.digital-home-microphone').evaluate(el=>{
@@ -77,6 +131,15 @@ try{
    await page.locator('.digital-person-conversation-layer').waitFor({state:'detached'})
    assert.equal(await page.evaluate(()=>window.conversationAnimations.length),2)
    await page.emulateMedia({reducedMotion:'no-preference'})
+  }
+  if(byId&&(width===390||width===1440)){
+   const statuses=[['forbidden','你没有权限查看这段对话。'],['missing','未找到指定对话，请核对项目和会话 ID。']]
+   for(const [id,message]of statuses){
+    await page.evaluate(id=>window.homeFixture.uiAction(id,{action:'conversation.open',project_id:'p',session_id:id}),id)
+    await page.getByText(message,{exact:true}).waitFor()
+    assert.equal(await page.locator('.digital-person-conversation-layer').count(),0)
+   }
+   await page.screenshot({path:path.join(artifacts,'home-conversation-missing-'+width+'.png')})
   }
   if(conversationOnly){
    assert.deepEqual(errors,[])

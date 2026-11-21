@@ -39,6 +39,8 @@ def assemble_context(
     turn: CoordinatorTurn,
     root_dir: str | None = None,
     separate_instructions: bool = False,
+    *,
+    project_memory: str | None = None,
 ):
     from services.task_workflow_config import resolve_task_workflow
     from services.task_workflow import WorkflowConflict
@@ -195,6 +197,8 @@ def assemble_context(
         "recent_coordinator_messages": recent_messages,
         "coordinator_summary": summary,
     }
+    if project_memory is not None:
+        context["project_memory"] = project_memory
     if not engine_manages_context:
         context.update({
             "workflow": compiled,
@@ -250,7 +254,7 @@ def assemble_context(
         )
     if engine_manages_context:
         instructions += (
-            " Context contains only the current task snapshot and this user message. "
+            " Use the latest project_memory value when provided. An empty value clears earlier project memory. "
             "For workflow details, review history, or artifacts, use available "
             "WorkStep tools to inspect current state."
         )
