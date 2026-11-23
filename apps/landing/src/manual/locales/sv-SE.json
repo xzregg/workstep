@@ -1511,6 +1511,17 @@
     "summary": "Förstå konfigurationens omfattning, läs först status och fel och gör sedan riktade reparationer.",
     "sections": [
       {
+        "title": "Diagnostik och prestanda",
+        "steps": [
+          "Öppna Inställningar → Rapportera problem → Diagnostik; även via Hjälp på datorn eller långt tryck på Androids flytande knapp. Filtrera loggar efter källa, nivå och tid. Spela in 15 sekunder under Prestanda, återskapa problemet och granska sedan långsamma bildrutor och händelser. Kopiera eller exportera rapporten uttryckligen och kontrollera känsliga uppgifter före delning. Ingen automatisk uppladdning; webbläsaren innehåller inte alla backendloggar."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Diagnostik och prestanda",
+          "caption": "Diagnostik och prestanda"
+        }
+      },
+      {
         "title": "Kontrollera skrivbordsversionen och ladda ner uppdateringar",
         "steps": [
           "På skrivbordet, öppna Inställningar → Systeminställningar → Skrivbordsuppdateringar för att inspektera den aktuella versionen.",
@@ -1601,6 +1612,17 @@
     "title": "Digital person och globalt minne",
     "summary": "Konfigurera samtalsstil, huvudsamtal, proaktiv reflektion och kanalmottagning. Se källbelagda minnen och aktivera röst och personigenkänning vid behov.",
     "sections": [
+      {
+        "title": "Välkomna bekanta tillbaka",
+        "steps": [
+          "Öppna Inställningar → Datacenter → Syn → Ansiktsväckning. Registrera personer med samtycke och aktivera igenkänning; kameran måste förbli på. En fras per rad, högst 12 rader med 160 tecken, med {name} och {relationship}. Slumpförhandsvisning visar bara text. Välj textning eller tal, frånvarotid, väntetid och globala gränser, spara sedan. Tysta timmar och pågående interaktion hindrar hälsningar. Identitet och behörigheter ändras inte."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Välkomna bekanta tillbaka",
+          "caption": "Välkomna bekanta tillbaka"
+        }
+      },
       {
         "title": "Utforska minneskartan",
         "steps": [

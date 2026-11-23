@@ -4,6 +4,19 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+## 1.0.25
+
+- Add privacy-filtered runtime diagnostics and bounded performance recording across the workbench, desktop and Android, with explicit report export and diagnostic attachments.
+- Include shared runtime-diagnostics assets in Docker frontend builds and verify isolated daemon and Gateway startup.
+- Improve voice capture, wake greetings, speech playback cleanup and native Android audio handling.
+- Refine memory classification, preference ownership, reflection summaries and evidence-backed memory-atlas navigation.
+- Add face-welcome controls and preserve camera selection and recognition context boundaries.
+- Improve native engine-session retention, Codex transport cleanup and OpenCode integration.
+- Refine archive-experience generation and keep archive progress, cancellation and evidence access explicit.
+- Keep message identifiers and captured prompts accessible while replies are running, and constrain identifier popovers on narrow screens.
+- Add enabled/disabled skill filters and simplify the homepage walkthrough and download guidance.
+- Align regression tests with current menus, English error contracts and runtime path handling; use one async test runner for Action lifecycle tests.
+
 ## 1.0.24
 
 - Expose native engine permission choices and service-tier capabilities from the shared engine catalog, keeping planning controls separate from permission modes.

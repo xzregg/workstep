@@ -1511,6 +1511,17 @@
     "summary": "Forstå konfigurationsomfanget, læs status og fejl først, og lav derefter målrettede reparationer.",
     "sections": [
       {
+        "title": "Diagnostik og ydeevne",
+        "steps": [
+          "Åbn Indstillinger → Rapportér problem → Diagnostik; også via Hjælp på computeren eller langt tryk på Androids flydende knap. Filtrer logge efter kilde, niveau og tid. Optag 15 sekunder under Ydeevne, genskab problemet og se derefter langsomme billeder og hændelser. Kopiér eller eksportér rapporten bevidst og kontrollér følsomme data før deling. Ingen automatisk upload; browseren indeholder ikke alle backendlogge."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Diagnostik og ydeevne",
+          "caption": "Diagnostik og ydeevne"
+        }
+      },
+      {
         "title": "Tjek desktopversionen og download opdateringer",
         "steps": [
           "På skrivebordet skal du åbne Indstillinger → Systemindstillinger → Skrivebordsopdateringer for at inspicere den aktuelle version.",
@@ -1601,6 +1612,17 @@
     "title": "Digital person og global hukommelse",
     "summary": "Konfigurér kommunikationsstil, hovedsamtale, proaktiv refleksion og kanalbetjening. Se minder med kilder, og aktivér lyd og persongenkendelse efter behov.",
     "sections": [
+      {
+        "title": "Byd bekendte velkommen tilbage",
+        "steps": [
+          "Åbn Indstillinger → Datacenter → Syn → Ansigtsaktivering. Registrér personer med samtykke og aktivér genkendelse; kameraet skal forblive tændt. Én hilsen pr. linje, højst 12 linjer med 160 tegn, med {name} og {relationship}. Tilfældig forhåndsvisning viser kun tekst. Vælg undertekster eller tale, fraværstid, ventetid og globale grænser, og gem. Stille timer og aktive samtaler undertrykker hilsner. Identitet og rettigheder ændres ikke."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Byd bekendte velkommen tilbage",
+          "caption": "Byd bekendte velkommen tilbage"
+        }
+      },
       {
         "title": "Udforsk hukommelseskortet",
         "steps": [

@@ -1511,6 +1511,17 @@
     "summary": "Hiểu phạm vi cấu hình, đọc trạng thái và lỗi trước, sau đó thực hiện các sửa chữa có mục tiêu.",
     "sections": [
       {
+        "title": "Chẩn đoán và hiệu năng",
+        "steps": [
+          "Mở Cài đặt → Báo sự cố → Chẩn đoán; cũng có trong Trợ giúp máy tính hoặc nhấn giữ nút nổi Android. Lọc nhật ký theo nguồn, mức và thời gian. Ghi 15 giây trong Hiệu năng, tái hiện ở trang ban đầu rồi xem khung hình chậm và sự kiện. Chủ động sao chép hoặc xuất báo cáo, kiểm tra thông tin nhạy cảm trước khi chia sẻ. Không tự tải lên; trình duyệt không chứa toàn bộ nhật ký máy chủ."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Chẩn đoán và hiệu năng",
+          "caption": "Chẩn đoán và hiệu năng"
+        }
+      },
+      {
         "title": "Kiểm tra phiên bản máy tính để bàn và tải xuống các bản cập nhật",
         "steps": [
           "Trên máy tính để bàn, mở Cài đặt → Cài đặt hệ thống → Cập nhật màn hình để kiểm tra phiên bản hiện tại.",
@@ -1601,6 +1612,17 @@
     "title": "Nhân vật số và bộ nhớ toàn cục",
     "summary": "Cấu hình phong cách giao tiếp, hội thoại chính, suy nghĩ chủ động và tiếp nhận qua kênh. Xem ký ức có nguồn và tùy chọn bật giọng nói, nhận diện người.",
     "sections": [
+      {
+        "title": "Chào người quen khi quay lại",
+        "steps": [
+          "Mở Cài đặt → Trung tâm dữ liệu → Thị giác → Đánh thức bằng khuôn mặt. Đăng ký người có sự đồng ý và bật nhận diện; camera phải tiếp tục mở. Mỗi dòng một lời chào, tối đa 12 dòng, mỗi dòng 160 ký tự, dùng {name} và {relationship}. Xem trước ngẫu nhiên chỉ hiển thị chữ. Chọn phụ đề hoặc giọng nói, thời gian vắng, khoảng nghỉ và giới hạn chung rồi lưu. Giờ yên lặng và tương tác đang diễn ra sẽ chặn lời chào. Không thay đổi danh tính hay quyền."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Chào người quen khi quay lại",
+          "caption": "Chào người quen khi quay lại"
+        }
+      },
       {
         "title": "Khám phá bản đồ ký ức",
         "steps": [

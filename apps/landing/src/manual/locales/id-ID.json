@@ -1511,6 +1511,17 @@
     "summary": "Pahami cakupan konfigurasi, baca status dan kesalahan terlebih dahulu, lalu lakukan perbaikan yang ditargetkan.",
     "sections": [
       {
+        "title": "Diagnostik runtime dan kinerja",
+        "steps": [
+          "Buka Pengaturan → Laporkan masalah → Diagnostik; tersedia juga melalui Bantuan desktop atau tekan lama tombol mengambang Android. Saring log menurut sumber, tingkat dan waktu. Rekam 15 detik pada Kinerja, ulangi masalah di halaman asal lalu periksa bingkai lambat dan peristiwa. Salin atau ekspor laporan secara eksplisit dan periksa informasi sensitif sebelum berbagi. Tidak ada unggahan otomatis; browser tidak mencakup seluruh log backend."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Diagnostik runtime dan kinerja",
+          "caption": "Diagnostik runtime dan kinerja"
+        }
+      },
+      {
         "title": "Periksa versi desktop dan unduh pembaruan",
         "steps": [
           "Di desktop, buka Pengaturan → Pengaturan sistem → Pembaruan desktop untuk memeriksa versi saat ini.",
@@ -1601,6 +1612,17 @@
     "title": "Persona digital dan memori global",
     "summary": "Atur gaya komunikasi, percakapan utama, pemikiran proaktif, dan penerimaan kanal. Tinjau memori beserta sumbernya, serta aktifkan suara dan pengenalan orang bila diperlukan.",
     "sections": [
+      {
+        "title": "Menyambut kenalan yang kembali",
+        "steps": [
+          "Buka Pengaturan → Pusat data → Penglihatan → Bangun wajah. Daftarkan orang dengan persetujuan dan aktifkan pengenalan; kamera harus tetap menyala. Satu ucapan per baris, maksimal 12 baris berisi 160 karakter, dengan {name} dan {relationship}. Pratinjau acak hanya menampilkan teks. Pilih takarir atau suara, durasi pergi, jeda dan batas global lalu simpan. Jam tenang dan interaksi aktif menekan sapaan. Identitas dan izin tidak berubah."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Menyambut kenalan yang kembali",
+          "caption": "Menyambut kenalan yang kembali"
+        }
+      },
       {
         "title": "Jelajahi peta memori",
         "steps": [

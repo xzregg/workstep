@@ -116,53 +116,83 @@ async def test_archive_validation_failure_publishes_raw_output_without_saving(ap
     assert (await client.get(f"/api/fs/memory?project_id={project_id}")).json()["content"] == ""
 
 
-def test_evidence_fragments_keep_records_and_source_ids():
-    import json
-    from agent_assistants.archive_experience import _archive_evidence_fragments
-
-    reviews = [{"id": f"review-{i}", "attempt": i, "report": '错误：' + '"\\\n' * 3000}
-               for i in range(12)]
-    evidence = {"existing_memory": "记忆规则\n" * 12000,
-                "task": {"id": "task"}, "steps": [], "reviews": reviews,
-                "messages": [{"id": "last-correction", "content": "再次缺失校验"}]}
-    fragments = _archive_evidence_fragments(evidence)
-    assert len(fragments) > 1
-    units = []
-    for fragment in fragments:
-        assert len(fragment) <= 16000
-        units.extend(json.loads(fragment))
-    assert "".join(unit["text"] for unit in units
-                   if unit["section"] == "existing_memory") == evidence["existing_memory"]
-    for review in reviews:
-        parts = [unit for unit in units if unit["section"] == "reviews"
-                 and unit.get("source", {}).get("id") == review["id"] and unit.get("field") == "report"]
-        assert "".join(part["text"] for part in parts) == review["report"]
-        assert all(part["source"]["attempt"] == review["attempt"] for part in parts)
-    assert units[-1]["record"]["id"] == "last-correction"
-
-
 @pytest.mark.anyio
-@pytest.mark.parametrize("invalid", ["", "笔记" * 5000], ids=["empty", "oversized"])
-async def test_archive_recovers_invalid_notes_once(api_context, monkeypatch, invalid):
-    class NotesEngine(CoordinatorFakeEngine):
+async def test_archive_starts_with_ids_and_reads_evidence_via_cli(api_context, monkeypatch):
+    import httpx
+    from cli import build_parser, dispatch
+    from services.tool_registry import WorkstepClient
+    from models import Message
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    marker = "large-history-must-not-be-in-initial-prompt"
+    project = main.project_manager.get_project_by_id(project_id)
+    memory = "private-memory-rule" + "长记忆" * 20000
+    await client.put(f"/api/fs/memory?project_id={project_id}", json={"content": memory})
+
+    def history(_project):
+        for index in range(24):
+            Message.create(id=f"source-{index}", task=task_id, step_key="frontend", role="user",
+                           channel="coordinator", sequence=1000 + index, position=index, created_at=utc_now(),
+                           content=(marker + "长内容" * 2000 if index < 22 else "再次纠正：先按当前任务基线核对起点，再建分支"))
+    await main.project_manager.run_db(project_id, history)
+
+    class CliReadingEngine(CoordinatorFakeEngine):
         calls = []
+        supports_workstep_tools = True
 
         async def spawn(self, prompt, cwd, **kwargs):
             type(self).calls.append(prompt)
-            if "Archive evidence fragment" in prompt:
-                import json
-                assert isinstance(json.loads(prompt.split("Fragment data:\n", 1)[1]), list)
-                assert len(prompt) < 26000
-                reply = invalid if len(type(self).calls) == 1 else "来源 review-1：第一次纠正；review-2：再次纠正。"
-            else:
-                reply = "<experience>- 重复遗漏校验，提交前运行相关测试。</experience>"
-            yield InternalEvent("agent_message_chunk", {"content": {"text": reply}})
+            assert len(prompt) < 4000
+            assert project_id in prompt and task_id in prompt
+            assert marker not in prompt and "private-memory-rule" not in prompt
+            assert "task history" in prompt and "task reviews" in prompt
+            assert "Read the workstep-cli skill" in prompt
+            assert "Do not execute tools" not in prompt
+            assert kwargs.get("workstep_tools") is True
+            assert str(project.workstep_dir / "MEMORY.md") in prompt
+            native = WorkstepClient(base_url='http://test', transport=httpx.ASGITransport(app=main.app))
+            parsed = build_parser().parse_args(['task','get','--project',project_id,'--task',task_id,'--json'])
+            task = await dispatch(parsed, native)
+            assert task['id'] == task_id
+            ids = set()
+            for offset in range(0, 40, 10):
+                yield InternalEvent('tool_call', {'id': f'page-{offset}', 'title': 'task history', 'status': 'in_progress'})
+                parsed = build_parser().parse_args(['task','history','--project',project_id,'--task',task_id,
+                                                   '--limit','10','--offset',str(offset),'--json'])
+                page = await dispatch(parsed, native)
+                ids.update(row['id'] for row in page['messages'])
+                if len(page['messages']) < 10:
+                    break
+            assert {'source-0','source-23'} <= ids
+            parsed = build_parser().parse_args(['task','reviews','--project',project_id,'--task',task_id,'--json'])
+            assert 'reviews' in await dispatch(parsed, native)
+            yield InternalEvent('agent_message_chunk', {'content': {'text': '<no_experience />'}})
 
-    client, tmp_path = api_context
-    monkeypatch.setitem(ENGINE_REGISTRY, "claude", NotesEngine)
-    project_id, task_id = await _create_task(client, tmp_path)
-    await client.put(f"/api/fs/memory?project_id={project_id}", json={"content": "规则" * 30000})
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CliReadingEngine)
     response = await client.post(f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}")
     assert response.status_code == 200, response.text
-    assert "previous notes were empty or too long" in NotesEngine.calls[1]
-    assert (await client.get(f"/api/task/{task_id}?project_id={project_id}")).json()["archived"] is False
+    assert len(CliReadingEngine.calls) == 1
+    assert response.json()['has_experience'] is False
+    assert (await client.get(f"/api/task/{task_id}?project_id={project_id}")).json()['archived'] is False
+    assert (await client.get(f"/api/fs/memory?project_id={project_id}")).json()['content'] == memory
+
+
+@pytest.mark.anyio
+async def test_archive_checks_latest_memory_after_model_inspection(api_context, monkeypatch):
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    rule = "- 分支开发前核对当前任务基线。"
+
+    class MemoryUpdatedEngine(CoordinatorFakeEngine):
+        async def spawn(self, **kwargs):
+            response = await client.put(f"/api/fs/memory?project_id={project_id}", json={"content": rule})
+            assert response.status_code == 200
+            yield InternalEvent("agent_message_chunk", {"content": {"text": f"<experience>{rule}</experience>"}})
+
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", MemoryUpdatedEngine)
+    response = await client.post(f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}")
+    assert response.status_code == 200, response.text
+    assert response.json()["has_experience"] is False
+    assert (await client.get(f"/api/fs/memory?project_id={project_id}")).json()["content"] == rule

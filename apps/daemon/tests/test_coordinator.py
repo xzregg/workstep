@@ -387,8 +387,6 @@ class CoordinatorFakeEngine(AcpEngineBase):
             if type(self).reply.get("has_experience") is False:
                 return "<no_experience />"
             return f'<experience>\n{type(self).reply["reply"]}\n</experience>'
-        if "Maintain compact evidence notes" in prompt:
-            return type(self).reply["reply"]
         return json.dumps(type(self).reply, ensure_ascii=False)
 
     async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
@@ -1221,80 +1219,23 @@ async def test_archive_experience_uses_coordinator_with_task_history(
     assert response.status_code == 200
     assert response.json()["experience"] == "- 问题：构建失败\n- 经验：先核对类型错误"
     assert len(CoordinatorFakeEngine.calls) == 1
-    assert "曾遇到构建失败，需要修正类型错误" in CoordinatorFakeEngine.calls[0]["prompt"]
+    assert "曾遇到构建失败，需要修正类型错误" not in CoordinatorFakeEngine.calls[0]["prompt"]
+    assert task_id in CoordinatorFakeEngine.calls[0]["prompt"]
+    assert project_id in CoordinatorFakeEngine.calls[0]["prompt"]
     assert "Record only directly evidenced mistakes" in CoordinatorFakeEngine.calls[0]["prompt"]
     prompt = CoordinatorFakeEngine.calls[0]["prompt"]
     assert "at least two distinct corrections or rejections about the SAME mistake" in prompt
     assert "Default to zero lessons" in prompt
     assert "even when worded differently" in prompt
+    assert "user-confirmed or verified correct approach" in prompt
+    assert "task-specific facts or requirements are not lessons" in prompt
     assert "zh-CN" in prompt
 
 
 @pytest.mark.anyio
-async def test_archive_evidence_prefilters_routine_history(api_context, monkeypatch):
-    from models import Message, TaskStep, ReviewRun, StepRun, WorkflowRun
-    from models.fields import utc_now
-    import main
-
-    client, tmp_path = api_context
-    project_id, task_id = await _create_task(client, tmp_path)
-    records = [
-        ("progress", "user", "completed", "现在进度怎么样？"),
-        ("success", "assistant", "succeeded", "构建成功，全部完成。" + "正常输出" * 100_000),
-        ("assistant-correction-quote", "assistant", "succeeded", "用户之前说：不要再漏掉校验。"),
-        ("code-only", "user", "completed", "```python\nraise RuntimeError('failed')\n```"),
-        ("correct-early", "user", "completed", "又漏了边界校验，先补校验再提交。"),
-        ("correct-late", "user", "completed", "还是没改对，边界校验依然缺失。"),
-        ("english-correction", "user", "completed", "This is wrong again. Validate the input first."),
-        ("failed-run", "assistant", "failed", "无法写入：\n```text\nOSError: 文件只读。\n```"),
-    ]
-
-    def history(_project):
-        for index, (identifier, role, status, content) in enumerate(records):
-            Message.create(
-                id=identifier, task=task_id, step_key="frontend", channel="coordinator",
-                role=role, run_status=status, content=content,
-                event_summary_json='{"tool_output": "summary-must-not-be-in-prompt"}',
-                sequence=1000 + index, position=index, created_at=utc_now(),
-            )
-        TaskStep.update(error="失败：文件只读", rework_feedback="返工：补齐边界校验").where(
-            (TaskStep.task == task_id) & (TaskStep.step_key == "frontend")
-        ).execute()
-        run = WorkflowRun.create(id="filter-run", task=task_id, workflow_schema_version=1)
-        step_run = StepRun.create(id="filter-step", run=run, step_key="frontend", attempt=1)
-        for index, (status, decision) in enumerate([
-            ("passed", "approve"), ("rejected", None), ("completed", "reject"), ("failed", None),
-        ]):
-            ReviewRun.create(
-                id=f"review-{status}", workflow_run=run, step_run=step_run, task=task_id,
-                step_key="frontend", attempt=index + 1, mode="auto", status=status,
-                decision=decision, error="审核进程退出" if status == "failed" else "",
-                report_json=json.dumps({"summary": f"report-{status}", "issues": []}),
-            )
-        return main.coordinator_module._archive_drafts._load_archive_evidence_sync(project_id, task_id)
-
-    loaded = await main.project_manager.run_db(project_id, history)
-    evidence = loaded["evidence"]
-    assert {message["id"] for message in evidence["messages"]} == {
-        "correct-early", "correct-late", "english-correction", "failed-run",
-    }
-    assert all("event_summary" not in message for message in evidence["messages"])
-    failed = next(message for message in evidence["messages"] if message["id"] == "failed-run")
-    assert "文件只读" in failed["content"]
-    assert "summary-must-not-be-in-prompt" not in loaded["evidence_text"]
-    assert "正常输出" not in loaded["evidence_text"]
-    assert "artifacts" not in evidence
-    assert {review["id"] for review in evidence["reviews"]} == {
-        "review-rejected", "review-completed", "review-failed",
-    }
-    assert len(loaded["evidence_text"]) < 10_000
-    assert any(step["rework_feedback"] == "返工：补齐边界校验" for step in evidence["steps"])
-
-
-@pytest.mark.anyio
 @pytest.mark.parametrize("memory_size", [0, 60_000])
-async def test_archive_experience_batches_oversized_history(api_context, monkeypatch, memory_size):
-    """Routine bulk is removed before invocation, keeping first and late corrections."""
+async def test_archive_experience_does_not_preload_oversized_history(api_context, monkeypatch, memory_size):
+    """Initial input stays bounded even with very long messages and project Memory."""
     from engines.core.registry import ENGINE_REGISTRY
     from models import Message
     from models.fields import utc_now
@@ -1308,15 +1249,10 @@ async def test_archive_experience_batches_oversized_history(api_context, monkeyp
             assert session_id is None
             type(self).calls.append(prompt)
             assert "x" * 1000 not in prompt
-            if "Archive evidence fragment" in prompt:
-                markers = [marker for marker in ("early-correction", "late-correction", "memory-rule")
-                           if marker in prompt]
-                reply = " ".join(markers)
-            else:
-                assert all(marker in prompt for marker in (
-                    "early-correction", "late-correction", "memory-rule",
-                ))
-                reply = "<experience>\n- 重复遗漏校验，提交前运行相关测试。\n</experience>"
+            assert not any(marker in prompt for marker in ("early-correction", "late-correction", "memory-rule"))
+            assert "task history" in prompt and "task reviews" in prompt
+            assert len(prompt) < 4000
+            reply = "<experience>\n- 重复遗漏校验，提交前运行相关测试。\n</experience>"
             yield InternalEvent("agent_message_chunk", {
                 "content": {"text": reply},
             })
@@ -1336,37 +1272,10 @@ async def test_archive_experience_batches_oversized_history(api_context, monkeyp
         f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
     )
     assert response.status_code == 200, response.text
-    if memory_size:
-        assert len(BoundedEngine.calls) > 2
-    else:
-        assert len(BoundedEngine.calls) == 1
-        assert len(BoundedEngine.calls[0]) < 10_000
+    assert len(BoundedEngine.calls) == 1
     assert response.json()["experience"] == "- 重复遗漏校验，提交前运行相关测试。"
     assert (await client.get(f"/api/fs/memory?project_id={project_id}")).json()["content"] == memory
     assert (await client.get(f"/api/task/{task_id}?project_id={project_id}")).json()["archived"] is False
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("notes", ["", "x" * 8001])
-async def test_archive_rejects_unbounded_or_empty_evidence_notes(api_context, monkeypatch, notes):
-    from engines.core.registry import ENGINE_REGISTRY
-
-    client, tmp_path = api_context
-    project_id, task_id = await _create_task(client, tmp_path)
-    await client.put(
-        f"/api/fs/memory?project_id={project_id}", json={"content": "x" * 60_000},
-    )
-    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
-    monkeypatch.setattr(CoordinatorFakeEngine, "calls", [])
-    monkeypatch.setattr(CoordinatorFakeEngine, "reply", {"reply": notes})
-    response = await client.post(
-        f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
-    )
-    assert response.status_code == 502
-    assert "evidence notes" in response.json()["detail"]
-    assert len(CoordinatorFakeEngine.calls) == 2
-    draft = await client.get(f"/api/task/{task_id}/archive-experience/draft?project_id={project_id}")
-    assert draft.json()["found"] is False
 
 
 @pytest.mark.anyio
@@ -1453,49 +1362,6 @@ async def test_archive_existing_rule_is_not_a_new_draft(api_context, monkeypatch
 
 
 @pytest.mark.anyio
-async def test_archive_evidence_includes_late_corrections_and_existing_memory(
-    api_context, monkeypatch,
-):
-    from models import Message
-    from models.fields import utc_now
-    import main
-
-    client, tmp_path = api_context
-    project_id, task_id = await _create_task(client, tmp_path)
-    project = main.project_manager.get_project_by_id(project_id)
-    memory = "- 提交前核对类型错误。"
-    await client.put(f"/api/fs/memory?project_id={project_id}", json={"content": memory})
-
-    def history(_project):
-        for index in range(205):
-            Message.create(
-                id=f"archive-history-{index}", task=task_id, step_key="frontend",
-                role="user", channel="coordinator", sequence=1000 + index,
-                position=index, created_at=utc_now(),
-                content=("再次提醒：禁止提交环境配置" if index >= 203 else "普通进度查询"),
-            )
-        Message.create(
-            id="old-archive-draft", task=task_id, step_key="archive",
-            role="assistant", channel="archive_experience", sequence=1300,
-            position=300, created_at=utc_now(), content="旧提炼不能作为重复发生的证据",
-        )
-
-    await main.project_manager.run_db(project_id, history)
-    loaded = await main.project_manager.run_db(
-        project_id,
-        lambda _project: main.coordinator_module._archive_drafts._load_archive_evidence_sync(
-            project_id, task_id,
-        ),
-    )
-    evidence = loaded["evidence"]
-    assert evidence["existing_memory"] == memory
-    assert {"archive-history-203", "archive-history-204"} <= {
-        message["id"] for message in evidence["messages"]
-    }
-    assert all(message["channel"] != "archive_experience" for message in evidence["messages"])
-
-
-@pytest.mark.anyio
 @pytest.mark.parametrize("reply", ["- No reusable error lessons found.", "无可复用的错误经验"])
 async def test_archive_no_lessons_does_not_create_memory(api_context, monkeypatch, reply):
     from engines.core.registry import ENGINE_REGISTRY
@@ -1520,8 +1386,9 @@ async def test_archive_no_lessons_does_not_create_memory(api_context, monkeypatc
 
 
 @pytest.mark.anyio
-async def test_archive_experience_slow_evidence_keeps_health_responsive(
-    api_context, monkeypatch,
+@pytest.mark.parametrize("hook", ["_load_archive_context_sync", "_read_memory_sync"])
+async def test_archive_experience_slow_reads_keep_health_responsive(
+    api_context, monkeypatch, hook,
 ):
     import threading
     from engines.core.registry import ENGINE_REGISTRY
@@ -1531,16 +1398,16 @@ async def test_archive_experience_slow_evidence_keeps_health_responsive(
     monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
     project_id, task_id = await _create_task(client, tmp_path)
     drafts = main.coordinator_module._archive_drafts
-    original = drafts._load_archive_evidence_sync
+    original = getattr(drafts, hook)
     entered = threading.Event()
     release = threading.Event()
 
-    def slow_evidence(project_id, task_id):
+    def slow_read(*args):
         entered.set()
         release.wait(timeout=2)
-        return original(project_id, task_id)
+        return original(*args)
 
-    monkeypatch.setattr(drafts, "_load_archive_evidence_sync", slow_evidence)
+    monkeypatch.setattr(drafts, hook, slow_read)
     prepare = asyncio.create_task(client.post(
         f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
     ))
@@ -1609,7 +1476,8 @@ async def test_archive_experience_streams_visible_coordinator_progress(
     assert all(event["project_id"] == project_id and event["task_id"] == task_id
                for event in events)
     prompt_event = next(event for event in events if event.get("prompt"))
-    assert "Task evidence" in prompt_event["prompt"]
+    assert "task history" in prompt_event["prompt"]
+    assert task_id in prompt_event["prompt"]
     assert "must not be written to Memory now" in prompt_event["prompt"]
     assert "not a task summary" in ArchiveProgressCoordinatorFakeEngine.calls[0]["prompt"]
     assert "at most 3" in ArchiveProgressCoordinatorFakeEngine.calls[0]["prompt"]
@@ -1726,7 +1594,7 @@ async def test_archive_experience_reports_progress_before_engine_reply(
             for event in events
             if event.get("type") == "REASONING_MESSAGE_CHUNK"
         ]
-        assert any("Read task record" in item for item in progress)
+        assert any("Loaded task identity" in item for item in progress)
         assert any("waiting for a response" in item for item in progress)
     finally:
         await client.post(

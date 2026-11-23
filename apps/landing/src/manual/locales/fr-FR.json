@@ -1511,6 +1511,17 @@
     "summary": "Comprenez la portée des réglages, lisez états et erreurs puis corrigez précisément.",
     "sections": [
       {
+        "title": "Diagnostic et rapport de performances",
+        "steps": [
+          "Ouvrez Paramètres → Signaler un problème → Diagnostic. Le menu Aide du bureau et un appui long sur le bouton flottant Android donnent aussi accès. Filtrez les journaux par source, niveau et heure. Enregistrez 15 secondes dans Performances, reproduisez sur la page concernée puis consultez les images lentes et événements. Copiez ou exportez explicitement le rapport et vérifiez les données sensibles avant partage. Aucun envoi automatique ; le navigateur ne fournit pas tous les journaux du serveur."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Diagnostic et rapport de performances",
+          "caption": "Diagnostic et rapport de performances"
+        }
+      },
+      {
         "title": "Vérifier la version et les mises à jour",
         "steps": [
           "Sur bureau, ouvrez Paramètres → Système → Mises à jour pour la version courante.",
@@ -1601,6 +1612,17 @@
     "title": "Personne numérique et mémoire globale",
     "summary": "Configurez communication, chat principal, réflexion et accueil sur les canaux ; consultez des souvenirs sourcés et activez voix ou reconnaissance des personnes au besoin.",
     "sections": [
+      {
+        "title": "Accueillir une personne connue à son retour",
+        "steps": [
+          "Ouvrez Paramètres → Centre de données → Vision → Réveil facial. Enregistrez les personnes avec leur accord et activez la reconnaissance ; la caméra doit rester ouverte. Saisissez une formule par ligne, au maximum 12 lignes de 160 caractères, avec {name} et {relationship}. L’aperçu aléatoire affiche seulement du texte. Choisissez sous-titres ou voix, absence minimale, délai et limites globales, puis enregistrez. Les heures calmes et les interactions en cours empêchent les salutations. L’identité et les droits ne changent pas."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Accueillir une personne connue à son retour",
+          "caption": "Accueillir une personne connue à son retour"
+        }
+      },
       {
         "title": "Explorer la carte mémoire",
         "steps": [

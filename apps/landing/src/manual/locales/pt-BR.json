@@ -1511,6 +1511,17 @@
     "summary": "Entenda o escopo da configuração, leia primeiro o status e os erros e, em seguida, faça reparos direcionados.",
     "sections": [
       {
+        "title": "Diagnóstico e desempenho",
+        "steps": [
+          "Abra Configurações → Relatar problema → Diagnóstico; também pelo menu Ajuda do desktop ou toque longo no botão flutuante Android. Filtre registros por origem, nível e horário. Grave 15 segundos em Desempenho, reproduza na página afetada e volte para examinar quadros lentos e eventos. Copie ou exporte o relatório por ação explícita e revise dados sensíveis antes de compartilhar. Não há envio automático; o navegador não reúne todos os logs do backend."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Diagnóstico e desempenho",
+          "caption": "Diagnóstico e desempenho"
+        }
+      },
+      {
         "title": "Verifique a versão desktop e baixe atualizações",
         "steps": [
           "Na área de trabalho, abra Configurações → Configurações do sistema → Atualizações da área de trabalho para inspecionar a versão atual.",
@@ -1601,6 +1612,17 @@
     "title": "Pessoa digital e memória global",
     "summary": "Configure estilo de comunicação, conversa principal, reflexão proativa e atendimento em canais. Consulte memórias com fontes e ative voz e reconhecimento de pessoas conforme necessário.",
     "sections": [
+      {
+        "title": "Cumprimentar conhecidos ao retornarem",
+        "steps": [
+          "Abra Configurações → Central de dados → Visão → Ativação facial. Cadastre pessoas com consentimento e ative o reconhecimento; a câmera precisa permanecer ligada. Uma frase por linha, até 12 linhas de 160 caracteres, usando {name} e {relationship}. A prévia aleatória só mostra texto. Escolha legendas ou voz, ausência mínima, intervalo por pessoa e limites globais; salve. Horários silenciosos e interações em andamento impedem cumprimentos. A identidade e as permissões não mudam."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Cumprimentar conhecidos ao retornarem",
+          "caption": "Cumprimentar conhecidos ao retornarem"
+        }
+      },
       {
         "title": "Explorar o mapa de memórias",
         "steps": [

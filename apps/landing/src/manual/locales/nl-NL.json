@@ -1511,6 +1511,17 @@
     "summary": "Begrijp de reikwijdte van de configuratie, lees eerst de status en fouten en voer vervolgens gerichte reparaties uit.",
     "sections": [
       {
+        "title": "Runtime-diagnose en prestaties",
+        "steps": [
+          "Open Instellingen → Probleem melden → Runtime-diagnose; ook via Help op desktop of lang indrukken van de zwevende Android-knop. Filter logboeken op bron, niveau en tijd. Neem 15 seconden op bij Prestaties, reproduceer het probleem en bekijk daarna trage frames en gebeurtenissen. Kopieer of exporteer het rapport bewust en controleer gevoelige gegevens vóór delen. Geen automatische upload; de browser bevat niet alle backendlogboeken."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Runtime-diagnose en prestaties",
+          "caption": "Runtime-diagnose en prestaties"
+        }
+      },
+      {
         "title": "Controleer de desktopversie en download updates",
         "steps": [
           "Open op het bureaublad Instellingen → Systeeminstellingen → Bureaubladupdates om de huidige versie te inspecteren.",
@@ -1601,6 +1612,17 @@
     "title": "Digitale persoon en globaal geheugen",
     "summary": "Stel communicatiestijl, hoofdgesprek, proactieve reflectie en kanaalontvangst in. Bekijk herinneringen met bronnen en schakel zo nodig stem en persoonsherkenning in.",
     "sections": [
+      {
+        "title": "Bekenden bij terugkomst begroeten",
+        "steps": [
+          "Open Instellingen → Datacentrum → Zicht → Gezichtsactivering. Registreer mensen met toestemming en schakel herkenning in; de camera moet aan blijven. Eén groet per regel, maximaal 12 regels van 160 tekens, met {name} en {relationship}. Willekeurig voorbeeld toont alleen tekst. Kies ondertiteling of stem, afwezigheid, wachttijd en algemene limieten en sla op. Stille uren en actieve interactie onderdrukken begroetingen. Identiteit en rechten veranderen niet."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Bekenden bij terugkomst begroeten",
+          "caption": "Bekenden bij terugkomst begroeten"
+        }
+      },
       {
         "title": "De geheugenkaart verkennen",
         "steps": [

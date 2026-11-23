@@ -1511,6 +1511,17 @@
     "summary": "Comprendere l'ambito della configurazione, leggere prima lo stato e gli errori, quindi effettuare riparazioni mirate.",
     "sections": [
       {
+        "title": "Diagnostica e prestazioni",
+        "steps": [
+          "Apri Impostazioni → Segnala un problema → Diagnostica; anche dal menu Aiuto desktop o con pressione prolungata sul pulsante mobile Android. Filtra i log per origine, livello e ora. Registra 15 secondi in Prestazioni, riproduci il problema e torna a esaminare fotogrammi lenti ed eventi. Copia o esporta esplicitamente il rapporto e controlla i dati sensibili prima di condividerlo. Nessun caricamento automatico; il browser non include tutti i log del backend."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Diagnostica e prestazioni",
+          "caption": "Diagnostica e prestazioni"
+        }
+      },
+      {
         "title": "Controlla la versione desktop e scarica gli aggiornamenti",
         "steps": [
           "Sul desktop, apri Impostazioni → Impostazioni di sistema → Aggiornamenti desktop per controllare la versione corrente.",
@@ -1601,6 +1612,17 @@
     "title": "Persona digitale e memoria globale",
     "summary": "Configura stile comunicativo, conversazione principale, riflessione proattiva e accoglienza sui canali. Consulta memorie con fonti e attiva voce e riconoscimento delle persone quando necessario.",
     "sections": [
+      {
+        "title": "Salutare i conoscenti al ritorno",
+        "steps": [
+          "Apri Impostazioni → Centro dati → Visione → Risveglio facciale. Registra le persone con il loro consenso e abilita il riconoscimento; la fotocamera deve restare attiva. Una frase per riga, massimo 12 righe di 160 caratteri, con {name} e {relationship}. L’anteprima casuale mostra solo testo. Scegli sottotitoli o voce, assenza minima, pausa e limiti globali, poi salva. Gli orari silenziosi e le interazioni attive sospendono i saluti. Identità e autorizzazioni non cambiano."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Salutare i conoscenti al ritorno",
+          "caption": "Salutare i conoscenti al ritorno"
+        }
+      },
       {
         "title": "Esplorare la mappa dei ricordi",
         "steps": [

@@ -1511,6 +1511,17 @@
     "summary": "Ymmärrä asetusten laajuus, lue ensin tila ja virheet ja tee sitten kohdennettuja korjauksia.",
     "sections": [
       {
+        "title": "Diagnostiikka ja suorituskyky",
+        "steps": [
+          "Avaa Asetukset → Ilmoita ongelmasta → Diagnostiikka; myös työpöydän Ohje tai Androidin kelluvan painikkeen pitkä painallus toimii. Suodata lokit lähteen, tason ja ajan mukaan. Tallenna 15 sekuntia Suorituskyky-välilehdellä, toista ongelma ja tarkista hitaat ruudut sekä tapahtumat. Kopioi tai vie raportti erikseen ja tarkista arkaluonteiset tiedot ennen jakamista. Automaattista lähetystä ei ole; selain ei sisällä kaikkia taustapalvelun lokeja."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Diagnostiikka ja suorituskyky",
+          "caption": "Diagnostiikka ja suorituskyky"
+        }
+      },
+      {
         "title": "Tarkista työpöytäversio ja lataa päivitykset",
         "steps": [
           "Tarkista nykyinen versio avaamalla työpöydällä Asetukset → Järjestelmäasetukset → Työpöytäpäivitykset.",
@@ -1601,6 +1612,17 @@
     "title": "Digitaalinen henkilö ja yleinen muisti",
     "summary": "Määritä viestintätyyli, pääkeskustelu, oma-aloitteinen pohdinta ja kanavapalvelu. Tarkastele lähteistettyjä muistoja ja ota ääni sekä henkilöntunnistus tarvittaessa käyttöön.",
     "sections": [
+      {
+        "title": "Tuttujen tervehtiminen heidän palatessaan",
+        "steps": [
+          "Avaa Asetukset → Tietokeskus → Näkö → Kasvoherätys. Rekisteröi henkilöt suostumuksella ja ota tunnistus käyttöön; kameran on pysyttävä päällä. Yksi tervehdys riville, enintään 12 riviä ja 160 merkkiä, muuttujina {name} ja {relationship}. Satunnainen esikatselu näyttää vain tekstin. Valitse tekstitys tai puhe, poissaoloaika, viive ja yleisrajat ja tallenna. Hiljaiset ajat ja käynnissä oleva vuorovaikutus estävät tervehdykset. Henkilöllisyys ja käyttöoikeudet eivät muutu."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Tuttujen tervehtiminen heidän palatessaan",
+          "caption": "Tuttujen tervehtiminen heidän palatessaan"
+        }
+      },
       {
         "title": "Tutki muistikarttaa",
         "steps": [

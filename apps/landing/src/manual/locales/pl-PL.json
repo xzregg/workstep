@@ -1511,6 +1511,17 @@
     "summary": "Zapoznaj się z zakresem konfiguracji, najpierw przeczytaj status i błędy, a następnie dokonaj ukierunkowanych napraw.",
     "sections": [
       {
+        "title": "Diagnostyka i wydajność",
+        "steps": [
+          "Otwórz Ustawienia → Zgłoś problem → Diagnostyka; także przez Pomoc na komputerze lub przytrzymanie pływającego przycisku Androida. Filtruj logi według źródła, poziomu i czasu. Nagraj 15 sekund na karcie wydajności, odtwórz problem i sprawdź wolne klatki oraz zdarzenia. Jawnie skopiuj lub wyeksportuj raport i sprawdź poufne dane przed udostępnieniem. Brak automatycznego wysyłania; przeglądarka nie zawiera wszystkich logów serwera."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Diagnostyka i wydajność",
+          "caption": "Diagnostyka i wydajność"
+        }
+      },
+      {
         "title": "Sprawdź wersję na komputery stacjonarne i pobierz aktualizacje",
         "steps": [
           "Na komputerze otwórz Ustawienia → Ustawienia systemu → Aktualizacje pulpitu, aby sprawdzić aktualną wersję.",
@@ -1601,6 +1612,17 @@
     "title": "Cyfrowa osoba i pamięć globalna",
     "summary": "Skonfiguruj styl rozmowy, główną konwersację, samodzielną refleksję i obsługę kanałów. Przeglądaj pamięć ze źródłami, a w razie potrzeby włącz głos i rozpoznawanie osób.",
     "sections": [
+      {
+        "title": "Powitanie znajomych po powrocie",
+        "steps": [
+          "Otwórz Ustawienia → Centrum danych → Wzrok → Wybudzanie twarzą. Dodawaj osoby za ich zgodą i włącz rozpoznawanie; kamera musi pozostać aktywna. Jedna fraza w wierszu, maksymalnie 12 wierszy po 160 znaków, z {name} i {relationship}. Losowy podgląd wyświetla tylko tekst. Wybierz napisy lub głos, czas nieobecności, przerwę i limity globalne, następnie zapisz. Godziny ciszy i aktywna rozmowa wstrzymują powitania. Tożsamość i uprawnienia nie zmieniają się."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Powitanie znajomych po powrocie",
+          "caption": "Powitanie znajomych po powrocie"
+        }
+      },
       {
         "title": "Przeglądanie mapy pamięci",
         "steps": [

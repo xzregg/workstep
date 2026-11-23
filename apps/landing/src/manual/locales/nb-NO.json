@@ -1511,6 +1511,17 @@
     "summary": "Forstå konfigurasjonens omfang, les status og feil først, og foreta deretter målrettede reparasjoner.",
     "sections": [
       {
+        "title": "Diagnostikk og ytelse",
+        "steps": [
+          "Åpne Innstillinger → Rapporter problem → Diagnostikk; også via Hjelp på skrivebordet eller langt trykk på Androids flyteknapp. Filtrer logger etter kilde, nivå og tid. Ta opp 15 sekunder under Ytelse, gjenskap problemet og se deretter trege bilder og hendelser. Kopier eller eksporter rapporten uttrykkelig og kontroller sensitive data før deling. Ingen automatisk opplasting; nettleseren inneholder ikke alle backendlogger."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Diagnostikk og ytelse",
+          "caption": "Diagnostikk og ytelse"
+        }
+      },
+      {
         "title": "Sjekk skrivebordsversjonen og last ned oppdateringer",
         "steps": [
           "På skrivebordet åpner du Innstillinger → Systeminnstillinger → Skrivebordsoppdateringer for å inspisere gjeldende versjon.",
@@ -1601,6 +1612,17 @@
     "title": "Digital person og global hukommelse",
     "summary": "Konfigurer samtalestil, hovedsamtale, aktiv refleksjon og kanalmottak. Se kildebelagt hukommelse og aktiver lyd og persongjenkjenning ved behov.",
     "sections": [
+      {
+        "title": "Ønsk kjente velkommen tilbake",
+        "steps": [
+          "Åpne Innstillinger → Datasenter → Syn → Ansiktsvekking. Registrer personer med samtykke og aktiver gjenkjenning; kameraet må være på. Én hilsen per linje, maksimalt 12 linjer med 160 tegn, med {name} og {relationship}. Tilfeldig forhåndsvisning viser bare tekst. Velg undertekster eller tale, fraværstid, ventetid og globale grenser, og lagre. Stille timer og pågående samhandling hindrer hilsner. Identitet og rettigheter endres ikke."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Ønsk kjente velkommen tilbake",
+          "caption": "Ønsk kjente velkommen tilbake"
+        }
+      },
       {
         "title": "Utforsk minnekartet",
         "steps": [

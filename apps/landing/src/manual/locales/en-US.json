@@ -1511,6 +1511,17 @@
     "summary": "Understand configuration scope, read status and errors first, then make targeted repairs.",
     "sections": [
       {
+        "title": "Runtime diagnostics and performance reports",
+        "steps": [
+          "Open Settings → Problem feedback → Runtime diagnostics. Desktop also provides a Help entry; Android uses the floating-ball long press. Filter logs by source, level and time. Record 15 seconds on the Performance tab, return to the affected page to reproduce, then reopen diagnostics to inspect slow frames and events. Copy or export a report explicitly and review sensitive information before sharing; nothing is uploaded automatically. Browser reports are not complete backend logs."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Runtime diagnostics and performance reports",
+          "caption": "Runtime diagnostics and performance reports"
+        }
+      },
+      {
         "title": "Check the desktop version and download updates",
         "steps": [
           "On desktop, open Settings → System settings → Desktop updates to inspect the current version.",
@@ -1601,6 +1612,17 @@
     "title": "Digital person and global memory",
     "summary": "Configure communication style, the main conversation, proactive thinking and channel reception. Review memories with sources and optionally enable speech and person recognition.",
     "sections": [
+      {
+        "title": "Welcome familiar people on return",
+        "steps": [
+          "Open Settings → Data hub → Vision → Face wake. Enroll familiar people with their consent and enable face recognition first; return detection requires the camera to remain on. Enter one greeting per line, at most 12 lines of 160 characters, using {name} or {relationship}; random preview displays text only. Choose captions or captions with speech, set absence, cooldown and global rate limits, then save. Quiet hours apply and active interaction suppresses greetings. Recognition does not change identity or authorization."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Welcome familiar people on return",
+          "caption": "Welcome familiar people on return"
+        }
+      },
       {
         "title": "Explore the memory atlas",
         "steps": [

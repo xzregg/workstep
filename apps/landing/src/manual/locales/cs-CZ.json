@@ -1511,6 +1511,17 @@
     "summary": "Pochopte rozsah konfigurace, přečtěte si nejprve stav a chyby a poté provádějte cílené opravy.",
     "sections": [
       {
+        "title": "Diagnostika a výkon",
+        "steps": [
+          "Otevřete Nastavení → Nahlásit problém → Diagnostika; také přes nápovědu na počítači nebo podržení plovoucího tlačítka Androidu. Filtrujte protokoly podle zdroje, úrovně a času. Zaznamenejte 15 sekund na kartě Výkon, problém zopakujte a pak prohlédněte pomalé snímky a události. Zprávu vědomě zkopírujte či exportujte a před sdílením zkontrolujte citlivá data. Nic se automaticky nenahrává; prohlížeč neobsahuje úplné protokoly backendu."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Diagnostika a výkon",
+          "caption": "Diagnostika a výkon"
+        }
+      },
+      {
         "title": "Zkontrolujte verzi pro počítače a stáhněte si aktualizace",
         "steps": [
           "Na ploše otevřete Nastavení → Nastavení systému → Aktualizace plochy a zkontrolujte aktuální verzi.",
@@ -1601,6 +1612,17 @@
     "title": "Digitální osoba a globální paměť",
     "summary": "Nastavte styl komunikace, hlavní konverzaci, proaktivní přemýšlení a obsluhu kanálů. Prohlížejte paměť se zdroji a podle potřeby zapněte zvuk i rozpoznávání osob.",
     "sections": [
+      {
+        "title": "Vítání známých při návratu",
+        "steps": [
+          "Otevřete Nastavení → Datové centrum → Zrak → Probuzení obličejem. Osoby registrujte se souhlasem a zapněte rozpoznávání; kamera musí zůstat zapnutá. Jedna věta na řádek, nejvýše 12 řádků po 160 znacích, s {name} a {relationship}. Náhodný náhled ukazuje jen text. Vyberte titulky či hlas, dobu nepřítomnosti, prodlevu a globální limity, pak uložte. Klidové hodiny a probíhající interakce pozdravy potlačují. Identita ani oprávnění se nemění."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Vítání známých při návratu",
+          "caption": "Vítání známých při návratu"
+        }
+      },
       {
         "title": "Prozkoumat mapu vzpomínek",
         "steps": [

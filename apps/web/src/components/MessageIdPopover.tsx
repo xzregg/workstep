@@ -220,12 +220,12 @@ export default function MessageIdPopover({ messageId, sessionId, projectId, open
     >
       <button
         type="button"
-        className="chat-message-action"
+        className="chat-message-action chat-message-action--id"
         aria-haspopup="true"
         aria-expanded={visible}
         aria-label={t('meta.idPanelTitle')}
         title={hasSession ? sessionId! : messageId!}
-        onClick={() => setVisible((v) => !v)}
+        onClick={show}
         style={{
           fontSize: 'calc(11px * var(--font-scale))',
           color: 'var(--meta)',

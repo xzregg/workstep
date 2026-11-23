@@ -36,6 +36,9 @@ test('copying the message id also copies its session id', async () => {
     container.querySelector<HTMLElement>('.msg-id-trigger')!.getBoundingClientRect = () => (
       { left: 160, right: 200, width: 40 } as DOMRect)
     await act(async () => {
+      container.querySelector<HTMLButtonElement>('[aria-haspopup="true"]')!.focus()
+    })
+    await act(async () => {
       container.querySelector<HTMLButtonElement>('[aria-haspopup="true"]')!.click()
     })
     assert.equal(container.querySelector<HTMLElement>('.msg-id-popover')!.style.maxWidth, '152px')

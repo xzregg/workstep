@@ -997,7 +997,7 @@ a.btn { box-sizing: border-box; text-decoration: none; vertical-align: middle; }
 
 /* 移动端思考中：隐藏右侧操作按钮（复制/分叉等），避免挤占有限宽度 */
 @media (max-width: 640px) {
-  .chat-message-row[data-thinking] .chat-message-action { display: none; }
+  .chat-message-row[data-thinking] .chat-message-action:not(.chat-message-action--id) { display: none; }
 }
 
 /* 底部统计信息（Token/引擎/模型）：鼠标悬停到消息上才显示，高度已预留不撑开布局 */

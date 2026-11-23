@@ -1511,6 +1511,17 @@
     "summary": "Önce yapılandırma kapsamını anlayın, durumu ve hataları okuyun, ardından hedefe yönelik onarımlar yapın.",
     "sections": [
       {
+        "title": "Çalışma tanılaması ve performans",
+        "steps": [
+          "Ayarlar → Sorun bildir → Tanılama bölümünü açın; masaüstünde Yardım menüsü, Android’de yüzen düğmeye uzun basma da kullanılabilir. Günlükleri kaynak, düzey ve zamana göre süzün. Performans sekmesinde 15 saniye kaydedip sorunu tekrarlayın; ardından yavaş kareleri ve olayları inceleyin. Raporu açıkça kopyalayın veya dışa aktarın, paylaşmadan önce hassas verileri kontrol edin. Otomatik yükleme yoktur; tarayıcı tüm arka uç günlüklerini içermez."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Çalışma tanılaması ve performans",
+          "caption": "Çalışma tanılaması ve performans"
+        }
+      },
+      {
         "title": "Masaüstü sürümünü kontrol edin ve güncellemeleri indirin",
         "steps": [
           "Geçerli sürümü incelemek için masaüstünde Ayarlar → Sistem ayarları → Masaüstü güncellemeleri öğesini açın.",
@@ -1601,6 +1612,17 @@
     "title": "Dijital kişi ve genel bellek",
     "summary": "İletişim tarzını, ana sohbeti, proaktif düşünmeyi ve kanal karşılamasını yapılandırın. Kaynaklı anıları inceleyin; gerekirse ses ve kişi tanımayı açın.",
     "sections": [
+      {
+        "title": "Geri dönen tanıdıkları karşılama",
+        "steps": [
+          "Ayarlar → Veri merkezi → Görme → Yüzle uyandırma bölümünü açın. Kişileri izinleriyle kaydedip tanımayı etkinleştirin; kamera açık kalmalıdır. Her satıra bir selamlama, en çok 12 satır ve 160 karakter; {name} ve {relationship} kullanılabilir. Rastgele önizleme yalnızca metindir. Altyazı veya ses, ayrılma süresi, bekleme ve genel sınırları seçip kaydedin. Sessiz saatlerde ve etkileşim sırasında selamlama yapılmaz. Kimlik ve yetkiler değişmez."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Geri dönen tanıdıkları karşılama",
+          "caption": "Geri dönen tanıdıkları karşılama"
+        }
+      },
       {
         "title": "Bellek haritasını keşfetme",
         "steps": [

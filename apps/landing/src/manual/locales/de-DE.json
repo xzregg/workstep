@@ -1511,6 +1511,17 @@
     "summary": "Verstehen Sie den Konfigurationsumfang und lesen Sie Status und Fehler vor gezielten Korrekturen.",
     "sections": [
       {
+        "title": "Laufzeitdiagnose und Leistungsberichte",
+        "steps": [
+          "Öffnen Sie Einstellungen → Problem melden → Laufzeitdiagnose. Auch das Desktop-Hilfemenü oder langes Drücken der Android-Schwebeschaltfläche führt dorthin. Filtern Sie Protokolle nach Quelle, Stufe und Zeit. Zeichnen Sie unter Leistung 15 Sekunden auf, reproduzieren Sie das Problem und prüfen Sie danach langsame Frames und Ereignisse. Berichte nur bewusst kopieren oder exportieren und vor dem Teilen auf sensible Daten prüfen. Kein automatischer Upload; Browserberichte enthalten nicht alle Backend-Protokolle."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Laufzeitdiagnose und Leistungsberichte",
+          "caption": "Laufzeitdiagnose und Leistungsberichte"
+        }
+      },
+      {
         "title": "Desktopversion und Updates prüfen",
         "steps": [
           "Öffnen Sie am Desktop Einstellungen → Systemeinstellungen → Desktopupdates und prüfen Sie die Version.",
@@ -1601,6 +1612,17 @@
     "title": "Digitale Person und globales Gedächtnis",
     "summary": "Konfigurieren Sie Kommunikationsstil, Hauptchat, proaktives Nachdenken und Kanalbetreuung. Prüfen Sie belegte Erinnerungen und aktivieren bei Bedarf Sprache und Personenerkennung.",
     "sections": [
+      {
+        "title": "Bekannte bei der Rückkehr begrüßen",
+        "steps": [
+          "Öffnen Sie Einstellungen → Datenzentrale → Sehen → Gesichtserweckung. Personen nur mit Einwilligung aufnehmen und Gesichtserkennung einschalten; die Kamera muss geöffnet bleiben. Pro Zeile eine Begrüßung, höchstens 12 Zeilen mit je 160 Zeichen; {name} und {relationship} sind möglich. Die Zufallsvorschau zeigt nur Text. Untertitel oder Sprache, Abwesenheitsdauer, Abklingzeit und globale Limits wählen und speichern. Ruhezeiten und laufende Interaktionen unterdrücken Begrüßungen. Identität und Berechtigungen bleiben unverändert."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Bekannte bei der Rückkehr begrüßen",
+          "caption": "Bekannte bei der Rückkehr begrüßen"
+        }
+      },
       {
         "title": "Erinnerungssternkarte erkunden",
         "steps": [

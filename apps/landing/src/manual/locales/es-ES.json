@@ -1511,6 +1511,17 @@
     "summary": "Comprenda el alcance de la configuración, lea primero el estado y los errores y luego realice reparaciones específicas.",
     "sections": [
       {
+        "title": "Diagnóstico y rendimiento",
+        "steps": [
+          "Abra Ajustes → Informar de un problema → Diagnóstico; también está en Ayuda del escritorio y en la pulsación larga del botón flotante de Android. Filtre registros por origen, nivel y hora. Grabe 15 segundos en Rendimiento, reproduzca el problema en la página y vuelva a revisar fotogramas lentos y eventos. Copie o exporte el informe voluntariamente y revise datos sensibles antes de compartirlo. No hay envío automático; el navegador no incluye todos los registros del servidor."
+        ],
+        "screenshot": {
+          "id": "runtime-diagnostics",
+          "alt": "Diagnóstico y rendimiento",
+          "caption": "Diagnóstico y rendimiento"
+        }
+      },
+      {
         "title": "Verifique la versión de escritorio y descargue actualizaciones",
         "steps": [
           "En el escritorio, abra Configuración → Configuración del sistema → Actualizaciones de escritorio para inspeccionar la versión actual.",
@@ -1601,6 +1612,17 @@
     "title": "Persona digital y memoria global",
     "summary": "Configure estilo de comunicación, chat principal, reflexión y atención en canales; consulte recuerdos con fuentes y active voz y reconocimiento de personas cuando lo necesite.",
     "sections": [
+      {
+        "title": "Saludar a conocidos que regresan",
+        "steps": [
+          "Abra Ajustes → Centro de datos → Visión → Activación facial. Registre personas con su consentimiento y active el reconocimiento; la cámara debe seguir encendida. Una frase por línea, máximo 12 líneas de 160 caracteres, con {name} y {relationship}. La vista aleatoria solo muestra texto. Elija subtítulos o voz, ausencia mínima, espera y límites globales, y guarde. Se respetan las horas silenciosas y se omiten saludos durante interacciones. No cambia la identidad ni los permisos."
+        ],
+        "screenshot": {
+          "id": "face-welcome",
+          "alt": "Saludar a conocidos que regresan",
+          "caption": "Saludar a conocidos que regresan"
+        }
+      },
       {
         "title": "Explorar el mapa de recuerdos",
         "steps": [

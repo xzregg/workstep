@@ -221,6 +221,16 @@ For “extract lessons and archive this task”:
    `memory_saved` accurately. Never fall back to plain archive if preparation or
    confirmation failed, and never edit Memory or the database directly.
 
+The archive draft assistant retrieves evidence through these read commands; it
+receives project/task IDs, not an injected history. Read `task get`, small
+`task history --limit 10 --offset 0` pages and `task reviews`; advance history
+offsets until the task has been covered. Verify original corrections and later
+user confirmations/review outcomes. Ignore `archive_experience` messages as
+occurrences. Read the supplied project Memory path in bounded sections to check
+coverage. A failed or incomplete query is not an empty successful review.
+During draft generation, inspect only: do not send messages, control steps,
+write Memory, or call archive/prepare/confirm recursively.
+
 The existing lesson extractor retains only supported, reusable error lessons;
 it may legitimately find none. A general conversational summary is not a substitute
 for the saved archive draft. `task archive` alone deliberately skips extraction.

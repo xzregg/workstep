@@ -1,6 +1,6 @@
 [project]
 name = "workstep-daemon"
-version = "1.0.24"
+version = "1.0.25"
 description = "WorkStep local-first workflow orchestration daemon"
 requires-python = ">=3.11.5"
 dependencies = [

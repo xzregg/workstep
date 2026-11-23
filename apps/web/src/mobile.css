@@ -768,9 +768,9 @@
     display: none !important;
   }
 
-  /* 移动端运行中隐藏复制/fork，已捕获的提示词仍允许查看。 */
-  .chat-message-row[data-thinking] .chat-message-action:not(.chat-message-action--prompt),
-  .message-footer--running .chat-message-action:not(.chat-message-action--prompt) {
+  /* 移动端运行中隐藏复制/fork，消息 ID 与已捕获的提示词仍允许查看。 */
+  .chat-message-row[data-thinking] .chat-message-action:not(.chat-message-action--prompt):not(.chat-message-action--id),
+  .message-footer--running .chat-message-action:not(.chat-message-action--prompt):not(.chat-message-action--id) {
     display: none !important;
   }
 
