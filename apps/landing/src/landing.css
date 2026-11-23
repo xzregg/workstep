@@ -2645,58 +2645,14 @@ button {
 
 /* ── Footer ── */
 
-.final-cta {
-  padding: 72px 0;
-  background: var(--bg);
-  color: var(--fg);
-}
 
-.final-cta-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 40px;
-}
 
-.final-cta h3 {
-  margin: 0 0 10px;
-  max-width: 22ch;
-  font-size: clamp(28px, 3.5vw, 42px);
-  line-height: 1.14;
-  letter-spacing: -0.025em;
-}
 
-.final-cta p {
-  margin: 0;
-  max-width: 58ch;
-  color: color-mix(in srgb, var(--fg) 68%, transparent);
-}
 
-.final-cta-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  flex: none;
-}
 
-.final-cta .btn-primary {
-  background: var(--fg);
-  color: var(--bg);
-}
 
-.final-cta .btn-primary:hover {
-  background: color-mix(in srgb, var(--fg) 90%, transparent);
-}
 
-.final-cta .btn-ghost {
-  color: var(--fg);
-  background: transparent;
-  border-color: color-mix(in srgb, var(--fg) 28%, transparent);
-}
 
-.final-cta .btn-ghost:hover {
-  background: color-mix(in srgb, var(--fg) 10%, transparent);
-}
 
 .footer {
   border-top: 1px solid var(--border-soft);
@@ -3382,10 +3338,6 @@ button {
     margin: 0 auto;
   }
 
-  .final-cta-inner {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 
   .footer-links {
     margin-inline-start: 0;
@@ -3475,14 +3427,7 @@ button {
     height: 34px;
   }
 
-  .final-cta-actions {
-    width: 100%;
-  }
 
-  .final-cta-actions .btn {
-    justify-content: center;
-    width: 100%;
-  }
 
   .download-platforms {
     grid-template-columns: 1fr;

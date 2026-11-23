@@ -7,7 +7,6 @@ import { Demos } from './components/Demos'
 import { DemoModal } from './components/DemoModal'
 import { EnginesStrip } from './components/EnginesStrip'
 import { Features } from './components/Features'
-import { FinalCta } from './components/FinalCta'
 import { Footer } from './components/Footer'
 import { Hero } from './components/Hero'
 import { Nav } from './components/Nav'
@@ -56,7 +55,7 @@ export default function App() {
         <Channels />
         <RemoteShare />
         <EnginesStrip />
-        <div className="container recorded-section"><GuidedWalkthrough><FinalCta experienceHref={experienceHref} /></GuidedWalkthrough></div>
+        <div className="container recorded-section"><GuidedWalkthrough /></div>
         <GettingStarted />
       </main>}
       {!embedded && <Footer />}

@@ -75,7 +75,6 @@ describe('landing positioning', () => {
     const demosIndex = html.indexOf('看看步骤如何执行、结果如何查看')
     const workflowIndex = html.indexOf('先跑通开发任务，再扩展你的流程')
     const remoteShareIndex = html.indexOf('你的项目分享给我')
-    const finalCtaIndex = html.indexOf('从一个能检查结果的小任务开始')
 
     expect(featuresIndex).toBeGreaterThan(-1)
     expect(html).not.toContain('像看视频一样')
@@ -95,7 +94,7 @@ describe('landing positioning', () => {
     expect(sections.indexOf('start')).toBe(sections.indexOf('demos') + 1)
     expect(demosIndex).toBeLessThan(remoteShareIndex)
     expect(html.indexOf('class="compare-table"')).toBeLessThan(html.indexOf('id="engines"'))
-    expect(finalCtaIndex).toBeGreaterThan(remoteShareIndex)
+    expect(html).not.toContain('class="final-cta"')
   })
 
   it('distinguishes workflow ideas and interface animations from completed customer work', () => {

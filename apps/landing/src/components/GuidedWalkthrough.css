@@ -8,8 +8,8 @@
   scroll-margin-top: 84px;
 }
 
-.walkthrough-intro { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 14px; color: var(--muted); font: 11px var(--font-mono); letter-spacing: .06em; }
-.walkthrough-intro span:first-child { color: var(--accent-2); }
+.walkthrough-intro { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 20px; margin-bottom: 24px; color: var(--muted); font-size: 12px; }
+.walkthrough-intro .walkthrough-title { margin: 0; color: var(--fg); font-weight: 700; }
 .walkthrough-player { overflow: hidden; border: 1px solid var(--walkthrough-line); border-radius: 18px; background: var(--walkthrough-bg); box-shadow: var(--elev); color: var(--walkthrough-fg); }
 .walkthrough-stage { position: relative; }
 .walkthrough-viewport { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: var(--walkthrough-bg); }

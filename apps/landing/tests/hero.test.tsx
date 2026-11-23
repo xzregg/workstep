@@ -4,7 +4,6 @@ import App from '../src/App'
 import { I18nProvider } from '../src/i18n'
 import { getExperienceHref } from '../src/config/entryPoints'
 import { Hero } from '../src/components/Hero'
-import { FinalCta } from '../src/components/FinalCta'
 import { RELEASES_URL } from '../src/config/downloads'
 
 describe('landing page', () => {
@@ -45,15 +44,14 @@ describe('landing page', () => {
   it.each([
     ['/', '打开工作台'],
     [RELEASES_URL, '下载桌面版'],
-  ])('uses matching destinations and labels in both calls to action: %s', (href, label) => {
+  ])('uses the matching destination and label in the hero action: %s', (href, label) => {
     const html = renderToStaticMarkup(
       <I18nProvider>
         <Hero onOpenDemos={() => undefined} experienceHref={href} />
-        <FinalCta experienceHref={href} />
       </I18nProvider>,
     )
-    expect(html.split(`href="${href}"`)).toHaveLength(3)
-    expect(html.split(`${label}<`)).toHaveLength(3)
+    expect(html.split(`href="${href}"`)).toHaveLength(2)
+    expect(html.split(`${label}<`)).toHaveLength(2)
     expect(html).not.toContain('立即体验')
   })
 })

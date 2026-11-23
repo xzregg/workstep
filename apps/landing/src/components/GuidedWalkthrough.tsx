@@ -1,5 +1,5 @@
 import { Check, Pause, Play, RotateCcw } from 'lucide-react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties } from 'react'
 import recording from '../assets/workstep-tutorial.webm'
 import poster from '../assets/workstep-tutorial-poster.png'
 import { getWalkthroughFrame, WALKTHROUGH_CHAPTERS } from '../demo/walkthrough'
@@ -11,7 +11,7 @@ function formatTime(seconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
 }
 
-export function GuidedWalkthrough({ children }: { children?: ReactNode }) {
+export function GuidedWalkthrough() {
   const { t } = useI18n()
   const player = useRecordedWalkthrough(recording)
   const frame = getWalkthroughFrame(player.time)
@@ -20,7 +20,7 @@ export function GuidedWalkthrough({ children }: { children?: ReactNode }) {
 
   return (
     <section className="guided-walkthrough" id="demos" aria-label={t('walkthrough.label')}>
-      <div className="walkthrough-intro"><span>{t('walkthrough.eyebrow')}</span><span>{t('walkthrough.duration')}</span></div>
+      <div className="walkthrough-intro"><h2 className="section-title walkthrough-title">{t('walkthrough.eyebrow')}</h2><span>{t('walkthrough.duration')}</span></div>
       <div className="walkthrough-player">
         <div className="walkthrough-stage">
           <div className="walkthrough-viewport" ref={player.stageRef}>
@@ -59,7 +59,6 @@ export function GuidedWalkthrough({ children }: { children?: ReactNode }) {
         </div>
       </div>
       <p className="walkthrough-caption">{t('walkthrough.disclaimer')}</p>
-      {children}
     </section>
   )
 }
