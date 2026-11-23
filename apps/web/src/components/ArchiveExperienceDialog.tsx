@@ -202,13 +202,13 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
     width={680} onConfirm={handleConfirm} onSecondary={handleDirectArchive} onCancel={handleCancel}>
     {canCleanWorkspace && <ArchiveWorkspaceChoice checked={deleteWorkspace} disabled={phase === 'saving' || phase === 'archiving'} onChange={setDeleteWorkspace} />}
     {showProgress && projectId && <div className="archive-experience-section">
-      <ArchiveExperienceProgress message={visibleProgressMessage} projectId={projectId}
+      <ArchiveExperienceProgress message={visibleProgressMessage} messageId={messageId} projectId={projectId}
         running={phase === 'generating' || phase === 'stopping' || phase === 'archiving'}
         agentName={t('taskList.archiveExperienceAgent')}
         thinkingLabel={t('taskList.archiveExperienceThinking')} />
     </div>}
     {phase === 'empty' && projectId && <div className="archive-experience-section">
-      <ArchiveExperienceProgress message={visibleProgressMessage}
+      <ArchiveExperienceProgress message={visibleProgressMessage} messageId={messageId}
         fallbackContent={t('taskList.archiveExperienceEmptyResult')} projectId={projectId}
         running={false} agentName={t('taskList.archiveExperienceAgent')}
         thinkingLabel={t('taskList.archiveExperienceThinking')} />
@@ -216,7 +216,7 @@ export default function ArchiveExperienceDialog({ task, projectId, onClose, onAr
     {(phase === 'review' || phase === 'saving') && <div className="archive-experience-section">
       {visibleProgressMessage && <details className="archive-experience-process">
         <summary>{t('taskList.archiveExperienceViewProcess')}</summary>
-        <ArchiveExperienceProgress message={visibleProgressMessage} projectId={projectId || ''}
+        <ArchiveExperienceProgress message={visibleProgressMessage} messageId={messageId} projectId={projectId || ''}
           running={false} agentName={t('taskList.archiveExperienceAgent')}
           thinkingLabel={t('taskList.archiveExperienceThinking')} />
       </details>}

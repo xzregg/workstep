@@ -1,5 +1,6 @@
 import Icon from './Icon'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import './MessageIdPopover.css'
 import { useI18n } from '../i18n'
 import { fsApi } from '../api/client'
 import { copyMessageText } from './MessageResponseFooter'
@@ -149,6 +150,28 @@ function hasId(value?: string | null) {
 export default function MessageIdPopover({ messageId, sessionId, projectId, openEnabled }: MessageIdProps) {
   const { t } = useI18n()
   const [visible, setVisible] = useState(false)
+  const triggerRef = useRef<HTMLSpanElement>(null)
+  const [panelMaxWidth, setPanelMaxWidth] = useState<number>()
+  useLayoutEffect(() => {
+    if (!visible) return
+    const update = () => {
+      const trigger = triggerRef.current
+      if (!trigger) return
+      const anchor = trigger.getBoundingClientRect()
+      if (!anchor.width) return
+      let left = 0
+      for (let parent = trigger.parentElement; parent; parent = parent.parentElement) {
+        const style = window.getComputedStyle(parent)
+        if (/(auto|scroll|hidden|clip)/.test(style.overflowX || style.overflow)) {
+          left = Math.max(left, parent.getBoundingClientRect().left)
+        }
+      }
+      setPanelMaxWidth(Math.max(0, Math.min(window.innerWidth, anchor.right) - left - 8))
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [visible])
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const cancelClose = () => {
@@ -181,6 +204,7 @@ export default function MessageIdPopover({ messageId, sessionId, projectId, open
   if (!hasSession && !hasMessage) return null
   return (
     <span
+      ref={triggerRef}
       className="msg-id-trigger"
       onMouseEnter={show}
       onMouseLeave={scheduleHide}
@@ -220,6 +244,7 @@ export default function MessageIdPopover({ messageId, sessionId, projectId, open
           style={{
             // top:100% + padding 桥接触发器与面板之间的空隙，鼠标移动不丢 hover
             position: 'absolute', top: '100%', right: 0, zIndex: 30,
+            maxWidth: panelMaxWidth,
             display: 'flex', flexDirection: 'column', paddingTop: 6,
           }}
         >

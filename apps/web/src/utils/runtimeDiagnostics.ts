@@ -13,6 +13,8 @@ interface Recorder {
 
 export interface RuntimeLog { at: number; source: string; level: string; summary: string; detail?: string }
 interface RuntimeViewAdapter {
+  clear?(): Promise<boolean>
+  clearDescription?: string
   read(full: boolean): { available: boolean; environment: Record<string, string>; performance: CaptureStatus; logs?: RuntimeLog[] }
   start(): boolean
   stop(): void

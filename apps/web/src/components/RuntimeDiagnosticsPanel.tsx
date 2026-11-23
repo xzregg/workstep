@@ -23,7 +23,7 @@ export default function RuntimeDiagnosticsPanel({ onClose, onRecord }: { onClose
       performance: window.workstepPerformance!.snapshot(),
       ...(full ? { logs: browserDiagnostics.snapshot().map(record => ({
         at: Date.parse(record.at), source: record.kind, level: record.level, summary: record.detail.split('\n', 1)[0],
-        detail: record.detail,
+        detail: record.detail.includes('\n') ? record.detail.split('\n').slice(1).join('\n') : undefined,
       })).reverse() } : {}),
     }),
     start() {
@@ -31,6 +31,8 @@ export default function RuntimeDiagnosticsPanel({ onClose, onRecord }: { onClose
       onRecord()
       return true
     },
+    clear() { browserDiagnostics.clear(); return Promise.resolve(true) },
+    clearDescription: '清除当前页面保留的诊断日志？清除后无法恢复。',
     stop() { window.workstepPerformance?.stop() },
     async copy(text) { if (!(await copyText(text))) throw new Error('Clipboard unavailable') },
     async save(text) {

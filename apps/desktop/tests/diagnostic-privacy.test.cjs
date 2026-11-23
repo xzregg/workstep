@@ -43,3 +43,9 @@ test('unlabelled common key formats and additional absolute paths are removed', 
     assert.ok(!redactDiagnosticText(`failure ${secret}`).includes(secret), secret)
   }
 })
+
+test('engine diagnostics keep fixed endpoint names and built-in engine names', () => {
+  assert.equal(diagnosticRoute('/engine/execution/config?project_id=private'), '/engine/execution/config')
+  assert.equal(diagnosticRoute('/engine/codex_sdk/quota'), '/engine/codex_sdk/quota')
+  assert.equal(diagnosticRoute('/engine/private-engine/runtime/operation'), '/engine/:id/runtime/operation')
+})

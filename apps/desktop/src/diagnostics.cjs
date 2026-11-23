@@ -67,6 +67,21 @@ function createDiagnostics({ directory, metadata = {}, maxBytes = LOG_MAX_BYTES,
       await appendRotatingLog(file, notice + line, maxBytes, backups)
     }).catch(error => { logger.lastError = error }).finally(() => { pending-- })
   }
+  logger.clearLogs = () => {
+    const clear = queue.then(async () => {
+      const names = await fs.readdir(directory).catch(error => {
+        if (error.code === 'ENOENT') return []
+        throw error
+      })
+      for (const name of names) {
+        if (/^(?:desktop|daemon|fatal)\.log(?:\.\d+)?$/.test(name)) {
+          await fs.rm(path.join(directory, name), { force: true })
+        }
+      }
+    })
+    queue = clear.catch(error => { logger.lastError = error })
+    return clear
+  }
   logger.flush = () => Promise.all([queue, maintenance])
   logger.pruneCrashes = (now = Date.now()) => {
     maintenance = maintenance.then(async () => {

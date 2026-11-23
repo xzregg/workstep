@@ -106,9 +106,12 @@
     const signatures = text.match(/\b(?:TypeError|SyntaxError|ReferenceError|RangeError|TimeoutError|AbortError|SecurityError|IOException|NullPointerException|IllegalStateException|Traceback)\b|\bHTTP [1-5]\d{2}\b|失败|异常|超时|崩溃|断开|重连|启动|退出|恢复|请求|通知/g)
     const frames = Array.from(text.matchAll(/\b([a-zA-Z][\w.-]{0,80}\.(?:js|mjs|tsx?|py|cjs|java)):(\d{1,7})(?::(\d{1,7}))?/g), match =>
       [match[1], match[2], match[3]].filter(Boolean).join(':')).slice(0, 5)
+    const request = /^(慢请求 )?(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|REQUEST) (\/[a-zA-Z0-9_:/-]+)(?: HTTP ([1-5]\d{2}))?(?: (\d{1,9})ms)?(?: network failure)?$/.exec(log.summary)
+    const publicSegments = new Set(('api engine execution coordinator config refresh test custom import onboarding disable rollback export visibility runtime operation install update inspect quota models default-model binary-path reveal codex codex_sdk claude claude_code claude_agent_sdk gemini gemini_cli copilot opencode cursor pydantic_ai project projects task tasks chat-sessions messages events system-settings providers provider engines assistant assistants templates list status history settings task-share public health chat workflows workflow statistics schedule schedules artifacts git remote-project files channels concurrency roles share assets :id').split(' '))
+    const safeRequest = request && request[3].split('/').every(segment => !segment || publicSegments.has(segment))
     return {
       at: log.at, source: log.source, level: log.level,
-      summary: [...new Set(signatures || [])].slice(0, 10).join(' / ') || log.level,
+      summary: safeRequest ? log.summary : [...new Set(signatures || [])].slice(0, 10).join(' / ') || log.level,
       ...(frames.length ? { frames } : {}),
     }
   }

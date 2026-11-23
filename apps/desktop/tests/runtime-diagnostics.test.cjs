@@ -63,3 +63,9 @@ test('marks a capped log export as truncated', () => {
   assert.equal(report.truncated, true)
   assert.ok(Buffer.byteLength(output) <= 2 * 1024 * 1024)
 })
+
+test('copied reports preserve the slow request endpoint and timing', () => {
+  const logs = [{ at: 1, source: 'request', level: 'warn',
+    summary: '慢请求 GET /engine/execution/config HTTP 200 3302ms' }]
+  assert.equal(JSON.parse(buildReport({}, null, logs)).logs[0].summary, logs[0].summary)
+})

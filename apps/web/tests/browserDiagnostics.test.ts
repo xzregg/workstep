@@ -65,3 +65,9 @@ test('speech timing diagnostics contain bounded durations without audio or trans
   assert.equal(record.kind, 'request')
   assert.match(record.detail, /request=1500ms inference=21ms queued=2500ms/)
 })
+
+test('slow requests identify the endpoint, method, response and duration', () => {
+  const diagnostics = createBrowserDiagnostics()
+  diagnostics.recordSlowRequest('/engine/execution/config?token=private', 3302, 'GET', 200)
+  assert.equal(diagnostics.snapshot()[0].detail, '慢请求 GET /engine/execution/config HTTP 200 3302ms')
+})

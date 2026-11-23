@@ -114,3 +114,55 @@ async def test_archive_validation_failure_publishes_raw_output_without_saving(ap
     assert draft.json()["found"] is False
     assert (await client.get(f"/api/task/{task_id}?project_id={project_id}")).json()["archived"] is False
     assert (await client.get(f"/api/fs/memory?project_id={project_id}")).json()["content"] == ""
+
+
+def test_evidence_fragments_keep_records_and_source_ids():
+    import json
+    from agent_assistants.archive_experience import _archive_evidence_fragments
+
+    reviews = [{"id": f"review-{i}", "attempt": i, "report": '错误：' + '"\\\n' * 3000}
+               for i in range(12)]
+    evidence = {"existing_memory": "记忆规则\n" * 12000,
+                "task": {"id": "task"}, "steps": [], "reviews": reviews,
+                "messages": [{"id": "last-correction", "content": "再次缺失校验"}]}
+    fragments = _archive_evidence_fragments(evidence)
+    assert len(fragments) > 1
+    units = []
+    for fragment in fragments:
+        assert len(fragment) <= 16000
+        units.extend(json.loads(fragment))
+    assert "".join(unit["text"] for unit in units
+                   if unit["section"] == "existing_memory") == evidence["existing_memory"]
+    for review in reviews:
+        parts = [unit for unit in units if unit["section"] == "reviews"
+                 and unit.get("source", {}).get("id") == review["id"] and unit.get("field") == "report"]
+        assert "".join(part["text"] for part in parts) == review["report"]
+        assert all(part["source"]["attempt"] == review["attempt"] for part in parts)
+    assert units[-1]["record"]["id"] == "last-correction"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("invalid", ["", "笔记" * 5000], ids=["empty", "oversized"])
+async def test_archive_recovers_invalid_notes_once(api_context, monkeypatch, invalid):
+    class NotesEngine(CoordinatorFakeEngine):
+        calls = []
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            type(self).calls.append(prompt)
+            if "Archive evidence fragment" in prompt:
+                import json
+                assert isinstance(json.loads(prompt.split("Fragment data:\n", 1)[1]), list)
+                assert len(prompt) < 26000
+                reply = invalid if len(type(self).calls) == 1 else "来源 review-1：第一次纠正；review-2：再次纠正。"
+            else:
+                reply = "<experience>- 重复遗漏校验，提交前运行相关测试。</experience>"
+            yield InternalEvent("agent_message_chunk", {"content": {"text": reply}})
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", NotesEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    await client.put(f"/api/fs/memory?project_id={project_id}", json={"content": "规则" * 30000})
+    response = await client.post(f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}")
+    assert response.status_code == 200, response.text
+    assert "previous notes were empty or too long" in NotesEngine.calls[1]
+    assert (await client.get(f"/api/task/{task_id}?project_id={project_id}")).json()["archived"] is False

@@ -32,6 +32,10 @@
     stop: () => invoke('stop'),
     copy: text => invoke('copy', text),
     save: text => invoke('save', text),
+    clear: () => invoke('clear'),
+    clearDescription: window.androidRuntimeDiagnostics
+      ? '清除安卓主进程、通知进程、崩溃和当前网页的诊断日志？清除后无法恢复。'
+      : '清除本机桌面日志、桌面收集的后台日志和当前网页诊断日志？沙箱日志由容器管理。清除后无法恢复。',
     ...(window.androidRuntimeDiagnostics ? { manage: () => invoke('manage') } : {}),
   })
 })()

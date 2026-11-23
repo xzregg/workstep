@@ -2,10 +2,17 @@
 // or request bodies before calling this function: collection is allowlisted too.
 const ROUTES = new Set(('api project projects task tasks chat-sessions messages events system-settings providers provider engines engine assistant assistants templates list status history settings task-share public health chat workflows workflow statistics schedule schedules artifacts git remote-project files channels concurrency roles share assets').split(' '))
 
+const ENGINE_ROUTES = new Set(('execution coordinator config refresh test custom import onboarding disable rollback export visibility runtime operation install update inspect quota models default-model binary-path reveal').split(' '))
+const PUBLIC_ENGINES = new Set(('codex codex_sdk claude claude_code claude_agent_sdk gemini gemini_cli copilot opencode cursor pydantic_ai').split(' '))
+
 export function diagnosticRoute(value) {
   let path = String(value).split(/[?#]/, 1)[0]
   try { if (/^https?:\/\//i.test(path)) path = new URL(path).pathname } catch { return '/:id' }
-  return '/' + path.split('/').filter(Boolean).map(segment => ROUTES.has(segment) ? segment : ':id').join('/')
+  const segments = path.split('/').filter(Boolean)
+  const engineIndex = segments.indexOf('engine')
+  return '/' + segments.map((segment, index) =>
+    ROUTES.has(segment) || (engineIndex >= 0 && index > engineIndex &&
+      (ENGINE_ROUTES.has(segment) || (index === engineIndex + 1 && PUBLIC_ENGINES.has(segment)))) ? segment : ':id').join('/')
 }
 
 export function redactDiagnosticText(value, { secrets = [], identities = [], homeDirectory = '' } = {}) {

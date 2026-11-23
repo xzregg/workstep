@@ -229,3 +229,18 @@ for (const failure of ['throw new Error("fatal child")', 'Promise.reject(new Err
     assert.match(await fs.readFile(path.join(logger.directory, 'fatal.log'), 'utf8'), /fatal child/)
   })
 }
+
+test('clearing diagnostics is ordered with writes and keeps unrelated files', async t => {
+  const logger = await fixture(t)
+  await fs.mkdir(logger.directory, { recursive: true })
+  await fs.writeFile(path.join(logger.directory, 'notes.txt'), 'keep')
+  logger.write('desktop', 'info', 'old record')
+  const cleared = logger.clearLogs()
+  logger.write('desktop', 'info', 'new record')
+  await cleared
+  await logger.flush()
+  const text = await fs.readFile(path.join(logger.directory, 'desktop.log'), 'utf8')
+  assert.doesNotMatch(text, /old record/)
+  assert.match(text, /new record/)
+  assert.equal(await fs.readFile(path.join(logger.directory, 'notes.txt'), 'utf8'), 'keep')
+})

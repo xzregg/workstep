@@ -79,10 +79,15 @@ function createRuntimeDiagnosticsWindow({ BrowserWindow, ipcMain, clipboard, dia
         const records = (Array.isArray(browser) ? browser : []).slice(0, 100)
           .filter(entry => entry?.kind === source && typeof entry.detail === 'string' &&
             /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(entry.at))
-          .map(entry => `${entry.at} ${['error', 'warn', 'info'].includes(entry.level) ? entry.level : 'info'} ${logger.redact(entry.detail).slice(0, 2048)}`)
+          .map(entry => `${entry.at} ${['error', 'warn', 'info'].includes(entry.level) ? entry.level : 'info'} ${(source === 'request' ? entry.detail : logger.redact(entry.detail)).slice(0, 2048)}`)
         if (records.length) streams.push({ source, text: records.join('\n') })
       }
       return { ...state, streams, warning: report.warnings[0] }
+    }
+    if (action === 'clear') {
+      await logger.clearLogs()
+      await evaluate('window.workstepClearRuntimeLogs?.(); true')
+      return true
     }
     if (action === 'start') {
       const current = currentWorkbench()

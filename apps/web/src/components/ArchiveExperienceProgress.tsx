@@ -9,6 +9,7 @@ import StreamingStatusText from './StreamingStatusText'
 
 interface Props {
   message?: LiveMessage
+  messageId?: string | null
   fallbackContent?: string
   projectId: string
   running: boolean
@@ -19,6 +20,7 @@ interface Props {
 /** Read-only coordinator process view used while distilling archive mistakes. */
 export default function ArchiveExperienceProgress({
   message,
+  messageId,
   fallbackContent,
   projectId,
   running,
@@ -74,6 +76,7 @@ export default function ArchiveExperienceProgress({
           variant="bg"
           header={(
             <MessageMetaBar
+              messageId={message?.id || messageId}
               createdAt={message?.created_at}
               running={running}
               events={message?.events || []}

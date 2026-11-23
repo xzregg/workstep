@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client'
 import { I18nProvider } from '../src/i18n'
 import { useTaskStore } from '../src/stores/taskStore'
 import ArchiveExperienceDialog from '../src/components/ArchiveExperienceDialog'
+import ArchiveExperienceProgress from '../src/components/ArchiveExperienceProgress'
 
 test('failed generation retains process and output without archiving or writing Memory', async () => {
   const { window } = installDomEnvironment()
@@ -35,6 +36,11 @@ test('failed generation retains process and output without archiving or writing 
     assert.ok(generate)
     await act(async () => generate.click())
     assert.match(container.textContent || '', /金额统一使用分/)
+    const message = Object.values(useTaskStore.getState().liveMessages.task)[0]
+    const idButton = container.querySelector<HTMLButtonElement>(`button[title="${message.id}"]`)
+    assert.ok(idButton, 'failed archive process exposes its message ID')
+    await act(async () => idButton.click())
+    assert.match(container.textContent || '', new RegExp(message.id))
     assert.match(container.querySelector('[role="alert"]')?.textContent || '', /草稿超过长度限制/)
     assert.deepEqual(mutations, [])
     assert.ok([...container.querySelectorAll('button')]
@@ -79,6 +85,26 @@ test('an empty saved archive draft can be archived without adding experience', a
     await act(async () => root.unmount())
     useTaskStore.setState({ getArchiveExperienceDraft: original.getArchiveExperienceDraft,
       confirmArchiveExperience: original.confirmArchiveExperience })
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
+
+test('archive message ID is available before the first live event', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><ArchiveExperienceProgress
+      messageId="pending-archive-message" projectId="project" running
+      agentName="协调助手" thinkingLabel="对错误记录" /></I18nProvider>))
+    const button = container.querySelector<HTMLButtonElement>('button[title="pending-archive-message"]')
+    assert.ok(button)
+    await act(async () => button.click())
+    assert.match(container.textContent || '', /pending-archive-message/)
+  } finally {
+    await act(async () => root.unmount())
     container.remove()
     await window.happyDOM.close()
   }

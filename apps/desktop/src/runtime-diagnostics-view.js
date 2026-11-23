@@ -25,6 +25,12 @@
           <select aria-label="日志时间"><option value="1">最近 1 分钟</option><option value="5" selected>最近 5 分钟</option><option value="30">最近 30 分钟</option><option value="">所有时间</option></select>
           <button type="button" data-action="refresh">刷新</button>
           <button type="button" data-action="copy-logs" disabled>复制筛选日志</button>
+          <button type="button" data-action="clear" hidden>清除日志</button>
+        </div>
+        <div class="rd-clear-confirm" hidden role="group" aria-label="确认清除日志">
+          <p class="rd-clear-description"></p>
+          <div class="rd-toolbar"><button type="button" data-action="cancel-clear">取消</button>
+            <button type="button" data-action="confirm-clear">确认清除</button></div>
         </div>
         <div class="rd-rows" aria-label="日志记录"><p>正在读取日志…</p></div>
       </div>
@@ -58,6 +64,7 @@
     const localTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium' })
     let state = { logs: [], performance: {}, environment: {}, available: false }
     let selectedTime
+    let logGeneration = 0
     let readingLogs = false
     let readingStatus = false
     let disposed = false
@@ -106,7 +113,7 @@
         const heading = node('summary')
         heading.append(node('time', localTime.format(log.at)), node('span', names[log.source] || log.source),
           node('span', names[log.level] || log.level), node('span', log.summary))
-        const detail = node('pre', log.detail ? log.summary + '\n' + log.detail : log.summary)
+        const detail = node('pre', log.detail && log.detail !== log.summary ? log.summary + '\n' + log.detail : log.summary)
         row.append(heading, detail)
         fragment.append(row)
       }
@@ -191,11 +198,12 @@
     }
     async function refresh(full = true) {
       if (disposed || (full ? readingLogs : readingStatus)) return
+      const generation = logGeneration
       if (full) readingLogs = true
       else readingStatus = true
       try {
         const update = await adapter.read(full)
-        if (disposed) return
+        if (disposed || (full && generation !== logGeneration)) return
         if (full) {
           state.logs = update.logs ?? []
           state.warning = update.warning
@@ -251,6 +259,31 @@
       try {
         if (await adapter.save(buildReport(state.environment, state.performance.result, state.logs)) && !disposed) status.textContent = '已导出'
       } catch { if (!disposed) status.textContent = '导出失败' }
+    }
+    if (adapter.clear) {
+      const clear = query('[data-action=clear]')
+      const confirmation = query('.rd-clear-confirm')
+      const confirm = query('[data-action=confirm-clear]')
+      const cancel = query('[data-action=cancel-clear]')
+      clear.hidden = false
+      query('.rd-clear-description').textContent = adapter.clearDescription || '清除当前客户端的诊断日志？清除后无法恢复。'
+      clear.onclick = () => { confirmation.hidden = false; cancel.focus() }
+      cancel.onclick = () => { confirmation.hidden = true; clear.focus() }
+      confirm.onclick = async () => {
+        clear.disabled = confirm.disabled = cancel.disabled = true
+        try {
+          if (!(await adapter.clear())) throw new Error('Clear failed')
+          if (disposed) return
+          logGeneration++
+          state.logs = []
+          renderLogs()
+          await refresh()
+          confirmation.hidden = true
+          status.textContent = '日志已清除'
+          clear.focus()
+        } catch { if (!disposed) status.textContent = '日志清除失败，请重试' }
+        finally { clear.disabled = confirm.disabled = cancel.disabled = false }
+      }
     }
     if (adapter.manage) {
       const manage = query('[data-action=manage]')

@@ -31,9 +31,14 @@ test('copying the message id also copies its session id', async () => {
         <MessageIdPopover sessionId="session-123" messageId="message-456" />
       </I18nProvider>,
     ))
+    container.style.overflowX = 'auto'
+    container.getBoundingClientRect = () => ({ left: 40, right: 300, width: 260 } as DOMRect)
+    container.querySelector<HTMLElement>('.msg-id-trigger')!.getBoundingClientRect = () => (
+      { left: 160, right: 200, width: 40 } as DOMRect)
     await act(async () => {
       container.querySelector<HTMLButtonElement>('[aria-haspopup="true"]')!.click()
     })
+    assert.equal(container.querySelector<HTMLElement>('.msg-id-popover')!.style.maxWidth, '152px')
     await act(async () => {
       container.querySelector<HTMLButtonElement>('[aria-label="复制消息 ID"]')!.click()
     })

@@ -1,0 +1,7 @@
+.msg-id-popover {
+  width: max-content;
+}
+
+.msg-id-popover > span {
+  min-width: 0;
+}

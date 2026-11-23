@@ -1364,7 +1364,7 @@ async def test_archive_rejects_unbounded_or_empty_evidence_notes(api_context, mo
     )
     assert response.status_code == 502
     assert "evidence notes" in response.json()["detail"]
-    assert len(CoordinatorFakeEngine.calls) == 1
+    assert len(CoordinatorFakeEngine.calls) == 2
     draft = await client.get(f"/api/task/{task_id}/archive-experience/draft?project_id={project_id}")
     assert draft.json()["found"] is False
 

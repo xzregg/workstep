@@ -133,6 +133,7 @@ final class RuntimeDiagnostics {
                         case "stop" -> { stop("manual", () -> reply(view, id, true, false)); }
                         case "copy" -> copyReport(view, id, value);
                         case "save" -> save(view, id, value);
+                        case "clear" -> clearLogs(view, id);
                         case "manage" -> {
                             reply(view, id, true, false);
                             CrashReports.showLogs(activity);
@@ -268,6 +269,15 @@ final class RuntimeDiagnostics {
     }
 
     void navigation() { generation++; recording = null; timer.removeCallbacksAndMessages(null); }
+
+    private void clearLogs(WebView view, int id) {
+        WebView page = workbench.get();
+        if (page != null) page.evaluateJavascript(sameOrigin("window.workstepClearRuntimeLogs?.()"), null);
+        io.execute(() -> {
+            boolean cleared = CrashReports.clearFiles(activity.getFilesDir());
+            activity.runOnUiThread(() -> reply(view, id, cleared, false));
+        });
+    }
 
     private void copyReport(WebView view, int id, String text) {
         if (text.length() > REPORT_LIMIT) throw new IllegalArgumentException();

@@ -39,8 +39,9 @@ export function createBrowserDiagnostics(privacy: PrivacyContext = () => ({})) {
       if (reason && typeof reason === 'object') requestErrors.set(reason, detail)
       record('request', detail)
     },
-    recordSlowRequest(path: string, ms: number) {
-      if (ms >= 200) record('request', `慢请求 ${diagnosticRoute(path)} ${Math.round(ms)}ms`, 'warn')
+    recordSlowRequest(path: string, ms: number, method = 'GET', status?: number) {
+      const safeMethod = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/.test(method) ? method : 'REQUEST'
+      if (ms >= 200) record('request', `慢请求 ${safeMethod} ${diagnosticRoute(path)} ${status ? `HTTP ${status} ` : ''}${Math.round(ms)}ms`, 'warn')
     },
     recordSpeechTiming({ requestMs, processingMs, queuedMs }: { requestMs: number; processingMs?: number; queuedMs: number }) {
       const ms = (value: number | undefined) => typeof value === 'number' && Number.isFinite(value)
@@ -63,9 +64,11 @@ export function installBrowserDiagnostics(target: Window, diagnostics: BrowserDi
   const rejection = (event: PromiseRejectionEvent) => diagnostics.recordError(event.reason)
   target.addEventListener('error', error)
   target.addEventListener('unhandledrejection', rejection)
-  const workstepWindow = target as Window & { workstepRuntimeLogSnapshot?: BrowserDiagnostics['snapshot'] }
+  const workstepWindow = target as Window & { workstepRuntimeLogSnapshot?: BrowserDiagnostics['snapshot']; workstepClearRuntimeLogs?: () => void }
   workstepWindow.workstepRuntimeLogSnapshot = diagnostics.snapshot
+  workstepWindow.workstepClearRuntimeLogs = diagnostics.clear
   const dispose = () => {
+    if (workstepWindow.workstepClearRuntimeLogs === diagnostics.clear) delete workstepWindow.workstepClearRuntimeLogs
     if (workstepWindow.workstepRuntimeLogSnapshot === diagnostics.snapshot) delete workstepWindow.workstepRuntimeLogSnapshot
     target.removeEventListener('error', error)
     target.removeEventListener('unhandledrejection', rejection)

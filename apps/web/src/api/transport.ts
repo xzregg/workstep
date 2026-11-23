@@ -106,7 +106,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
       })
       const result = await readApiResponse<T>(res, path)
       const ended = typeof window === 'undefined' ? undefined : window.workstepPerformance?.stamp()
-      if (started !== undefined && ended !== undefined) browserDiagnostics.recordSlowRequest(path, ended - started)
+      if (started !== undefined && ended !== undefined) browserDiagnostics.recordSlowRequest(path, ended - started, (options?.method || 'GET').toUpperCase(), res.status)
       return result
     } catch (error) {
       if (!options?.signal?.aborted && !(error instanceof Error && error.name === 'AbortError')) {
