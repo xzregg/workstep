@@ -63,7 +63,7 @@ export const csCZ: I18nDict = {
     "lede": "Propojte nástroje pro kódování AI, jako je Codex a Claude Code, do opakovaně použitelného pracovního postupu. Předejte výsledky dalšímu kroku, sledujte pokrok, kontrolujte výstupy a v případě potřeby požádejte o přepracování. Použijte stejný pracovní postup pro svůj další úkol.",
     "ctaPrimary": "Stáhněte si desktopovou aplikaci",
     "ctaSecondary": "Sledujte skutečné operace",
-    "setup": "První nastavení vyžaduje instalaci jednoho spouštěcího jádra a konfiguraci ověřování. Modelové poplatky za služby se řídí podmínkami zvoleného poskytovatele.",
+    "setup": "První nastavení vyžaduje instalaci jednoho spouštěcího jádra a konfiguraci ověřování.",
     "setupGuide": "Přečtěte si průvodce nastavením",
     "meta1": "Výsledky procházejí mezi kroky",
     "meta2": "Kontrola na klíčových kontrolních bodech",

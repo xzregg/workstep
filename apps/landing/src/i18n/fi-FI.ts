@@ -63,7 +63,7 @@ export const fiFI: I18nDict = {
     "lede": "Yhdistä AI-koodaustyökalut, kuten Codex ja Claude Code, uudelleen käytettävään työnkulkuun. Siirrä tulokset seuraavaan vaiheeseen, seuraa edistymistä, tarkista tulokset ja pyydä tarvittaessa korjauksia. Käytä samaa työnkulkua seuraavaan tehtävään.",
     "ctaPrimary": "Lataa työpöytäsovellus",
     "ctaSecondary": "Katso todellista toimintaa",
-    "setup": "Ensiasennus edellyttää yhden suoritusmoottorin asentamista ja todennuksen määrittämistä. Mallipalvelumaksut noudattavat valitsemasi palveluntarjoajan ehtoja.",
+    "setup": "Ensiasennus edellyttää yhden suoritusmoottorin asentamista ja todennuksen määrittämistä.",
     "setupGuide": "Lue asennusopas",
     "meta1": "Tulokset kulkevat vaiheiden välillä",
     "meta2": "Tarkista keskeisissä tarkistuspisteissä",

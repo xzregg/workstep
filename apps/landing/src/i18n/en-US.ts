@@ -63,7 +63,7 @@ export const enUS: I18nDict = {
     lede: "Connect your choice of Agent engines into reusable development workflows. Pass results between steps, review key deliverables, and share projects and tasks to build together.",
     ctaPrimary: "Download desktop app",
     ctaSecondary: "Watch real operations",
-    setup: "First-time setup requires installing one execution engine and configuring authentication. Model service fees follow your chosen provider’s terms.",
+    setup: "First-time setup requires installing one execution engine and configuring authentication.",
     setupGuide: "Read the setup guide",
     meta1: "Results pass between steps",
     meta2: "Review at key checkpoints",

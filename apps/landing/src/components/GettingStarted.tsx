@@ -28,7 +28,7 @@ export function GettingStarted() {
   }
   return <section className="start-guide section" id="start" lang={lang} dir={languageDirection(lang)} aria-labelledby="start-heading">
     <div className="container">
-      <div className="editorial-section-heading"><div><p className="section-eyebrow">02 / {t('manual.groups.getting-started')}</p><h2 className="section-title" id="start-heading">{editorialCopy[lang].startTitle}</h2></div><p className="section-lede">{t('hero.setup')}</p></div>
+      <div className="editorial-section-heading"><div><h2 className="section-title" id="start-heading">{editorialCopy[lang].startTitle}</h2></div><p className="section-lede">{t('hero.setup')}</p></div>
       <div className="start-routes"><a href="#download">{t('download.title')} <ArrowRight size={16} /></a><a href="#engines">{t('engines.extension')} <ArrowRight size={16} /></a></div>
       <div className="start-layout">
         <div className="start-sidebar"><nav className="start-step-links" aria-label={t('manual.groups.getting-started')}>

@@ -63,7 +63,7 @@ export const idID: I18nDict = {
     "lede": "Hubungkan alat pemrograman AI seperti Codex dan Claude Code ke alur kerja yang dapat digunakan ulang. Teruskan hasil ke langkah berikutnya, pantau kemajuan, tinjau keluaran, dan minta pengerjaan ulang bila perlu. Gunakan alur yang sama untuk tugas berikutnya.",
     "ctaPrimary": "Unduh aplikasi desktop",
     "ctaSecondary": "Lihat pengoperasian nyata",
-    "setup": "Penyiapan awal memerlukan satu mesin eksekusi dan konfigurasi autentikasi. Biaya layanan model mengikuti ketentuan penyedia yang Anda pilih.",
+    "setup": "Penyiapan awal memerlukan satu mesin eksekusi dan konfigurasi autentikasi.",
     "setupGuide": "Baca panduan penyiapan",
     "meta1": "Hasil diteruskan antar langkah",
     "meta2": "Tinjau di titik penting",

@@ -63,7 +63,7 @@ export const trTR: I18nDict = {
     "lede": "Codex ve Claude Code gibi yapay zeka kodlama araçlarını yeniden kullanılabilir bir iş akışına bağlayın. Sonuçları bir sonraki adıma aktarın, ilerlemeyi takip edin, çıktıları gözden geçirin ve gerektiğinde yeniden çalışma isteyin. Bir sonraki göreviniz için aynı iş akışını kullanın.",
     "ctaPrimary": "Masaüstü uygulamasını indirin",
     "ctaSecondary": "Gerçek operasyonları izleyin",
-    "setup": "İlk kurulum, bir yürütme motorunun kurulmasını ve kimlik doğrulamanın yapılandırılmasını gerektirir. Model hizmet ücretleri, seçtiğiniz sağlayıcının şartlarına uygundur.",
+    "setup": "İlk kurulum, bir yürütme motorunun kurulmasını ve kimlik doğrulamanın yapılandırılmasını gerektirir.",
     "setupGuide": "Kurulum kılavuzunu okuyun",
     "meta1": "Sonuçlar adımlar arasında geçer",
     "meta2": "Önemli kontrol noktalarında inceleme",

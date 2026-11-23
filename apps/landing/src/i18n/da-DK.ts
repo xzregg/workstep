@@ -63,7 +63,7 @@ export const daDK: I18nDict = {
     "lede": "Forbind AI-kodningsværktøjer som Codex og Claude Code til en genanvendelig arbejdsgang. Send resultater til næste trin, følg fremskridt, gennemgå output, og anmod om omarbejdelse, når det er nødvendigt. Brug den samme arbejdsgang til din næste opgave.",
     "ctaPrimary": "Hent skrivebordsappen",
     "ctaSecondary": "Se rigtige operationer",
-    "setup": "Førstegangsopsætning kræver installation af én eksekveringsmotor og konfiguration af godkendelse. Modelservicegebyrer følger din valgte udbyders vilkår.",
+    "setup": "Førstegangsopsætning kræver installation af én eksekveringsmotor og konfiguration af godkendelse.",
     "setupGuide": "Læs opsætningsvejledningen",
     "meta1": "Resultater passerer mellem trin",
     "meta2": "Gennemgang ved vigtige kontrolpunkter",

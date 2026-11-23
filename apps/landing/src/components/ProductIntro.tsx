@@ -39,17 +39,11 @@ export function ProductIntroVideo(props: VideoProps) {
 
 export function ProductIntro() {
   const { lang, t } = useI18n()
-  const [open, setOpen] = useState(false)
   const copy = productIntroCopy[lang]
   const chinese = getProductIntroMedia(lang).language === 'zh'
-  return <div className="product-intro container" id="intro-video">
-    <details className="product-intro-optional" onToggle={event => setOpen(event.currentTarget.open)}>
-      <summary>{copy.title}</summary>
-      <p className="section-lede">{copy.description}</p>
-      {open && <>
-        <ProductIntroVideo locale={lang} errorLabel={t('walkthrough.loadError')} retryLabel={t('walkthrough.retry')} />
-        <p className="product-intro-language" lang={chinese ? 'zh' : 'en'}>{chinese ? '中文配音 · 中文字幕' : 'English voiceover · English subtitles'}</p>
-      </>}
-    </details>
-  </div>
+  return <section className="product-intro container" id="intro-video" aria-labelledby="product-intro-title">
+    <div className="product-intro-heading"><h2 className="section-title" id="product-intro-title">{copy.title}</h2><p className="section-lede">{copy.description}</p></div>
+    <ProductIntroVideo locale={lang} errorLabel={t('walkthrough.loadError')} retryLabel={t('walkthrough.retry')} />
+    <p className="product-intro-language" lang={chinese ? 'zh' : 'en'}>{chinese ? '中文配音 · 中文字幕' : 'English voiceover · English subtitles'}</p>
+  </section>
 }

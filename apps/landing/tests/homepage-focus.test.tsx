@@ -5,18 +5,17 @@ import App from '../src/App'
 import { I18nProvider, translate } from '../src/i18n'
 
 describe('focused homepage and extensible engines', () => {
-  it('keeps the example and engine choice before optional tutorials and comparisons', () => {
+  it('shows the introduction video below the hero and keeps engine setup near tutorials', () => {
     const html = renderToStaticMarkup(<I18nProvider><App /></I18nProvider>)
-    expect(html.indexOf('id="philosophy"')).toBeLessThan(html.indexOf('id="engines"'))
+    expect(html).not.toContain('id="philosophy"')
     expect(html.indexOf('id="engines"')).toBeLessThan(html.indexOf('id="start"'))
     for (const content of ['class="guided-walkthrough"', 'class="start-layout"', 'class="compare-table"']) {
       expect(html).toContain(content)
     }
-    expect(html).toContain('<details')
-    expect(html).toContain('<summary')
-    expect(html).not.toContain('id="product-intro-title"')
-    expect(html).not.toContain('class="product-intro-player"')
-    expect(html.indexOf('id="intro-video"')).toBeGreaterThan(html.indexOf('id="start"'))
+    expect(html).not.toContain('product-intro-optional')
+    expect(html).toContain('id="product-intro-title"')
+    expect(html).toContain('class="product-intro-player"')
+    expect(html.indexOf('id="intro-video"')).toBeLessThan(html.indexOf('id="mechanisms"'))
     expect(html.match(/class="workflow-card"/g)).toHaveLength(4)
   })
 

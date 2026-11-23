@@ -11,7 +11,6 @@ import { FinalCta } from './components/FinalCta'
 import { Footer } from './components/Footer'
 import { Hero } from './components/Hero'
 import { Nav } from './components/Nav'
-import { Philosophy } from './components/Philosophy'
 import { RemoteShare } from './components/RemoteShare'
 import { Workflow } from './components/Workflow'
 import type { DemoDef } from './demo/demos'
@@ -49,9 +48,9 @@ export default function App() {
       {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} embedded={embedded} /> : hash === '#privacy' ? <PrivacyPage /> : hash === '#terms' ? <TermsPage /> : hash === '#acceptable-use' ? <AcceptableUsePage /> : <main className="landing-home">
         <FlowBackdrop />
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
-        <Philosophy />
-        <Demos onOpen={setOpenDemo} />
+        <ProductIntro />
         <Features />
+        <Demos onOpen={setOpenDemo} />
         <Compare />
         <Workflow />
         <Channels />
@@ -59,7 +58,6 @@ export default function App() {
         <EnginesStrip />
         <div className="container recorded-section"><GuidedWalkthrough /></div>
         <GettingStarted />
-        <ProductIntro />
         <FinalCta experienceHref={experienceHref} />
       </main>}
       {!embedded && <Footer />}

@@ -63,7 +63,7 @@ export const deDE: I18nDict = {
     "lede": "Verbinden Sie KI-Coding-Werkzeuge wie Codex und Claude Code zu einem wiederverwendbaren Workflow. Geben Sie Ergebnisse an den nächsten Schritt weiter, verfolgen Sie den Fortschritt, prüfen Sie Ausgaben und fordern Sie bei Bedarf Nacharbeit an. Nutzen Sie denselben Workflow für die nächste Aufgabe.",
     "ctaPrimary": "Desktop-App herunterladen",
     "ctaSecondary": "Echte Bedienung ansehen",
-    "setup": "Für die Ersteinrichtung müssen Sie eine Ausführungs-Engine installieren und die Authentifizierung konfigurieren. Modellkosten richten sich nach Ihrem Anbieter.",
+    "setup": "Für die Ersteinrichtung müssen Sie eine Ausführungs-Engine installieren und die Authentifizierung konfigurieren.",
     "setupGuide": "Einrichtungsanleitung lesen",
     "meta1": "Ergebnisse zwischen Schritten weitergeben",
     "meta2": "Prüfung an wichtigen Punkten",

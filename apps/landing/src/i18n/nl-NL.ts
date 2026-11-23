@@ -63,7 +63,7 @@ export const nlNL: I18nDict = {
     "lede": "Verbind AI-coderingstools zoals Codex en Claude Code tot een herbruikbare workflow. Geef resultaten door aan de volgende stap, volg de voortgang, bekijk de resultaten en vraag indien nodig om herbewerking. Gebruik dezelfde workflow voor uw volgende taak.",
     "ctaPrimary": "Desktop-app downloaden",
     "ctaSecondary": "Bekijk echte operaties",
-    "setup": "Voor de eerste installatie is het installeren van één uitvoeringsengine en het configureren van authenticatie vereist. De servicekosten voor modellen volgen de voorwaarden van uw gekozen provider.",
+    "setup": "Voor de eerste installatie is het installeren van één uitvoeringsengine en het configureren van authenticatie vereist.",
     "setupGuide": "Lees de installatiehandleiding",
     "meta1": "Resultaten worden tussen de stappen doorgegeven",
     "meta2": "Controle bij belangrijke controlepunten",

@@ -63,7 +63,7 @@ export const nbNO: I18nDict = {
     "lede": "Koble AI-kodeverktøy som Codex og Claude Code til en gjenbrukbar arbeidsflyt. Send resultatene til neste trinn, følg fremdriften, gjennomgå utdataene og be om omarbeid når det er nødvendig. Bruk samme arbeidsflyt for neste oppgave.",
     "ctaPrimary": "Last ned desktop app",
     "ctaSecondary": "Se virkelige operasjoner",
-    "setup": "Førstegangsoppsett krever installasjon av én utførelsesmotor og konfigurering av autentisering. Modelltjenesteavgifter følger vilkårene til den valgte leverandøren.",
+    "setup": "Førstegangsoppsett krever installasjon av én utførelsesmotor og konfigurering av autentisering.",
     "setupGuide": "Les oppsettsveiledningen",
     "meta1": "Resultatene går mellom trinnene",
     "meta2": "Gjennomgang ved viktige sjekkpunkter",

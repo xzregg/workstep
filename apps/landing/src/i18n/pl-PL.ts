@@ -63,7 +63,7 @@ export const plPL: I18nDict = {
     "lede": "Połącz narzędzia do kodowania AI, takie jak Codex i Claude Code, w przepływ pracy wielokrotnego użytku. Przekaż wyniki do następnego kroku, śledź postępy, przeglądaj wyniki i w razie potrzeby poproś o poprawki. Użyj tego samego przepływu pracy przy następnym zadaniu.",
     "ctaPrimary": "Pobierz aplikację komputerową",
     "ctaSecondary": "Oglądaj prawdziwe operacje",
-    "setup": "Konfiguracja po raz pierwszy wymaga zainstalowania jednego silnika wykonawczego i skonfigurowania uwierzytelniania. Opłaty za usługi modelowe są zgodne z warunkami wybranego dostawcy.",
+    "setup": "Konfiguracja po raz pierwszy wymaga zainstalowania jednego silnika wykonawczego i skonfigurowania uwierzytelniania.",
     "setupGuide": "Przeczytaj przewodnik konfiguracji",
     "meta1": "Wyniki przechodzą pomiędzy etapami",
     "meta2": "Przegląd w kluczowych punktach kontrolnych",

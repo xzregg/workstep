@@ -63,7 +63,7 @@ export const frFR: I18nDict = {
     "lede": "Reliez des outils de développement IA comme Codex et Claude Code dans un workflow réutilisable. Transmettez les résultats à l’étape suivante, suivez l’avancement, vérifiez les livrables et demandez des reprises. Réutilisez le même workflow pour la prochaine tâche.",
     "ctaPrimary": "Télécharger l’application",
     "ctaSecondary": "Voir les opérations réelles",
-    "setup": "La première configuration nécessite un moteur d’exécution et son authentification. Les frais des modèles dépendent du fournisseur choisi.",
+    "setup": "La première configuration nécessite un moteur d’exécution et son authentification.",
     "setupGuide": "Lire le guide de démarrage",
     "meta1": "Résultats transmis entre étapes",
     "meta2": "Vérification aux étapes clés",

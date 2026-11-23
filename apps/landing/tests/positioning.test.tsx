@@ -13,13 +13,12 @@ function renderLanding() {
 }
 
 describe('landing positioning', () => {
-  it('explains a concrete development task before introducing engine choices', () => {
+  it('replaces the search example with the introduction video before engine choices', () => {
     const html = renderLanding()
 
-    expect(html).toContain('例如：给项目加一个搜索功能')
-    expect(html).toContain('代码改动与实现说明')
-    expect(html).toContain('测试结果与待处理问题')
-    expect(html.indexOf('例如：给项目加一个搜索功能')).toBeLessThan(html.indexOf('class="engines-strip"'))
+    expect(html).not.toContain('例如：给项目加一个搜索功能')
+    expect(html).not.toContain('id="philosophy"')
+    expect(html.indexOf('id="intro-video"')).toBeLessThan(html.indexOf('class="engines-strip"'))
   })
 
   it('explains channel bots and their project, task, and review capabilities', () => {
@@ -63,7 +62,7 @@ describe('landing positioning', () => {
     expect(html).toContain('class="guided-walkthrough"')
     expect(html).toContain('<video')
     expect(html).not.toContain('class="hero-preview"')
-    expect(html.indexOf('class="guided-walkthrough"')).toBeGreaterThan(html.indexOf('例如：给项目加一个搜索功能'))
+    expect(html.indexOf('class="guided-walkthrough"')).toBeGreaterThan(html.indexOf('id="intro-video"'))
     expect(DEMOS.map((demo) => demo.id)).toEqual(['canvas', 'stream', 'parallel'])
     expect(html.match(/id="mechanism-tab-\d"/g)).toHaveLength(3)
     expect(html).toContain('id="start"')
@@ -71,7 +70,7 @@ describe('landing positioning', () => {
 
   it('groups workflow explanations with demos, integrations together, and tutorials at the end', () => {
     const html = renderLanding()
-    const exampleIndex = html.indexOf('例如：给项目加一个搜索功能')
+    const introIndex = html.indexOf('id="intro-video"')
     const featuresIndex = html.indexOf('少一点来回交代，多一点过程掌控')
     const demosIndex = html.indexOf('看看步骤如何执行、结果如何查看')
     const workflowIndex = html.indexOf('先跑通开发任务，再扩展你的流程')
@@ -80,13 +79,15 @@ describe('landing positioning', () => {
 
     expect(featuresIndex).toBeGreaterThan(-1)
     expect(html).not.toContain('像看视频一样')
-    expect(demosIndex).toBeGreaterThan(exampleIndex)
-    expect(featuresIndex).toBeGreaterThan(exampleIndex)
-    expect(workflowIndex).toBeGreaterThan(exampleIndex)
+    expect(demosIndex).toBeGreaterThan(introIndex)
+    expect(featuresIndex).toBeGreaterThan(introIndex)
+    expect(workflowIndex).toBeGreaterThan(introIndex)
     expect(html).toMatch(/<\/section>\s*<section class="section mechanism-gallery"/)
     const sections = [...html.matchAll(/<section\b[^>]*\bid="([^"]+)"/g)].map(match => match[1])
-    expect(sections.indexOf('philosophy')).toBe(sections.indexOf('top') + 1)
-    expect(sections.indexOf('mechanisms')).toBe(sections.indexOf('philosophy') + 1)
+    expect(sections.indexOf('intro-video')).toBe(sections.indexOf('top') + 1)
+    expect(sections.indexOf('features')).toBe(sections.indexOf('intro-video') + 1)
+    expect(sections.indexOf('mechanisms')).toBe(sections.indexOf('features') + 1)
+    expect(sections.indexOf('compare')).toBe(sections.indexOf('mechanisms') + 1)
     expect(sections.indexOf('channels')).toBe(sections.indexOf('workflow') + 1)
     expect(sections.indexOf('remote')).toBe(sections.indexOf('channels') + 1)
     expect(sections.indexOf('engines')).toBe(sections.indexOf('remote') + 1)

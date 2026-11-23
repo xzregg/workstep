@@ -63,7 +63,7 @@ export const ptBR: I18nDict = {
     "lede": "Conecte ferramentas de codificação de IA como Codex e Claude Code em um fluxo de trabalho reutilizável. Passe os resultados para a próxima etapa, acompanhe o progresso, revise os resultados e solicite retrabalho quando necessário. Use o mesmo fluxo de trabalho para sua próxima tarefa.",
     "ctaPrimary": "Baixe o aplicativo para desktop",
     "ctaSecondary": "Assista a operações reais",
-    "setup": "A configuração inicial requer a instalação de um mecanismo de execução e a configuração da autenticação. As taxas de serviço modelo seguem os termos do provedor escolhido.",
+    "setup": "A configuração inicial requer a instalação de um mecanismo de execução e a configuração da autenticação.",
     "setupGuide": "Leia o guia de configuração",
     "meta1": "Os resultados passam entre as etapas",
     "meta2": "Revise nos principais pontos de verificação",

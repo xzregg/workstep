@@ -63,7 +63,7 @@ export const esES: I18nDict = {
     "lede": "Conecte herramientas de codificación de IA como Codex y Claude Code en un flujo de trabajo reutilizable. Pase los resultados al siguiente paso, siga el progreso, revise los resultados y solicite retrabajo cuando sea necesario. Utilice el mismo flujo de trabajo para su próxima tarea.",
     "ctaPrimary": "Descargar la aplicación de escritorio",
     "ctaSecondary": "Ver operaciones reales",
-    "setup": "La configuración por primera vez requiere instalar un motor de ejecución y configurar la autenticación. Las tarifas de servicio modelo siguen los términos del proveedor elegido.",
+    "setup": "La configuración por primera vez requiere instalar un motor de ejecución y configurar la autenticación.",
     "setupGuide": "Lea la guía de configuración",
     "meta1": "Los resultados pasan entre pasos.",
     "meta2": "Revisión en puntos de control clave",

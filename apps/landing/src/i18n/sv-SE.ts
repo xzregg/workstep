@@ -63,7 +63,7 @@ export const svSE: I18nDict = {
     "lede": "Anslut AI-kodningsverktyg som Codex och Claude Code till ett återanvändbart arbetsflöde. Skicka resultat till nästa steg, följ framsteg, granska utdata och begär omarbetning vid behov. Använd samma arbetsflöde för din nästa uppgift.",
     "ctaPrimary": "Ladda ner skrivbordsapp",
     "ctaSecondary": "Titta på verkliga operationer",
-    "setup": "Förstagångsinstallationen kräver installation av en exekveringsmotor och konfigurering av autentisering. Modelltjänstavgifter följer din valda leverantörs villkor.",
+    "setup": "Förstagångsinstallationen kräver installation av en exekveringsmotor och konfigurering av autentisering.",
     "setupGuide": "Läs installationsguiden",
     "meta1": "Resultat passerar mellan stegen",
     "meta2": "Granskning vid viktiga kontrollpunkter",

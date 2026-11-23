@@ -63,7 +63,7 @@ export const viVN: I18nDict = {
     "lede": "Kết nối các công cụ mã hóa AI như Codex và Claude Code vào quy trình làm việc có thể tái sử dụng. Chuyển kết quả sang bước tiếp theo, theo dõi tiến độ, xem xét kết quả đầu ra và yêu cầu làm lại khi cần. Sử dụng quy trình làm việc tương tự cho nhiệm vụ tiếp theo của bạn.",
     "ctaPrimary": "Tải xuống ứng dụng máy tính để bàn",
     "ctaSecondary": "Xem hoạt động thực tế",
-    "setup": "Thiết lập lần đầu yêu cầu cài đặt một công cụ thực thi và định cấu hình xác thực. Phí dịch vụ mẫu tuân theo các điều khoản của nhà cung cấp mà bạn đã chọn.",
+    "setup": "Thiết lập lần đầu yêu cầu cài đặt một công cụ thực thi và định cấu hình xác thực.",
     "setupGuide": "Đọc hướng dẫn thiết lập",
     "meta1": "Kết quả chuyển giữa các bước",
     "meta2": "Rà soát tại các điểm kiểm tra quan trọng",

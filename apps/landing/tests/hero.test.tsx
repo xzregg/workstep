@@ -29,7 +29,7 @@ describe('landing page', () => {
     expect(html).toContain('让 AI 按步骤开发，')
     expect(html).toContain('关键结果由你把关')
     expect(html).toContain('首次使用需安装一个执行引擎并完成认证')
-    expect(html).toContain('模型服务费用')
+    expect(html).not.toContain('模型服务费用')
     expect(html).toContain('href="#start"')
     expect(html).not.toContain('聊聊天就能跑起来')
   })
