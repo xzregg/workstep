@@ -1,3 +1,4 @@
+import RuntimeDiagnosticsControl from './RuntimeDiagnosticsControl'
 import DigitalPersonProactiveSpeech from './digital-person/DigitalPersonProactiveSpeech'
 import SkinWorkspaceFrame from './SkinExtensions'
 import { useSkinSidebar } from '../hooks/useSkinSidebar'
@@ -1276,6 +1277,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         />
       )}
 
+      <RuntimeDiagnosticsControl />
       <DigitalPersonDesktopBridge />
       <DigitalPersonProactiveSpeech />
       <LayoutOnboardingActions

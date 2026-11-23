@@ -25,6 +25,7 @@ export interface MessageEventSummary {
   last_event_seq?: number
   thought_characters?: number
   commentary_characters?: number
+  commentary_preview?: { text: string; complete: boolean }[]
   tool_count?: number
   edited_files?: string[]
 }

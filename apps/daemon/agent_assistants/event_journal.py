@@ -28,6 +28,8 @@ from agent_assistants.file_change_index import IndexBuilder, build_index, read_c
 
 
 _SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9_.:-]+$")
+_COMMENTARY_PREVIEW_ITEMS = 12
+_COMMENTARY_PREVIEW_CHARS = 256
 logger = logging.getLogger(__name__)
 _SUMMARY_EVENT_TYPES = {
     "async_question",
@@ -364,6 +366,10 @@ class TurnEventJournal:
         last_seq = None
         thought_characters = 0
         commentary_characters = 0
+        commentary_preview: list[dict[str, Any]] = []
+        commentary_item: dict[str, Any] | None = None
+        commentary_source_id = None
+        answer_started = False
         tool_ids: set[str] = set()
         edited_files = EditedFilePaths()
         summary_events: list[dict[str, Any]] = []
@@ -390,7 +396,22 @@ class TurnEventJournal:
                     first_output_at = event.get("timestamp")
                 if data.get("phase") == "commentary":
                     commentary_characters += len(text)
+                    if text and not answer_started:
+                        source_id = data.get("source_item_id")
+                        if commentary_item is not None and source_id != commentary_source_id:
+                            commentary_item["complete"] = True
+                            commentary_item = None
+                        if commentary_item is None and len(commentary_preview) < _COMMENTARY_PREVIEW_ITEMS:
+                            commentary_item = {"text": "", "complete": False}
+                            commentary_preview.append(commentary_item)
+                            commentary_source_id = source_id
+                        if commentary_item is not None:
+                            prefix = commentary_item["text"]
+                            commentary_item["text"] = prefix + text[:_COMMENTARY_PREVIEW_CHARS + 1 - len(prefix)]
                 else:
+                    if text.strip():
+                        answer_started = True
+                        commentary_item = None
                     content.write(text)
             elif event_type == "agent_thought_chunk":
                 text = str((data.get("content") or {}).get("text", ""))
@@ -398,6 +419,9 @@ class TurnEventJournal:
                     first_output_at = event.get("timestamp")
                 thought_characters += len(text)
             elif event_type in {"tool_call", "tool_call_update"}:
+                if event_type == "tool_call" and commentary_item is not None:
+                    commentary_item["complete"] = True
+                    commentary_item = None
                 edited_files.observe(event_type, data)
                 if (event_type == "tool_call" and (data.get("title") or data.get("raw_input"))
                         and first_output_at is None and event_ms is not None):
@@ -429,6 +453,12 @@ class TurnEventJournal:
         }
         if output_rate.last_sample is not None:
             summary["output_rate_sample"] = output_rate.last_sample
+        if commentary_preview:
+            summary["commentary_preview"] = [
+                {"text": redact(item["text"][:_COMMENTARY_PREVIEW_CHARS]),
+                 "complete": item["complete"] and len(item["text"]) <= _COMMENTARY_PREVIEW_CHARS}
+                for item in commentary_preview
+            ]
         if first_output_at is not None:
             summary["first_output_at"] = first_output_at
         if first_event_ms is not None and last_event_ms is not None:

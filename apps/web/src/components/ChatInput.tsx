@@ -383,7 +383,7 @@ function ChatInput({
   const voice = useVoiceInput({
     ownerKey: `${projectId || imageAttach?.projectId || ''}:${taskId || sessionId || ''}`,
     projectId: projectId || imageAttach?.projectId, disabled: voiceDisabled, compact: isCompact,
-    value, cursor: slashCursor,
+    value, cursor: slashCursor, continuous: true,
     onInsert: (text, cursor) => {
       if (!text) return
       const before = valueRef.current
@@ -405,12 +405,16 @@ function ChatInput({
     && (!running || allowSendWhileRunning)
     && !stopping
     && value.trim().length > 0
+  const compactVoice = isCompact && voiceAllowed && voice.active
   const stopped = Boolean(
-    running && onStop && !(allowSendWhileRunning && value.trim().length > 0),
+    running && onStop && (compactVoice || !(allowSendWhileRunning && value.trim().length > 0)),
   )
   const imageAlt = t('md.image')
   const inputSegments = splitComposerSegments(value)
   const hasImage = inputSegments.some((segment) => segment.type === 'image')
+  const draftPreview = compactVoice ? inputSegments
+    .map(segment => segment.type === 'image' ? segment.alt || imageAlt : segment.markdown.trim())
+    .filter(Boolean).join(' ') : ''
   const isInterImageWhitespace = (segmentIndex: number) => {
     const segment = inputSegments[segmentIndex]
     return segment?.type === 'text'
@@ -892,6 +896,8 @@ function ChatInput({
       <div
         className="chat-input-frame"
         data-focused={focused}
+        data-compact-voice={compactVoice || undefined}
+        data-voice-stop={compactVoice && stopped || undefined}
         data-dragging={imageAttach ? dragActive : undefined}
         onDragEnter={imageAttach ? (event) => {
           if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return
@@ -1072,7 +1078,7 @@ function ChatInput({
             })
           })()}
         </div>
-        {voiceAllowed && <VoiceInputControls voice={voice} />}
+        {voiceAllowed && <VoiceInputControls voice={voice} compact={compactVoice} draftPreview={draftPreview} />}
         <div className="chat-input-toolbar">
           <div className="chat-input-toolbar-scroll">
             {left}
@@ -1424,7 +1430,7 @@ function ChatInput({
               )
             )}
           </div>
-          {voiceAllowed && (!isCompact || (running && allowSendWhileRunning)) && <VoiceMicrophone voice={voice} disabled={voiceDisabled} />}
+          {voiceAllowed && (!isCompact || value.trim() || (running && allowSendWhileRunning)) && <VoiceMicrophone voice={voice} disabled={voiceDisabled} />}
           <button
             type="button"
             className="chat-input-send"

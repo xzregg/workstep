@@ -1020,6 +1020,7 @@ async def test_chat_global_prompt_is_separate_and_view_records_actual_input(
 ):
     """Fixed global rules are independent of user input on every native turn."""
     import agent_assistants.chat_session as chat_service
+    from services.remote_access import ActorSnapshot, actor_context
 
     module, _bus, _manager, project, _ = chat_module
     custom_system = "你是项目专属架构助手。"
@@ -1027,6 +1028,7 @@ async def test_chat_global_prompt_is_separate_and_view_records_actual_input(
     session = module.create_session(project.id, title="系统提示展示", engine="claude")
     sent_prompts: list[str] = []
     sent_instructions: list[str] = []
+    observed_senders = []
 
     class ResumeEngine(FakeEngine):
         supports_resume = True
@@ -1038,7 +1040,9 @@ async def test_chat_global_prompt_is_separate_and_view_records_actual_input(
         message_history=None, system_prompt=None,
     ):
         from services.conversation_context import current_conversation
-        assert current_conversation() == {"project_id": project.id, "session_id": session["id"]}
+        context = current_conversation()
+        assert context["project_id"] == project.id and context["session_id"] == session["id"]
+        observed_senders.append((context["message_id"], context["sender_id"], context["sender_name"]))
         sent_prompts.append(prompt)
         sent_instructions.append(system_prompt)
         await on_event(InternalEvent(type="prompt_input", data={
@@ -1049,10 +1053,13 @@ async def test_chat_global_prompt_is_separate_and_view_records_actual_input(
         return "完成", [], "engine-session"
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
-    first = module.submit_message(project.id, session["id"], "第一次", "chat-display-1")
+    with actor_context(ActorSnapshot("u1", "小林", "device", "设备", "local")):
+        first = module.submit_message(project.id, session["id"], "第一次", "chat-display-1")
     assert await _wait_turn(module, first.turn_id) == "completed"
-    second = module.submit_message(project.id, session["id"], "第二次", "chat-display-2")
+    with actor_context(ActorSnapshot("u2", "小李", "device", "设备", "local")):
+        second = module.submit_message(project.id, session["id"], "第二次", "chat-display-2")
     assert await _wait_turn(module, second.turn_id) == "completed"
+    assert observed_senders == [(first.turn_id, "u1", "小林"), (second.turn_id, "u2", "小李")]
 
     assert [prompt.rsplit("\n\n", 1)[-1] for prompt in sent_prompts] == ["第一次", "第二次"]
     assert sent_prompts == ["第一次", "第二次"]
@@ -2520,6 +2527,11 @@ async def test_commentary_is_preserved_in_live_and_reloaded_chat_only_as_process
         }[ending]
         assert message["status"] == ("succeeded" if ending == "completed" else ending)
         assert message["event_summary"]["commentary_characters"] == 7
+        paged = restored.get_session(project.id, session["id"], limit=20)["messages"][-1]
+        assert paged["event_summary"]["commentary_preview"] == [
+            {"text": "我先定位组件。", "complete": False},
+        ]
+        assert not any(event["type"] == "agent_message_chunk" for event in paged["events"])
         page = restored.message_events(project.id, session["id"], message["id"])
         replay = [event for event in page["events"] if event.get("phase") == "commentary"]
         assert len(replay) == 1

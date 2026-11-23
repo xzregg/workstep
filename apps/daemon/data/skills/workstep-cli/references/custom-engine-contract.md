@@ -91,4 +91,6 @@ async def configure_mcp_servers(self, servers, config_overrides=None):
 
 宿主按引擎、cwd、原生 session ID 独占 worker，同会话不重叠执行。成功完整收流后进入共享池，默认空闲 600 秒、最多 8 个空闲客户端；运行及审批等待不计空闲。配置／凭据／权限／技能／身份变化时重建，停止、异常、取消或提前收流不得归还可复用缓存。
 
+数字中枢当前主会话可由宿主设置常驻保护：声明复用的 worker 及其已保留的内层上下文不因空闲 TTL／普通 LRU 退出。该策略由宿主公共池执行，不是新 capability，也不新增必须传给自定义 `spawn` 的参数。重置、`/new`、切换引擎或主会话替换后旧保护释放，原生上下文仍须按各自 session ID 隔离；停止、异常、配置变化和宿主退出照常清理。一次性引擎保持其原有执行方式。
+
 可复用 `session_pool.ManagedConnection/get_session_pool/startup_fingerprint`，使原生上下文在同一所有者协程中创建和关闭。每轮绑定新的消费者、回调和队列，不保留旧审批授权；停止只影响对应会话。更深入的[复用与共享验证](custom-engine-testing.md#复用与共享验证)按实现能力执行。

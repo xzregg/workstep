@@ -94,6 +94,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     else if (path === '/schedule/preview') path = await workspaceCatalogPath(path)
   }
   const run = async () => {
+    const started = typeof window === 'undefined' ? undefined : window.workstepPerformance?.stamp()
     try {
       const res = await gatewayFetch(`${BASE}${path}`, {
         ...options,
@@ -103,7 +104,10 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
           ...(options?.headers || {}),
         },
       })
-      return await readApiResponse<T>(res, path)
+      const result = await readApiResponse<T>(res, path)
+      const ended = typeof window === 'undefined' ? undefined : window.workstepPerformance?.stamp()
+      if (started !== undefined && ended !== undefined) browserDiagnostics.recordSlowRequest(path, ended - started)
+      return result
     } catch (error) {
       if (!options?.signal?.aborted && !(error instanceof Error && error.name === 'AbortError')) {
         browserDiagnostics.recordRequestFailure(path, (options?.method || 'GET').toUpperCase(), error instanceof ApiError ? error.status : undefined, error)

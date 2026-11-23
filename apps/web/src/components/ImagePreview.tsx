@@ -1,14 +1,17 @@
 import Icon from './Icon'
+import Button from './Button'
 import { copyMermaidPng } from '../utils/mermaidPng'
 import ResizablePanel from './ResizablePanel'
 import MobilePreviewImage from './MobilePreviewImage'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { copyText } from '../utils/clipboard'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
+import { imagePreviewSwipeDirection } from '../utils/imagePreviewSwipe'
 import { useI18n } from '../i18n'
 import { useMarkdownUrlResolver } from '../contexts/MarkdownAssetUrlContext'
+import './ImagePreview.css'
 
 /* ══════════════════════════════════════════
    ImagePreview — shared full-screen image
@@ -19,10 +22,22 @@ import { useMarkdownUrlResolver } from '../contexts/MarkdownAssetUrlContext'
    so every image click shows the same effect.
    ══════════════════════════════════════════ */
 
-export interface ImagePreviewProps {
+type ImagePreviewItem = {
   /** Image source as stored (raw relative path or absolute URL). */
   src: string
   alt?: string
+}
+
+export type ImagePreviewGallery = {
+  images: readonly ImagePreviewItem[]
+  initialIndex: number
+}
+
+export type ImagePreviewProps = (ImagePreviewItem & { gallery?: never } | {
+  gallery: ImagePreviewGallery
+  src?: never
+  alt?: never
+}) & {
   /** Render a generated diagram with shared window, copy and download actions. */
   diagramSvg?: string
   /** Project id used to resolve `.workstep/uploads/...` relative paths. */
@@ -49,19 +64,27 @@ async function imageToPng(src: string): Promise<Blob> {
   })
 }
 
-export default function ImagePreview({ src, alt, projectId, diagramSvg, onClose }: ImagePreviewProps) {
+export default function ImagePreview({ src: initialSrc, alt: initialAlt, gallery, projectId, diagramSvg, onClose }: ImagePreviewProps) {
   const { t } = useI18n()
   const compact = useCompactLayout()
   const markdownUrlResolver = useMarkdownUrlResolver()
+  const [index, setIndex] = useState(gallery?.initialIndex ?? 0)
+  const total = gallery?.images.length ?? 1
+  const { src, alt } = gallery?.images[index] ?? { src: initialSrc ?? '', alt: initialAlt }
   const resolved = diagramSvg ? src : markdownUrlResolver?.(src) ?? resolveMarkdownImageSrc(src, projectId)
   const [zoom, setZoom] = useState(1)
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null)
   useEffect(() => {
     setZoom(1)
     setImageSize(null)
-  }, [resolved])
+  }, [resolved, index])
   const desktopViewport = useRef<HTMLDivElement>(null)
   const zoomAnchor = useRef<{ x: number; y: number; ratioX: number; ratioY: number } | null>(null)
+  const swipeStart = useRef<{ id: number; x: number; y: number } | null>(null)
+
+  const navigate = useCallback((direction: -1 | 1) => {
+    setIndex(previous => Math.max(0, Math.min(total - 1, previous + direction)))
+  }, [total])
 
   useLayoutEffect(() => {
     const viewport = desktopViewport.current
@@ -150,10 +173,14 @@ export default function ImagePreview({ src, alt, projectId, diagramSvg, onClose 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
+      if (total > 1 && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.defaultPrevented) {
+        event.preventDefault()
+        navigate(event.key === 'ArrowLeft' ? -1 : 1)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, navigate, total])
 
   useEffect(() => {
     if (!result || result.action === 'download') return
@@ -186,20 +213,37 @@ export default function ImagePreview({ src, alt, projectId, diagramSvg, onClose 
 
   return createPortal(
     <div
-      className={diagramSvg ? 'image-preview mermaid-preview' : 'image-preview'}
+      className={diagramSvg ? 'image-preview mermaid-preview' : total > 1 ? 'image-preview image-preview--gallery' : 'image-preview'}
       role="dialog"
       aria-modal="true"
       aria-label={`${t('md.preview')}：${alt || t('md.image')}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
+      onClick={event => event.stopPropagation()}
     >
       <ResizablePanel className={diagramSvg ? 'image-preview-window mermaid-preview__viewport' : 'image-preview-window'} minWidth={280} minHeight={160}>
         {!compact && <div className="preview-drag-handle" data-dialog-drag-handle role="button" tabIndex={0} aria-label={t('taskDetail.dragWindowAria')} title={t('taskDetail.dragWindowTitle')} />}
         {!compact && <div className="image-preview-header">{closeButton}</div>}
         {compact && closeButton}
-        {!compact ? <div className={diagramSvg ? 'mermaid-preview__scroll' : 'desktop-image-preview'} ref={desktopViewport}
+        {!compact ? <div key={index} className={diagramSvg ? 'mermaid-preview__scroll' : 'desktop-image-preview'} ref={desktopViewport}
+          data-swipe-enabled={total > 1 && zoom === 1 ? '' : undefined}
           style={!diagramSvg && imageSize ? { width: imageSize.width, height: imageSize.height } : undefined}
+          onPointerDown={event => {
+            swipeStart.current = null
+            if (total < 2 || zoom !== 1 || !event.isPrimary || event.button !== 0) return
+            swipeStart.current = { id: event.pointerId, x: event.clientX, y: event.clientY }
+            event.currentTarget.setPointerCapture?.(event.pointerId)
+          }}
+          onPointerUp={event => {
+            const start = swipeStart.current
+            swipeStart.current = null
+            if (!start || start.id !== event.pointerId || zoom !== 1) return
+            const direction = imagePreviewSwipeDirection(event.clientX - start.x, event.clientY - start.y)
+            if (direction) navigate(direction)
+          }}
+          onPointerCancel={() => { swipeStart.current = null }}
+          onLostPointerCapture={() => { swipeStart.current = null }}
           onDoubleClick={event => {
             const canvas = desktopViewport.current?.firstElementChild
             if (!canvas) return
@@ -221,7 +265,16 @@ export default function ImagePreview({ src, alt, projectId, diagramSvg, onClose 
                 const rect = event.currentTarget.getBoundingClientRect()
                 if (rect.width && rect.height) setImageSize({ width: rect.width, height: rect.height })
               }} />}
-        </div> : <MobilePreviewImage key={resolved} src={resolved} alt={alt || t('md.image')} />}
+        </div> : <MobilePreviewImage key={gallery ? index : resolved} src={resolved} alt={alt || t('md.image')} onSwipe={total > 1 ? navigate : undefined} />}
+        {total > 1 && <div className="image-preview-navigation">
+          <Button type="button" variant="icon" aria-label={t('md.previousImage')} disabled={index === 0} onClick={() => navigate(-1)}>
+            <Icon name="chevron-left" />
+          </Button>
+          <span role="status" dir="ltr">{index + 1} / {total}</span>
+          <Button type="button" variant="icon" aria-label={t('md.nextImage')} disabled={index === total - 1} onClick={() => navigate(1)}>
+            <Icon name="chevron-right" />
+          </Button>
+        </div>}
         <div className="image-preview-toolbar">
           {!compact && <>
             <button type="button" data-testid="mermaid-preview-zoom-out" aria-label={t('md.mermaidZoomOut')} disabled={zoom <= 0.5} onClick={() => setZoom(value => Math.max(0.5, value - 0.25))}><Icon name="minus" size={15} /></button>

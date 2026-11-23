@@ -1,5 +1,5 @@
 import { Check, Pause, Play, RotateCcw } from 'lucide-react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import recording from '../assets/workstep-tutorial.webm'
 import poster from '../assets/workstep-tutorial-poster.png'
 import { getWalkthroughFrame, WALKTHROUGH_CHAPTERS } from '../demo/walkthrough'
@@ -11,7 +11,7 @@ function formatTime(seconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
 }
 
-export function GuidedWalkthrough() {
+export function GuidedWalkthrough({ children }: { children?: ReactNode }) {
   const { t } = useI18n()
   const player = useRecordedWalkthrough(recording)
   const frame = getWalkthroughFrame(player.time)
@@ -59,6 +59,7 @@ export function GuidedWalkthrough() {
         </div>
       </div>
       <p className="walkthrough-caption">{t('walkthrough.disclaimer')}</p>
+      {children}
     </section>
   )
 }

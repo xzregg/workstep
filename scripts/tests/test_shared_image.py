@@ -75,6 +75,9 @@ class SharedImageTests(unittest.TestCase):
             "src/diagnostic-privacy.d.mts",
             "src/feedback-summary.mjs",
             "src/feedback-summary.d.mts",
+            "src/runtime-diagnostics.js",
+            "src/runtime-diagnostics-view.js",
+            "src/runtime-diagnostics.css",
         )
         for relative in files:
             source = f"apps/desktop/{relative}"

@@ -9,6 +9,8 @@ import { useI18n, localizeErrorDisplay } from '../i18n'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import SkillDraftCreateButton from '../components/SkillDraftCreateButton'
 
+type StatusFilter = 'all' | 'enabled' | 'disabled'
+
 type SourceFilter = 'all' | 'agents' | 'claude' | 'codex' | 'project'
 
 const sourceLabels: Record<Exclude<SourceFilter, 'all'>, string> = {
@@ -33,6 +35,7 @@ export default function SkillCenterSettings({
   const [skills, setSkills] = useState<SkillDescriptor[]>([])
   const [search, setSearch] = useState('')
   const [source, setSource] = useState<SourceFilter>('all')
+  const [status, setStatus] = useState<StatusFilter>('all')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [updating, setUpdating] = useState<string | null>(null)
@@ -62,6 +65,7 @@ export default function SkillCenterSettings({
     setSkills([])
     setSearch('')
     setSource('all')
+    setStatus('all')
     setError('')
     setSelectedSkillIds(new Set())
     void load()
@@ -72,12 +76,13 @@ export default function SkillCenterSettings({
     const query = search.trim().toLocaleLowerCase()
     return skills.filter((skill) => {
       if (source !== 'all' && skill.source !== source) return false
+      if (status !== 'all' && skill.enabled !== (status === 'enabled')) return false
       if (!query) return true
       return `${skill.name}\n${skill.description}\n${skill.source_path}`
         .toLocaleLowerCase()
         .includes(query)
     })
-  }, [search, skills, source])
+  }, [search, skills, source, status])
 
   const selectableFiltered = useMemo(
     () => filtered.filter((skill) => skill.valid),
@@ -196,21 +201,28 @@ export default function SkillCenterSettings({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(150px, 180px)', alignItems: 'end', gap: 12, marginBottom: 14 }}>
-        <label style={{ display: 'grid', gap: 6, minWidth: 0 }}>
-          <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600 }}>{t('skillCenter.search')}</span>
+      <div className="skill-center-filters">
+        <label className="skill-center-filter skill-center-filter--search">
+          <span className="skill-center-filter-label">{t('skillCenter.search')}</span>
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder={t('skillCenter.searchPlaceholder')}
-            style={{ width: '100%', padding: '0 12px' }}
           />
         </label>
-        <label style={{ display: 'grid', gap: 6 }}>
-          <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600 }}>{t('skillCenter.sourceFilter')}</span>
-          <Select value={source} onChange={(event) => setSource(event.target.value as SourceFilter)} style={{ width: '100%', padding: '0 10px' }}>
+        <label className="skill-center-filter">
+          <span className="skill-center-filter-label">{t('skillCenter.sourceFilter')}</span>
+          <Select value={source} onChange={(event) => setSource(event.target.value as SourceFilter)}>
             <option value="all">{t('skillCenter.allSources')}</option>
             {Object.entries(sourceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </Select>
+        </label>
+        <label className="skill-center-filter">
+          <span className="skill-center-filter-label">{t('skillCenter.statusFilter')}</span>
+          <Select value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
+            <option value="all">{t('skillCenter.allStatuses')}</option>
+            <option value="enabled">{t('skillCenter.enabled')}</option>
+            <option value="disabled">{t('skillCenter.disabled')}</option>
           </Select>
         </label>
       </div>

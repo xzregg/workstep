@@ -77,6 +77,39 @@ final class DiagnosticReport {
         return shorten(report.toString(), 14000);
     }
 
+    static String createFull(File directory, long now) {
+        DateTimeFormatter localClock = LOCAL_TIME.withZone(ZoneId.systemDefault());
+        StringBuilder report = new StringBuilder("生成时间：")
+                .append(localClock.format(Instant.ofEpochMilli(now)))
+                .append("\n范围：应用当前保留的完整日志\n");
+        for (String name : new String[]{"main-log.txt", "notification-log.txt", "last-crash.txt"}) {
+            report.append("\n==== ").append(name).append(" ====\n");
+            File file = new File(directory, name);
+            if (!file.exists()) {
+                report.append("暂无记录\n");
+                continue;
+            }
+            try {
+                String content = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                for (String entry : content.split("(?m)(?=^\\d{4}-\\d{2}-\\d{2}T)")) {
+                    int separator = entry.indexOf(' ');
+                    if (separator > 0) {
+                        try {
+                            long time = Instant.parse(entry.substring(0, separator)).toEpochMilli();
+                            report.append(localTime(entry, time, localClock));
+                            continue;
+                        } catch (RuntimeException ignored) { }
+                    }
+                    report.append(entry);
+                }
+                if (!content.endsWith("\n")) report.append('\n');
+            } catch (Exception error) {
+                report.append("读取日志失败\n");
+            }
+        }
+        return report.toString();
+    }
+
     private static String localTime(String text, long epochMillis, DateTimeFormatter time) {
         int end = text.indexOf(' ');
         return end < 0 ? text : time.format(Instant.ofEpochMilli(epochMillis)) + text.substring(end);

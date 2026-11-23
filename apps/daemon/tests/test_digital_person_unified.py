@@ -187,9 +187,9 @@ async def test_one_configured_engine_call_stores_memory_relationship_and_notice(
                          'entities':[{'kind':'event','name':'数据库迁移演练','aliases':['迁移演练']}],
                          'relations':[], 'event_time':None}],
             'relationship_updates':[{'source_ids':['new-event'],'affinity_delta':1,'emotion':'warm','valence':10,'arousal':10,'reason':'有依据的合作互动'}]}),[], 'native-session'
-    async def forbidden(*args,**kwargs):pytest.fail('must not invoke a separate extraction model')
+    async def forbidden(*args,**kwargs):pytest.fail('reflection must not make an additional one-shot model call')
     monkeypatch.setattr('agent_assistants.base.invoke_engine',invoke)
-    monkeypatch.setattr('services.memory_knowledge._extract_with_runtime',forbidden)
+    monkeypatch.setattr('engines.pydantic_ai.engine.PydanticAIEngine.run_simple',forbidden)
     monkeypatch.setattr('services.digital_person_channels.get_bindings',lambda:[])
     result=await current.check()
     assert result['status']=='notified',result
@@ -223,7 +223,7 @@ async def test_one_configured_engine_call_stores_memory_relationship_and_notice(
     assert (await asyncio.to_thread(assessment.commit, batch, [replacement], 'replacement'))['created'] == 1
     await current.mutate(lambda s: s['runs'].append({'id':'replacement'}))
     restored = await current.run_knowledge('replacement')
-    assert restored['items'] == [{'id':preview['items'][0]['id'], 'summary':replacement['summary']}]
+    assert restored['items'] == [{'id':preview['items'][0]['id'], 'summary':replacement['summary'],'kind':'preference','operation':'added'}]
     assert await current.run_knowledge(result['id']) == {'status':'available','items':[],'unavailable':1}
     with monkeypatch.context() as restricted:
         restricted.setattr('services.digital_person_memory.allowed_projects', lambda _: [])
@@ -534,3 +534,26 @@ async def test_old_due_thought_does_not_reopen_discarded_history(runtime):
                                        {'new-event'},utc_now()-timedelta(minutes=3)))
     await asyncio.to_thread(assessment.skip_before,utc_now().isoformat(),[project.id])
     assert (await current._collect())['no_work']
+
+
+async def test_unified_assessment_model_failure_is_visible(runtime,monkeypatch):
+    from tests.test_digital_person_runtime import seed_pending
+    current,_,_=runtime
+    await seed_pending(current)
+    async def fail(ctx):raise RuntimeError('ModelHTTPError')
+    monkeypatch.setattr(current,'_decide',fail)
+    result=await current.check()
+    assert result['status']=='failed' and result['error']=='ModelHTTPError'
+
+
+async def test_scheduled_drain_stops_claiming_fresh_batches_after_model_failure(runtime,monkeypatch):
+    current,_,store=runtime
+    store.set('digital_person',{'enabled':True,'proactive_enabled':True})
+    calls=[]
+    async def check(**kwargs):
+        calls.append(1)
+        if len(calls)>1:return None
+        return {'status':'failed','sources':{'indexed':100,'reflection_batch':[]}}
+    monkeypatch.setattr(current,'check',check)
+    await current._tick()
+    assert len(calls)==1

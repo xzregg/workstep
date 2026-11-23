@@ -24,7 +24,7 @@ test('body settings routes head to engine and memory, preserves identity presets
   const click = async (selector: string) => act(async () => { const button = host.querySelector<HTMLButtonElement>(selector); assert.ok(button, selector); button.click() })
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><DigitalPersonSettings onClose={() => {}} /></I18nProvider></MemoryRouter>))
-    assert.equal(host.querySelector('.digital-person-header h1')?.textContent, '数据中枢')
+    assert.equal(host.querySelector('.digital-person-header h1')?.textContent, '数字中枢')
     assert.equal(host.querySelector('.digital-person-header-title > button')?.textContent,'初始引导')
     assert.doesNotMatch(host.querySelector('.digital-person-actions')!.textContent!,/初始引导/)
     await click('.digital-person-header-title > button')

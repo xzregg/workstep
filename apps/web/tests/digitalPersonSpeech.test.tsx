@@ -6,7 +6,7 @@ import { installDomEnvironment } from './helpers/domEnv'
 import { I18nProvider } from '../src/i18n'
 import DigitalPersonSpeech, {type DigitalPersonSpeechControls} from '../src/components/digital-person/DigitalPersonSpeech'
 import {DIGITAL_OUTPUT_FRAME,stopDigitalSpeech,type DigitalOutputFrame} from '../src/components/digital-person/digitalPersonVoiceEvents'
-import type { AssistantChatMessage } from '../src/stores/assistantStore'
+import type { AssistantChatEvent, AssistantChatMessage } from '../src/stores/assistantStore'
 import { speechOutputApi } from '../src/api/speechOutput'
 import { SpeechOutputPlayer } from '../src/utils/speechOutput'
 import { outputStatus } from './fixtures/speechOutput'
@@ -164,6 +164,112 @@ test('automatic speech merges sentences from separate renders and includes the f
     assert.equal(started.length, 2)
   } finally {
     await act(async () => { root.unmount(); finishOpening?.({ done: true }) })
+    Object.assign(speechOutputApi, original)
+    await window.happyDOM.close()
+  }
+})
+
+test('the answer follows the audible commentary and skips all waiting updates', async () => {
+  const { window } = installDomEnvironment(), root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { ...speechOutputApi }
+  const sent: { type: string; id: string; text?: string }[] = []
+  const bridge: NonNullable<Window['WorkStepSpeech']> = {
+    postMessage: message => sent.push(JSON.parse(message)),
+    onmessage: null,
+  }
+  Object.defineProperty(window, 'WorkStepSpeech', { configurable: true, value: bridge })
+  speechOutputApi.status = async () => structuredClone(outputStatus)
+  const spoken = () => sent.filter(message => message.type === 'speak').map(message => message.text)
+  const finish = () => act(async () => bridge.onmessage!({ data: JSON.stringify({ id: sent.at(-1)?.id, status: 'done' }) }))
+  const profile = { enabled: true, name: '助手', role: '', personality: '', duties: '', avatar: 'robot' as const, greeting: '', auto_speak: true }
+  const commentary = (delta: string, source_item_id = 'opening'): AssistantChatEvent =>
+    ({ type: 'TEXT_MESSAGE_CHUNK', phase: 'commentary', role: 'assistant', delta, source_item_id })
+  const tool: AssistantChatEvent = { type: 'TOOL_CALL_START', toolCallId: 'lookup' }
+  const reasoning: AssistantChatEvent = { type: 'REASONING_MESSAGE_CHUNK', delta: '我需要先分析用户意图。' }
+  const render = (id: string, events: AssistantChatEvent[], options: Partial<AssistantChatMessage> = {}, muted = false) =>
+    act(async () => root.render(<I18nProvider><DigitalPersonSpeech profile={profile} projectId="commentary-speech" sessionId="s"
+      messages={[{ id, role: 'assistant', events, content: '', status: 'running', ...options }]} active muted={muted} /></I18nProvider>))
+  try {
+    await render('history', [commentary('我查一下历史记录。')], { status: 'succeeded' })
+    await render('reply', [reasoning, commentary('我查一下')])
+    assert.deepEqual(spoken(), [])
+    const opening = [reasoning, commentary('我查一下'), commentary('今天的记录。')]
+    await render('reply', opening)
+    assert.deepEqual(spoken(), ['我查一下今天的记录。'])
+    const events = [...opening, tool, commentary('我再核对一下。', 'second')]
+    await render('reply', events)
+    await finish()
+    assert.deepEqual(spoken(), ['我查一下今天的记录。', '我再核对一下。'])
+    const waiting = [...events, commentary('我整理一下。', 'third'), commentary('马上就好。', 'fourth')]
+    await render('reply', waiting)
+    await render('reply', waiting, { content: '今天完成了' })
+    assert.equal(sent.length, 2, 'the second progress sentence is still playing')
+    await finish()
+    assert.equal(sent.length, 2, 'pending progress is dropped even before a full answer sentence is ready')
+    await render('reply', [...waiting, commentary('这是迟到的进度。', 'late')], { content: '今天完成了两项工作。', status: 'succeeded' })
+    assert.deepEqual(spoken(), ['我查一下今天的记录。', '我再核对一下。', '今天完成了两项工作。'])
+    await finish()
+
+    await render('muted', [commentary('我查一下。')], {}, true)
+    await render('muted', [commentary('我查一下。')])
+    await render('long', [commentary('我仔细想一想'.repeat(20) + '。'), tool])
+    assert.equal(spoken().length, 3)
+    await render('long', [commentary('我仔细想一想'.repeat(20) + '。'), tool, commentary('已经找到记录。', 'found')])
+    assert.equal(spoken().at(-1), '已经找到记录。')
+    await finish()
+    await render('no-punctuation', [commentary('我先看看')])
+    assert.equal(spoken().length, 4)
+    await render('no-punctuation', [commentary('我先看看'), tool])
+    assert.equal(spoken().at(-1), '我先看看')
+    const beforeAnswer = sent.length
+    await render('no-punctuation', [commentary('我先看看'), tool, commentary('马上回来。', 'next')], { content: '查到了。' })
+    assert.equal(sent.length, beforeAnswer, 'the complete answer does not interrupt the current sentence')
+    await finish()
+    assert.equal(sent.at(-1)?.text, '查到了。')
+    assert.ok(sent.every(message => message.type === 'speak'))
+    await finish()
+
+    const limitSentence = '查'.repeat(47) + '。'
+    const overLimitSentence = '再' + limitSentence
+    const beforeLimit = spoken()
+    await render('character-limit', [commentary(overLimitSentence, 'too-long')])
+    assert.deepEqual(spoken(), beforeLimit, 'a 49-character opening is skipped in full')
+    await render('character-limit', [commentary(overLimitSentence, 'too-long'), commentary(limitSentence, 'fits')])
+    assert.deepEqual(spoken(), [...beforeLimit, limitSentence], 'a 48-character opening is spoken in full')
+    await finish()
+  } finally {
+    await act(async () => root.unmount())
+    Object.assign(speechOutputApi, original)
+    await window.happyDOM.close()
+  }
+})
+
+test('the answer cancels a progress sentence that is still being synthesized', async () => {
+  const { window } = installDomEnvironment(), root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { ...speechOutputApi }
+  const started: string[] = [], fetched: string[] = [], cancelled: string[] = []
+  let releaseProgress!: (value: { id: string }) => void
+  speechOutputApi.status = async () => ({ ...outputStatus, settings: { ...outputStatus.settings, mode: 'remote' } })
+  speechOutputApi.start = async text => {
+    started.push(text)
+    return started.length === 1 ? new Promise(resolve => { releaseProgress = resolve }) : { id: 'answer' }
+  }
+  speechOutputApi.next = async id => { fetched.push(id); return { done: true } }
+  speechOutputApi.cancel = async id => { cancelled.push(id) }
+  const profile = { enabled: true, name: '助手', role: '', personality: '', duties: '', avatar: 'robot' as const, greeting: '', auto_speak: true }
+  const events = [{ type: 'TEXT_MESSAGE_CHUNK', phase: 'commentary', delta: '我先查一下。' }]
+  const render = (content: string) => act(async () => root.render(<I18nProvider><DigitalPersonSpeech profile={profile}
+    projectId="commentary-cancel" sessionId="s" messages={[{ id: 'reply', role: 'assistant', events, content, status: 'running' }]} active /></I18nProvider>))
+  try {
+    await render('')
+    assert.deepEqual(started, ['我先查一下。'])
+    await render('已经查到了。')
+    assert.deepEqual(started, ['我先查一下。', '已经查到了。'])
+    await act(async () => releaseProgress({ id: 'progress' }))
+    assert.deepEqual(fetched, ['answer'])
+    assert.ok(cancelled.includes('progress'))
+  } finally {
+    await act(async () => { root.unmount(); releaseProgress?.({ id: 'progress' }) })
     Object.assign(speechOutputApi, original)
     await window.happyDOM.close()
   }

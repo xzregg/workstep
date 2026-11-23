@@ -1,4 +1,8 @@
 import asyncio
+import base64
+import json
+import math
+import struct
 import threading
 from types import SimpleNamespace
 
@@ -160,14 +164,17 @@ def test_person_prompt_only_in_fixed_workspace_and_when_enabled(setup, monkeypat
     service.save_profile(profile)
     prompt = service.prompt_for_project(home)
     assert "复查证据" in prompt
-    assert "\n\n## Memory retrieval\nFor historical recall" in prompt
+    assert "\n\n## Memory retrieval\nBefore answering or acting" in prompt
     assert "\n\n## Everyday conversation\nAnswer everyday requests directly" in prompt
     assert "\n\n## Project delegation\nHARD BOUNDARY: Never modify code" in prompt
     assert "workstep-cli skill" in prompt
-    assert 'historical recall, stored knowledge, or user preferences' in prompt
+    assert 'historical recall or stored knowledge missing from context' in prompt
     assert 'workstep-cli memory' in prompt and 'references/memory.md' in prompt
     assert 'digital-person remember' in prompt and 'schedule create' in prompt
     assert 'For overviews, omit --with-sources' in prompt
+    assert "first list the current message sender's saved preferences" in prompt
+    assert "The response owner identifies the sender for every entry" in prompt
+    assert "memory preferences --self --json" in prompt and "next_cursor" in prompt
     assert "HARD BOUNDARY" in prompt
     assert "Answer everyday requests directly" in prompt
     assert "checking the time or weather, casual conversation, and writing poems" in prompt
@@ -254,6 +261,15 @@ async def test_wake_audio_is_generated_on_save_and_reused_by_another_client(setu
     app, service = setup
     release = asyncio.Event()
     generated = []
+    quiet = [800, -800] * 1000 + [13000]
+    quiet_audio = base64.b64encode(struct.pack(f'<{len(quiet)}h', *quiet)).decode()
+
+    def assert_normalized(chunks):
+        raw = base64.b64decode(chunks[0]['audio'])
+        samples = struct.unpack(f'<{len(quiet)}h', raw)
+        rms = math.sqrt(sum(value * value for value in samples) / len(samples)) / 32768
+        assert .15 <= rms <= .17
+        assert max(map(abs, samples)) <= .9 * 32768
 
     class Speech:
         async def settings(self):
@@ -265,7 +281,7 @@ async def test_wake_audio_is_generated_on_save_and_reused_by_another_client(setu
 
         async def next(self, sid, project, owner):
             await release.wait()
-            return {'done': True, 'audio': 'AAA=', 'format': 'pcm', 'sample_rate': 24000}
+            return {'done': True, 'audio': quiet_audio, 'format': 'pcm', 'sample_rate': 24000}
 
         async def cancel(self, sid, project, owner):
             pass
@@ -284,6 +300,10 @@ async def test_wake_audio_is_generated_on_save_and_reused_by_another_client(setu
         await cache.task
         assert (await desktop.put('/api/digital-person/voice-wake', json={'keyword': '小研你好'})).status_code == 200
 
+    legacy = json.loads(cache.path.read_text())
+    legacy.pop('normalized')
+    legacy['chunks'][0]['audio'] = quiet_audio
+    cache.path.write_text(json.dumps(legacy))
     service.config_store.invalidate()
     monkeypatch.setattr(digital_person, 'wake_audio', WakeAudioCache(tmp_path / 'wake-audio.json', speech))
     async with AsyncClient(transport=ASGITransport(app), base_url='http://phone') as phone:
@@ -291,16 +311,39 @@ async def test_wake_audio_is_generated_on_save_and_reused_by_another_client(setu
         assert config['greeting'] == '我在，您说' and config['sound_enabled']
         audio = (await phone.get('/api/digital-person/voice-wake/audio')).json()
         assert audio['status'] == 'ready'
-        assert audio['chunks'] == [{'audio': 'AAA=', 'format': 'pcm', 'sampleRate': 24000}]
+        assert audio['normalized'] is True
+        assert_normalized(audio['chunks'])
         assert generated == ['我在，您说']
         release.clear()
-        assert (await phone.put('/api/digital-person/voice-wake', json={'greeting': '您好'})).status_code == 200
+        greeting = '您好 |  | 有何贵干｜您好'
+        assert (await phone.put('/api/digital-person/voice-wake', json={'greeting': greeting})).status_code == 200
         pending = (await phone.get('/api/digital-person/voice-wake/audio')).json()
-        assert pending == {'status': 'pending', 'text': '您好'}
+        assert pending == {'status': 'pending', 'text': greeting}
+        entered, allow_write = threading.Event(), threading.Event()
+        write = digital_person.wake_audio._write
+
+        def slow_write(*args):
+            entered.set()
+            if not allow_write.wait(timeout=2):
+                raise TimeoutError('cache write blocked the event loop')
+            write(*args)
+
+        monkeypatch.setattr(digital_person.wake_audio, '_write', slow_write)
         release.set()
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            config = await asyncio.wait_for(phone.get('/api/digital-person/voice-wake'), timeout=1)
+            assert config.json()['greeting'] == greeting
+        finally:
+            allow_write.set()
         await digital_person.wake_audio.task
-        assert (await phone.get('/api/digital-person/voice-wake/audio')).json()['text'] == '您好'
-        assert generated == ['我在，您说', '您好']
+        ready = (await phone.get('/api/digital-person/voice-wake/audio')).json()
+        assert ready['text'] == greeting
+        assert ready['normalized'] is True
+        assert [(item['text'], item['chunks']) for item in ready['alternatives']] == [
+            (text, audio['chunks']) for text in ('您好', '有何贵干')
+        ]
+        assert generated == ['我在，您说', '您好', '有何贵干']
         assert (await phone.put('/api/digital-person/voice-wake', json={'sound_enabled': False})).status_code == 200
         assert (await phone.get('/api/digital-person/voice-wake/audio')).json()['status'] == 'none'
         assert not (tmp_path / 'wake-audio.json').exists()

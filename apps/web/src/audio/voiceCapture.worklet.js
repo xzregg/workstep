@@ -1,7 +1,9 @@
 /* Runs on the audio rendering thread. Never performs network or model work. */
 class VoiceCaptureProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super()
+    this.timestamped = options?.processorOptions?.timestamped === true
+    this.endFrame = undefined
     this.buffer = new Float32Array(Math.max(128, Math.round(sampleRate / 50)))
     this.length = 0
     this.nextFrame = undefined
@@ -15,7 +17,9 @@ class VoiceCaptureProcessor extends AudioWorkletProcessor {
   flush() {
     if (!this.length) return
     const chunk = this.buffer.slice(0, this.length)
-    this.port.postMessage(chunk, [chunk.buffer])
+    const message = this.timestamped && this.endFrame !== undefined
+      ? { type: 'audio', samples: chunk, endFrame: this.endFrame } : chunk
+    this.port.postMessage(message, [chunk.buffer])
     this.length = 0
   }
   process(inputs) {
@@ -34,6 +38,7 @@ class VoiceCaptureProcessor extends AudioWorkletProcessor {
         this.buffer.set(samples.subarray(offset, offset + count), this.length)
         this.length += count
         offset += count
+        if (this.timestamped && typeof currentFrame === 'number') this.endFrame = currentFrame + offset
         if (this.length === this.buffer.length) this.flush()
       }
     }

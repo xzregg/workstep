@@ -78,14 +78,15 @@ async def test_social_disabled_still_processes_internal_state(runtime,monkeypatc
 
 
 async def test_delivered_output_never_becomes_knowledge_extraction_evidence(runtime):
-    from services import digital_person_memory as memory, memory_knowledge as knowledge
+    from services import digital_person_memory as memory
     current,project,_=runtime
     sid=(await current.main_session())['id']
     await current._deliver_local(sid,'我推测用户喜欢某事','synthetic-run')
     await memory.sync_projects(current.projects)
     from services import digital_person_memory_index as index
     assert await asyncio.to_thread(index.candidates,'local')==[]
-    assert await asyncio.to_thread(knowledge._claim,[project.id],8)==[]
+    from services import digital_person_assessment as assessment
+    assert await asyncio.to_thread(assessment.pending,[project.id],baseline=utc_now().isoformat())==[]
 
 
 

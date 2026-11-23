@@ -9,6 +9,25 @@ import {digitalRuntimeApi} from '../src/api/digitalPerson'
 import {resolveMarkdownImageSrc} from '../src/utils/markdownImages'
 import type {AssistantChatMessage} from '../src/stores/assistantStore'
 
+test('the transcript shows short progress before the answer and restores it from history',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const events=[
+  {type:'REASONING_MESSAGE_CHUNK',delta:'内部推理'},
+  {type:'TEXT_MESSAGE_CHUNK',phase:'commentary',source_item_id:'a',delta:'我查一下'},
+  {type:'TEXT_MESSAGE_CHUNK',phase:'commentary',source_item_id:'a',delta:'今天的记录。'},
+  {type:'TEXT_MESSAGE_CHUNK',phase:'commentary',source_item_id:'b',delta:'再'.repeat(49)+'。'},
+ ]
+ const render=(reply:Partial<AssistantChatMessage>)=>act(async()=>root.render(<I18nProvider><DigitalPersonCaptions
+  projectId="p" sessionId="main" greeting="你好" liveText="" messages={[{id:'a',role:'assistant',content:'',status:'running',...reply}]}/></I18nProvider>))
+ try{
+  await render({events})
+  assert.equal(host.querySelector('.digital-person-progress')?.textContent,'我查一下今天的记录。')
+  assert.doesNotMatch(host.textContent!,/内部推理|再再/)
+  await render({content:'这是今天的结果。',status:'succeeded',event_summary:{commentary_preview:[{text:'我查一下今天的记录。',complete:true}]}})
+  assert.match(host.querySelector('.digital-home-reply')!.textContent!,/我查一下今天的记录。.*这是今天的结果。/)
+ }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
+})
+
 test('thinking shows elapsed time from the current reply and only finished replies can be read aloud',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
  const now=Date.now,started=now()-3000,played:string[]=[]
@@ -38,24 +57,28 @@ test('thinking shows elapsed time from the current reply and only finished repli
 
 test('captions retain earlier turns and follow new text only while reading the latest turn',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ window.matchMedia=(()=>({matches:true,addEventListener(){},removeEventListener(){}})) as typeof window.matchMedia
  const messages=[{id:'u',role:'user' as const,content:'之前的问题'},{id:'a',role:'assistant' as const,content:'完整回复。'.repeat(80),status:'running' as const}]
  const render=async(content:string)=>act(async()=>root.render(<I18nProvider><DigitalPersonCaptions projectId="p" sessionId="main" messages={[messages[0],{...messages[1],content}]} greeting="你好" liveText=""/></I18nProvider>))
  try{
   await render(messages[1].content)
   const history=host.querySelector<HTMLElement>('.digital-home-subtitles')!
-  Object.defineProperties(history,{scrollHeight:{value:1200,configurable:true},clientHeight:{value:300,configurable:true}})
+  let scrollHeight=1200
+  Object.defineProperties(history,{scrollHeight:{get:()=>scrollHeight},clientHeight:{value:300}})
   await render(messages[1].content+'下一句。')
-  assert.equal(history.scrollTop,1200)
+  assert.equal(history.scrollTop,900)
   assert.match(history.textContent!,/之前的问题/)
   assert.ok(history.textContent!.includes(messages[1].content))
-  history.scrollTop=100
+  history.scrollTop=890
   await act(async()=>history.dispatchEvent(new window.Event('scroll')))
+  scrollHeight=1250
   await render(messages[1].content+'新内容。')
-  assert.equal(history.scrollTop,100,'reading history must not jump to new text')
-  history.scrollTop=900
+  assert.equal(history.scrollTop,890,'even a short upward drag pauses following')
+  history.scrollTop=950
   await act(async()=>history.dispatchEvent(new window.Event('scroll')))
+  scrollHeight=1300
   await render(messages[1].content+'继续。')
-  assert.equal(history.scrollTop,1200)
+  assert.equal(history.scrollTop,1000)
  }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
 })
 

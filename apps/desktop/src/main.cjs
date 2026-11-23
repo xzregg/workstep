@@ -1,3 +1,4 @@
+const { createRuntimeDiagnosticsWindow } = require('./runtime-diagnostics-window.cjs')
 const { createPrivateKey, randomBytes, sign } = require('node:crypto')
 const { app, BrowserWindow, Menu, Notification, Tray, clipboard, crashReporter, dialog, ipcMain, nativeImage, net, safeStorage, session, shell, systemPreferences } = require('electron')
 const path = require('node:path')
@@ -358,7 +359,10 @@ function createWindow(url) {
       { role: 'quit' },
     ] },
     { role: 'editMenu' },
-    { role: 'viewMenu' },
+    { label: '显示', submenu: [
+      { role: 'reload' }, { role: 'forceReload' }, { type: 'separator' },
+      { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' },
+    ] },
     { role: 'windowMenu' },
     { label: '帮助', submenu: diagnosticMenu() },
   ]))
@@ -381,9 +385,20 @@ function showDesktopWindow() {
 function diagnosticMenu() {
   return [
     { label: '一键反馈', click: () => { void openFeedback() } },
+    { label: '运行诊断', click: () => { void openRuntimeDiagnostics() } },
+    { label: '打开开发者工具', click: () => runtimeDiagnostics?.openDevTools() },
     { label: '打开日志目录', click: () => { void openDiagnosticsDirectory() } },
     { label: '导出诊断包', click: () => { void exportDiagnostics() } },
   ]
+}
+
+async function openRuntimeDiagnostics(options) {
+  try { await runtimeDiagnostics?.open(options) }
+  catch (error) {
+    console.error('Unable to open runtime diagnostics', error)
+    await openDiagnosticsDirectory()
+    if (options?.quitOnClose) app.quit()
+  }
 }
 
 async function openFeedback() {
@@ -691,6 +706,11 @@ const diagnostics = hasSingleInstanceLock ? createDiagnostics({
     node: process.versions.node, platform: process.platform, arch: process.arch,
     osRelease: require('node:os').release() },
 }) : null
+const runtimeDiagnostics = diagnostics && createRuntimeDiagnosticsWindow({
+  BrowserWindow, ipcMain, clipboard, dialog, logger: diagnostics,
+  getMainWindow: () => mainWindow, isTrusted: url => isTrustedNavigation(url, rootUrl),
+  getSandboxLog: () => sandboxManager?.readLogs(), version: app.getVersion(),
+})
 if (diagnostics) {
   installDiagnostics({ app, crashReporter, logger: diagnostics })
   captureConsole(diagnostics)
@@ -870,10 +890,10 @@ app.whenReady().then(async () => {
       title: 'WorkStep could not start',
       message: managed ? 'Gateway login or local backend startup failed' : 'Local background service failed to start',
       detail: error instanceof Error ? error.message : String(error),
-      buttons: ['Quit', 'Open logs'], defaultId: 0, cancelId: 0,
+      buttons: ['退出', '运行诊断'], defaultId: 0, cancelId: 0,
     })
-    if (result.response === 1) await openDiagnosticsDirectory()
-    app.quit()
+    if (result.response === 1) await openRuntimeDiagnostics({ quitOnClose: true, quit: () => app.quit() })
+    else app.quit()
   }
 })
 

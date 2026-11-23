@@ -3,6 +3,8 @@
 import asyncio
 import json
 import os
+import struct
+import threading
 from unittest import mock
 
 import pytest
@@ -44,6 +46,103 @@ def test_is_installed_and_version_without_binary(monkeypatch):
          mock.patch("os.path.isfile", return_value=False):
         assert OpencodeEngine.is_installed() is False
         assert OpencodeEngine.get_version() is None
+
+
+def _windows_executable(path, *, subsystem=3, magic=0x20B):
+    data = bytearray(256)
+    data[:2] = b"MZ"
+    struct.pack_into("<I", data, 0x3C, 128)
+    data[128:132] = b"PE\0\0"
+    struct.pack_into("<H", data, 152, magic)
+    struct.pack_into("<H", data, 220, subsystem)
+    path.write_bytes(data)
+    return str(path)
+
+
+@pytest.mark.parametrize("magic", [0x10B, 0x20B])
+def test_windows_cli_executable_is_accepted(monkeypatch, tmp_path, magic):
+    binary = _windows_executable(tmp_path / "opencode.exe", magic=magic)
+    monkeypatch.setenv("OPENCODE_BIN", binary)
+    with mock.patch("engines.opencode.sys.platform", "win32"):
+        assert OpencodeEngine.resolve_binary() == binary
+
+
+@pytest.mark.parametrize("source", ["override", "env", "path"])
+def test_windows_desktop_is_never_launched_for_version(monkeypatch, tmp_path, source):
+    binary = _windows_executable(tmp_path / "opencode.exe", subsystem=2)
+    monkeypatch.delenv("OPENCODE_BIN", raising=False)
+    monkeypatch.setattr(OpencodeEngine, "get_binary_override", staticmethod(
+        lambda: binary if source == "override" else None
+    ))
+    if source == "env":
+        monkeypatch.setenv("OPENCODE_BIN", binary)
+    with mock.patch("engines.opencode.sys.platform", "win32"), \
+         mock.patch("shutil.which", return_value=binary), \
+         mock.patch("subprocess.run") as run:
+        assert OpencodeEngine.resolve_binary() is None
+        assert OpencodeEngine.is_installed() is False
+        assert OpencodeEngine.get_version() is None
+        assert OpencodeEngine().get_command() == []
+        run.assert_not_called()
+
+
+def test_windows_path_skips_desktop_to_find_cli(monkeypatch, tmp_path):
+    desktop = _windows_executable(tmp_path / "desktop.exe", subsystem=2)
+    cli = _windows_executable(tmp_path / "cli.exe")
+    monkeypatch.delenv("OPENCODE_BIN", raising=False)
+    with mock.patch("engines.opencode.sys.platform", "win32"), \
+         mock.patch("os.get_exec_path", return_value=["desktop", "cli"]), \
+         mock.patch("shutil.which", side_effect=lambda name, path=None:
+                    cli if path == "cli" else desktop):
+        assert OpencodeEngine.resolve_binary() == cli
+
+
+def test_windows_invalid_executable_is_not_probed(monkeypatch, tmp_path):
+    binary = tmp_path / "opencode.exe"
+    binary.write_bytes(b"MZ")
+    monkeypatch.setenv("OPENCODE_BIN", str(binary))
+    with mock.patch("engines.opencode.sys.platform", "win32"), \
+         mock.patch("subprocess.run") as run:
+        assert OpencodeEngine.get_version() is None
+        run.assert_not_called()
+
+
+@pytest.mark.parametrize("platform", ["win32", "darwin", "linux"])
+def test_version_probe_hides_windows_console(platform):
+    with mock.patch("engines.opencode.sys.platform", platform), \
+         mock.patch.object(OpencodeEngine, "resolve_binary", return_value="opencode"), \
+         mock.patch("subprocess.CREATE_NO_WINDOW", 0x08000000, create=True), \
+         mock.patch("subprocess.run", return_value=mock.Mock(returncode=0, stdout="1.2.3\n")) as run:
+        assert OpencodeEngine.get_version() == "1.2.3"
+        assert run.call_args.args[0] == ["opencode", "--version"]
+        assert run.call_args.kwargs.get("creationflags", 0) == (
+            0x08000000 if platform == "win32" else 0
+        )
+
+
+@pytest.mark.anyio
+async def test_model_catalog_slow_binary_inspection_keeps_loop_responsive(monkeypatch):
+    entered = threading.Event()
+    release = threading.Event()
+
+    def inspect():
+        entered.set()
+        assert release.wait(1)
+        return None
+
+    monkeypatch.setattr(OpencodeEngine, "resolve_binary", staticmethod(inspect))
+    task = asyncio.create_task(OpencodeEngine().list_models("/tmp"))
+    try:
+        for _ in range(100):
+            if entered.is_set():
+                break
+            await asyncio.sleep(0.005)
+        assert entered.is_set()
+        assert not task.done()
+    finally:
+        release.set()
+        result = await task
+    assert result == []
 
 
 def test_get_command_uses_acp_subcommand(monkeypatch):

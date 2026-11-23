@@ -5,7 +5,8 @@ import { useSpeechEnabled } from '../../hooks/useSpeechEnabled'
 import { useI18n } from '../../i18n'
 import { voiceCapture } from '../../utils/voiceCapture'
 import { isGatewayRemoteBrowser } from '../../utils/gatewayRemote'
-import { loadSavedWakeGreeting, playWakeGreeting, previewWakeSound, type PreparedWakeGreeting, type WakeGreetingVoice } from '../../audio/wakeGreeting'
+import { gatewayWorkspacePath } from '../../utils/gatewayWorkspacePath'
+import { chooseWakeGreeting, loadSavedWakeGreeting, playWakeGreeting, previewWakeSound, wakeGreetingOptions, type PreparedWakeGreeting, type WakeGreetingVoice } from '../../audio/wakeGreeting'
 import { isAndroidWakeClient, playWakeSound, prepareWakeSound } from '../../audio/wakeSound'
 import { primeSpeechOutput } from '../../utils/speechOutput'
 import { invalidateSpeechOutputSettings } from '../../utils/speechOutputSettings'
@@ -21,11 +22,34 @@ const frameSamples = 1280
 type Status = { phase: 'preparing' | 'listening' | 'failure' | 'matched' | 'unmatched'; detail?: string }
 type WakeConfig = VoiceWakeDraft & { sound_enabled?: boolean; greeting?: string }
 type WakeDetector = Awaited<ReturnType<typeof import('../../audio/wakeWord').openWakeWord>>
-export interface WakeControls { releaseMicrophone: () => void }
+export interface WakeControls { releaseMicrophone: () => boolean }
 
-export default function DigitalPersonWake({ projectId = '', blocked, playback = false, speakerMuted = false, voice, onWake, onListeningChange, ref, draft }: {
+// Only the idle detector is retained across navigation. Each page owns its capture separately.
+type RetainedDetector = { key: string; detector: WakeDetector; controller: AbortController }
+let takeParkedDetector: (() => RetainedDetector) | undefined
+
+function parkDetector(value: RetainedDetector) {
+  takeParkedDetector?.().controller.abort()
+  const release = () => take().controller.abort()
+  const timer = setTimeout(release, 30000)
+  const page = document
+  const onVisibility = () => { if (page.hidden) release() }
+  const unsubscribe = subscribeWakeEnabled(() => { if (!getWakeEnabled()) release() })
+  const take = () => {
+    takeParkedDetector = undefined
+    clearTimeout(timer)
+    unsubscribe()
+    page.removeEventListener('visibilitychange', onVisibility)
+    return value
+  }
+  page.addEventListener('visibilitychange', onVisibility)
+  takeParkedDetector = take
+}
+
+export default function DigitalPersonWake({ projectId = '', blocked, playback = false, speakerMuted = false, voice, onWake, onListeningChange, onGreetingChange, ref, draft }: {
   projectId?: string; blocked: boolean; playback?: boolean; onWake?: () => void; ref?: Ref<WakeControls>
   onListeningChange?: (listening: boolean) => void
+  onGreetingChange?: (playing: boolean) => void
   draft?: VoiceWakeDraft & { soundEnabled?: boolean; greeting?: string }; speakerMuted?: boolean; voice?: WakeGreetingVoice
 }) {
   const { t } = useI18n()
@@ -54,15 +78,20 @@ export default function DigitalPersonWake({ projectId = '', blocked, playback = 
     return () => { chime.current = null }
   }, [prepareChime])
   const abort = useRef<AbortController | null>(null)
+  const greetingPlayback = useRef<AbortSignal | null>(null)
+  const [greetingActive, setGreetingActive] = useState(false)
+  const savedGreeting = useRef<{ projectId: string; text: string; audio: PreparedWakeGreeting[] } | null>(null)
   useImperativeHandle(ref, () => ({
     releaseMicrophone() {
+      if (greetingPlayback.current && !greetingPlayback.current.aborted) return false
       abort.current?.abort()
       setWakeTest(owner, false)
+      return true
     },
   }), [owner])
   const automatic = !settings && enabled && ready && !testingOwner
   const unavailable = blocked || playback || cooling
-  const shouldListen = visible && !unavailable && (test || automatic)
+  const shouldListen = visible && !unavailable && !greetingActive && (test || automatic)
   const keyword = draft?.keyword
   const sensitivity = draft?.sensitivity
   const warmAutomatic = !settings && enabled
@@ -71,17 +100,32 @@ export default function DigitalPersonWake({ projectId = '', blocked, playback = 
     const draftConfig = warmTrial && keyword && keyword.trim().length >= 2 && sensitivity
       ? { keyword, sensitivity } : null
     if (!draftConfig && !warmAutomatic) return
-    const controller = new AbortController()
+    let controller = new AbortController()
     const { signal } = controller
+    const retain = warmAutomatic && !preload && isAndroidWakeClient()
+    const scope = retain ? [window.location.origin, gatewayWorkspacePath(), projectId] : null
+    let initialized: RetainedDetector | undefined
     const config = draftConfig ? Promise.resolve(draftConfig) : voiceWakeApi.get()
     const runtime = wakeWordRuntime.load()
     if (warmAutomatic && !preload) void runtime.then(value => value.preloadWakeWord()).catch(() => {})
     const slot = {
       config,
       close: () => controller.abort(),
-      ready: Promise.all([config, runtime]).then(([value, runtime]) => {
+      ready: Promise.all([config, runtime]).then(async ([value, runtime]) => {
         signal.throwIfAborted()
-        return runtime.openWakeWord(value, signal)
+        const key = scope && JSON.stringify([...scope, value.keyword, value.sensitivity])
+        if (key && takeParkedDetector) {
+          const cached = takeParkedDetector()
+          if (cached.key === key) {
+            initialized = cached
+            controller = cached.controller
+            return cached.detector
+          }
+          cached.controller.abort()
+        }
+        const detector = await runtime.openWakeWord(value, signal)
+        if (key) initialized = { key, detector, controller }
+        return detector
       }),
     }
     warmDetector.current = slot
@@ -90,7 +134,8 @@ export default function DigitalPersonWake({ projectId = '', blocked, playback = 
     })
     return () => {
       if (warmDetector.current === slot) warmDetector.current = null
-      controller.abort()
+      if (initialized && !controller.signal.aborted && !document.hidden && getWakeEnabled()) parkDetector(initialized)
+      else controller.abort()
     }
   }, [warmTrial, warmAutomatic, visible, keyword, sensitivity, projectId, configVersion, preload])
   useEffect(() => {
@@ -122,7 +167,11 @@ export default function DigitalPersonWake({ projectId = '', blocked, playback = 
       }
       setVisible(!document.hidden)
     }
-    const changed = () => { abort.current?.abort(); refresh(value => value + 1) }
+    const changed = () => {
+      savedGreeting.current = null
+      if (!greetingPlayback.current) abort.current?.abort()
+      refresh(value => value + 1)
+    }
     const outputChanged = (event: Event) => { invalidateSpeechOutputSettings(event); changed() }
     document.addEventListener('visibilitychange', visibility)
     const wakeChanged = () => { updateConfig(value => value + 1); changed() }
@@ -137,7 +186,7 @@ export default function DigitalPersonWake({ projectId = '', blocked, playback = 
       window.removeEventListener(VOICE_WAKE_CHANGED, wakeChanged)
       window.removeEventListener(OUTPUT_CHANGED, outputChanged)
     }
-  }, [owner, preload, settings])
+  }, [owner, preload, settings, projectId])
   useEffect(() => {
     if (!shouldListen) return
     const controller = new AbortController()
@@ -147,7 +196,8 @@ export default function DigitalPersonWake({ projectId = '', blocked, playback = 
     let pending = 0
     let match: ((samples: Int16Array) => Promise<boolean>) | undefined
     let soundEnabled = true
-    let preparedGreeting: PreparedWakeGreeting | null = null
+    let greetings: string[] = []
+    let preparedGreetings: PreparedWakeGreeting[] = []
     function fail(detail: string) {
       if (signal.aborted) return
       clearTimeout(timer)
@@ -189,22 +239,43 @@ export default function DigitalPersonWake({ projectId = '', blocked, playback = 
           }
           const transition = new AbortController()
           abort.current = transition
-          const played = preparedGreeting && await playWakeGreeting(preparedGreeting, projectId, output.voice, transition.signal)
-          if (!played) await playWakeSound(chime.current, transition.signal).catch(() => {})
-          if (!transition.signal.aborted) latestWake.current?.()
+          const greeting = chooseWakeGreeting(greetings)
+          greetingPlayback.current = transition.signal
+          setGreetingActive(true)
+          onGreetingChange?.(true)
+          try {
+            const preparedGreeting = preparedGreetings.find(option => option.text === greeting)
+            const played = greeting && await playWakeGreeting(preparedGreeting ?? greeting, projectId, output.voice, transition.signal)
+            if (!played) await playWakeSound(chime.current, transition.signal).catch(() => {})
+            if (!transition.signal.aborted) latestWake.current?.()
+          } finally {
+            if (greetingPlayback.current === transition.signal) {
+              greetingPlayback.current = null
+              setGreetingActive(false)
+              onGreetingChange?.(false)
+            }
+          }
         }
       }).catch(() => fail('voiceWake.loadFailed')).finally(() => { pending-- })
-    }, signal, false, frameSamples)
+    }, signal, false, frameSamples, { reuseContext: !settings })
     const slot = warmDetector.current
     const configRequest = (slot?.config ?? (draft
       ? Promise.resolve<WakeConfig>({ keyword: draft.keyword, sensitivity: draft.sensitivity })
       : voiceWakeApi.get())).then(config => {
         if (test) return config
         soundEnabled = config.sound_enabled ?? true
-        if (!signal.aborted && soundEnabled && config.greeting) {
-          void loadSavedWakeGreeting(config.greeting, projectId, signal).then(value => {
-            if (!signal.aborted) preparedGreeting = value
-          }).catch(() => {})
+        const greeting = config.greeting?.trim() ?? ''
+        greetings = wakeGreetingOptions(greeting)
+        if (!signal.aborted && soundEnabled && greetings.length) {
+          const saved = savedGreeting.current
+          if (saved?.text === greeting && saved.projectId === projectId) preparedGreetings = saved.audio
+          else {
+            void loadSavedWakeGreeting(greeting, projectId, signal).then(audio => {
+              if (signal.aborted || !audio.length) return
+              preparedGreetings = audio
+              savedGreeting.current = { projectId, text: greeting, audio }
+            }).catch(() => {})
+          }
         }
         return config
       })
@@ -251,8 +322,13 @@ export default function DigitalPersonWake({ projectId = '', blocked, playback = 
           ? 'speech.permissionDenied'
           : /^(speech|voiceWake)\.[A-Za-z]+$/.test(message) ? message : 'voiceWake.loadFailed')
       })
-    return () => { clearTimeout(timer); abort.current?.abort(); abort.current = null }
-  }, [shouldListen, test, revision, projectId, draft, owner, onListeningChange])
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+      if (test) abort.current?.abort()
+      if (test || abort.current === controller) abort.current = null
+    }
+  }, [shouldListen, test, revision, projectId, draft, owner, onListeningChange, onGreetingChange])
 
   const startTest = () => {
     if (draft?.soundEnabled) {

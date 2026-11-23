@@ -5,7 +5,7 @@ def test_assessment_prompt_budget_keeps_one_output_contract_and_persona():
     from services.digital_person_assessment import instruction
     from services.digital_person import DigitalPersonProfile
     prompt=instruction(DigitalPersonProfile(name='Ari',persona_markdown='PERSONA_SENTINEL'))
-    assert len(prompt)<9500
+    assert len(prompt)<13200
     assert prompt.count('PERSONA_SENTINEL')==1
     assert prompt.count('exactly one <json>...</json> pair')==1
     assert prompt.count('Result contract:')==1
@@ -106,9 +106,10 @@ def test_memory_prompt_identifies_user_preferences_with_evidence_and_conditions(
     from services.digital_person import DigitalPersonProfile
     from services.digital_person_assessment import instruction
     prompt=instruction(DigitalPersonProfile())
-    assert 'response language and length' in prompt
-    assert 'communication and notifications' in prompt
-    assert 'work methods, tool choices and everyday habits' in prompt
+    assert 'response language/length' in prompt
+    assert 'communication, notifications' in prompt
+    assert 'personal work methods or tool choices' in prompt
+    assert 'personal likes, dislikes, habits' in prompt
     assert 'conditions and exceptions' in prompt
     assert 'Facts and preferences require user evidence' in prompt
     assert 'A one-off request' in prompt

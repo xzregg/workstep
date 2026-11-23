@@ -1,3 +1,4 @@
+import { runtimeMark } from './runtimeDiagnostics'
 import { conversationBottomScrollTop, hasActiveSelectionWithin } from './conversationScroll'
 
 type Ref<T> = { current: T }
@@ -13,7 +14,9 @@ export function followConversationBottom(container: HTMLElement, programmatic: R
       let startY = 0
       const start = (event: TouchEvent) => { startY = event.touches[0]?.clientY ?? 0 }
       const move = (event: TouchEvent) => {
-        if ((event.touches[0]?.clientY ?? startY) > startY + 3) following.current = false
+        if ((event.touches[0]?.clientY ?? startY) > startY + 3 && container.scrollHeight > container.clientHeight) {
+          following.current = false
+        }
       }
       container.addEventListener('touchstart', start, { passive: true })
       container.addEventListener('touchmove', move, { passive: true })
@@ -22,7 +25,11 @@ export function followConversationBottom(container: HTMLElement, programmatic: R
   }
   const state = motion
   const reduced = container.ownerDocument.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const write = (top: number) => { programmatic.current = top; container.scrollTop = top }
+  const write = (top: number) => {
+    programmatic.current = top
+    container.scrollTop = top
+    runtimeMark('chat-follow')
+  }
   if (!following.current) return
   if (immediate || !state.initialized || reduced || typeof requestAnimationFrame === 'undefined') {
     stopConversationFollow(container)
@@ -38,9 +45,12 @@ export function followConversationBottom(container: HTMLElement, programmatic: R
     const target = conversationBottomScrollTop(container.scrollHeight, container.clientHeight)
     const dt = state.lastTime ? Math.min(40, time - state.lastTime) : 16
     state.lastTime = time
-    const next = container.scrollTop + (target - container.scrollTop) * (1 - Math.exp(-dt / 65))
+    const current = container.scrollTop
+    const next = current + (target - current) * (1 - Math.exp(-dt / 65))
     if (Math.abs(target - next) < 0.5) { write(target); return }
     write(next)
+    // Browsers can round a subpixel step back to the same scroll position.
+    if (container.scrollTop === current) { write(target); return }
     state.frame = requestAnimationFrame(tick)
   }
   state.frame = requestAnimationFrame(tick)

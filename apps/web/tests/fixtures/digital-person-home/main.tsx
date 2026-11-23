@@ -26,6 +26,7 @@ useLocaleStore.setState({locale:'zh-CN'})
 useProjectStore.setState({projects:[{id:'demo',name:'操作手册演示',path:'/demo',workflows:[]},{id:'p',name:'视频功能项目',path:'/video',workflows:[]}]})
 let capture:Parameters<typeof voiceCapture.start>[0]|null=null,text='帮我看看今天的安排。',sequence=0
 let ttsDelay=0,runStartDelay=0,sampleEnd=0,turn=new TurnController()
+let phoneCall=false,continuousCapture=false
 const log={captures:0,disposals:0,sent:[] as string[],inserted:[] as string[],stops:0,audio:0,playbackFrames:0}
 const pending:PendingMessageInsertItem[]=[]
 let insertSequence=0
@@ -41,7 +42,11 @@ pendingMessageInsertApi.remove=async(_project,id)=>{
  return {deleted:index>=0}
 }
 window.addEventListener(DIGITAL_OUTPUT_FRAME,(event:Event)=>{const value=(event as CustomEvent).detail;if(value.playing&&value.level>0)log.playbackFrames++})
-voiceCapture.start=async callback=>{capture=callback;sampleEnd=0;turn=new TurnController();log.captures++;return {stop:()=>{log.disposals++;capture=null},flush:async()=>turn.snapshot()}}
+voiceCapture.start=async(callback,_token,_detect,_frameSize,options)=>{
+ capture=callback;sampleEnd=0;phoneCall=Boolean(options?.phoneCall);turn=new TurnController(phoneCall);log.captures++
+ continuousCapture=Boolean(options?.continuous)
+ return {stop:()=>{log.disposals++;capture=null},flush:async()=>turn.snapshot()}
+}
 speechApi.status=async()=>({enabled:true,ready:true}) as any
 speechApi.start=async()=>({id:`voice-${++sequence}`,sample_rate:16000,max_frame_samples:32000,streaming:'native'}) as any
 speechApi.cancel=async()=>({cancelled:true}) as any
@@ -57,13 +62,15 @@ speechOutputApi.next=async()=>{
 function feedAudio(count:number, level:number, probability:(index:number)=>number){
  for(let i=0;i<count;i++)turn.frame({end:sampleEnd+=512,probability:probability(i)})
  const pcm=Int16Array.from({length:count*512},(_,i)=>Math.sin(i*.1)*level*32768/3.5)
- capture?.(pcm,level,turn.snapshot())
+ const state=turn.snapshot()
+ capture?.(pcm,level,state)
+ if(continuousCapture&&state.canCommit)turn=new TurnController(phoneCall)
 }
 ;(window as any).homeFixture={
  log,setRunStartDelay:(ms:number)=>{runStartDelay=ms},setTtsDelay:(ms:number)=>{ttsDelay=ms},
  clickNoise:()=>feedAudio(16,.8,i=>i===0?.97:.02),
  sound:(level:number,nextText?:string)=>{if(nextText)text=nextText;feedAudio(16,level,()=>.8)},
- silence:()=>feedAudio(19,0,()=>.02),
+ silence:(frames=phoneCall?40:19)=>feedAudio(frames,0,()=>.02),
  speaking:(playing:boolean,level=.6)=>window.dispatchEvent(new CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{projectId:'demo',sessionId:'main',playing,level}}))
 }
 const initial:AssistantChatMessage[]=[{id:'user',role:'user',content:'帮我检查一下构建结果，并验证移动端的界面布局和按钮对齐。',status:'succeeded'},{id:'answer',role:'assistant',content:'已交给 WorkStep 项目新执行会话处理，后台处理中。重点检查移动端按钮、图标和文字的对齐，并验证不同屏幕下的显示。结果核验后会回到这里通知你。',status:'succeeded'}]

@@ -36,8 +36,11 @@ def _markers(project_ids, cursor, limit, ids, focus=None):
                                 + ' AND k.id=?', (*args, focus)).fetchone()
             if anchor:
                 visible.append(focus)
-        needs_links = focus is not None or limit <= ATLAS_LINK_BATCH
-        return rows, _links(db, visible, focus) if needs_links and len(visible) > 1 else []
+        if len(visible) < 2:
+            return rows, []
+        if focus is not None:
+            return rows, _focused_links(db, visible, focus)
+        return rows, _links(db, visible) if limit <= ATLAS_LINK_BATCH else []
 
 
 def _links(db, visible, focus=None):
@@ -71,6 +74,33 @@ def _encode_links(links):
     return [{'from': f'knowledge:{a}', 'to': f'knowledge:{b}'} for a, b in links]
 
 
+def _focused_links(db, visible, focus):
+    direct = _links(db, visible, focus)
+    if not direct:
+        return []
+
+    neighbors = {}
+    for left, right in _links(db, visible):
+        neighbors.setdefault(left, []).append(right)
+        neighbors.setdefault(right, []).append(left)
+
+    # Keep a depth-first tree plus direct choices so even dense evidence
+    # groups return at most two edges per visible star on average.
+    edges = {(left, right) for left, right in direct}
+    seen = {focus}
+    path = [(focus, iter(neighbors.get(focus, ())))]
+    while path:
+        node, candidates = path[-1]
+        neighbor = next(candidates, None)
+        if neighbor is None:
+            path.pop()
+        elif neighbor not in seen:
+            seen.add(neighbor)
+            edges.add((min(node, neighbor), max(node, neighbor)))
+            path.append((neighbor, iter(neighbors[neighbor])))
+    return sorted(edges)
+
+
 def _reflection_additions(project_ids, run_id):
     memory_knowledge.ensure_schema()
     # Keep the receipt when its target disappears, and apply atlas visibility
@@ -78,12 +108,16 @@ def _reflection_additions(project_ids, run_id):
     visible = memory_knowledge.catalog_evidence_condition(project_ids) if project_ids else '0'
     with index.connect() as db:
         rows = db.execute(
-            """SELECT k.id, k.summary FROM memory_reflection_additions a
+            """SELECT k.id, k.summary, k.kind,
+                 EXISTS (SELECT 1 FROM memory_changes c WHERE c.new_id=k.id AND c.operation='supersede') AS replaced
+               FROM memory_reflection_additions a
                LEFT JOIN memory_knowledge k ON k.id=a.knowledge_id
                  AND k.state IN ('active','conflict') AND (k.valid_until IS NULL OR k.valid_until>?)
                  AND """ + visible + ' WHERE a.run_id=? ORDER BY a.id',
             (datetime.now(timezone.utc).isoformat(), *project_ids, run_id)).fetchall()
-    items = [{'id': f"knowledge:{row['id']}", 'summary': row['summary']} for row in rows if row['id'] is not None]
+    items = [{'id': f"knowledge:{row['id']}", 'summary': row['summary'], 'kind':row['kind'],
+              'operation':'updated' if row['replaced'] else 'added'}
+             for row in rows if row['id'] is not None]
     return {'status': 'available' if rows else 'legacy', 'items': items, 'unavailable': len(rows) - len(items)}
 
 

@@ -48,3 +48,36 @@ test('worker failure reports a plain-text fallback without invoking a synchronou
   assert.equal(result,null)
   queue.dispose()
 })
+
+test('runtime diagnostics record waiting and Worker execution separately', () => {
+  const prior = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  let now = 10
+  const marks: unknown[][] = []
+  const sent: Array<{ id: number; measure?: boolean }> = []
+  const worker = {
+    postMessage: (job: { id: number; measure?: boolean }) => sent.push(job),
+    terminate() {}, onmessage: null as any, onerror: null, onmessageerror: null,
+  }
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { workstepPerformance: {
+    stamp: () => now, mark: (...values: unknown[]) => marks.push(values),
+  } } })
+  const queue = new MarkdownParseQueue(() => worker)
+  try {
+    queue.submit({}, 'first', undefined, () => {})
+    now = 20
+    queue.submit({}, 'second', undefined, () => {})
+    now = 40
+    worker.onmessage({ data: { id: sent[0].id, parseMs: 9 } })
+    now = 60
+    worker.onmessage({ data: { id: sent[1].id, parseMs: 12 } })
+    assert.deepEqual(sent.map(job => job.measure), [true, true])
+    assert.deepEqual(marks, [
+      ['markdown-queue', 10, 0], ['markdown-parse', 10, 9],
+      ['markdown-queue', 20, 20], ['markdown-parse', 40, 12],
+    ])
+  } finally {
+    queue.dispose()
+    if (prior) Object.defineProperty(globalThis, 'window', prior)
+    else Reflect.deleteProperty(globalThis, 'window')
+  }
+})

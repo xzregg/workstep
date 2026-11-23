@@ -2,6 +2,39 @@ import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { captureVoice } from '../src/utils/voiceCapture'
+import { openVoiceDsp } from '../src/audio/voiceDsp'
+
+test('cold voice detection can buffer a slow model load, with a smaller limit after it catches up', async () => {
+  const { window } = installDomEnvironment()
+  const original = globalThis.Worker
+  const ports: MessagePort[] = []
+  globalThis.Worker = class extends EventTarget {
+    postMessage({ port }: { port: MessagePort }) { ports.push(port) }
+    terminate() {}
+  } as unknown as typeof Worker
+  const rate = 16000
+  let failures = 0, received!: () => void
+  const processed = new Promise<void>(resolve => { received = resolve })
+  const dsp = openVoiceDsp(rate, received, () => { failures++ }, true)
+  try {
+    for (let second = 0; second < 6; second++) dsp.push(new Float32Array(rate))
+    assert.equal(failures, 0, 'the first model download can exceed five seconds')
+    ports[0].postMessage({ type: 'pcm', pcm: new Int16Array(), captured: rate * 6 })
+    await processed
+    for (let second = 0; second < 6; second++) dsp.push(new Float32Array(rate))
+    assert.equal(failures, 1, 'a stalled active detector still fails after five seconds of queued audio')
+    dsp.push(new Float32Array(rate))
+    assert.equal(failures, 1)
+    const cold = openVoiceDsp(rate, () => {}, () => { failures++ })
+    for (let second = 0; second < 16; second++) cold.push(new Float32Array(rate))
+    assert.equal(failures, 2, 'the startup queue remains bounded')
+  } finally {
+    dsp.close()
+    for (const port of ports) port.close()
+    globalThis.Worker = original
+    await window.happyDOM.close()
+  }
+})
 
 for (const scenario of ['fallback', 'permission', 'aborted', 'unavailable'] as const) {
   test(`microphone acquisition handles ${scenario} without leaking audio`, async () => {
@@ -11,7 +44,8 @@ for (const scenario of ['fallback', 'permission', 'aborted', 'unavailable'] as c
     const controller = new AbortController()
     const requests: MediaStreamConstraints[] = []
     let stopped = 0, closed = 0
-    const stream = { getTracks: () => [{ stop() { stopped++ } }] } as unknown as MediaStream
+    const track = { stop() { stopped++ } }
+    const stream = { getTracks: () => [track], getAudioTracks: () => [track] } as unknown as MediaStream
     class Context {
       resume() { if (scenario === 'aborted') controller.abort(); return Promise.resolve() }
       close() { closed++; return Promise.resolve() }
@@ -27,7 +61,7 @@ for (const scenario of ['fallback', 'permission', 'aborted', 'unavailable'] as c
       },
     } })
     try {
-      await assert.rejects(captureVoice(() => {}, controller.signal), scenario === 'fallback' ? /graph reached/
+      await assert.rejects(captureVoice(() => {}, controller.signal), scenario === 'fallback' ? /speech.audioCaptureFailed/
         : scenario === 'permission' ? /Denied/ : scenario === 'aborted' ? /Cancelled/ : /speech.audioSourceUnavailable/)
       assert.equal(requests.length, scenario === 'aborted' ? 0 : scenario === 'permission' ? 1 : 2)
       if(requests.length)assert.equal((requests[0].audio as MediaTrackConstraints).autoGainControl,false)
@@ -95,16 +129,78 @@ test('microphone acquisition does not wait for a suspended audio context to resu
   }
   globalThis.AudioContext = Context as unknown as typeof AudioContext
   Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
-    getUserMedia: async () => { requests++; resume(); return { getTracks: () => [] } },
+    getUserMedia: async () => { requests++; resume(); return { getTracks: () => [], getAudioTracks: () => [] } },
   } })
   const pending = captureVoice(() => {}, controller.signal)
   void pending.catch(() => {})
   try {
     await Promise.resolve(); await Promise.resolve()
     assert.equal(requests, 1, 'capture must unlock Web Audio instead of waiting on it')
-    await assert.rejects(pending, /capture graph reached/)
+    await assert.rejects(pending, /speech.audioCaptureFailed/)
   } finally {
     controller.abort(); resume(); await pending.catch(() => {})
     globalThis.AudioContext = original; await window.happyDOM.close()
+  }
+})
+
+test('rapid capture toggles reuse the audio graph and release each microphone track', async t => {
+  const { window } = installDomEnvironment()
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true })
+  const originalContext = globalThis.AudioContext, originalNode = globalThis.AudioWorkletNode
+  let contexts = 0, modules = 0, tracks = 0, stopped = 0, suspended = 0, closed = 0
+  const first = new AbortController(), second = new AbortController()
+  class Context {
+    sampleRate = 48000
+    constructor() { contexts++ }
+    async resume() {}
+    async suspend() { suspended++ }
+    async close() { closed++ }
+    audioWorklet = { addModule: async () => { modules++ } }
+    createMediaStreamSource() { return { connect() {}, disconnect() {} } }
+  }
+  class Node {
+    port = { onmessage: null }
+    connect() {}
+    disconnect() {}
+  }
+  globalThis.AudioContext = Context as unknown as typeof AudioContext
+  globalThis.AudioWorkletNode = Node as unknown as typeof AudioWorkletNode
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
+    async getUserMedia() {
+      tracks++
+      const track = { stop: () => { stopped++ } }
+      return { getTracks: () => [track], getAudioTracks: () => [track] }
+    },
+  } })
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    await captureVoice(() => {}, first.signal, false, 1280, { reuseContext: true })
+    first.abort()
+    assert.equal(stopped, 1)
+    await captureVoice(() => {}, second.signal, false, 1280, { reuseContext: true })
+    assert.deepEqual({contexts, modules, tracks, stopped, suspended, closed},
+      {contexts: 1, modules: 1, tracks: 2, stopped: 1, suspended: 0, closed: 0})
+    second.abort()
+    assert.equal(stopped, 2)
+    await Promise.resolve()
+    assert.equal(suspended, 1)
+    t.mock.timers.tick(2000)
+    assert.equal(closed, 1)
+    const third = await captureVoice(() => {}, new AbortController().signal, false, 1280, { reuseContext: true })
+    third.stop()
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    document.dispatchEvent(new window.Event('visibilitychange'))
+    assert.equal(closed, 2, 'idle context closes before background timers are frozen')
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    const fourth = await captureVoice(() => {}, new AbortController().signal, false, 1280, { reuseContext: true })
+    try { assert.equal(contexts, 3, 'foreground capture gets a fresh graph') }
+    finally { fourth.stop() }
+  } finally {
+    first.abort(); second.abort()
+    t.mock.timers.tick(2000)
+    t.mock.timers.reset()
+    globalThis.AudioContext = originalContext
+    globalThis.AudioWorkletNode = originalNode
+    await window.happyDOM.close()
   }
 })

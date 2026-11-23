@@ -1,9 +1,15 @@
 """Host memory browser: bounded results, verified sources, no extraction on read."""
 import asyncio
+import json
 from datetime import datetime, timezone, timedelta
 from services import digital_person_memory as memory, digital_person_memory_index as index
 from services import memory_knowledge as knowledge
 from services.memory_secrets import redact
+
+KINDS = ('preference', 'experience', 'fact', 'event')
+PREVIEW_LIMIT = 50
+PAGE_SIZE = 40
+SOURCE_LIMIT = 50
 
 
 def library_stats(project_ids):
@@ -15,7 +21,7 @@ def library_stats(project_ids):
     """
     result = {'knowledge_count':0, 'indexed_count':0, 'processed_count':0,
               'pending_count':0, 'today_count':0, 'latest_knowledge_at':None,
-              'by_kind':dict.fromkeys(('preference','experience','fact','event'),0)}
+              'by_kind':dict.fromkeys(KINDS,0)}
     if not project_ids:
         return result
     knowledge.ensure_schema()
@@ -34,10 +40,7 @@ def library_stats(project_ids):
           SUM(julianday(k.created_at)>=julianday(?)) AS today
           FROM memory_knowledge k WHERE k.state IN ('active','conflict')
           AND (k.valid_until IS NULL OR julianday(k.valid_until)>julianday(?))
-          AND EXISTS (SELECT 1 FROM memory_knowledge_sources s WHERE s.knowledge_id=k.id)
-          AND NOT EXISTS (SELECT 1 FROM memory_knowledge_sources s LEFT JOIN memories m ON m.id=s.memory_id
-            WHERE s.knowledge_id=k.id AND (m.id IS NULL OR m.forgotten=1 OR m.scope!=k.scope
-              OR m.source_hash!=s.source_hash OR m.project_id NOT IN ({marks})))
+          AND {knowledge.catalog_evidence_condition(project_ids)}
           GROUP BY k.kind""",(start,now.isoformat(),*project_ids))
         for row in rows:
             result['knowledge_count'] += row['n']
@@ -49,17 +52,44 @@ def library_stats(project_ids):
     return result
 
 
-async def browse(projects, query=''):
-    ids = memory.allowed_projects(projects)
-    library_ids = list(ids)
+async def browse(projects, query='', *, kind='', project_id='', page=1):
+    query = query.strip()
+    paged = bool(kind or project_id or query)
+    library_ids = memory.allowed_projects(projects)
+    ids = set(library_ids)
     names = {p.id:p.name for p in projects.iter_projects() if p.id in ids}
-    matching_projects = [pid for pid, name in names.items() if query.strip() and query.strip().casefold() in name.casefold()]
+    matching_projects = [pid for pid, name in names.items() if query and query.casefold() in name.casefold()]
+    source_ids = None
     if matching_projects:
-        ids, query = matching_projects, ''
-    # Bound source hydration independently of whole-library metadata counts.
-    derived = await knowledge.search(projects, None, query, limit=50, project_ids=ids, candidate_limit=50)
-    rows = await asyncio.to_thread(index.candidates, None, query, limit=50, project_ids=ids)
-    hits = await memory.read_projects(projects, rows, query)
+        source_ids, query = set(matching_projects), ''
+    if project_id:
+        source_ids = (ids if source_ids is None else source_ids) & {project_id}
+
+    async def search(category, limit, offset=0):
+        return await knowledge.search(projects, None, query, limit=limit, project_ids=ids, candidate_limit=limit,
+                                      kind=category, source_project_ids=source_ids, offset=offset)
+
+    limit = PAGE_SIZE if paged else PREVIEW_LIMIT
+    derived = await search(kind, limit + 1 if paged else limit, (page - 1) * limit if paged else 0)
+    has_next = paged and len(derived) > limit
+    derived = derived[:limit]
+    if not paged and len(derived) == limit:
+        # Keep the preview bounded while giving each available category a first group.
+        missing = [category for category in KINDS if sum(r['kind'] == category for r in derived) < 3]
+        if missing:
+            samples = await asyncio.gather(*(search(category, 3) for category in missing))
+            by_id = {row['id']: row for row in derived + [row for sample in samples for row in sample]}
+            required = {row['id'] for category in KINDS
+                        for row in [r for r in by_id.values() if r['kind'] == category][:3]}
+            remaining = [kid for kid in by_id if kid not in required]
+            kept = required.union(remaining[:limit-len(required)])
+            derived = [row for kid, row in by_id.items() if kid in kept]
+
+    hits = []
+    if page == 1 and kind in ('', 'event'):
+        rows = await asyncio.to_thread(index.candidates, None, query, limit=SOURCE_LIMIT,
+                                       project_ids=ids if source_ids is None else source_ids)
+        hits = await memory.read_projects(projects, rows, query)
     covered = {s['id'] for item in derived for s in item['sources']}
     items = []
     for item in derived:
@@ -78,7 +108,9 @@ async def browse(projects, query=''):
                                   'source_time':hit['created_at'], 'source_kind':hit['source_kind'],
                                   'role':hit.get('role','')}]})
     stats = await asyncio.to_thread(library_stats, library_ids)
-    return redact({'items':items, 'bounded':True, 'knowledge_limit':50, 'source_limit':50, 'stats':stats})
+    return redact({'items':items, 'bounded':True, 'knowledge_limit':limit, 'source_limit':SOURCE_LIMIT,
+                   'has_next':has_next, 'projects':[{'id':pid, 'name':name} for pid, name in names.items()],
+                   'stats':stats})
 
 
 def _source(projects_ids, source_id):
@@ -89,6 +121,30 @@ def _source(projects_ids, source_id):
         return dict(row) if row and row['project_id'] in projects_ids else None
 
 
+def _turn_companion(row):
+    """Resolve only the other indexed message of the same completed chat turn."""
+    if row['source_kind'] != 'chat' or row['role'] not in ('user', 'assistant'):
+        return None
+    turn = json.loads(row['source_metadata_json']).get('turn_assistant_id')
+    if not turn:
+        return None
+    role = 'user' if row['role'] == 'assistant' else 'assistant'
+    with index.connect() as db:
+        rows = db.execute("""SELECT * FROM memories
+            WHERE project_id=? AND session_id=? AND scope=? AND role=?
+            AND source_kind='chat' AND forgotten=0
+            AND json_extract(source_metadata_json,'$.turn_assistant_id')=?
+            LIMIT 2""", (row['project_id'], row['session_id'], row['scope'], role, turn)).fetchall()
+    if len(rows) != 1:
+        return None
+    companion = dict(rows[0])
+    assistant = row if row['role'] == 'assistant' else companion
+    if assistant['source_message_id'] != turn or not memory.source_text(companion):
+        return None
+    return {'id':f"memory:{companion['id']}", 'project_id':row['project_id'],
+            'source_time':companion['source_time'], 'source_kind':'chat', 'role':role}
+
+
 async def read(projects, source_id, *, offset=0, limit=2400):
     row = await asyncio.to_thread(_source, memory.allowed_projects(projects), source_id)
     if not row:
@@ -96,10 +152,16 @@ async def read(projects, source_id, *, offset=0, limit=2400):
     hits = await memory.read_projects(projects, [row])
     if not hits:
         raise LookupError('Source has been deleted, forgotten, or is inaccessible')
-    content = await projects.run_db(row['project_id'], lambda _: memory.source_text(row))
+    def read_source(_):
+        content = memory.source_text(row)
+        companion = _turn_companion(row) if content and offset == 0 else None
+        return content, companion
+
+    content, companion = await projects.run_db(row['project_id'], read_source)
     if content is None:
         raise LookupError('Source is no longer available')
     end = min(len(content), offset + limit)
     return redact({**hits[0], 'content':content[offset:end], 'offset':offset,
                    'next_offset':end if end < len(content) else None,
-                   'has_more':end < len(content), 'total_chars':len(content)})
+                   'has_more':end < len(content), 'total_chars':len(content),
+                   **({'companion':companion} if companion else {})})

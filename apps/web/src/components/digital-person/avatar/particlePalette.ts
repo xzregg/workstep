@@ -19,6 +19,7 @@ interface CallSignals {
   phase: AvatarPhase
   message?: RobotAvatarState
   waitingForWake?: boolean
+  preparingWake?: boolean
   voicePhase: string
   playing: boolean
   outputBusy: boolean
@@ -31,12 +32,20 @@ interface CallSignals {
 
 export function orbPhaseFor(call: CallSignals): OrbPhase {
   if (call.playing) return 'playing'
+  // Keep moving while wake capture restarts, even if the last message stopped.
+  // Automatic capture is already receiving audio while the recognition session opens.
+  const startingCapture = call.voicePhase === 'requesting' || (call.voicePhase === 'preparing' && !call.microphoneOn)
+  if ((call.waitingForWake || call.preparingWake) && (call.phase === 'idle' || call.checking)
+    && !call.outputBusy && !call.sending && !call.microphoneOn && !startingCapture && call.voicePhase !== 'finishing') {
+    return call.waitingForWake ? 'wake' : 'idle'
+  }
   if (call.error) return 'error'
   if (call.outputBusy) return 'synth'
   if (call.sending) return 'sending'
   if (call.voicePhase === 'finishing') return 'transcribe'
-  if (call.voicePhase === 'preparing' || call.voicePhase === 'requesting') return 'ready'
+  if (startingCapture) return 'ready'
   if (call.message === 'waiting') return 'wait'
+  if (call.phase === 'listening' && call.microphoneOn) return 'listening'
   if (call.message === 'failed') return 'error'
   if (call.message === 'stopped') return 'stopped'
   if (call.checking) return 'check'
@@ -45,5 +54,5 @@ export function orbPhaseFor(call: CallSignals): OrbPhase {
   if (call.phase === 'thinking') return 'thinking'
   if (call.microphoneOn) return 'listening'
   if (call.muted) return 'muted'
-  return call.waitingForWake ? 'wake' : 'idle'
+  return 'idle'
 }

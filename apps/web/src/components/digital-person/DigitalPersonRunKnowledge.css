@@ -1,96 +1,81 @@
-.digital-run-header {
-  position: relative;
-  container-type: inline-size;
-}
-
-.digital-run-header .digital-run-detail-toggle {
-  position: static;
-  padding: 0;
-  align-self: start;
+button.digital-run-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
   border: 0;
+  text-align: start;
+  white-space: normal;
+  font-weight: inherit;
 }
 
-/* Keep the row clickable while the two disclosure buttons remain siblings. */
-.digital-run-detail-toggle::after {
-  content: '';
-  position: absolute;
-  inset: 0;
+.digital-run-header-summary {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.digital-run-header-arrow {
+  display: grid;
+  place-items: center;
+  width: calc(var(--mobile-control-regular) - var(--space-1));
+  min-height: var(--mobile-control-regular);
+  color: var(--text-muted);
+}
+
+@media (max-width: 1023px) {
+  .settings-layout .settings-content .digital-person-activity .digital-person-run button.btn.digital-run-header {
+    height: auto !important;
+    min-height: var(--mobile-control-touch) !important;
+  }
 }
 
 .digital-run-knowledge {
   display: inline-flex;
-  max-inline-size: 100%;
-  align-items: center;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-.digital-run-knowledge-text {
   min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: pre;
-}
-
-.digital-run-knowledge-compact {
-  display: none;
-}
-
-@container (max-width: 310px) {
-  .digital-run-knowledge-full {
-    position: absolute;
-    inline-size: 1px;
-    block-size: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
-
-  .digital-run-knowledge-compact {
-    display: inline;
-  }
-
-  .digital-run-knowledge-compact::before {
-    content: attr(data-text);
-  }
-}
-
-.digital-run-knowledge .digital-run-knowledge-toggle {
-  position: relative;
-  z-index: 1;
-  flex: none;
-  height: auto;
-  min-height: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  padding: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  line-height: normal;
-  text-align: start;
-  vertical-align: baseline;
+  max-inline-size: 100%;
+  gap: var(--space-2);
+  overflow-x: auto;
   white-space: nowrap;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.digital-run-knowledge .digital-run-knowledge-toggle:active {
-  background: var(--surface);
-}
-
-@media (hover: hover) {
-  .digital-run-knowledge .digital-run-knowledge-toggle:hover {
-    background: var(--surface);
-  }
-}
-
-.digital-run-knowledge-toggle svg {
-  margin-inline-start: var(--space-1);
-  color: var(--text-muted);
   vertical-align: middle;
 }
 
-.digital-run-knowledge-toggle[aria-expanded="true"] svg {
-  transform: rotate(180deg);
+.digital-run-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.digital-run-knowledge--typed {
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  overflow-x: visible;
+}
+
+.digital-run-knowledge--typed > span { white-space: nowrap; }
+.digital-run-knowledge--typed > span:first-child { flex-basis: 100%; }
+.digital-run-knowledge-kind {
+  margin-inline-end: var(--space-2);
+  color: var(--text-muted);
+  font-size: .875em;
+}
+
+.digital-run-meta .digital-run-outcome { margin: 0; font: inherit; }
+.digital-run-meta .digital-run-outcome svg { display: none; }
+
+.digital-run-meta time {
+  margin-inline-start: auto;
+  max-width: none;
+  text-align: end;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .digital-run-knowledge-preview {
@@ -119,17 +104,4 @@
 
 .digital-run-knowledge-preview li + li {
   margin-top: var(--space-2);
-}
-
-@media (max-width: 1023px) {
-  .digital-run-knowledge .digital-run-knowledge-toggle {
-    font-size: inherit !important;
-    min-height: var(--mobile-control-touch);
-  }
-
-  /* Settings applies a fixed height to its regular mobile buttons. */
-  .settings-layout .settings-content .digital-person-activity .digital-run-knowledge button.btn.digital-run-knowledge-toggle {
-    height: auto !important;
-    min-height: var(--mobile-control-touch) !important;
-  }
 }

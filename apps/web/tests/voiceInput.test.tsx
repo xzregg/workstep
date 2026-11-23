@@ -142,37 +142,110 @@ test('mobile long press starts recording with existing text and scrolling cancel
   }
 })
 
-for (const width of [320, 390, 1023]) {
-  test(`mobile composer opens click dictation from the send position at ${width}px`, async () => {
+for (const width of [320, 390, 1023, 1440]) {
+  test(`composer previews successive paused phrases and inserts once at ${width}px`, async () => {
     const { window } = installDomEnvironment()
     window.happyDOM.setWindowSize({ width })
     const root = createRoot(document.body.appendChild(document.createElement('div')))
-    let changes = 0
+    const changes: string[] = []
+    let sent = 0
     const originalStatus = speechApi.status
     speechApi.status = async () => ({ enabled: true } as Awaited<ReturnType<typeof speechApi.status>>)
     const original = { capture: voiceCapture.start, start: speechApi.start, cancel: speechApi.cancel }
+    let turn = new TurnController()
+    let end = 0
+    let chunk!: Parameters<typeof voiceCapture.start>[0]
+    let started = 0
     let captures = 0
-    voiceCapture.start = async () => { captures++; return { stop() {}, flush() {} } }
-    speechApi.start = async () => ({ id: 'a'.repeat(32), sample_rate: 16000, max_seconds: 120 })
+    let stopped = false
+    let finishRecognition!: () => void
+    voiceCapture.start = async (callback, _signal, detectSpeech, _frameSamples, options) => {
+      assert.equal(detectSpeech, true)
+      assert.equal(options?.continuous, true)
+      captures++
+      chunk = callback
+      return { stop() { stopped = true }, flush: async () => turn.snapshot() }
+    }
+    const frames = (count: number, probability: number, level = 0) => {
+      for (let i = 0; i < count; i++) turn.frame({ end: end += 512, probability })
+      const state = turn.snapshot()
+      chunk(new Int16Array(count * 512), level, state)
+      if (state.canCommit) turn = new TurnController()
+    }
+    speechApi.start = async () => {
+      started++
+      return { id: String(started).repeat(32), sample_rate: 16000, max_seconds: 120,
+        streaming: width === 1440 ? 'segment' : 'final' }
+    }
     speechApi.cancel = async () => ({ cancelled: true })
     const originalAudio = speechApi.audio
-    speechApi.audio = () => new Promise(() => {})
+    speechApi.audio = async (id, _project, sequence, _audio, final) => {
+      assert.equal(final, true)
+      await new Promise<void>(resolve => { finishRecognition = resolve })
+      return { id, sequence, final, text: ['第一段。', '第二段。', '第三段。'][Number(id[0]) - 1] }
+    }
     try {
-      await act(async () => root.render(<I18nProvider><ChatInput value="" onChange={() => { changes++ }} onSend={() => {}} /></I18nProvider>))
-      assert.equal(document.querySelector('.voice-microphone'), null)
+      const render = (value: string) => root.render(<I18nProvider><ChatInput value={value} onChange={text => {
+        changes.push(text)
+        render(text)
+      }} onSend={() => { sent++ }} /></I18nProvider>)
+      await act(async () => render(''))
+      const mobile = width <= 1023
+      if (mobile) assert.equal(document.querySelector('.voice-microphone'), null)
       const input = document.querySelector('textarea')!
-      await act(async () => (document.querySelector('.chat-input-send') as HTMLButtonElement).click())
+      const preview = () => document.querySelector('.voice-input-transcript')?.textContent
+      const trigger = document.querySelector<HTMLButtonElement>(mobile ? '.chat-input-send' : '.voice-microphone')!
+      await act(async () => trigger.click())
       assert.ok(document.querySelector('.voice-input'))
       assert.equal(document.querySelector('.chat-input-editor')?.getAttribute('data-voice-mode'), 'true')
-      assert.equal(changes, 0)
+      assert.deepEqual(changes, [])
       assert.equal(document.querySelector('textarea'), input)
       assert.equal(input.disabled, false, 'the touch target must remain enabled')
       assert.equal(input.readOnly, true, 'freeze editing without disabling the touch target')
+      await act(async () => frames(20, .02))
+      assert.equal(started, 0)
+      if (mobile) {
+        const meter = document.querySelector('.voice-input-waveform')
+        assert.equal(preview(), '', 'reserve the transcript area before recognition returns')
+        assert.equal(meter?.getAttribute('aria-valuenow'), '0')
+        assert.equal(meter?.hasAttribute('data-audible'), false)
+        await act(async () => frames(2, .02, .65))
+        assert.equal(meter?.getAttribute('aria-valuenow'), '0.65')
+        assert.equal(meter?.hasAttribute('data-audible'), true)
+        assert.equal(document.querySelector('.chat-input-frame')?.getAttribute('data-compact-voice'), 'true')
+      }
+      await act(async () => { frames(4, .9); frames(10, .02) })
+      if (mobile) assert.equal(document.querySelector('.voice-input-waveform')?.hasAttribute('data-audible'), false)
+      assert.equal(started, 1)
+      assert.equal(stopped, false)
+      assert.ok(Array.from(document.querySelectorAll('button')).some(button => button.textContent === '完成录音'))
+      await act(async () => frames(9, .02))
+      assert.equal(stopped, false)
+      // The next phrase may arrive while the preceding ASR request is pending.
+      await act(async () => { frames(4, .9); frames(20, .02) })
+      assert.equal(started, 1)
+      await act(async () => finishRecognition())
+      assert.equal(preview(), '第一段。')
+      assert.equal(input.value, '')
+      assert.equal(started, 2)
+      await act(async () => finishRecognition())
+      assert.equal(preview(), '第一段。第二段。')
+      assert.equal(input.value, '')
+      assert.deepEqual(changes, [])
+      assert.equal(input.readOnly, true)
+      await act(async () => frames(4, .9))
       await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent === '完成录音')!.click())
+      assert.equal(stopped, true)
+      assert.equal(input.readOnly, true)
+      assert.equal(preview(), '第一段。第二段。')
+      assert.equal(input.value, '')
+      await act(async () => finishRecognition())
+      assert.equal(input.value, '第一段。第二段。第三段。')
+      assert.deepEqual(changes, ['第一段。第二段。第三段。'])
+      assert.equal(preview(), undefined)
+      assert.equal(input.readOnly, false)
       assert.equal(captures, 1)
-      assert.equal(input.readOnly, true, 'keep the editor frozen while recognition finishes')
-      assert.doesNotMatch(document.querySelector('.voice-input')!.textContent!, /正在录音/)
-      assert.doesNotMatch(document.querySelector('.voice-input-actions')!.textContent!, /开始录音/)
+      assert.equal(sent, 0)
     } finally {
       await act(async () => root.unmount()); await window.happyDOM.close()
       voiceCapture.start = original.capture; speechApi.start = original.start; speechApi.cancel = original.cancel; speechApi.audio = originalAudio; speechApi.status = originalStatus
@@ -252,6 +325,61 @@ test('dictation buffers preparation audio, coalesces queued chunks, and revises 
   } finally {
     await act(async () => root.unmount()); await window.happyDOM.close()
     voiceCapture.start = original.capture; speechApi.start = original.start; speechApi.audio = original.audio; speechApi.cancel = original.cancel
+  }
+})
+
+test('backgrounding cancels permission acquisition and releases a late stream before retry', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const originalContext = globalThis.AudioContext
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true })
+  let requests = 0, stopped = 0, closed = 0
+  let grant!: (stream: MediaStream) => void
+  class Context {
+    async resume() {}
+    async close() { closed++ }
+  }
+  globalThis.AudioContext = Context as unknown as typeof AudioContext
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
+    getUserMedia() {
+      if (++requests === 1) return new Promise<MediaStream>(resolve => { grant = resolve })
+      return Promise.reject(new DOMException('Permission revoked', 'NotAllowedError'))
+    },
+  } })
+  let state!: ReturnType<typeof useVoiceInput>
+  function Harness() {
+    state = useVoiceInput({ ownerKey: 'visibility', disabled: false, compact: false, automatic: true,
+      value: '', cursor: 0, onInsert: () => assert.fail('late output') })
+    return null
+  }
+  const visibility = (hidden: boolean) => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: hidden })
+    document.dispatchEvent(new window.Event('visibilitychange'))
+  }
+  try {
+    await act(async () => root.render(<Harness />))
+    await act(async () => { void state.start(); void state.start() })
+    assert.equal(state.phase, 'requesting')
+    assert.equal(requests, 1)
+    await act(async () => visibility(true))
+    assert.equal(state.phase, 'idle')
+    assert.equal(closed, 1)
+    await act(async () => state.start())
+    assert.equal(requests, 1)
+    await act(async () => {
+      grant({ getTracks: () => [{ stop() { stopped++ } }] } as unknown as MediaStream)
+      visibility(false)
+    })
+    assert.equal(stopped, 1)
+    assert.equal(requests, 1)
+    await act(async () => state.start())
+    assert.equal(state.error, 'speech.permissionDenied')
+    assert.equal(requests, 2)
+    assert.equal(closed, 2)
+  } finally {
+    await act(async () => root.unmount())
+    globalThis.AudioContext = originalContext
+    await window.happyDOM.close()
   }
 })
 
@@ -631,10 +759,16 @@ test('mobile empty composer uses click dictation and switches to send for text',
     await act(async () => action().click())
     assert.equal(sent, 1)
     assert.equal(captures, 1)
+    const microphone = document.querySelector<HTMLButtonElement>('.voice-microphone')!
+    await act(async () => microphone.click())
+    assert.equal(document.querySelector('.voice-input-draft')?.textContent, '草稿')
+    await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent === '取消录音')!.click())
+    assert.equal(document.querySelector('.voice-input-draft'), null)
+    assert.equal(document.querySelector('textarea')?.value, '草稿')
     await render('', true)
     await act(async () => action().click())
     assert.equal(stopped, 1)
-    assert.equal(captures, 1)
+    assert.equal(captures, 2)
     await render('', false, true)
     assert.equal(action().disabled, true)
     enabled = false
@@ -697,4 +831,72 @@ test('automatic recognition keeps pre-roll and invalidates an in-flight candidat
   assert.equal(requests[1].length,20*512)
   assert.deepEqual(requests[2],{length:0,final:true},'reuse the new candidate after confirming silence')
  }finally{await act(async()=>root.unmount());Object.assign(speechApi,original);voiceCapture.start=start;await window.happyDOM.close()}
+})
+
+test('the listening meter gates input by recent speech and capture time, clears on device loss', async () => {
+  const {window}=installDomEnvironment()
+  const originalController=globalThis.AbortController
+  globalThis.AbortController=window.AbortController as unknown as typeof AbortController
+  const root=createRoot(document.body.appendChild(document.createElement('div')))
+  const original={ capture:voiceCapture.start, start:speechApi.start, cancel:speechApi.cancel }
+  let state!:ReturnType<typeof useVoiceInput>
+  let chunk!:Parameters<typeof voiceCapture.start>[0]
+  let signal!:AbortSignal
+  let showLevel=true
+  let stopped=false
+  const vad=new TurnController()
+  let end=0
+  const frame=(probability:number)=>vad.frame({end:end+=512,probability})
+  function Harness(){
+    state=useVoiceInput({ownerKey:'meter',disabled:false,compact:false,automatic:true,trackSpeechLevel:true,
+      showLevel,value:'',cursor:0,onInsert:()=>{}})
+    return null
+  }
+  voiceCapture.start=async (callback,abort)=>{
+    chunk=callback; signal=abort
+    return {stop(){stopped=true},flush:()=>vad.snapshot()}
+  }
+  speechApi.start=async()=>({id:'meter',sample_rate:16000,max_seconds:120})
+  speechApi.cancel=async()=>({cancelled:true})
+  const push=(level:number,capturedAt=performance.now())=>act(async()=>{
+    chunk(new Int16Array(512),level,vad.snapshot(),capturedAt)
+  })
+  try{
+    await act(async()=>root.render(<Harness/>))
+    await act(async()=>state.start())
+    frame(.02)
+    await push(.8)
+    assert.equal(state.readSpeechLevel(),0)
+    for(let index=0;index<3;index++)frame(.8)
+    await push(.3,performance.now()-200)
+    assert.equal(state.readSpeechLevel(),0)
+    await push(.3)
+    assert.equal(state.readSpeechLevel(),.3)
+    await push(NaN)
+    assert.equal(state.readSpeechLevel(),.12)
+    frame(.02)
+    frame(.02)
+    await push(.6)
+    assert.equal(state.readSpeechLevel(),0)
+    frame(.8)
+    await push(.4)
+    showLevel=false
+    await act(async()=>root.render(<Harness/>))
+    await push(.4)
+    assert.equal(state.level,0,'the hidden React meter stays quiet')
+    assert.equal(state.readSpeechLevel(),.4,'the microphone button can still read current speech')
+    showLevel=true
+    await act(async()=>root.render(<Harness/>))
+    await push(.4)
+    await act(async()=>signal.dispatchEvent(new Event('error')))
+    assert.equal(state.readSpeechLevel(),0)
+    assert.ok(stopped)
+  }finally{
+    globalThis.AbortController=originalController
+    voiceCapture.start=original.capture
+    speechApi.start=original.start
+    speechApi.cancel=original.cancel
+    await act(async()=>root.unmount())
+    await window.happyDOM.close()
+  }
 })

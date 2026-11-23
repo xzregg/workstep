@@ -1,12 +1,13 @@
 import {installDomEnvironment} from './helpers/domEnv'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {act,useState} from 'react'
+import {act,StrictMode,useState} from 'react'
 import {createRoot} from 'react-dom/client'
 import {MemoryRouter,useLocation} from 'react-router-dom'
 import {I18nProvider,useLocaleStore} from '../src/i18n'
 import DigitalPersonHome from '../src/components/digital-person/DigitalPersonHome'
 import {wakeWordRuntime} from '../src/components/digital-person/DigitalPersonWake'
+import {setWakeEnabled} from '../src/components/digital-person/wakePreferences'
 import {speechOutputApi} from '../src/api/speechOutput'
 import {pendingMessageInsertApi} from '../src/api/client'
 import {digitalRuntimeApi,digitalAffectApi,voiceWakeApi} from '../src/api/digitalPerson'
@@ -66,8 +67,10 @@ test('gateway wake listening works with the speaker muted and rearms after a sil
  let loads=0
  let readyDetector=()=>{}
  const initializing=new Promise<void>(resolve=>{readyDetector=resolve})
+ let readyMicrophone=()=>{}
+ const openingMicrophone=new Promise<void>(resolve=>{readyMicrophone=resolve})
  let frame!: Parameters<typeof voiceCapture.start>[0]
- voiceCapture.start=async callback=>{frame=callback;return {stop(){},flush(){}}}
+ voiceCapture.start=async callback=>{frame=callback;await openingMicrophone;return {stop(){},flush(){}}}
  wakeWordRuntime.load=async()=>{
   loads++
   return {preloadWakeWord:async()=>new ArrayBuffer(0),openWakeWord:async()=>{
@@ -97,7 +100,12 @@ test('gateway wake listening works with the speaker muted and rearms after a sil
   assert.equal(loads,1)
   assert.equal(document.querySelector('.digital-person-listening'),null)
   assert.doesNotMatch(identity.textContent!,/等待唤醒|Wake standby/)
+  assert.doesNotMatch(document.querySelector('.digital-home-detail-state')!.textContent!,/等待唤醒|Wake standby/)
+  await act(async()=>frame(Int16Array.of(1),0))
+  assert.equal(document.querySelector('.digital-home-end')?.getAttribute('data-action'),'phone')
   await act(async()=>readyDetector())
+  assert.doesNotMatch(identity.textContent!,/等待唤醒|Wake standby/)
+  await act(async()=>readyMicrophone())
   assert.match(identity.textContent!,/等待唤醒|Wake standby/)
   assert.match(document.querySelector('.digital-home-detail-state')!.textContent!,/等待唤醒|Wake standby/)
   await act(async()=>wake.click())
@@ -112,6 +120,20 @@ test('gateway wake listening works with the speaker muted and rearms after a sil
   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,150))})
   assert.equal(document.querySelector('.digital-home-end')?.getAttribute('data-action'),'phone')
   assert.match(identity.textContent!,/等待唤醒|Wake standby/)
+  await act(async()=>frame(Int16Array.of(1),0))
+  const phone=document.querySelector<HTMLButtonElement>('.digital-home-end')!
+  const microphone=document.querySelector<HTMLButtonElement>('.digital-home-microphone')!
+  await act(async()=>microphone.click())
+  assert.equal(phone.getAttribute('data-action'),'hangup')
+  assert.match(identity.textContent!,/待命/)
+  await act(async()=>phone.click())
+  assert.match(identity.textContent!,/等待唤醒|Wake standby/)
+  await act(async()=>document.querySelector<HTMLButtonElement>('.digital-home-dock-transcript')!.click())
+  assert.match(identity.textContent!,/待命|Standby/)
+  await act(async()=>window.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape'})))
+  assert.match(identity.textContent!,/等待唤醒|Wake standby/)
+  await act(async()=>window.dispatchEvent(new window.CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{projectId:'p',sessionId:'main',playing:true,level:.5}})))
+  assert.match(identity.textContent!,/正在回应|Responding|Speaking/)
  } finally {
   await act(async()=>root.unmount())
   useGatewaySessionStore.setState({session:originalSession})
@@ -153,13 +175,15 @@ test('avatar home uses real conversation and delegated state, text view and retu
  }finally{await act(async()=>root.unmount());await window.happyDOM.close();speechOutputApi.status=oldStatus}
 })
 
-test('voice starts only by gesture, mute releases capture and hiding never restarts microphone',async()=>{
+test('voice starts only by gesture, mute releases capture and hiding never restarts microphone',async context=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
  const oldStatus=speechOutputApi.status,oldStart=voiceCapture.start,oldSpeech={...speechApi}
  const locale=useLocaleStore.getState().locale;useLocaleStore.setState({locale:'zh-CN'})
- let captures=0,stops=0,modelStops=0
+ let captures=0,stops=0,modelStops=0,grantMicrophone=()=>{}
+ const microphonePermission=new Promise<void>(resolve=>{grantMicrophone=resolve})
+ context.mock.timers.enable({apis:['setTimeout']})
  speechOutputApi.status=async()=>structuredClone(outputStatus)
- voiceCapture.start=async()=>{captures++;return {stop:()=>stops++,flush:async()=>{}}}
+ voiceCapture.start=async()=>{if(++captures===1)await microphonePermission;return {stop:()=>stops++,flush:async()=>{}}}
  speechApi.start=async()=>({id:'voice',sample_rate:16000,streaming:'native'}) as any
  speechApi.cancel=async()=>({cancelled:true}) as any
  const render=(running=false)=>root.render(<MemoryRouter><I18nProvider><DigitalPersonHome profile={profile} activity={null} projectId="p" projectName="默认工作区" sessionId="main" messages={[]} inputValue="" onDraft={()=>{}} running={running} active onSend={async()=>true} onStop={async()=>{modelStops++;return true}}/></I18nProvider></MemoryRouter>)
@@ -169,12 +193,21 @@ test('voice starts only by gesture, mute releases capture and hiding never resta
   const call=host.querySelector<HTMLButtonElement>('.digital-home-end')!
   assert.equal(call.disabled,false,'continuous conversation has its own idle entry')
   assert.equal(call.getAttribute('aria-label'),'开始连续对话')
-  assert.equal(host.querySelector('.digital-home-microphone')!.getAttribute('aria-label'),'开始语音输入')
+  const microphone=host.querySelector<HTMLButtonElement>('.digital-home-microphone')!
+  assert.equal(microphone.getAttribute('aria-label'),'麦克风')
+  assert.equal(microphone.getAttribute('aria-description'),'开始语音输入')
+  const micIcon=microphone.querySelector('.digital-home-mic-off')?.outerHTML
+  assert.ok(micIcon)
+  assert.equal(microphone.querySelector('.digital-home-mic-on'),null)
   const speaker=host.querySelector<HTMLButtonElement>('.digital-home-speaker')
   assert.ok(speaker, 'speaker control is available independently of capture')
   assert.equal(speaker.getAttribute('aria-pressed'),'true')
+  assert.equal(speaker.querySelector('path[d="m2 2 20 20"]'),null)
   await act(async()=>speaker.click())
   assert.equal(speaker.getAttribute('aria-pressed'),'false')
+  assert.ok(speaker.querySelector('path[d="m2 2 20 20"]'))
+  assert.equal(speaker.getAttribute('aria-label'),'声音')
+  assert.equal(speaker.title,'开启声音')
   assert.equal(captures,0)
   const controls=Array.from(host.querySelector('.digital-home-voice-dock')!.children)
   assert.equal(controls.length,4)
@@ -182,12 +215,30 @@ test('voice starts only by gesture, mute releases capture and hiding never resta
   assert.ok(controls[1].classList.contains('digital-home-speaker'))
   assert.ok(controls[2].classList.contains('digital-home-microphone'))
   assert.equal(controls[3],call)
-  await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-microphone')!.click())
+  await act(async()=>microphone.click())
+  assert.equal(microphone.getAttribute('aria-busy'),'true')
+  assert.equal(microphone.getAttribute('aria-pressed'),'false')
+  assert.equal(microphone.querySelector('.digital-home-mic-off')?.outerHTML,micIcon)
+  assert.equal(microphone.querySelector('.digital-home-mic-on'),null)
+  await act(async()=>microphone.click())
+  await act(async()=>context.mock.timers.tick(300))
+  assert.ok(microphone.querySelector('.spinner'))
+  await act(async()=>grantMicrophone())
   assert.equal(captures,1)
+  assert.equal(microphone.getAttribute('aria-busy'),'false')
   assert.equal(host.querySelector<HTMLButtonElement>('.digital-home-end')!.disabled,false, 'started dialogue can be ended')
   assert.equal(host.querySelector('.digital-home-microphone')?.getAttribute('aria-pressed'),'true')
+  assert.equal(microphone.getAttribute('aria-label'),'麦克风')
+  assert.equal(microphone.getAttribute('aria-description'),'取消语音输入')
+  assert.ok(microphone.querySelector('.digital-home-mic-on'))
+  assert.equal(microphone.querySelector('.digital-home-mic-off'),null)
+  const meter=host.querySelector('.digital-home-mic-fill')
+  assert.equal(meter?.querySelector('svg')?.getAttribute('fill'),'currentColor','active capture shows the mic fill layer')
+  assert.equal(meter?.getAttribute('aria-hidden'),'true')
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-microphone')!.click())
   assert.equal(captures,1);assert.ok(stops>0)
+  assert.equal(microphone.querySelector('.digital-home-mic-off')?.outerHTML,micIcon)
+  assert.equal(host.querySelector('.digital-home-mic-fill'),null)
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-microphone')!.click())
   assert.equal(captures,2)
   Object.defineProperty(document,'hidden',{configurable:true,value:true})
@@ -378,6 +429,81 @@ test('opening and closing transcript preserves the same live camera stream',asyn
  }finally{await act(async()=>root.unmount());speechOutputApi.status=oldStatus;await window.happyDOM.close()}
 })
 
+test('refresh restores media without resuming a call or sharing the mic with wake',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ window.happyDOM.setURL('https://local.invalid/companion')
+ Object.defineProperty(document,'hidden',{configurable:true,value:false})
+ const oldStatus=speechOutputApi.status,oldSpeechStatus=speechApi.status,oldCapture=voiceCapture.start,oldLoad=wakeWordRuntime.load,oldWake=voiceWakeApi.get
+ let microphoneStarts=0,openMicrophones=0
+ const cameraStarts:string[]=[]
+ speechOutputApi.status=async()=>structuredClone(outputStatus)
+ speechApi.status=async()=>({enabled:true,ready:true}) as Awaited<ReturnType<typeof speechApi.status>>
+ voiceWakeApi.get=async()=>({keyword:'小研',sensitivity:'balanced',available:false,listening:false})
+ wakeWordRuntime.load=async()=>({
+  preloadWakeWord:async()=>new ArrayBuffer(0),
+  openWakeWord:async()=>({matches:async()=>false,close(){}}),
+ })
+ voiceCapture.start=async(_frame,signal)=>{
+  assert.equal(openMicrophones,0,'wake and manual capture never acquire the microphone together')
+  microphoneStarts++;openMicrophones++
+  let stopped=false
+  const stop=()=>{if(!stopped){stopped=true;openMicrophones--}}
+  signal?.addEventListener('abort',stop,{once:true})
+  return {stop,flush:async()=>{}}
+ }
+ const track={stop(){},addEventListener(){},readyState:'live'}
+ Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async({video}:any)=>{
+  cameraStarts.push(video.facingMode.ideal)
+  return {getTracks:()=>[track],getVideoTracks:()=>[track]}
+ }}})
+ Object.defineProperty(window.HTMLVideoElement.prototype,'srcObject',{configurable:true,writable:true,value:null})
+ window.HTMLVideoElement.prototype.play=async()=>{}
+ const render=async(version:number)=>{
+  await act(async()=>root.render(<StrictMode><MemoryRouter><I18nProvider><DigitalPersonHome key={version}
+   profile={profile} activity={null} projectId="p" projectName="p" sessionId="main" messages={[]}
+   inputValue="" onDraft={()=>{}} running={false} active onSend={async()=>true} onStop={async()=>true}
+  /></I18nProvider></MemoryRouter></StrictMode>))
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
+ }
+ const button=(selector:string)=>host.querySelector<HTMLButtonElement>(selector)!
+ const click=(selector:string)=>act(async()=>button(selector).click())
+ const pressed=(selector:string)=>button(selector).getAttribute('aria-pressed')
+ try{
+  await render(0)
+  assert.equal(microphoneStarts,0)
+  await click('.digital-home-speaker')
+  await click('[data-camera-toggle]')
+  await click('.digital-person-camera-switch')
+  await click('.digital-home-microphone')
+  assert.deepEqual(cameraStarts,['environment','user'])
+  assert.equal(microphoneStarts,1)
+  await act(async()=>setWakeEnabled(true))
+  assert.equal(microphoneStarts,1)
+  await render(1)
+  assert.equal(pressed('.digital-home-speaker'),'false')
+  assert.equal(pressed('[data-camera-toggle]'),'true')
+  assert.deepEqual(cameraStarts,['environment','user','user'])
+  assert.equal(pressed('.digital-home-microphone'),'true')
+  assert.equal(button('.digital-home-end').dataset.action,'phone')
+  assert.equal(microphoneStarts,2,'refresh starts manual capture once, without opening wake capture')
+  await click('.digital-home-microphone')
+  assert.equal(pressed('.digital-home-microphone'),'false')
+  assert.equal(microphoneStarts,3,'wake resumes after the manual mic closes')
+  await click('[data-camera-toggle]')
+  await click('.digital-home-end')
+  assert.equal(button('.digital-home-end').dataset.action,'hangup')
+  await render(2)
+  assert.equal(button('.digital-home-end').dataset.action,'phone')
+  assert.equal(pressed('.digital-home-microphone'),'false')
+  assert.equal(pressed('[data-camera-toggle]'),'false')
+  assert.equal(cameraStarts.length,3)
+ }finally{
+  await act(async()=>root.unmount())
+  speechOutputApi.status=oldStatus;speechApi.status=oldSpeechStatus;voiceCapture.start=oldCapture;wakeWordRuntime.load=oldLoad;voiceWakeApi.get=oldWake
+  await window.happyDOM.close()
+ }
+})
+
 
 test('presence corner shows identity, affinity and the reflection count',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
@@ -399,12 +525,14 @@ test('presence corner shows identity, affinity and the reflection count',async()
  }finally{await act(async()=>root.unmount());digitalRuntimeApi.records=oldRecords;digitalAffectApi.read=oldAffect;speechOutputApi.status=oldStatus;await window.happyDOM.close()}
 })
 
-function mockVoice(callback:Parameters<typeof voiceCapture.start>[0]) {
- const turn=new TurnController()
+function mockVoice(callback:Parameters<typeof voiceCapture.start>[0], options?:Parameters<typeof voiceCapture.start>[4]) {
+ let turn=new TurnController(options?.phoneCall)
  let end=0
  const emit=(probability:number,count=16)=>{
   for(let i=0;i<count;i++)turn.frame({end:end+=512,probability})
-  callback(new Int16Array(count*512),.4,turn.snapshot())
+  const state=turn.snapshot()
+  callback(new Int16Array(count*512),.4,state)
+  if(options?.continuous&&state.canCommit)turn=new TurnController(options.phoneCall)
  }
  return {emit,capture:{stop(){},flush:async()=>turn.snapshot()}}
 }
@@ -418,7 +546,9 @@ test('manual microphone leaves final text in the caption and sends only through 
  speechApi.start=async()=>({id:'live-preview',sample_rate:16000,streaming:'native'}) as any
  speechApi.cancel=async()=>({cancelled:true}) as any
  speechApi.audio=async(id,_p,sequence,_audio,final)=>({id,sequence,final,text})
- voiceCapture.start=async callback=>{const mock=mockVoice(callback);frame=mock.emit;return mock.capture}
+ voiceCapture.start=async(callback,_token,_detect,_size,options)=>{
+  const mock=mockVoice(callback,options);frame=mock.emit;return mock.capture
+ }
  try{
   await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonHome profile={profile} activity={null} projectId="p" projectName="p" sessionId="live-preview" messages={[]} inputValue="" onDraft={()=>{}} running={false} active onSend={async content=>{sent++;submissions.push(content);return true}} onStop={async()=>true}/></I18nProvider></MemoryRouter>))
   const mic=host.querySelector<HTMLButtonElement>('.digital-home-microphone')!
@@ -512,7 +642,9 @@ test('continuous voice queues recognized turns during execution and sends direct
  speechApi.start=async()=>({id:'home-supplement',sample_rate:16000,streaming:'native'}) as any
  speechApi.cancel=async()=>({cancelled:true}) as any
  speechApi.audio=async(id,_p,sequence,_audio,final)=>({id,sequence,final,text})
- voiceCapture.start=async callback=>{captures++;const mock=mockVoice(callback);frame=mock.emit;return mock.capture}
+ voiceCapture.start=async(callback,_token,_detect,_frameSize,options)=>{
+  captures++;const mock=mockVoice(callback,options);frame=mock.emit;return mock.capture
+ }
  saveDraft('home-supplement','手写内容')
  function Harness({running,question}:{running:boolean;question?:string}){
   const [input,setInput]=useState('手写内容')
@@ -521,7 +653,7 @@ test('continuous voice queues recognized turns during execution and sends direct
  const say=async(value:string)=>{
   text=value
   await act(async()=>frame(.8))
-  await act(async()=>frame(.02,19))
+  await act(async()=>frame(.02,40))
  }
  try{
   await act(async()=>root.render(<Harness running={false}/>))
@@ -530,7 +662,9 @@ test('continuous voice queues recognized turns during execution and sends direct
   await act(async()=>root.render(<Harness running/>))
   await act(async()=>frame(.8))
   assert.match(host.querySelector('.digital-home-live-caption')!.textContent!,/请检查移动端/)
-  await act(async()=>frame(.02,19))
+  await act(async()=>frame(.02,25))
+  assert.deepEqual(inserted,[],'a natural pause never enters the pending queue')
+  await act(async()=>frame(.02,15))
   assert.deepEqual(sent,[],'generating replies queue the voice turn instead of dispatching it')
   assert.deepEqual(inserted,[['p','voice-target','请检查移动端']])
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-keyboard')!.click())
@@ -538,10 +672,10 @@ test('continuous voice queues recognized turns during execution and sends direct
   assert.equal(input.value,'手写内容','voice turns never append to the typed draft')
   text='再检查桌面端'
   await act(async()=>frame(.8))
-  await act(async()=>frame(.02,19))
+  await act(async()=>frame(.02,40))
   assert.deepEqual(inserted,[['p','voice-target','请检查移动端'],['p','voice-target','再检查桌面端']])
   assert.equal(input.value,'手写内容')
-  assert.equal(captures,3);assert.equal(call.dataset.action,'stop')
+  assert.equal(captures,1);assert.equal(call.dataset.action,'stop')
   assert.ok(document.querySelector('.pending-insert-row'),'queued voice turns share the pending insert panel')
   await say('嗯，啊啊。')
   assert.equal(inserted.length,2,'standalone fillers never enter the pending queue')
@@ -561,7 +695,7 @@ test('continuous voice queues recognized turns during execution and sends direct
   assert.deepEqual(sent,[],'standalone fillers are ignored while idle too')
   await say('嗯，继续查一下')
   await say('停')
-  assert.deepEqual(sent,['嗯，继续查一下','停'],'meaningful turns and short commands send immediately')
+  assert.deepEqual(sent,['嗯，继续查一下','停'],'meaningful turns and short commands send after the silence threshold')
   assert.deepEqual(inserted,[['p','voice-target','请检查移动端'],['p','voice-target','再检查桌面端']])
   await act(async()=>root.render(<Harness running={false} question="你想先检查什么？"/>))
   await say('嗯。')
@@ -571,6 +705,7 @@ test('continuous voice queues recognized turns during execution and sends direct
   assert.equal(sent.length,2,'hesitation alone is not a confirmation')
   await say('嗯。')
   assert.deepEqual(sent,['嗯，继续查一下','停','嗯。'])
-  assert.equal(call.getAttribute('aria-pressed'),'true')
+  assert.equal(call.dataset.action,'hangup')
+  assert.equal(call.getAttribute('aria-pressed'),null)
  }finally{await act(async()=>root.unmount());speechOutputApi.status=oldStatus;Object.assign(speechApi,oldSpeech);Object.assign(pendingMessageInsertApi,oldPending);voiceCapture.start=oldStart;await window.happyDOM.close()}
 })

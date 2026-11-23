@@ -15,6 +15,19 @@ interface AttachmentOptions {
   focusCursor: (markdown: string, cursor: number) => void
 }
 
+function diagnosticsFile(text: string | undefined): File | undefined {
+  if (!text || text.length < 16 * 1024 || text.length > 2 * 1024 * 1024 ||
+      !/^\s*\{\s*"schemaVersion"\s*:\s*1\s*,/.test(text.slice(0, 128))) return
+  try {
+    const report = JSON.parse(text)
+    if (typeof report.exportedAt !== 'string' || !report.environment ||
+        !('recording' in report) || !Array.isArray(report.logs) || typeof report.truncated !== 'boolean') return
+    return new File([text], 'WorkStep-runtime-diagnostics.json', { type: 'application/json' })
+  } catch {
+    return
+  }
+}
+
 /** Owns the upload and insertion transaction shared by picker, paste and drop. */
 export function useChatInputAttachments({
   imageAttach, valueRef, cursor, onChange, onCursorChange, undoSnapshotRef, focusCursor,
@@ -79,6 +92,10 @@ export function useChatInputAttachments({
       .filter((item) => item.kind === 'file')
       .map((item) => item.getAsFile())
       .filter((file): file is File => Boolean(file))
+    if (!files.length) {
+      const report = diagnosticsFile(event.clipboardData?.getData?.('text/plain'))
+      if (report) files.push(report)
+    }
     if (files.length === 0) return
     event.preventDefault()
     void handleAttachments(files)

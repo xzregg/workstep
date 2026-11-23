@@ -108,7 +108,7 @@ public final class MainActivity extends Activity {
     private String notificationProjectId = "";
     private String notificationProjectName = "";
     private int notificationNavigationGeneration;
-    private final AtlasPerformanceCapture atlasPerformance = new AtlasPerformanceCapture();
+    private RuntimeDiagnostics runtimeDiagnostics;
 
     static boolean isVisibleToUser() { return activityVisible; }
 
@@ -160,6 +160,11 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        WebView.setWebContentsDebuggingEnabled((getApplicationInfo().flags
+                & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
+        runtimeDiagnostics = new RuntimeDiagnostics(this,
+                () -> canCapturePerformance() ? webView : null,
+                () -> server == null ? "" : server.origin(), foregroundRefresh::externalPickerStarted);
         CrashReports.install(this, "网页主进程");
         CrashReports.log(this, "网页主进程", "应用启动；" + CrashReports.version(this), null);
         root = new FrameLayout(this);
@@ -191,7 +196,7 @@ public final class MainActivity extends Activity {
     }
 
     private void clearPage() {
-        atlasPerformance.cancel(false);
+        runtimeDiagnostics.navigation();
         if (systemSpeech != null) { systemSpeech.close(); systemSpeech = null; }
         if (imageCapture != null) imageCapture.clear();
         if (microphonePermissions != null) microphonePermissions.clear();
@@ -287,6 +292,10 @@ public final class MainActivity extends Activity {
         TextView error = new TextView(this);
         error.setTextColor(0xFFB3261E);
         page.addView(error);
+        Button diagnosticsButton = new Button(this);
+        diagnosticsButton.setText(R.string.runtime_diagnostics);
+        diagnosticsButton.setOnClickListener(view -> runtimeDiagnostics.open());
+        page.addView(diagnosticsButton);
 
         connect.setOnClickListener(view -> {
             ServerAddress candidate;
@@ -441,6 +450,11 @@ public final class MainActivity extends Activity {
                         if (source != webView || !isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
                         if (systemSpeech != null) systemSpeech.handleWakeChime(message.getData(), reply);
                     });
+            WebViewCompat.addWebMessageListener(view, "WorkStepWakeGreeting",
+                    Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
+                        if (source != webView || !isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
+                        if (systemSpeech != null) systemSpeech.handleWakeGreeting(message.getData(), reply);
+                    });
             WebViewCompat.addWebMessageListener(view, "WorkStepAndroid",
                     Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
                         if (!isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
@@ -455,7 +469,7 @@ public final class MainActivity extends Activity {
                 if (source != webView) return;
                 // The configured WorkStep page can start its capture graph on standby.
                 source.getSettings().setMediaPlaybackRequiresUserGesture(server == null || !server.contains(url));
-                atlasPerformance.cancel(false);
+                runtimeDiagnostics.navigation();
                 microphonePermissions.clear();
                 if (systemSpeech != null) systemSpeech.stop();
                 notificationProjectId = "";
@@ -838,11 +852,7 @@ public final class MainActivity extends Activity {
                 showAddressScreen(server.origin());
                 return true;
             });
-            menu.getMenu().add(R.string.atlas_capture_performance).setOnMenuItemClickListener(item -> {
-                if (canCapturePerformance()) atlasPerformance.start(this, webView);
-                else Toast.makeText(this, R.string.atlas_open_first, Toast.LENGTH_SHORT).show();
-                return true;
-            });
+
             menu.getMenu().add(R.string.keep_screen_on)
                     .setCheckable(true)
                     .setChecked(getPreferences(MODE_PRIVATE).getBoolean(KEEP_SCREEN_ON_KEY, true))
@@ -866,8 +876,8 @@ public final class MainActivity extends Activity {
                     return true;
                 });
             }
-            menu.getMenu().add(R.string.view_logs).setOnMenuItemClickListener(item -> {
-                CrashReports.showLogs(this);
+            menu.getMenu().add(R.string.runtime_diagnostics).setOnMenuItemClickListener(item -> {
+                runtimeDiagnostics.open();
                 return true;
             });
             menu.getMenu().add(R.string.test_notification).setOnMenuItemClickListener(item -> {
@@ -1077,8 +1087,8 @@ public final class MainActivity extends Activity {
             panel.addView(devices);
         }
         Button logs = new Button(this);
-        logs.setText(R.string.view_logs);
-        logs.setOnClickListener(view -> CrashReports.showLogs(this));
+        logs.setText(R.string.runtime_diagnostics);
+        logs.setOnClickListener(view -> runtimeDiagnostics.open());
         panel.addView(logs);
         Button change = new Button(this);
         change.setText(R.string.change_address);
@@ -1098,7 +1108,7 @@ public final class MainActivity extends Activity {
 
     private boolean canCapturePerformance() {
         String url = webView == null ? null : webView.getUrl();
-        return url != null && server != null && server.contains(url);
+        return url != null && server != null && server.contains(url) && !pageLoading && !pageHadError;
     }
 
     private void returnToDevices() {
@@ -1118,6 +1128,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (runtimeDiagnostics.activityResult(requestCode, resultCode, data)) return;
         if (apkInstaller.onActivityResult(requestCode)) return;
         if (requestCode == SAVE_REQUEST) {
             PendingDownload download = pendingDownload;
@@ -1145,7 +1156,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
-        atlasPerformance.cancel(true);
+        runtimeDiagnostics.stop("hidden", null);
         CrashReports.log(this, "网页主进程", "进入后台；监听数量=" + completionWatches.size(), null);
         startCompletionWatchService();
         activityVisible = false;
@@ -1248,6 +1259,7 @@ public final class MainActivity extends Activity {
         activityVisible = false;
         clearPage();
         apkInstaller.dispose();
+        runtimeDiagnostics.destroy();
         executor.shutdownNow();
         super.onDestroy();
     }

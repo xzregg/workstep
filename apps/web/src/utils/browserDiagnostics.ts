@@ -2,7 +2,7 @@ import { diagnosticRoute, redactDiagnosticText, type DiagnosticPrivacyContext } 
 import { limitFeedbackText, summarizeErrors } from '../../../desktop/src/feedback-summary.mjs'
 import desktopPackage from '../../../desktop/package.json' with { type: 'json' }
 
-interface DiagnosticRecord { at: string; kind: 'page' | 'request'; detail: string }
+interface DiagnosticRecord { at: string; kind: 'page' | 'request'; detail: string; level: 'error' | 'warn' | 'info' }
 type PrivacyContext = () => DiagnosticPrivacyContext
 
 function bounded(value: string, maxBytes = 2048): string {
@@ -20,11 +20,11 @@ export function createBrowserDiagnostics(privacy: PrivacyContext = () => ({})) {
   const records: DiagnosticRecord[] = []
   const requestErrors = new WeakMap<object, string>()
   let context = privacy
-  function record(kind: DiagnosticRecord['kind'], text: string) {
+  function record(kind: DiagnosticRecord['kind'], text: string, level: DiagnosticRecord['level'] = 'error') {
     const detail = bounded(kind === 'request' ? text : redactDiagnosticText(text, context()))
     const now = new Date().toISOString()
     if (records.at(-1)?.detail === detail && Date.parse(now) - Date.parse(records.at(-1)!.at) < 5000) return
-    records.push({ at: now, kind, detail })
+    records.push({ at: now, kind, detail, level })
     if (records.length > 100) records.shift()
   }
   return {
@@ -39,10 +39,13 @@ export function createBrowserDiagnostics(privacy: PrivacyContext = () => ({})) {
       if (reason && typeof reason === 'object') requestErrors.set(reason, detail)
       record('request', detail)
     },
+    recordSlowRequest(path: string, ms: number) {
+      if (ms >= 200) record('request', `慢请求 ${diagnosticRoute(path)} ${Math.round(ms)}ms`, 'warn')
+    },
     recordSpeechTiming({ requestMs, processingMs, queuedMs }: { requestMs: number; processingMs?: number; queuedMs: number }) {
       const ms = (value: number | undefined) => typeof value === 'number' && Number.isFinite(value)
         ? Math.round(Math.max(0, Math.min(120000, value))) : 'unknown'
-      record('request', `SPEECH request=${ms(requestMs)}ms inference=${ms(processingMs)}ms queued=${ms(queuedMs)}ms`)
+      record('request', `SPEECH request=${ms(requestMs)}ms inference=${ms(processingMs)}ms queued=${ms(queuedMs)}ms`, 'info')
     },
     snapshot() { return records.map(item => ({ ...item, detail: item.kind === 'request' ? item.detail : bounded(redactDiagnosticText(item.detail, context())) })) },
     clear() { records.length = 0 },
@@ -60,7 +63,10 @@ export function installBrowserDiagnostics(target: Window, diagnostics: BrowserDi
   const rejection = (event: PromiseRejectionEvent) => diagnostics.recordError(event.reason)
   target.addEventListener('error', error)
   target.addEventListener('unhandledrejection', rejection)
+  const workstepWindow = target as Window & { workstepRuntimeLogSnapshot?: BrowserDiagnostics['snapshot'] }
+  workstepWindow.workstepRuntimeLogSnapshot = diagnostics.snapshot
   const dispose = () => {
+    if (workstepWindow.workstepRuntimeLogSnapshot === diagnostics.snapshot) delete workstepWindow.workstepRuntimeLogSnapshot
     target.removeEventListener('error', error)
     target.removeEventListener('unhandledrejection', rejection)
     installations.delete(target)
@@ -80,7 +86,7 @@ export function buildBrowserFeedback({ window: target = window, diagnostics = br
 } = {}): string {
   const performance = target.performance
   const uptime = Math.max(0, Math.floor((performance?.now() || 0) / 1000))
-  const errors = summarizeErrors(diagnostics.snapshot().map(record => ({ ...record, source: record.kind === 'page' ? '页面' : '接口' })))
+  const errors = summarizeErrors(diagnostics.snapshot().filter(record => record.level !== 'warn').map(record => ({ ...record, source: record.kind === 'page' ? '页面' : '接口' })))
   return limitFeedbackText([
     'WorkStep 问题反馈', '问题描述：', '复现步骤：', '',
     `生成时间：${new Date().toISOString()}（${Intl.DateTimeFormat().resolvedOptions().timeZone}）`,

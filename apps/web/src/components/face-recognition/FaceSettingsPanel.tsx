@@ -1,6 +1,6 @@
 import { localizeErrorDisplay } from '../../i18n'
 import {useCallback,useEffect,useRef,useState} from 'react'
-import {faceApi,type FacePerson,type FaceSettings} from '../../api/faces'
+import {faceApi,includesFaceContext,type FacePerson,type FaceSettings} from '../../api/faces'
 import {useI18n} from '../../i18n'
 import Button from '../Button'
 import Input from '../Input'
@@ -46,8 +46,10 @@ export default function FaceSettingsPanel({onDirtyChange,onBusyChange,showTitle=
   </>)}
   {tab==='settings'&&<div className="face-settings-list">{([
    ['show_boxes','faceRecognition.showBoxes'],['show_names','faceRecognition.showNames'],
-   ['include_people','faceRecognition.includePeople'],['include_relationship','faceRecognition.includeRelationship'],
-  ] as const).map(([key,label])=><label className="face-check" key={key}><input type="checkbox" disabled={busy} checked={draft[key]??true} onChange={e=>setDraft({...draft,[key]:e.target.checked})}/>{t(label)}</label>)}
+   ['show_relationship','faceRecognition.showRelationship'],
+  ] as const).map(([key,label])=><label className="face-check" key={key}><input type="checkbox" disabled={busy} checked={draft[key]??(key!=='show_relationship')} onChange={e=>setDraft({...draft,[key]:e.target.checked})}/>{t(label)}</label>)}
+   <p>{t('faceRecognition.displayHelp')}</p>
+   <label className="face-check"><input type="checkbox" disabled={busy} checked={includesFaceContext(draft)} onChange={e=>setDraft({...draft,include_people:e.target.checked,include_relationship:e.target.checked})}/>{t('faceRecognition.includePeople')}</label>
    <label className="face-field">{t('faceRecognition.preset')}<Select disabled={busy} value={draft.preset} onChange={e=>setDraft({...draft,preset:e.target.value as FaceSettings['preset']})}>{(['balanced','light','clear'] as const).map(value=><option key={value} value={value}>{t(`faceRecognition.${value}`)}</option>)}</Select></label>
    <label className="face-field">{t('faceRecognition.threshold')}<Input disabled={busy} type="number" min={.5} max={.95} step={.05} value={draft.threshold} onChange={e=>setDraft({...draft,threshold:e.target.valueAsNumber})}/></label>
    <div className="face-footer"><div className="face-button-pair"><Button disabled={busy||!dirty} onClick={()=>setDraft(saved)}>{t('common.cancel')}</Button><Button variant="primary" loading={busy} disabled={!dirty||!Number.isFinite(draft.threshold)||draft.threshold<.5||draft.threshold>.95} onClick={()=>void saveSettings()}>{t('common.save')}</Button></div></div>

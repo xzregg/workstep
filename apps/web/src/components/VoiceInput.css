@@ -11,4 +11,114 @@
 .voice-input-secondary-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-inline-start: auto; }
 @media (max-width: 1023px) {
   .voice-input-actions button { min-height: var(--mobile-control-touch); }
+  .chat-input-frame[data-compact-voice="true"] > .chat-input-editor,
+  .chat-input-frame[data-compact-voice="true"]:not([data-voice-stop]) > .chat-input-toolbar,
+  .chat-input-frame[data-compact-voice="true"] > .chat-input-toolbar > :not(.chat-input-send) {
+    display: none;
+  }
+  .voice-input[data-compact] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 8px;
+    padding: 4px 12px 0;
+    border-top: 0;
+  }
+  .voice-input[data-compact] :is(.voice-input-draft, .voice-input-transcript, .voice-input-notice) {
+    flex: 0 0 100%;
+    min-width: 0;
+  }
+  .voice-input-draft {
+    padding: 6px 0;
+    border-bottom: 0.5px solid var(--border-soft);
+    color: var(--muted);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+  .voice-input[data-compact] .voice-input-transcript {
+    block-size: 3em;
+    max-height: none;
+    line-height: 1.5;
+    margin-block: 4px;
+    padding: 0;
+    overscroll-behavior-y: contain;
+  }
+  .voice-input[data-compact] .voice-input-status {
+    order: 1;
+    flex: 1 1 max-content;
+    gap: 8px;
+    min-width: 0;
+    font-size: var(--mobile-control-font-size);
+    overflow-wrap: anywhere;
+  }
+  .voice-input-status [data-listening] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .voice-input[data-compact] time { margin: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .voice-input-waveform {
+    display: inline-flex;
+    flex: 1 1 88px;
+    align-items: center;
+    gap: 2px;
+    min-width: 58px;
+    max-width: 104px;
+    height: 28px;
+    color: var(--text-muted);
+  }
+  .voice-input-waveform[data-audible] { color: var(--success); }
+  .voice-input-waveform > span {
+    --voice-bar-range: 7px;
+    flex: 1 1 3px;
+    min-width: 2px;
+    height: calc(3px + var(--voice-level) * var(--voice-bar-range));
+    border-radius: 2px;
+    background: currentColor;
+  }
+  .voice-input-waveform > span:nth-child(n+3):nth-child(-n+13) { --voice-bar-range: 10px; }
+  .voice-input-waveform > span:nth-child(n+5):nth-child(-n+11) { --voice-bar-range: 13px; }
+  .voice-input-waveform > span:nth-child(n+7):nth-child(-n+9) { --voice-bar-range: 16px; }
+  .voice-input[data-compact] .voice-input-actions {
+    order: 1;
+    margin: 0 0 0 auto;
+  }
+  .voice-input[data-compact] .voice-input-secondary-actions {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+  }
+  .voice-input[data-compact] .voice-input-actions button {
+    display: inline-grid;
+    place-items: center;
+    min-width: max(48px, var(--mobile-control-touch));
+    min-height: max(48px, var(--mobile-control-touch));
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-size: var(--mobile-control-font-size);
+  }
+  .voice-input[data-compact] .voice-input-actions button > span {
+    display: inline-grid;
+    place-items: center;
+    justify-self: stretch;
+    min-height: var(--mobile-control-touch);
+    padding-inline: 10px;
+    border-radius: var(--radius-xs);
+    background-color: var(--surface);
+    white-space: nowrap;
+  }
+  .voice-input[data-compact] .voice-input-actions .voice-input-finish > span { color: var(--text-on-accent); background-color: var(--accent); }
+}
+@media (max-width: 1023px) and (hover: hover) {
+  .voice-input[data-compact] .voice-input-actions button:hover > span { background-color: var(--border-soft); }
+  .voice-input[data-compact] .voice-input-actions .voice-input-finish:hover > span { background-color: var(--accent-hover); }
+}
+@media (max-width: 1023px) and (prefers-reduced-motion: no-preference) {
+  .voice-input-waveform { transition: color var(--motion-fast, 150ms) var(--ease, ease-out); }
+  .voice-input-waveform > span { transition: height var(--motion-fast, 150ms) var(--ease, ease-out); }
 }

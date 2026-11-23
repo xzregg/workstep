@@ -25,6 +25,8 @@ import './VoiceOutputSettings.css'
 const signature = (draft: OutputSettings | null, profile: DigitalPersonProfile | null) => JSON.stringify([
   draft, profile?.voice_name || '', profile?.expression || 'neutral', profile?.auto_speak ?? false,
 ])
+const omniAttributePrefix = 'attributes:'
+const legacyOmniAttributes: Record<string, string> = { warm: 'low pitch', happy: 'high pitch', whisper: 'whisper' }
 
 export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initialProfile, onSaved, disabled = false, parametersOnly = false, active = true }: {
   onDirtyChange: (dirty: boolean) => void
@@ -48,8 +50,7 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
   const [revision, setRevision] = useState(0)
   const [pendingDelete, setPendingDelete] = useState<{ id: string; action: 'delete' | 'discard' | 'reference' } | null>(null)
   const [sample, setSample] = useState(t('tts.sample'))
-  const [previewPrompt, setPreviewPrompt] = useState('')
-  const [tonePrompts, setTonePrompts] = useState({ design: '', clone: '', preset: '' })
+  const [auditionPrompt, setAuditionPrompt] = useState<string | null>(null)
   const player = useRef<SpeechOutputPlayer | null>(null), alive = useRef(true)
   const referenceFile = useRef<HTMLInputElement>(null)
   const referenceHelpId = useId()
@@ -60,27 +61,25 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
   const dirty = !!draft && !!saved && signature(draft, profile) !== signature(saved.settings, saved.profile)
   const installing = !!status?.models.some(model => modelDownloading(model.install))
   const playing = previewPhase !== null
-  const blocked = saving || acting || playing || disabled
+  const busy = saving || acting || disabled
   const selected = status?.models.find(model => model.id === draft?.model_id)
   const supportsReference = selected?.voices.some(voice => voice.id === 'reference')
   const previewStyle = draft?.mode === 'local' ? selected?.style || undefined : undefined
   const adaptiveDelivery = !!previewStyle
+  const cosyPreview = previewStyle === 'instruction' && selected?.runtime === 'cosyvoice3'
   const cloning = draft?.voice === 'reference'
-  const cloneAttributes = previewStyle === 'tone' && cloning && selected?.persona_runtime_missing === false && selected.design_attributes
+  const usesSavedTone = previewStyle === 'tone'
+  const usesSavedAttributes = usesSavedTone && draft?.instructions.startsWith(omniAttributePrefix)
+  const cloneAttributes = usesSavedTone && cloning && (selected?.persona_runtime_missing === false || usesSavedAttributes) && selected?.design_attributes
   const designAttributes = cloneAttributes ? { pitch: cloneAttributes.pitch, style: cloneAttributes.style }
     : previewStyle === 'tone' && !cloning ? selected?.design_attributes : undefined
-  const toneMode = cloneAttributes ? 'clone' : designAttributes ? 'design' : 'preset'
-  const unavailableDesignGroups: ('accent' | 'dialect')[] = []
-  if (toneMode === 'design') {
-    const chineseSentence = /[\u3400-\u9fff]/
-    const sentences = takeSpeechSentences(speechText(sample), true).sentences
-    if (!sentences.length || sentences.some(text => chineseSentence.test(text))) unavailableDesignGroups.push('accent')
-    if (!sentences.length || sentences.some(text => !chineseSentence.test(text))) unavailableDesignGroups.push('dialect')
-  }
-  const previewValue = previewStyle === 'tone' ? tonePrompts[toneMode].split(',').map(part => part.trim())
-    .filter(part => part && !unavailableDesignGroups.some(group => designAttributes?.[group]?.[part])).join(', ') : previewPrompt
+  const toneValue = draft?.instructions ?? ''
+  const cosyPrompt = auditionPrompt ?? [profile?.role, profile?.personality, profile?.tone].map(value => value?.trim()).filter(Boolean).join('\n')
+  const styleValue = cosyPreview ? cosyPrompt : !usesSavedTone || !designAttributes ? toneValue
+    : usesSavedAttributes ? toneValue.slice(omniAttributePrefix.length) : legacyOmniAttributes[toneValue] ?? ''
   const followsPersona = draft?.mode === 'local' && selected?.runtime === 'omnivoice' && draft.voice === 'persona'
-  const runtimeMissing = followsPersona ? selected?.persona_runtime_missing : selected?.runtime_missing
+  const needsDesignRuntime = followsPersona || (cloning && usesSavedAttributes)
+  const runtimeMissing = needsDesignRuntime ? selected?.persona_runtime_missing : selected?.runtime_missing
   const usesReference = draft?.mode === 'local' && draft.voice === 'reference' && !!supportsReference
   const showReferenceText = selected?.runtime !== 'moss'
   const referenceControls = adaptiveDelivery || usesReference
@@ -125,6 +124,7 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
   }, [installing])
 
   const set = (patch: Partial<OutputSettings>) => { setDraft(current => current && ({ ...current, ...patch })); setNotice('') }
+  const resetToneOnVoiceChange = (voice: string) => usesSavedTone && voice !== draft?.voice ? { instructions: '' } : {}
   const applyConnection = (next: OutputSettings) => {
     if (!draft) return
     setDraft({ ...next, model_id: draft.model_id, rate: draft.rate, volume: draft.volume,
@@ -177,7 +177,8 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
       if (alive.current) {
         const reference = result.reference
         if (reference) setStatus(current => current && ({ ...current, references: [reference, ...(current.references ?? []).filter(item => item.id !== reference.id)] }))
-        set({ voice: 'reference', reference_id: result.id, ...(result.id !== draft?.reference_id && { reference_text: '' }) })
+        set({ voice: 'reference', reference_id: result.id, ...resetToneOnVoiceChange('reference'),
+          ...(result.id !== draft?.reference_id && { reference_text: '' }) })
       }
     } catch (reason) { if (alive.current) setError(reason instanceof Error ? reason.message : String(reason)) }
     finally { if (alive.current) setActing(false) }
@@ -192,10 +193,11 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
   }
   const save = async () => {
     if (!draft || !profile) return
+    stop()
     setSaving(true); setError(''); setNotice('')
     try {
       const current = await digitalPersonApi.get()
-      const result = await speechOutputApi.save(adaptiveDelivery ? { ...draft, instructions: '' } : draft)
+      const result = await speechOutputApi.save(draft)
       if (alive.current && (result.mode === 'cloud' || result.mode === 'remote')) {
         connections.remember(result)
         setStatus(current => current && ({ ...current, connections: [result,
@@ -211,9 +213,9 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
     finally { if (alive.current) setSaving(false) }
   }
   const stop = () => { player.current?.stop(); player.current = null; setPreviewPhase(null) }
-  const editPreviewPrompt = (value: string) => {
-    if (previewStyle === 'tone') setTonePrompts(current => ({ ...current, [toneMode]: value }))
-    else setPreviewPrompt(value)
+  const editStyle = (value: string) => {
+    if (cosyPreview) setAuditionPrompt(value)
+    else set({ instructions: designAttributes && value ? omniAttributePrefix + value : value })
     setPreviewError('')
   }
   const test = async () => {
@@ -222,8 +224,9 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
     const sentences = takeSpeechSentences(speechText(sample), true).sentences
     if (!sentences.length) { setPreviewError(t('tts.previewNeedsText')); return }
     const current = (): boolean => alive.current && player.current === next
-    const next = new SpeechOutputPlayer({ settings: adaptiveDelivery ? { ...draft, instructions: '' } : draft, preview: true, systemVoice: profile.voice_name,
-      previewPrompt: previewStyle ? cloneAttributes && previewValue ? `attributes:${previewValue}` : previewValue.trim() : undefined,
+    const next = new SpeechOutputPlayer({ settings: cosyPreview ? { ...draft, instructions: '' } : draft,
+      preview: true, previewPrompt: cosyPreview ? cosyPrompt : undefined, systemVoice: profile.voice_name,
+      onInterrupt: () => { if (current()) stop() },
       onPlayback: active => { if (active && current()) setPreviewPhase('playing') },
       onState: active => { if (!active && current()) setPreviewPhase(null) },
       onError: reason => { if (current()) setPreviewError(reason.message) } })
@@ -239,8 +242,8 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
 
   return <section className="speech-output-settings" aria-label={t('speech.tab_output')}>
     {loading ? <span role="status"><Spinner />{t('common.loading')}</span> : draft && profile && status && <>
-      <fieldset disabled={blocked}>
-        {!parametersOnly && <RadioCardGroup label={t('tts.mode')} value={draft.mode} disabled={blocked}
+      <fieldset disabled={busy}>
+        {!parametersOnly && <RadioCardGroup label={t('tts.mode')} value={draft.mode} disabled={busy}
           options={(['system', 'local', 'cloud', 'remote'] as const).map(mode => ({ value: mode, label: t(`tts.mode_${mode}`), description: t(`speechModes.${mode}`) }))}
           onChange={value => choose(value as OutputSettings['mode'])} />}
         {draft.mode === 'system' && <DigitalPersonVoice preview={false} profile={{ ...profile, voice_rate: draft.rate }} onChange={patch => setProfile({ ...profile, ...patch })} />}
@@ -262,12 +265,12 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
               {model.install.error && <p role="alert">{localizeErrorDisplay(model.install.error)}</p>}
               <VoiceModelSavedDownload install={model.install} />
               <div className="speech-output-actions">
-                <VoiceModelDownloadActions install={model.install} disabled={acting} startDisabled={installing || !mirror.valid || !!model.availability_error}
+                <VoiceModelDownloadActions install={model.install} disabled={playing || acting} startDisabled={installing || !mirror.valid || !!model.availability_error}
                   downloadLabel={!model.installed ? t('speech.download') : model.persona_runtime_missing ? t('tts.omniInstallPersonaRuntime') : undefined}
                   onDownload={() => void modelAction('download', model.id)}
                   onPause={() => void modelAction('cancel')}
                   onDiscard={() => setPendingDelete({ id: model.id, action: 'discard' })} />
-                {model.installed && <Button disabled={installing} onClick={() => setPendingDelete({ id: model.id, action: 'delete' })}>{t('speech.delete')}</Button>}
+                {model.installed && <Button disabled={playing || installing} onClick={() => setPendingDelete({ id: model.id, action: 'delete' })}>{t('speech.delete')}</Button>}
                 {model.installed && draft.model_id !== model.id && <Button disabled={installing} onClick={() => selectLocalModel(model)}>{t('speech.selectModel')}</Button>}
                 {model.id === draft.model_id && <span className="speech-output-selected">{t('tts.selected')}</span>}
               </div>
@@ -287,8 +290,9 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
             <label>{t(adaptiveDelivery ? 'tts.optionalReference' : 'tts.savedReferences')}
               <Select value={usesReference ? draft.reference_id || '' : ''} disabled={recordingActive} onChange={event => {
                 const id = event.target.value
-                if (id) set({ voice: 'reference', reference_id: id, ...(id !== draft.reference_id && { reference_text: '' }) })
-                else set({ voice: selected.voices[0].id })
+                const voice = id ? 'reference' : selected.voices[0].id
+                set({ voice, ...resetToneOnVoiceChange(voice),
+                  ...(id && { reference_id: id, ...(id !== draft.reference_id && { reference_text: '' }) }) })
               }}>
                 <option value="" disabled={!adaptiveDelivery}>{t(adaptiveDelivery ? 'tts.defaultWithoutReference' : 'tts.chooseSavedReference')}</option>
                 {draft.reference_id && !status.references?.some(item => item.id === draft.reference_id) &&
@@ -298,20 +302,20 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
                 </option>)}
               </Select>
             </label>
-            <Button aria-label={t('tts.deleteReference')} disabled={!usesReference || !draft.reference_id || recordingActive}
+            <Button aria-label={t('tts.deleteReference')} disabled={playing || !usesReference || !draft.reference_id || recordingActive}
               onClick={() => draft.reference_id && setPendingDelete({ id: draft.reference_id, action: 'reference' })}>{t('common.delete')}</Button>
             </div>}
             <input ref={referenceFile} type="file" accept=".wav,audio/wav" hidden
               aria-label={t('tts.referenceAudio')} onChange={event => {
               const file = event.currentTarget.files?.[0]
               event.currentTarget.value = ''
-              if (file && !recordingActive) void uploadReference(file)
+              if (file && !playing && !recordingActive) void uploadReference(file)
             }} />
             <div className="speech-output-reference">
               <div className="speech-output-actions">
                 {recording.phase === 'idle' ? <>
-                  <Button onClick={() => referenceFile.current?.click()}>{t(usesReference && draft.reference_id ? 'tts.replaceReference' : 'tts.referenceAudio')}</Button>
-                  <Button onClick={() => void recording.start()}>{t('tts.recordReference')}</Button>
+                  <Button disabled={playing} onClick={() => referenceFile.current?.click()}>{t(usesReference && draft.reference_id ? 'tts.replaceReference' : 'tts.referenceAudio')}</Button>
+                  <Button disabled={playing} onClick={() => void recording.start()}>{t('tts.recordReference')}</Button>
                 </> : <>
                   <div className="speech-output-recording-actions">
                     {recording.phase === 'recording' && <Button variant="primary" onClick={() => void recording.finish()}>{t('tts.useRecording')}</Button>}
@@ -338,11 +342,11 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
                   onClick={() => set({ reference_text: t('tts.referenceReadingExample') })}>{t('tts.useReferenceExample')}</Button>
               </div>
             </div>}
-            {selected.runtime === 'cosyvoice3' && usesReference && previewPrompt.trim() && <p className="speech-output-hint">{t('tts.referenceStyleHint')}</p>}
+            {cosyPreview && usesReference && cosyPrompt.trim() && <p className="speech-output-hint">{t('tts.referenceStyleHint')}</p>}
           </>}
-          {runtimeMissing && !selected?.availability_error && <p className="speech-output-hint">{t(followsPersona ? 'tts.omniPersonaRuntimeMissing' : 'tts.runtimeMissing')}</p>}
+          {runtimeMissing && !selected?.availability_error && <p className="speech-output-hint">{t(needsDesignRuntime ? 'tts.omniPersonaRuntimeMissing' : 'tts.runtimeMissing')}</p>}
           {selected?.voice_design && <p className="speech-output-hint">{t('tts.voiceDesignHint')}</p>}
-          {!parametersOnly && <div className="speech-output-actions"><span>{t('speech.service')}: {t(`speech.service_${status.service}`)}</span><Button disabled={status.service !== 'ready'} onClick={() => void modelAction('unload')}>{t('tts.unload')}</Button></div>}
+          {!parametersOnly && <div className="speech-output-actions"><span>{t('speech.service')}: {t(`speech.service_${status.service}`)}</span><Button disabled={playing || status.service !== 'ready'} onClick={() => void modelAction('unload')}>{t('tts.unload')}</Button></div>}
         </>}
         {(draft.mode === 'cloud' || draft.mode === 'remote') && <VoiceOutputConnection parametersOnly={parametersOnly} value={draft} providers={status.providers}
           addresses={connections.addresses(draft)} onProviderChange={id => choose(draft.mode, id)}
@@ -373,9 +377,9 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
       </fieldset>
       <section className="speech-output-test">
         {adaptiveDelivery && <p className="speech-output-hint">{t(previewStyle === 'tone' ? 'tts.omniDigitalDeliveryHelp' : 'tts.digitalDeliveryHelp')}</p>}
-        {previewStyle && <fieldset disabled={blocked}>
-          <VoiceStyleSettings value={previewValue} onChange={editPreviewPrompt} style={previewStyle} designAttributes={designAttributes}
-            unavailableDesignGroups={unavailableDesignGroups} cloning={cloning} pacePresets={selected?.runtime === 'cosyvoice3'} enabled local preview />
+        {previewStyle && <fieldset disabled={busy}>
+          <VoiceStyleSettings value={styleValue} onChange={editStyle} style={previewStyle} designAttributes={designAttributes}
+            cloning={cloning} pacePresets={cosyPreview} enabled local maxLength={cosyPreview ? 6500 : 500} />
         </fieldset>}
         <label>{t('tts.testText')}<Textarea value={sample} rows={3} maxLength={1200} disabled={playing || disabled} onChange={e => { setSample(e.target.value); setPreviewError('') }} /></label>
         <div className="speech-output-actions"><Button aria-busy={playing} disabled={!playing && (!speechText(sample).trim() || saving || acting || disabled || recordingActive || !valid)} onClick={() => playing ? stop() : void test()}>{previewPhase === 'preparing' && <Spinner size={12} />}{t(playing ? 'digitalPerson.stopVoice' : 'tts.test')}</Button>
@@ -383,7 +387,7 @@ export default function VoiceOutputSettings({ onDirtyChange, onBusyChange, initi
         </div>
         {previewError && <p role="alert" className="voice-input-error">{localizeErrorDisplay(previewError)}</p>}
       </section>
-      <div className="speech-output-actions"><Button data-save-output variant="primary" loading={saving} disabled={!dirty || blocked || recordingActive || !valid} onClick={() => void save()}>{t('common.save')}</Button></div>
+      <div className="speech-output-actions"><Button data-save-output variant="primary" loading={saving} disabled={!dirty || busy || recordingActive || !valid} onClick={() => void save()}>{t('common.save')}</Button></div>
     </>}
     {error && <p role="alert" className="voice-input-error">{localizeErrorDisplay(error)}{!draft && <Button onClick={() => setRevision(v => v + 1)}>{t('common.retry')}</Button>}</p>}
     {notice && <p role="status">{notice}</p>}

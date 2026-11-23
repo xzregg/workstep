@@ -53,7 +53,7 @@ async def action_client(tmp_path, monkeypatch):
         await asyncio.wait_for(asyncio.gather(*list(action_runtime.tasks.values())), timeout=3)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_task_added_stage_actions_use_effective_workflow(action_client):
     from services.task_workflow import build_overrides, canonical_workflow
     from services.task_workflow_config import source_workflow
@@ -76,7 +76,7 @@ async def test_task_added_stage_actions_use_effective_workflow(action_client):
     assert any(button["id"] == "deploy-action" and button["source"] == "stage" for button in response.json()["buttons"])
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_action_confirm_deduplicate_and_stream(action_client):
     client, _manager, project = action_client
     url = f"/api/tasks/task-action/actions/run?project_id={project.id}"
@@ -100,7 +100,7 @@ async def test_action_confirm_deduplicate_and_stream(action_client):
     assert [item["channel"] for item in history.json()["messages"]] == ["action", "action"]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_action_requires_named_user_before_creating_messages(action_client, monkeypatch):
     from services.config import config_store
     from services.action_runtime import action_runtime
@@ -123,7 +123,7 @@ async def test_action_requires_named_user_before_creating_messages(action_client
     assert await manager.run_db(project.id, lambda _project: Task.get_by_id("task-action").messages.count()) == 0
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_action_confirmation_input_is_required_and_passed_as_environment(action_client):
     client, manager, project = action_client
 
@@ -156,7 +156,7 @@ async def test_action_confirmation_input_is_required_and_passed_as_environment(a
     assert current.json()["output"] == f"commit={message}\n"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_concurrent_action_requests_claim_one_run(action_client):
     client, _manager, project = action_client
     url = f"/api/tasks/task-action/actions/run?project_id={project.id}"
@@ -167,7 +167,7 @@ async def test_concurrent_action_requests_claim_one_run(action_client):
     assert sum(not response.json()["deduplicated"] for response in responses) == 1
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_slow_action_log_write_does_not_block_health(action_client, monkeypatch):
     from services import action_runtime as runtime_module
 
@@ -193,7 +193,7 @@ async def test_slow_action_log_write_does_not_block_health(action_client, monkey
     assert time.monotonic() - before < 0.5
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.parametrize('fault', ['append', 'close', 'config'])
 async def test_diagnostic_log_failure_preserves_action_result(action_client, monkeypatch, fault):
     from services import action_runtime as runtime_module
@@ -221,7 +221,7 @@ async def test_diagnostic_log_failure_preserves_action_result(action_client, mon
     assert (await client.get('/api/health')).status_code == 200
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_action_rejects_outside_script(action_client):
     client, manager, project = action_client
     def change(_project):
@@ -236,7 +236,7 @@ async def test_action_rejects_outside_script(action_client):
     assert response.status_code == 400
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_action_rejects_symlink_escaping_action_root(action_client):
     client, _manager, project = action_client
     outside = project.workstep_dir / "outside.sh"
@@ -251,7 +251,7 @@ async def test_action_rejects_symlink_escaping_action_root(action_client):
     assert response.status_code == 400
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_workflow_does_not_inherit_project_buttons_by_default(action_client):
     client, manager, project = action_client
 
@@ -268,7 +268,7 @@ async def test_workflow_does_not_inherit_project_buttons_by_default(action_clien
     assert response.json()["buttons"] == []
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_workflow_selects_individual_project_buttons(action_client):
     client, manager, project = action_client
 
@@ -295,7 +295,7 @@ async def test_workflow_selects_individual_project_buttons(action_client):
     assert denied.status_code == 404
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_workflow_inherits_default_project_buttons_without_saved_setting(action_client):
     client, manager, project = action_client
 
@@ -318,7 +318,7 @@ async def test_workflow_inherits_default_project_buttons_without_saved_setting(a
     ]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_workflow_level_action_is_available_to_task(action_client):
     client, manager, project = action_client
     workflow_id = project.workflows[0]["id"]
@@ -350,7 +350,7 @@ async def test_workflow_level_action_is_available_to_task(action_client):
     assert response.status_code == 200, response.text
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_existing_task_sees_stage_button_added_to_workflow(action_client):
     client, manager, project = action_client
 
@@ -371,7 +371,7 @@ async def test_existing_task_sees_stage_button_added_to_workflow(action_client):
     ]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_stop_action_releases_active_button(action_client):
     client, _manager, project = action_client
     action_dir = project.workstep_dir / "actions" / "restart"
@@ -393,7 +393,7 @@ async def test_stop_action_releases_active_button(action_client):
     await client.post(f"/api/action-runs/{second.json()['run_id']}/stop?project_id={project.id}")
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_workflow_action_api_registers_script_and_button(action_client, monkeypatch):
     import api.workflow as workflow_api
     client, manager, project = action_client
@@ -442,7 +442,7 @@ async def test_create_workflow_action_api_registers_script_and_button(action_cli
     assert not (action_root / "different.sh").exists()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_workflow_action_overwrite_never_replaces_prompt_button(action_client, monkeypatch):
     import api.workflow as workflow_api
 
@@ -466,7 +466,7 @@ async def test_workflow_action_overwrite_never_replaces_prompt_button(action_cli
     assert not (project.workstep_dir / "artifacts" / workflow_id / "actions" / "restart").exists()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_project_action_api_registers_script_and_button(action_client):
     client, manager, project = action_client
     payload = {
@@ -486,7 +486,7 @@ async def test_create_project_action_api_registers_script_and_button(action_clie
     assert duplicate.status_code == 409
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.parametrize("scope", ["workflow", "project"])
 async def test_action_publish_rolls_back_files_when_button_save_fails(action_client, monkeypatch, scope):
     from services.workflow_actions import create_project_action, create_workflow_action
@@ -515,7 +515,7 @@ async def test_action_publish_rolls_back_files_when_button_save_fails(action_cli
     assert not action_root.exists()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_workflow_action_overwrite_restores_original_files_when_button_save_fails(action_client, monkeypatch):
     from services.workflow_actions import create_workflow_action
 
@@ -541,7 +541,7 @@ async def test_workflow_action_overwrite_restores_original_files_when_button_sav
     assert {name: (action_root / name).read_bytes() for name in before} == before
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_slow_project_action_publish_does_not_block_health(action_client, monkeypatch):
     import api.action as action_api
 
@@ -570,7 +570,7 @@ async def test_slow_project_action_publish_does_not_block_health(action_client, 
     assert (await publishing).status_code == 200
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_project_action_create_keeps_default_buttons_when_unconfigured(action_client):
     from agent_assistants.chat_session import DEFAULT_QUICK_BUTTONS
 
@@ -590,7 +590,7 @@ async def test_project_action_create_keeps_default_buttons_when_unconfigured(act
     assert stored[-1]["action_id"] == "fresh-action"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_slow_workflow_action_publish_does_not_block_health(action_client, monkeypatch):
     import api.workflow as workflow_api
 
@@ -623,7 +623,7 @@ async def test_slow_workflow_action_publish_does_not_block_health(action_client,
     assert (await publishing).status_code == 200
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_managed_service_action_stops_background_child(action_client):
     client, _manager, project = action_client
     action_dir = project.workstep_dir / "actions" / "restart"
@@ -656,7 +656,7 @@ async def test_managed_service_action_stops_background_child(action_client):
     assert current.json()["status"] == "stopped"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_managed_service_action_cleans_up_when_script_exits(action_client):
     client, _manager, project = action_client
     action_dir = project.workstep_dir / "actions" / "restart"
@@ -679,7 +679,7 @@ async def test_managed_service_action_cleans_up_when_script_exits(action_client)
     assert current.json()["status"] == "succeeded", current.json()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_action_runtime_shutdown_stops_service(action_client):
     from services.action_runtime import action_runtime
 
@@ -706,7 +706,7 @@ async def test_action_runtime_shutdown_stops_service(action_client):
     assert current.json()["status"] == "stopped"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_project_chat_action_is_session_scoped(action_client):
     client, manager, project = action_client
     def seed(_project):
@@ -735,7 +735,7 @@ async def test_project_chat_action_is_session_scoped(action_client):
                for role, status, engine in messages)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_project_chat_action_snapshots_actor_and_initiator(action_client):
     from services.remote_access import ActorSnapshot, actor_context
 
@@ -778,7 +778,7 @@ async def test_project_chat_action_snapshots_actor_and_initiator(action_client):
             )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_slow_chat_action_message_write_does_not_block_health(action_client, monkeypatch):
     client, manager, project = action_client
 
@@ -812,7 +812,7 @@ async def test_slow_chat_action_message_write_does_not_block_health(action_clien
     assert (await request).status_code == 200
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_disabled_quick_button_is_hidden_and_cannot_run(action_client):
     client, manager, project = action_client
 

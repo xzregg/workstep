@@ -172,6 +172,82 @@ async def test_slow_settings_disk_io_does_not_block_http_health(output, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_cosyvoice_preview_prompt_is_separate_from_persona_playback(output, monkeypatch):
+    from services import tts_omni_persona
+    from services.digital_person import DigitalPersonProfile
+
+    def load_profile():
+        time.sleep(.15)
+        return DigitalPersonProfile(role='学习陪练', tone='温柔自然', personality='喜欢用简短句子')
+
+    monkeypatch.setattr(tts_omni_persona, 'get_profile', load_profile)
+    monkeypatch.setattr(output.resources, 'installed', lambda model_id: True)
+    monkeypatch.setattr(output.resources, 'runtime_error', lambda model_id: '')
+    calls = []
+
+    async def audio(path, text, voice, instructions, **options):
+        calls.append(instructions)
+        yield {'audio': 'AAAA', 'format': 'pcm', 'sample_rate': 24000}
+
+    monkeypatch.setattr(output.runtime, 'audio', audio)
+    draft = dict(mode='local', model_id='cosyvoice3', voice='default', instructions='尽量放慢语速。')
+    try:
+        await output.configure(draft)
+        for settings in (draft, None):
+            sid = (await output.start('', 'local', '晚上好。', settings,
+                                      preview_prompt='活泼地说' if settings is not None else '',
+                                      digital_person_id='' if settings is None else None))['id']
+            assert (await output.next(sid, '', 'local'))['audio']
+            await output.cancel(sid, '', 'local')
+        assert calls[0] == '活泼地说'
+        assert calls[1].startswith('温柔自然\n喜欢用简短句子\n')
+        pending = asyncio.create_task(output.start('', 'local', '晚上好。', {**draft, 'instructions': ''}))
+        await asyncio.sleep(.02)
+        assert not pending.done()
+        sid = (await pending)['id']
+        assert (await output.next(sid, '', 'local'))['audio']
+        await output.cancel(sid, '', 'local')
+        assert calls[2] == '学习陪练\n喜欢用简短句子\n温柔自然'
+    finally:
+        await output.close()
+
+
+@pytest.mark.asyncio
+async def test_save_stops_own_host_audition_but_preserves_other_playback(output, monkeypatch):
+    rendering = asyncio.Event()
+    stopped = asyncio.Event()
+
+    async def render(*args):
+        try:
+            rendering.set()
+            await asyncio.Future()
+            yield {}
+        finally:
+            stopped.set()
+
+    monkeypatch.setattr(output, '_audio', render)
+    settings = dict(mode='local', model_id='omnivoice', voice='persona', instructions='attributes:male')
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app()), base_url='http://test') as client:
+        try:
+            preview = (await client.post('/api/speech-output/sessions',
+                                         json={'text': '试听。', 'settings': settings})).json()['id']
+            await asyncio.wait_for(rendering.wait(), 1)
+            other = (await output.start('', 'other-device', 'Another preview.', settings))['id']
+            playback = (await output.start('project', 'local', 'Formal playback.'))['id']
+            assert (await client.put('/api/speech-output/settings', json=settings)).status_code == 409
+            assert {preview, other, playback} <= output.sessions.keys()
+            await output.cancel(other, '', 'other-device')
+            await output.cancel(playback, 'project', 'local')
+
+            response = await client.put('/api/speech-output/settings', json=settings)
+            assert response.is_success
+            assert response.json()['instructions'] == settings['instructions']
+            assert stopped.is_set() and not output.sessions
+        finally:
+            await output.close()
+
+
+@pytest.mark.asyncio
 async def test_invalid_local_voice_and_remote_urls_are_rejected(output):
     with pytest.raises(ValueError):
         await output.configure(dict(mode='local', model_id='kokoro-v1', voice='99999'))
@@ -308,17 +384,11 @@ async def test_local_catalog_exposes_three_models_and_validates_model_controls(o
 
 
 @pytest.mark.asyncio
-async def test_omnivoice_persona_preview_and_saved_playback_read_current_profile(output, monkeypatch):
+async def test_omnivoice_default_voice_uses_only_saved_tags(output, monkeypatch):
     from services import tts_omni_persona
-    from services.digital_person import DigitalPersonProfile
-    import threading
-
-    profile = DigitalPersonProfile(personality='年轻女声，偶尔俏皮', tone='温柔、沉稳')
-    event_loop_thread = threading.get_ident()
 
     def load_profile():
-        assert threading.get_ident() != event_loop_thread
-        return profile
+        pytest.fail('OmniVoice must not load digital-person voice prompts')
 
     def no_swift(model_id):
         raise AssertionError('Persona synthesis does not use the Swift reference runtime')
@@ -347,49 +417,86 @@ async def test_omnivoice_persona_preview_and_saved_playback_read_current_profile
             assert (await client.post(f'{path}/next{query}')).json() == {'done': True}
             assert (await client.delete(f'{path}{query}')).status_code == 200
 
-        rejected = await client.post('/api/speech-output/sessions', json={
-            'text': '今晚慢慢来。', 'settings': settings, 'preview_prompt': '愤怒',
-        })
-        assert rejected.status_code == 409
-        assert '自然、温柔' in rejected.json()['detail']
+        for prompt in ('温柔、沉稳', 'attributes:male'):
+            rejected = await client.post('/api/speech-output/sessions', json={
+                'text': '今晚慢慢来。', 'settings': settings, 'preview_prompt': prompt,
+            })
+            assert rejected.status_code == 409
         await play({'text': '今晚慢慢来。', 'settings': settings})
-        await play({'text': 'Good evening.', 'settings': settings,
-                    'preview_prompt': '女性，青年，高音调，英式口音'})
-        assert (await client.post('/api/speech-output/sessions', json={
-            'text': '晚上好。', 'settings': settings, 'preview_prompt': '英式口音',
-        })).status_code == 409
-        assert (await client.post('/api/speech-output/sessions', json={
-            'text': 'Good evening.', 'settings': settings, 'preview_prompt': 'female, male',
-        })).status_code == 409
+        await play({'text': 'Good evening.', 'settings': {
+            **settings, 'instructions': 'attributes:high pitch, british accent',
+        }})
         assert (await output.settings())['mode'] == 'system'
         assert (await client.put('/api/speech-output/settings', json=settings)).status_code == 200
-        profile = DigitalPersonProfile(personality='年轻女声', tone='活泼、俏皮')
-        assert (await client.post('/api/speech-output/sessions', json={
-            'text': '晚上好。', 'preview_prompt': '轻声耳语',
-        })).status_code == 409
-        await play({'text': '试听。', 'settings': settings, 'preview_prompt': '轻声耳语'})
-        assert (await output.settings())['instructions'] == ''
         await play({'text': '我来陪你。'}, 'digital-person-project')
         await play({'text': '晚上好。', 'settings': {**settings, 'instructions': 'whisper'}})
 
     assert calls == [
         ('omnivoice', '今晚慢慢来。', 'persona', 'female, young adult', {}),
         ('omnivoice', 'Good evening.', 'persona', 'female, young adult, high pitch, british accent', {}),
-        ('omnivoice', '试听。', 'persona', 'female, young adult, whisper', {}),
-        ('omnivoice', '我来陪你。', 'persona', 'female, young adult, high pitch', {}),
+        ('omnivoice', '我来陪你。', 'persona', 'female, young adult', {}),
         ('omnivoice', '晚上好。', 'persona', 'female, young adult, whisper', {}),
     ]
     await output.close()
 
 
 @pytest.mark.asyncio
-async def test_digital_voice_uses_saved_reference_identity_and_affinity_without_preview_leak(output, monkeypatch):
-    from api import digital_person
-    from services import digital_person_affect, digital_person_sessions, tts_omni_persona
+async def test_omnivoice_saved_tags_drive_preview_and_playback(output, monkeypatch):
+    from services import tts_omni_persona
     from services.digital_person import DigitalPersonProfile
 
-    profile = DigitalPersonProfile(personality='年轻女声', tone='俏皮、明快')
-    monkeypatch.setattr(tts_omni_persona, 'get_profile', lambda: profile)
+    monkeypatch.setattr(tts_omni_persona, 'get_profile', lambda: DigitalPersonProfile(personality='年轻女声'))
+    monkeypatch.setattr(output.resources, 'installed', lambda model_id: True)
+    monkeypatch.setattr(output.resources, 'omni_design_ready', lambda: True)
+    calls = []
+
+    async def audio(path, text, voice, instructions, **options):
+        calls.append((voice, instructions, options.get('use_design', False)))
+        yield {'audio': 'AAAA', 'format': 'pcm', 'sample_rate': 24000}
+
+    monkeypatch.setattr(output.runtime, 'audio', audio)
+    settings = dict(mode='local', model_id='omnivoice', voice='persona', instructions='attributes:male, elderly, british accent')
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app()), base_url='http://test') as client:
+        assert (await client.put('/api/speech-output/settings', json=settings)).is_success
+        assert (await client.get('/api/speech-output')).json()['settings']['instructions'] == settings['instructions']
+        for invalid in ('attributes:male, female', 'attributes:用温柔的语气说', '温柔'):
+            assert (await client.put('/api/speech-output/settings',
+                                     json={**settings, 'instructions': invalid})).status_code == 409
+
+    async def play(text, draft=None, digital_person_id=None):
+        sid = (await output.start('', 'local', text, draft, digital_person_id=digital_person_id))['id']
+        assert (await output.next(sid, '', 'local'))['audio']
+        await output.cancel(sid, '', 'local')
+
+    try:
+        await play('Good evening.', settings)
+        await play('晚上好。', digital_person_id='')
+        wav = io.BytesIO()
+        with wave.open(wav, 'wb') as reference:
+            reference.setparams((1, 2, 24000, 0, 'NONE', ''))
+            reference.writeframes(b'\0\0' * 24000)
+        identifier = await output.upload_reference(wav.getvalue())
+        await output.configure({**settings, 'voice': 'reference', 'reference_id': identifier,
+                                'instructions': 'attributes:low pitch, whisper'})
+        await play('晚安。', digital_person_id='')
+        assert calls == [
+            ('persona', 'male, elderly, british accent', False),
+            ('persona', 'male, elderly', False),
+            ('reference', 'low pitch, whisper', True),
+        ]
+    finally:
+        await output.close()
+
+
+@pytest.mark.asyncio
+async def test_omnivoice_reference_playback_keeps_saved_tone_without_preview_leak(output, monkeypatch):
+    from api import digital_person
+    from services import digital_person_affect, digital_person_sessions, tts_omni_persona
+
+    def unexpected_profile_read(*_):
+        pytest.fail('OmniVoice must not use digital-person traits or affinity')
+
+    monkeypatch.setattr(tts_omni_persona, 'get_profile', unexpected_profile_read)
     monkeypatch.setattr(digital_person, 'runtime', lambda: object())
     monkeypatch.setattr(output.resources, 'installed', lambda model_id: True)
     monkeypatch.setattr(output.resources, 'runtime_error', lambda model_id: '')
@@ -400,17 +507,12 @@ async def test_digital_voice_uses_saved_reference_identity_and_affinity_without_
         assert (project, session) == ('p', 'chat')
         return 'matched-person'
 
-    def affinity(person):
-        assert person == 'matched-person'
-        time.sleep(.15)
-        return {'affinity': 85}
-
     async def audio(path, text, voice, instructions, **options):
         calls.append((voice, instructions, options))
         yield {'audio': 'AAAA', 'format': 'pcm', 'sample_rate': 24000}
 
     monkeypatch.setattr(digital_person_sessions, 'affect_person', subject)
-    monkeypatch.setattr(digital_person_affect, 'read', affinity)
+    monkeypatch.setattr(digital_person_affect, 'read', unexpected_profile_read)
     monkeypatch.setattr(output.runtime, 'audio', audio)
     wav = io.BytesIO()
     with wave.open(wav, 'wb') as reference:
@@ -418,40 +520,30 @@ async def test_digital_voice_uses_saved_reference_identity_and_affinity_without_
         reference.writeframes(b'\0\0' * 24000)
     identifier = await output.upload_reference(wav.getvalue())
     reference_path = output.root / 'references' / f'{identifier}.wav'
-    settings = dict(mode='local', model_id='omnivoice', voice='reference', reference_id=identifier)
+    settings = dict(mode='local', model_id='omnivoice', voice='reference', reference_id=identifier, instructions='happy', rate=1.2)
     await output.configure(settings)
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app()), base_url='http://test') as client:
-        preview = (await client.post('/api/speech-output/sessions', json={
-            'text': '晚安。', 'settings': settings, 'preview_prompt': '温柔、沉稳',
-        })).json()['id']
-        assert (await client.post(f'/api/speech-output/sessions/{preview}/next')).json()['audio']
-        assert (await client.post(f'/api/speech-output/sessions/{preview}/next')).json()['done']
-        await client.delete(f'/api/speech-output/sessions/{preview}')
         combo = (await client.post('/api/speech-output/sessions', json={
-            'text': '晚安。', 'settings': settings, 'preview_prompt': 'attributes:low pitch, whisper',
+            'text': '晚安。', 'settings': {**settings, 'instructions': 'attributes:low pitch, whisper'},
         })).json()['id']
         assert (await client.post(f'/api/speech-output/sessions/{combo}/next')).json()['audio']
         assert (await client.post(f'/api/speech-output/sessions/{combo}/next')).json()['done']
         await client.delete(f'/api/speech-output/sessions/{combo}')
-        pending = asyncio.create_task(client.post('/api/speech-output/sessions?project_id=p',
-            json={'text': '晚上好。', 'digital_session_id': 'chat'}))
-        await asyncio.sleep(.02)
-        assert (await asyncio.wait_for(client.get('/health'), .08)).is_success
-        assert not pending.done()
-        formal = (await pending).json()['id']
+        formal = (await client.post('/api/speech-output/sessions?project_id=p',
+            json={'text': '晚上好。', 'digital_session_id': 'chat'})).json()['id']
         chunk = (await client.post(f'/api/speech-output/sessions/{formal}/next?project_id=p')).json()
-        assert chunk['audio'] and chunk['rate_factor'] == .96
+        assert chunk['audio'] and 'rate_factor' not in chunk
         assert (await client.post(f'/api/speech-output/sessions/{formal}/next?project_id=p')).json()['done']
         await client.delete(f'/api/speech-output/sessions/{formal}?project_id=p')
 
     assert [(voice, prompt, options['reference']) for voice, prompt, options in calls] == [
-        ('reference', 'warm', reference_path),
         ('reference', 'low pitch, whisper', reference_path),
         ('reference', 'happy', reference_path),
     ]
-    assert calls[1][2]['use_design'] is True
-    assert (await output.settings())['instructions'] == ''
+    assert calls[0][2]['use_design'] is True
+    assert (await output.settings())['instructions'] == 'happy'
+    assert (await output.settings())['rate'] == 1.2
     await output.close()
 
 
@@ -488,11 +580,14 @@ async def test_reference_upload_and_validation_leave_health_responsive(output, m
         assert (await client.put('/api/speech-output/settings', json=settings)).status_code == 409
         assert (await client.put('/api/speech-output/settings', json={**settings, 'reference_id': reference})).status_code == 200
         custom = {**settings, 'reference_id': reference, 'instructions': 'prompt:用温柔、沉稳的语气说。'}
-        assert (await client.put('/api/speech-output/settings', json=custom)).status_code == 200
-        assert (await output.settings())['instructions'] == custom['instructions']
+        assert (await client.put('/api/speech-output/settings', json=custom)).status_code == 409
+        assert (await output.settings())['instructions'] == 'warm'
+        output._save({**custom, 'connections': []})
+        loaded = await SpeechOutputService(output.root).settings()
+        assert loaded['instructions'] == '' and loaded['reference_id'] == reference
         assert (await client.put('/api/speech-output/settings', json={**settings, 'voice': 'persona'})).status_code == 200
         assert (await client.get('/api/speech-output')).json()['references'] == host['references']
-        assert (await client.put('/api/speech-output/settings', json=custom)).status_code == 200
+        assert (await client.put('/api/speech-output/settings', json={**settings, 'reference_id': reference})).status_code == 200
         other = (await client.post('/api/speech-output/reference', content=wav_data[:-2] + b'\1\0')).json()['id']
         assert (await client.delete('/api/speech-output/reference/not-a-hash')).status_code == 409
         deleted = await client.delete(f'/api/speech-output/reference/{reference}')

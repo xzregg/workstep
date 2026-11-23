@@ -1,3 +1,4 @@
+import { markChatChunk } from '../utils/runtimeDiagnostics'
 import { preserveFirstOutput } from '../utils/firstOutput'
 /**
  * assistantStore — generic chat store for any LLM assistant conversation.
@@ -100,6 +101,7 @@ export interface AssistantChatMessage {
     last_event_seq?: number
     thought_characters?: number
     commentary_characters?: number
+    commentary_preview?: { text: string; complete: boolean }[]
     tool_count?: number
     edited_files?: string[]
   }
@@ -723,6 +725,7 @@ export function createAssistantStore(
           }
           if (event.role !== 'user') running = true
         } else if (event.type === 'TEXT_MESSAGE_CONTENT' && mid) {
+          if (event.role !== 'user') markChatChunk(sessionId, mid)
           const index = findIndex(mid)
           if (index === -1) {
             messages.push({

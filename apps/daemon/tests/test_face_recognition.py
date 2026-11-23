@@ -53,7 +53,7 @@ def test_validation_and_versions_and_context_settings(faces):
     before = faces.catalog()['revision']
     faces.save_settings(faces.Settings(enabled=True, include_relationship=False))
     assert faces.catalog()['revision'] > before
-    assert '朋友' not in faces.context([p['id']], 0)['text']
+    assert faces.context([p['id']], 0) == {'people': [], 'text': ''}
     faces.save_settings(faces.Settings(enabled=False))
     assert faces.context([p['id']], 0)['text'] == ''
 
@@ -65,6 +65,10 @@ def test_face_box_visibility_does_not_change_recognition_context(faces):
     assert faces.catalog()['settings']['show_boxes'] is False
     assert faces.catalog()['settings']['show_names'] is True
     assert faces.context([p['id']], 0)['people'][0]['person_id'] == p['id']
+    assert faces.catalog()['settings']['show_relationship'] is False
+    faces.save_settings(faces.Settings(enabled=True, show_names=False, show_relationship=True))
+    assert faces.catalog()['settings']['show_relationship'] is True
+    assert faces.context([p['id']], 0)['people'][0]['relationship'] == '朋友'
 
 
 def test_person_background_contains_only_known_enabled_people(faces):
@@ -78,7 +82,7 @@ def test_person_background_contains_only_known_enabled_people(faces):
     assert faces.person_prompt([]) == ''
     assert faces.person_prompt(['missing']) == ''
     faces.save_settings(faces.Settings(enabled=True, include_relationship=False))
-    assert faces.person_prompt([p['id']]) == f'{header}\n- Name: 小张'
+    assert faces.person_prompt([p['id']]) == ''
     faces.delete(p['id'])
     assert faces.person_prompt([p['id']]) == ''
     from services.digital_person_memory_index import connect

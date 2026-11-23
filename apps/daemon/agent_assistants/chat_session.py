@@ -1042,6 +1042,19 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
 
     async def _prepare_turn_context(self, session):
         await super()._prepare_turn_context(session)
+        turn_state = self._turn_states.get(session.extra.get('current_turn_id'), {})
+        turn_state.pop('session_retention_key', None)
+        if self._config.name == 'chat_session' and self._project_manager is not None:
+            from services.customization_workspace import is_default_workspace
+            from services.digital_person_runtime import read_state
+            from services.chat_session_retention import main_session_retention_key
+            project = self._project_manager.get_project_by_id(session.project_id)
+            if project is not None and await asyncio.to_thread(is_default_workspace, project):
+                is_main = await self._project_manager.run_db(session.project_id, lambda _: (
+                    read_state(session.project_id)['main_session_id'] == session.session_id
+                ))
+                if is_main:
+                    turn_state['session_retention_key'] = main_session_retention_key(session.project_id, session.session_id)
         session.extra.pop('digital_person_context', None)
         session.extra.pop('delegation_actions', None)
         session.extra.pop('filter_legacy_affect', None)
@@ -1332,6 +1345,19 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         with conversation_context(session.project_id, session.session_id):
             return await super()._run_turn_guarded(session, turn_id, assistant_message_id)
 
+    async def _run_turn(self, session, turn_id, assistant_message_id):
+        from services.conversation_context import conversation_context
+
+        if self._config.name in {"chat_session", "channel_chat"}:
+            message = next((item for item in session.messages if item.get("id") == turn_id), {})
+            is_user = (message.get("role") == "user" and not message.get("internal_event")
+                       and message.get("author_type") not in {"scheduler", "assistant", "system", "coordinator"})
+            with conversation_context(session.project_id, session.session_id, message_id=turn_id,
+                                      sender_id=(message.get("author_id") or "") if is_user else "",
+                                      sender_name=(message.get("author_name") or "") if is_user else ""):
+                return await super()._run_turn(session, turn_id, assistant_message_id)
+        return await super()._run_turn(session, turn_id, assistant_message_id)
+
     async def _publish(self, session, assistant_message_id, event_type, data, event_sequence):
         result = await super()._publish(session, assistant_message_id, event_type, data, event_sequence)
         management = getattr(self, 'digital_person_delegations', None)
@@ -1377,6 +1403,8 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             ).where(ChatSession.id == session.session_id).execute()
 
         await self._project_manager.run_db(session.project_id, reset)
+        from services.chat_session_retention import release_main_session_retention
+        await release_main_session_retention(session.project_id, session.session_id)
         session.resolved_session_id = None
         session.engine_state = None
         session.session_provider = None

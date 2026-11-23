@@ -288,12 +288,16 @@ async def archive_session(session_id: str, req: ChatSessionArchiveRequest):
     if not has_project_edit_scope(req.project_id):
         raise HTTPException(status_code=403, detail="Project scope denied")
     try:
-        return await _run_db(
+        result = await _run_db(
             req.project_id,
             lambda: _module().set_archived(
                 req.project_id, session_id, req.archived, ordinary_only=req.ordinary_only,
             ),
         )
+        if req.archived:
+            from services.chat_session_retention import release_main_session_retention
+            await release_main_session_retention(req.project_id, session_id)
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
 
@@ -477,6 +481,8 @@ async def handoff_session(session_id: str, req: ChatSessionHandoffRequest):
                 permission_mode=req.permission_mode,
             ),
         )
+        from services.chat_session_retention import release_main_session_retention
+        await release_main_session_retention(req.project_id, session_id)
         await _module().publish_execution_config({
             key: detail.get(key) for key in (
                 "id", "project_id", "engine", "provider_id", "model", "fast_model", "vision_model",
@@ -523,6 +529,8 @@ async def delete_session(
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Chat session not found")
+    from services.chat_session_retention import release_main_session_retention
+    await release_main_session_retention(project_id, session_id)
     return {"deleted": True}
 
 
@@ -583,6 +591,9 @@ async def bulk_delete_sessions(
         )
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
+    from services.chat_session_retention import release_main_session_retention
+    for session_id in result['deleted']:
+        await release_main_session_retention(pid, session_id)
     return result
 
 

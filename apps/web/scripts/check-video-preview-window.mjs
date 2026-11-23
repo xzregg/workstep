@@ -21,6 +21,7 @@ try{
    if(url.pathname.endsWith('/faces/catalog'))return route.fulfill({json:{revision:'fixture',settings:{enabled:false,include_people:false,show_names:false},people:[]}})
    if(url.pathname.endsWith('/faces/settings'))return route.fulfill({json:{settings:{enabled:false,show_names:true,include_people:true,include_relationship:true,preset:'balanced',threshold:.65},revision:0}})
    if(url.pathname.endsWith('/faces/people'))return route.fulfill({json:{items:[]}})
+   if(url.pathname.endsWith('/faces/welcome'))return route.fulfill({json:{enabled:false,phrases:['欢迎回来，{name}。'],output:'text',away_minutes:2,person_cooldown_minutes:60,interval_minutes:10,hourly_limit:2,daily_limit:4}})
    if(url.pathname.startsWith('/api/'))return route.fulfill({json:{}})
    if(url.pathname==='/')return route.fulfill({body:html,contentType:'text/html'})
    const filename=path.resolve(out,decodeURIComponent(url.pathname).replace(/^\//,''))
@@ -48,8 +49,32 @@ try{
   await page.goto('https://preview.invalid/')
   await page.locator('.digital-presence-particles[data-frame]').waitFor()
   await page.locator('.digital-home-voice-dock [data-camera-toggle]').click()
-  const panel=page.locator('.video-preview-window'),video=panel.locator('video'),header=panel.locator('.video-preview-header')
+  const panel=page.locator('.video-preview-window'),video=panel.locator('video'),header=panel.locator('.video-preview-header'),controls=panel.locator('.video-preview-controls')
   await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.videoWidth>0)
+  const frame=await video.boundingBox()
+  const switcher=await controls.locator('.digital-person-camera-switch').boundingBox()
+  const close=await controls.locator('[data-video-close]').boundingBox()
+  if(width<=1023){
+   for(const button of [switcher,close]){
+    assert.ok(button.x>=frame.x&&button.x+button.width<=frame.x+frame.width&&button.y+button.height<=frame.y+frame.height,'control stays inside the video frame')
+    assert.equal(button.y,frame.y,'control is flush with the top edge')
+    assert.equal(button.width,20,'mobile control uses a compact visible width')
+    assert.equal(button.height,20,'mobile control uses a compact visible height')
+   }
+   assert.equal(switcher.x,frame.x,'camera switch is flush with the left edge')
+   assert.equal(close.x+close.width,frame.x+frame.width,'close is flush with the right edge')
+   for(const button of await controls.getByRole('button').all()){
+    assert.equal(await button.evaluate(el=>getComputedStyle(el).borderRadius),'0px')
+    assert.deepEqual(await button.evaluate(el=>{
+     const area=getComputedStyle(el,'::before')
+     return [area.width,area.height]
+    }),['32px','32px'],'mobile controls retain their touch area')
+   }
+  }else{
+   const titleBar=await header.boundingBox()
+   assert.ok([switcher,close].every(button=>button.y>=titleBar.y&&button.y+button.height<=frame.y),'desktop controls remain on the title bar')
+   assert.ok(switcher.x+switcher.width<=close.x&&close.x+close.width===titleBar.x+titleBar.width,'desktop buttons remain grouped on the right')
+  }
   if(width>1023){
    assert.equal(await panel.getAttribute('data-video-docked'),'true','desktop uses the fixed camera panel')
    const camera=page.locator('.digital-person-camera--panel'),cameraBox=await camera.boundingBox(),footer=await page.locator('.digital-home-footer').boundingBox(),info=await page.locator('.digital-home-presence-info').boundingBox()
@@ -72,6 +97,9 @@ try{
   }
   await page.screenshot({path:path.join(artifacts,`panel-${width}-${height}.png`)})
   if(width===390){
+   await controls.locator('.digital-person-camera-switch').click()
+   await page.waitForFunction(()=>window.videoFixture.constraints.video.facingMode.ideal==='user')
+   await controls.locator('.digital-person-camera-switch').waitFor()
    await page.evaluate(()=>window.videoFixture.resize(720,1280))
    await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.videoWidth===720)
    await page.waitForTimeout(80)
@@ -92,6 +120,21 @@ try{
   }
   const sourceRatio=await video.evaluate(v=>v.videoWidth/v.videoHeight)
   assert.equal(await panel.locator('[data-video-pin]').count(),0,'no fixed/floating toggle')
+  const surface=panel.locator('[data-video-drag]'),picture=surface.locator('.video-preview-picture')
+  const originalSize=await panel.boundingBox(),originalFrame=await video.boundingBox(),surfaceBox=await surface.boundingBox()
+  const focus={x:Math.round(surfaceBox.width*.25),y:Math.round(surfaceBox.height*.7)}
+  await surface.dblclick({position:focus})
+  assert.equal(await surface.getAttribute('aria-pressed'),'true')
+  assert.deepEqual(await panel.boundingBox(),originalSize,'double click keeps the window in place')
+  const zoomed=await video.boundingBox()
+  assert.ok(Math.abs(zoomed.width-originalFrame.width*2)<1)
+  assert.ok(Math.abs(zoomed.x-(originalFrame.x-focus.x))<1&&Math.abs(zoomed.y-(originalFrame.y-focus.y))<1,'selected point stays under the pointer')
+  assert.equal(await page.evaluate('('+clipAudit+')({root:".video-preview-window"})').then(audit=>audit.cut),0)
+  await page.screenshot({path:path.join(artifacts,`picture-zoom-${width}-${height}.png`)})
+  await surface.dblclick({position:focus})
+  assert.equal(await surface.getAttribute('aria-pressed'),'false')
+  assert.deepEqual(await video.boundingBox(),originalFrame)
+  assert.deepEqual(await panel.boundingBox(),originalSize)
   if(width<=1023){
   const dockedBox=await video.boundingBox()
   const pinned=await panel.evaluate(el=>{const video=el.querySelector('video'),box=video.getBoundingClientRect();return {width:box.width,height:box.height,ratio:video.videoWidth/video.videoHeight}})
@@ -107,31 +150,23 @@ try{
    return measured
   }
   const measured=await check()
-  const originalSize=await panel.boundingBox()
-  await video.dblclick()
-  assert.equal(await panel.getAttribute('data-video-expanded'),'true','desktop double click enlarges the preview')
-  await video.dblclick()
-  assert.equal(await panel.getAttribute('data-video-expanded'),'false','second double click restores preview')
-  assert.deepEqual(await panel.boundingBox(),originalSize)
   assert.equal(await panel.locator('[data-camera-ratio]').count(),0,'ratio switching has been removed')
   assert.equal(measured.fit,'contain','full frame is displayed without cropping');assert.ok(measured.sourceRatio>1,'fixture actually returns a landscape stream')
   assert.equal(await panel.getAttribute('data-frame-aspect'),null,'window never overrides the actual camera aspect ratio')
   assert.deepEqual(await page.evaluate(()=>window.videoFixture.constraints.video.resizeMode),{exact:'none'})
-  assert.equal(await header.locator(':scope > span').count(),0,'no preview title or title bar')
+  assert.equal(await header.count(),0,'floating preview has no title bar')
   assert.equal(await panel.evaluate(el=>getComputedStyle(el).borderTopColor),'rgba(24, 24, 27, 0.72)')
   assert.deepEqual(await panel.evaluate(el=>{const s=getComputedStyle(el);return [s.borderTopLeftRadius,s.borderTopRightRadius,s.borderBottomLeftRadius,s.borderBottomRightRadius]}),['0px','0px','0px','0px'])
-  const controlBox=await header.boundingBox()
-  assert.ok(controlBox.y>=7 && controlBox.y+controlBox.height<=measured.media.y,'controls stay above the video inside the viewport')
   assert.ok(Math.abs(measured.media.x+measured.media.width/2-(dockedBox.x+dockedBox.width/2))<2,'detaching preserves the preview horizontal position')
   assert.ok(Math.abs(measured.media.y+measured.media.height/2-(dockedBox.y+dockedBox.height/2))<2,'detaching preserves the preview vertical position')
-  for(const button of await header.getByRole('button').all()){
-   const box=await button.boundingBox();assert.ok(box.height<=24&&box.y+box.height<=measured.media.y+1,'controls outside video')
-  }
-  assert.equal(await panel.locator('.digital-person-camera-switch svg.lucide-switch-camera').count(),1,'switch icon is outside video')
+  assert.equal(await panel.locator('.digital-person-camera-switch svg.lucide-switch-camera').count(),1,'switch remains an icon')
   await page.screenshot({path:path.join(artifacts,`eyes-${width}-${height}.png`)})
   if(width===390){
-   const lightStyle=await page.addStyleTag({content:'.digital-home{background:#fff!important} .digital-home-main,.digital-home-footer,.digital-home-header{visibility:hidden} .video-preview-window,.video-preview-header{visibility:visible}'})
-   for(const button of await header.getByRole('button').all()){assert.equal(await button.evaluate(el=>getComputedStyle(el).color),'rgb(255, 255, 255)','white icons contrast with the button surface');assert.equal(await button.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(24, 24, 27, 0.72)','translucent dark background keeps controls visible over both light and dark pages')}
+   const lightStyle=await page.addStyleTag({content:'.digital-home{background:#fff!important} .digital-home-main,.digital-home-footer,.digital-home-header{visibility:hidden} .video-preview-window{visibility:visible}'})
+   await page.mouse.move(1,1)
+   await page.waitForFunction(()=>Array.from(document.querySelectorAll('.video-preview-controls button'))
+    .every(button=>getComputedStyle(button).backgroundColor==='rgba(24, 24, 27, 0.48)'))
+   for(const button of await controls.getByRole('button').all()){assert.equal(await button.evaluate(el=>getComputedStyle(el).color),'rgb(255, 255, 255)','controls retain white icons');assert.equal(await button.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(24, 24, 27, 0.48)','mobile controls use a lighter translucent background')}
    await page.screenshot({path:path.join(artifacts,'white-chat-camera-390-844.png')})
    await lightStyle.evaluate(el=>el.remove())
   }
@@ -168,13 +203,21 @@ try{
   await check()
   await page.screenshot({path:path.join(artifacts,`portrait-source-${width}-${height}.png`)})
   if(width===390){
-   const tap=await page.context().newCDPSession(page),box=await video.boundingBox(),x=box.x+box.width/2,y=box.y+box.height/2
+   const tap=await page.context().newCDPSession(page),box=await surface.boundingBox(),x=box.x+box.width*.7,y=box.y+box.height*.3
+   const windowBefore=await panel.boundingBox()
+   const plain=await page.addStyleTag({content:'.digital-home{background:#fff!important} .digital-home-main,.digital-home-footer,.digital-home-header{visibility:hidden} .video-preview-window{visibility:visible}'})
+   const spillArea={x:0,y:Math.ceil(box.y+box.height*.2),width:Math.floor(windowBefore.x),height:Math.floor(box.height*.6)}
+   const outsideBefore=await page.screenshot({clip:spillArea})
    const doubleTap=async()=>{for(let i=0;i<2;i++){await tap.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});await tap.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})}}
    await doubleTap()
-   assert.equal(await panel.getAttribute('data-video-expanded'),'true','real touch double tap enlarges')
-   await page.screenshot({path:path.join(artifacts,'double-tap-expanded.png')})
+   assert.equal(await surface.getAttribute('aria-pressed'),'true','real touch double tap zooms the picture')
+   assert.deepEqual(await panel.boundingBox(),windowBefore)
+   assert.match(await picture.evaluate(el=>getComputedStyle(el).transform),/^matrix\(2,/)
+   assert.ok(outsideBefore.equals(await page.screenshot({clip:spillArea})),'zoom clips all video pixels at the frame edge')
+   await plain.evaluate(el=>el.remove())
+   await page.screenshot({path:path.join(artifacts,'double-tap-zoom.png')})
    await doubleTap()
-   assert.equal(await panel.getAttribute('data-video-expanded'),'false','second touch double tap restores')
+   assert.equal(await surface.getAttribute('aria-pressed'),'false','second touch double tap restores the full frame')
    await tap.detach()
   }
   const before=await panel.boundingBox(),media=await video.boundingBox()
@@ -202,10 +245,24 @@ try{
   const faceBox=await faceDialog.boundingBox();assert.ok(Math.abs(faceBox.x+faceBox.width/2-width/2)<2&&Math.abs(faceBox.y+faceBox.height/2-height/2)<2,'face recognition opens a centered dialog')
   assert.ok(faceBox.x>=8&&faceBox.y>=8&&faceBox.x+faceBox.width<=width-8&&faceBox.y+faceBox.height<=height-8,'face dialog fits viewport')
   await page.screenshot({path:path.join(artifacts,`face-dialog-${width}.png`)})
+  await faceDialog.getByRole('tab',{name:'识别设置',exact:true}).click()
+  const recognitionSettings=faceDialog.locator('.face-settings-list')
+  const choices=['显示人脸框','显示姓名','显示关系','发送时附带姓名和关系']
+  assert.deepEqual(await recognitionSettings.locator('.face-check').allTextContents(),choices)
+  assert.ok(await faceDialog.locator('.face-home-content').evaluate(el=>el.scrollWidth<=el.clientWidth))
+  await page.screenshot({path:path.join(artifacts,`face-recognition-options-${width}.png`),animations:'disabled'})
+  await faceDialog.getByRole('tab',{name:'人脸唤醒',exact:true}).click()
+  await faceDialog.getByRole('textbox',{name:/欢迎语/}).waitFor()
+  assert.equal(await faceDialog.getByRole('textbox',{name:/欢迎语/}).inputValue(),'欢迎回来，{name}。')
+  assert.ok(await faceDialog.locator('.face-home-content').evaluate(el=>el.scrollWidth<=el.clientWidth))
+  await page.screenshot({path:path.join(artifacts,`face-welcome-dialog-${width}.png`),animations:'disabled'})
+  const welcomeSave=faceDialog.getByRole('button',{name:'保存',exact:true})
+  await welcomeSave.scrollIntoViewIfNeeded()
+  assert.ok(await welcomeSave.evaluate(el=>el.getBoundingClientRect().bottom<=el.closest('.face-home-content').getBoundingClientRect().bottom+1))
   if(width>1023){const before=await faceDialog.boundingBox(),handle=await faceDialog.locator('.resizable-panel-e').boundingBox();await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);await page.mouse.down();await page.mouse.move(handle.x-80,handle.y+handle.height/2);await page.mouse.up();assert.ok((await faceDialog.boundingBox()).width<before.width,'dialog supports resizing')}
   const faceAudit=await page.evaluate('('+clipAudit+')({root:”.face-home-backdrop”})'.replaceAll('”','"'));assert.equal(faceAudit.cut,0,JSON.stringify(faceAudit))
   await page.locator('.face-home-close').click();await faceDialog.waitFor({state:'detached'})
-  assert.deepEqual(errors,[]);results.push({width,height,ratio:sourceRatio,toolbar:24,defaultBelowReflection:width>1023,panelDraggable:width>1023});await page.close()
+  assert.deepEqual(errors,[]);results.push({width,height,ratio:sourceRatio,controlsInside:width<=1023,defaultBelowReflection:width>1023,panelDraggable:width>1023});await page.close()
  }
 }finally{await browser.close()}
 await fs.writeFile(path.join(artifacts,'results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results))

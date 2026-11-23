@@ -5,8 +5,49 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { I18nProvider } from '../src/i18n'
 import ChatInput from '../src/components/ChatInput'
-import DigitalPersonCamera from '../src/components/digital-person/DigitalPersonCamera'
+import DigitalPersonCamera, { DigitalPersonCameraToggle } from '../src/components/digital-person/DigitalPersonCamera'
 import { fsApi } from '../src/api/client'
+
+test('the dock camera keeps its icon while opening and only selects after the preview starts', async context => {
+  const { window } = installDomEnvironment(), host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
+  Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  let requests = 0, deny: () => void = () => {}
+  const track = { stop() {}, addEventListener() {} }
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track] }
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => {
+    if (++requests === 1) return stream
+    return new Promise((_resolve, reject) => { deny = () => reject(new DOMException('denied', 'NotAllowedError')) })
+  } } })
+  window.HTMLVideoElement.prototype.play = async () => {}
+  Object.defineProperty(window.HTMLVideoElement.prototype, 'srcObject', { configurable: true, writable: true, value: null })
+  try {
+    await act(async () => root.render(<I18nProvider><DigitalPersonCamera compact><DigitalPersonCameraToggle /></DigitalPersonCamera></I18nProvider>))
+    const toggle = host.querySelector<HTMLButtonElement>('[data-camera-toggle]')!
+    const name = toggle.getAttribute('aria-label'), icon = toggle.querySelector('svg')?.outerHTML
+    assert.ok(toggle.querySelector('path[d="m2 2 20 20"]'))
+    await act(async () => { toggle.click(); toggle.click() })
+    assert.equal(requests, 1)
+    assert.equal(toggle.getAttribute('aria-pressed'), 'true', host.textContent || '')
+    assert.equal(toggle.getAttribute('aria-label'), name)
+    assert.equal(toggle.querySelector('path[d="m2 2 20 20"]'), null)
+    await act(async () => toggle.click())
+    await act(async () => toggle.click())
+    assert.equal(toggle.getAttribute('aria-pressed'), 'false')
+    assert.equal(toggle.getAttribute('aria-busy'), 'true')
+    assert.equal(toggle.getAttribute('aria-disabled'), 'true')
+    assert.equal(toggle.querySelector('svg')?.outerHTML, icon)
+    await act(async () => context.mock.timers.tick(300))
+    assert.ok(toggle.querySelector('.spinner'))
+    await act(async () => toggle.click())
+    assert.equal(requests, 2)
+    await act(async () => deny())
+    assert.ok(host.querySelector('[role="alert"]'))
+    assert.equal(toggle.getAttribute('aria-busy'), 'false')
+    assert.equal(toggle.getAttribute('aria-disabled'), null)
+    assert.equal(toggle.querySelector('svg')?.outerHTML, icon)
+  } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
+})
 
 for (const mode of ['inline', 'compact', 'menu']) test(`camera captures only on send, uploads one frame and disposes tracks when hidden (mode=${mode})`, async () => {
   const { window } = installDomEnvironment(), host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
@@ -134,23 +175,78 @@ for(const portrait of [false,true]) test(`ordinary shared composer sends the vis
   } finally { await act(async () => root.unmount()); fsApi.uploadImage=oldUpload; await window.happyDOM.close() }
 })
 
-for (const nativeFrames of [true,false]) for (const [orientation, width, height] of [['portrait-primary',390,280], ['landscape-primary',390,700]] as const) test(`camera capture follows physical screen orientation rather than keyboard viewport (${orientation}, nativeFrames=${nativeFrames})`, async () => {
+for (const android of [false,true]) for (const nativeFrames of [true,false]) for (const [orientation, width, height] of [['portrait-primary',390,280], ['landscape-primary',390,700]] as const) test(`camera capture chooses the native frame preference (${orientation}, nativeFrames=${nativeFrames}, android=${android})`, async () => {
   const { window }=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
   Object.defineProperty(document,'hidden',{configurable:true,value:false})
   Object.defineProperties(window,{innerWidth:{configurable:true,value:width},innerHeight:{configurable:true,value:height}})
   Object.defineProperty(window.screen,'orientation',{configurable:true,value:{type:orientation}})
+  Object.defineProperty(navigator,'userAgent',{configurable:true,value:android?'Mozilla/5.0 (Linux; Android 14; wv)':'Mozilla/5.0 (Macintosh)'})
   let constraints: MediaStreamConstraints | undefined
   const track={stop(){},addEventListener(){},readyState:'live'}
   Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getSupportedConstraints:()=>({resizeMode:nativeFrames}),getUserMedia:async(value:MediaStreamConstraints)=>{constraints=value;return {getTracks:()=>[track],getVideoTracks:()=>[track]}}}})
   window.HTMLVideoElement.prototype.play=async()=>{}
+  Object.defineProperty(window.HTMLVideoElement.prototype,'srcObject',{configurable:true,writable:true,value:null})
   try {
     await act(async()=>root.render(<I18nProvider><DigitalPersonCamera projectId="demo"/></I18nProvider>))
     await act(async()=>host.querySelector<HTMLButtonElement>('[data-camera-toggle]')!.click())
     const video=constraints!.video as MediaTrackConstraints
     const portrait=orientation.startsWith('portrait')
-    assert.deepEqual(video.aspectRatio,nativeFrames?{ideal:portrait?9/16:16/9}:undefined,'orientation hints are only used when capture cropping is forbidden')
+    assert.deepEqual(video.facingMode,{ideal:'environment'})
+    assert.deepEqual(video.aspectRatio,nativeFrames?{ideal:android?4/3:portrait?9/16:16/9}:undefined,
+      'Android rear cameras prefer a native 4:3 capture format in both orientations')
     assert.equal(video.width,undefined,'no width that may crop the native camera frame')
     assert.equal(video.height,undefined,'no height that may crop the native camera frame')
     assert.deepEqual(video.resizeMode,nativeFrames?{exact:'none'}:undefined,'disable capture-level crop and scale when supported')
+    await act(async()=>host.querySelector<HTMLButtonElement>('.digital-person-camera-switch')!.click())
+    const front=constraints!.video as MediaTrackConstraints
+    assert.deepEqual(front.facingMode,{ideal:'user'})
+    assert.deepEqual(front.aspectRatio,nativeFrames?{ideal:portrait?9/16:16/9}:undefined)
   } finally {await act(async()=>root.unmount());await window.happyDOM.close()}
+})
+
+test('Android selects an exposed rear camera, remembers it and recovers if it disappears', async () => {
+  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+  Object.defineProperty(document,'hidden',{configurable:true,value:false})
+  Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Mozilla/5.0 (Linux; Android 14; wv)'})
+  Object.defineProperty(window.HTMLVideoElement.prototype,'srcObject',{configurable:true,writable:true,value:null})
+  window.HTMLVideoElement.prototype.play=async()=>{}
+  const requests:MediaTrackConstraints[]=[]
+  let available=true,stops=0
+  Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{
+    getUserMedia:async ({video}:MediaStreamConstraints)=>{
+      const constraints=video as MediaTrackConstraints
+      requests.push(constraints)
+      const id=(constraints.deviceId as ConstrainDOMStringParameters|undefined)?.exact
+      if(id==='rear-two'&&!available)throw new DOMException('','NotFoundError')
+      const track={stop(){stops++},addEventListener(){},getSettings:()=>({deviceId:id??'rear-one'})}
+      return {getTracks:()=>[track],getVideoTracks:()=>[track]}
+    },
+    enumerateDevices:async()=>[
+      {kind:'videoinput',deviceId:'rear-one',label:'camera2 0, facing back'},
+      ...(available?[{kind:'videoinput',deviceId:'rear-two',label:'camera2 2, facing back'}]:[]),
+      {kind:'videoinput',deviceId:'front',label:'camera2 1, facing front'},
+    ],
+  }})
+  const click=async(selector:string)=>{await act(async()=>host.querySelector<HTMLButtonElement>(selector)!.click())}
+  try{
+    await act(async()=>root.render(<I18nProvider><DigitalPersonCamera /></I18nProvider>))
+    await click('[data-camera-toggle]')
+    await click('.digital-person-camera-switch')
+    assert.equal(requests.length,1)
+    const options=[...document.querySelectorAll<HTMLButtonElement>('.chat-input-menu-item')]
+    assert.equal(options.length,3)
+    assert.equal(options[0]?.dataset.selected,'true')
+    await act(async()=>options[1]!.click())
+    assert.deepEqual(requests.at(-1)?.deviceId,{exact:'rear-two'})
+    assert.equal(stops,1)
+    await click('[data-camera-toggle]')
+    await click('[data-camera-toggle]')
+    assert.deepEqual(requests.at(-1)?.deviceId,{exact:'rear-two'})
+    await click('[data-camera-toggle]')
+    available=false
+    await click('[data-camera-toggle]')
+    assert.deepEqual(requests.at(-2)?.deviceId,{exact:'rear-two'})
+    assert.equal(requests.at(-1)?.deviceId,undefined)
+    assert.equal(host.querySelector('[data-camera-phase]')?.getAttribute('data-camera-phase'),'on')
+  }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
 })

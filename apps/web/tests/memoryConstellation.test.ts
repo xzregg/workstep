@@ -34,3 +34,33 @@ test('focusing a star shows only its own nearby chain',()=>{
   const chain=[link('a','b'),link('b','c')]
   assert.deepEqual(constellationLinks([link('d','e'),...chain],points,12,new Set(),'a'),chain)
 })
+
+test('focusing a star extends its visible chain beyond the recall distance cutoff',()=>{
+  const points=new Map([
+    ['a',point(0,0)],['b',point(80,20)],['c',point(45,35)],['d',point(50,35)],
+  ])
+  const edges=[link('a','b'),link('c','a'),link('c','d'),link('a','offscreen')]
+  assert.deepEqual(constellationLinks(edges,points,20,new Set(),'a'),[link('c','a'),link('c','d')])
+  assert.deepEqual(constellationLinks(edges,points,20),[link('c','d')])
+  assert.deepEqual(constellationLinks([link('a','offscreen'),link('c','d')],points,20,new Set(),'a'),[])
+  const chain=[link('a','b'),link('b','c'),link('c','d')]
+  assert.deepEqual(constellationLinks(chain,new Map([
+    ['a',point(0,0)],['b',point(30,0)],['c',point(60,0)],['d',point(90,0)],
+  ]),10,new Set(),'a'),chain)
+})
+
+test('focused links remain one open chain when additional relations branch, cross, or close a loop',()=>{
+  const points=new Map([
+    ['a',point(0,0)],['b',point(4,0)],['c',point(8,0)],['d',point(4,10)],['e',point(2,-9)],['f',point(2,9)],
+  ])
+  const edges=[link('a','b'),link('b','c'),link('b','d'),link('a','e'),link('e','f'),link('c','a')]
+  assert.deepEqual(constellationLinks(edges,points,5,new Set(),'a'),[link('a','b'),link('b','c')])
+})
+
+test('focused chains start at the selected star and stop after five hops total',()=>{
+  const ids=Array.from({length:15},(_,index)=>String(index))
+  const points=new Map(ids.map((id,index)=>[id,point(index*10,0)]))
+  const edges=ids.slice(1).map((id,index)=>link(ids[index],id))
+  assert.deepEqual(constellationLinks(edges,points,20,new Set(),'0'),edges.slice(0,5))
+  assert.deepEqual(constellationLinks(edges,points,20,new Set(),'7'),edges.slice(2,7).reverse())
+})

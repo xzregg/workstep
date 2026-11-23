@@ -20,8 +20,35 @@ def test_default_idle_window_preserves_ten_minute_reuse():
 
 
 @pytest.mark.anyio
+async def test_default_keeps_one_warm_worker_after_idle_timeout():
+    pool = CodexClientPool(idle_seconds=.01)
+    try:
+        first = await pool.acquire('/first', 'a', 'same', Client)
+        pool.bind(first, 'a', SimpleNamespace(id='a'))
+        await pool.release(first, reusable=True)
+        await asyncio.sleep(.05)
+        assert first.client.closed == 0
+        assert await pool.acquire('/first', 'a', 'same', Client) is first
+        await pool.release(first, reusable=True)
+
+        busy = await pool.acquire('/busy', 'b', 'same', Client)
+        pool.bind(busy, 'b', SimpleNamespace(id='b'))
+        recent = await pool.acquire('/recent', 'c', 'same', Client)
+        pool.bind(recent, 'c', SimpleNamespace(id='c'))
+        await pool.release(recent, reusable=True)
+        await asyncio.shield(first.worker.closing)
+        await asyncio.sleep(.05)
+        assert first.client.closed == 1
+        assert recent.client.closed == busy.client.closed == 0
+        assert len(pool._workers) == 2
+    finally:
+        await pool.close()
+    assert recent.client.closed == busy.client.closed == 1
+
+
+@pytest.mark.anyio
 async def test_idle_worker_limit_keeps_recent_workers_and_busy_neighbor():
-    pool = CodexClientPool()
+    pool = CodexClientPool(max_idle_workers=2)
 
     async def acquire(cwd, session_id):
         entry = await pool.acquire(cwd, session_id, 'same', Client)

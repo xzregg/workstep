@@ -1,9 +1,9 @@
 # 主动思考与记忆质量：第一版验证方案
 
-> 当前验收基线：以下历史记录保留过程证据；以文末“统一数字人评估与联系配置”及 docs/digital-person-companion.md 为现行实现。此前两阶段独立模型与隐藏四小时限制已被取代。
+> 当前验收基线：以下历史记录保留过程证据；以文末“统一数字人评估与联系配置”及 docs/digital-person-companion.md 为现行实现。此前两阶段独立模型与隐藏四小时限制已被取代；旧独立提炼器、worker 及其兼容入口已删除，不得按历史段落重新启用。
 
 ## 目标与职责
-主动思考按持久处理回执选择未处理的原始消息版本和到期念头，包含已归档会话；已有 MemoryWorker 负责跨项目经验提炼，不能在主动思考中再建一套提炼器。经验值是统计，不能作为经验质量指标。
+主动思考按持久处理回执选择未处理的原始消息版本和到期念头，包含已归档会话；记忆与经验由同一次主动思考模型评估提炼，程序统一校验、落库与提交处理回执。经验值是统计，不能作为经验质量指标。
 
 ## 自动验收（先写失败用例）
 1. 普通／归档会话的未处理事件都可进入处理；成功静默也提交进度，重启、归档／恢复不重做。
@@ -33,7 +33,7 @@
 
 工程回归（不调用付费模型）：
 ```sh
-rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_digital_person_reflection.py tests/test_digital_person_runtime.py tests/test_digital_person_memory.py tests/test_digital_person_global_memory.py tests/test_digital_person_affect.py tests/test_digital_person_followup.py tests/test_memory_knowledge.py tests/test_memory_worker.py tests/test_memory_workflow_sources.py tests/test_memory_injection.py -q
+rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_digital_person_reflection.py tests/test_digital_person_runtime.py tests/test_digital_person_memory.py tests/test_digital_person_global_memory.py tests/test_digital_person_affect.py tests/test_digital_person_followup.py tests/test_memory_knowledge.py tests/test_memory_maintenance.py tests/test_memory_workflow_sources.py tests/test_memory_injection.py -q
 ```
 
 真实模型语义评测（仅合成案例，失败立即停止定位；模型输出仍须人工审阅适用范围及实用性）：
@@ -60,7 +60,7 @@ rtk proxy env WORKSTEP_RUN_MEMORY_MODEL_EVAL=1 uv run --no-sync --directory apps
 
 ## 调度职责纠正
 
-MemoryWorker只保留整理执行单元，无start／定时循环／独立关闭入口。main.py不再创建或启动它。自动间隔到期或手动立即检查 → 收集并索引来源 → 来源忙则延后 → 同轮调用记忆整理 → 按需拟人化思考 → 联系判断。委派1分钟轮询不启动记忆整理。两阶段可使用不同提示词／模型调用，但共用主动思考的一次调度与运行记录，不能另加30秒后台模型循环。新增测试先失败后实现，统一调度及既有运行、委派、进程恢复等113项通过。
+此处原两阶段整理执行单元已退役并删除。当前由主动思考单一调度，在同一次数字人模型评估中完成提炼与联系判断，程序提交知识和处理回执，不存在独立记忆 worker 或兼容提炼调用。历史113项测试记录仅保留为当时的过程证据，现行回归使用统一评估和批次测试。
 
 
 ## 历史样例输入体积回归
@@ -92,7 +92,7 @@ MemoryWorker只保留整理执行单元，无start／定时循环／独立关闭
 本次结果：上述宕机与游标用例先失败后通过；主动思考／来源索引／记忆整理／全局召回／关系／委派／权限相关175项回归全部通过。再补记忆提炼宕机租约恢复、完成后跨天不重复的用例，提炼专项21项通过，累计176个不同工程用例通过。另有旧全局记忆测试期望心跳自动召回其他项目，已将末尾断言改成不附加无关历史，保留其前台聊天跨项目召回断言。慢索引canary通过，未放宽阈值。命令：
 
 ```sh
-rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_digital_person_proactive_delivery.py tests/test_digital_person_reflection.py tests/test_digital_person_runtime.py tests/test_memory_worker.py tests/test_memory_knowledge.py tests/test_digital_person_memory.py tests/test_memory_workflow_sources.py tests/test_digital_person_affect.py tests/test_digital_person_followup.py tests/test_digital_person_global_memory.py tests/test_memory_injection.py -q --tb=short --basetemp=../../tmp/digital-person-receipts/final-verified
+rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_digital_person_proactive_delivery.py tests/test_digital_person_reflection.py tests/test_digital_person_runtime.py tests/test_memory_maintenance.py tests/test_memory_knowledge.py tests/test_digital_person_memory.py tests/test_memory_workflow_sources.py tests/test_digital_person_affect.py tests/test_digital_person_followup.py tests/test_digital_person_global_memory.py tests/test_memory_injection.py -q --tb=short --basetemp=../../tmp/digital-person-receipts/final-verified
 rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_memory_knowledge.py -q --tb=short --basetemp=../../tmp/digital-person-receipts/extraction-recovery
 ```
 
@@ -104,7 +104,7 @@ rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_memory_know
 固定失败用例先验证：内部参数尚不支持、检查器转录含控制字符串、模型输入夹带旧通知全文、切换联系人在引擎重置前中断后复用旧联系人引擎、旧投递回执对应通知回灌、非法通知结果提前提交思考回执。修复后同跑普通聊天、上下文重置、通用助手、执行配置、渠道回复、主动思考、记忆、关系与委派，共384项通过。旧cursor/cursors的无效进度写入移除，真正进度由扫描游标／思考回执／提炼作业／投递回执分别承担。新流程图和边界以docs/digital-person-companion.md为准。
 
 ```sh
-rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_context_reset.py tests/test_chat_session.py tests/test_assistant_engine_invocation.py tests/test_assistant_api.py tests/test_shared_chat_execution_config.py tests/test_digital_person_runtime.py tests/test_digital_person_reflection.py tests/test_digital_person_proactive_delivery.py tests/test_digital_person_memory.py tests/test_memory_worker.py tests/test_memory_knowledge.py tests/test_digital_person_affect.py tests/test_digital_person_followup.py tests/test_memory_injection.py tests/test_channel_chat_responder.py -q --tb=short --basetemp=../../tmp/digital-person-receipts/flow-final
+rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_context_reset.py tests/test_chat_session.py tests/test_assistant_engine_invocation.py tests/test_assistant_api.py tests/test_shared_chat_execution_config.py tests/test_digital_person_runtime.py tests/test_digital_person_reflection.py tests/test_digital_person_proactive_delivery.py tests/test_digital_person_memory.py tests/test_memory_maintenance.py tests/test_memory_knowledge.py tests/test_digital_person_affect.py tests/test_digital_person_followup.py tests/test_memory_injection.py tests/test_channel_chat_responder.py -q --tb=short --basetemp=../../tmp/digital-person-receipts/flow-final
 ```
 
 没有启动或重启服务，无真实模型／渠道发送；未新增前端界面。源代码和文档已更新，运行进程需重新加载代码后生效。真实LLM语义质量及真实设备播报的原有验收缺口保持公开。开启共享上下文仍保留前轮引擎历史，不把“本轮未重新提交旧片段”宣称为“引擎没有历史”。旧通知仅按仍可核实的投递身份排除，不依据正文相似度删除原聊天。
@@ -117,7 +117,7 @@ rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_context_res
 先复现3项失败：提炼retry被记成idle、没有思考事件时失败被记成成功静默、索引积压导致故障后继续领取新批次。修复后模型级错误使用持久供应商级退避（按思考间隔起步，连续失败倍增，上限1小时），重建worker不能绕过；仅记忆失败明确显示failed，独立成功思考与通知保持其结果，错误单列、不污染投递／重试正文。新增HTTP状态码脱敏回归。已有“第二轮不再思考”的测试改为断言no_work／没有重复关系更新，不再把独立提炼失败强行断言为silent。相关176项通过，git diff --check通过。
 
 ```sh
-rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_memory_worker.py tests/test_memory_knowledge.py tests/test_digital_person_runtime.py tests/test_digital_person_proactive_delivery.py tests/test_digital_person_reflection.py tests/test_digital_person_affect.py tests/test_digital_person.py tests/test_digital_person_followup.py tests/test_memory_injection.py -q --tb=short --basetemp=../../tmp/digital-person-receipts/production-final-passed
+rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_memory_maintenance.py tests/test_memory_knowledge.py tests/test_digital_person_runtime.py tests/test_digital_person_proactive_delivery.py tests/test_digital_person_reflection.py tests/test_digital_person_affect.py tests/test_digital_person.py tests/test_digital_person_followup.py tests/test_memory_injection.py -q --tb=short --basetemp=../../tmp/digital-person-receipts/production-final-passed
 ```
 
 没有发真实消息、改用户配置、重启服务或调用付费模型；真实提炼模型服务尚未验证恢复，不能以此工程回归宣称经验库已经产生有效知识。4小时联系策略与用户额外要求的冲突仍未更改。修复需运行服务加载新代码后生效。
@@ -133,13 +133,13 @@ rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_memory_work
 本轮工具按需化相关209项通过，包含真实任务执行首次／恢复、普通聊天／渠道、跨项目显式工具、原文分页及撤权、记忆整理、主动思考与上下文重置。没有调用真实模型或发外部通知，没有重启运行服务；需后端加载代码后生效。命令：
 
 ```sh
-rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_memory_injection.py tests/test_digital_person_global_memory.py tests/test_digital_person_memory.py tests/test_memory_query.py tests/test_memory_workflow_sources.py tests/test_memory_knowledge.py tests/test_memory_worker.py tests/test_digital_person_runtime.py tests/test_digital_person_reflection.py tests/test_digital_person_proactive_delivery.py tests/test_channel_chat_responder.py tests/test_context_reset.py tests/test_assistant_engine_invocation.py -q --tb=short --basetemp=../../tmp/digital-person-receipts/tool-only-final-passed
+rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_memory_injection.py tests/test_digital_person_global_memory.py tests/test_digital_person_memory.py tests/test_memory_query.py tests/test_memory_workflow_sources.py tests/test_memory_knowledge.py tests/test_memory_maintenance.py tests/test_digital_person_runtime.py tests/test_digital_person_reflection.py tests/test_digital_person_proactive_delivery.py tests/test_channel_chat_responder.py tests/test_context_reset.py tests/test_assistant_engine_invocation.py -q --tb=short --basetemp=../../tmp/digital-person-receipts/tool-only-final-passed
 ```
 
 
 ## 统一数字人评估与联系配置（2026-11-14，当前基线）
 
-用户确认“单一调度、一次增量评估、按需检索、程序执行结果”。新增digital_person_assessment.py：从已授权项目按单一项目／会话／来源／范围取最多20片段，统一选择缺少思考回执或未完成知识判断的版本。现有数字人引擎同次返回memories、relationship_updates、thought/mood、decision，不再自动调用MemoryWorker或独立Pydantic AI提炼模型。严格质量校验后，知识、思考回执、提炼完成状态同事务提交；任一非法候选整批回滚。只接受当前来源memory_ids，纠正还必须引用当前执行凭证下实际查询返回的知识ID。执行凭证再次在记忆持久化前脱敏。
+用户确认“单一调度、一次增量评估、按需检索、程序执行结果”。新增digital_person_assessment.py：从已授权项目按单一项目／会话／来源／范围取最多20片段，统一选择缺少思考回执或未完成知识判断的版本。现有数字人引擎同次返回memories、relationship_updates、thought/mood、decision，仅使用当前数字人引擎一次评估。严格质量校验后，知识、思考回执、提炼完成状态同事务提交；任一非法候选整批回滚。只接受当前来源memory_ids，纠正还必须引用当前执行凭证下实际查询返回的知识ID。执行凭证再次在记忆持久化前脱敏。
 
 assessment_live_since划分一次性历史补处理与新事件：历史只内部整理，不补发旧任务通知、不追溯关系分、不生成新的关注事项。已有思考回执而旧知识整理失败的版本只补记忆；新事件优先，到期明确事项优先于历史积压。按已有作业领取240秒租约，成功静默／空记忆也完成；失败释放，按原思考间隔重试，显式手动检查可提前重试，进程硬退出则租约到期后恢复。原调度循环异步持有唯一批量任务，长模型等待不阻塞委派轮询；停止和关闭可取消包括收集间隙在内的整轮，没有新增另一个定时器。委派来源的模型评估不重复发完成通知，通知仍归确定性跟进器。跨项目渠道写回原项目、原联系人范围，并在投递回执保存project_id供重试。
 
@@ -174,7 +174,7 @@ assessment_live_since划分一次性历史补处理与新事件：历史只内�
 最终工程验收：完整后端427项通过；补齐统一pending实际调用断言和慢提交健康API canary后，该专项31项通过，累计428个不同后端用例通过。前端35项通过；七宽度渲染与生产构建通过，git diff --check通过。新增慢存储用例确保统一提交等待期间真实健康API可响应，旧慢pending测试已迁移到真正的新职责所有者，避免测试挂在不再使用的旧函数上。
 
 ```sh
-rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_digital_person_unified.py tests/test_digital_person_runtime.py tests/test_digital_person_reflection.py tests/test_digital_person_proactive_delivery.py tests/test_digital_person_memory.py tests/test_digital_person_affect.py tests/test_digital_person.py tests/test_digital_person_followup.py tests/test_digital_person_global_memory.py tests/test_memory_knowledge.py tests/test_memory_worker.py tests/test_memory_query.py tests/test_memory_injection.py tests/test_memory_workflow_sources.py tests/test_context_reset.py tests/test_chat_session.py tests/test_assistant_engine_invocation.py tests/test_channel_chat_responder.py tests/test_memory_secrets.py -q --tb=short --basetemp=../../tmp/digital-person-unified/acceptance
+rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_digital_person_unified.py tests/test_digital_person_runtime.py tests/test_digital_person_reflection.py tests/test_digital_person_proactive_delivery.py tests/test_digital_person_memory.py tests/test_digital_person_affect.py tests/test_digital_person.py tests/test_digital_person_followup.py tests/test_digital_person_global_memory.py tests/test_memory_knowledge.py tests/test_memory_maintenance.py tests/test_memory_query.py tests/test_memory_injection.py tests/test_memory_workflow_sources.py tests/test_context_reset.py tests/test_chat_session.py tests/test_assistant_engine_invocation.py tests/test_channel_chat_responder.py tests/test_memory_secrets.py -q --tb=short --basetemp=../../tmp/digital-person-unified/acceptance
 rtk proxy uv run --no-sync --directory apps/daemon pytest tests/test_digital_person_unified.py tests/test_digital_person_reflection.py -q --tb=short --basetemp=../../tmp/digital-person-unified/canary-final
 rtk proxy node --no-experimental-global-navigator --loader ./scripts/test-loader.mjs --test tests/digitalPersonSettingsSafety.test.tsx tests/digitalPersonRuntimeUi.test.tsx tests/digitalPersonProactiveSpeech.test.tsx tests/i18n.test.ts tests/numericSettings.test.tsx
 rtk proxy node scripts/check-digital-person-settings.mjs

@@ -4,7 +4,7 @@ import {act} from 'react'
 import {createRoot} from 'react-dom/client'
 import {installDomEnvironment} from './helpers/domEnv'
 import Player from '../src/components/digital-person/DigitalPersonProactiveSpeech'
-import {dispatchProactiveMessage,setProactiveSpeechContext} from '../src/components/digital-person/digitalPersonProactive'
+import {dispatchProactiveMessage,playFaceWelcome,setProactiveSpeechContext} from '../src/components/digital-person/digitalPersonProactive'
 import {digitalPersonApi} from '../src/api/digitalPerson'
 import {speechOutputApi} from '../src/api/speechOutput'
 import {SpeechOutputPlayer} from '../src/utils/speechOutput'
@@ -69,5 +69,28 @@ test('leaving avatar while output settings load prevents delayed proactive playb
   assert.deepEqual(spoken,[])
  }finally{
   await act(async()=>root.unmount());setProactiveSpeechContext(null);speechOutputApi.status=oldStatus;SpeechOutputPlayer.prototype.enqueue=oldEnqueue;await window.happyDOM.close()
+ }
+})
+
+test('face welcome keeps template identity out of non-local speech',async()=>{
+ const {window}=installDomEnvironment(),root=createRoot(document.body.appendChild(document.createElement('div')))
+ const oldStatus=speechOutputApi.status,oldEnqueue=SpeechOutputPlayer.prototype.enqueue
+ const spoken:string[]=[]
+ speechOutputApi.status=async(projectId)=>({...outputStatus,settings:{...outputStatus.settings,mode:projectId==='local-voice'?'local':'cloud'}})
+ SpeechOutputPlayer.prototype.enqueue=function(sentences){spoken.push(...sentences)}
+ Object.defineProperty(document,'hidden',{configurable:true,value:false})
+ try{
+  await act(async()=>root.render(<Player/>))
+  for(const projectId of ['cloud-voice','local-voice']){
+   setProactiveSpeechContext({projectId,sessionId:'main',profile:{enabled:true,auto_speak:true} as any,muted:false})
+   await act(async()=>{
+    playFaceWelcome({projectId,sessionId:'main',messageId:projectId,text:'小林，欢迎回来。',privateSpeechFallback:'欢迎回来。'})
+    await new Promise(resolve=>setTimeout(resolve,0))
+   })
+  }
+  assert.deepEqual(spoken,['欢迎回来。','小林，欢迎回来。'])
+ }finally{
+  await act(async()=>root.unmount());setProactiveSpeechContext(null)
+  speechOutputApi.status=oldStatus;SpeechOutputPlayer.prototype.enqueue=oldEnqueue;await window.happyDOM.close()
  }
 })

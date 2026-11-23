@@ -24,3 +24,36 @@ test('feedback failure preserves vote, exposes the cause and allows retry', asyn
     assert.equal(element.querySelector('[role="alert"]'), null)
   } finally { digitalRuntimeApi.feedback = original; await act(async () => root.unmount()); await window.happyDOM.close() }
 })
+
+test('pending feedback keeps its icon for fast requests and prevents duplicate votes', async context => {
+  const { window } = installDomEnvironment()
+  const host = document.body.appendChild(document.createElement('div')), root = createRoot(host)
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  const original = digitalRuntimeApi.feedback
+  let calls = 0, complete: () => void = () => {}
+  digitalRuntimeApi.feedback = async () => {
+    calls++
+    await new Promise<void>(resolve => { complete = resolve })
+    return {} as Awaited<ReturnType<typeof original>>
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><DigitalPersonFeedback messageId="answer" /></I18nProvider>))
+    const [up, down] = host.querySelectorAll('button')
+    await act(async () => { up.click(); up.click(); down.click() })
+    assert.equal(calls, 1)
+    assert.equal(up.getAttribute('aria-busy'), 'true')
+    assert.ok(up.querySelector('svg'))
+    assert.equal(up.querySelector('.spinner'), null)
+    await act(async () => complete())
+    assert.equal(up.getAttribute('aria-pressed'), 'true')
+    await act(async () => context.mock.timers.tick(300))
+    assert.equal(up.querySelector('.spinner'), null)
+    await act(async () => down.click())
+    await act(async () => context.mock.timers.tick(300))
+    assert.ok(down.querySelector('.spinner'))
+    assert.equal(up.getAttribute('aria-pressed'), 'true')
+    await act(async () => complete())
+    assert.equal(down.getAttribute('aria-pressed'), 'true')
+    assert.equal(down.querySelector('.spinner'), null)
+  } finally { digitalRuntimeApi.feedback = original; await act(async () => root.unmount()); await window.happyDOM.close() }
+})

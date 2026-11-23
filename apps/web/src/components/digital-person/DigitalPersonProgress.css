@@ -1,0 +1,14 @@
+.digital-person-progress {
+  font-size: var(--text-title-3);
+  line-height: 1.5;
+  margin-bottom: var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.digital-person-progress p {
+  margin: 0;
+}
+
+.digital-person-progress p + p {
+  margin-top: var(--space-1);
+}

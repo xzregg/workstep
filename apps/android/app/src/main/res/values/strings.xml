@@ -1,25 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
     <string name="app_name">WorkStep</string>
-    <string name="atlas_capture_performance">采集性能</string>
-    <string name="atlas_sampling">正在采集 15 秒。可先静置，再操作需要优化的页面。</string>
-    <string name="atlas_open_first">请先打开已连接的 WorkStep 页面。</string>
-    <string name="atlas_sample_failed">采集未完成，请留在当前页面重试。</string>
-    <string name="atlas_sample_title">页面性能报告</string>
-    <string name="atlas_sample_renderer">星图：知识星 %1$d 颗 · 渲染方式 %2$s</string>
-    <string name="performance_sample_page">页面 %1$s · 前端构建 %2$s</string>
-    <string name="performance_sample_viewport">视口 %1$d×%2$d · 像素比 %3$.1f · 页面节点 %4$d</string>
-    <string name="performance_sample_resources">采集期间资源耗时</string>
-    <string name="performance_sample_heap">JavaScript 堆 %1$d MiB（−1 表示不可用）</string>
-    <string name="atlas_sample_particles">星尘绘制提交耗时</string>
-    <string name="atlas_sample_markers">知识星与连线更新耗时</string>
-    <string name="atlas_copy_sample">复制报告</string>
-    <string name="atlas_copied_sample">报告已复制，可粘贴到对话中。</string>
-    <string name="atlas_sample_totals">采集 %1$d ms · 长任务 %2$d 次／%3$d ms（−1 表示不可用）</string>
-    <string name="atlas_sample_idle">静置页面帧</string>
-    <string name="atlas_sample_touch">交互页面帧</string>
-    <string name="atlas_sample_redraw">星图重绘</string>
-    <string name="atlas_sample_interval">%1$d 个间隔 · 中位数 %2$d ms · P95 %3$d ms · 最长 %4$d ms</string>
     <string name="server_url">WorkStep HTTP 或 HTTPS 地址</string>
     <string name="connect_title">连接 WorkStep</string>
     <string name="connect_help">输入手机浏览器可以访问的 WorkStep HTTP 或 HTTPS 根地址。网页、接口和实时消息须位于同一地址。</string>
@@ -64,4 +45,5 @@
     <string name="apk_installer_failed">Could not open the system installer: %1$s</string>
     <string name="invalid_server_address">Enter a valid HTTP or HTTPS server address</string>
     <string name="server_connection_failed">Could not connect: %1$s</string>
+    <string name="runtime_diagnostics">运行诊断</string>
 </resources>

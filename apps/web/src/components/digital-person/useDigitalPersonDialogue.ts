@@ -22,8 +22,9 @@ export function useDigitalPersonDialogue(options:Options){
  const connectedRef=useRef(false),mutedRef=useRef(false)
  connectedRef.current=connected;mutedRef.current=muted
  const resumeAfter=useRef(0),wasSpeaking=useRef(false),listenStarted=useRef(0)
+ const stopAfterFinish=useRef(false)
  const voice=useVoiceInput({ownerKey:`digital-dialogue:${options.projectId}:${options.sessionId}`,projectId:options.projectId,
-  disabled:!options.active,compact:false,value:'',cursor:0,automatic:true,showLevel:options.showLevel,onInsert:text=>{
+  disabled:!options.active,compact:false,value:'',cursor:0,deliverSegments:true,showLevel:options.showLevel,reuseCaptureContext:true,trackSpeechLevel:true,onInsert:text=>{
    if(!connectedRef.current||mutedRef.current||!latest.current.active||latest.current.playbackPaused)return
    if(!/[\p{L}\p{N}]/u.test(text))return
    retryDevice.current=true
@@ -33,6 +34,7 @@ export function useDigitalPersonDialogue(options:Options){
   }})
  const capture=useRef(voice);capture.current=voice
  const end=useCallback(()=>{
+  stopAfterFinish.current=false
   stopDigitalSpeech(options.projectId,options.sessionId)
   epoch.current++;connectedRef.current=false;setConnected(false);setMuted(false);capture.current.cancel()
   sendingRef.current=false;setSending(false)
@@ -41,6 +43,7 @@ export function useDigitalPersonDialogue(options:Options){
  useEffect(()=>{
   if(voice.phase==='recording')listenStarted.current=performance.now()
   if(voice.phase==='error'){
+   stopAfterFinish.current=false
    if(voice.error==='speech.deviceLost'&&retryDevice.current&&connectedRef.current&&!mutedRef.current
       &&latest.current.active&&!latest.current.playbackPaused&&!document.hidden){
     retryDevice.current=false
@@ -49,6 +52,12 @@ export function useDigitalPersonDialogue(options:Options){
   }
  },[voice.phase,voice.error])
  useEffect(()=>{
+  if(voice.phase==='idle'&&stopAfterFinish.current){
+   stopAfterFinish.current=false
+   connectedRef.current=false
+   setConnected(false)
+   return
+  }
   if(playbackPaused){
    wasSpeaking.current=true
    if(capture.current.active)capture.current.cancel()
@@ -62,7 +71,7 @@ export function useDigitalPersonDialogue(options:Options){
   const start=()=>{
    const current=latest.current
    if(connectedRef.current&&!mutedRef.current&&current.active&&!current.playbackPaused&&!document.hidden){
-    void capture.current.start()
+    void capture.current.start(continuousRef.current)
    }
   }
   const delay=Math.max(0,resumeAfter.current-performance.now())
@@ -82,29 +91,35 @@ export function useDigitalPersonDialogue(options:Options){
     return
    }
    if(latest.current.speaking||capture.current.phase!=='recording')return
-   if(!capture.current.hasSpeech&&now-listenStarted.current>=15000){
+   if(capture.current.hasSpeech)listenStarted.current=now
+   else if(now-listenStarted.current>=15000){
     mutedRef.current=true;setMuted(true);capture.current.cancel()
    }
   },100)
   return()=>clearInterval(timer)
  },[connected,muted,continuous,end])
  useEffect(()=>{
+  stopAfterFinish.current=false
   setPlaybackOverride(false)
   updateDraft(null);sendingRef.current=false;setSending(false)
-  const end=()=>{
-   if(!document.hidden)return
+  const leave=()=>{
+   stopAfterFinish.current=false
    connectedRef.current=false;setConnected(false);setMuted(false);capture.current.cancel()
    continuousRef.current=false;setContinuous(false)
    stopDigitalSpeech(options.projectId,options.sessionId)
   }
-  document.addEventListener('visibilitychange',end)
+  const hide=()=>{if(document.hidden)leave()}
+  document.addEventListener('visibilitychange',hide)
+  window.addEventListener('pagehide',leave)
   return()=>{
    epoch.current++;connectedRef.current=false;capture.current.cancel();stopDigitalSpeech(options.projectId,options.sessionId)
-   document.removeEventListener('visibilitychange',end)
+   document.removeEventListener('visibilitychange',hide)
+   window.removeEventListener('pagehide',leave)
   }
  },[options.projectId,options.sessionId])
  useEffect(()=>{if(!options.active){connectedRef.current=false;setConnected(false);continuousRef.current=false;setContinuous(false);capture.current.cancel()}},[options.active])
  const begin=(keepListening:boolean,overridePlayback=false)=>{
+  stopAfterFinish.current=false
   if(continuousRef.current!==keepListening&&voice.active)voice.cancel()
   retryDevice.current=true
   continuousRef.current=keepListening;setContinuous(keepListening)
@@ -112,9 +127,9 @@ export function useDigitalPersonDialogue(options:Options){
   setPlaybackOverride(overridePlayback)
   primeSpeechOutput()
   connectedRef.current=true;mutedRef.current=false;setConnected(true);setMuted(false);setError('')
-  if(!voice.active&&(overridePlayback||(!options.speaking&&performance.now()>=resumeAfter.current)))void voice.start()
+  if(!voice.active&&(overridePlayback||(!options.speaking&&performance.now()>=resumeAfter.current)))void voice.start(keepListening)
  }
- const mute=()=>{mutedRef.current=true;setMuted(true);setPlaybackOverride(false);voice.cancel()}
+ const mute=()=>{stopAfterFinish.current=false;mutedRef.current=true;setMuted(true);setPlaybackOverride(false);voice.cancel()}
  const toggle=()=>{
   if(continuousRef.current){
    if(options.speaking&&!options.running){
@@ -127,6 +142,12 @@ export function useDigitalPersonDialogue(options:Options){
    return
   }
   if(connected&&!muted&&!playbackPaused){
+   if(stopAfterFinish.current)return
+   if(voice.phase==='recording'){
+    stopAfterFinish.current=true
+    void voice.finish()
+    return
+   }
    voice.recover()
    mutedRef.current=true;setMuted(true)
    connectedRef.current=false;setConnected(false)
@@ -146,7 +167,6 @@ export function useDigitalPersonDialogue(options:Options){
  const sendDraft=async()=>{
   const submit=latest.current.onSendDraft
   if(!draftRef.current?.trim()||!submit||!latest.current.active||sendingRef.current)return
-  if(voice.hasSpeech&&voice.text)voice.recover()
   const text=draftRef.current
   const version=epoch.current
   sendingRef.current=true;setSending(true);setError('')
@@ -164,7 +184,7 @@ export function useDigitalPersonDialogue(options:Options){
   stopDigitalSpeech(options.projectId,options.sessionId)
   if(options.running)void options.onStop().catch(()=>setError('digitalPerson.homeInterruptFailed'))
  }
- return {connected,continuous:continuous&&connected,muted,playbackPaused,callMicMuted:continuous&&connected&&callMicMuted,error,phase:voice.phase,text:voice.hasSpeech?voice.text:'',level:voice.level,
+ return {connected,continuous:continuous&&connected,muted,playbackPaused,callMicMuted:continuous&&connected&&callMicMuted,error,phase:voice.phase,text:voice.hasSpeech?voice.text:'',level:voice.level,readSpeechLevel:voice.readSpeechLevel,
   draft,sending,sendDraft,clearDraft,editDraft,toggle,
   startContinuous:()=>{wakeCall.current=false;begin(true)},
   startWakeContinuous:()=>{wakeCall.current=true;begin(true)},mute,end,stopReply}

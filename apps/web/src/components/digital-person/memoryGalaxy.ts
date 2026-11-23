@@ -1,5 +1,5 @@
 import {atlasParticleBatch} from './atlasParticleBatch'
-import {atlasStarLimit} from '../../api/digitalPerson'
+import {atlasStarLimit,type AtlasStar,type MemoryKind} from '../../api/digitalPerson'
 
 export type AtlasMarker={x:number;y:number;diameter:number;blur:number;rgb:number[];alpha:number}
 
@@ -9,17 +9,19 @@ export const initialGalaxyView={yaw:0,pitch:.48,zoom:1}
 export const galaxyZoomMin=.65, galaxyZoomMax=2
 export type GalaxyView=typeof initialGalaxyView
 const rollCos=Math.cos(.29),rollSin=Math.sin(.29)
-const speed=(radius:number)=>.112/(.95+.16*radius)
 const turn=2*Math.PI
+const week=7*86_400_000
+const armCount=4
 
 function armAngle(radius:number,arm:number) {
-  return .26 + 2.5*Math.log1p(radius*3) + arm*Math.PI
+  return -.85 + 3.55*Math.log1p(radius*3) + arm*turn/armCount
 }
 
 export function galaxyFrame(view:GalaxyView,seconds:number) {
   const pitchSin=Math.sin(view.pitch),pitchCos=Math.cos(view.pitch)
   const belts=[...radii,0].map((radius,belt)=>{
-    const angle=view.yaw+seconds*(radius?speed(radius):-.12)
+    // Rotate the disc against the outward curve so the tips trail behind.
+    const angle=view.yaw-seconds*(radius?.105:.12)
     return {
       sin:Math.sin(angle),cos:Math.cos(angle),
       incline:radius?.09*Math.sin(belt*.87):0,offset:.045*Math.cos((radius?belt:0)*.7),
@@ -51,29 +53,68 @@ export function starVariation(id:string) {
   return generator(starHash(id)^0x9e3779b9)()
 }
 
-function starOrbit(id:string) {
+function starOrbit(id:string,radius:number,arm:number,spread:number) {
   const random=generator(starHash(id))
-  const belt=3+Math.floor(random()*6)
-  const direction=random()
-  // Adjacent bands meet between their centerlines so stars can fill the disc.
-  const inner=(radii[belt-1]+radii[belt])/2
-  const outer=belt===radii.length-1?radii[belt]:(radii[belt]+radii[belt+1])/2
-  const radius=Math.sqrt(inner*inner+(outer*outer-inner*inner)*random())
-  const scatter=random()
-  const spread=(random()+random()-1)*.95
-  const angle=scatter<.76?armAngle(radius,Math.floor(direction*2))+spread:direction*turn
+  const belt=radii.findIndex((radiusAtBelt,index)=>index===radii.length-1||radius<=(radiusAtBelt+radii[index+1])/2)
+  const angle=armAngle(radius,arm)+spread*(.35+.07*radius)
   const height=(random()+random()-1)*.13
-  return {belt,angle:(angle+turn)%turn,radius,height}
-}
-export function starOrbitPosition(id:string) {
-  const {belt,angle,radius,height}=starOrbit(id)
   const x=radius*Math.cos(angle),z=radius*Math.sin(angle)
-  return (frame:GalaxyFrame)=>frame.project(x,z,height,belt)
+  return {angle:angle%turn,position:(frame:GalaxyFrame)=>frame.project(x,z,height,belt)}
+}
+
+export function knowledgeSpiral(stars:Iterable<Pick<AtlasStar,'id'|'time'|'kind'>>) {
+  const counts=new Map<MemoryKind,number>()
+  const ordered=Array.from(stars,({id,time,kind})=>{
+    if(kind)counts.set(kind,(counts.get(kind)??0)+1)
+    const timestamp=Date.parse(time)
+    return {id,time:Number.isFinite(timestamp)?timestamp:-Infinity,kind}
+  }).sort((a,b)=>b.time-a.time||a.id.localeCompare(b.id))
+  const dated=ordered.filter(({time})=>Number.isFinite(time))
+  const latest=dated[0]?.time??0
+  const timeSpan=Math.log1p((latest-(dated.at(-1)?.time??latest))/week)
+  const largest=Math.max(0,...counts.values())
+  const rareKinds=new Set([...counts].filter(([,count])=>count<largest&&count<=Math.max(1,largest/4)).map(([kind])=>kind))
+  const unrepresented=new Set(rareKinds)
+  const representatives=new Set<string>()
+  for(const {id,kind} of dated){
+    if(kind&&unrepresented.delete(kind))representatives.add(id)
+  }
+  const nearCore=new Set(representatives)
+  if(dated[0])nearCore.add(dated[0].id)
+  // Keep the newest star and one dated representative per rare kind near the core.
+  ordered.sort((a,b)=>Number(nearCore.has(b.id))-Number(nearCore.has(a.id)))
+  const inner=radii[1],outer=radii[radii.length-1]
+  const armRanks=Array<number>(armCount).fill(0)
+  const armOrder=Array.from({length:armCount},(_,arm)=>arm)
+  return new Map(ordered.map(({id,time,kind},index)=>{
+    const rank=index/Math.max(1,ordered.length-1)
+    // Keep batches with identical timestamps moving along the arms.
+    const elapsed=Number.isFinite(time)?(timeSpan?Math.log1p((latest-time)/week)/timeSpan:rank):1
+    const progress=.78*rank+.22*(nearCore.has(id)?0:elapsed)
+    const representative=representatives.has(id)
+    const coreClearance=representative&&index>0?.1:0
+    const radius=inner+(outer-inner)*progress**.82+coreClearance
+    const slot=index%armCount
+    // Give each short stretch of the timeline one star per arm in a seeded order.
+    if(slot===0){
+      const random=generator(starHash(id))
+      for(let i=armCount-1;i>0;i--){
+        const j=Math.floor(random()*(i+1))
+        ;[armOrder[i],armOrder[j]]=[armOrder[j],armOrder[i]]
+      }
+    }
+    const arm=armOrder[slot]
+    // A golden-ratio sequence spaces neighbours across the width of each arm.
+    const spread=2*((.5+armRanks[arm]++*.61803398875)%1)-1
+    const orbit=starOrbit(id,radius,arm,spread)
+    const rarityBoost=kind&&rareKinds.has(kind)?.15:0
+    return [id,{...orbit,representative,sizeScale:Math.min(1.5,1+.5*(1-progress)+rarityBoost)}]
+  }))
 }
 
 // Open the chain at the widest empty sector of the disc.
-export function perimeterOrder(ids:string[]) {
-  const points=ids.map(id=>({id,...starOrbit(id)})).sort((a,b)=>a.angle-b.angle)
+export function perimeterOrder(stars:Array<{id:string;angle:number}>) {
+  const points=[...stars].sort((a,b)=>a.angle-b.angle)
   let gap=-1,start=0
   for(let i=0;i<points.length;i++){
     const next=(i+1)%points.length
@@ -118,7 +159,8 @@ export function galaxyPainter(canvas:HTMLCanvasElement,particleCanvas:HTMLCanvas
     {belt:9,angle:0,radius:0,size:.23,color:'#fff4e5',alpha:1},
     {belt:8,angle:armAngle(1.29,0),radius:1.29,size:.7,color:'#769aca',alpha:.33},
     {belt:7,angle:armAngle(1.02,1),radius:1.02,size:.64,color:'#a27aba',alpha:.42},
-    {belt:6,angle:armAngle(.89,0),radius:.89,size:.51,color:'#c291bc',alpha:.51},
+    {belt:6,angle:armAngle(.89,2),radius:.89,size:.51,color:'#c291bc',alpha:.42},
+    {belt:7,angle:armAngle(1.12,3),radius:1.12,size:.56,color:'#a7a7c2',alpha:.33},
   ].map(({belt,angle,radius,size,color,alpha})=>({
     belt,x:Math.cos(angle)*radius,z:Math.sin(angle)*radius,size,alpha,
     sprite:glowSprite(canvas.ownerDocument,color),
@@ -128,8 +170,8 @@ export function galaxyPainter(canvas:HTMLCanvasElement,particleCanvas:HTMLCanvas
     const core=belt===radii.length
     for(let i=0;i<(core?1500:1350);i++){
       const r=core?.28*random()**1.85:Math.max(.025,radius+(random()+random()+random()-1.5)*(.13+.015*belt))
-      const inArm=!core&&random()<.79
-      const a=inArm?armAngle(r,Math.floor(random()*2))+(random()+random()+random()-1.5)*.86:random()*turn
+      const inArm=!core&&random()<.88
+      const a=inArm?armAngle(r,Math.floor(random()*armCount))+(random()+random()+random()-1.5)*.34:random()*turn
       const height=core?r*(random()-.5):(random()+random()-1)*.12
       const size=core?.43+1.05*random():.28+1.23*random()**3
       const alpha=core?.42+.57*random():(inArm?.13+.72*random()**2:.05+.17*random())

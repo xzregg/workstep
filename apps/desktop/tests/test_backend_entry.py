@@ -149,7 +149,8 @@ def test_desktop_runtime_defaults_to_home_and_finds_managed_cli_first(tmp_path, 
     cli.chmod(0o755)
     assert shutil.which(cli.name) == str(cli)
     assert os.environ["PATH"].split(os.pathsep).count(str(cli_dir)) == 1
-    assert os.environ["PATH"].endswith(original_path)
+    # Host tool directories may be promoted ahead of Volta shims; none may disappear.
+    assert set(filter(None, original_path.split(os.pathsep))) <= set(os.environ["PATH"].split(os.pathsep))
 
 
 def test_desktop_runtime_preserves_custom_python_package_directory(tmp_path, monkeypatch):

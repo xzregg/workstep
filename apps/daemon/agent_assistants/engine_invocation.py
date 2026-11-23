@@ -7,6 +7,7 @@ from typing import Any, Awaitable, Callable
 
 from engines.core.events import InternalEvent, is_commentary
 from engines.core.schema import EngineImage
+from engines.core.session_retention import with_session_retention
 from services.chat_permissions import (
     parse_goal_command,
     GOAL_MODE_INSTRUCTION,
@@ -15,6 +16,7 @@ from services.chat_permissions import (
 from services.intervention import intervention_manager, wait_for_interaction_response
 
 
+@with_session_retention
 async def run_engine_turn(
     engine_id: str,
     model: str | None,
@@ -46,8 +48,12 @@ async def run_engine_turn(
     system_prompt_each_turn: bool = False,
     capture_prompt_input: bool = False,
     internal_event: str | None = None,
+    session_retention_key: str | None = None,
 ) -> tuple[str, list[dict], str | None]:
     """Run one engine turn; stream events; return (text, events, session_id).
+
+    ``session_retention_key`` is host-owned intent for reusable transports.
+    It never becomes a prompt, a native spawn option or a fingerprint value.
 
     Shared by every assistant. ``spawner`` defaults to ``engine.spawn``;
     task-style assistants may pass a custom spawner (e.g.
@@ -65,6 +71,9 @@ async def run_engine_turn(
     engine = await asyncio.to_thread(engine_factory, engine_id)
     if engine is None:
         raise RuntimeError(f"{error_prefix} is unavailable: {engine_id}")
+    if session_retention_key and not getattr(engine, 'supports_process_reuse', False):
+        from engines.core.session_retention import release_session_retention
+        await release_session_retention(session_retention_key)
     pin_provider_id = getattr(engine, "pin_provider_id", None)
     if resolved_provider_id is not None and callable(pin_provider_id):
         pin_provider_id(resolved_provider_id)

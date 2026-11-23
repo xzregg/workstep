@@ -10,6 +10,32 @@ import java.util.TimeZone;
 
 public class DiagnosticReportTest {
     @Test
+    public void fullReportIncludesAllRetainedEntriesAndStacksWithoutTruncation() throws Exception {
+        File directory = Files.createTempDirectory("workstep-full-report").toFile();
+        TimeZone previous = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            String longStack = "stack-detail-" + "x".repeat(15000);
+            Files.write(new File(directory, "main-log.txt").toPath(),
+                    ("2026-10-07T00:00:00Z 网页主进程 旧记录\n" + longStack + "\n")
+                            .getBytes(StandardCharsets.UTF_8));
+            Files.write(new File(directory, "notification-log.txt").toPath(),
+                    "2026-10-07T01:59:00Z 后台通知进程 新记录\n".getBytes(StandardCharsets.UTF_8));
+            String report = DiagnosticReport.createFull(directory,
+                    Instant.parse("2026-10-07T02:00:00Z").toEpochMilli());
+            assertTrue(report.contains("2026-10-07 08:00:00.000 +08:00 网页主进程 旧记录"));
+            assertTrue(report.contains(longStack));
+            assertTrue(report.contains("后台通知进程 新记录"));
+            assertTrue(report.length() > 14000);
+        } finally {
+            TimeZone.setDefault(previous);
+            new File(directory, "main-log.txt").delete();
+            new File(directory, "notification-log.txt").delete();
+            directory.delete();
+        }
+    }
+
+    @Test
     public void scriptDiagnosticsSurviveReportExportWithoutConsoleSecrets() throws Exception {
         File directory = Files.createTempDirectory("workstep-script-report").toFile();
         File log = new File(directory, "main-log.txt");

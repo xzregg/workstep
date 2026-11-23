@@ -12,10 +12,17 @@ env.wasm.wasmPaths = {
 }
 let sharedSession: Promise<InferenceSession> | undefined
 
-function connect(port: MessagePort, rate: number) {
+function getSession() {
+  return sharedSession ??= InferenceSession.create(modelUrl, { executionProviders: ['wasm'] }).catch(error => {
+    sharedSession = undefined
+    throw error
+  })
+}
+
+function connect(port: MessagePort, rate: number, continuous: boolean, phoneCall: boolean) {
   let resampler = new VoiceResampler(rate)
   const input = new Float32Array(64 + 512)
-  const turn = new TurnController()
+  let turn = new TurnController(phoneCall)
   let state: Tensor = new Tensor('float32', new Float32Array(256), [2, 1, 128])
   const sr = new Tensor('int64', BigInt64Array.of(16000n), [])
   let used = 0
@@ -28,16 +35,18 @@ function connect(port: MessagePort, rate: number) {
     port.postMessage({ type: 'checkpoint', turn: turn.snapshot() })
   }
 
-  async function infer() {
-    sharedSession ??= InferenceSession.create(modelUrl, { executionProviders: ['wasm'] }).catch(error => {
-      sharedSession = undefined
-      throw error
-    })
-    return (await sharedSession).run({ input: new Tensor('float32', input, [1, 576]), state, sr })
+  function fail(stage: 'initialization' | 'inference') {
+    if (closed) return
+    port.postMessage({ type: 'error', stage })
+    closed = true
+    port.close()
   }
 
-  let pending = Promise.resolve()
-  port.onmessage = ({ data }: MessageEvent<Float32Array | 'checkpoint' | 'discontinuity' | 'close'>) => {
+  const session = getSession()
+  let pending = session.then(() => {
+    if (!closed) port.postMessage({ type: 'ready' })
+  }, () => fail('initialization'))
+  port.onmessage = ({ data }: MessageEvent<{ samples: Float32Array; capturedAt?: number } | 'checkpoint' | 'discontinuity' | 'close'>) => {
     if (data === 'close') { closed = true; port.close(); return }
     pending = pending.then(async () => {
       if (closed) return
@@ -56,13 +65,14 @@ function connect(port: MessagePort, rate: number) {
         else confirmCheckpoint()
         return
       }
-      const pcm = resampler.push(data)
+      const { samples, capturedAt } = data
+      const pcm = resampler.push(samples)
       let completedFrame = false
       for (const sample of pcm) {
         input[64 + used++] = sample / 32768
         end++
         if (used !== 512) continue
-        const { output, stateN } = await infer()
+        const { output, stateN } = await (await session).run({ input: new Tensor('float32', input, [1, 576]), state, sr })
         turn.frame({ end, probability: Number(output.data[0]) })
         state = stateN
         input.copyWithin(0, 512)
@@ -70,15 +80,14 @@ function connect(port: MessagePort, rate: number) {
         completedFrame = true
         if (closed) return
       }
-      const level = Math.min(1, Math.sqrt(data.reduce((sum, value) => sum + value * value, 0) / data.length) * 5)
-      port.postMessage({ type: 'pcm', pcm, level, turn: turn.snapshot(), captured: data.length }, [pcm.buffer])
+      const level = Math.min(1, Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length) * 5)
+      port.postMessage({ type: 'pcm', pcm, level, turn: turn.snapshot(), captured: samples.length, capturedAt }, [pcm.buffer])
       if (checkpointPending && completedFrame) confirmCheckpoint()
-    }).catch(() => {
-      if (!closed) port.postMessage({ type: 'error' })
-      closed = true
-      port.close()
-    })
+      // Keep Silero's acoustic context while opening a fresh utterance.
+      if (continuous && turn.canCommit) turn = new TurnController(phoneCall)
+    }).catch(() => fail('inference'))
   }
 }
 
-self.onmessage = ({ data }: MessageEvent<{ port: MessagePort; rate: number }>) => connect(data.port, data.rate)
+self.onmessage = ({ data }: MessageEvent<{ port: MessagePort; rate: number; continuous: boolean; phoneCall: boolean }>) =>
+  connect(data.port, data.rate, data.continuous, data.phoneCall)

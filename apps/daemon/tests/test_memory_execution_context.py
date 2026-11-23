@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 
 import httpx
 import pytest
@@ -139,3 +140,96 @@ async def test_slow_scope_resolution_keeps_api_responsive(runtime,monkeypatch):
         assert not task.done()
         assert (await asyncio.wait_for(client.get('/health'),.1)).status_code==200
         assert (await task).status_code==200
+
+
+async def test_preferences_list_is_complete_paginated_and_host_scoped(runtime, monkeypatch):
+    from fastapi import FastAPI
+    from api import memory
+    from services import digital_person_memory_index as index, memory_knowledge
+    from models.chat_session import ChatMessage
+    from models.fields import utc_now
+    from services.remote_access import ActorSnapshot, actor_context
+    from services.config import config_store
+
+    current, project, sid = await seed(runtime, ['列出用户偏好'])
+    config_get = config_store.get
+    monkeypatch.setattr(config_store, 'get', lambda key, default=None: (
+        {'device_id': 'sender-a'} if key == 'device' else config_get(key, default)
+    ))
+    summaries = ['只在工作日清晨工作。' * 30, '回复先给结论', '通知使用中文']
+    records = [*(('sender-a', 'preference', summary) for summary in summaries),
+               ('sender-b', 'preference', '另一位用户的偏好'),
+               (None, 'preference', '没有署名的旧偏好'),
+               ('sender-a', 'fact', '历史事实'),
+               ('sender-a', 'preference', '已经过期的偏好')]
+    for i, (author_id, kind, summary) in enumerate(records):
+        message_id = f'pref-{i}'
+        await current.projects.run_db(project.id, lambda _: ChatMessage.create(
+            id=message_id, session=sid, role='user', author_id=author_id, author_name='小林',
+            content=summary, created_at=utc_now(),
+        ))
+        source = next(iter(index.capture(project.id, sid, message_id, 'local', 'user',
+                                         summary, '2026-10-02T00:00:00+00:00').values()))
+        draft = dict(summary=summary, kind=kind, outcome='stated', source_ids=[f'memory:{source}'])
+        if i == len(records) - 1:
+            draft['valid_until'] = '2000-01-01T00:00:00+00:00'
+        assert memory_knowledge.store_extraction({'memories': [draft]}, index.candidates('local')) == 1
+
+    reading = threading.Event()
+    resume = threading.Event()
+    original = memory_knowledge._candidates
+
+    def slow(*args, **kwargs):
+        reading.set()
+        resume.wait(2)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(memory_knowledge, '_candidates', slow)
+    monkeypatch.setattr(memory, 'projects', lambda: current.projects)
+    app = FastAPI()
+    app.include_router(memory.router)
+
+    args = {'project_id': project.id, 'session_id': sid}
+    self_args = {**args, 'self_only': True}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        assert (await client.post('/api/memory/preferences', json=self_args)).status_code == 403
+        assert (await client.post('/api/memory/preferences', json={**self_args, 'sender_id': 'sender-a'})).status_code == 422
+        with conversation_context(project.id, sid, message_id='turn-a', sender_id='sender-a', sender_name='小林'):
+            task = asyncio.create_task(client.post('/api/memory/preferences', json={**self_args, 'limit': 2}))
+            try:
+                assert await asyncio.to_thread(reading.wait, 1)
+                assert not task.done()
+            finally:
+                resume.set()
+            response = await task
+            assert response.status_code == 200, response.text
+            first = response.json()
+            assert first['has_more'] is True
+            assert first['owner'] == {'sender_id': 'sender-a', 'display_name': '小林'}
+            response = await client.post('/api/memory/preferences', json={**self_args, 'limit': 2, 'cursor': first['next_cursor']})
+            second = response.json()
+            assert second['has_more'] is False and second['next_cursor'] is None
+            assert second['owner'] == first['owner']
+            assert [item['summary'] for item in first['items'] + second['items']] == summaries[::-1]
+            selected = await client.post('/api/memory/preferences', json={**args, 'sender_id': 'sender-b'})
+            assert selected.status_code == 200, selected.text
+            assert selected.json()['owner'] == {'sender_id': 'sender-b', 'display_name': '小林'}
+            assert [item['summary'] for item in selected.json()['items']] == ['另一位用户的偏好']
+            all_items = (await client.post('/api/memory/preferences', json=args)).json()['items']
+            assert [(item['owner']['sender_id'], item['summary']) for item in all_items] == [
+                ('sender-b', '另一位用户的偏好'), *(('sender-a', summary) for summary in summaries[::-1]),
+            ]
+            with actor_context(ActorSnapshot('u', 'user', 'd', 'device', 'managed',
+                                             project_id=project.id, access_level='edit')):
+                assert (await client.post('/api/memory/preferences', json=args)).status_code == 403
+        with conversation_context(project.id, sid, message_id='turn-b', sender_id='sender-b'):
+            result = (await client.post('/api/memory/preferences', json=self_args)).json()
+            assert result['owner'] == {'sender_id': 'sender-b', 'display_name': None}
+            assert [item['summary'] for item in result['items']] == ['另一位用户的偏好']
+            other = await client.post('/api/memory/preferences', json={**args, 'sender_id': 'sender-a'})
+            assert other.status_code == 403
+            assert (await client.post('/api/memory/preferences', json=args)).status_code == 403
+        local = await client.post('/api/memory/preferences', json={'sender_id': 'sender-b'})
+        assert local.status_code == 200
+        assert local.json()['owner']['sender_id'] == 'sender-b'
+        assert len((await client.post('/api/memory/preferences', json={})).json()['items']) == 4

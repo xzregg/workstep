@@ -56,9 +56,8 @@ export default function App() {
         <Channels />
         <RemoteShare />
         <EnginesStrip />
-        <div className="container recorded-section"><GuidedWalkthrough /></div>
+        <div className="container recorded-section"><GuidedWalkthrough><FinalCta experienceHref={experienceHref} /></GuidedWalkthrough></div>
         <GettingStarted />
-        <FinalCta experienceHref={experienceHref} />
       </main>}
       {!embedded && <Footer />}
       {openDemo && <DemoModal demo={openDemo} onClose={() => setOpenDemo(null)} />}

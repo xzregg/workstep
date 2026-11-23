@@ -3,7 +3,7 @@ import path from 'node:path'
 import assert from 'node:assert/strict'
 import {build} from 'vite'
 import {chromium} from '../../desktop/node_modules/playwright-core/index.mjs'
-const root=path.resolve(import.meta.dirname,'..'),artifacts=path.resolve(root,'../../tmp/digital-presence-implementation'),out=path.join(artifacts,'browser')
+const root=path.resolve(import.meta.dirname,'..'),artifacts=path.resolve(process.env.WORKSTEP_PRESENCE_ARTIFACTS ?? path.join(root,'../../tmp/digital-presence-implementation')),out=path.join(artifacts,'browser')
 await fs.mkdir(artifacts,{recursive:true})
 await build({root,logLevel:'error',publicDir:false,build:{outDir:out,emptyOutDir:true,rolldownOptions:{input:path.join(root,'tests/fixtures/digital-person-home/index.html')}}})
 const html=await fs.readFile(path.join(out,'tests/fixtures/digital-person-home/index.html'))
@@ -15,6 +15,7 @@ try{
  await page.route('**/*',async route=>{
   const url=new URL(route.request().url());if(url.hostname!=='presence.invalid')return route.abort()
   if(url.pathname.startsWith('/api/')){
+   if(url.pathname.endsWith('/memory/atlas'))return route.fulfill({json:{items:[],links:[]}})
    if(url.pathname.endsWith('/activity/records')){
     const runOffset=Number(url.searchParams.get('run_offset')||0),taskOffset=Number(url.searchParams.get('delegation_offset')||0),limit=Number(url.searchParams.get('limit')||5)
     const runs=Array.from({length:12},(_,i)=>({id:`r${i+1}`,status:i===0?'failed':'silent',outcome:i===0?null:i===1?{sent:1,failed:0,affinity_increased:2,affinity_decreased:0,message_preview:'早上好，昨天说的入口我记住了。'}:{sent:0,failed:0,affinity_increased:0,affinity_decreased:0},summary:i===0?'本轮思考未完成':i===1?'整理 100 条消息（10 个会话），新增 18 条记忆':'尚未领取本轮待整理消息，保留待处理状态',created_at:`2026-11-17T${String(10-Math.floor(i/6)).padStart(2,'0')}:${String(54-i*3%60).padStart(2,'0')}:00Z`}))
@@ -32,18 +33,157 @@ try{
   const file=path.resolve(out,decodeURIComponent(url.pathname).replace(/^\//,''));if(!file.startsWith(out+path.sep))return route.abort()
   try{return route.fulfill({body:await fs.readFile(file),contentType:{'.js':'text/javascript','.css':'text/css','.webp':'image/webp','.png':'image/png'}[path.extname(file)]||'application/octet-stream'})}catch{return route.fulfill({status:404,body:''})}
  })
- for(const [width,height]of [[320,640],[390,844],[844,390],[1023,800],[1024,800],[1440,1024]]){
+ for(const [width,height]of [[320,640],[390,844],[390,480],[844,390],[1023,800],[1024,800],[1440,1024]]){
   await page.setViewportSize({width,height});await page.goto('https://presence.invalid/')
+  const screenshotSize=width===390&&height===480?'390x480':width
   const stage=page.locator('.digital-home-stage'),captions=page.locator('.digital-home-caption-frame'),keyboard=page.locator('.digital-home-keyboard')
   await keyboard.waitFor()
+  const phone=page.locator('.digital-home-end')
+  const phoneBackground=()=>phone.evaluate(async el=>{
+   void getComputedStyle(el).backgroundColor
+   await Promise.all(el.getAnimations().map(animation=>animation.finished))
+   return getComputedStyle(el).backgroundColor
+  })
+  const idlePhoneBackground=await phoneBackground()
+  const {width:phoneWidth,height:phoneHeight}=await phone.boundingBox()
+  await phone.click()
+  await phone.and(page.locator('[data-action=hangup]:enabled')).waitFor()
+  const hangupColor=(await phoneBackground()).match(/\d+/g)?.map(Number)
+  assert.ok(hangupColor&&hangupColor[0]>hangupColor[1]+45&&hangupColor[0]>hangupColor[2]+45,`${width}: hang-up button has a red background`)
+  const hangupBox=await phone.boundingBox()
+  assert.equal(hangupBox.width,phoneWidth)
+  assert.equal(hangupBox.height,phoneHeight)
+  await page.screenshot({path:path.join(artifacts,`hangup-${screenshotSize}.png`)})
+  await phone.click()
+  await phone.and(page.locator('[data-action=phone]')).waitFor()
+  await page.mouse.move(0,0)
+  assert.equal(await phoneBackground(),idlePhoneBackground,'ending a call restores the idle color')
+  const history=captions.locator('.digital-home-subtitles')
+  const waitForBottom=()=>page.waitForFunction(()=>{
+   const el=document.querySelector('.digital-home-subtitles')
+   return el.scrollHeight>el.clientHeight&&Math.abs(el.scrollHeight-el.clientHeight-el.scrollTop)<=1
+  })
+  await page.evaluate(()=>window.homeFixture.setHistory(Array.from({length:20},(_,i)=>({
+   id:`history-${i}`,role:'user',content:`历史消息 ${i+1}`,
+  }))))
+  await waitForBottom()
+  const appendMessage=text=>page.evaluate(content=>window.homeFixture.setHistory(rows=>[
+   ...rows,{id:`history-${rows.length}`,role:'user',content},
+  ]),text)
+  await appendMessage('贴底时收到新消息')
+  await history.getByText('贴底时收到新消息',{exact:true}).waitFor()
+  await waitForBottom()
+  await history.hover()
+  await page.mouse.wheel(0,-20)
+  await page.waitForFunction(()=>{
+   const el=document.querySelector('.digital-home-subtitles')
+   return el.scrollHeight-el.clientHeight-el.scrollTop>=15
+  })
+  const readingTop=await history.evaluate(el=>el.scrollTop)
+  await appendMessage('翻阅历史时收到新消息')
+  await history.getByText('翻阅历史时收到新消息',{exact:true}).waitFor()
+  assert.equal(await history.evaluate(el=>el.scrollTop),readingTop,`${width}: new messages preserve the reading position`)
+  await page.mouse.wheel(0,1500)
+  await waitForBottom()
+  await appendMessage('回到底部后收到新消息')
+  const latest=history.getByText('回到底部后收到新消息',{exact:true})
+  await latest.waitFor()
+  await waitForBottom()
+  await latest.evaluate(el=>{el.style.minHeight='90px'})
+  await waitForBottom()
+  if(width===390&&height===844){
+   const touch=await context.newCDPSession(page)
+   const {x,y,width:w,height:h}=await history.boundingBox()
+   const point={x:x+w/2,y:y+h/2}
+   await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point]})
+   await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{...point,y:point.y+24}]})
+   await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{...point,y:point.y+48}]})
+   await page.waitForFunction(()=>{
+    const el=document.querySelector('.digital-home-subtitles')
+    return el.scrollHeight-el.clientHeight-el.scrollTop>=15
+   })
+   const draggedTop=await history.evaluate(el=>el.scrollTop)
+   await appendMessage('拖动历史时收到新消息')
+   await history.getByText('拖动历史时收到新消息',{exact:true}).waitFor()
+   assert.equal(await history.evaluate(el=>el.scrollTop),draggedTop,'new messages preserve the active touch position')
+   await touch.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]})
+   await touch.detach()
+   await history.press('End')
+   await waitForBottom()
+  }
+  await page.screenshot({path:path.join(artifacts,`history-follow-${screenshotSize}.png`)})
+  await page.reload()
+  await keyboard.waitFor()
+  if(width<=1023){
+   const landscape=height<=500&&width>=600
+   const stageBox=await stage.boundingBox()
+   assert.ok(Math.abs((landscape?stageBox.width:stageBox.height)-.45*(landscape?width:height))<1,
+    `${width} × ${height}: avatar uses 45% of the viewport`)
+   const history=captions.locator('.digital-home-subtitles')
+   const historyBox=await history.boundingBox()
+   assert.ok(historyBox.height>0 && (landscape || historyBox.width>=width-40), 'history has an independent reading area')
+   assert.equal(await captions.locator('.digital-home-live-caption-slot').isHidden(),true,'idle voice transcription reserves no height')
+
+   const atlas=page.getByRole('button',{name:'记忆星图',exact:true})
+   await atlas.click()
+   const sky=page.locator('.memory-atlas-sky')
+   await sky.waitFor()
+   const returnToHub=page.locator('.digital-home-presence-info').getByRole('button',{name:'数字中枢',exact:true})
+   assert.equal(await returnToHub.isVisible(),true,'the atlas switch names the destination')
+   assert.deepEqual(await returnToHub.evaluate(button=>{
+    const style=getComputedStyle(button)
+    const frame=getComputedStyle(button.firstElementChild,'::after')
+    return [style.backgroundColor,style.webkitTapHighlightColor,frame.borderTopStyle,frame.borderTopWidth]
+   }),['rgba(0, 0, 0, 0)','rgba(0, 0, 0, 0)','solid','1px'],'the switch keeps its border and transparent background')
+   await stage.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)))
+   if(!landscape){
+    const {x,y,width:skyWidth,height:skyHeight}=await sky.boundingBox()
+    assert.ok(Math.abs(x)<1&&Math.abs(skyWidth-width)<1,'the atlas sky meets both edges in the stacked mobile layout')
+    assert.deepEqual([y,skyHeight],[stageBox.y,stageBox.height],'the full-width atlas keeps the avatar stage height')
+    const zoomControls=page.locator('.atlas-camera button')
+    await zoomControls.nth(1).focus()
+    await zoomControls.nth(1).press('Enter')
+    await zoomControls.nth(1).press('Enter')
+    assert.deepEqual(await sky.boundingBox(),{x,y,width:skyWidth,height:skyHeight},'zoom preserves full-width sky coverage')
+    await zoomControls.nth(2).press('Enter')
+   }else{
+    assert.deepEqual(await stage.boundingBox(),stageBox,'the atlas shares the avatar stage in compact layouts')
+   }
+   assert.deepEqual(await history.boundingBox(),historyBox,'switching the stage keeps the history dimensions')
+   const hitAreas=await page.locator('.digital-home-presence-info').evaluate(info=>{
+    const {left}=info.getBoundingClientRect()
+    return [...info.querySelectorAll('button')].map(button=>{
+     const box=button.getBoundingClientRect()
+     const y=box.top+box.height/2
+     return {
+      label:button.textContent,
+      touchSize:Math.min(box.width,box.height),
+      receivesOwnTap:button.contains(document.elementFromPoint(box.left+box.width/2,y)),
+      blocksStage:document.elementFromPoint(left+1,y)?.closest('.digital-home-presence-info')!==null,
+     }
+    })
+   })
+   for(const area of hitAreas){
+    assert.ok(area.touchSize>=44&&area.receivesOwnTap,`${width}px: ${area.label} stays tappable`)
+    if(height>500||width>=600)assert.equal(area.blocksStage,false,`${width}px: ${area.label} does not intercept taps in the empty strip`)
+   }
+   await page.screenshot({path:path.join(artifacts,`atlas-hit-targets-${screenshotSize}.png`)})
+   await returnToHub.click()
+   await page.locator('.memory-atlas-sky').waitFor({state:'detached'})
+   assert.equal(await atlas.isVisible(),true,'returning to the hub restores the atlas label')
+   await stage.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)))
+  }
   if(width<=1023){
    const transcript=page.getByRole('button',{name:'展开对话',exact:true})
    const dock=page.locator('.digital-home-voice-dock')
    assert.equal(await dock.getByRole('button',{name:'展开对话',exact:true}).count(),0,'mobile transcript is outside the voice dock')
    const [group,chat,key]=await Promise.all([dock.boundingBox(),transcript.boundingBox(),keyboard.boundingBox()])
-   assert.ok(Math.abs(chat.x+chat.width-(width-20))<2&&chat.height>=44,'transcript sits at the right inset with a touch target')
+   const compactFooter=width<600&&height<=680
+   assert.ok(chat.height>=44&&chat.width>=44,'transcript keeps its touch target')
+   if(!compactFooter)assert.ok(Math.abs(chat.x+chat.width-(width-20))<2,'transcript sits at the right inset')
    assert.ok(chat.x>=key.x+key.width&&Math.abs(chat.y+chat.height/2-(key.y+key.height/2))<2,'transcript shares the keyboard row without overlap')
-   if(height>500){
+   if(compactFooter)assert.ok(group.x+group.width<=key.x&&Math.abs(group.y+group.height/2-(key.y+key.height/2))<2,'short portrait puts all controls on a single row')
+   if(height>500&&!compactFooter){
     assert.ok(chat.y>=group.y+group.height,'portrait transcript is below the voice dock')
     assert.ok(Math.abs(key.x+key.width/2-width/2)<2,'portrait keyboard stays centered')
    }
@@ -67,7 +207,7 @@ try{
   assert.ok(inputBox.y+inputBox.height<=box.y+box.height)
   await dialog.locator('.chat-input-send').click({trial:true})
   if(width<=1023)await page.evaluate(()=>document.documentElement.style.removeProperty('--app-viewport-height'))
-  await page.screenshot({path:path.join(artifacts,`keyboard-${width}.png`)})
+  await page.screenshot({path:path.join(artifacts,`keyboard-${screenshotSize}.png`)})
   if(width>=1024){
    const audit=await page.evaluate(clipAudit,{root:'.digital-home-composer-backdrop'});assert.equal(audit.cut,0,JSON.stringify(audit))
    assert.equal(await dialog.getByRole('separator').count(),8)
@@ -80,6 +220,23 @@ try{
   assert.equal(await keyboard.evaluate(el=>el===document.activeElement),true)
   await keyboard.click();assert.equal(await input.inputValue(),'这是数字人首页的文字输入草稿。')
   await dialog.locator('header button').click()
+  if(width===390&&height===844){
+   const history=captions.locator('.digital-home-subtitles')
+   const idleHistoryHeight=(await history.boundingBox()).height
+   const slot=captions.locator('.digital-home-live-caption-slot')
+   await page.locator('.digital-home-microphone').click()
+   await page.waitForFunction(()=>window.homeFixture.log.captures===1)
+   await page.evaluate(()=>{window.homeFixture.sound(.12);window.homeFixture.silence()})
+   const draft=slot.locator('.digital-home-live-caption-edit')
+   await draft.waitFor()
+   assert.match(await draft.innerText(),/今天的安排/)
+   assert.ok((await history.boundingBox()).height<idleHistoryHeight,'voice transcription uses the space below history')
+   await page.screenshot({path:path.join(artifacts,'mobile-voice-transcription.png')})
+   await draft.click()
+   const editor=slot.locator('textarea')
+   await editor.fill('保留这段语音草稿。')
+   assert.equal(await editor.inputValue(),'保留这段语音草稿。')
+  }
  }
  for(const [name,width,height]of [['mobile',390,844],['narrow',320,640],['landscape',844,390],['compact-edge',1023,800],['desktop-edge',1024,800],['desktop',1440,1024],['wide',2560,1440]]){
   await page.setViewportSize({width,height});await page.goto('https://presence.invalid/');await page.locator('.digital-presence-particles[data-frame]').waitFor()
@@ -203,6 +360,25 @@ try{
   assert.equal(await page.evaluate(()=>window.homeFixture.log.captures),0,'no automatic microphone')
   results.push({name,fits,orbCentered:name!=='landscape',sameOrb:true,audioFrames:true,reducedMotion:true})
  }
+ const cdp=await context.newCDPSession(page)
+ for(const [width,height,insets] of [[390,844,{top:24,bottom:34,left:0,right:0}],[844,390,{top:0,bottom:16,left:44,right:44}]]){
+  await page.setViewportSize({width,height})
+  await cdp.send('Emulation.setSafeAreaInsetsOverride',{insets})
+  await page.goto('https://presence.invalid/')
+  const layout=await page.locator('.digital-home').evaluate(el=>{
+   const box=selector=>el.querySelector(selector).getBoundingClientRect().toJSON()
+   return {back:box('.digital-home-back'),settings:box('.digital-home-settings:not(.digital-home-face-entry)'),stage:box('.digital-home-stage'),
+    history:box('.digital-home-subtitles'),dock:box('.digital-home-voice-dock'),keyboard:box('.digital-home-keyboard')}
+  })
+  assert.ok(layout.back.top>=insets.top&&layout.back.left>=insets.left,'header clears the top and left safe areas')
+  assert.ok(layout.settings.right<=width-insets.right,'header clears the right safe area')
+  assert.ok(layout.stage.left>=insets.left&&layout.history.right<=width-insets.right,'stage and history clear the side safe areas: '+JSON.stringify({insets,stage:layout.stage,history:layout.history}))
+  assert.ok(Math.max(layout.dock.bottom,layout.keyboard.bottom)<=height-insets.bottom,'controls clear the bottom safe area')
+  assert.ok(layout.history.height>0,'history stays available with safe areas')
+  await page.screenshot({path:path.join(artifacts,`safe-area-${width}.png`)})
+ }
+ await cdp.send('Emulation.setSafeAreaInsetsOverride',{insets:{top:0,bottom:0,left:0,right:0}})
+ await cdp.detach()
  await page.setViewportSize({width:390,height:844});await page.goto('https://presence.invalid/');await page.locator('[data-camera-toggle]').click();await page.waitForFunction(()=>document.querySelector('.video-preview-media')?.srcObject&&document.querySelector('.video-preview-media')?.videoWidth>0);await page.evaluate(()=>window.keptStream=document.querySelector('.video-preview-media').srcObject);await page.locator('.digital-home-dock-transcript').click();assert.equal(await page.evaluate(()=>window.keptStream===document.querySelector('.video-preview-media').srcObject),true);await page.screenshot({path:path.join(artifacts,'camera-chat.png')})
  await page.goto('https://presence.invalid/?skinAvatar=1');await page.locator('[data-custom-avatar]').waitFor();await page.evaluate(()=>window.homeFixture.speaking(true,.75));await page.waitForFunction(()=>Number(document.querySelector('[data-custom-avatar]')?.getAttribute('data-level'))>.7);assert.equal(await page.locator('.digital-presence-orb').count(),0);await page.screenshot({path:path.join(artifacts,'custom-skin.png')})
  await page.addInitScript(()=>{const original=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(kind,...args){return kind==='webgl'?null:original.call(this,kind,...args)}});await page.goto('https://presence.invalid/');await page.locator('.digital-presence-static').waitFor();await page.screenshot({path:path.join(artifacts,'fallback.png')})

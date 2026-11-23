@@ -65,7 +65,7 @@ def test_foreign_port_owner_aborts_before_any_shutdown(restart, monkeypatch):
     monkeypatch.setattr(restart, "process_cwd", lambda pid: Path("/other/project"))
     kill = Mock()
     monkeypatch.setattr(restart.os, "kill", kill)
-    with pytest.raises(RuntimeError, match="其他项目"):
+    with pytest.raises(RuntimeError, match="another project"):
         restart.discover_targets()
     kill.assert_not_called()
 
@@ -87,7 +87,7 @@ def test_restart_lock_rejects_duplicate_clicks_before_shutdown(restart, monkeypa
     monkeypatch.setattr(restart.fcntl, "flock", Mock(side_effect=BlockingIOError))
     stop = Mock()
     monkeypatch.setattr(restart, "stop_services", stop)
-    with pytest.raises(RuntimeError, match="已有重启"):
+    with pytest.raises(RuntimeError, match="A restart is already in progress"):
         restart.worker()
     stop.assert_not_called()
 
@@ -115,7 +115,7 @@ def test_duplicate_submission_preserves_active_log(restart, monkeypatch):
     monkeypatch.setattr(restart.fcntl, 'flock', Mock(side_effect=BlockingIOError))
     launch = Mock()
     monkeypatch.setattr(restart.subprocess, 'Popen', launch)
-    with pytest.raises(RuntimeError, match='已有重启'): restart.main()
+    with pytest.raises(RuntimeError, match='A restart is already in progress'): restart.main()
     assert log.read_bytes() == b'active restart output\n'
     launch.assert_not_called()
 
@@ -160,7 +160,7 @@ with os.fdopen(int(sys.argv[1]),'a') as lock:
         assert marker.exists()
         log = restart.ROOT / 'logs/restart-action.log'
         snapshot = log.read_bytes()
-        with pytest.raises(RuntimeError, match='已有重启'): restart.main()
+        with pytest.raises(RuntimeError, match='A restart is already in progress'): restart.main()
         assert log.read_bytes() == snapshot == b'active restart\n'
         assert len(children) == 1
     finally:
@@ -230,7 +230,7 @@ def test_ownership_registration_failure_preserves_old_service(restart, monkeypat
 def test_restart_deadline_interrupts_a_stuck_phase_and_restores_handler(restart):
     previous = signal.getsignal(signal.SIGALRM)
     previous_timer = signal.getitimer(signal.ITIMER_REAL)
-    with pytest.raises(TimeoutError, match="总时限"):
+    with pytest.raises(TimeoutError, match="total time limit"):
         with restart.restart_deadline(.03):
             time.sleep(5)
     assert signal.getsignal(signal.SIGALRM) == previous
@@ -245,7 +245,7 @@ def test_failed_start_cleans_attempt_and_does_not_retry(restart, monkeypatch):
     cleanup = Mock()
     monkeypatch.setattr(restart.subprocess, "Popen", launch)
     monkeypatch.setattr(restart, "cleanup_failed_start", cleanup, raising=False)
-    with pytest.raises(RuntimeError, match="启动器.*退出"):
+    with pytest.raises(RuntimeError, match="New launcher.*exited"):
         restart.start_services()
     assert launch.call_count == 1
     cleanup.assert_called_once_with(child)
@@ -355,7 +355,7 @@ def test_startup_requires_new_listener_to_belong_to_new_launcher(restart, monkey
     child = Mock(pid=500)
     child.poll.return_value = 1
     monkeypatch.setattr(restart.subprocess, "Popen", Mock(return_value=child))
-    with pytest.raises(RuntimeError, match="启动器.*退出"):
+    with pytest.raises(RuntimeError, match="New launcher.*exited"):
         restart.start_services()
 
 
@@ -382,7 +382,7 @@ def test_startup_does_not_accept_an_old_healthy_listener(restart, monkeypatch):
     monkeypatch.setattr(restart, "listeners", lambda port: {102})
     monkeypatch.setattr(restart, "health_ready", lambda: True)
     monkeypatch.setattr(restart.time, "sleep", lambda _: None)
-    with pytest.raises(RuntimeError, match="启动器.*退出"):
+    with pytest.raises(RuntimeError, match="New launcher.*exited"):
         restart.start_services()
 
 

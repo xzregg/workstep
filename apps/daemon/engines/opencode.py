@@ -29,6 +29,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 from typing import AsyncIterator, ClassVar
 
 import acp
@@ -86,6 +87,31 @@ _RUNTIME_AUTO_MODES = {"allow", "auto", "bypassPermissions", "workspace-write", 
 _BRIDGE_PERMISSION_MODES = {"allow": "auto", "deny": "read-only", "ask": "ask"}
 
 _GLOBAL_CONFIG_PATH = os.path.expanduser("~/.config/opencode/opencode.json")
+
+
+def _is_cli_binary(path: str | None) -> bool:
+    """Inspect Windows EXEs without executing a potentially graphical app."""
+    if not path:
+        return False
+    if sys.platform != "win32" or not path.lower().endswith(".exe"):
+        return True
+    try:
+        with open(path, "rb") as stream:
+            dos = stream.read(64)
+            if len(dos) != 64 or dos[:2] != b"MZ":
+                return False
+            stream.seek(int.from_bytes(dos[60:64], "little"))
+            pe = stream.read(94)
+        # PE signature + 20-byte COFF header; Subsystem is at optional offset 68
+        # for both PE32 and PE32+. IMAGE_SUBSYSTEM_WINDOWS_CUI = 3 (GUI = 2).
+        return (
+            len(pe) == 94
+            and pe[:4] == b"PE\0\0"
+            and int.from_bytes(pe[24:26], "little") in (0x10B, 0x20B)
+            and int.from_bytes(pe[92:94], "little") == 3
+        )
+    except (OSError, ValueError):
+        return False
 
 
 def _resolve_opencode_mode(config_overrides: dict | None = None) -> str:
@@ -186,8 +212,10 @@ class OpencodeEngine(AcpEngineBase):
         if not binary:
             return None
         try:
+            options = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
             out = subprocess.run(
-                [binary, "--version"], capture_output=True, text=True, timeout=5
+                [binary, "--version"], capture_output=True, text=True, timeout=5,
+                **options,
             )
             return out.stdout.strip() if out.returncode == 0 else None
         except Exception:
@@ -197,11 +225,20 @@ class OpencodeEngine(AcpEngineBase):
     def resolve_binary() -> str | None:
         override = OpencodeEngine.get_binary_override()
         if override is not None:
-            return override if os.path.isfile(override) else None
+            return override if os.path.isfile(override) and _is_cli_binary(override) else None
         env_bin = os.environ.get("OPENCODE_BIN")
         if env_bin and os.path.isfile(env_bin):
-            return env_bin
-        return shutil.which("opencode")
+            return env_bin if _is_cli_binary(env_bin) else None
+        binary = shutil.which("opencode")
+        if _is_cli_binary(binary):
+            return binary
+        if sys.platform == "win32":
+            # A Desktop opencode.exe early in PATH must not shadow a real CLI.
+            for directory in os.get_exec_path():
+                candidate = shutil.which("opencode", path=directory)
+                if _is_cli_binary(candidate):
+                    return candidate
+        return None
 
     def get_command(self) -> list[str]:
         binary = self.resolve_binary()
@@ -744,7 +781,7 @@ class OpencodeEngine(AcpEngineBase):
 
     async def list_models(self, cwd: str | None = None) -> list[EngineModel]:
         """经 ACP session configOptions 读取真实模型列表（按需，带超时）。"""
-        binary = self.resolve_binary()
+        binary = await asyncio.to_thread(self.resolve_binary)
         if not binary:
             return []
         workdir = cwd or os.getcwd()

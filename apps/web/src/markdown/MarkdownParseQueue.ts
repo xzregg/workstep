@@ -1,7 +1,8 @@
+import { runtimeMark, runtimeStamp, timeRuntimeMark } from '../utils/runtimeDiagnostics'
 import type { Root } from 'hast'
 export interface ParseResult { content: string; source: string; tree: Root | null }
-interface Request { id: number; content: string; incompleteCitation?: string }
-interface Reply { id: number; tree?: Root }
+interface Request { id: number; content: string; incompleteCitation?: string; measure?: boolean }
+interface Reply { id: number; tree?: Root; parseMs?: number }
 interface ParserWorker {
   postMessage: (request: Request) => void
   terminate: () => void
@@ -9,7 +10,7 @@ interface ParserWorker {
   onerror: ((event: ErrorEvent) => void) | null
   onmessageerror: ((event: MessageEvent) => void) | null
 }
-type Job = Request & { source: string; owner: object; receive: (result: ParseResult) => void }
+type Job = Request & { queuedAt?: number; sentAt?: number; source: string; owner: object; receive: (result: ParseResult) => void }
 
 /** One active parse globally and only the latest waiting revision per owner. */
 export class MarkdownParseQueue {
@@ -25,7 +26,7 @@ export class MarkdownParseQueue {
   submit(owner: object, content: string, incompleteCitation: string | undefined, receive: Job['receive'], source = content) {
     if (this.failed) { receive({ content, source, tree: null }); return }
     this.listeners.set(owner, receive)
-    this.waiting.set(owner, { owner, content, source, incompleteCitation, receive, id: ++this.sequence })
+    this.waiting.set(owner, { owner, content, source, incompleteCitation, receive, queuedAt: runtimeStamp(), id: ++this.sequence })
     this.pump()
   }
   cancel(owner: object) { this.waiting.delete(owner); this.listeners.delete(owner) }
@@ -46,6 +47,7 @@ export class MarkdownParseQueue {
         this.worker.onmessage = ({ data }) => {
           const job = this.active
           if (!job || data.id !== job.id) return
+          if (job.sentAt !== undefined && data.parseMs !== undefined) runtimeMark('markdown-parse', job.sentAt, data.parseMs)
           clearTimeout(this.timeout)
           this.active = undefined
           // Deliver intermediate progress even when a newer prefix is queued.
@@ -58,8 +60,10 @@ export class MarkdownParseQueue {
       const job = this.waiting.values().next().value!
       this.waiting.delete(job.owner)
       this.active = job
+      job.sentAt = runtimeStamp()
+      timeRuntimeMark('markdown-queue', job.queuedAt)
       this.timeout = setTimeout(this.fail, 15000)
-      this.worker.postMessage({ id: job.id, content: job.content, incompleteCitation: job.incompleteCitation })
+      this.worker.postMessage({ id: job.id, content: job.content, incompleteCitation: job.incompleteCitation, ...(job.sentAt === undefined ? {} : { measure: true }) })
     } catch { this.fail() }
   }
   dispose() {

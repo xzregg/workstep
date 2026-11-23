@@ -26,7 +26,7 @@ try{
    if(url.pathname==='/api/digital-person/affect')return route.fulfill({status:503,json:{detail:'Simulated unavailable relationship'}})
    if(workbench&&url.pathname==='/api/digital-person')return route.fulfill({json:{enabled:true,name:'小研'}})
    if(workbench&&url.pathname==='/api/digital-person/activity')return route.fulfill({json:{main_session_id:'main',delegations:[],runs:[],feedback:{}}})
-   if(workbench&&url.pathname==='/api/chat-sessions/main')return route.fulfill({json:{id:'main',project_id:'demo',title:'数据中枢对话',engine:'pydantic_ai',message_count:1,messages:[{id:'old',role:'assistant',status:'succeeded',content:['```workstep-ui','{"action":"conversation.open","project_id":"p","session_id":"preview"}','```'].join('\n')}]}})
+   if(workbench&&url.pathname==='/api/chat-sessions/main')return route.fulfill({json:{id:'main',project_id:'demo',title:'数字中枢对话',engine:'pydantic_ai',message_count:1,messages:[{id:'old',role:'assistant',status:'succeeded',content:['```workstep-ui','{"action":"conversation.open","project_id":"p","session_id":"preview"}','```'].join('\n')}]}})
    if(workbench&&url.pathname==='/api/chat-sessions/main/chat'){
     turns++
     return route.fulfill({json:{session_id:'main',turn_id:'user-'+turns,assistant_message_id:'reply-'+turns,status:'running',engine:'pydantic_ai'}})
@@ -72,7 +72,7 @@ try{
     await page.locator('[data-message-id="'+id+'"]').waitFor({state:'attached'})
     await page.evaluate(({id,session_id})=>window.finishWorkbenchTurn(id,{action:'conversation.open',project_id:'p',session_id}),{id,session_id})
    }
-   await page.getByText('数据中枢对话',{exact:true}).first().waitFor({state:'attached'})
+   await page.getByText('数字中枢对话',{exact:true}).first().waitFor({state:'attached'})
    const workspace=page.locator('[data-workbench-route]')
    const initialRoute=await workspace.getAttribute('data-workbench-route')
    assert.equal(await page.getByRole('dialog',{name:'发布复盘'}).count(),0)

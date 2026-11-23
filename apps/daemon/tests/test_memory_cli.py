@@ -83,6 +83,26 @@ async def test_memory_compact_results_keep_evidence_and_pagination_without_inter
     assert await dispatch(args,Client())==raw
 
 
+@pytest.mark.parametrize(("flags", "filters"), [
+    ([], {}),
+    (["--sender-id", "channel:wecom:sender-b"], {"sender_id": "channel:wecom:sender-b"}),
+    (["--self"], {"self_only": True}),
+])
+async def test_preferences_cli_preserves_full_records_and_cursor(flags, filters):
+    summary = '只在工作日清晨工作。' * 30
+    page = {'items': [{'id': 'knowledge:9', 'summary': summary}], 'has_more': True, 'next_cursor': 9}
+
+    async def handler(request):
+        assert request.url.path == '/api/memory/preferences'
+        body = json.loads(request.content)
+        assert body.pop('cursor') == 10
+        assert {key: body[key] for key in ('self_only', 'sender_id') if key in body} == filters
+        return httpx.Response(200, json=page)
+
+    args = build_parser().parse_args(['memory', 'preferences', '--cursor', '10', '--json', *flags])
+    assert await dispatch(args, WorkstepClient(transport=httpx.MockTransport(handler))) == page
+
+
 async def test_memory_read_keeps_requested_text_and_history_coverage():
     class Client:
         async def call(self, operation, args):

@@ -1,0 +1,6 @@
+.runtime-diagnostics-control {
+  position: fixed;
+  inset-block-start: max(12px, env(safe-area-inset-top));
+  inset-inline-end: 16px;
+  z-index: 70;
+}

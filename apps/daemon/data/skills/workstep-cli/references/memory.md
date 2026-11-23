@@ -18,6 +18,17 @@ filters without inferring contact scope from the calling conversation.
 Normal queries do not require a current conversation or a separate memory
 credential. Standard daemon authentication is handled by the transport.
 
+List saved preferences across accessible projects with one of these commands:
+
+- `memory preferences --self --json` lists the current message sender's preferences.
+- `memory preferences --sender-id ID --json` lists one sender's preferences. Use a known sender ID.
+- `memory preferences --json` lists all preferences with a verified owner and includes an `owner` on each entry.
+
+Listing all senders or looking up another person requires host access. A single
+sender's list includes an `owner` at the page level. Each item contains the full
+summary and source IDs. While `has_more` is true, continue with the same filters
+and `--cursor <next_cursor>`.
+
 
 Examples from another project when the daemon directory is inherited:
 

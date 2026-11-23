@@ -25,7 +25,7 @@ interface MarkdownContentProps {
   plainText?: boolean
   /** Mermaid render delay; static content can pass 0 because it is already stable. */
   mermaidRenderDelayMs?: number
-  onImageClick?: (src: string, alt: string) => void
+  onImageClick?: (button: HTMLButtonElement) => void
   onFileClick?: (file: ProjectFileLink) => void
   rootRef?: RefObject<HTMLDivElement | null>
   animateReveal?: boolean
@@ -168,9 +168,10 @@ function MarkdownContent({
       <button
         type="button"
         className="markdown-image-click"
+        data-image-src={src}
         title={t('md.preview')}
         aria-label={`${t('md.preview')}：${alt || t('md.image')}`}
-        onClick={() => onImageClick(src, alt)}
+        onClick={event => onImageClick(event.currentTarget)}
       >
         <img src={resolved} alt={alt} />
       </button>

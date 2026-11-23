@@ -23,12 +23,14 @@ export default defineConfig(({ mode }) => ({
         },
       },
     },
+    ...(mode === 'profile' ? { outDir: '../../tmp/runtime-diagnostics/profile-web' } : {}),
     ...(mode === 'gateway-share' ? { outDir: 'dist-gateway-share', assetsDir: '' } : {}),
   },
   plugins: [react()],
   resolve: {
     dedupe: ['react','react-dom','react-router-dom'],
     alias: {
+      ...(mode === 'profile' ? { 'react-dom/client': 'react-dom/profiling' } : {}),
       // The browser entry creates a DOM element; worker parsing needs the pure decoder.
       'decode-named-character-reference': createRequire(import.meta.url).resolve('decode-named-character-reference'),
       '@workstep/gateway-ui/SearchableSelect': fileURLToPath(new URL('../../packages/gateway-ui/src/SearchableSelect.tsx', import.meta.url)) },

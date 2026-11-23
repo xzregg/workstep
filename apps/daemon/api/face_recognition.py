@@ -3,7 +3,7 @@ import asyncio
 import sqlite3
 from fastapi import APIRouter, HTTPException
 from pydantic import Field
-from services import face_recognition as service
+from services import face_recognition as service, face_welcome
 
 router = APIRouter(prefix='/faces')
 
@@ -30,6 +30,25 @@ async def revision(): return await call(service.revision)
 
 @router.get('/catalog')
 async def catalog(): return await call(service.catalog)
+
+@router.get('/welcome', response_model=face_welcome.Settings)
+async def welcome_settings():
+    return await call(face_welcome.settings)
+
+
+@router.put('/welcome', response_model=face_welcome.Settings)
+async def save_welcome(value: face_welcome.Settings):
+    return await call(face_welcome.save, value)
+
+
+@router.post('/welcome/offer', response_model=face_welcome.Welcome | None)
+async def offer_welcome(value: face_welcome.Candidate):
+    from api.digital_person import runtime
+    last_user, busy = await runtime().face_welcome_activity()
+    if busy:
+        return None
+    return await call(face_welcome.offer, value, last_user)
+
 
 @router.get('/people')
 async def people(): return {'items': await call(service.people)}

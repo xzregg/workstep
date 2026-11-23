@@ -4437,7 +4437,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .desktop-image-preview {
   min-height: 0;
   max-width: 100%;
-  max-height: calc(86vh - 144px);
+  max-height: calc(86vh - 144px - var(--image-preview-navigation-height, 0px));
   overflow: auto;
   flex-shrink: 1;
 }
@@ -4447,7 +4447,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   width: auto;
   height: auto;
   max-width: min(960px, 92vw);
-  max-height: calc(86vh - 144px);
+  max-height: calc(86vh - 144px - var(--image-preview-navigation-height, 0px));
   cursor: zoom-in;
 }
 

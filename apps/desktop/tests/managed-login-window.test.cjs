@@ -206,7 +206,7 @@ test('desktop help exposes working diagnostic directory and export actions', asy
   vm.runInContext('diagnostics.directory = diagnosticDirectory', context)
   vm.runInContext('rootUrl = "http://127.0.0.1:8766"; createWindow(rootUrl)', context)
   const menu = handlers.get('application-menu').find(item => item.label === '帮助').submenu
-  assert.deepEqual(Array.from(menu, item => item.label), ['一键反馈', '打开日志目录', '导出诊断包'])
+  assert.deepEqual(Array.from(menu, item => item.label), ['一键反馈', '运行诊断', '打开开发者工具', '打开日志目录', '导出诊断包'])
   await vm.runInContext('openDiagnosticsDirectory()', context)
   assert.equal(handlers.get('opened-logs'), directory)
   await vm.runInContext('exportDiagnostics()', context)

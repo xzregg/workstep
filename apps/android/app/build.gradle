@@ -10,8 +10,8 @@ android {
         applicationId 'com.workstep.android'
         minSdk 29
         targetSdk 35
-        versionCode 58
-        versionName '1.0.57'
+        versionCode 62
+        versionName '1.0.61'
     }
 
     buildTypes {
@@ -32,3 +32,13 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     testImplementation 'junit:junit:4.13.2'
 }
+
+
+def runtimeDiagnosticsAssets = tasks.register('copyRuntimeDiagnosticsAssets', Sync) {
+    from '../../desktop/src'
+    include 'runtime-diagnostics.html', 'runtime-diagnostics.css', 'runtime-diagnostics.js',
+            'runtime-diagnostics-view.js', 'runtime-diagnostics-native.js'
+    into layout.buildDirectory.dir('generated/runtimeDiagnosticsAssets')
+}
+android.sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/runtimeDiagnosticsAssets'))
+tasks.named('preBuild').configure { dependsOn runtimeDiagnosticsAssets }

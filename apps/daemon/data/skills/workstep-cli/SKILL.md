@@ -25,6 +25,9 @@ credentials, or edit generated skill mirrors.
 
 Use `context get --json` for the current project/conversation IDs
 (`WORKSTEP_PROJECT_ID`, `WORKSTEP_SESSION_ID`), not engine thread IDs.
+During a chat turn it also returns the current message ID and, when identified,
+the sender ID and display name (`WORKSTEP_MESSAGE_ID`, `WORKSTEP_SENDER_ID`,
+`WORKSTEP_SENDER_NAME` in a freshly started command environment).
 
 ## Operations
 

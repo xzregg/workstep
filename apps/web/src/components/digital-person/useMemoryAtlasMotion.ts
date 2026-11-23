@@ -1,16 +1,18 @@
 import {useCallback,useEffect,useLayoutEffect,useRef,useState,type RefObject} from 'react'
-import {galaxyFrame,galaxyPainter,galaxyZoomMax,galaxyZoomMin,initialGalaxyView,starOrbitPosition,type AtlasMarker,type GalaxyView} from './memoryGalaxy'
-import {atlasLinkKey,constellationLinks} from './memoryConstellation'
+import {galaxyFrame,galaxyPainter,galaxyZoomMax,galaxyZoomMin,initialGalaxyView,type knowledgeSpiral,type AtlasMarker,type GalaxyView} from './memoryGalaxy'
+import {atlasLinkKey,constellationLinks,focusedChainDepth} from './memoryConstellation'
 import type {AtlasLink} from '../../api/digitalPerson'
 
 type Point={x:number;y:number}
-type Scene={candidates:AtlasLink[];focus?:string;recall?:{ranks:ReadonlyMap<string,number>;step:number}}
+type Scene={orbits:ReturnType<typeof knowledgeSpiral>;candidates:AtlasLink[];selected?:string;focus?:string;continueFrom?:(id:string)=>void;recall?:{ranks:ReadonlyMap<string,number>;step:number}}
 const rotationFrameInterval=1000/24
 
 export function useMemoryAtlasMotion(
   sky:RefObject<HTMLDivElement|null>,canvas:RefObject<HTMLCanvasElement|null>,
   particleCanvas:RefObject<HTMLCanvasElement|null>,scene:Scene,paused:boolean,
 ) {
+  const sceneRef=useRef(scene)
+  const pausedRef=useRef(paused)
   const time=useRef(0)
   const resolution=useRef(1)
   const slowFrames=useRef(0)
@@ -39,8 +41,22 @@ export function useMemoryAtlasMotion(
     const androidWebView=Boolean(particleCanvas.current)
     const motion=window.matchMedia('(prefers-reduced-motion: reduce)')
     const colors=new Map<string|undefined,number[]>()
-    const blur=layer.closest('.memory-atlas')?.getAttribute('data-dense')==='true'?3:6
-    const stars=Array.from(layer.querySelectorAll<HTMLButtonElement>('[data-orbit]'),button=>{
+    let activeScene:Scene|undefined
+    let blur=6,hitRadius=0
+    let stars:Array<ReturnType<typeof readStar>>=[]
+    let starsById=new Map<string,ReturnType<typeof readStar>>()
+    const markers:AtlasMarker[]=[]
+    let lines:ReturnType<typeof readLines>=[]
+    const candidateIds=new Set<string>()
+    let linked=new Set<string>()
+    let endpoints=new Set<string>()
+    const positions=new Map<string,Point>()
+    let width=layer.clientWidth,height=layer.clientHeight
+    let frame:number|null=null
+    let lastTick:number|undefined,nextRotationFrame:number|undefined
+    let visible=true,dirty=false
+
+    function readStar(button:HTMLButtonElement,current:Scene){
       const id=button.dataset.orbit!
       let marker:AtlasMarker|undefined
       let size=0
@@ -56,24 +72,35 @@ export function useMemoryAtlasMotion(
         size=Number.parseFloat(core.style.width)
         marker={x:0,y:0,diameter:0,blur,rgb:color,alpha:Number(core.style.opacity)}
       }
-      return {button,id,position:starOrbitPosition(id),marker,size,priority:Number(button.style.zIndex),
+      return {button,id,position:current.orbits.get(id)!.position,marker,size,priority:Number(button.style.zIndex),
         center:{x:0,y:0},inBounds:button.style.visibility!=='hidden'}
-    })
-    const hitRadius=(stars[0]?.button.offsetWidth??0)/2
-    const starsById=new Map(stars.map(star=>[star.id,star]))
-    const markers:AtlasMarker[]=[]
-    const lines=Array.from(layer.querySelectorAll<SVGGElement>('.atlas-link-segment'),group=>({
-      group,geometry:group.querySelector<SVGLineElement>('line')!,core:group.querySelector<SVGUseElement>('.atlas-link-core')!,
-    }))
-    const candidateIds=new Set<string>()
-    for(const {from,to} of scene.candidates){candidateIds.add(from);candidateIds.add(to)}
-    let linked=new Set(stars.filter(({button})=>button.hasAttribute('data-linked')).map(({id})=>id))
-    let endpoints=new Set<string>()
-    const positions=new Map<string,Point>()
-    let width=layer.clientWidth,height=layer.clientHeight
-    let frame:number|null=null
-    let lastTick:number|undefined,nextRotationFrame:number|undefined
-    let visible=true,dirty=false
+    }
+
+    function readLines(){
+      return Array.from(layer!.querySelectorAll<SVGGElement>('.atlas-link-segment'),group=>({
+        group,geometry:group.querySelector<SVGLineElement>('line')!,core:group.querySelector<SVGUseElement>('.atlas-link-core')!,
+      }))
+    }
+
+    function syncScene(current:Scene){
+      if(current===activeScene)return
+      if(current.orbits!==activeScene?.orbits){
+        blur=layer!.closest('.memory-atlas')?.getAttribute('data-dense')==='true'?3:6
+        stars=Array.from(layer!.querySelectorAll<HTMLButtonElement>('[data-orbit]'),button=>readStar(button,current))
+        hitRadius=(stars[0]?.button.offsetWidth??0)/2
+        starsById=new Map(stars.map(star=>[star.id,star]))
+        linked=new Set(stars.filter(({button})=>button.hasAttribute('data-linked')).map(({id})=>id))
+      }else if(current.selected!==activeScene.selected){
+        for(const id of [activeScene.selected,current.selected]){
+          const star=id?starsById.get(id):undefined
+          if(star)Object.assign(star,readStar(star.button,current))
+        }
+      }
+      lines=readLines()
+      candidateIds.clear()
+      for(const {from,to} of current.candidates){candidateIds.add(from);candidateIds.add(to)}
+      activeScene=current
+    }
 
     function hitTest(point:Point){
       const rect=layer!.getBoundingClientRect()
@@ -97,8 +124,10 @@ export function useMemoryAtlasMotion(
         :`translate3d(${x}px,${y}px,0) translate(-50%,-50%)`
     }
     function draw(){
+      const scene=sceneRef.current
       const sampling=layer!.hasAttribute('data-atlas-sampling')
       const started=sampling?performance.now():0
+      syncScene(scene)
       const projection=galaxyFrame(view.current,time.current)
       const batchStars=canBatchStars()
       if(layer!.hasAttribute('data-batched-stars')!==batchStars)layer!.toggleAttribute('data-batched-stars',batchStars)
@@ -134,6 +163,7 @@ export function useMemoryAtlasMotion(
       }
       const links=scene.candidates.length
         ?constellationLinks(scene.candidates,positions,Math.hypot(width,height)*.28*projection.zoom,previousLinks.current,scene.focus):[]
+      let tail=scene.focus
       previousLinks.current.clear()
       endpoints.clear()
       for(const [i,{group,geometry,core}] of lines.entries()){
@@ -153,6 +183,13 @@ export function useMemoryAtlasMotion(
         endpoints.add(link.from)
         endpoints.add(link.to)
         let a=positions.get(link.from)!,b=positions.get(link.to)!
+        if(tail){
+          const forward=tail===link.from
+          if(!forward)[a,b]=[b,a]
+          tail=forward?link.to:link.from
+          const delay=i*100+'ms'
+          if(group.style.getPropertyValue('--atlas-link-delay')!==delay)group.style.setProperty('--atlas-link-delay',delay)
+        }
         if(scene.recall){
           const from=scene.recall.ranks.get(link.from)!,to=scene.recall.ranks.get(link.to)!
           if(to<from)[a,b]=[b,a]
@@ -180,14 +217,15 @@ export function useMemoryAtlasMotion(
         if(batchStars&&marker&&button!==focused)moveButton(button,center)
       }
       ;[linked,endpoints]=[endpoints,linked]
+      if(tail&&links.length>0&&links.length<focusedChainDepth)scene.continueFrom?.(tail)
       const updated=sampling?performance.now():0
       paint(projection,width,height,markers,resolution.current)
-      if(sampling)layer!.dispatchEvent(new CustomEvent('workstep:atlas-profile-frame',{
+      if(sampling)layer!.dispatchEvent(new window.CustomEvent('workstep:atlas-profile-frame',{
         detail:{particles:performance.now()-updated,markers:updated-started},
       }))
     }
     const canDraw=()=>visible&&!document.hidden
-    const rotating=()=>!paused&&!motion.matches
+    const rotating=()=>!pausedRef.current&&!motion.matches
     function schedule(){
       if(frame===null&&canDraw())frame=requestAnimationFrame(tick)
     }
@@ -217,10 +255,11 @@ export function useMemoryAtlasMotion(
         const overdue=now-nextRotationFrame+.01
         rotationDue=overdue>=0
         if(rotationDue)nextRotationFrame+=(1+Math.floor(overdue/rotationFrameInterval))*rotationFrameInterval
+      }else{
+        lastTick=nextRotationFrame=undefined
       }
       if(dirty||rotationDue){
         draw()
-        if(dirty&&rotating())nextRotationFrame=now+rotationFrameInterval
         dirty=false
       }
       if(rotating())schedule()
@@ -248,8 +287,7 @@ export function useMemoryAtlasMotion(
     motion.addEventListener('change',resume)
     document.addEventListener('visibilitychange',resume)
     if(androidWebView)layer.addEventListener('focusin',invalidate)
-    draw()
-    if(rotating())schedule()
+    invalidate()
     return ()=>{
       requestDraw.current=()=>{}
       findStar.current=null
@@ -260,7 +298,13 @@ export function useMemoryAtlasMotion(
       document.removeEventListener('visibilitychange',resume)
       if(androidWebView)layer.removeEventListener('focusin',invalidate)
     }
-  },[sky,canvas,particleCanvas,scene,paused])
+  },[sky,canvas,particleCanvas])
+
+  useLayoutEffect(()=>{
+    sceneRef.current=scene
+    pausedRef.current=paused
+    requestDraw.current()
+  },[scene,paused])
 
   const updateView=useCallback((next:GalaxyView)=>{
     view.current=next

@@ -9,8 +9,10 @@ import { installDomEnvironment } from './helpers/domEnv'
 test('mobile image zooms at the tapped region, pinches, pans, cancels and resets for another image', async () => {
   const { window, document } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const swipes: number[] = []
+  const onSwipe = (direction: number) => swipes.push(direction)
   try {
-    await act(async () => root.render(<MobilePreviewImage src="/a.png" alt="image" />))
+    await act(async () => root.render(<MobilePreviewImage src="/a.png" alt="image" onSwipe={onSwipe} />))
     const viewport = document.querySelector<HTMLElement>('.image-preview-viewport')!
     viewport.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 200 }) as DOMRect
     const image = viewport.querySelector('img')!
@@ -28,8 +30,15 @@ test('mobile image zooms at the tapped region, pinches, pans, cancels and resets
     await pointer('pointercancel', 1, 900, 900)
     await pointer('pointermove', 1, 0, 0)
     assert.equal(image.style.transform, 'translate(150px, 100px) scale(2)')
-    await act(async () => root.render(<MobilePreviewImage src="/b.png" alt="image" />))
+    assert.deepEqual(swipes, [], 'zoomed panning must not switch images')
+    await act(async () => root.render(<MobilePreviewImage src="/b.png" alt="image" onSwipe={onSwipe} />))
     assert.equal(image.style.transform, 'translate(0px, 0px) scale(1)')
+    for (const [x, y, end] of [[40, 110, 'pointerup'], [270, 100, 'pointerup'], [145, 210, 'pointerup'], [30, 100, 'pointercancel']] as const) {
+      await pointer('pointerdown', 1, 150, 100)
+      await pointer('pointermove', 1, x, y)
+      await pointer(end, 1, x, y)
+    }
+    assert.deepEqual(swipes, [1, -1])
     await pointer('pointerdown', 1, 100, 100)
     await pointer('pointerdown', 2, 200, 100)
     await pointer('pointermove', 2, 300, 100)

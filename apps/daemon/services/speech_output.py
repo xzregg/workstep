@@ -20,14 +20,13 @@ from engines.core.process_cleanup import finish_cleanup
 from services.config import CONFIG_DIR
 from services import speech_profiles
 from services.tts_catalog import DEFAULT_LOCAL_MODEL, DEFAULT_LOCAL_VOICE, LOCAL_MODELS, MODELS, OMNI_DESIGN_ATTRIBUTES, OMNI_PERSONA_VOICE, OMNI_TONES, PROVIDERS, voices
-from services.tts_omni_persona import design_attributes, digital_delivery, prompted_tone, reference_tone, saved_persona_attributes
+from services.tts_omni_persona import ATTRIBUTES_PREFIX, OMNI_LEGACY_ATTRIBUTES, cosyvoice_instructions, design_attributes
 from services.tts_resources import TtsResources
 from services.tts_runtime import TtsRuntime
 from services.tts_remote import MAX_AUDIO, SpeechConfigurationError, remote_audio, speech_failure_code
 
 SECRET_FIELDS = speech_profiles.SECRET_FIELDS
 MAX_REFERENCE_BYTES = 12 * 1024 * 1024
-LOCAL_DELIVERY_MODELS = frozenset(('cosyvoice3', 'omnivoice'))
 DEFAULTS = dict(mode='system', provider='qwen', model_id=DEFAULT_LOCAL_MODEL, model='qwen3-tts-flash-realtime',
     base_url='', voice='Cherry', rate=1.0, volume=1.0, instructions='', region='beijing',
     resource_id='seed-tts-2.0', app_id='', engine='qwen', api_key='', secret_id='', secret_key='',
@@ -84,7 +83,7 @@ def store_reference(root, content):
     return identifier
 
 
-def validate(value):
+def validate(value, *, loading_saved=False):
     result = {**DEFAULTS, **{k: v for k, v in value.items() if k in DEFAULTS}}
     if result['mode'] not in ('system', 'local', 'cloud', 'remote'):
         raise ValueError('Unsupported speech output method')
@@ -132,8 +131,14 @@ def validate(value):
         if result['instructions'] and not spec['instructions']:
             raise ValueError('The selected model does not support tone instructions')
         if spec.get('style') == 'tone' and result['instructions'] and result['instructions'] not in OMNI_TONES:
-            if result['voice'] != 'reference' or reference_tone(result['instructions']) is None:
-                raise ValueError('OmniVoice 提示词需包含自然、温柔、低沉、明快、俏皮或耳语等可识别的语气。')
+            try:
+                if not result['instructions'].startswith(ATTRIBUTES_PREFIX):
+                    raise ValueError('OmniVoice 仅支持声音设置中的预设标签。')
+                design_attributes(result['instructions'].removeprefix(ATTRIBUTES_PREFIX), cloning=result['voice'] == 'reference')
+            except ValueError:
+                if not loading_saved:
+                    raise
+                result['instructions'] = ''
         if result['model_id'] in LOCAL_MODELS and result['voice'] == 'reference' and not result['reference_id']:
             raise ValueError('Upload reference audio first')
     if result['reference_id'] and not re.fullmatch('[0-9a-f]{64}', result['reference_id']):
@@ -173,7 +178,7 @@ class SpeechOutputService:
                 result.update(model_id=DEFAULT_LOCAL_MODEL)
                 if result.get('mode') == 'local':
                     result.update(voice=DEFAULT_LOCAL_VOICE, instructions='')
-            settings = validate(result)
+            settings = validate(result, loading_saved=True)
             return settings, speech_profiles.remember(profiles, settings)
         except FileNotFoundError:
             return dict(DEFAULTS), []
@@ -202,18 +207,23 @@ class SpeechOutputService:
                 result[key] = previous.get(key, '')
         return result
 
-    async def configure(self, value):
+    async def configure(self, value, *, preview_owner=None):
         async with self.lock:
-            return await finish_cleanup(self._configure(value))
+            return await finish_cleanup(self._configure(value, preview_owner))
 
-    async def _configure(self, value):
+    async def _configure(self, value, preview_owner):
         await self._load()
         result = self._resolve(value)
-        if self.sessions:
+        previews = {sid for sid, session in self.sessions.items()
+                    if session['preview'] and not session['project'] and session['owner'] == preview_owner}
+        if self.sessions.keys() - previews:
             raise ValueError('Please stop voice playback before modifying the configuration')
         if result['mode'] == 'local' and result['model_id'] in LOCAL_MODELS and result['voice'] == 'reference':
             if not await asyncio.to_thread(reference_path(self.root, result['reference_id']).is_file):
                 raise ValueError('Upload the reference audio again')
+        for sid in previews:
+            if sid in self.sessions:
+                await self.cancel(sid, '', preview_owner)
         profiles = speech_profiles.remember(self.profiles, result)
         await asyncio.to_thread(self._save, {**result, 'connections': profiles})
         self.cache, self.profiles = result, profiles
@@ -346,33 +356,27 @@ class SpeechOutputService:
         settings = settings_snapshot
         if settings is None:
             settings = await self.resolve(draft) if draft is not None else await self.settings()
-        adaptive = settings['mode'] == 'local' and settings['model_id'] in LOCAL_DELIVERY_MODELS
-        if preview_prompt and (draft is None or not adaptive):
-            raise ValueError('试听语气提示词仅适用于 CosyVoice3 或 OmniVoice 的设置试听。')
-        if adaptive and draft is not None:
-            # Host audition uses the model/default speaker or the selected recording.
-            # Instructions from older clients remain compatible if supplied in the draft.
-            prompt = preview_prompt or settings['instructions']
-            if settings['model_id'] == 'omnivoice' and settings['voice'] == OMNI_PERSONA_VOICE:
-                prompt = design_attributes(prompt, text)
-            elif settings['model_id'] == 'omnivoice':
-                if prompt.startswith('attributes:'):
-                    prompt = design_attributes(prompt.removeprefix('attributes:'), text, cloning=True)
-                    settings = {**settings, '_clone_attributes': bool(prompt)}
-                else:
-                    tone = prompt if prompt in OMNI_TONES else reference_tone(prompt) or prompted_tone(prompt)
-                    if prompt and tone is None:
-                        raise ValueError('OmniVoice 提示词需包含自然、温柔、低沉、明快、俏皮或耳语等可识别的语气。')
-                    prompt = tone or ''
-            settings = {**settings, 'instructions': prompt, '_resolved_delivery': True}
-        elif adaptive and digital_person_id is not None:
-            instructions, rate = await asyncio.to_thread(digital_delivery, settings['model_id'], settings['voice'], digital_person_id)
-            settings = {**settings, 'instructions': instructions, '_resolved_delivery': True, '_delivery_rate': rate}
+        local_model = settings['model_id'] if settings['mode'] == 'local' else None
+        if preview_prompt and (draft is None or local_model != 'cosyvoice3'):
+            raise ValueError('试听语气提示词仅适用于 CosyVoice3 的设置试听。')
+        if local_model == 'cosyvoice3':
+            instructions = preview_prompt or settings['instructions']
+            if digital_person_id is not None or (draft is not None and not instructions):
+                instructions = await asyncio.to_thread(cosyvoice_instructions, digital_person_id, preview=draft is not None)
+            settings = {**settings, 'instructions': instructions}
+        elif local_model == 'omnivoice':
+            cloning = settings['voice'] == 'reference'
+            instructions = settings['instructions']
+            if instructions.startswith(ATTRIBUTES_PREFIX):
+                instructions = design_attributes(instructions.removeprefix(ATTRIBUTES_PREFIX), text, cloning=cloning)
+                settings = {**settings, 'instructions': instructions, '_clone_attributes': cloning and bool(instructions)}
+            elif not cloning:
+                settings = {**settings, 'instructions': design_attributes(OMNI_LEGACY_ATTRIBUTES.get(instructions, ''))}
         async with self.lock:
             if len(self.sessions) >= 4:
                 raise ValueError('Voice output concurrency has reached the limit, please try again later')
             sid = uuid.uuid4().hex
-            session = dict(project=project, owner=owner, queue=asyncio.Queue(8),
+            session = dict(project=project, owner=owner, preview=draft is not None, queue=asyncio.Queue(8),
                            touched=time.monotonic(), read_lock=asyncio.Lock())
             self.sessions[sid] = session
             session['task'] = asyncio.create_task(self._pump(session, settings, text))
@@ -390,8 +394,6 @@ class SpeechOutputService:
             if persona or clone_attributes:
                 if not await asyncio.to_thread(self.resources.omni_design_ready):
                     raise SpeechConfigurationError('Install the OmniVoice voice design runtime first')
-                if persona and not settings.get('_resolved_delivery'):
-                    instructions = await asyncio.to_thread(saved_persona_attributes, instructions)
             else:
                 runtime_error = await asyncio.to_thread(self.resources.runtime_error, settings['model_id'])
                 if runtime_error:
@@ -404,13 +406,9 @@ class SpeechOutputService:
                 options.update(reference=ref, reference_text=settings['reference_text'])
                 if clone_attributes:
                     options['use_design'] = True
-                elif settings['model_id'] == 'omnivoice':
-                    instructions = reference_tone(instructions) or instructions
             async with aclosing(self.runtime.audio(self.resources.path(settings['model_id']), text, settings['voice'],
                                                   instructions, **options)) as stream:
                 async for event in stream:
-                    if settings.get('_delivery_rate', 1) != 1:
-                        event = {**event, 'rate_factor': settings['_delivery_rate']}
                     yield event
         elif settings['mode'] in ('cloud', 'remote'):
             async with aclosing(remote_audio(settings, text)) as stream:

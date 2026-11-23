@@ -1,4 +1,4 @@
-import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react'
+import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react'
 import type {AssistantChatMessage} from '../../stores/assistantStore'
 import {useI18n} from '../../i18n'
 import type {VoicePhase} from '../../hooks/useVoiceInput'
@@ -7,9 +7,13 @@ import Icon from '../Icon'
 import Button from '../Button'
 import Spinner from '../Spinner'
 import DigitalPersonFeedback from './DigitalPersonFeedback'
+import DigitalPersonProgress from './DigitalPersonProgress'
+import {recordedCommentary} from './digitalPersonCommentary'
 import MarkdownMessage from '../MarkdownMessage'
 import {formatDuration,toMilliseconds} from '../../utils/datetime'
 import {speechText} from '../../utils/speechOutput'
+import {hasActiveSelectionWithin,isNearConversationBottom,shouldPauseConversationFollow} from '../../utils/conversationScroll'
+import {disposeConversationFollow,followConversationBottom} from '../../utils/smoothConversationFollow'
 
 /** Presentation-only cleanup; the stored message and full conversation stay intact. */
 export function captionContent(content:string){
@@ -62,25 +66,41 @@ function EditableVoiceCaption({text,value,compact,voicePhase,onStart,onChange}:{
 }
 
 /** Scrollable transcript with feedback and explicit playback for completed replies. */
-export default function DigitalPersonCaptions({messages,projectId,sessionId,greeting,liveText,voicePhase,feedback,readingId,onToggleSpeech,onClearVoice,voiceDraft,onStartVoiceEdit,onChangeVoiceDraft}:{projectId:string;messages:AssistantChatMessage[];sessionId:string;greeting:string;liveText:string;voicePhase?:VoicePhase;feedback?:Record<string,number>;readingId?:string;onToggleSpeech?:(id:string)=>void;onClearVoice?:()=>void;voiceDraft?:string|null;onStartVoiceEdit?:()=>void;onChangeVoiceDraft?:(value:string)=>void}){
+export default function DigitalPersonCaptions({messages,projectId,sessionId,greeting,liveText,voicePhase,feedback,readingId,onToggleSpeech,onClearVoice,voiceDraft,onStartVoiceEdit,onChangeVoiceDraft,frameRef}:{projectId:string;messages:AssistantChatMessage[];sessionId:string;greeting:string;liveText:string;voicePhase?:VoicePhase;feedback?:Record<string,number>;readingId?:string;onToggleSpeech?:(id:string)=>void;onClearVoice?:()=>void;voiceDraft?:string|null;onStartVoiceEdit?:()=>void;onChangeVoiceDraft?:(value:string)=>void;frameRef?:(frame:HTMLDivElement|null)=>void}){
  const {t}=useI18n(),viewport=useRef<HTMLElement>(null),following=useRef(true)
+ const historyContent=useRef<HTMLDivElement>(null),programmaticTop=useRef(0),previousTop=useRef(0)
  const compact=useCompactLayout()
  const showClear=!!(onClearVoice&&(liveText||voiceDraft!=null))
- useLayoutEffect(()=>{following.current=true},[sessionId])
- useLayoutEffect(()=>{
-  if(following.current&&viewport.current)viewport.current.scrollTop=viewport.current.scrollHeight
- },[messages,sessionId])
- useEffect(()=>{
+ const followLatest=useCallback((immediate=false)=>{
   const node=viewport.current
-  if(!node||typeof ResizeObserver==='undefined')return
-  const observer=new ResizeObserver(()=>{if(following.current)node.scrollTop=node.scrollHeight})
-  observer.observe(node)
-  return()=>observer.disconnect()
+  if(node&&!hasActiveSelectionWithin(node,node.ownerDocument.getSelection())){
+   followConversationBottom(node,programmaticTop,following,immediate)
+  }
  },[])
+ useLayoutEffect(()=>{
+  const node=viewport.current
+  following.current=true
+  followLatest(true)
+  previousTop.current=programmaticTop.current
+  return()=>disposeConversationFollow(node)
+ },[projectId,sessionId,followLatest])
+ useLayoutEffect(()=>followLatest(),[messages,followLatest])
+ useEffect(()=>{
+  const node=viewport.current,content=historyContent.current
+  if(!node||!content||typeof ResizeObserver==='undefined')return
+  const observer=new ResizeObserver(()=>followLatest())
+  observer.observe(node)
+  observer.observe(content)
+  return()=>observer.disconnect()
+ },[followLatest])
+ const pauseFollowing=(node:HTMLElement)=>{
+  if(node.scrollHeight>node.clientHeight)following.current=false
+ }
  const history=useMemo(()=>{
-  const captions=messages.filter(message=>message.role==='user'||message.role==='assistant').map(message=>({...message,content:captionContent(message.content)})).filter(message=>message.content||message.status==='running')
+  const captions=messages.filter(message=>message.role==='user'||message.role==='assistant').map(message=>({...message,content:captionContent(message.content)})).filter(message=>message.content||message.status==='running'||recordedCommentary(message).length)
   return captions.length?captions.map(message=><div key={message.id} className={message.role==='user'?'digital-home-user-caption':'digital-home-reply chat-message-row'}>
    {message.role==='user'&&<span className="digital-home-caption-label">{t('digitalPerson.homeYouSaid')}</span>}
+   {message.role==='assistant'&&<DigitalPersonProgress message={message}/>}
    {!message.content&&message.role==='assistant'&&message.status==='running'?<ThinkingCaption key={sessionId} createdAt={message.created_at}/>:<MarkdownMessage content={message.content} projectId={projectId} streaming={message.status==='running'} plainText={message.role==='user'} reveal="off"/>}
    {message.role==='assistant'&&message.status!=='running'&&message.content.trim()&&<div className="digital-home-reply-actions">
     <DigitalPersonFeedback messageId={message.id} initialValue={feedback?.[message.id]??0}/>
@@ -88,11 +108,18 @@ export default function DigitalPersonCaptions({messages,projectId,sessionId,gree
    </div>}
   </div>):<p className="digital-home-reply">{greeting}</p>
  },[messages,projectId,sessionId,greeting,feedback,readingId,onToggleSpeech,t])
- return <div className="digital-home-caption-frame"><section ref={viewport} className="digital-home-subtitles" aria-label={t('digitalPerson.homeTranscript')} tabIndex={0} onLoadCapture={()=>{if(following.current&&viewport.current)viewport.current.scrollTop=viewport.current.scrollHeight}} onScroll={event=>{
-  const node=event.currentTarget
-  following.current=node.scrollHeight-node.clientHeight-node.scrollTop<32
- }}>
-  {history}
+ return <div className="digital-home-caption-frame" ref={frameRef}><section ref={viewport} className="digital-home-subtitles" aria-label={t('digitalPerson.homeTranscript')} tabIndex={0}
+  onWheelCapture={event=>{if(shouldPauseConversationFollow({type:'wheel',deltaY:event.deltaY}))pauseFollowing(event.currentTarget)}}
+  onKeyDownCapture={event=>{if(shouldPauseConversationFollow({type:'key',key:event.key}))pauseFollowing(event.currentTarget)}}
+  onScroll={event=>{
+   const {scrollHeight,scrollTop,clientHeight}=event.currentTarget
+   const atBottom=isNearConversationBottom(scrollHeight,scrollTop,clientHeight,1)
+   // A new message can grow the content before the programmatic scroll event arrives.
+   if(atBottom&&scrollTop>previousTop.current)following.current=true
+   else if(!atBottom&&Math.abs(scrollTop-programmaticTop.current)>1)following.current=false
+   previousTop.current=scrollTop
+  }}>
+  <div ref={historyContent}>{history}</div>
  </section>
  <div className="digital-home-live-caption-slot">
   {(voicePhase||liveText||voiceDraft!=null)&&<div className="digital-home-live-caption" data-phase={voicePhase??'submitted'} role={onChangeVoiceDraft?undefined:'status'}>

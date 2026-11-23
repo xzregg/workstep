@@ -2658,7 +2658,7 @@ button {
   gap: 40px;
 }
 
-.final-cta h2 {
+.final-cta h3 {
   margin: 0 0 10px;
   max-width: 22ch;
   font-size: clamp(28px, 3.5vw, 42px);

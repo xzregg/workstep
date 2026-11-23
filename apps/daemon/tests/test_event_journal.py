@@ -361,6 +361,10 @@ def test_commentary_survives_replay_without_becoming_response_content(tmp_path):
     snapshot = restored.snapshot(ref)
     assert snapshot["content"] == "已完成。"
     assert snapshot["summary"]["commentary_characters"] == 10
+    assert snapshot["summary"]["commentary_preview"] == [
+        {"text": "我先定位。", "complete": True},
+        {"text": "正在核对。", "complete": False},
+    ]
     assert snapshot["summary"]["thought_characters"] == 0
     replay = [mapped for event in restored.timeline(ref)["events"]
               for mapped in to_agui_events(event)]

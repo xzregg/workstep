@@ -4,6 +4,15 @@
 .digital-person-camera-preview { display: block; width: auto; height: auto; max-width: min(100%, 480px); max-height: 60dvh; object-fit: contain; background: #000; border-radius: var(--radius-sm); }
 .digital-person-camera-preview[hidden] { display: none; }
 .chat-composer-inner .digital-person-camera-preview { max-width: 240px; max-height: 136px; }
+.face-camera-feedback {
+  position: absolute; inset-inline: var(--space-2); bottom: var(--space-2); margin-inline: auto;
+  display: flex; align-items: center; justify-content: center; gap: var(--space-1);
+  width: fit-content; box-sizing: border-box; max-width: calc(100% - 2 * var(--space-2));
+  padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm);
+  background: var(--bg); color: var(--fg); font-size: var(--text-caption); line-height: 1.4;
+  text-align: center; overflow-wrap: anywhere; pointer-events: none;
+}
+.face-camera-feedback > .spinner { flex: none; }
 .digital-person-vision { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
 
 .digital-person-camera--floating .digital-person-camera-actions { justify-content: flex-end; }

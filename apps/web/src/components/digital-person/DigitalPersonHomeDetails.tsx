@@ -12,7 +12,8 @@ import Icon from '../Icon'
 import Spinner from '../Spinner'
 import {RelationshipReadout} from './DigitalPersonRelationship'
 import DigitalPersonRunDetail from './DigitalPersonRunDetail'
-import DigitalPersonRunKnowledge from './DigitalPersonRunKnowledge'
+import {DigitalPersonRunHeader} from './DigitalPersonRunKnowledge'
+import DigitalPersonRunOutcome from './DigitalPersonRunOutcome'
 import WakePreferenceSwitch from './WakePreferenceSwitch'
 import './DigitalPersonHomeDetails.css'
 
@@ -42,22 +43,18 @@ export default function DigitalPersonHomeDetails({kind,canControlWake,name,role,
     {kind==='reflection'&&(loading?<div className="digital-home-detail-loading"><Spinner/></div>:error?<div role="alert"><p>{localizeErrorDisplay(error)}</p><Button onClick={()=>setRevision(value=>value+1)}>{t('common.retry')}</Button></div>:current?.runs?.length?current.runs.map(run=>{
      const busy=['running','notifying'].includes(run.status),statusKey=run.status==='delivery_failed'?'digitalPerson.runNotificationFailed':`digitalPerson.status${run.status.charAt(0).toUpperCase()+run.status.slice(1)}`,status=t(statusKey as never),label=run.status==='failed'?t('digitalPerson.runIncompleteStatus'):run.status==='running'?t('digitalPerson.homeStatethinking'):status===statusKey?t('digitalPerson.homeReflection'):status
      const expanded=openRun===run.id
+     const fallback=run.status==='failed'?t('digitalPerson.homeThoughtIncomplete'):run.summary||label
+     const showStatus=run.processing || (run.status!=='failed' && fallback!==label)
      return <div className="digital-home-detail-run" key={run.id} data-expanded={expanded}>
-      <DigitalPersonRunKnowledge runId={run.id} processing={run.processing} fallback={run.status==='failed'?t('digitalPerson.homeThoughtIncomplete'):run.summary||label}>
-       {(summary,summaryId)=><div className="digital-home-detail-run-header digital-run-header">
-        <div className="digital-home-detail-run-body">
-         <div className="digital-home-detail-run-summary">
-          <Icon name={busy?'loader-circle':'lightbulb'} className={busy?'digital-home-detail-run-icon task-status-spinner':'digital-home-detail-run-icon'}/>
-          {summary}
-         </div>
-         <div className="digital-home-detail-run-meta"><span>{label}</span><time dateTime={run.created_at} title={new Date(run.created_at).toLocaleString(locale)}>{new Date(run.created_at).toLocaleString(locale,{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})}</time></div>
-        </div>
-        <Button type="button" variant="icon" className="digital-run-detail-toggle" aria-labelledby={summaryId} aria-expanded={expanded} aria-controls={expanded?`digital-run-${run.id}`:undefined} onClick={()=>setOpenRun(expanded?'':run.id)}>
-         <Icon name={expanded?'chevron-down':'chevron-right'}/>
-        </Button>
-       </div>}
-      </DigitalPersonRunKnowledge>
-      {expanded&&<DigitalPersonRunDetail id={run.id} busy={false} processingInList={!!run.processing}/>}
+      <DigitalPersonRunHeader runId={run.id} className="digital-home-detail-run-header" processing={run.processing} fallback={fallback}
+       expanded={expanded} onToggle={()=>setOpenRun(expanded?'':run.id)}
+       leadingIcon={<Icon name={busy?'loader-circle':'lightbulb'} className={busy?'digital-home-detail-run-icon task-status-spinner':'digital-home-detail-run-icon'}/>}>
+         {showStatus&&<span>{label}</span>}
+         <DigitalPersonRunOutcome outcome={run.outcome}/>
+         <time dateTime={run.created_at} title={new Date(run.created_at).toLocaleString(locale)}>{new Date(run.created_at).toLocaleString(locale,{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})}</time>
+      </DigitalPersonRunHeader>
+      {expanded&&<DigitalPersonRunDetail id={run.id} busy={false} processingInList={run.processing} affinityInList={!!run.outcome}
+       summaryInList={run.processing ? undefined : run.summary}/>}
      </div>
     }):<p>{current?t('digitalPerson.noThoughtRecords'):'—'}</p>)}
    </div>

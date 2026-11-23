@@ -6,8 +6,49 @@ import { Window } from 'happy-dom'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import MarkdownMessage from '../src/components/MarkdownMessage'
+import PromptViewerDialog from '../src/components/PromptViewerDialog'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { MarkdownAssetUrlProvider } from '../src/contexts/MarkdownAssetUrlContext'
+import { installDomEnvironment } from './helpers/domEnv'
+
+test('image preview starts on the selected thumbnail and navigates only the containing message or prompt', async () => {
+  const { window, document } = installDomEnvironment()
+  window.happyDOM.setWindowSize({ width: 1440, height: 900 })
+  useLocaleStore.getState().setLocale('zh-CN')
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const content = '![第一张](/a.png) ![本地](/tmp/screen.png) ![第二张](/b.png) ![重复图](/a.png)'
+  const current = () => document.querySelector('.image-preview img')
+  const key = (value: string) => act(async () => window.dispatchEvent(new window.KeyboardEvent('keydown', { key: value })))
+  try {
+    for (const mode of ['plain', 'markdown', 'prompt']) {
+      await act(async () => root.render(<I18nProvider>
+        <MarkdownAssetUrlProvider resolver={src => '/workspace' + src}>
+          {mode === 'prompt'
+            ? <PromptViewerDialog prompt={content} onClose={() => assert.fail('Image navigation must stay inside the prompt')} />
+            : <MarkdownMessage content={content} plainText={mode === 'plain'} />}
+          <MarkdownMessage content="![其他消息](/other.png)" />
+        </MarkdownAssetUrlProvider>
+      </I18nProvider>))
+      const thumbnails = container.querySelectorAll<HTMLButtonElement>('.markdown-image-click')
+      await act(async () => thumbnails[1].click())
+      assert.equal(current()?.getAttribute('src'), '/workspace/b.png')
+      assert.equal(document.querySelector('.image-preview-navigation [role="status"]')?.textContent, '2 / 3')
+      await key('ArrowRight')
+      assert.equal(current()?.getAttribute('alt'), '重复图')
+      await key('ArrowRight')
+      assert.equal(current()?.getAttribute('alt'), '重复图')
+      await act(async () => document.querySelector<HTMLButtonElement>('.image-preview-navigation button')!.click())
+      await key('ArrowLeft')
+      assert.equal(current()?.getAttribute('alt'), '第一张')
+      await key('Escape')
+      assert.equal(current(), null)
+    }
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
 
 test('local screenshot paths remain readable without image or resolver requests in Markdown and plain text', async () => {
   const window = new Window({ url: 'http://localhost/' })
@@ -66,6 +107,7 @@ test('shared Markdown images open and close the image preview by default', async
     await act(async () => thumbnail.click())
     const preview = document.querySelector<HTMLElement>('.image-preview')
     assert.ok(preview)
+    assert.equal(preview.querySelector('.image-preview-navigation'), null)
     assert.equal(preview.querySelector('img')?.getAttribute('src'), thumbnail.querySelector('img')?.getAttribute('src'))
     await act(async () => window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' })))
     assert.equal(document.querySelector('.image-preview'), null)

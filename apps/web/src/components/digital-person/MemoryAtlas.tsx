@@ -1,10 +1,12 @@
-import DigitalPersonMemorySource from './DigitalPersonMemorySource'
+import {MemorySourceDialog} from './DigitalPersonMemorySource'
 import './DigitalPersonMemory.css'
-import {memo,useCallback,useEffect,useId,useMemo,useRef,useState,type CSSProperties} from 'react'
-import {atlasRecallLimit,atlasStarLimit,digitalMemoryApi,type AtlasDetail,type AtlasLink,type AtlasStar,type MemorySource} from '../../api/digitalPerson'
+import {memo,useCallback,useEffect,useId,useMemo,useRef,useState,type CSSProperties,type RefObject} from 'react'
+import {createPortal} from 'react-dom'
+import {atlasRecallLimit,atlasStarLimit,digitalMemoryApi,type AtlasDetail,type AtlasLink,type AtlasStar} from '../../api/digitalPerson'
 import {useI18n} from '../../i18n'
-import {perimeterOrder,starVariation} from './memoryGalaxy'
-import {atlasLinkKey} from './memoryConstellation'
+import {toMilliseconds} from '../../utils/datetime'
+import {knowledgeSpiral,perimeterOrder,starVariation} from './memoryGalaxy'
+import {atlasLinkKey,focusedChainDepth} from './memoryConstellation'
 import {useMemoryAtlasMotion} from './useMemoryAtlasMotion'
 import Button from '../Button'
 import Icon from '../Icon'
@@ -44,7 +46,7 @@ export function AtlasBackdrop() {
 const day=86_400_000
 type AtlasCatalog={items:AtlasStar[];links:AtlasLink[]}
 
-export default memo(function MemoryAtlas({projectId,sessionId,voiceLevel,paused=false}:{projectId:string;sessionId:string;voiceLevel:number;paused?:boolean}) {
+export default memo(function MemoryAtlas({projectId,sessionId,voiceLevel,paused=false,previewTarget}:{projectId:string;sessionId:string;voiceLevel:number;paused?:boolean;previewTarget?:HTMLElement|null}) {
   const {t}=useI18n()
   const canvas=useRef<HTMLCanvasElement>(null)
   const particles=useRef<HTMLCanvasElement>(null)
@@ -55,9 +57,17 @@ export default memo(function MemoryAtlas({projectId,sessionId,voiceLevel,paused=
   const [retrieved,setRetrieved]=useState<{token:string;ids:string[];catalog?:AtlasCatalog} | null>(null)
   const [selected,select]=useState<{star:AtlasStar;recallToken?:string;links?:AtlasLink[]}|null>(null)
   const selection=selected?.star
+  const continuation=useRef<{star:AtlasStar;controller:AbortController;checked:Set<string>;loading:boolean}|null>(null)
   const [status,setStatus]=useState<'loading'|'ready'|'error'>('loading')
   const [revision,reload]=useState(0)
   const selectedButton=useRef<HTMLButtonElement>(null)
+
+  useEffect(()=>{
+    if(!selection)return
+    const controller=new AbortController()
+    continuation.current={star:selection,controller,checked:new Set(),loading:false}
+    return ()=>{controller.abort();continuation.current=null}
+  },[selection])
 
   useEffect(()=>{
     const controller=new AbortController()
@@ -101,18 +111,46 @@ export default memo(function MemoryAtlas({projectId,sessionId,voiceLevel,paused=
   const setSelectionLinks=useCallback((id:string,links:AtlasLink[])=>{
     select(current=>current?.star.id===id?{...current,links}:current)
   },[])
+  const continueFrom=useCallback((root:AtlasStar,tail:AtlasStar)=>{
+    const request=continuation.current
+    if(!request||request.star!==root||request.loading||request.checked.has(tail.id)
+      ||request.checked.size>=focusedChainDepth-1||tail.legacy)return
+    request.loading=true
+    request.checked.add(tail.id)
+    const {signal}=request.controller
+    void digitalMemoryApi.atlasDetail(tail,signal).then(({links})=>{
+      request.loading=false
+      if(signal.aborted||!links?.length)return
+      select(current=>{
+        if(current?.star!==root||!current.links)return current
+        const merged=new Map(current.links.map(link=>[atlasLinkKey(link),link]))
+        for(const link of links)merged.set(atlasLinkKey(link),link)
+        return merged.size>current.links.length?{...current,links:[...merged.values()]}:current
+      })
+    },()=>{request.loading=false})
+  },[])
   const closeSelection=useCallback(()=>{
     dismissSelection()
     selectedButton.current?.focus({preventScroll:true})
   },[dismissSelection])
-  const scene=useMemo(()=>{
+  const catalog=useMemo(()=>{
     const byId=new Map(stars.map(star=>[star.id,star]))
     for(const star of retrieved?.catalog?.items??[])byId.set(star.id,star)
-    if(selection)byId.set(selection.id,selection)
-    const trail=perimeterOrder((retrieved?.ids??[]).filter(id=>byId.has(id)))
+    const ordered=[...new Set([...(retrieved?.ids??[]).filter(id=>byId.has(id)),...byId.keys()])].slice(0,atlasStarLimit)
+    return {byId,ordered,visible:new Set(ordered)}
+  },[stars,retrieved])
+  // Keep a preview open if a new recall displaces its star from the catalogue.
+  const pinned=selection&&!catalog.visible.has(selection.id)?selection:null
+  const layout=useMemo(()=>{
+    const byId=pinned?new Map(catalog.byId).set(pinned.id,pinned):catalog.byId
+    const orbits=knowledgeSpiral(byId.values())
+    const trail=perimeterOrder((retrieved?.ids??[]).flatMap(id=>{
+      const orbit=orbits.get(id)
+      return orbit?[{id,angle:orbit.angle}]:[]
+    }))
     const ranks=new Map(trail.map((id,index)=>[id,index]))
     const step=Math.min(360,2400/Math.max(1,trail.length-1))
-    const ordered=[...new Set([...(selection?[selection.id]:[]),...trail,...byId.keys()])].slice(0,atlasStarLimit)
+    const ordered=pinned?[...catalog.ordered.slice(0,atlasStarLimit-1),pinned.id]:catalog.ordered
     const markerScale=Math.max(.55,Math.min(1,Math.sqrt(120/ordered.length)))
     const visible=new Set(ordered)
     const edges=new Map<string,AtlasLink>()
@@ -126,24 +164,30 @@ export default memo(function MemoryAtlas({projectId,sessionId,voiceLevel,paused=
       const recency=Number.isFinite(age)?1/(1+age/30):0
       const weight=.7*Math.max(0,Math.min(1,star.importance))+.3*recency
       const shimmer=.8+.4*starVariation(id)
-      return {id,star,weight,shimmer,brightness:weight*shimmer}
+      return {id,star,weight,shimmer,brightness:weight*shimmer,representative:orbits.get(id)!.representative}
     })
-    const flares=new Set([...appearance].sort((a,b)=>b.brightness-a.brightness)
-      .slice(0,Math.ceil(appearance.length/28)).map(({id})=>id))
+    const flareCount=Math.max(Math.ceil(appearance.length/28),appearance.filter(star=>star.representative).length)
+    const flares=new Set([...appearance].sort((a,b)=>Number(b.representative)-Number(a.representative)||b.brightness-a.brightness)
+      .slice(0,flareCount).map(({id})=>id))
+    return {byId,orbits,ranks,step,markerScale,visible,edges,appearance,flares}
+  },[catalog,pinned,links,retrieved])
+  const scene=useMemo(()=>{
+    const {byId,orbits,ranks,step,markerScale,visible,edges,appearance,flares}=layout
     const buttons=appearance.map(({id,star,weight,shimmer})=>{
       const rank=ranks.get(id)
       const isSelected=selection?.id===id
       const hasFlare=flares.has(id)
+      const coreWidth=(1.7+6*weight)*shimmer*orbits.get(id)!.sizeScale*(isSelected?1:markerScale)
       return <button key={id} type="button" ref={isSelected?selectedButton:undefined} className="atlas-star" data-orbit={id} data-kind={star.kind}
         aria-label={[t('digitalMemoryView.atlas'),star.time.slice(0,10),id.slice('knowledge:'.length)].filter(Boolean).join(' · ')}
         aria-pressed={isSelected} data-hit={rank!==undefined} data-flare={hasFlare||undefined}
         style={{zIndex:isSelected?3:rank===undefined?1:2,
-          '--atlas-halo-size':hasFlare?`${33+40*(shimmer-1)}px`:undefined} as CSSProperties}
+          '--atlas-halo-size':hasFlare?`${23+20*(shimmer-1)}px`:undefined} as CSSProperties}
         onClick={()=>{
           if(isSelected){closeSelection();return}
           select({star,recallToken:retrieved?.token})
         }}>
-        <i style={{width:(1.7+6*weight)*shimmer*(isSelected?1:markerScale),opacity:isSelected?1:Math.min(1,(.43+.57*weight)*shimmer)}}/>
+        <i style={{width:coreWidth,opacity:isSelected?1:Math.min(1,(.43+.57*weight)*shimmer)}}/>
         {rank!==undefined&&<i key={retrieved?.token} className="atlas-ignition" style={{animationDelay:rank*step+'ms'}}/>}
       </button>
     })
@@ -152,17 +196,22 @@ export default memo(function MemoryAtlas({projectId,sessionId,voiceLevel,paused=
     const recall=retrieved&&selected?.recallToken!==retrieved.token&&recalledEdges.length
       ?{token:retrieved.token,ranks,step}:undefined
     const focusedEdges=selected?.links?.filter(link=>visible.has(link.from)&&visible.has(link.to))??[...edges.values()]
-    return {buttons,focus:recall?undefined:focus,recall,candidates:recall?recalledEdges:focus?focusedEdges:[]}
-  },[stars,links,retrieved,selected,selection,t,closeSelection])
+    return {buttons,orbits,selected:focus,focus:recall?undefined:focus,recall,candidates:recall?recalledEdges:focus?focusedEdges:[],
+      continueFrom:selection&&selected?.links?(id:string)=>{
+        const tail=byId.get(id)
+        if(tail)continueFrom(selection,tail)
+      }:undefined}
+  },[layout,retrieved,selected,selection,t,closeSelection,continueFrom])
   const camera=useMemoryAtlasMotion(sky,canvas,particles,scene,paused)
   const linkId=useId()
+  const preview=selection&&<AtlasPreview key={selection.id} star={selection} starLayer={sky} onClose={closeSelection} onDismiss={dismissSelection} onLinks={setSelectionLinks}/>
 
   return <div className="memory-atlas" data-dense={scene.buttons.length>120}>
     <div className="memory-atlas-sky" ref={sky}>
       <canvas ref={canvas} aria-hidden="true"/>
       {androidWebView&&<canvas ref={particles} aria-hidden="true" hidden/>}
       <span className="atlas-message-fade" aria-hidden="true"/>
-      <svg key={scene.recall?.token??'manual'} className="atlas-links" aria-hidden="true">
+      <svg key={scene.recall?.token??scene.focus??'idle'} className="atlas-links" data-focused={scene.focus?true:undefined} aria-hidden="true">
         {Array.from({length:Math.min(scene.buttons.length-1,scene.candidates.length)},(_,i)=><g key={i} className="atlas-link-segment" visibility="hidden">
           <defs><line id={linkId+'-'+i} pathLength={1}/></defs>
           <use className="atlas-link-halo" href={'#'+linkId+'-'+i}/>
@@ -183,31 +232,30 @@ export default memo(function MemoryAtlas({projectId,sessionId,voiceLevel,paused=
       {status==='error'?<Button size="sm" onClick={()=>reload(n=>n+1)}>{t('digitalMemoryView.error')}</Button>:
         !stars.length&&<span role="status">{status==='loading'&&<Spinner/>}{t(status==='loading'?'digitalMemoryView.loading':'digitalMemoryView.noKnowledgeYet')}</span>}
     </div>
-    {selection&&<AtlasPreview key={selection.id} star={selection} onClose={closeSelection} onDismiss={dismissSelection} onLinks={setSelectionLinks}/>}
+    {previewTarget?createPortal(preview,previewTarget):previewTarget===undefined?preview:null}
   </div>
 })
 
-function AtlasPreview({star,onClose,onDismiss,onLinks}:{
-  star:AtlasStar;onClose:()=>void;onDismiss:()=>void;onLinks:(id:string,links:AtlasLink[])=>void
+function AtlasPreview({star,starLayer,onClose,onDismiss,onLinks}:{
+  star:AtlasStar;starLayer:RefObject<HTMLDivElement|null>;onClose:()=>void;onDismiss:()=>void;onLinks:(id:string,links:AtlasLink[])=>void
 }) {
-  const {t}=useI18n()
+  const {t,locale}=useI18n()
   const panel=useRef<HTMLElement>(null)
   const [detail,setDetail]=useState<AtlasDetail|null>(null)
   const [error,setError]=useState(false)
   const [revision,retry]=useState(0)
-  const [source,setSource]=useState<MemorySource|null>(null)
+  const [showSources,setShowSources]=useState(false)
   useEffect(()=>{
-    if(source)return
     function dismissOutside(event:MouseEvent){
       const target=event.target
-      if(!(target instanceof Element)||!panel.current||panel.current.contains(target))return
+      if(!(target instanceof Element)||!panel.current||event.composedPath().includes(panel.current))return
       const starButton=target.closest('.atlas-star')
-      if(starButton&&panel.current.parentElement?.contains(starButton))return
+      if(starButton&&starLayer.current?.contains(starButton))return
       onDismiss()
     }
     document.addEventListener('click',dismissOutside)
     return ()=>document.removeEventListener('click',dismissOutside)
-  },[onDismiss,source])
+  },[onDismiss,starLayer])
   useEffect(()=>{
     const controller=new AbortController()
     setError(false)
@@ -221,15 +269,34 @@ function AtlasPreview({star,onClose,onDismiss,onLinks}:{
     return ()=>controller.abort()
   },[star,revision,onLinks])
 
-  const latest=detail?.sources[0]
-  return <aside ref={panel} className="atlas-detail" aria-label={t('digitalMemoryView.details')}>
+  const title=t(star.kind?`digitalMemoryView.${star.kind}Short`:'digitalMemoryView.knowledgeContent')
+  const closeLabel=t('digitalMemoryView.close')
+  const timestamp=toMilliseconds(star.time)
+  const dateOnly=/^\d{4}-\d{2}-\d{2}$/.test(star.time)
+  const dateLabel=timestamp===null?'':new Intl.DateTimeFormat(locale,{
+    year:'numeric',month:'2-digit',day:'2-digit',
+    ...(dateOnly?{timeZone:'UTC'}:{hour:'2-digit',minute:'2-digit'}),
+  }).format(timestamp)
+  return <aside ref={panel} className="atlas-detail" aria-label={title}
+    onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();onClose()}}}>
+    <header className="atlas-preview-header">
+      <div className="atlas-preview-heading">
+        <h2>{title}</h2>
+        {dateLabel&&<time dateTime={star.time}>{dateLabel}</time>}
+      </div>
+      <Button className="atlas-preview-close" variant="icon" aria-label={closeLabel} title={closeLabel} onClick={onClose}><Icon name="x"/></Button>
+    </header>
     <div className="atlas-preview-content" aria-live="polite">
-      {detail?<p className="atlas-preview-summary" title={detail.summary}>{detail.summary}</p>:
+      {detail?<>
+        <p className="atlas-preview-full">{detail.summary}</p>
+        {!!detail.sources.length&&<Button data-atlas-source className="atlas-preview-action" size="sm" aria-haspopup="dialog" onClick={event=>{
+          event.currentTarget.focus({preventScroll:true})
+          setShowSources(true)
+        }}>{t('digitalMemoryView.openSource')}</Button>}
+      </>:
         error?<Button className="atlas-preview-action" size="sm" onClick={()=>retry(n=>n+1)}>{t('digitalMemoryView.error')}</Button>:
           <span className="atlas-preview-loading" role="status"><Spinner/>{t('digitalMemoryView.loading')}</span>}
-      {latest&&<Button className="atlas-preview-action" size="sm" onClick={()=>setSource(latest)}>{t('digitalMemoryView.openSource')}</Button>}
     </div>
-    <Button className="atlas-preview-close" variant="icon" aria-label={t('digitalMemoryView.close')} onClick={onClose}><Icon name="x"/></Button>
-    {source&&<DigitalPersonMemorySource key={source.id} source={source} onClose={()=>setSource(null)}/>}
+    {showSources&&detail&&<MemorySourceDialog sources={detail.sources} compact onClose={()=>setShowSources(false)}/>}
   </aside>
 }

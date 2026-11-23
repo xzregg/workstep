@@ -133,12 +133,17 @@ async def pending(projects, context):
     async with access.assessment.setdefault('catalog_lock', asyncio.Lock()):
         context = access.assessment.get('context')
         if context is not None and context.get('origin_project_id') in ids and 'session_knowledge' not in context:
-            from services.memory_session_context import catalog
+            from services.memory_session_context import catalog, preferences
             groups = context.get('conversations', [context])
             sessions = [(g.get('project_id', g.get('origin_project_id', context['origin_project_id'])),
                          g.get('session_id', g.get('origin_session_id', '')),
                          g.get('companion', {}).get('scope', '')) for g in groups]
-            context['session_knowledge'] = await asyncio.to_thread(catalog, sessions, ids)
+            directory = await asyncio.to_thread(catalog, sessions, ids)
+            snapshot,versions = await asyncio.to_thread(preferences, sessions, ids)
+            context['session_knowledge'] = directory
+            context['user_preferences'] = snapshot
+            access.assessment['preference_versions'] = versions
+            access.knowledge_ids.update(versions)
     with _lock:
         context = access.assessment.get('context')
         if context is None or context.get('origin_project_id') not in ids:
@@ -158,7 +163,7 @@ def observed_knowledge_versions(token):
         access=_lookup(token)
         if not access or access.expires<=time.monotonic():
             return {}
-        result={}
+        result=dict(access.assessment.get('preference_versions',{}))
         for (kid,version,total),ranges in access.knowledge_reads.items():
             end=0
             for start,stop in sorted(ranges):
@@ -209,6 +214,106 @@ async def _authorize(projects, token):
         raise PermissionError("Invalid or expired memory access credentials, please retry in a new execution round")
     allowed = set(memory.allowed_projects(projects)).intersection(access.project_ids)
     return access, sorted(allowed)
+
+
+async def _preference_source_authors(projects, records):
+    from models.chat_session import ChatMessage, ChatSession
+    from models.message import Message
+
+    by_project = {}
+    for record in records:
+        for source in record['sources']:
+            if source['role'] == 'user':
+                by_project.setdefault(source['project_id'], []).append(source)
+
+    def read(project_id, sources):
+        authors = {}
+        automated = {"scheduler", "assistant", "system", "coordinator"}
+        chat_ids = {source['message_id'] for source in sources if source['source_kind'] == 'chat'}
+        task_ids = {source['message_id'].removeprefix('task:') for source in sources if source['source_kind'] == 'task'}
+        for row in (ChatMessage.select(ChatMessage.id, ChatMessage.session, ChatMessage.author_id,
+                                       ChatMessage.author_type, ChatMessage.author_name)
+                    .join(ChatSession).where(ChatMessage.id.in_(chat_ids), ChatMessage.role == 'user',
+                                             ChatSession.project_id == project_id)):
+            if row.author_type not in automated:
+                authors[('chat', row.session_id, row.id)] = (row.author_id, row.author_name)
+        for row in (Message.select(Message.id, Message.task, Message.author_id, Message.author_type, Message.author_name)
+                    .where(Message.id.in_(task_ids), Message.role == 'user')):
+            if row.author_type not in automated:
+                authors[('task', row.task_id, 'task:' + row.id)] = (row.author_id, row.author_name)
+        return {source['id']: authors.get((source['source_kind'], source['session_id'], source['message_id']), (None, None))
+                for source in sources}
+
+    batches = await asyncio.gather(*(projects.run_db(project_id, lambda _, pid=project_id, rows=sources: read(pid, rows))
+                                     for project_id, sources in by_project.items()))
+    return {source_id: author for batch in batches for source_id, author in batch.items()}
+
+
+async def list_preferences(projects, context, *, project_id, session_id, sender_id=None, self_only=False, cursor=0, limit=20):
+    from services.conversation_context import active_conversation_sender
+    from services.project_scope import require_catalog_project
+    from services.remote_access import get_current_actor
+    from services import memory_knowledge
+
+    require_catalog_project('')
+    access, ids = await _authorize(projects, context)
+    if access.assessment:
+        raise PermissionError('Use the assigned batch to review preferences during background assessment')
+
+    sender = active_conversation_sender(project_id, session_id)
+    current_sender = sender.get('sender_id')
+    if self_only:
+        if not current_sender:
+            raise PermissionError('No identified sender for the current conversation turn')
+        sender_id = current_sender
+    if project_id or session_id:
+        if not current_sender or project_id not in ids:
+            raise PermissionError('No identified sender for the current conversation turn')
+        if sender_id != current_sender:
+            from services.config import config_store
+
+            device = await asyncio.to_thread(config_store.get, 'device', {})
+            if not isinstance(device, dict) or current_sender != device.get('device_id'):
+                raise PermissionError("Only the host user can look up other senders' preferences")
+    else:
+        actor = get_current_actor()
+        if actor is not None and actor.source != 'local':
+            raise PermissionError('A sender lookup without a conversation requires local host access')
+    display_name = sender.get('sender_name') if current_sender == sender_id else None
+    records = []
+    before_id = cursor
+    while len(records) <= limit:
+        batch = await memory_knowledge.search(
+            projects, None, kind='preference', project_ids=ids, before_id=before_id,
+            limit=50, include_source_locations=True,
+        )
+        if not batch:
+            break
+        authors = await _preference_source_authors(projects, batch)
+        for record in batch:
+            evidence = [authors[source['id']] for source in record['sources'] if source['role'] == 'user']
+            owner_ids = {author_id for author_id, _ in evidence}
+            if len(owner_ids) != 1:
+                continue
+            owner_id = next(iter(owner_ids))
+            if owner_id and (sender_id is None or owner_id == sender_id):
+                source_name = next((name for _, name in evidence if name), None)
+                if current_sender != sender_id and not display_name and len(records) < limit:
+                    display_name = source_name
+                records.append((record, {'sender_id': owner_id, 'display_name': source_name}))
+        before_id = int(batch[-1]['id'].split(':', 1)[1])
+    items = [
+        {**{key: record[key] for key in ('id', 'summary', 'state', 'valid_until')},
+         'source_ids': [source['id'] for source in record['sources']],
+         **({'owner': owner} if sender_id is None else {})}
+        for record, owner in records[:limit]
+    ]
+    has_more = len(records) > limit
+    if active_conversation_sender(project_id, session_id) != sender:
+        raise PermissionError('The conversation turn has changed, retry in the current turn')
+    return {**({'owner': {'sender_id': sender_id, 'display_name': display_name or None}} if sender_id is not None else {}),
+            'items': items, 'has_more': has_more,
+            'next_cursor': int(items[-1]['id'].split(':', 1)[1]) if has_more else None}
 
 
 def time_range(*, since=None, before=None, period='', timezone_name='Asia/Shanghai', now=None):

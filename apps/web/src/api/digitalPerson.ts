@@ -27,6 +27,7 @@ export interface VoiceWakeDraft {
   keyword: string; sensitivity: 'low' | 'balanced' | 'high'; sound_enabled?: boolean; greeting?: string
 }
 export interface VoiceWakeStatus extends VoiceWakeDraft { available: boolean; listening: boolean }
+type WakeAudioChunk = { audio: string; format: 'pcm' | 'wav'; sampleRate: number }
 export const VOICE_WAKE_CHANGED = 'workstep:voice-wake-settings-changed'
 export const voiceWakeApi = {
   get: () => request<VoiceWakeStatus>('/digital-person/voice-wake'),
@@ -34,7 +35,9 @@ export const voiceWakeApi = {
   audio: (signal: AbortSignal) => request<{
     status: 'none' | 'system' | 'pending' | 'ready' | 'failed'; text: string;
     mode?: import('./speechOutput').OutputSettings['mode']; rate?: number; volume?: number;
-    chunks?: { audio: string; format: 'pcm' | 'wav'; sampleRate: number }[]
+    normalized?: boolean;
+    chunks?: WakeAudioChunk[]
+    alternatives?: { text: string; chunks: WakeAudioChunk[] }[]
   }>('/digital-person/voice-wake/audio', { signal }),
 }
 
@@ -50,7 +53,8 @@ export interface DigitalActivity {
   answers: Array<{ id: string; content: string; feedback: number }>
 }
 export interface DigitalRunOutcome {delivery_failure_reasons?:string[];sent:number;failed:number;affinity_increased:number;affinity_decreased:number}
-export interface DigitalRunProcessing {messages:number;sessions:number;memories:number}
+export type DigitalMemoryChanges = Record<'added'|'updated',Partial<Record<MemoryKind,number>>>
+export interface DigitalRunProcessing {messages:number;sessions:number;memories:number;changes?:DigitalMemoryChanges}
 export interface DigitalActivityRecords {
   checking: boolean
   reflection_count?:number
@@ -64,7 +68,7 @@ export interface DigitalActivityRecords {
 export type DigitalRunDetail = DigitalActivityRecords['runs'][number] & {error?:string;draft_summary?:string|null;failure_reason?:string|null;notification_message?:string|null}
 export interface DigitalRunKnowledge {
   status: 'available' | 'legacy' | 'empty'
-  items: Array<{id:string;summary:string}>
+  items: Array<{id:string;summary:string;kind?:MemoryKind;operation?:'added'|'updated'}>
   unavailable: number
 }
 
@@ -132,10 +136,13 @@ export interface MemoryLibraryStats {
 }
 export interface MemoryBrowseResult {
   items:MemoryViewItem[]; bounded:boolean; stats?:MemoryLibraryStats
+  has_next?:boolean; projects?:Array<{id:string;name:string}>
 }
+interface MemoryBrowseFilters { kind?:MemoryKind|''; projectId?:string; page?:number; signal?:AbortSignal }
 export interface MemorySourcePage {
   id:string; content:string; source_hash:string; offset:number; next_offset:number|null
   has_more:boolean; total_chars:number; created_at:string; project_id:string
+  companion?:Pick<MemorySource,'id'|'project_id'|'source_time'|'source_kind'|'role'>
 }
 export interface AtlasStar {
   id:string; time:string; importance:number; kind?:MemoryKind; legacy?:true
@@ -185,10 +192,23 @@ export const digitalMemoryApi = {
       detail=await request<AtlasDetail>(`/digital-person/memory/atlas/${encodeURIComponent(id)}`,{signal})
     }
     if(typeof detail?.summary!=='string'||!Array.isArray(detail.sources))throw new Error('Invalid atlas preview')
-    const links=Array.isArray(detail.links)?detail.links.filter(link=>link&&
-      (link.from===star.id&&/^knowledge:[1-9]\d*$/.test(link.to)||link.to===star.id&&/^knowledge:[1-9]\d*$/.test(link.from))&&link.from!==link.to):undefined
+    const links=Array.isArray(detail.links)?detail.links.filter(link=>link&&link.from!==link.to&&
+      /^knowledge:[1-9]\d*$/.test(link.from)&&/^knowledge:[1-9]\d*$/.test(link.to)):undefined
     return {summary:detail.summary,links,sources:detail.sources.map(source=>({...source,project_name:source.project_name??source.project_id}))}
   },
-  browse: (query='') => request<MemoryBrowseResult>(`/digital-person/memory/view?${new URLSearchParams({query})}`),
-  read: (id:string,offset=0) => request<MemorySourcePage>(`/digital-person/memory/source/${encodeURIComponent(id)}?offset=${offset}`),
+  browse: async (query='', {kind='',projectId='',page=1,signal}:MemoryBrowseFilters={}) => {
+    const params=new URLSearchParams()
+    if (query) params.set('query',query)
+    if (kind) params.set('kind',kind)
+    // The Gateway treats an explicit, empty project_id as an invalid scope.
+    if (projectId) params.set('project_id',projectId)
+    if (page>1) params.set('page',String(page))
+    const search=params.toString()
+    const result=await request<MemoryBrowseResult>(`/digital-person/memory/view${search?`?${search}`:''}`,{signal})
+    if ((kind||projectId||page>1) && typeof result.has_next!=='boolean') {
+      throw new Error('Memory filters require an updated daemon')
+    }
+    return result
+  },
+  read: (id:string,offset=0,signal?:AbortSignal) => request<MemorySourcePage>(`/digital-person/memory/source/${encodeURIComponent(id)}?offset=${offset}`,{signal}),
 }

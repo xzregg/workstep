@@ -71,6 +71,8 @@ prompt 为真实请求，kwargs 原样传给 spawn；images 指向包内资源�
 
 专属测试还须验证内层 SDK/ACP/双向 CLI 的原生 PID 或连接 ID 保持，覆盖配置变化重建、TTL/LRU、停止和异常回收。只缓存 Python worker、内层每轮重建客户端，不能作为原生复用证据。
 
+宿主主会话保护另须覆盖：受保护会话跨空闲窗口和普通 LRU 保留原客户端；解除保护后恢复回收；`/new`、原生 ID 更新或跨引擎交接不继承旧上下文／旧授权；停止、异常、配置变化及退出不被保护阻挡。宿主通用验收入口是 `tests/test_native_session_retention.py::test_custom_worker_retention`，内层客户端是否持续复用仍由引擎专属测试证明。
+
 ### 同会话复用与跨会话共享
 
 仅在实现原生共享并扩展宿主后执行本节；普通一次性 CLI 无须为此改造成常驻服务。当前外层 worker 仍按会话独占，内置 Codex 五会话池不是自定义引擎的通用能力。

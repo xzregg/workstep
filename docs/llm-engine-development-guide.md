@@ -28,7 +28,7 @@
 
 `engines/core/session_pool.py` 提供共享缓存和 `ManagedConnection` 常驻所有者协程。默认成功完整收流后空闲 600 秒、每个引擎最多缓存 8 个空闲客户端；正在执行、等待审批不计空闲。启动参数、供应商、认证、权限、连接器、技能或来源身份变化时重建；取消、错误、提前关闭不得返回可用缓存。新请求必须绑定自己的回调和队列，空闲客户端不得保留上一轮的审批授权。进程树回收走 `core/process_cleanup.py`，daemon 在消息生产者／任务停止后关闭全部池。
 
-Codex SDK 的 `codex_sdk_clients.py` 在同项目目录及兼容启动指纹内共享 app-server，每个进程最多承载 5 个活动会话，第 6 个另开进程；审批／提问等待仍占活动名额。每会话保留独立 `AsyncThread`、轮次消费者、审批和授权缓存；空闲槽可释放给新会话，被淘汰的会话稍后通过原生 ID 恢复。默认最多保留 8 个空闲会话槽，各槽空闲 600 秒（10 分钟）后卸载。完全空闲的 app-server 最多保留 2 个，超限时优先回收最久未归还成功轮次的进程及其子进程。活动槽（含等待审批）所在的进程不参与淘汰。回收期间重新打开同一会话时，等待旧进程退出后按原生会话 ID 恢复。供应商、来源身份、凭据、权限或其他启动指纹不兼容时不共享；普通停止和错误只中断、卸载本会话，整个进程崩溃会影响同进程活动会话，其历史仍可按原生 ID 恢复。`codex_sdk_approvals.py` 按原生 thread ID 路由服务器请求，异步完成后写回对应 RPC ID；等待用户不能阻塞 SDK 唯一 stdout 读取线程。取消旧轮次后的迟到审批不得进入新轮次；无法路由的请求默认拒绝。辅助工具子进程仍可能按会话独立创建。验收入口为 `tests/test_codex_sdk_multiplex.py`、`tests/test_codex_sdk_transport_lifecycle.py`。
+Codex SDK 的 `codex_sdk_clients.py` 在同项目目录及兼容启动指纹内共享 app-server，每个进程最多承载 5 个活动会话，第 6 个另开进程；审批／提问等待仍占活动名额。每会话保留独立 `AsyncThread`、轮次消费者、审批和授权缓存；空闲槽可释放给新会话，被淘汰的会话稍后通过原生 ID 恢复。默认最多保留 8 个普通空闲会话槽（受保护主会话另计），普通空闲槽在 600 秒（10 分钟）后卸载。使用后最多保留 1 个完全空闲的 app-server 长期常驻，其最后一个已加载会话槽不因空闲超时退出；不预启动，也不在异常后自动拉起。出现新的完全空闲进程时，优先回收最久未归还成功轮次的旧进程及其子进程。显式关闭会话、错误、停止及 daemon 退出仍执行回收；测试可通过 keep_warm=False 验证普通 TTL 策略。活动槽（含等待审批）所在的进程不参与淘汰。回收期间重新打开同一会话时，等待旧进程退出后按原生会话 ID 恢复。供应商、来源身份、凭据、权限或其他启动指纹不兼容时不共享；普通停止和错误只中断、卸载本会话，整个进程崩溃会影响同进程活动会话，其历史仍可按原生 ID 恢复。`codex_sdk_approvals.py` 按原生 thread ID 路由服务器请求，异步完成后写回对应 RPC ID；等待用户不能阻塞 SDK 唯一 stdout 读取线程。取消旧轮次后的迟到审批不得进入新轮次；无法路由的请求默认拒绝。辅助工具子进程仍可能按会话独立创建。验收入口为 `tests/test_codex_sdk_multiplex.py`、`tests/test_codex_sdk_transport_lifecycle.py`。
 
 Codex SDK 读取线程报告传输失败时，池立即撤销该进程所有会话租约及待回答请求，不能依赖上层继续消费事件才发现断连。助手和任务的审批等待通过 `services/intervention.py::wait_for_interaction_response` 同时观察引擎侧请求结束，记录取消终态并移除待办；迟到确认返回失效，恢复会话产生新的审批 ID，不能继承旧 RPC 的确认。测试：`test_codex_sdk_transport_lifecycle.py::test_process_death_invalidates_visible_approval_and_old_click_cannot_authorize_restart`、`test_intervention_lifecycle.py`。
 
@@ -41,6 +41,16 @@ Claude Agent SDK／Qoder SDK／Claude CLI 若本轮有运行中插入消息，�
 自定义引擎声明、宿主隔离 worker 的复用和必测项见 [测试规范](../apps/daemon/data/skills/workstep-cli/references/custom-engine-testing.md#进程复用声明与验收)。导入、安装、验证及注册遵守同一约定；公共 `session_transport_reuse` 之外，专属测试必须核对内层原生客户端 PID／连接，不能只证明外层 worker 常驻。
 
 ### 跨会话共享支持边界
+
+#### 数字中枢主会话的常驻保护
+
+主会话身份由业务层读取 `digital_person_runtime` 的当前 `main_session_id` 确认，不以助手名称、默认工作区或某个固定 UUID 代替。`ChatSessionModule._prepare_turn_context` 将宿主所有者键交给统一 `invoke_engine/run_engine_turn(session_retention_key=...)`。`engines/core/session_retention.py` 在本轮任务上下文中传递策略，公共 `session_pool.py` 与 Codex 池领取租约时应用；不把它发给模型、第三方 SDK 或自定义 worker 的原生请求。
+
+受保护租约不计普通空闲 LRU、不受 600 秒 TTL 淘汰。Codex 保护其已加载 thread 及所在进程，并为该 thread 保留一个五槽名额；其他会话超过剩余容量另开进程，不能挤掉主会话。完全空闲的受保护进程优先于最近使用的普通进程保留。普通会话继续原来的回收策略，停止、错误、配置不兼容和 daemon 退出仍执行清理。保护不会自动重启进程，也不会保证远端首 T。
+
+`/new`、`/clear`、内部重置、引擎交接、归档／删除及归档后主会话替换会撤销旧保护；旧租约恢复普通空闲回收，不主动中断仍在执行的旧轮次。下一次调用给当前主会话的新原生上下文重新加保护；不同引擎池中同一宿主所有者最多保护一个最新租约。兼容时仍可复用原进程，新 thread 不继承旧 thread 的对话历史。数字中枢人设及长期记忆仍走原有新会话注入规则。
+
+Claude/Qoder SDK、Claude 双向 CLI、Hermes/OpenCode ACP、Cursor 和支持复用的自定义 worker 由公共池执行保护；DeepSeek 已保留运行时，Pydantic AI 沿用进程内会话状态。一遍即退的引擎接受统一宿主调用策略但不伪造常驻能力，仍按原生 ID 恢复。测试：`test_session_retention.py`、`test_data_center_session_retention.py`、`test_native_session_retention.py` 和 Codex 生命周期测试中的 retained thread 用例。
 
 以下为 2026-11-17 按本仓库接入、已安装原生 SDK 源码及官方协议核对的边界。连续复用连接和同进程并发托管会话分别判断；不能因为输出含 `session_id` 就共用客户端。
 

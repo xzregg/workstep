@@ -126,8 +126,8 @@ function createDiagnostics({ directory, metadata = {}, maxBytes = LOG_MAX_BYTES,
       syncFs.appendFileSync(file, line, { mode: 0o600 })
     } catch (error) { logger.lastError = error }
   }
-  logger.collectReport = async (sandboxLog, perFileBytes = maxBytes + 128 * 1024) => {
-    await logger.flush()
+  logger.collectReport = async (sandboxLog, perFileBytes = maxBytes + 128 * 1024, flush = true) => {
+    if (flush) await logger.flush()
     const logs = {}, warnings = []
     const names = await fs.readdir(directory).catch(error => {
       warnings.push(`日志目录不可用：${logger.redact(error.message)}`)

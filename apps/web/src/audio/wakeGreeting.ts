@@ -2,27 +2,40 @@ import { voiceWakeApi, type DigitalPersonProfile } from '../api/digitalPerson'
 import type { OutputSettings } from '../api/speechOutput'
 import { SpeechOutputPlayer, type SpeechAudioChunk } from '../utils/speechOutput'
 import { loadSpeechOutputSettings } from '../utils/speechOutputSettings'
-import { isAndroidWakeClient, playWakeSound } from './wakeSound'
+import { isAndroidWakeClient, playNativeWakeMedia, playWakeSound } from './wakeSound'
 
 export type WakeGreetingVoice = Pick<DigitalPersonProfile, 'voice_name' | 'voice_rate'>
 
-export type PreparedWakeGreeting = { text: string; settings: OutputSettings; chunks?: SpeechAudioChunk[] }
+export type PreparedWakeGreeting = { text: string; settings: OutputSettings; chunks?: SpeechAudioChunk[]; normalized?: boolean }
 const androidGreetingGain = 2
 
-export async function loadSavedWakeGreeting(text: string, projectId: string, signal: AbortSignal): Promise<PreparedWakeGreeting | null> {
+export function wakeGreetingOptions(text: string) {
+  return [...new Set(text.split(/[|｜]/).map(option => option.trim()).filter(Boolean))]
+}
+
+export function chooseWakeGreeting(options: readonly string[]) {
+  return options[Math.floor(Math.random() * options.length)] ?? ''
+}
+
+export async function loadSavedWakeGreeting(text: string, projectId: string, signal: AbortSignal): Promise<PreparedWakeGreeting[]> {
+  const options = wakeGreetingOptions(text)
   const outputSettings = loadSpeechOutputSettings(projectId)
   void outputSettings.catch(() => {})
   for (let attempt = 0; attempt < 65; ++attempt) {
     signal.throwIfAborted()
     const audio = await voiceWakeApi.audio(signal)
-    if (audio.text !== text) return null
-    if (audio.status === 'system' || audio.status === 'none' || (audio.status === 'ready' && audio.chunks?.length)) {
+    if (audio.text !== text) return []
+    if (audio.status === 'system' || audio.status === 'none' || audio.status === 'ready') {
       const current = await outputSettings
       const settings = { ...current, mode: audio.mode ?? current.mode, rate: audio.rate ?? current.rate,
         volume: audio.status === 'none' ? 0 : (audio.volume ?? current.volume) }
-      return { text, settings, chunks: audio.chunks }
+      if (audio.status !== 'ready') return options.map(text => ({ text, settings }))
+      if (audio.alternatives) return audio.alternatives.filter(item => options.includes(item.text) && item.chunks.length)
+        .map(item => ({ ...item, settings, normalized: audio.normalized }))
+      return options.length === 1 && options[0] === text && audio.chunks?.length
+        ? [{ text, settings, chunks: audio.chunks, normalized: audio.normalized }] : []
     }
-    if (audio.status !== 'pending') return null
+    if (audio.status !== 'pending') return []
     await new Promise<void>(resolve => {
       const complete = () => {
         clearTimeout(timer)
@@ -34,13 +47,57 @@ export async function loadSavedWakeGreeting(text: string, projectId: string, sig
       if (signal.aborted) complete()
     })
   }
-  return null
+  return []
 }
 
-export function playWakeGreeting(greeting: PreparedWakeGreeting | string,
+function nativeGreetingChunk(chunk: SpeechAudioChunk, sampleRate: number): string | undefined {
+  if (chunk.sampleRate !== sampleRate) return
+  if (chunk.format === 'pcm') return chunk.audio
+  // The Android bridge accepts mono PCM16. Cached local speech can wrap those same samples in WAV.
+  let wav: string
+  try { wav = atob(chunk.audio) } catch { return }
+  if (wav.length < 12 || wav.slice(0, 4) !== 'RIFF' || wav.slice(8, 12) !== 'WAVE') return
+  const bytes = new DataView(Uint8Array.from(wav, byte => byte.charCodeAt(0)).buffer)
+  const end = bytes.getUint32(4, true) + 8
+  if (end > wav.length) return
+  let compatible = false
+  for (let offset = 12; offset + 8 <= end;) {
+    const tag = wav.slice(offset, offset + 4)
+    const length = bytes.getUint32(offset + 4, true)
+    const start = offset + 8
+    if (start + length > end) return
+    if (tag === 'fmt ') {
+      compatible = length >= 16 && bytes.getUint16(start, true) === 1
+        && bytes.getUint16(start + 2, true) === 1 && bytes.getUint32(start + 4, true) === sampleRate
+        && bytes.getUint16(start + 12, true) === 2 && bytes.getUint16(start + 14, true) === 16
+    } else if (tag === 'data') {
+      return compatible && length > 0 && length % 2 === 0 ? btoa(wav.slice(start, start + length)) : undefined
+    }
+    offset = start + length + (length % 2)
+  }
+}
+
+export async function playWakeGreeting(greeting: PreparedWakeGreeting | string,
   projectId: string, voice: WakeGreetingVoice | undefined, signal: AbortSignal) {
-  if (signal.aborted) return Promise.resolve(false)
+  if (signal.aborted) return false
   const android = isAndroidWakeClient()
+  const bridge = android && typeof window !== 'undefined' ? window.WorkStepWakeGreeting : undefined
+  if (bridge && typeof greeting !== 'string' && greeting.settings.mode !== 'system') {
+    const { chunks, settings } = greeting
+    if (settings.volume <= 0) return true
+    const sampleRate = chunks?.[0]?.sampleRate
+    const pcm = sampleRate ? chunks?.map(chunk => nativeGreetingChunk(chunk, sampleRate)) : undefined
+    if (sampleRate && pcm?.every(chunk => chunk !== undefined)) {
+      const release = SpeechOutputPlayer.reserveNativeWakePlayback()
+      try {
+        const result = await playNativeWakeMedia(bridge, {
+          type: 'wake-greeting', chunks: pcm, sampleRate,
+          volume: settings.volume, rate: voice?.voice_rate ?? settings.rate,
+        }, signal)
+        if (result !== 'unavailable' || signal.aborted) return result === 'finished'
+      } finally { release() }
+    }
+  }
   return new Promise<boolean>(resolve => {
     let player: SpeechOutputPlayer | undefined
     let finished = false
@@ -58,14 +115,17 @@ export function playWakeGreeting(greeting: PreparedWakeGreeting | string,
     const abort = () => finish()
     let timer = setTimeout(abort, typeof greeting === 'string' ? 8000 : 2500)
     signal.addEventListener('abort', abort, { once: true })
-    const play = ({ text, settings, chunks }: PreparedWakeGreeting) => {
+    const play = ({ text, settings, chunks, normalized }: PreparedWakeGreeting) => {
       if (finished) return
       if (settings.volume <= 0) { finish(true); return }
       player = new SpeechOutputPlayer({
         projectId, settings: { ...settings, rate: voice?.voice_rate ?? settings.rate,
           volume: android && settings.mode === 'system' ? Math.min(1, settings.volume * androidGreetingGain) : settings.volume },
         systemVoice: voice?.voice_name,
-        audioGain: android ? androidGreetingGain : undefined,
+        wakeGreeting: true,
+        audioGain: android && !normalized ? androidGreetingGain : undefined,
+        // Open the output route with audio samples before the first audible word.
+        leadingSilence: android ? .24 : undefined,
         cachedAudio: chunks ? { text, chunks } : undefined,
         onPlayback: playing => {
           if (!playing || started || finished) return
@@ -93,6 +153,7 @@ export function playWakeGreeting(greeting: PreparedWakeGreeting | string,
 
 export async function previewWakeSound(text: string, projectId: string, voice: WakeGreetingVoice | undefined,
   chime: HTMLAudioElement | null, signal: AbortSignal) {
-  if (text) return playWakeGreeting(text, projectId, voice, signal)
+  const selected = chooseWakeGreeting(wakeGreetingOptions(text))
+  if (selected) return playWakeGreeting(selected, projectId, voice, signal)
   return playWakeSound(chime, signal)
 }

@@ -84,11 +84,11 @@ async def test_one_schedule_drains_multiple_pending_source_sessions(runtime,monk
     assert set(seen)=={'session-0','session-1'} and len(seen)==2
 
 
-async def test_memory_extraction_recovers_old_pending_versions_once(runtime):
+async def test_assessment_recovers_old_pending_versions_once(runtime):
     import asyncio
     from datetime import timedelta
     from models.fields import utc_now
-    from services import digital_person_memory as memory, memory_knowledge as knowledge
+    from services import digital_person_memory as memory, digital_person_assessment as assessment
     current,project,_=runtime
     sid=(await current.main_session())['id']
     now=utc_now()
@@ -97,10 +97,12 @@ async def test_memory_extraction_recovers_old_pending_versions_once(runtime):
             row=create_completed_user(id=mid,session=sid,role='user',status='completed',content='真实来源'+mid,created_at=when)
             memory.capture_message(row,'local')
     await current.projects.run_db(project.id,seed)
-    rows=await asyncio.to_thread(knowledge._claim,[project.id],8)
+    rows=await asyncio.to_thread(assessment.pending,[project.id],baseline=now.isoformat(),limit=8)
     assert {row['source_message_id'] for row in rows}=={'cold','new','fixture-reply-cold','fixture-reply-new'}
-    await asyncio.to_thread(knowledge._finish_jobs,rows,True)
-    assert await asyncio.to_thread(knowledge._claim,[project.id],8)==[]
+    assert await asyncio.to_thread(assessment.claim,rows)
+    result=await asyncio.to_thread(assessment.commit,rows,[],'recovered')
+    assert result['processed']==4
+    assert await asyncio.to_thread(assessment.pending,[project.id],baseline=now.isoformat(),limit=8)==[]
 
 
 async def test_check_persists_owner_route_before_delivering(runtime,monkeypatch):

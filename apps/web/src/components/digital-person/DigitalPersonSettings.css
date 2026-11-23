@@ -63,8 +63,8 @@
 }
 @media(max-width:1023px) {
  .digital-person-secondary-settings { order:1; padding:16px 0 0; margin:12px 0 0; border-bottom:0; border-top:.5px solid var(--border-soft); }
- .digital-person-secondary-nav { display:flex; justify-content:space-between; align-items:center; gap:8px; }
- .digital-person-secondary-nav button { white-space:nowrap; text-align:center; }
+ .digital-person-secondary-nav { display:flex; justify-content:space-between; align-items:center; gap:8px; overflow-x:auto; overscroll-behavior-x:contain; }
+ .digital-person-secondary-nav button { flex-shrink:0; white-space:nowrap; text-align:center; }
  .digital-person-secondary-nav button[data-mobile-hidden=true] { display:none; }
 }
 #digital-person-panel > .digital-person-form-actions { order: 10; margin: auto 0 0; padding-top: 16px; border-top: .5px solid var(--border-soft); }

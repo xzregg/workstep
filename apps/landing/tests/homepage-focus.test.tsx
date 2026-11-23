@@ -17,6 +17,10 @@ describe('focused homepage and extensible engines', () => {
     expect(html).toContain('class="product-intro-player"')
     expect(html.indexOf('id="intro-video"')).toBeLessThan(html.indexOf('id="mechanisms"'))
     expect(html.match(/class="workflow-card"/g)).toHaveLength(4)
+    const walkthrough = html.match(/<section class="guided-walkthrough"[\s\S]*?<\/section>/)?.[0]
+    expect(walkthrough).toContain('从一个能检查结果的小任务开始')
+    expect(walkthrough).toContain('id="download"')
+    expect(html).not.toContain('<section class="final-cta"')
   })
 
   it('keeps search and social descriptions aligned with visible engine extensibility', () => {

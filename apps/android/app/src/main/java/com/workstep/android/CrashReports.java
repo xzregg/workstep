@@ -70,11 +70,18 @@ final class CrashReports {
         new AlertDialog.Builder(activity)
                 .setTitle("WorkStep 排查信息")
                 .setView(scroll)
-                .setPositiveButton("复制排查信息", (dialog, which) -> {
-                    ClipboardManager clipboard = activity.getSystemService(ClipboardManager.class);
-                    clipboard.setPrimaryClip(ClipData.newPlainText("WorkStep 排查信息", diagnosticSnapshot(activity)));
-                    Toast.makeText(activity, "排查信息已复制，粘贴给助手即可", Toast.LENGTH_SHORT).show();
-                })
+                .setPositiveButton("复制日志", (dialog, which) ->
+                        new AlertDialog.Builder(activity)
+                                .setTitle("选择复制内容")
+                                .setItems(new String[]{"精简排查信息", "完整日志"}, (choice, selected) -> {
+                                    ClipboardManager clipboard = activity.getSystemService(ClipboardManager.class);
+                                    boolean full = selected == 1;
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("WorkStep 排查信息",
+                                            diagnosticSnapshot(activity, full)));
+                                    Toast.makeText(activity, full ? "完整日志已复制" : "排查信息已复制",
+                                            Toast.LENGTH_SHORT).show();
+                                })
+                                .show())
                 .setNeutralButton(R.string.clear_logs, (dialog, which) ->
                         new AlertDialog.Builder(activity)
                                 .setTitle(R.string.clear_logs)
@@ -91,6 +98,10 @@ final class CrashReports {
     }
 
     private static String diagnosticSnapshot(Activity activity) {
+        return diagnosticSnapshot(activity, false);
+    }
+
+    private static String diagnosticSnapshot(Activity activity, boolean full) {
         StringBuilder snapshot = new StringBuilder(version(activity)).append('\n');
         snapshot.append("设备：").append(android.os.Build.MANUFACTURER).append(' ')
                 .append(android.os.Build.MODEL).append("；Android ").append(android.os.Build.VERSION.RELEASE)
@@ -103,7 +114,9 @@ final class CrashReports {
                 .append("；回复频道：").append(channel == null ? "尚未创建" : channel.getImportance()).append('\n');
         if (activity instanceof MainActivity) snapshot.append("当前页面：")
                 .append(((MainActivity) activity).diagnosticPage()).append('\n');
-        snapshot.append(DiagnosticReport.create(activity.getFilesDir(), System.currentTimeMillis()));
+        snapshot.append(full
+                ? DiagnosticReport.createFull(activity.getFilesDir(), System.currentTimeMillis())
+                : DiagnosticReport.create(activity.getFilesDir(), System.currentTimeMillis()));
         return snapshot.toString();
     }
 
@@ -130,8 +143,11 @@ final class CrashReports {
         File file = new File(activity.getFilesDir(), FILE_NAME);
         if (!file.exists()) return;
         try {
+            android.content.SharedPreferences seen = activity.getSharedPreferences("diagnostic_crash", Context.MODE_PRIVATE);
+            long recorded = file.lastModified();
+            if (seen.getLong("shown", -1) == recorded) return;
             String report = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
-            if (!file.delete()) file.deleteOnExit();
+            seen.edit().putLong("shown", recorded).apply();
             activity.runOnUiThread(() -> new AlertDialog.Builder(activity)
                     .setTitle("WorkStep 上次异常")
                     .setMessage(report)

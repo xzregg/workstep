@@ -206,6 +206,7 @@ async def invoke_engine(
     system_prompt_each_turn: bool = False,
     capture_prompt_input: bool = False,
     internal_event: str | None = None,
+    session_retention_key: str | None = None,
 ) -> tuple[str, list[dict], str | None]:
     """Compatibility entry point; the turn transport lives in engine_invocation."""
     return await run_engine_turn(
@@ -233,6 +234,7 @@ async def invoke_engine(
         **({"system_prompt_each_turn": True} if system_prompt_each_turn else {}),
         **({"capture_prompt_input": True} if capture_prompt_input else {}),
         **({"internal_event": internal_event} if internal_event else {}),
+        **({"session_retention_key": session_retention_key} if session_retention_key else {}),
     )
 
 
@@ -2461,6 +2463,7 @@ class AssistantRuntime:
             **({"system_prompt_each_turn": True} if system_prompt_each_turn or self._system_prompt_each_turn() else {}),
             **({"capture_prompt_input": True} if self._capture_prompt_input() else {}),
             **({"internal_event":turn_state['internal_event']} if turn_state.get('internal_event') else {}),
+            **({'session_retention_key': turn_state['session_retention_key']} if turn_state.get('session_retention_key') else {}),
         )
 
         if auxiliary_capture:

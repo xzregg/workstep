@@ -795,5 +795,5 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   return companionProfile ? <DigitalPersonHome profile={companionProfile} activity={digitalActivity}
     projectId={activeProject.id} projectName={activeProject.name} sessionId={sessionId}
     messages={displayMessages} uiReply={uiReply}
-    running={running} active={pane?.active !== false && Boolean(assistantConfig) && !coordinatorConfigError && !handingOff && !engineConfigSaving} composerDisabled={composerDisabled} onSend={send} onSendPending={sendPending} onStop={stop} inputValue={input} onDraft={handleInputChange} onPrepareCamera={setCameraPrepare} error={sendError || coordinatorConfigError}>{conversation}</DigitalPersonHome> : conversation
+    running={running} stopping={stopping} active={pane?.active !== false && Boolean(assistantConfig) && !coordinatorConfigError && !handingOff && !engineConfigSaving} composerDisabled={composerDisabled} onSend={send} onSendPending={sendPending} onStop={stop} inputValue={input} onDraft={handleInputChange} onPrepareCamera={setCameraPrepare} error={sendError || coordinatorConfigError}>{conversation}</DigitalPersonHome> : conversation
 }

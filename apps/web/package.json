@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/generate-language-catalog.mjs && tsc -b && vite build",
+    "build:profile": "tsc -b && vite build --mode profile",
     "build:gateway-share": "node scripts/generate-language-catalog.mjs && tsc -b && vite build --mode gateway-share",
     "lint": "oxlint",
     "preview": "vite preview",

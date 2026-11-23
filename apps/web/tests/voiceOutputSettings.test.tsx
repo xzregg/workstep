@@ -9,6 +9,7 @@ import { digitalPersonApi } from '../src/api/digitalPerson'
 import { outputConfigured, speechOutputApi, type OutputSettings } from '../src/api/speechOutput'
 import { outputStatus, qwenOutputModels } from './fixtures/speechOutput'
 import { voiceCapture } from '../src/utils/voiceCapture'
+import { SpeechOutputPlayer } from '../src/utils/speechOutput'
 
 test('reference recording uploads PCM WAV and preserves the sample transcript when hidden', async () => {
   const { window } = installDomEnvironment()
@@ -189,21 +190,34 @@ test('output restores saved cloud and remote connections without submitting reve
   }
 })
 
-test('preview tests unsaved settings and stop remains clickable while session creation is pending', async () => {
+const previewModes: Partial<OutputSettings>[] = [
+  { mode: 'system' },
+  { mode: 'local', model_id: 'kokoro-v1', voice: '46' },
+  { mode: 'cloud', provider: 'qwen', has_api_key: true },
+  { mode: 'remote', provider: 'voicebox', base_url: 'http://localhost:17493', voice: 'profile', model: '0.6B' },
+]
+
+for (const settings of previewModes) test(`output can be edited and saved during ${settings.mode} audition`, async () => {
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))
-  const old = { ...speechOutputApi }, oldGet = digitalPersonApi.get
+  const old = { ...speechOutputApi }, oldPerson = { ...digitalPersonApi }
   const oldContext = globalThis.AudioContext
   class Context { async resume() {} async close() {} }
   Object.defineProperty(globalThis, 'AudioContext', { configurable: true, writable: true, value: Context })
   const status = structuredClone(outputStatus)
-  status.settings = { ...status.settings, mode: 'remote', provider: 'voicebox', base_url: 'http://localhost:17493', voice: 'profile', model: '0.6B' }
+  status.settings = { ...status.settings, ...settings }
   speechOutputApi.status = async () => status
   digitalPersonApi.get = async () => ({ enabled: true, name: '测试助手', role: '', personality: '', duties: '', avatar: 'robot', greeting: '' })
+  digitalPersonApi.save = async value => value
   let resolve!: (value: { id: string }) => void
   let used: OutputSettings | undefined, cancelled = ''
+  let nativeCancelled = false
+  Object.assign(window, { WorkStepSpeech: {
+    postMessage(message: string) { if (JSON.parse(message).type === 'stop') nativeCancelled = true },
+    onmessage: null,
+  } })
   speechOutputApi.start = async (_text, _project, settings) => { used = settings; return new Promise(done => { resolve = done }) }
-  speechOutputApi.save = async () => assert.fail('preview must not save configuration')
+  speechOutputApi.save = async value => { status.settings = value; return value }
   speechOutputApi.cancel = async id => { cancelled = id }
   speechOutputApi.next = async () => assert.fail('stopped preview must not read audio')
   try {
@@ -211,13 +225,27 @@ test('preview tests unsaved settings and stop remains clickable while session cr
     await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent === '连接并试听')!.click())
     const stop = [...document.querySelectorAll('button')].find(b => b.textContent === '停止播放')!
     assert.equal(stop.disabled, false)
-    assert.equal(used?.voice, 'profile')
-    await act(async () => stop.click())
-    await act(async () => { resolve({ id: 'late-session' }); await new Promise(done => setImmediate(done)) })
-    assert.equal(cancelled, 'late-session')
+    const save = document.querySelector<HTMLButtonElement>('[data-save-output]')!
+    assert.equal(save.disabled, true)
+    const volume = document.querySelectorAll<HTMLInputElement>('.speech-output-row input')[1]
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(volume, '.5')
+      volume.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    assert.equal(save.disabled, false)
+    await act(async () => save.click())
+    assert.equal(status.settings.volume, .5)
+    assert.equal(stop.getAttribute('aria-busy'), 'false')
+    if (settings.mode === 'system') {
+      assert.equal(nativeCancelled, true)
+    } else {
+      assert.equal(used?.volume, 1)
+      await act(async () => resolve({ id: 'late-session' }))
+      assert.equal(cancelled, 'late-session')
+    }
   } finally {
     await act(async () => root.unmount()); await window.happyDOM.close()
-    Object.assign(speechOutputApi, old); digitalPersonApi.get = oldGet
+    Object.assign(speechOutputApi, old); Object.assign(digitalPersonApi, oldPerson)
     Object.defineProperty(globalThis, 'AudioContext', { configurable: true, writable: true, value: oldContext })
   }
 })
@@ -322,11 +350,92 @@ for (const mode of ['local', 'cloud', 'remote'] as const) test(`personalization 
   }
 })
 
+test('OmniVoice restores saved tags and saves changes independently of the preview text', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const old = { ...speechOutputApi }, oldPerson = { ...digitalPersonApi }
+  const oldContext = globalThis.AudioContext
+  class Context { async resume() {} }
+  Object.defineProperty(globalThis, 'AudioContext', { configurable: true, writable: true, value: Context })
+  const status = structuredClone(outputStatus)
+  status.settings = { ...status.settings, mode: 'local', model_id: 'omnivoice', voice: 'persona',
+    instructions: 'attributes:female, british accent' }
+  status.models = [{ ...status.models[0], id: 'omnivoice', runtime: 'omnivoice', style: 'tone', instructions: true,
+    voices: [{ id: 'persona', name: '默认音色' }, { id: 'reference', name: '参考音频' }],
+    design_attributes: { gender: { female: '女性', male: '男性' }, accent: { 'british accent': '英式口音' } } }]
+  speechOutputApi.status = async () => structuredClone(status)
+  speechOutputApi.save = async value => { status.settings = value; return value }
+  let finishStart!: (value: { id: string }) => void
+  const cancelled: string[] = []
+  speechOutputApi.start = async () => new Promise(resolve => { finishStart = resolve })
+  speechOutputApi.next = async () => assert.fail('saving should stop the audition')
+  speechOutputApi.cancel = async id => { cancelled.push(id) }
+  digitalPersonApi.get = async () => ({ enabled: true, name: '测试助手', role: '', personality: '',
+    duties: '', avatar: 'robot', greeting: '' })
+  digitalPersonApi.save = async value => value
+  const onDirtyChange = () => {}
+  const open = () => act(async () => root.render(<I18nProvider><VoiceOutputSettings onDirtyChange={onDirtyChange} /></I18nProvider>))
+  const tag = (name: RegExp) => [...document.querySelectorAll<HTMLButtonElement>('[aria-pressed]')]
+    .find(button => name.test(button.textContent ?? ''))!
+  const save = () => document.querySelector<HTMLButtonElement>('[data-save-output]')!
+  try {
+    await open()
+    assert.equal(tag(/^(female|女性)$/).getAttribute('aria-pressed'), 'true')
+    assert.equal(tag(/^(british accent|英式口音)$/).getAttribute('aria-pressed'), 'true')
+    assert.equal(save().disabled, true)
+    await act(async () => tag(/^(male|男性)$/).click())
+    assert.equal(tag(/^(female|女性)$/).getAttribute('aria-pressed'), 'false')
+    const preview = document.querySelector<HTMLButtonElement>('.speech-output-test button[aria-busy]')!
+    await act(async () => preview.click())
+    assert.equal(preview.getAttribute('aria-busy'), 'true')
+    assert.equal(save().disabled, false)
+    await act(async () => save().click())
+    assert.equal(status.settings.instructions, 'attributes:british accent, male')
+    assert.equal(preview.getAttribute('aria-busy'), 'false')
+    await act(async () => finishStart({ id: 'late-omnivoice-preview' }))
+    assert.deepEqual(cancelled, ['late-omnivoice-preview'])
+    await act(async () => root.render(null))
+    await open()
+    assert.equal(tag(/^(male|男性)$/).getAttribute('aria-pressed'), 'true')
+    assert.equal(tag(/^(british accent|英式口音)$/).getAttribute('aria-pressed'), 'true')
+    assert.equal(save().disabled, true)
+    await act(async () => tag(/^(male|男性)$/).click())
+    await act(async () => tag(/^(british accent|英式口音)$/).click())
+    await act(async () => save().click())
+    assert.equal(status.settings.instructions, '')
+
+    const releaseWake = SpeechOutputPlayer.reserveNativeWakePlayback()
+    try {
+      await act(async () => tag(/^(female|女性)$/).click())
+      const preview = document.querySelector<HTMLButtonElement>('.speech-output-test button[aria-busy]')!
+      await act(async () => preview.click())
+      assert.equal(preview.getAttribute('aria-busy'), 'false')
+      assert.equal(save().disabled, false)
+    } finally {
+      releaseWake()
+    }
+  } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close()
+    Object.assign(speechOutputApi, old); Object.assign(digitalPersonApi, oldPerson)
+    Object.defineProperty(globalThis, 'AudioContext', { configurable: true, writable: true, value: oldContext })
+  }
+})
+
 test('local playback shows presets, free-form style, or tone controls for the selected model', async () => {
   const { window } = installDomEnvironment()
   const host = document.body.appendChild(document.createElement('div'))
   const root = createRoot(host)
-  const original = { ...speechOutputApi }, oldGet = digitalPersonApi.get
+  const original = { ...speechOutputApi }, oldPerson = { ...digitalPersonApi }
+  const oldContext = globalThis.AudioContext
+  Object.defineProperty(globalThis, 'AudioContext', { configurable: true, value: class { async resume() {} } })
+  const previewPrompts: (string | undefined)[] = []
+  speechOutputApi.start = async (_text, _project, settings, previewPrompt) => {
+    assert.equal(settings?.instructions, '')
+    previewPrompts.push(previewPrompt)
+    return { id: 'audition' }
+  }
+  speechOutputApi.next = async () => ({ done: true })
+  speechOutputApi.cancel = async () => {}
   const status = structuredClone(outputStatus)
   const template = status.models[0]
   const reference = { id: 'reference', name: '参考音频' }
@@ -339,12 +448,14 @@ test('local playback shows presets, free-form style, or tone controls for the se
       instructions: true, voices: [{ id: 'persona', name: '跟随数字人设定' }, reference] },
   ]
   speechOutputApi.status = async () => status
+  speechOutputApi.save = async value => { status.settings = value; return value }
+  digitalPersonApi.save = async value => value
   speechOutputApi.uploadReference = async file => {
     assert.equal(file.name, 'reference.wav')
     return { id: 'f'.repeat(64) }
   }
-  digitalPersonApi.get = async () => ({ enabled: true, name: '测试助手', role: '', personality: '',
-    duties: '', avatar: 'robot', greeting: '' })
+  digitalPersonApi.get = async () => ({ enabled: true, name: '测试助手', role: '学习陪练', personality: '耐心',
+    tone: '自然简短', duties: '', avatar: 'robot', greeting: '' })
   try {
     await act(async () => root.render(<I18nProvider><VoiceOutputSettings parametersOnly onDirtyChange={() => {}} /></I18nProvider>))
     const model = host.querySelector<HTMLSelectElement>('[data-output-model]')!
@@ -355,12 +466,27 @@ test('local playback shows presets, free-form style, or tone controls for the se
       await act(async () => { model.value = name; model.dispatchEvent(new window.Event('change', { bubbles: true })) })
     }
     await select('cosyvoice3')
-    assert.ok(host.querySelector('[data-voice-instructions] textarea'))
+    const prompt = host.querySelector<HTMLTextAreaElement>('[data-voice-instructions] textarea')!
+    assert.equal(prompt.value, '学习陪练\n耐心\n自然简短')
+    const preview = host.querySelector<HTMLButtonElement>('.speech-output-test button[aria-busy]')!
+    await act(async () => preview.click())
+    assert.equal(previewPrompts.at(-1), prompt.value)
     assert.equal(host.querySelectorAll('[data-voice-instructions] .speech-voice-presets button').length, 9)
+    const save = host.querySelector<HTMLButtonElement>('[data-save-output]')!
+    await act(async () => save.click())
+    assert.equal(save.disabled, true)
+    const slow = [...host.querySelectorAll<HTMLButtonElement>('.speech-voice-presets button')]
+      .find(button => /慢|slow/i.test(button.textContent ?? ''))!
+    await act(async () => slow.click())
+    assert.match(prompt.value, /慢|slow/i)
+    assert.match(prompt.value, /学习陪练\n耐心\n自然简短/)
+    assert.equal(save.disabled, true)
+    assert.equal(status.settings.instructions, '')
+    await act(async () => preview.click())
+    assert.equal(previewPrompts.at(-1), prompt.value)
     await select('omnivoice')
     assert.equal(host.querySelector('[data-voice-instructions] textarea'), null)
     assert.equal(host.querySelectorAll('[data-voice-instructions] .speech-voice-presets button').length, 4)
-    const save = host.querySelector<HTMLButtonElement>('[data-save-output]')!
     assert.equal(save.disabled, false)
     const input = host.querySelector<HTMLInputElement>('input[type=file]')!
     Object.defineProperty(input, 'files', { value: [new window.File(['sample'], 'reference.wav', { type: 'audio/wav' })] })
@@ -369,7 +495,6 @@ test('local playback shows presets, free-form style, or tone controls for the se
     assert.equal(reference.value, 'f'.repeat(64))
     const [rate, volume] = host.querySelectorAll<HTMLInputElement>('.speech-output-row input')
     assert.ok(reference.compareDocumentPosition(rate) & window.Node.DOCUMENT_POSITION_FOLLOWING)
-    const preview = host.querySelector<HTMLButtonElement>('.speech-output-test button[aria-busy]')!
     const enter = (input: HTMLInputElement, value: string) =>
       act(async () => {
         Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, value)
@@ -391,6 +516,7 @@ test('local playback shows presets, free-form style, or tone controls for the se
     await act(async () => root.unmount())
     host.remove()
     Object.assign(speechOutputApi, original)
-    digitalPersonApi.get = oldGet
+    Object.assign(digitalPersonApi, oldPerson)
+    Object.defineProperty(globalThis, 'AudioContext', { configurable: true, writable: true, value: oldContext })
   }
 })

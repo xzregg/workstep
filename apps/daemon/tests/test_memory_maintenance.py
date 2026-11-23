@@ -6,18 +6,17 @@ from tests.test_digital_person_unified import runtime, chat_module, seed
 from services import memory_query, memory_knowledge as knowledge, digital_person_memory_index as index
 
 
-def test_compact_memory_policy_reaches_assessment_extractor_and_repair():
+def test_compact_memory_policy_reaches_assessment_and_repair():
     from services.memory_policy import COMPACT_RULES, RULES, repair_instruction
     from services.digital_person_assessment import instruction
     from services.digital_person import DigitalPersonProfile
-    for prompt in (RULES, knowledge.EXTRACTION_PROMPT,
-                   repair_instruction('invalid', {})):
+    for prompt in (RULES, repair_instruction('invalid', {})):
         assert COMPACT_RULES in prompt
     for boundary in ('1-2 short sentences', 'not an activity log',
                      'test counts', 'independent facts', 'Preserve complete facts'):
         assert boundary in COMPACT_RULES
-    # Background reflection has its own shorter instructions; the standalone
-    # extractor and repair policy retain their original full guidance.
+    # Background reflection keeps shorter admission instructions; repair uses
+    # the shared compact admission rules.
     prompt=instruction(DigitalPersonProfile())
     for boundary in ('not an activity log', '1-2 short sentences', 'test counts', 'independent facts'):
         assert boundary in prompt
@@ -27,6 +26,30 @@ def test_assessment_accepts_one_explicit_json_block_with_surrounding_prose():
     from services.digital_person_runtime import parse_check_result
     value={'decision':'silent','summary':'整理完成','source_ids':[]}
     assert parse_check_result('已整理本批。\n```json\n'+json.dumps(value)+'\n```\n完成。')==value
+
+
+def test_four_memory_kind_boundaries_are_injected_in_step_two():
+    from services.digital_person_assessment import instruction
+    from services.digital_person import DigitalPersonProfile
+    from services.memory_policy import KIND_RULES,RULES
+    prompt=instruction(DigitalPersonProfile())
+    step_two=prompt.split('Step 2:',1)[1].split('Step 3:',1)[0]
+    assert KIND_RULES in RULES
+    assert step_two.count(KIND_RULES)==1
+    for boundary in (
+        'preference:', 'fact:', 'event:', 'experience:',
+        'Repeated behavior alone remains tentative',
+        'A one-off request', 'subject and applicability',
+        'Store new progress as a separate event',
+        'Similar incidents on different dates remain distinct events',
+        'Plans and generic advice alone are not execution experience',
+        'personal likes, dislikes, habits',
+        'Task instructions, feature requirements, technical schemes and product constraints',
+        'Requests and implementation reports are not established properties',
+        'Do not retain every intermediate request or completion report',
+        'A problem/change/tests-passed template alone is insufficient',
+    ):
+        assert boundary in step_two,boundary
 
 
 @pytest.mark.parametrize('body',[
@@ -70,6 +93,47 @@ async def test_invalid_candidate_is_repaired_before_any_side_effect(runtime,monk
     assert len(calls)==2
     with index.connect() as db:
         assert db.execute('select count(*) from memory_knowledge').fetchone()[0]==1
+
+
+async def test_one_source_can_commit_more_than_24_points_and_multiple_kinds(runtime,monkeypatch):
+    current,project,_=runtime
+    await seed(current,project)
+    async def decide(context):
+        await context['_load']()
+        mid=next(m['memory_ids'][0] for m in context['conversation'] if m['role']=='user')
+        items=[dict(summary=f'独立事件{n}',kind='event',outcome='stated',source_ids=[mid]) for n in range(30)]
+        items.extend([
+            dict(summary='林岚习惯先演练迁移再正式发布',kind='preference',outcome='stated',source_ids=[mid],
+                 entities=[dict(kind='person',name='林岚',aliases=[])]),
+            dict(summary='林岚维护数据库迁移项目',kind='fact',outcome='stated',source_ids=[mid],
+                 entities=[dict(kind='person',name='林岚',aliases=[])]),
+        ])
+        from services.memory_policy import validate_memories
+        result=dict(decision='silent',summary='Reviewed',source_ids=[],memories=items)
+        validate_memories(result,context)
+        return result
+    monkeypatch.setattr(current,'_decide',decide)
+    result=await current.check()
+    assert result['status']=='silent',result
+    assert result['processing']['memories']==32
+    with index.connect() as db:
+        assert db.execute('SELECT count(*) FROM memory_knowledge').fetchone()[0]==32
+        assert {row[0] for row in db.execute('SELECT DISTINCT kind FROM memory_knowledge')}=={'event','fact','preference'}
+        assert db.execute('SELECT count(DISTINCT memory_id) FROM memory_knowledge_sources').fetchone()[0]==1
+
+
+def test_step_two_explicitly_extracts_points_and_attributes_preference_owners():
+    from services.digital_person import DigitalPersonProfile
+    from services.digital_person_assessment import instruction
+    step=instruction(DigitalPersonProfile()).split('Step 2:',1)[1].split('Step 3:',1)[0]
+    assert 'one message may support several points of different kinds' in step
+    assert 'one point may combine several messages' in step
+    assert 'actual author of its supporting user message (author_id/author_name)' in step
+    assert "quoted or forwarded likes of other people do not establish the sender's preference" in step
+    assert 'not the session creator, group or current viewer' in step
+    assert '--person' in step
+    assert 'match the same evidenced owner, preference topic and applicable conditions' in step
+    assert 'if identity is uncertain, do not replace it' in step
 
 async def test_knowledge_full_read_is_required_and_version_bound(runtime):
     current,project,_=runtime

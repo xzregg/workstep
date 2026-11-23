@@ -1,7 +1,5 @@
 import ResizablePanel from './ResizablePanel'
-import { useState } from 'react'
 import Button from './Button'
-import ImagePreview from './ImagePreview'
 import MarkdownMessage from './MarkdownMessage'
 import { useI18n } from '../i18n'
 
@@ -38,7 +36,6 @@ export default function PromptViewerDialog({
   onClose,
 }: PromptViewerDialogProps) {
   const { t } = useI18n()
-  const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
   const dialogTitle = title ?? t('aiFlow.fullPrompt')
   const closeText = closeLabel ?? t('aiFlow.closePrompt')
 
@@ -76,18 +73,9 @@ export default function PromptViewerDialog({
             content={prompt}
             projectId={projectId}
             className="prompt-viewer-markdown"
-            onImageClick={(src, alt) => setPreviewImage({ src, alt })}
           />
         </div>
       </ResizablePanel>
-      {previewImage && (
-        <ImagePreview
-          src={previewImage.src}
-          alt={previewImage.alt}
-          projectId={projectId}
-          onClose={() => setPreviewImage(null)}
-        />
-      )}
     </div>
   )
 }

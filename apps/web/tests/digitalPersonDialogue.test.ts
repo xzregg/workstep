@@ -52,3 +52,21 @@ test('a capture gap keeps the utterance but requires a fresh confirmed pause', (
   for (let index = 0; index < 19; index++) frame(.01)
   assert.equal(turn.canCommit, true)
 })
+
+test('the visual speech gate ends during a pause and clears across a capture gap', () => {
+  const turn = new TurnController()
+  let end = 0
+  const frame = (probability: number) => turn.frame({ end: end += 512, probability })
+  assert.equal(turn.snapshot().recentSpeech, false)
+  for (let index = 0; index < 3; index++) frame(.8)
+  assert.equal(turn.snapshot().recentSpeech, true)
+  frame(.02)
+  frame(.02)
+  assert.equal(turn.snapshot().recentSpeech, false)
+  assert.equal(turn.snapshot().hasSpeech, true)
+  assert.equal(turn.snapshot().canCommit, false)
+  frame(.8)
+  assert.equal(turn.snapshot().recentSpeech, true)
+  turn.discontinuity(end)
+  assert.equal(turn.snapshot().recentSpeech, false)
+})

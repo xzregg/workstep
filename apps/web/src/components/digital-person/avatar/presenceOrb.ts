@@ -1,19 +1,21 @@
 import {createParticleCloud} from './particleCloud'
 import {colors,poses,type OrbPhase} from './particlePalette'
 import {vertex,fragment} from './particleShaders'
-import {advanceOrbSpeechLevel} from './visualState'
+import {advanceMicLevel,advanceOrbSpeechLevel} from './visualState'
 
+const standbyTempo=1.16
+const presenceScale=1.32
 const tempo:Partial<Record<OrbPhase,number>>={
- idle:1.16,wake:.48,listening:.66,ready:.7,transcribe:1.9,sending:1.65,
+ idle:standbyTempo,wake:standbyTempo,listening:.66,ready:.7,transcribe:1.9,sending:1.65,
  thinking:1.77,check:1.54,work:2.35,write:1.25,synth:.85,playing:.92,
- wait:0,muted:0,stopped:0,error:0,
+ wait:.7,muted:.7,error:.7,
 }
 // Relative shell size and wave strength. The core stays anchored during pose changes.
 const shellPose:Partial<Record<OrbPhase,readonly [number,number]>>={
  ready:[.88,.052],listening:[1.06,.045],transcribe:[.84,.075],sending:[.91,.095],
  thinking:[.91,.052],check:[.94,.054],work:[1.12,.115],write:[1.03,.067],
  synth:[.91,.065],playing:[1.03,.063],wait:[.90,.016],muted:[.88,0],
- stopped:[.82,0],error:[.86,.019],
+ error:[.86,.019],
 }
 const idleShell=[1,.008] as const
 export interface PresenceReply {id:string;status?:string}
@@ -56,11 +58,11 @@ export function createOrb(canvas:HTMLCanvasElement,lightweight=false){
       gl.enableVertexAttribArray(loc)
       gl.vertexAttribPointer(loc,3,gl.FLOAT,false,24,offset)
     }
-    const loc=Object.fromEntries(['fit','size','t','energy','light','breath','afterglow','seconds','mood','thought','tint','pass','motion','flights[0]'].map(name=>[name,gl.getUniformLocation(program,name)]))
+    const loc=Object.fromEntries(['fit','size','t','energy','listenCore','light','breath','afterglow','seconds','mood','thought','tint','pass','motion','flights[0]'].map(name=>[name,gl.getUniformLocation(program,name)]))
     gl.enable(gl.BLEND)
     gl.blendFuncSeparate(gl.ONE,gl.ONE_MINUS_SRC_COLOR,gl.ONE,gl.ONE_MINUS_SRC_ALPHA)
     const tint=new Float32Array(4),mood=new Float32Array(3),flights=new Float32Array(16)
-    let clock=0,orbit=0,thought=0,glow=0,speechLevel=0,slot=0,nextRelease=0
+    let clock=0,orbit=0,thought=0,glow=0,listening=0,speechLevel=0,slot=0,nextRelease=0
     let breath=0,phaseAge=0,lastPhase:OrbPhase='idle'
     let shellScale=1,shellWave:number=idleShell[1],workStarted=-Infinity,completedAt=-Infinity
     let lastWorkActivity:string|undefined,lastReplyId:string|undefined,lastReplyStatus:string|undefined
@@ -73,7 +75,8 @@ export function createOrb(canvas:HTMLCanvasElement,lightweight=false){
       const dt=Math.min(.10,Math.max(0,delta/1000)),blend=(tau:number)=>still?1:1-Math.exp(-dt/tau)
       const phaseChanged=lastPhase!==state
       phaseAge=phaseChanged?0:phaseAge+dt
-      if(!still){clock+=dt;orbit+=dt*(tempo[state]??1)}
+      const pose=state==='stopped'?'idle':state
+      if(!still){clock+=dt;orbit+=dt*(tempo[pose]??1)}
       if(still){workStarted=-Infinity;completedAt=-Infinity}
       else{
         if(state==='work'&&lastWorkActivity!==activityId)workStarted=clock
@@ -83,7 +86,7 @@ export function createOrb(canvas:HTMLCanvasElement,lightweight=false){
       lastPhase=state;lastReplyId=reply?.id;lastReplyStatus=reply?.status
       const toolProgress=state==='work'?(clock-workStarted)/.83:Infinity
       const completionProgress=(clock-completedAt)/1.12
-      const listening=state==='listening'&&!still?Math.min(1,Math.max(0,mic)):0
+      listening=state==='listening'&&!still?advanceMicLevel(listening,mic,dt*1000):0
       const speechActive=state==='playing'&&!still
       const sample=speechActive&&Number.isFinite(level)?Math.min(1,Math.max(0,level)):0
       const rise=sample-speechLevel
@@ -95,27 +98,33 @@ export function createOrb(canvas:HTMLCanvasElement,lightweight=false){
         slot=(slot+1)%8
         nextRelease=clock+.13
       }
-      for(let i=0;i<4;i++)tint[i]+=(colors[state][i]-tint[i])*blend(.32)
-      for(let i=0;i<3;i++)mood[i]+=((poses[state]?.[i]??0)-mood[i])*blend(.21)
+      for(let i=0;i<4;i++)tint[i]+=(colors[pose][i]-tint[i])*blend(.32)
+      for(let i=0;i<3;i++)mood[i]+=((poses[pose]?.[i]??0)-mood[i])*blend(.21)
       thought+=((state==='thinking'?1:state==='check'?.68:0)-thought)*blend(.24)
-      const [scale,wave]=shellPose[state]??idleShell
-      shellScale+=(scale+.085*listening+.068*energy-shellScale)*blend(.18)
-      shellWave+=(wave+.036*listening+.042*energy-shellWave)*blend(.18)
+      const [scale,wave]=shellPose[pose]??idleShell
+      shellScale+=(scale+.068*energy-shellScale)*blend(.18)
+      shellWave+=(wave+.042*energy-shellWave)*blend(.18)
       const targetBreath=state==='wake'&&!still?wakeHeartbeat(phaseAge):0
       breath+=(targetBreath-breath)*blend(state==='wake'?.055:.18)
       gl.uniform1f(loc.breath,breath)
       const targetGlow=Math.sqrt(energy)
       glow+=(targetGlow-glow)*blend(targetGlow>glow?.045:.13)
       const side=Math.min(width,height)
-      const fitScale=Math.min(1,.9+Math.max(0,rect.width/rect.height-1)*.18)
+      const viewportFit=Math.min(1,.9+Math.max(0,rect.width/rect.height-1)*.18)
+      // Expanding poses need extra room within the same window.
+      const completionSpread=completionProgress<1?.082*Math.sin(Math.PI*completionProgress):0
+      const toolSpread=toolProgress<1?.045*Math.sin(Math.PI*toolProgress):0
+      const shellExtent=(shellScale+.5*shellWave+completionSpread+toolSpread)*(1+breath)
+      const fitScale=Math.min(presenceScale*viewportFit,1.36/shellExtent)
       gl.clear(gl.COLOR_BUFFER_BIT)
       gl.uniform2f(loc.fit,fitScale*side/width,fitScale*side/height)
       gl.uniform1f(loc.size,side/342)
       gl.uniform1f(loc.t,orbit)
       gl.uniform1f(loc.seconds,clock)
       gl.uniform1f(loc.energy,energy)
+      gl.uniform1f(loc.listenCore,listening)
       gl.uniform1f(loc.afterglow,glow)
-      gl.uniform1f(loc.light,(lightweight?1.30:1.13)+.36*listening)
+      gl.uniform1f(loc.light,lightweight?1.30:1.13)
       gl.uniform1f(loc.thought,thought)
       gl.uniform2fv(loc['flights[0]'],flights)
       gl.uniform3fv(loc.mood,mood)
@@ -127,9 +136,10 @@ export function createOrb(canvas:HTMLCanvasElement,lightweight=false){
       }
       canvas.dataset.phase=state
       canvas.dataset.level=energy.toFixed(3)
+      canvas.dataset.coreLevel=listening.toFixed(3)
       canvas.dataset.frame=String(Math.round(clock*1000))
       canvas.dataset.cue=completionProgress<1?'completed':toolProgress<1?'tool':''
-      return !still&&(tempo[state]!==0||phaseAge<2.8||completionProgress<1)
+      return !still
     }
     return {draw,dispose}
   }catch(error){dispose();throw error}

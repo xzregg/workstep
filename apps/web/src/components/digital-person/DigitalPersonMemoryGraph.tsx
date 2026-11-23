@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../../i18n'
-import type { MemoryKind, MemoryLibraryStats, MemoryViewItem } from '../../api/digitalPerson'
+import type { MemoryKind, MemoryViewItem } from '../../api/digitalPerson'
 import Button from '../Button'
 import Icon from '../Icon'
 import { memoryTitle } from './memoryView'
@@ -11,8 +11,8 @@ const icons = {preference:'bookmark',experience:'book',fact:'file',event:'clock'
 
 
 /** Lines encode only category membership and shared explicit entities, never inferred relations. */
-export default function DigitalPersonMemoryGraph({items,stats,selected,onSelect,onSearch,projectName}:{
- items:MemoryViewItem[];stats:MemoryLibraryStats|null;selected:string;onSelect:(id:string)=>void
+export default function DigitalPersonMemoryGraph({items,selected,onSelect,onSearch,projectName}:{
+ items:MemoryViewItem[];selected:string;onSelect:(id:string)=>void
  onSearch:(query:string)=>void;projectName:string
 }) {
  const {t}=useI18n()
@@ -55,16 +55,19 @@ export default function DigitalPersonMemoryGraph({items,stats,selected,onSelect,
      </svg>
      <div className="digital-memory-root"><Icon name="folder" size={20}/><strong>{projectName}</strong></div>
      {entities.map((entity,i)=><Button className={`digital-memory-entity digital-memory-entity-${i}`} key={`${entity.kind}:${entity.name}`} title={t('digitalMemoryView.tagHint')} onClick={()=>onSearch(entity.name)}><Icon name={entity.kind==='person'?'user':'layers'} size={16}/><span>{entity.name}</span></Button>)}
-     {groups.map((group,g)=><div className={`digital-memory-cluster digital-memory-cluster-${g}`} data-kind={group.kind} key={group.kind}>
-      <span className="digital-memory-cluster-title" title={t('digitalMemoryView.globalKindCount')}><Icon name={icons[group.kind]} size={16}/>{t(`digitalMemoryView.${group.kind}Short`)} <strong>{stats?.by_kind[group.kind]?.toLocaleString()??'—'}</strong></span>
-     </div>)}
+     {groups.map((group,g)=>{
+      const visible=nodes.filter(node=>node.g===g).length
+      return visible>0&&<div className={`digital-memory-cluster digital-memory-cluster-${g}`} data-kind={group.kind} key={group.kind}>
+       <span className="digital-memory-cluster-title"><Icon name={icons[group.kind]} size={16}/>{t(`digitalMemoryView.${group.kind}Short`)} <strong>{visible}</strong></span>
+      </div>
+     })}
      {nodes.map(({item,x,y})=><Button key={item.id} className="digital-memory-node" style={{left:`${x}%`,top:`${y}%`}} data-kind={item.kind} data-raw={!item.interpretation} aria-pressed={selected===item.id} title={item.summary} onClick={()=>onSelect(item.id)}><Icon name={item.interpretation?icons[item.kind]:'file'} size={16}/><strong>{memoryTitle(item)}</strong>{!item.interpretation&&<span className="digital-memory-raw-label">{t('digitalMemoryView.records')}</span>}</Button>)}
     </div>
    </div>
   </div>
   <p className="digital-memory-scroll-hint">{t('digitalMemoryView.graphScrollHint')}</p>
   <div className="digital-memory-graph-footer">
-   <div className="digital-memory-legend">{kinds.map(kind=><span data-kind={kind} key={kind}><i/>{t(`digitalMemoryView.${kind}Short`)} · {stats?.by_kind[kind]?.toLocaleString()??'—'}</span>)}</div>
+   <div className="digital-memory-legend">{groups.filter(group=>group.items.length).map(({kind,items})=><span data-kind={kind} key={kind}><i/>{t(`digitalMemoryView.${kind}Short`)} · {items.length}</span>)}</div>
    {pages>1&&<div className="digital-memory-pagination"><Button disabled={currentPage===0} onClick={()=>setPage(currentPage-1)} aria-label={t('digitalMemoryView.previous')}><Icon name="chevron-left" size={16}/></Button><span>{t('digitalMemoryView.group',{page:currentPage+1,total:pages})}</span><Button disabled={currentPage+1>=pages} onClick={()=>setPage(currentPage+1)} aria-label={t('digitalMemoryView.next')}><Icon name="chevron-right" size={16}/></Button></div>}
   </div>
   <p className="digital-memory-footnote">{t('digitalMemoryView.graphHint')}</p>

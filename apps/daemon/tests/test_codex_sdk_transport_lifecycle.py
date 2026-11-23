@@ -28,7 +28,7 @@ async def transport(monkeypatch, tmp_path):
     sdk = pytest.importorskip('openai_codex')
     original = sdk.AsyncCodex
     clients, processes, routers = [], [], []
-    pool = CodexClientPool(idle_seconds=60)
+    pool = CodexClientPool(idle_seconds=60, max_idle_workers=2, keep_warm=False)
     def client(*, config):
         config.launch_args_override = (sys.executable, str(Path(__file__).parent / 'fixtures/codex_app_server_stub.py'), str(tmp_path))
         instance = original(config=config)
@@ -425,6 +425,69 @@ async def test_real_sdk_idle_worker_cap_reaps_process_tree_and_resumes(transport
     assert any(row['params']['threadId'] == sid for row in wire(transport, 'thread/resume'))
 
 
+async def test_real_sdk_one_warm_worker_survives_ttl_and_reaps_replaced_tree(transport):
+    transport.pool.keep_warm = True
+    transport.pool.max_idle_workers = 1
+    transport.pool.idle_seconds = .01
+    first = await collect(transport, 'spawn-helper')
+    sid = session(first)
+    original = transport.processes[0]
+    helper = psutil.Process(int(text(first)))
+    await asyncio.sleep(.1)
+    assert original.poll() is None
+    assert session(await collect(transport, 'warm', sid=sid)) == sid
+    assert len(transport.clients) == 1
+    assert not wire(transport, 'thread/resume')
+
+    cwd = transport.root / 'other'
+    cwd.mkdir()
+    await collect(transport, 'other', cwd=cwd)
+    await asyncio.sleep(.1)
+    assert original.poll() is not None
+    assert len(transport.pool._workers) == 1
+    try:
+        assert not helper.is_running() or helper.status() == psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        pass
+    resumed = await collect(transport, 'restored', sid=sid)
+    assert session(resumed) == sid and text(resumed) == 'restored'
+    assert any(row['params']['threadId'] == sid for row in wire(transport, 'thread/resume'))
+    assert len(transport.pool._workers) == 1
+
+
+async def test_real_sdk_retained_thread_survives_expiry_and_other_projects_then_transfers(transport):
+    from engines.core.session_retention import session_retention, release_session_retention
+    pool = transport.pool
+    pool.max_idle_workers = 1
+    pool.idle_seconds = .01
+    with session_retention('data-center'):
+        sid = session(await collect(transport, 'seed'))
+    original = transport.processes[0]
+    await collect(transport, 'neighbor')
+    await asyncio.sleep(.1)
+    assert original.poll() is None
+    assert (str(transport.root), sid) in pool._entries
+    other = transport.root / 'ordinary-project'
+    other.mkdir()
+    await collect(transport, 'ordinary', cwd=other)
+    assert len(pool._workers) == 1
+    with session_retention('data-center'):
+        resumed = await collect(transport, 'same', sid=sid)
+    assert session(resumed) == sid and original.poll() is None
+    assert not wire(transport, 'thread/resume')
+    pool.idle_seconds = 60
+    old = pool._entries[(str(transport.root), sid)]
+    await release_session_retention('data-center')
+    with session_retention('data-center'):
+        new_sid = session(await collect(transport, 'new-context'))
+    pool._expire(old)
+    await asyncio.shield(old.closing)
+    await asyncio.sleep(.1)
+    assert new_sid != sid and original.poll() is None
+    assert (str(transport.root), sid) not in pool._entries
+    assert pool._entries[(str(transport.root), new_sid)].retention_owner == 'data-center'
+
+
 async def test_real_sdk_warm_instructions_images_compaction_and_fork(transport):
     from engines.core.schema import EngineImage
     first = await collect(transport, 'seed', system_prompt='first rules')
@@ -449,15 +512,18 @@ async def test_real_sdk_warm_instructions_images_compaction_and_fork(transport):
 
 
 @pytest.mark.parametrize('shutdown', ['stop', 'pool'])
-async def test_real_sdk_stop_while_reader_waits_for_approval(transport, monkeypatch, shutdown):
+@pytest.mark.parametrize('retained', [False, True])
+async def test_real_sdk_stop_while_reader_waits_for_approval(transport, monkeypatch, shutdown, retained):
+    from engines.core.session_retention import session_retention
     engine = CodexSDKEngine()
     monkeypatch.setattr(engine, 'runtime_permission_decision', lambda: None)
     stream = engine.spawn(prompt='approve-wait', cwd=str(transport.root))
     try:
-        async for event in stream:
-            transport.track()
-            if event.type == 'interaction_request':
-                break
+        with session_retention('main' if retained else None):
+            async for event in stream:
+                transport.track()
+                if event.type == 'interaction_request':
+                    break
         assert transport.processes and transport.processes[0].poll() is None
         if shutdown == 'stop':
             await engine.stop()

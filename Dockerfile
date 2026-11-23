@@ -26,6 +26,9 @@ COPY apps/desktop/src/diagnostic-privacy.mjs /app/apps/desktop/src/diagnostic-pr
 COPY apps/desktop/src/diagnostic-privacy.d.mts /app/apps/desktop/src/diagnostic-privacy.d.mts
 COPY apps/desktop/src/feedback-summary.mjs /app/apps/desktop/src/feedback-summary.mjs
 COPY apps/desktop/src/feedback-summary.d.mts /app/apps/desktop/src/feedback-summary.d.mts
+COPY apps/desktop/src/runtime-diagnostics.js /app/apps/desktop/src/runtime-diagnostics.js
+COPY apps/desktop/src/runtime-diagnostics-view.js /app/apps/desktop/src/runtime-diagnostics-view.js
+COPY apps/desktop/src/runtime-diagnostics.css /app/apps/desktop/src/runtime-diagnostics.css
 RUN yarn build && yarn build:gateway-share
 
 WORKDIR /app/apps/gateway-web

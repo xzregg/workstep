@@ -23,7 +23,8 @@ def completed_activity_processing(run):
     knowledge=(run.get('memory_processing') or {}).get('knowledge') or {}
     batch=(run.get('sources') or {}).get('reflection_batch',[])
     sessions=len({(row['project_id'],row['session_id']) for row in batch})
-    return {'messages': knowledge.get('processed', 0), 'sessions': sessions, 'memories': knowledge.get('created', 0)}
+    return {'messages': knowledge.get('processed', 0), 'sessions': sessions, 'memories': knowledge.get('created', 0),
+            **({'changes':knowledge['changes']} if 'changes' in knowledge else {})}
 
 
 def resolve_check_sources(context, references):
@@ -209,12 +210,32 @@ class DigitalPersonRuntime:
             state = read_state(home.id)
             row = ChatSession.get_or_none(ChatSession.id == state['main_session_id'], ChatSession.archived == False)
             if row:
-                return self.chats.get_session(home.id, row.id)
+                return self.chats.get_session(home.id, row.id), None
+            previous = state['main_session_id']
             result = self.chats.create_session(home.id, title=profile.name)
             state['main_session_id'] = result['id']
             write_state(home.id, state)
-            return result
-        return await self.projects.run_db(home.id, operation)
+            return result, previous
+        result, previous = await self.projects.run_db(home.id, operation)
+        if previous:
+            from services.chat_session_retention import release_main_session_retention
+            await release_main_session_retention(home.id, previous)
+        return result
+
+    async def face_welcome_activity(self):
+        home = await self.home()
+
+        def read(_):
+            session = read_state(home.id).get('main_session_id')
+            if not session:
+                return None, False
+            rows = ChatMessage.select().where(ChatMessage.session == session)
+            last_user = rows.where(ChatMessage.role == 'user').order_by(ChatMessage.created_at.desc()).first()
+            message = ({'id': last_user.id, 'role': last_user.role, 'created_at': last_user.created_at,
+                        'content': last_user.content} if last_user else None)
+            return message, rows.where(ChatMessage.status.in_(['queued', 'running', 'stopping'])).exists()
+
+        return await self.projects.run_db(home.id, read)
 
     async def state(self):
         home = await self.home()
@@ -926,7 +947,7 @@ class DigitalPersonRuntime:
                 memories = decision.get('memories', [])
                 from services.memory_knowledge import _validate
                 available = {int(r['id']):r for r in context.get('reflection_batch',[]) if r.get('needs_knowledge',True)}
-                if not isinstance(memories,list) or len(memories)>24:
+                if not isinstance(memories,list):
                     raise ValueError('Invalid memory candidate format')
                 existing_ids = decision.get('_retrieved_knowledge_ids', [])
                 for item in memories:
@@ -954,8 +975,6 @@ class DigitalPersonRuntime:
                 committed = True
                 run['memory_processing'] = {'status':'idle','mode':'unified','knowledge':result}
                 await management.apply(actions, eligible, profile)
-                await asyncio.to_thread(memory_index.mutate_state,'memory_worker',lambda s:s.update(
-                    status='idle',mode='unified',error_type=None,retry_at=0,knowledge=result,finished_at=utc_now().isoformat()))
                 for group in groups:
                     group_scope=group.get('companion',{}).get('scope')
                     delegated=any(d.get('project_id')==group.get('origin_project_id') and d.get('session_id')==group.get('origin_session_id') for d in delegations)
@@ -1039,6 +1058,12 @@ class DigitalPersonRuntime:
                     else:
                         def reserve(s):
                             if run['kind'] == 'social' and scope:
+                                if scope == 'local':
+                                    from services import face_welcome
+                                    last_local_user = next((m.get('created_at') for m in reversed(context.get('conversation', []))
+                                                            if m.get('role') == 'user'), None)
+                                    if face_welcome.blocks_social(s, last_local_user, utc_now()):
+                                        return False
                                 companion.reserve_contact(s, scope, run['id'], utc_now())
                             for item in s['delegations']:
                                 if item['id'] in ids:
@@ -1048,7 +1073,10 @@ class DigitalPersonRuntime:
                                     record.update(status='notifying', summary=run['summary'],
                                                   origin_session_id=run['origin_session_id'], sources=assessment_audit(run['sources']),
                                                   notification_key=fingerprint, notification_sources=ids, kind=run['kind'])
-                        await self.mutate(reserve)
+                            return True
+                        if not await self.mutate(reserve):
+                            run.update(status='silent', summary='近期已进行人脸欢迎，暂不主动打扰')
+                            return run
                         run['notification_attempted_at'] = utc_now().isoformat()
                         run['deliveries'] = await self._notify(run['summary'], ids, run['id'])
                         if any(r['status']=='delivered' for r in run['deliveries']):

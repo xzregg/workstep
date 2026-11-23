@@ -137,6 +137,7 @@ type SpeechBatch = { text: string; atomic: boolean }
 type PreparedSpeech = SpeechBatch & { created: Promise<{ id: string }> }
 
 let activeOutputPlayer: SpeechOutputPlayer | null = null
+let nativeWakePlayback: symbol | undefined
 // One gesture-unlocked output graph for the page, reused across conversational turns.
 let outputContext:AudioContext|null=null
 export function sharedOutputContext(){
@@ -164,18 +165,21 @@ export class SpeechOutputPlayer {
   private until = 0
   private utterance: SpeechSynthesisUtterance | null = null
   private active = false
+  private startedPlayback = false
   private pcmTail: number | undefined
   private playback=false
   private levelTimer:ReturnType<typeof setInterval>|undefined
   private audioFrames=new Map<AudioBufferSourceNode,{start:number;rate:number;data:Float32Array}>()
 
   private options: { settings: OutputSettings; projectId?: string; systemVoice?: string; preview?: boolean; previewPrompt?: string; digitalSessionId?: string; coalesce?: boolean; batchStreaming?: boolean;
-    cachedAudio?: { text: string; chunks: readonly SpeechAudioChunk[] }; audioGain?: number;
+    cachedAudio?: { text: string; chunks: readonly SpeechAudioChunk[] }; audioGain?: number; leadingSilence?: number; wakeGreeting?: boolean;
     onInterrupt?: () => void; onState?: (active: boolean) => void; onError?: (error: Error) => void;
     onRecovery?: (error: Error, remaining: string[], submitted: number) => void;
     onPlayback?: (active:boolean)=>void; onLevel?: (level:number)=>void }
 
   constructor(options: SpeechOutputPlayer['options']) { this.options = options }
+
+  get hasStartedPlayback() { return this.startedPlayback }
 
   /** Call from the user's playback gesture to unlock browser audio before I/O. */
   async unlock() {
@@ -199,6 +203,10 @@ export class SpeechOutputPlayer {
 
   enqueue(sentences: string[], { final = false, submitted = 0 } = {}) {
     if (this.controller.signal.aborted || (!sentences.length && (!final || !this.queue.length))) return
+    if (!this.options.wakeGreeting && (nativeWakePlayback || (activeOutputPlayer !== this && activeOutputPlayer?.options.wakeGreeting))) {
+      this.options.onInterrupt?.()
+      return
+    }
     this.final ||= final
     if (activeOutputPlayer !== this) {
       const previous = activeOutputPlayer
@@ -260,10 +268,12 @@ export class SpeechOutputPlayer {
   }
 
   private state(active: boolean) {
+    if (!active) this.startedPlayback = false
     if (this.active !== active) { this.active = active; this.options.onState?.(active) }
   }
 
   private output(active:boolean,level=0){
+    if (active) this.startedPlayback = true
     if(this.playback!==active){this.playback=active;this.options.onPlayback?.(active)}
     this.options.onLevel?.(level)
   }
@@ -339,6 +349,14 @@ export class SpeechOutputPlayer {
     if (this.controller.signal.aborted) return
     const source = context.createBufferSource(), gain = context.createGain()
     const rate = Math.max(.5, Math.min(2, this.options.settings.rate * rateFactor))
+    if (!this.until && this.options.leadingSilence) {
+      const padding = Math.ceil(this.options.leadingSilence * buffer.sampleRate * rate)
+      const padded = context.createBuffer(buffer.numberOfChannels, buffer.length + padding, buffer.sampleRate)
+      for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+        padded.getChannelData(channel).set(buffer.getChannelData(channel), padding)
+      }
+      buffer = padded
+    }
     source.buffer = buffer; source.playbackRate.value = rate
     const samples = buffer.getChannelData(0)
     let volume = this.options.settings.volume
@@ -361,6 +379,7 @@ export class SpeechOutputPlayer {
     source.onended = cleanup
     const start = Math.max(context.currentTime + .03, this.until)
     try { source.start(start) } catch (reason) { cleanup(); throw reason }
+    this.startedPlayback = true
     this.sources.add(source)
     this.until = start + buffer.duration / rate
     this.audioFrames.set(source,{start,rate:buffer.sampleRate*rate,data:samples})
@@ -390,8 +409,9 @@ export class SpeechOutputPlayer {
   }
 
   private async synthesize(batch: SpeechBatch, committed: () => void, prepared?: Promise<{ id: string }>) {
-    const { text, atomic } = batch
-    const { projectId = '', cachedAudio } = this.options
+    const { text } = batch
+    const { projectId = '', cachedAudio, wakeGreeting } = this.options
+    const atomic = batch.atomic || wakeGreeting
     if (cachedAudio?.text === text) {
       this.pcmTail = undefined
       for (const { audio, format, sampleRate } of cachedAudio.chunks) {
@@ -408,6 +428,7 @@ export class SpeechOutputPlayer {
     try {
       this.pcmTail = undefined
       const pending: Array<Parameters<SpeechOutputPlayer['buffer']>> = []
+      let greetingSize = 0
       const play = async (chunk: Parameters<SpeechOutputPlayer['buffer']>) => {
         try { if (await this.buffer(...chunk)) committed() }
         catch { throw new Error('Audio playback failed, please click retry') }
@@ -416,6 +437,9 @@ export class SpeechOutputPlayer {
         const event = await requestAudio(speechOutputApi.next(id, projectId, this.controller.signal))
         if (event.error) throw event.error_code === 'temporary' ? new TemporarySpeechError(event.error) : new Error(event.error)
         if (event.audio) {
+          if (wakeGreeting && (greetingSize += event.audio.length) > 1024 * 1024) {
+            throw new Error('Wake greeting audio exceeds its size limit')
+          }
           const chunk: Parameters<SpeechOutputPlayer['buffer']> = [event.audio, event.format!, event.sample_rate!, event.rate_factor]
           // A merged stream has no sentence offsets. Wait for completion so a
           // connection failure can't leave half the batch spoken and half lost.
@@ -514,6 +538,14 @@ export class SpeechOutputPlayer {
     for (const source of this.sources) { source.onended = null; try { source.stop() } catch { /* already ended */ } }
     this.sources.clear()
     this.context = null; this.state(false)
+  }
+
+  static reserveNativeWakePlayback() {
+    const owner = nativeWakePlayback = Symbol()
+    const previous = activeOutputPlayer
+    previous?.options.onInterrupt?.()
+    previous?.stop()
+    return () => { if (nativeWakePlayback === owner) nativeWakePlayback = undefined }
   }
 }
 

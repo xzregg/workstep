@@ -1,3 +1,4 @@
+import { runtimeStamp, timeRuntimeMark } from '../utils/runtimeDiagnostics'
 import type { FileChangesQuery } from '../utils/messageFileChanges'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { chatSessionApi, type ChatSessionDetail } from '../api/client'
@@ -74,6 +75,7 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
       setHistoryError('')
       setHistoryLoading(true)
       page.loading = true
+      const started = runtimeStamp()
       const prepared = !refresh && preparedHistory.current?.projectId === projectId &&
         preparedHistory.current.detail.id === sessionId ? preparedHistory.current : undefined
       const unchangedMessages = prepared?.unchangedMessages ?? useChatSessionStore.getState().sessions[sessionId]?.messages ?? []
@@ -102,6 +104,7 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
             unchangedMessages,
           )
           setLoadedScope(`${projectId}/${sessionId}`)
+          if (!refresh && started !== undefined) requestAnimationFrame(() => timeRuntimeMark('chat-history', started))
         })
         .catch((reason) => {
           page.loading = false

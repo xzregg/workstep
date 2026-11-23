@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client'
 import StreamRevealText from '../src/components/StreamRevealText'
 import MarkdownContent from '../src/components/MarkdownContent'
 import ChatMessageBubble from '../src/components/ChatMessageBubble'
+import MessageTimeline from '../src/components/MessageTimeline'
 import { MarkdownAssetUrlProvider } from '../src/contexts/MarkdownAssetUrlContext'
 import { I18nProvider } from '../src/i18n'
 
@@ -25,6 +26,28 @@ function frameClock() {
     restore(){clock.mock.restore()},
   }
 }
+
+test('a continuous body keeps the same Markdown tree when retained chunks match only a shorter prefix', async () => {
+  const { window, document } = installDomEnvironment()
+  const host = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(host)
+  const content = '**重点**\n\n连续的正文'
+  const render = (delta: string) => act(async () => root.render(
+    <I18nProvider><MessageTimeline content={content} events={[{ type: 'TEXT_MESSAGE_CHUNK', delta }]} /></I18nProvider>,
+  ))
+  try {
+    await render(content)
+    const paragraph = host.querySelector('strong')
+    assert.ok(paragraph)
+    await render('**重')
+    assert.ok(host.querySelector('strong') === paragraph, 'settled emphasis must retain its DOM node')
+    assert.equal(host.querySelectorAll('.markdown-message').length, 1)
+    assert.equal(host.querySelector('.markdown-message')?.textContent, '重点连续的正文')
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
 
 test('new glyphs append to the same native text node without replaying or reshaping its prefix', async () => {
   const {window,document}=installDomEnvironment()

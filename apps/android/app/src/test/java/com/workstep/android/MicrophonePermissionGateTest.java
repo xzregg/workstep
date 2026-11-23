@@ -102,6 +102,17 @@ public class MicrophonePermissionGateTest {
         assertEquals(List.of(request), granted);
     }
 
+    @Test public void revokedAppPermissionIsNotInheritedFromAnEarlierGrant() {
+        Object first = new Object(), revoked = new Object(), restored = new Object();
+        assertFalse(gate.begin(first, server, server.origin(), server.origin(), new String[]{AUDIO}, true));
+        assertTrue(gate.begin(revoked, server, server.origin(), server.origin(), new String[]{AUDIO}, false));
+        assertEquals(List.of(first), granted);
+        gate.result(false, server, server.origin());
+        assertEquals(List.of(revoked), denied);
+        assertFalse(gate.begin(restored, server, server.origin(), server.origin(), new String[]{AUDIO}, true));
+        assertEquals(List.of(first, restored), granted);
+    }
+
     @Test public void rejectsCameraUnknownResourcesAndForeignOrigins() {
         for (String[] resources : new String[][]{ {}, {"android.webkit.resource.VIDEO_CAPTURE"}, {AUDIO, "unknown"}, {AUDIO, AUDIO}}) {
             Object request = new Object();

@@ -1,3 +1,12 @@
 .skill-center-selection { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent); }
 .skill-draft-create { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; flex-shrink: 0; }
 .skill-draft-error { color: var(--danger); font-size: calc(11px * var(--font-scale)); max-width: 240px; overflow-wrap: anywhere; }
+
+.skill-center-filters { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(120px, 150px)); align-items: end; gap: 12px; margin-bottom: 14px; }
+.skill-center-filter { display: grid; gap: 6px; min-width: 0; }
+.skill-center-filter-label { font-size: calc(12px * var(--font-scale)); font-weight: 600; }
+.skill-center-filter input, .skill-center-filter .ws-select { width: 100%; }
+@media (max-width: 600px) {
+  .skill-center-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .skill-center-filter--search { grid-column: 1 / -1; }
+}

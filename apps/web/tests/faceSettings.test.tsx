@@ -55,6 +55,34 @@ test('face box visibility defaults on and saves independently of names',async()=
  }finally{await ui.close()}
 })
 
+test('recognition settings show four independent display and context choices',async()=>{
+ const ui=await setup()
+ let saved={...catalog.settings,include_relationship:false}
+ faceApi.people=async()=>({items:[]})
+ faceApi.settings=async()=>({settings:saved,revision:1})
+ faceApi.saveSettings=async settings=>{saved=settings;return {settings,revision:2}}
+ try{
+  await act(async()=>ui.root.render(<I18nProvider><FaceSettingsPanel/></I18nProvider>))
+  await ui.click('识别设置')
+  const controls=new Map(Array.from(ui.host.querySelectorAll('.face-settings-list .face-check'),
+   label=>[label.textContent,label.querySelector('input')!] as const))
+  assert.deepEqual([...controls.keys()],['显示人脸框','显示姓名','显示关系','发送时附带姓名和关系'])
+  assert.equal(controls.get('显示关系')?.checked,false)
+  assert.equal(controls.get('发送时附带姓名和关系')?.checked,false)
+  await act(async()=>controls.get('显示关系')!.click())
+  await act(async()=>controls.get('发送时附带姓名和关系')!.click())
+  await ui.click('保存')
+  assert.equal(saved.show_relationship,true)
+  assert.equal(saved.include_people,true)
+  assert.equal(saved.include_relationship,true)
+  await act(async()=>controls.get('发送时附带姓名和关系')!.click())
+  await ui.click('保存')
+  assert.equal(saved.show_relationship,true)
+  assert.equal(saved.include_people,false)
+  assert.equal(saved.include_relationship,false)
+ }finally{await ui.close()}
+})
+
 test('five stable poses auto-capture in one stream; preview supports single retake and save retry',async()=>{
  const ui=await setup();let attempts=0,saved=0
  let pose={yaw:0,pitch:0,roll:0},embedding=.1,faceBox=[.2,.2,.45,.5],faceCount=1
@@ -113,35 +141,74 @@ test('five stable poses auto-capture in one stream; preview supports single reta
  }finally{await ui.close()}
 })
 
-test('send annotates the exact uploaded frame with canonical names; user text contains no face context',async()=>{
- const ui=await setup(),upload=fsApi.uploadImage;let prepare:((text:string)=>Promise<string>)|null=null,marker='old',sentIds:string[]=[],uploaded='',annotations:string[]=[],boxes=0
- faceRuntime.detect=async canvas=>[{box:[0,0,.5,.5],embedding:Array(1024).fill(.1),score:.99,person:{id:(canvas as any).marker||marker,name:'后台名字',relationship:'朋友',embeddings:[]}}]
- faceApi.context=async ids=>{sentIds=ids;return {people:ids.map(id=>({person_id:id,name:'当前称呼',relationship:'朋友'})),text:'不应加入用户正文的解释'}}
- ui.window.HTMLCanvasElement.prototype.getContext=function(){const target=this;return {drawImage(source:any){(target as any).marker=source.marker},save(){},restore(){},strokeRect(){boxes++},fillRect(){},measureText(value:string){return {width:value.length*10}},fillText(value:string){annotations.push(value)}} as any}
+function layoutPreview(ui:Awaited<ReturnType<typeof setup>>){
+ const set=(element:HTMLElement,x:number,y:number,width:number,height:number)=>{
+  element.getBoundingClientRect=()=>new ui.window.DOMRect(x,y,width,height) as DOMRect
+ }
+ const overlay=ui.host.querySelector<HTMLElement>('.face-overlay')!
+ set(overlay,0,0,320,240)
+ for(const box of overlay.querySelectorAll<HTMLElement>('.face-box')){
+  set(box,64,64,100,100);box.style.border='2px solid green'
+  const label=box.querySelector('span')
+  if(label){set(label,64,44,100,20);label.style.font='11px sans-serif'}
+ }
+}
+
+test('camera sends the visible preview annotations independently of message context',async()=>{
+ const ui=await setup(),upload=fsApi.uploadImage
+ let prepare:import('../src/components/digital-person/DigitalPersonCamera').PrepareCameraMessage|null=null
+ let uploaded='',annotations:string[]=[],boxes=0
+ const settings={...catalog.settings,show_relationship:true}
+ let requests:string[][]=[]
+ faceRuntime.detect=async canvas=>{
+  const id=(canvas as any).marker
+  return [
+   {box:[.2,.25,.5,.5],embedding:[.1],score:.99,person:{id,name:'预览称呼',relationship:'同事',embeddings:[]}},
+   {box:[.75,.25,.2,.3],embedding:[.2],score:.99},
+  ]
+ }
+ faceApi.context=async ids=>{requests.push(ids);return {people:ids.map(id=>({person_id:id,name:'服务器称呼',relationship:'同事'})),text:'识别上下文'}}
+ ui.window.HTMLCanvasElement.prototype.getContext=function(){const target=this;return {drawImage(source:any){(target as any).marker=source.marker},save(){},restore(){},scale(){},strokeRect(){boxes++},fillRect(){},measureText(value:string){return {width:value.length*8}},fillText(value:string){annotations.push(value)}} as any}
  ui.window.HTMLCanvasElement.prototype.toBlob=function(callback){callback(new Blob([(this as any).marker],{type:'image/jpeg'}))}
  fsApi.uploadImage=async file=>{uploaded=await file.text();return {url:'.workstep/uploads/frame.jpg',filename:file.name,size:file.size}}
- const callback=(fn:typeof prepare)=>{prepare=fn}
+ const render=<I18nProvider><DigitalPersonCamera projectId="demo" onPrepare={fn=>{prepare=fn}}/></I18nProvider>
+ const awaitLabel=async(expected:string)=>{
+  const deadline=Date.now()+1600
+  while(ui.host.querySelector('.face-box--known span')?.textContent!==expected&&Date.now()<deadline)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,30))})
+  assert.equal(ui.host.querySelector('.face-box--known span')?.textContent,expected)
+  layoutPreview(ui)
+ }
+ const send=async()=>{
+  let faceIds:string[]=[],content=''
+  await act(async()=>{content=await prepare!('看看',ids=>{faceIds=ids})})
+  assert.match(content,/frame.jpg/);assert.doesNotMatch(content,/预览称呼|服务器称呼|同事|识别上下文/)
+  return faceIds
+ }
  try{
-  await act(async()=>ui.root.render(<I18nProvider><DigitalPersonCamera projectId="demo" onPrepare={callback}/></I18nProvider>));await ui.click('打开摄像头');const video=ui.readyVideo() as any;video.marker='current';marker='current'
-  let content='',faceIds:string[]=[];await act(async()=>{content=await (prepare as any)('看看',(ids:string[])=>{faceIds=ids})})
-  assert.deepEqual(faceIds,['current'])
-  assert.deepEqual(sentIds,['current']);assert.equal(uploaded,'current');assert.equal(boxes,1);assert.deepEqual(annotations,['当前称呼'])
-  assert.match(content,/^看看\n\n!\[/);assert.match(content,/frame.jpg/);assert.doesNotMatch(content,/embedding|1024|后台名字|当前称呼|朋友|解释|people|person_id/)
-  faceApi.catalog=async()=>({...catalog,revision:2,settings:{...catalog.settings,show_boxes:false}})
+  faceApi.catalog=async()=>({...catalog,settings})
+  await act(async()=>ui.root.render(render));await ui.click('打开摄像头')
+  const video=ui.readyVideo() as any;video.marker='preview'
+  await awaitLabel('预览称呼 · 同事')
+  assert.equal(ui.host.querySelectorAll('.face-box').length,2)
+  assert.deepEqual(Array.from(ui.host.querySelectorAll('.face-box span'),node=>node.textContent),['预览称呼 · 同事'])
+  video.marker='current'
+  assert.deepEqual(await send(),['current'])
+  assert.deepEqual(requests,[['current']]);assert.equal(uploaded,'current');assert.equal(boxes,2)
+  assert.deepEqual(annotations,['预览称呼 · 同事'])
+  faceApi.catalog=async()=>({...catalog,revision:2,settings:{...settings,show_boxes:false,show_names:false,include_people:false,include_relationship:false}})
   await act(async()=>window.dispatchEvent(new window.Event(FACE_CHANGED)))
-  await act(async()=>{await (prepare as any)('再看看',(ids:string[])=>{faceIds=ids})})
-  assert.equal(boxes,1,'second photo draws no border')
-  assert.deepEqual(annotations,['当前称呼','当前称呼'])
-  assert.deepEqual(faceIds,['current'])
-  const deadline=performance.now()+1200
-  while(!ui.host.querySelector('.face-box--no-outline.face-box--known')&&performance.now()<deadline){
-   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,30))})
-  }
-  assert.equal(ui.host.querySelector('.face-box--no-outline.face-box--known')?.textContent,'后台名字')
+  await awaitLabel('同事')
+  assert.deepEqual(await send(),[])
+  assert.deepEqual(requests,[['current']]);assert.equal(boxes,2)
+  assert.deepEqual(annotations,['预览称呼 · 同事','同事'])
+  faceApi.catalog=async()=>({...catalog,revision:3,settings:{...settings,show_boxes:false,show_names:false,show_relationship:false}})
+  await act(async()=>window.dispatchEvent(new window.Event(FACE_CHANGED)))
+  assert.deepEqual(await send(),['current'])
+  assert.equal(boxes,2);assert.deepEqual(annotations,['预览称呼 · 同事','同事'])
  }finally{fsApi.uploadImage=upload;await ui.close()}
 })
 
-test('camera send reuses only a recent preview match without annotating the new picture',async()=>{
+test('camera send uses recent matches only for context and freezes visible annotations',async()=>{
  const ui=await setup(),upload=fsApi.uploadImage
  let prepare:import('../src/components/digital-person/DigitalPersonCamera').PrepareCameraMessage|null=null,uploaded='',boxes=0
  faceRuntime.detect=async canvas=>{
@@ -149,7 +216,7 @@ test('camera send reuses only a recent preview match without annotating the new 
   return id==='known'||id==='current'?[{box:[0,0,.5,.5],embedding:[],score:.99,person:{id,name:'熟人',relationship:'朋友',embeddings:[]}}]:[]
  }
  faceApi.context=async ids=>({people:ids.map(id=>({person_id:id,name:'熟人'})),text:''})
- ui.window.HTMLCanvasElement.prototype.getContext=function(){const target=this;return {drawImage(source:any){(target as any).marker=source.marker},save(){},restore(){},strokeRect(){boxes++},fillRect(){},measureText(){return {width:10}},fillText(){}} as any}
+ ui.window.HTMLCanvasElement.prototype.getContext=function(){const target=this;return {drawImage(source:any){(target as any).marker=source.marker},save(){},restore(){},scale(){},strokeRect(){boxes++},fillRect(){},measureText(){return {width:10}},fillText(){}} as any}
  ui.window.HTMLCanvasElement.prototype.toBlob=function(callback){callback(new Blob([(this as any).marker]))}
  fsApi.uploadImage=async file=>{uploaded=await file.text();return {url:'.workstep/uploads/frame.jpg',filename:file.name,size:file.size}}
  const send=async()=>{let observation:unknown;await act(async()=>{await prepare!('看看',(ids,recent)=>{observation=[ids,Boolean(recent)]})});return observation}
@@ -159,14 +226,48 @@ test('camera send reuses only a recent preview match without annotating the new 
   const deadline=Date.now()+2000
   while(!ui.host.querySelector('.face-box--known')&&Date.now()<deadline)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,30))})
   assert.ok(ui.host.querySelector('.face-box--known'))
+  layoutPreview(ui)
   video.marker='blurred'
-  assert.deepEqual(await send(),[['known'],true]);assert.equal(uploaded,'blurred');assert.equal(boxes,0)
+  assert.deepEqual(await send(),[['known'],true]);assert.equal(uploaded,'blurred');assert.equal(boxes,1)
   video.marker='current'
-  assert.deepEqual(await send(),[['current'],false]);assert.equal(uploaded,'current');assert.equal(boxes,1)
+  assert.deepEqual(await send(),[['current'],false]);assert.equal(uploaded,'current')
   video.marker='blurred'
   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,1050))})
   assert.deepEqual(await send(),[[],false])
  }finally{fsApi.uploadImage=upload;await ui.close()}
+})
+
+for(const scenario of ['ready','failed','disabled','closed'] as const)test(`camera shows first-frame recognition progress (${scenario})`,async()=>{
+ const ui=await setup()
+ let finish!:()=>void,calls=0
+ if(scenario==='disabled')faceApi.catalog=async()=>({...catalog,settings:{...catalog.settings,enabled:false}})
+ faceRuntime.detect=()=>{
+  calls++
+  return new Promise((resolve,reject)=>{finish=()=>scenario==='failed'?reject(new Error('model failed')):resolve([])})
+ }
+ const status=()=>ui.host.querySelector('.face-camera-feedback')
+ try{
+  await act(async()=>ui.root.render(<I18nProvider><DigitalPersonCamera compact autoStart/></I18nProvider>))
+  const video=ui.readyVideo()
+  await act(async()=>{
+   video.dispatchEvent(new ui.window.Event('loadedmetadata'))
+   await new Promise(resolve=>setTimeout(resolve,150))
+  })
+  if(scenario==='disabled'){
+   assert.equal(calls,0)
+   assert.equal(status(),null)
+   return
+  }
+  assert.equal(calls,1)
+  assert.match(status()?.textContent??'',/人脸识别加载中/)
+  assert.ok(ui.host.querySelector('.video-preview-content .face-camera-feedback .spinner'))
+  if(scenario==='closed')await act(async()=>ui.host.querySelector<HTMLButtonElement>('[data-video-close]')!.click())
+  await act(async()=>finish())
+  if(scenario==='failed'){
+   assert.match(status()?.textContent??'',/人脸识别暂不可用/)
+   assert.equal(status()?.querySelector('.spinner'),null)
+  }else assert.equal(status(),null)
+ }finally{await ui.close()}
 })
 
 test('preview requires fresh frames, expires on a frozen stream and clears on library change',async()=>{

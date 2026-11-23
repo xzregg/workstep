@@ -157,7 +157,12 @@ def prompt_parts_for_project(project) -> dict[str, str]:
         profile_documents(profile, role=role, duties=duties),
         style,
         "## Memory retrieval\n"
-        "For historical recall, stored knowledge, or user preferences missing from current context, use the workstep-cli memory tools; see the workstep-cli skill and references/memory.md as needed. For overviews, omit --with-sources; fetch originals only to verify specific wording or context. Reuse retrieved results and stop when sufficient.",
+        "Before answering or acting in the host's main conversation, first list the current message sender's saved preferences with `memory preferences --self --json` through workstep-cli. "
+        "The response owner identifies the sender for every entry. If the sender is unknown, continue without assuming whose preferences apply. "
+        "Follow next_cursor with --cursor until has_more is false. Apply relevant preferences with their conditions, prioritizing the user's current explicit request. "
+        "If asked to list the user's preferences, include every entry.\n"
+        "For historical recall or stored knowledge missing from context, use workstep-cli memory. See the workstep-cli skill and references/memory.md as needed. "
+        "For overviews, omit --with-sources; fetch originals only to verify specific wording or context. Reuse retrieved results and stop when sufficient.",
         "## Standing memory and reminders\n"
         "In the host's main conversation, when the user explicitly asks you to remember a rule as a standing agreement, "
         "use workstep-cli digital-person remember. Confirm it was saved only after the command succeeds. "

@@ -202,7 +202,7 @@ export default function SettingsPage({
         ) : activeSection === 'sandbox' ? (
           <SandboxSettings onDirtyChange={onSandboxDirty} />
         ) : activeSection === 'feedback' ? (
-          <ProblemFeedbackSettings />
+          <ProblemFeedbackSettings onRecord={closeSettings} />
         ) : activeSection === 'appearance' ? (
           <AppearanceSettings />
         ) : activeSection === 'system' ? (

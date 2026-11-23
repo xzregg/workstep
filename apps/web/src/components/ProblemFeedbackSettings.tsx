@@ -1,15 +1,19 @@
 import SettingsHelpButton from './SettingsHelpButton'
 import { useI18n, localizeErrorDisplay } from '../i18n'
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import Button, { ButtonLink } from './Button'
 import { buildBrowserFeedback } from '../utils/browserDiagnostics'
 import { copyText } from '../utils/clipboard'
 import { redactDiagnosticText } from '../../../desktop/src/diagnostic-privacy.mjs'
 import './ProblemFeedbackSettings.css'
 
-export default function ProblemFeedbackSettings() {
+const RuntimeDiagnosticsPanel = lazy(() => import('./RuntimeDiagnosticsPanel'))
+
+export default function ProblemFeedbackSettings({ onRecord }: { onRecord?: () => void } = {}) {
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const { t } = useI18n()
   const bridge = typeof window !== 'undefined' ? window.workstepDesktop?.feedback : undefined
+  const showRuntimeDiagnostics = !bridge && !globalThis.window?.WorkStepAndroid && !globalThis.window?.WorkStepIOS
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
@@ -52,6 +56,12 @@ export default function ProblemFeedbackSettings() {
           <p className="settings-system-description">{t('settings.feedbackScreenshotHint')}</p>
         </>}
       </div>
+      {showRuntimeDiagnostics && onRecord && <div className="settings-system-group">
+        <Button variant="ghost" onClick={() => setDiagnosticsOpen(true)}>{t('settings.runtimeDiagnostics')}</Button>
+        {diagnosticsOpen && <Suspense fallback={null}>
+          <RuntimeDiagnosticsPanel onClose={() => setDiagnosticsOpen(false)} onRecord={onRecord} />
+        </Suspense>}
+      </div>}
       <ButtonLink
         href="https://github.com/xzregg/workstep/issues/new?template=bug_report.yml"
         target="_blank" rel="noopener noreferrer">

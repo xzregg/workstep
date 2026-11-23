@@ -117,6 +117,20 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         read_only=False, side_effect="Cancel the active digital-person assessment cycle",
     ),
     WorkstepTool(
+        name="workstep_memory_sender",
+        description="Resolve the authenticated sender of the active conversation turn.",
+        method="POST", path="/api/memory/sender",
+        parameters={}, body_params=("project_id", "session_id"),
+    ),
+    WorkstepTool(
+        name="workstep_memory_preferences",
+        description="List all saved preferences, filter by sender_id, or use self_only for the current message sender. Continue with next_cursor while has_more is true.",
+        method="POST", path="/api/memory/preferences",
+        parameters={"cursor": {"type": "integer"}, "limit": {"type": "integer"},
+                    "sender_id": {"type": "string"}, "self_only": {"type": "boolean"}},
+        body_params=("project_id", "session_id", "cursor", "limit", "sender_id", "self_only"),
+    ),
+    WorkstepTool(
         name="workstep_memory_search",
         description="For ordinary recall and date summaries, search organized knowledge first with knowledge_only=true and limit=8. Derive text clues from user intent; exact entity filters combine with AND and also select knowledge. Dates constrain the knowledge event time. If coverage is insufficient, or exact messages or a complete timeline are requested, browse original records in small pages using snapshot/next_cursor. Use include_sources only when original wording is needed.",
         method="POST", path="/api/memory/search",

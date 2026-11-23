@@ -1,9 +1,9 @@
 import type { FileChangesQuery } from '../utils/messageFileChanges'
-import { useCallback, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { markChatDisplay, runtimeMark, runtimeStamp } from '../utils/runtimeDiagnostics'
 import type { CSSProperties, HTMLAttributes, ReactNode, Ref } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import A2uiMessage from './A2uiMessage'
-import ImagePreview from './ImagePreview'
 import MarqueeText from './MarqueeText'
 import MarkdownMessage from './MarkdownMessage'
 import { MarkdownPlanCard } from './ProposedPlanMessage'
@@ -216,15 +216,10 @@ export default function ChatMessageBubble({
 }: ChatMessageBubbleProps) {
   const { t, errorText } = useI18n()
   const isUser = role === 'user'
-  const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
   const [asyncAnswers, setAsyncAnswers] = useState<Record<number, string>>({})
   const [asyncSubmitting, setAsyncSubmitting] = useState(false)
   const [asyncSubmitted, setAsyncSubmitted] = useState(false)
   const [asyncSubmitError, setAsyncSubmitError] = useState('')
-  // 稳定引用：MarkdownMessage 已 memo 化，内联箭头会每次击穿 memo 让历史消息重新解析 markdown。
-  const handleImageClick = useCallback((src: string, alt: string) => {
-    setPreviewImage({ src, alt })
-  }, [])
   const interactions = onInterruptedQuestionSubmit
     ? interactionItemsFromEvents(events).filter(({ request, response }) => (
       request.method === 'elicitation/create' && request.mode !== 'url'
@@ -239,14 +234,34 @@ export default function ChatMessageBubble({
     event.type === 'tool_use' || event.type === 'tool_result'
     || isToolEvent(event)
   ))
-  if (isUser && isHiddenA2uiActionMessage(content)) return null
+  const hidden = isUser && isHiddenA2uiActionMessage(content)
   const dedupedContent = isUser ? content : visibleAssistantContent(content, error)
   // 兜底：正文为空、或被覆盖成「（生成失败：…）」包装文案时，从事件里的
   // final_answer 正文重建，避免失败消息只剩红色错误行、正文消失。
   const visibleContent = isUser
     ? content
     : dedupedContent || assistantBodyFallback(content, events)
-  const displayContent = stripAssistantPayloadsForDisplay(visibleContent)
+  const displayContent = hidden ? '' : stripAssistantPayloadsForDisplay(visibleContent)
+  const messageBody = useRef<HTMLDivElement>(null)
+  const diagnosticMessageId = rootProps?.['data-message-id']
+  useLayoutEffect(() => {
+    const body = messageBody.current
+    if (isUser || !displayContent || !body) return
+    const committedAt = runtimeStamp()
+    if (committedAt === undefined) return
+    if (streaming) runtimeMark('chat-stream-commit', committedAt)
+    const id = typeof diagnosticMessageId === 'string' ? diagnosticMessageId : undefined
+    const hasText = () => Boolean(body.querySelector('.llm-message-timeline')?.textContent?.trim())
+    if (markChatDisplay(id, hasText)) return
+    const observer = new MutationObserver(() => {
+      if (markChatDisplay(id, hasText)) observer.disconnect()
+    })
+    observer.observe(body, { subtree: true, childList: true, characterData: true })
+    const dispose = () => observer.disconnect()
+    window.addEventListener('workstep:runtime-capture', dispose, { once: true })
+    return () => { dispose(); window.removeEventListener('workstep:runtime-capture', dispose) }
+  }, [diagnosticMessageId, displayContent, isUser, streaming])
+  if (hidden) return null
   const rootStyle: CSSProperties = {
     width: isUser ? 'fit-content' : '100%',
     maxWidth: '100%', minWidth: 0,
@@ -298,7 +313,7 @@ export default function ChatMessageBubble({
             </div>
           )}
           {(visibleContent || hasToolActivity || (!isUser && streaming)) && (
-            <div hidden={!visibleContent && !hasToolActivity} className={isUser ? 'chat-bubble chat-bubble--user' : 'chat-bubble chat-bubble--assistant'} style={{
+            <div ref={messageBody} hidden={!visibleContent && !hasToolActivity} className={isUser ? 'chat-bubble chat-bubble--user' : 'chat-bubble chat-bubble--assistant'} style={{
               fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6,
               color: isUser ? 'var(--fg)' : 'var(--fg-2)',
               background: isUser ? 'var(--surface)' : 'var(--bg)',
@@ -314,7 +329,6 @@ export default function ChatMessageBubble({
                     projectId={projectId}
                     className="user-message-markdown"
                     plainText
-                    onImageClick={handleImageClick}
                   />
                 </UserMessageContent>
               ) : (
@@ -383,7 +397,6 @@ export default function ChatMessageBubble({
               content={markdownPlan.content}
               projectId={projectId}
               streaming={streaming && !markdownPlan.complete}
-              onImageClick={handleImageClick}
             />
           )}
           {!isUser && plan && <PlanChecklist plan={plan} streaming={streaming} />}
@@ -467,14 +480,6 @@ export default function ChatMessageBubble({
           {children}
         </div>
       </div>
-      {isUser && previewImage && (
-        <ImagePreview
-          src={previewImage.src}
-          alt={previewImage.alt}
-          projectId={projectId}
-          onClose={() => setPreviewImage(null)}
-        />
-      )}
     </div>
   )
 }

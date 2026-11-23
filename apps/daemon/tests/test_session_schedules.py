@@ -135,7 +135,9 @@ async def test_real_chat_runtime_preserves_context_and_marks_scheduled_message(c
     observed = []
     async def invoke(*args, **kwargs):
         from services.conversation_context import current_conversation
-        assert current_conversation() == {"project_id": project.id, "session_id": session["id"]}
+        context = current_conversation()
+        assert (context["project_id"], context["session_id"]) == (project.id, session["id"])
+        assert context["message_id"] and "sender_id" not in context
         observed.append(args[3])
         return '当前工作正常', [], 'engine-thread'
     monkeypatch.setattr(chat, '_invoke', invoke)

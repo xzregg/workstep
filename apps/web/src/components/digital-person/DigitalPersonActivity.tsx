@@ -7,7 +7,8 @@ import StatusBadge from '../StatusBadge'
 import { DIGITAL_ACTIVITY_CHANGED } from './useDigitalActivity'
 import Spinner from '../Spinner'
 import DigitalPersonRunDetail from './DigitalPersonRunDetail'
-import DigitalPersonRunKnowledge from './DigitalPersonRunKnowledge'
+import {DigitalPersonRunHeader} from './DigitalPersonRunKnowledge'
+import DigitalPersonRunOutcome from './DigitalPersonRunOutcome'
 import DigitalPersonDelegationDialog from './DigitalPersonDelegationDialog'
 import './DigitalPersonActivity.css'
 
@@ -88,17 +89,14 @@ export default function DigitalPersonActivity({checking = false, titleId}: {chec
         {data.runs.map(run=>{
           const expanded=openRun===run.id
           return <div className="digital-person-run" data-run-id={run.id} key={run.id}>
-            <DigitalPersonRunKnowledge runId={run.id} processing={run.processing} fallback={run.summary || status(run.status)}>
-              {(summary,summaryId)=><div className="digital-person-run-header digital-run-header">
-                <div className={run.processing?'digital-person-run-processing':'digital-person-activity-title'}>{summary}</div>
-                <time dateTime={run.created_at} title={new Date(run.created_at).toLocaleString()}>{timestamp(run.created_at)}</time>
-                {badge(run.status)}
-                <Button type="button" variant="icon" className="digital-person-run-toggle digital-run-detail-toggle" aria-labelledby={summaryId} aria-expanded={expanded} aria-controls={expanded?`digital-run-${run.id}`:undefined} onClick={()=>setOpenRun(expanded?null:run.id)}>
-                  <Icon name={expanded?'chevron-down':'chevron-right'}/>
-                </Button>
-              </div>}
-            </DigitalPersonRunKnowledge>
-            {expanded && <DigitalPersonRunDetail key={run.id} id={run.id} processingInList={!!run.processing} onRetryDelivery={()=>action('retry',()=>digitalRuntimeApi.retryDelivery(run.id))} busy={!!busy}/>}
+            <DigitalPersonRunHeader runId={run.id} className="digital-person-run-header" processing={run.processing}
+              fallback={run.summary || status(run.status)} expanded={expanded} onToggle={()=>setOpenRun(expanded?null:run.id)}>
+              {badge(run.status)}
+              <DigitalPersonRunOutcome outcome={run.outcome}/>
+              <time dateTime={run.created_at} title={new Date(run.created_at).toLocaleString()}>{timestamp(run.created_at)}</time>
+            </DigitalPersonRunHeader>
+            {expanded && <DigitalPersonRunDetail key={run.id} id={run.id} processingInList={run.processing} affinityInList={!!run.outcome}
+              summaryInList={run.processing ? undefined : run.summary} onRetryDelivery={()=>action('retry',()=>digitalRuntimeApi.retryDelivery(run.id))} busy={!!busy}/>}
           </div>
         })}
       </ActivitySection>

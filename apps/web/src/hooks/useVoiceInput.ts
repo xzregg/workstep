@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { speechApi, type SpeechResult, type SpeechStreaming } from '../api/speech'
 import type { TurnState } from '../audio/turnController'
 import { browserDiagnostics } from '../utils/browserDiagnostics'
@@ -17,16 +17,46 @@ function withDeadline<T>(work: Promise<T>, milliseconds: number, message: string
 }
 interface Options {
   ownerKey: string; projectId?: string; disabled: boolean; compact: boolean;
-  value: string; cursor: number; automatic?: boolean; showLevel?: boolean; onInsert: (text: string, cursor: number) => void
+  value: string; cursor: number; automatic?: boolean; showLevel?: boolean; reuseCaptureContext?: boolean; trackSpeechLevel?: boolean
+  continuous?: boolean
+  deliverSegments?: boolean
+  onInsert: (text: string, cursor: number) => void
+}
+interface VoiceSegment {
+  frames: Int16Array[]
+  samples: number
+  hasSpeech: boolean
+  complete: boolean
+  turn?: TurnState
+}
+const newSegment = (): VoiceSegment => ({ frames: [], samples: 0, hasSpeech: false, complete: false })
+function keepPreRoll(queue: Int16Array[], samples: number) {
+  // Keep 320 ms before onset and up to 96 ms while confirming it.
+  const keep = 16 * (320 + 96)
+  while (samples > keep) {
+    const first = queue[0], excess = samples - keep
+    if (first.length <= excess) { queue.shift(); samples -= first.length }
+    else { queue[0] = first.subarray(excess); samples = keep }
+  }
+  return samples
 }
 interface Run {
+  phoneCall: boolean; deliverSegments: boolean;
+  segments?: VoiceSegment[]; completedText?: string;
+  speechMeter?: { level: number; capturedAt: number };
   turn?: TurnState; id?: string; project: string; token: AbortController; capture?: VoiceCapture;
   opening: boolean; streaming?: SpeechStreaming; candidateAt?: number; checking: boolean;
   queue: Int16Array[]; queued: number; pumping: boolean; sequence: number; text: string; nextMeterAt: number;
   finishing: boolean; draining: boolean; finalizing: boolean; maxFrameSamples: number; capturedSamples: number; cursor: number; draft: string
 }
 const SAMPLE_RATE = 16000
+const PHONE_STREAM_BATCH = SAMPLE_RATE * 0.32
+const PHONE_INITIAL_PREVIEW = SAMPLE_RATE * 1.2
+const SPEECH_METER_MAX_AGE_MS = 160
+const VAD_ONLY_LEVEL = .12
 const RECORDING_LIMIT = 120 * SAMPLE_RATE
+const transcript = (r: Run) => (r.completedText ?? '') + r.text
+const recognitionTurn = (r: Run) => r.deliverSegments ? r.segments?.[0]?.turn : r.turn
 
 export function useVoiceInput(options: Options) {
   const [mode, setMode] = useState(false)
@@ -43,10 +73,18 @@ export function useVoiceInput(options: Options) {
   const touchTarget = useRef<HTMLElement | null>(null)
   const heldRecording = useRef(false)
   const heldPointer = useRef<number | undefined>(undefined)
+  const readSpeechLevel = useCallback(() => {
+    const current = run.current
+    const meter = current?.speechMeter
+    if (!current || current.finishing || current.token.signal.aborted
+      || !meter || performance.now() - meter.capturedAt >= SPEECH_METER_MAX_AGE_MS) return 0
+    return meter.level
+  }, [])
   const clearHold = () => { if (hold.current) clearTimeout(hold.current.timer); hold.current = null; touchTarget.current = null }
   const live = (r: Run) => run.current === r && !r.token.signal.aborted
   const dispose = (r: Run) => {
     r.capture?.stop(); r.token.abort(); r.queue = []
+    if (r.segments) r.segments.length = 0
     if (r.id) void speechApi.cancel(r.id, r.project).catch(() => {})
   }
   const cancel = () => {
@@ -61,14 +99,37 @@ export function useVoiceInput(options: Options) {
       : reason instanceof Error ? reason.message : 'speech.failed')
     setPhase('error'); setLevel(0); setCatchingUp(false); dispose(r)
     // Keep only recognized text for explicit recovery; no audio survives.
-    setText(r.text)
+    setText(transcript(r))
   }
-  const commit = (r: Run) => {
-    if (!live(r)) return
-    if (latest.current.value !== r.draft) { fail(r, new Error('speech.draftChanged')); return }
-    latest.current.onInsert(r.text, r.cursor)
+  const completeRun = (r: Run) => {
     run.current = null; r.capture?.stop(); r.token.abort(); r.queue = []
     setPhase('idle'); setMode(false); setText(''); setNotice(''); setLevel(0); setCatchingUp(false)
+  }
+  const insertTranscript = (r: Run) => {
+    if (!live(r)) return
+    if (latest.current.value !== r.draft) { fail(r, new Error('speech.draftChanged')); return }
+    latest.current.onInsert(transcript(r), r.cursor)
+    completeRun(r)
+  }
+  const commit = (r: Run) => {
+    if (!r.segments) { insertTranscript(r); return }
+
+    if (r.deliverSegments) latest.current.onInsert(r.text, r.cursor)
+    else r.completedText = transcript(r)
+    r.segments.shift()
+    const next = r.segments[0]
+    r.queue = next?.frames ?? []
+    r.queued = next?.samples ?? 0
+    r.id = undefined
+    r.opening = false
+    r.streaming = undefined
+    r.sequence = 0
+    r.candidateAt = undefined
+    r.finalizing = false
+    r.text = ''
+    setText(r.completedText ?? '')
+    setCatchingUp(false)
+    queueMicrotask(() => driveContinuous(r))
   }
   const submit = async (r: Run, samples: Int16Array, final: boolean, preview = true, candidateAt?: number) => {
     const sequence = r.sequence++
@@ -82,19 +143,32 @@ export function useVoiceInput(options: Options) {
     if (requestMs >= 1000 || queuedMs >= 2000) {
       browserDiagnostics.recordSpeechTiming({ requestMs, processingMs: result.processing_ms, queuedMs })
     }
-    if (candidateAt !== undefined && candidateAt !== r.turn?.lastVoice) return
-    if (preview) { r.text = result.text; setText(result.text) }
+    if (candidateAt !== undefined && candidateAt !== recognitionTurn(r)?.lastVoice) return
+    if (preview) r.text = result.text
     if (result.final) commit(r)
+    else if (preview) setText(transcript(r))
   }
   const pump = async (r: Run) => {
     if (r.pumping || r.draining || !r.id || !live(r)) return
     r.pumping = true
     try {
-      while (live(r) && !r.draining && !r.finalizing && (r.queue.length || r.finishing)) {
-        const candidate = r.streaming === 'segment' && r.turn?.candidate && r.candidateAt !== r.turn.lastVoice
+      while (live(r) && !r.draining && !r.finalizing) {
+        const segmentComplete = r.segments ? r.segments[0]?.complete : r.finishing
+        const turn = recognitionTurn(r)
+        if (r.deliverSegments && segmentComplete && r.streaming === 'segment' && turn?.canCommit && r.candidateAt === turn.lastVoice) {
+          // All queued samples after the speculative decode are confirmed silence.
+          r.queue.length = 0; r.queued = 0
+        }
+        const candidate = (!r.segments || r.deliverSegments) && r.streaming === 'segment' && turn?.candidate && r.candidateAt !== turn.lastVoice
+        if (!r.queue.length && !segmentComplete && !candidate) break
         const buffered = r.streaming === 'segment' || r.streaming === 'final'
-        const minimum = buffered ? r.maxFrameSamples : r.turn ? 8000 : 1
-        if (!r.finishing && !candidate && r.queued < minimum) break
+        const streamingBatch = r.phoneCall && r.streaming === 'native' ? PHONE_STREAM_BATCH : 8000
+        const minimum = buffered ? r.maxFrameSamples : r.turn ? streamingBatch : 1
+        // Decode one early prefix during uninterrupted speech. Subsequent
+        // SenseVoice previews still wait for a pause to avoid repeated work.
+        const initialPreview = r.phoneCall && r.streaming === 'segment' && r.sequence === 0
+          && turn?.recentSpeech && r.queued >= PHONE_INITIAL_PREVIEW
+        if (!segmentComplete && !candidate && !initialPreview && r.queued < minimum) break
         // Catch up with the latest audio in one request rather than replaying
         // every outdated half-second hypothesis after a slow decode.
         const batch: Int16Array[] = []
@@ -107,11 +181,12 @@ export function useVoiceInput(options: Options) {
         const samples = new Int16Array(length)
         let offset = 0
         for (const frame of batch) { samples.set(frame, offset); offset += frame.length }
-        const final = r.finishing && r.queue.length === 0
+        const final = Boolean(segmentComplete && r.queue.length === 0)
         if (final) r.finalizing = true
-        const candidateAt = !final && candidate && !r.queue.length ? r.turn?.lastVoice : undefined
+        const candidateAt = !final && candidate && !r.queue.length ? turn?.lastVoice : undefined
         if (candidateAt !== undefined) r.candidateAt = candidateAt
-        await submit(r, samples, final, r.streaming !== 'segment' || final || candidateAt !== undefined, candidateAt)
+        await submit(r, samples, final, r.streaming !== 'segment' || final || initialPreview || candidateAt !== undefined, candidateAt)
+        if (final) break
       }
     } catch (reason) { fail(r, reason) }
     finally { r.pumping = false }
@@ -119,13 +194,25 @@ export function useVoiceInput(options: Options) {
   const finish = async (automatic = false) => {
     const r = run.current
     if (!r || !live(r) || r.finishing || r.checking || !r.capture) return
+    if (r.segments) {
+      r.finishing = true; r.draining = true; setPhase('finishing'); setLevel(0)
+      try { await r.capture.flush() }
+      catch (reason) { fail(r, reason); return }
+      if (!live(r)) return
+      r.capture.stop()
+      r.draining = false
+      const tail = r.segments.at(-1)
+      if (tail) tail.complete = true
+      driveContinuous(r)
+      return
+    }
     if (r.turn && !r.turn.hasSpeech) { cancel(); return }
     r.checking = true
     if (!automatic) { r.finishing = true; r.draining = true; setPhase('finishing'); setLevel(0) }
     try {
       const turn = await r.capture.flush()
       if (!live(r)) return
-      if (r.turn && !turn) throw new Error('speech.vadUnavailable')
+      if (r.turn && !turn) throw new Error('speech.recordingCheckTimeout')
       if (turn) r.turn = turn
       if (automatic && r.turn && !r.turn.canCommit && r.capturedSamples < RECORDING_LIMIT) {
         if (r.candidateAt !== r.turn.lastVoice) { r.text = ''; setText('') }
@@ -155,9 +242,9 @@ export function useVoiceInput(options: Options) {
     } else void pump(r)
   }
   const openSession = async (r: Run) => {
-    if (r.opening || !r.capture || !live(r) || r.turn && !r.turn.hasSpeech) return
+    if (r.opening || !r.capture || !live(r) || (r.segments ? !r.segments[0]?.hasSpeech : r.turn && !r.turn.hasSpeech)) return
     r.opening = true
-    setPhase(r.finishing ? 'finishing' : 'preparing')
+    if (!r.segments) setPhase(r.finishing ? 'finishing' : 'preparing')
     try {
       const creating = speechApi.start(r.project, r.token.signal)
       void creating.then(session => {
@@ -168,39 +255,93 @@ export function useVoiceInput(options: Options) {
       r.id = session.id
       r.streaming = session.streaming
       r.maxFrameSamples = Math.max(32000, Math.min(128000, session.max_frame_samples ?? 32000))
-      setPhase(r.finishing ? 'finishing' : 'recording')
+      if (!r.segments) setPhase(r.finishing ? 'finishing' : 'recording')
       void pump(r)
     } catch (reason) { fail(r, reason) }
   }
-  const start = async () => {
-    if (latest.current.disabled || (run.current && live(run.current))) return
+  function driveContinuous(r: Run) {
+    if (!live(r) || r.draining || !r.segments) return
+    if (r.segments[0]?.hasSpeech) {
+      void openSession(r)
+      void pump(r)
+    } else if (r.finishing) {
+      if (r.deliverSegments) completeRun(r)
+      else insertTranscript(r)
+    }
+  }
+
+  const captureSegment = (r: Run, samples: Int16Array, turn: TurnState) => {
+    const segments = r.segments!
+    // The head owns the ASR session. New audio goes to the tail even while
+    // the head is waiting for its final response.
+    const tail = segments.at(-1)!
+    r.turn = turn
+    tail.frames.push(samples)
+    tail.samples += samples.length
+    tail.hasSpeech ||= turn.hasSpeech
+    if (!tail.hasSpeech) tail.samples = keepPreRoll(tail.frames, tail.samples)
+    if (tail === segments[0]) {
+      r.queued = tail.hasSpeech ? r.queued + samples.length : tail.samples
+      if (r.deliverSegments && r.candidateAt === tail.turn?.lastVoice && r.candidateAt !== undefined && r.candidateAt !== turn.lastVoice) {
+        r.text = ''; setText('')
+      }
+    }
+    if (r.deliverSegments) tail.turn = turn
+    if (turn.canCommit) {
+      tail.complete = true
+      segments.push(newSegment())
+    }
+    driveContinuous(r)
+  }
+
+  const start = async (phoneCall = false) => {
+    if (document.hidden || latest.current.disabled || (run.current && live(run.current))) return
     setMode(true); setPhase('requesting'); setError(''); setNotice(''); setText(''); setSeconds(0); setCatchingUp(false)
-    const r: Run = { turn: latest.current.automatic ? { lastVoice: 0, hasSpeech: false, canCommit: false, candidate: false } : undefined,
-      project: latest.current.projectId ?? '', token: new AbortController(), queue: [], queued: 0, opening: false, checking: false, nextMeterAt: 0,
+    const deliverSegments = phoneCall || Boolean(latest.current.deliverSegments)
+    const segment = latest.current.continuous || deliverSegments ? newSegment() : undefined
+    const r: Run = { phoneCall, deliverSegments, segments: segment ? [segment] : undefined,
+      turn: segment || latest.current.automatic ? { lastVoice: 0, hasSpeech: false, recentSpeech: false, canCommit: false, candidate: false } : undefined,
+      project: latest.current.projectId ?? '', token: new AbortController(), queue: segment?.frames ?? [], queued: 0, opening: false, checking: false, nextMeterAt: 0,
       pumping: false, sequence: 0, text: '', finishing: false, draining: false, finalizing: false,
       maxFrameSamples: 32000, capturedSamples: 0,
       cursor: latest.current.cursor, draft: latest.current.value }
     run.current = r
     r.token.signal.addEventListener('error', () => {
       if (!live(r) || r.finishing) return
-      if (!r.turn && r.capture && r.capturedSamples > 0) {
+      if ((!r.turn || r.segments && !r.deliverSegments) && r.capture && r.capturedSamples > 0) {
         heldRecording.current = false; heldPointer.current = undefined
         setMode(false); setNotice('speech.interrupted'); void finish()
       } else fail(r, new Error('speech.deviceLost'))
     }, { once: true })
-    r.token.signal.addEventListener('vaderror', () => fail(r, new Error('speech.vadUnavailable')), { once: true })
+    r.token.signal.addEventListener('vaderror', event => {
+      fail(r, new Error((event as CustomEvent<string>).detail || 'speech.vadUnavailable'))
+    }, { once: true })
     try {
       // Capture starts in the gesture; retain a bounded preparation buffer so
       // the opening words survive server readiness and cold-start latency.
-      const capturing = voiceCapture.start((samples, volume, turn) => {
+      const capturing = voiceCapture.start((samples, volume, turn, capturedAt) => {
         if (!live(r)) return
-        samples = samples.subarray(0, RECORDING_LIMIT - r.capturedSamples)
+        // Delivered segments release their budget. Keep a bound on the
+        // active ASR session and waiting turns even if recognition falls behind.
+        const retained = r.deliverSegments ? r.segments!.reduce((sum, segment) => sum + segment.samples, 0) : r.capturedSamples
+        const remaining = RECORDING_LIMIT - retained
+        samples = samples.subarray(0, remaining)
         if (!samples.length) return
         r.capturedSamples += samples.length
+        if (latest.current.trackSpeechLevel) {
+          r.speechMeter = turn?.recentSpeech
+            ? { level: Number.isFinite(volume) ? volume : VAD_ONLY_LEVEL, capturedAt: capturedAt ?? performance.now() }
+            : undefined
+        }
         if (r.capturedSamples >= r.nextMeterAt) {
           r.nextMeterAt = r.capturedSamples + 560
           setSeconds(Math.floor(r.capturedSamples / SAMPLE_RATE))
           if (latest.current.showLevel !== false) setLevel(volume)
+        }
+        if (r.segments && turn) {
+          captureSegment(r, samples, turn)
+          if (samples.length === remaining) void finish()
+          return
         }
         // The recording limit bounds total PCM to 3.84 MB. Keep delayed audio
         // through temporary network stalls instead of discarding it at 4s.
@@ -210,13 +351,7 @@ export function useVoiceInput(options: Options) {
           r.turn = turn
           if (r.candidateAt === lastVoice && r.turn.lastVoice !== lastVoice) { r.text = ''; setText('') }
           if (!r.turn.hasSpeech) {
-            // 320 ms before onset plus up to 96 ms while confirming it.
-            const keep = 16 * (320 + 96)
-            while (r.queued > keep) {
-              const first = r.queue[0], excess = r.queued - keep
-              if (first.length <= excess) { r.queue.shift(); r.queued -= first.length }
-              else { r.queue[0] = first.subarray(excess); r.queued = keep }
-            }
+            r.queued = keepPreRoll(r.queue, r.queued)
             if (r.capturedSamples === RECORDING_LIMIT) cancel()
             return
           }
@@ -226,14 +361,15 @@ export function useVoiceInput(options: Options) {
         setCatchingUp(r.queued >= 32000 && r.streaming !== 'segment' && r.streaming !== 'final')
         void pump(r)
         if (r.capturedSamples === RECORDING_LIMIT && !r.finishing) void finish()
-      }, r.token.signal, Boolean(r.turn))
+      }, r.token.signal, Boolean(r.turn), undefined, { reuseContext: latest.current.reuseCaptureContext, continuous: Boolean(r.segments), phoneCall })
       // Native permission prompts cannot be aborted on every platform.
       // Stop a late stream even if the UI has timed out or moved elsewhere.
       void capturing.then(capture => { if (!live(r)) capture.stop() }, () => {})
       r.capture = await withDeadline(capturing, 30000, 'speech.microphoneTimeout', r.token.signal)
       if (!live(r)) { r.capture.stop(); return }
       if (r.turn) setPhase('recording')
-      await openSession(r)
+      if (r.segments) driveContinuous(r)
+      else await openSession(r)
     } catch (reason) { fail(r, reason) }
   }
   const releaseHold = (event?: { pointerId?: number }) => {
@@ -282,12 +418,15 @@ export function useVoiceInput(options: Options) {
     return () => { document.removeEventListener('visibilitychange', hide); window.removeEventListener('pagehide', leave) }
   }, [])
   return {
-    mode, phase, text, error, notice, level: options.showLevel === false ? 0 : level, seconds, catchingUp, active: ['requesting', 'preparing', 'recording', 'finishing'].includes(phase),
-    get hasSpeech() { return run.current?.turn?.hasSpeech ?? false },
+    readSpeechLevel, mode, phase, text, error, notice, level: options.showLevel === false ? 0 : level, seconds, catchingUp, active: ['requesting', 'preparing', 'recording', 'finishing'].includes(phase),
+    get hasSpeech() {
+      const r = run.current
+      return Boolean(r?.turn?.hasSpeech || r?.deliverSegments && r.segments?.[0]?.hasSpeech)
+    },
     setMode, start, finish: () => finish(), cancel,
     recover: () => {
       const r = run.current
-      if (r && r.draft === latest.current.value && r.text) latest.current.onInsert(r.text, r.cursor)
+      if (r && r.draft === latest.current.value && transcript(r)) latest.current.onInsert(transcript(r), r.cursor)
       cancel(); setMode(false)
     },
     pointer: {

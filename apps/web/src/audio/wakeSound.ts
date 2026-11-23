@@ -2,6 +2,9 @@ import { sharedOutputContext } from '../utils/speechOutput'
 
 const url = new URL('./wake-chime.wav?no-inline', import.meta.url).href
 const buffers = new WeakMap<AudioContext, Promise<AudioBuffer>>()
+const startupTimeout = 2300
+const completionTimeout = 3500
+export type WakeMediaResult = 'finished' | 'unavailable' | 'interrupted'
 
 export const isAndroidWakeClient = () => typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
   || typeof window !== 'undefined' && !!window.WorkStepAndroid
@@ -9,36 +12,50 @@ export const isAndroidWakeClient = () => typeof navigator !== 'undefined' && /An
 declare global {
   interface Window {
     WorkStepWakeChime?: NonNullable<Window['WorkStepSpeech']>
+    WorkStepWakeGreeting?: NonNullable<Window['WorkStepSpeech']>
   }
 }
 
 let chimeSequence = 0
 let stopNativeChime: (() => void) | undefined
-function playNativeChime(bridge: NonNullable<Window['WorkStepWakeChime']>, signal: AbortSignal) {
+export function playNativeWakeMedia(bridge: NonNullable<Window['WorkStepSpeech']>,
+  request: { type: 'wake-chime' } | { type: 'wake-greeting'; chunks: string[]; sampleRate: number; volume: number; rate: number },
+  signal: AbortSignal) {
+  if (signal.aborted) return Promise.resolve<WakeMediaResult>('unavailable')
   stopNativeChime?.()
-  return new Promise<boolean>(resolve => {
+  return new Promise<WakeMediaResult>(resolve => {
     const id = `chime-${++chimeSequence}`
-    const finish = (played: boolean) => {
+    let started = false
+    const finish = (result: WakeMediaResult) => {
       clearTimeout(timer)
       signal.removeEventListener('abort', stop)
       bridge.onmessage = null
       stopNativeChime = undefined
-      resolve(played)
+      resolve(result)
     }
     const stop = () => {
-      finish(false)
+      finish(started ? 'interrupted' : 'unavailable')
       try { bridge.postMessage(JSON.stringify({ type: 'stop', id })) } catch { /* Bridge is gone. */ }
     }
-    const timer = setTimeout(stop, 1500)
+    let timer = setTimeout(stop, startupTimeout)
     stopNativeChime = stop
     signal.addEventListener('abort', stop, { once: true })
     bridge.onmessage = event => {
       try {
         const result = JSON.parse(event.data)
-        if (result.id === id) finish(result.status === 'done')
+        if (result.id !== id) return
+        if (result.status === 'started' && !started) {
+          started = true
+          clearTimeout(timer)
+          timer = setTimeout(stop, request.type === 'wake-greeting' ? 30000 : completionTimeout)
+        } else if (result.status === 'done') {
+          finish('finished')
+        } else if (result.status === 'error') {
+          finish(started ? 'interrupted' : 'unavailable')
+        }
       } catch { /* Ignore malformed responses. */ }
     }
-    try { bridge.postMessage(JSON.stringify({ type: 'wake-chime', id })) } catch { finish(false) }
+    try { bridge.postMessage(JSON.stringify({ ...request, id })) } catch { stop() }
   })
 }
 
@@ -66,24 +83,24 @@ export function prepareWakeSound() {
 }
 
 function playAndroidChime(signal: AbortSignal) {
-  return new Promise<boolean>(resolve => {
+  return new Promise<WakeMediaResult>(resolve => {
     let source: AudioBufferSourceNode | undefined
     let started = false
     let finished = false
-    const finish = (played: boolean) => {
+    const finish = (result: WakeMediaResult) => {
       if (finished) return
       finished = true
       clearTimeout(timer)
       signal.removeEventListener('abort', abort)
       if (source) {
         source.onended = null
-        if (started) source.stop()
+        if (started && result !== 'finished') source.stop()
         source.disconnect()
       }
-      resolve(played)
+      resolve(result)
     }
-    const abort = () => finish(false)
-    const timer = setTimeout(abort, 1500)
+    const abort = () => finish(started ? 'interrupted' : 'unavailable')
+    let timer = setTimeout(abort, startupTimeout)
     signal.addEventListener('abort', abort, { once: true })
     try {
       const context = sharedOutputContext()
@@ -92,9 +109,11 @@ function playAndroidChime(signal: AbortSignal) {
         source = context.createBufferSource()
         source.buffer = buffer
         source.connect(context.destination)
-        source.onended = () => finish(true)
+        source.onended = () => finish('finished')
         source.start()
         started = true
+        clearTimeout(timer)
+        timer = setTimeout(abort, completionTimeout)
       }).catch(abort)
     } catch { abort() }
   })
@@ -103,9 +122,15 @@ function playAndroidChime(signal: AbortSignal) {
 export async function playWakeSound(audio: HTMLAudioElement | null, signal: AbortSignal): Promise<boolean> {
   if (signal.aborted) return false
   const bridge = typeof window !== 'undefined' ? window.WorkStepWakeChime : undefined
-  if (bridge && await playNativeChime(bridge, signal)) return true
+  if (bridge) {
+    const result = await playNativeWakeMedia(bridge, { type: 'wake-chime' }, signal)
+    if (result !== 'unavailable') return result === 'finished'
+  }
   if (signal.aborted) return false
-  if (isAndroidWakeClient() && typeof AudioContext !== 'undefined' && await playAndroidChime(signal)) return true
+  if (isAndroidWakeClient() && typeof AudioContext !== 'undefined') {
+    const result = await playAndroidChime(signal)
+    if (result !== 'unavailable') return result === 'finished'
+  }
   if (signal.aborted || !audio) return false
 
   return new Promise<boolean>(resolve => {
@@ -117,15 +142,21 @@ export async function playWakeSound(audio: HTMLAudioElement | null, signal: Abor
       signal.removeEventListener('abort', failed)
       audio.removeEventListener('ended', ended)
       audio.removeEventListener('error', failed)
-      audio.pause()
+      audio.removeEventListener('playing', playing)
+      if (!played) audio.pause()
       resolve(played)
     }
     const ended = () => finish(true)
     const failed = () => finish(false)
-    const timer = setTimeout(failed, 1800)
+    const playing = () => {
+      clearTimeout(timer)
+      timer = setTimeout(failed, completionTimeout)
+    }
+    let timer = setTimeout(failed, startupTimeout)
     signal.addEventListener('abort', failed, { once: true })
     audio.addEventListener('ended', ended, { once: true })
     audio.addEventListener('error', failed, { once: true })
+    audio.addEventListener('playing', playing, { once: true })
     try {
       audio.currentTime = 0
       void audio.play().catch(failed)

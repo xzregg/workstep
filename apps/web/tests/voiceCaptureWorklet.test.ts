@@ -46,3 +46,23 @@ test('audio worklet reports a gap before delivering samples from the resumed dev
   processor.port.onmessage({ data: { type: 'flush' } })
   assert.deepEqual(messages.map(message => message.type ?? message[0]), [1, 'discontinuity', 2, 'flushed'])
 })
+
+test('timestamped input reports the final audio frame even when a render block spans chunks',()=>{
+  const messages: {type:string;endFrame:number;samples:Float32Array}[]=[]
+  let Processor: any
+  const sandbox={
+    AudioWorkletProcessor:class { port={onmessage:null,postMessage:(data: typeof messages[number])=>messages.push(data)} },
+    sampleRate:48000,currentFrame:2048,
+    registerProcessor:(_name:string,implementation:any)=>{Processor=implementation},
+  }
+  runInNewContext(readFileSync(new URL('../src/audio/voiceCapture.worklet.js',import.meta.url),'utf8'),sandbox)
+  const processor=new Processor({processorOptions:{timestamped:true}})
+  for(let index=0;index<8;index++){
+    processor.process([[new Float32Array(128)]])
+    sandbox.currentFrame+=128
+  }
+  processor.port.onmessage({data:{type:'flush'}})
+  assert.deepEqual(messages.slice(0,2).map(message=>[message.type,message.endFrame,message.samples.length]),
+    [['audio',3008,960],['audio',3072,64]])
+  assert.equal(messages[2].type,'flushed')
+})

@@ -76,7 +76,7 @@ async def test_sessions_and_projects_are_isolated_and_busy_entries_never_evicted
 
 @pytest.mark.anyio
 async def test_idle_timeout_and_dead_process_are_reclaimed():
-    pool = CodexClientPool(idle_seconds=0.01)
+    pool = CodexClientPool(idle_seconds=0.01, keep_warm=False)
     entry = await pool.acquire('/one', 'a', 'same', Client)
     pool.bind(entry, 'a', SimpleNamespace(id='a'))
     await pool.release(entry, reusable=True)

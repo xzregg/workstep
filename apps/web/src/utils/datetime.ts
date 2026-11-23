@@ -2,13 +2,28 @@ import { zhCNT, type TFunction } from '../i18n'
 
 export type DateTimeValue = string | number | Date | null | undefined
 
+// Live message views repeatedly read timestamps from the same event window.
+const parsedTimestamps = new Map<string, number>()
+const MAX_PARSED_TIMESTAMPS = 8192
+
 export function toMilliseconds(value: DateTimeValue): number | null {
   if (value instanceof Date) {
     const timestamp = value.getTime()
     return Number.isFinite(timestamp) ? timestamp : null
   }
   if (typeof value === 'string') {
-    const timestamp = Date.parse(value)
+    let timestamp = parsedTimestamps.get(value)
+    if (timestamp === undefined) {
+      timestamp = Date.parse(value)
+      // Zone-less dates depend on the current system timezone.
+      if (Number.isFinite(timestamp) && /T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+        if (parsedTimestamps.size === MAX_PARSED_TIMESTAMPS) {
+          const oldest = parsedTimestamps.keys().next()
+          if (!oldest.done) parsedTimestamps.delete(oldest.value)
+        }
+        parsedTimestamps.set(value, timestamp)
+      }
+    }
     return Number.isFinite(timestamp) ? timestamp : null
   }
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {

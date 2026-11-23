@@ -1,6 +1,7 @@
 import { VoiceResampler } from '../audio/voiceResampler'
 import { openVoiceDsp } from '../audio/voiceDsp'
 import type { TurnState } from '../audio/turnController'
+import { browserDiagnostics } from './browserDiagnostics'
 
 export { VoiceResampler }
 
@@ -14,8 +15,62 @@ export function pcmBase64(samples: Int16Array) {
 }
 
 export interface VoiceCapture { stop: () => void; flush: () => void | Promise<TurnState | void> }
-export async function captureVoice(onChunk: (pcm: Int16Array, level: number, turn?: TurnState) => void,
-  signal: AbortSignal, detectSpeech = false, frameSamples = 8000): Promise<VoiceCapture> {
+
+type CaptureAudio = {
+  context: AudioContext
+  users: number
+  worklet?: Promise<void>
+  clearIdle?: () => void
+}
+let reusableAudio: CaptureAudio | undefined
+
+function acquireCaptureAudio(reuseContext: boolean) {
+  const audio: CaptureAudio = reuseContext && reusableAudio
+    && !['closed', 'interrupted'].includes(reusableAudio.context.state)
+    ? reusableAudio : { context: new AudioContext(), users: 0 }
+  if (reuseContext) reusableAudio = audio
+  audio.clearIdle?.()
+  audio.users++
+  return {
+    context: audio.context,
+    loadWorklet() {
+      return audio.worklet ??= audio.context.audioWorklet
+        .addModule(new URL('../audio/voiceCapture.worklet.js?no-inline', import.meta.url).href)
+        .catch(error => { audio.worklet = undefined; throw error })
+    },
+    release(allowReuse: boolean) {
+      if (--audio.users > 0) return
+      const close = () => {
+        audio.clearIdle?.()
+        if (reusableAudio === audio) reusableAudio = undefined
+        void audio.context.close().catch(() => {})
+      }
+      if (allowReuse && reusableAudio === audio && !document.hidden) {
+        // Only retain the disconnected graph. Microphone tracks stop before this runs.
+        const hide = () => { if (document.hidden) close() }
+        const timer = setTimeout(close, 1500)
+        const clearIdle = audio.clearIdle = () => {
+          clearTimeout(timer)
+          document.removeEventListener('visibilitychange', hide)
+          window.removeEventListener('pagehide', close)
+          audio.clearIdle = undefined
+        }
+        document.addEventListener('visibilitychange', hide)
+        window.addEventListener('pagehide', close)
+        queueMicrotask(() => {
+          if (audio.clearIdle === clearIdle) void audio.context.suspend().catch(() => {
+            if (audio.clearIdle === clearIdle) close()
+          })
+        })
+      } else close()
+    },
+  }
+}
+
+export async function captureVoice(onChunk: (pcm: Int16Array, level: number, turn?: TurnState, capturedAt?: number) => void,
+  signal: AbortSignal, detectSpeech = false, frameSamples = 8000,
+  { reuseContext = false, continuous = false, phoneCall = false }:
+    { reuseContext?: boolean; continuous?: boolean; phoneCall?: boolean } = {}): Promise<VoiceCapture> {
   const checkCancelled = () => { if (signal.aborted) throw new DOMException('Cancelled', 'AbortError') }
   checkCancelled()
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('speech.secureRequired')
@@ -26,7 +81,8 @@ export async function captureVoice(onChunk: (pcm: Int16Array, level: number, tur
   const policy = policyDocument.permissionsPolicy ?? policyDocument.featurePolicy
   if (policy && !policy.allowsFeature('microphone')) throw new Error('speech.pageMicrophoneBlocked')
   // Create/resume in the user gesture before awaiting permission (iOS).
-  const context = new AudioContext()
+  const audio = acquireCaptureAudio(reuseContext)
+  const { context } = audio
   // Start resuming in the gesture, but do not await it before getUserMedia:
   // some WebViews keep Web Audio suspended until capture has been granted.
   void context.resume().catch(() => {})
@@ -37,6 +93,7 @@ export async function captureVoice(onChunk: (pcm: Int16Array, level: number, tur
   let pending: number[] = []
   let level = 0
   let closed = false
+  let graphReady = false
   let finishFlush: (() => void) | undefined
   let settleFlush: (() => void) | undefined
   let flushing: Promise<TurnState | void> | undefined
@@ -65,7 +122,7 @@ export async function captureVoice(onChunk: (pcm: Int16Array, level: number, tur
     }).finally(() => { flushing = undefined })
     return flushing
   }
-  const stop = () => {
+  const stop = (allowReuse = graphReady) => {
     stream?.getTracks().forEach(track => { track.onended = null; track.stop() })
     stream = undefined
     if (closed) return
@@ -73,11 +130,15 @@ export async function captureVoice(onChunk: (pcm: Int16Array, level: number, tur
     settleFlush?.()
     dsp?.close()
     source?.disconnect(); node?.disconnect()
-    if (node) node.port.onmessage = null
-    void context.close().catch(() => {})
-    signal.removeEventListener('abort', stop)
+    if (node) {
+      node.port.onmessage = null
+      node.port.close?.()
+    }
+    audio.release(allowReuse)
+    signal.removeEventListener('abort', abort)
   }
-  signal.addEventListener('abort', stop, { once: true })
+  const abort = () => stop()
+  signal.addEventListener('abort', abort, { once: true })
   try {
     checkCancelled()
     try {
@@ -90,37 +151,63 @@ export async function captureVoice(onChunk: (pcm: Int16Array, level: number, tur
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
     }
     if (signal.aborted) { stop(); throw new DOMException('Cancelled', 'AbortError') }
-    await context.resume()
-    checkCancelled()
-    await context.audioWorklet.addModule(new URL('../audio/voiceCapture.worklet.js?no-inline', import.meta.url).href)
-    if (signal.aborted) { stop(); throw new DOMException('Cancelled', 'AbortError') }
+    const tracks = stream.getAudioTracks()
+    const lost = () => {
+      graphReady = false
+      if (!signal.aborted) signal.dispatchEvent(new Event('error'))
+    }
+    if (tracks.some(track => track.readyState === 'ended')) throw new Error('speech.deviceLost')
+    tracks.forEach(track => { track.onended = lost })
+    try {
+      await context.resume()
+      checkCancelled()
+      await audio.loadWorklet()
+      checkCancelled()
+      source = context.createMediaStreamSource(stream)
+      node = new AudioWorkletNode(context, 'workstep-voice-capture', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1], processorOptions: { timestamped: detectSpeech } })
+      // The silent output keeps browsers rendering the Worklet.
+      node.connect(context.destination)
+      source.connect(node)
+    } catch (error) {
+      checkCancelled()
+      browserDiagnostics.recordError(error)
+      throw new Error('speech.audioCaptureFailed')
+    }
     const resampler = new VoiceResampler(context.sampleRate)
-    if (detectSpeech) dsp = openVoiceDsp(context.sampleRate, onChunk, () => signal.dispatchEvent(new Event('vaderror')))
-    source = context.createMediaStreamSource(stream)
-    node = new AudioWorkletNode(context, 'workstep-voice-capture', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] })
-    // The processor leaves output silent; connecting it keeps the audio graph
-    // rendering on browsers that suspend disconnected worklets.
-    node.connect(context.destination)
-    node.port.onmessage = (event: MessageEvent<Float32Array | { type: string }>) => {
+    if (detectSpeech) {
+      try {
+        dsp = openVoiceDsp(context.sampleRate, onChunk, reason => {
+          graphReady = false
+          signal.dispatchEvent(new CustomEvent('vaderror', { detail: reason }))
+        }, continuous, phoneCall)
+      } catch (error) {
+        browserDiagnostics.recordError(error)
+        throw new Error('speech.vadUnavailable')
+      }
+    }
+    node.port.onmessage = ({ data }: MessageEvent<Float32Array | { type: 'audio'; samples: Float32Array; endFrame: number } | { type: 'flushed' | 'discontinuity' }>) => {
       if (signal.aborted || closed) return
-      if (!(event.data instanceof Float32Array)) {
-        if (event.data?.type === 'flushed') finishFlush?.()
-        if (event.data?.type === 'discontinuity') dsp?.discontinuity()
+      if (!(data instanceof Float32Array)) {
+        if (data?.type === 'flushed') finishFlush?.()
+        if (data?.type === 'discontinuity') dsp?.discontinuity()
+        if (data?.type === 'audio') {
+          const ageMs = Math.max(0, (context.currentTime - data.endFrame / context.sampleRate) * 1000)
+          dsp?.push(data.samples, performance.now() - ageMs)
+        }
         return
       }
-      if (dsp) { dsp.push(event.data); return }
-      const samples = resampler.push(event.data)
+      if (dsp) { dsp.push(data, performance.now()); return }
+      const samples = resampler.push(data)
       for (const sample of samples) pending.push(sample)
-      level = Math.min(1, Math.sqrt(event.data.reduce((sum, v) => sum + v*v, 0) / event.data.length) * 5)
+      level = Math.min(1, Math.sqrt(data.reduce((sum, v) => sum + v*v, 0) / data.length) * 5)
       while (pending.length >= frameSamples) {
         onChunk(Int16Array.from(pending.splice(0, frameSamples)), level)
       }
     }
-    stream.getAudioTracks().forEach(track => { track.onended = () => { if (!signal.aborted) signal.dispatchEvent(new Event('error')) } })
-    source.connect(node)
-    return { stop, flush }
+    graphReady = true
+    return { stop: () => stop(), flush }
   } catch (error) {
-    stop()
+    stop(false)
     if (error instanceof DOMException && error.name === 'NotReadableError') throw new Error('speech.audioSourceUnavailable')
     if (error instanceof DOMException && error.name === 'NotFoundError') throw new Error('speech.microphoneNotFound')
     throw error

@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import {
-  Heart, CircleAlert, AudioLines, Keyboard, MicOff, Phone, PhoneOff, Camera, SwitchCamera, ScanFace, ThumbsUp, ThumbsDown, Volume2, VolumeX, Square, ScanLine, Plug, Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock, Copy, Download, Drama, Ellipsis, Eye,
+  Heart, CircleAlert, AudioLines, Keyboard, MicOff, Phone, PhoneOff, Camera, CameraOff, SwitchCamera, ScanFace, ThumbsUp, ThumbsDown, Volume2, VolumeOff, Square, ScanLine, Plug, Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock, Copy, Download, Drama, Ellipsis, Eye,
   ExternalLink, FileText, Folder, FolderOpen, GitFork, GripVertical, Image as ImageIcon, Layers, LayoutGrid, List, Monitor, Smartphone, MousePointer2, PanelTop,
   CircleHelp, Crosshair, Maximize2, Menu, Mic, Lightbulb, LoaderCircle, Minimize2, Minus, Paperclip, Pencil, Play, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
   MessageCircleHeart, MessagesSquare, PanelLeftClose, PanelLeftOpen, Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
@@ -15,7 +15,7 @@ const glyphs = {
   'thumbs-up': ThumbsUp,
   'thumbs-down': ThumbsDown,
   volume: Volume2,
-  'volume-off': VolumeX,
+  'volume-off': VolumeOff,
   square: Square,
   scan: ScanLine,
   plug: Plug,
@@ -29,6 +29,7 @@ const glyphs = {
   'phone-off': PhoneOff,
   keyboard: Keyboard,
   camera: Camera,
+  'camera-off': CameraOff,
   'scan-face': ScanFace,
   'switch-camera': SwitchCamera,
   monitor: Monitor,

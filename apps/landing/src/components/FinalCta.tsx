@@ -1,14 +1,14 @@
-import { ArrowRight, Play } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { useI18n } from '../i18n'
 
 export function FinalCta({ experienceHref }: { experienceHref: string }) {
   const { t } = useI18n()
 
   return (
-    <section className="final-cta" id="download">
-      <div className="container final-cta-inner">
+    <footer className="final-cta" id="download">
+      <div className="final-cta-inner">
         <div>
-          <h2>{t('finalCta.title')}</h2>
+          <h3>{t('finalCta.title')}</h3>
           <p>{t('finalCta.lede')}</p>
         </div>
         <div className="final-cta-actions">
@@ -16,12 +16,8 @@ export function FinalCta({ experienceHref }: { experienceHref: string }) {
             {t(experienceHref === '/' ? 'common.openWorkspace' : 'finalCta.primary')}
             <ArrowRight size={15} />
           </a>
-          <a href="#demos" className="btn btn-ghost">
-            <Play size={14} />
-            {t('finalCta.secondary')}
-          </a>
         </div>
       </div>
-    </section>
+    </footer>
   )
 }

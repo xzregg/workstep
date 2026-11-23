@@ -163,7 +163,15 @@ def build_parser() -> argparse.ArgumentParser:
     add_json(session_archive)
 
     memory = subparsers.add_parser('memory', help='search memory with intent-derived text clues or date bounds')
-    memory_sub = memory.add_subparsers(dest='subcommand', required=True,metavar='{search,history,read}')
+    memory_sub = memory.add_subparsers(dest='subcommand', required=True,metavar='{search,history,read,preferences}')
+    preferences = memory_sub.add_parser('preferences', help='list saved user preferences')
+    preference_target = preferences.add_mutually_exclusive_group()
+    preference_target.add_argument('--sender-id', help='list preferences for the specified sender ID')
+    preference_target.add_argument('--self', dest='self_only', action='store_true', default=None,
+                                   help='list preferences for the current message sender')
+    preferences.add_argument('--cursor', type=_nonnegative_int, default=0)
+    preferences.add_argument('--limit', type=_positive_int, default=20)
+    add_json(preferences)
     for operation in ('search', 'history', 'read', 'pending'):
         reader = memory_sub.add_parser(operation)
         if operation != 'pending':
@@ -219,7 +227,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     context = subparsers.add_parser("context", help="read current execution context")
     context_sub = context.add_subparsers(dest="subcommand", required=True)
-    add_json(context_sub.add_parser("get", help="get the current WorkStep project and session IDs"))
+    add_json(context_sub.add_parser("get", help="get the current WorkStep project, session, and message sender"))
 
     project = subparsers.add_parser("project", help="manage projects")
     project_sub = project.add_subparsers(dest="subcommand", required=True)
@@ -535,7 +543,7 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
     result = await _dispatch(args, client)
     if isinstance(result, dict) and result.get("ok") is False:
         return result
-    if args.command == 'memory' and not args.verbose:
+    if args.command == 'memory' and args.subcommand != 'preferences' and not args.verbose:
         from cli_memory_output import compact
         return compact(result, args.subcommand, events=getattr(args, 'events', False), query=getattr(args, 'query', ''))
     fields = getattr(args, "fields", None)
@@ -596,6 +604,10 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
             **({'project_id': args.project_id} if args.project_id else {}),
         })
     if command == 'memory':
+        if args.subcommand == 'preferences':
+            return await client.call('workstep_memory_preferences', {
+                'cursor': args.cursor, 'limit': args.limit, 'sender_id': args.sender_id, 'self_only': args.self_only,
+            })
         if args.subcommand == 'pending':
             return await client.call('workstep_memory_pending', {})
         fields = ('filter_project_id', 'filter_session_id', 'limit', 'memory_id', 'offset', 'events') if args.subcommand == 'read' else (
@@ -618,8 +630,18 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
             **{key: getattr(args, key) for key in ('project_id', 'title', 'instruction', 'origin_session_id', 'request_id', 'continuation_of', 'target_session_id')
                if getattr(args, key) is not None}, 'confirm': 'yes'})
     if command == "context":
-        from services.conversation_context import current_conversation
-        return current_conversation()
+        from services.conversation_context import active_conversation_sender, current_conversation
+
+        context = current_conversation()
+        if 'message_id' not in context:
+            return context
+        project, session = context['project_id'], context['session_id']
+        sender = active_conversation_sender(project, session)
+        if not sender:
+            sender = await client.call('workstep_memory_sender', {})
+        if sender.get('ok') is False:
+            return sender
+        return {'project_id': project, 'session_id': session, **sender}
 
     if command == "channel":
         if args.subcommand == "list":
@@ -1062,7 +1084,7 @@ def main(argv: list[str] | None = None, client: WorkstepClient | None = None) ->
     except Exception as exc:  # unexpected failures still exit non-zero
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 1
-    if (args.command == 'memory' and not args.json and not args.verbose
+    if (args.command == 'memory' and args.subcommand != 'preferences' and not args.json and not args.verbose
             and not getattr(args, 'events', False) and isinstance(result, dict) and result.get('ok') is not False):
         from cli_memory_output import render
         print(render(result, args.subcommand))

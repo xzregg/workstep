@@ -2,7 +2,9 @@ import type { AtlasLink } from '../../api/digitalPerson'
 
 type Point = {x:number;y:number}
 type Segment = {start:Point;end:Point}
+type Candidate<Link> = Segment & {link:Link;score:number}
 const epsilon = 1e-6
+export const focusedChainDepth = 5
 
 function orientation(a:Point,b:Point,c:Point) {
   const cross=(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x)
@@ -26,19 +28,47 @@ function intersects(a:Segment,b:Segment) {
 
 export const atlasLinkKey=({from,to}:AtlasLink)=>from+'/'+to
 
+function focusedChain<Link extends AtlasLink>(candidates:Candidate<Link>[],focus:string){
+  const byEnd=new Map<string,Candidate<Link>[]>()
+  for(const candidate of candidates){
+    for(const id of [candidate.link.from,candidate.link.to]){
+      const list=byEnd.get(id)
+      if(list)list.push(candidate)
+      else byEnd.set(id,[candidate])
+    }
+  }
+  const seen=new Set([focus])
+  const accepted:Candidate<Link>[]=[]
+  let tail=focus
+  while(accepted.length<focusedChainDepth){
+    const segment=byEnd.get(tail)?.find(segment=>{
+      const {from,to}=segment.link
+      return !seen.has(from===tail?to:from)&&!accepted.some(other=>intersects(segment,other))
+    })
+    if(!segment)break
+    const {from,to}=segment.link
+    tail=from===tail?to:from
+    seen.add(tail)
+    accepted.push(segment)
+  }
+  return accepted.map(({link})=>link)
+}
+
 export function constellationLinks<Link extends AtlasLink>(
   links:readonly Link[],positions:ReadonlyMap<string,Point>,maxLength:number,previous:ReadonlySet<string>=new Set(),
   focus?:string,
 ):Link[] {
-  const nearby=links.flatMap(link=>{
+  const nearby:Candidate<Link>[]=[]
+  for(const link of links){
     const start=positions.get(link.from),end=positions.get(link.to)
-    if(!start||!end)return []
+    if(!start||!end)continue
     const length=Math.hypot(end.x-start.x,end.y-start.y)
-    if(length<1||length>maxLength)return []
+    if(length<1||(focus===undefined&&length>maxLength))continue
     // Keep a segment when two projected lengths are nearly tied.
-    const touchesFocus=focus===link.from||focus===link.to
-    return [{link,start,end,touchesFocus,score:length*(previous.has(atlasLinkKey(link))?.88:1)}]
-  }).sort((a,b)=>Number(b.touchesFocus)-Number(a.touchesFocus)||a.score-b.score)
+    nearby.push({link,start,end,score:length*(previous.has(atlasLinkKey(link))?.88:1)})
+  }
+  nearby.sort((a,b)=>a.score-b.score)
+  if(focus!==undefined)return focusedChain(nearby,focus)
 
   const degree=new Map<string,number>()
   const parent=new Map<string,string>()
@@ -58,6 +88,5 @@ export function constellationLinks<Link extends AtlasLink>(
     parent.set(first,second)
     accepted.push(segment)
   }
-  const component=focus===undefined?accepted:accepted.filter(({link})=>root(link.from)===root(focus))
-  return component.map(segment=>segment.link)
+  return accepted.map(segment=>segment.link)
 }

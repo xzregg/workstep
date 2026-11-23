@@ -1,7 +1,7 @@
 import {coreDrop,shellOrigin} from './presenceShell'
 
 export const vertex=`precision highp float;
-attribute vec3 position,meta;uniform float t,energy,size,light,breath,afterglow,seconds;uniform vec2 fit;uniform vec3 mood;uniform float thought;uniform vec4 tint,motion;uniform vec2 flights[8];uniform mediump float pass;varying mediump vec3 color;varying mediump float alpha;varying mediump float shellGlow;
+attribute vec3 position,meta;uniform float t,energy,listenCore,size,light,breath,afterglow,seconds;uniform vec2 fit;uniform vec3 mood;uniform float thought;uniform vec4 tint,motion;uniform vec2 flights[8];uniform mediump float pass;varying mediump vec3 color;varying mediump float alpha;varying mediump float shellGlow;
 mat2 rot(float a){return mat2(cos(a),sin(a),-sin(a),cos(a));}
 float signalBand(float depth,float progress){
  if(progress<0.)return 0.;
@@ -63,6 +63,11 @@ void main(){
        }else{particleFade=smoothstep(1.,1.20,age);}
      }
    }
+   // The microphone moves the bright core; the listening shell keeps flowing at its own size.
+   if(listenCore>0.){
+     float coreWeight=id==4.?1.:1.-smoothstep(.085,.29,length(position-center));
+     q*=1.+1.5*listenCore*coreWeight;
+   }
    q.y-=${coreDrop.toFixed(2)};
  }
  float flow=0.;
@@ -92,12 +97,15 @@ void main(){
  gl_Position=vec4(1.10*(1.+breath)*proj*p.xy*fit,-p.z*.35,1.);
  color=mix(vec3(.027,.37,.83),vec3(.60,.99,1.),f*.58+meta.y*.38);
  if(id==3.){
-   float core=1.-smoothstep(.074+.024*voice,.194+.042*voice,length(position-center));
+   float core=1.-smoothstep(.074+.024*voice+.055*listenCore,.194+.042*voice+.09*listenCore,length(position-center));
    color=mix(vec3(.15,.73,1.),vec3(1.,1.,.91),.91*core+.09*meta.y);
  }
  alpha=meta.y*(.40+f*.86)*light;
- if(id==3.)alpha*=(1.41+.62*coreBeat*(1.-.78*voice)+1.20*voice+.53*release)*particleFade;
- if(id==4.){color=mix(vec3(.57,.91,1.),vec3(.90,1.,.97),voice);alpha*=.028+.052*coreBeat*(1.-.78*voice)+afterglow*.17;}
+ if(id==3.)alpha*=(1.41+.62*coreBeat*(1.-.78*voice)+1.20*voice+1.55*listenCore+.53*release)*particleFade;
+ if(id==4.){
+   color=mix(vec3(.57,.91,1.),vec3(.90,1.,.97),max(voice,.88*listenCore));
+   alpha*=.028+.052*coreBeat*(1.-.78*voice)+afterglow*.17+.17*listenCore;
+ }
  if(id==5.){
    color=mix(vec3(.15,.65,.99),vec3(.83,.99,1.),f);
    alpha*=(1.59+1.10*f+.56*flow+.95*beat+.40*toolSignal+.44*completionSignal);
@@ -116,7 +124,7 @@ void main(){
    alpha*=.84+.34*flow+.42*beat+.30*strand-.20*fiber+1.55*toolSignal+1.38*completionSignal+.30*voice;
  }
  alpha*=1.-.59*mood.z;
- float speechSize=id==3.||id==4.?1.+.36*voice:1.;
+ float speechSize=id==3.||id==4.?1.+.36*voice+.22*listenCore:1.;
  gl_PointSize=size*(1.+breath)*proj*speechSize*(id==4.?6.5:.83+f*.65+pow(seed,8.)*.82)*(pass>.5?4.8+1.15*shellGlow:1.+.24*shellGlow);
 
 }`;

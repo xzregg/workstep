@@ -56,6 +56,13 @@ class PendingRequest(ExecutionRequest):
     pass
 
 
+class PreferencesRequest(ExecutionRequest):
+    sender_id: str | None = Field(default=None, min_length=1, max_length=256, pattern=r'^\S+$')
+    self_only: bool = False
+    cursor: int = Field(default=0, ge=0, le=2**63 - 1)
+    limit: int = Field(default=20, ge=1, le=49)
+
+
 async def invoke(operation, request):
     try:
         args=request.model_dump()
@@ -88,3 +95,29 @@ async def read(request: ReadRequest):
 @router.post('/pending')
 async def pending(request: PendingRequest):
     return await invoke(memory_query.pending, request)
+
+
+@router.post('/preferences')
+async def preferences(request: PreferencesRequest):
+    if request.sender_id is not None and request.self_only:
+        raise HTTPException(422, 'Use sender_id or self_only, not both')
+    try:
+        context = memory_query.query_access(projects(), request.project_id, request.session_id)
+        return await memory_query.list_preferences(
+            projects(), context, project_id=request.project_id, session_id=request.session_id,
+            cursor=request.cursor, limit=request.limit, sender_id=request.sender_id, self_only=request.self_only,
+        )
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@router.post('/sender')
+async def sender(request: ExecutionRequest):
+    from services.conversation_context import active_conversation_sender
+    from services.project_scope import require_catalog_project
+
+    try:
+        require_catalog_project(request.project_id)
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    return active_conversation_sender(request.project_id, request.session_id)

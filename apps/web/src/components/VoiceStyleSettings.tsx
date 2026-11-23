@@ -14,18 +14,16 @@ const tonePresets = [
 
 type VoiceStyle = Exclude<NonNullable<OutputModel['style']>, ''>
 
-export default function VoiceStyleSettings({ value, enabled, required, local, onChange, hideUnsupported = false, preview = false, style = 'instruction', designAttributes, unavailableDesignGroups = [], cloning = false, pacePresets = false }: {
+export default function VoiceStyleSettings({ value, enabled, required, local, onChange, hideUnsupported = false, maxLength = 2000, style = 'instruction', designAttributes, cloning = false, pacePresets = false }: {
   hideUnsupported?: boolean
-  preview?: boolean
+  maxLength?: number
   style?: VoiceStyle
   designAttributes?: OutputModel['design_attributes']
-  unavailableDesignGroups?: string[]
   cloning?: boolean
   pacePresets?: boolean
   value: string; enabled: boolean; required?: boolean; local?: boolean; onChange: (value: string) => void
 }) {
   const { t, locale } = useI18n()
-  const maxLength = preview ? 500 : 2000
   const parts = value.split('；').map(s => s.trim()).filter(Boolean)
   const evening = t('tts.eveningVoicePrompt')
   const presets = style === 'tone'
@@ -50,7 +48,7 @@ export default function VoiceStyleSettings({ value, enabled, required, local, on
     const items = Object.entries(choices)
     const remaining = attributeParts.filter(part => !items.some(([id]) => part === id))
     return [{
-      label: t(`tts.design_${group}`), unavailable: unavailableDesignGroups.includes(group),
+      label: t(`tts.design_${group}`),
       items: items.map(([id, localized]) => {
         const label = locale.startsWith('zh') ? localized : id
         const active = attributeParts.includes(id)
@@ -59,20 +57,20 @@ export default function VoiceStyleSettings({ value, enabled, required, local, on
     }]
   })
   const rows = designAttributes ? attributeGroups : [{
-    label: t(style === 'tone' ? 'tts.tonePresets' : 'tts.stylePresets'), items: presets, unavailable: false,
+    label: t(style === 'tone' ? 'tts.tonePresets' : 'tts.stylePresets'), items: presets,
   }]
   return <section className="speech-voice-style" data-voice-instructions data-local-instructions={local && enabled || undefined}>
     {enabled ? <>
       {style === 'tone' && <p className="speech-output-hint">{t(designAttributes
         ? cloning ? 'tts.cloneDesignHelp' : 'tts.design_help' : 'tts.clonePresetHelp')}</p>}
-      {rows.map(({ label: group, items, unavailable }) => <div key={group}>
+      {rows.map(({ label: group, items }) => <div key={group}>
         {designAttributes && <span className="speech-output-hint">{group}</span>}
         <div className="speech-voice-presets" role="group" aria-label={group}>
-          {items.map(({ id, label, active, next }) => <Button size="sm" key={id} aria-pressed={active} disabled={unavailable || next.length > maxLength}
+          {items.map(({ id, label, active, next }) => <Button size="sm" key={id} aria-pressed={active} disabled={next.length > maxLength}
             onClick={() => onChange(next)}>{label}</Button>)}
         </div>
       </div>)}
-      {style === 'instruction' && <label>{t(preview ? 'tts.omniPreviewPrompt' : required ? 'tts.voiceDescription' : 'tts.voicePrompt')}
+      {style === 'instruction' && <label>{t(required ? 'tts.voiceDescription' : 'tts.voicePrompt')}
         <Textarea rows={3} maxLength={maxLength} value={value} aria-required={required || undefined}
           placeholder={t('tts.voicePromptExample')} onChange={event => onChange(event.target.value)} />
       </label>}

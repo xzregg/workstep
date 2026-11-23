@@ -34,3 +34,16 @@ test('changing the UI language updates the same Markdown section and preserves h
  assert.ok(next.includes('Conserver ce texte.'))
  assert.deepEqual(documentSection(next,'role',french),['研发伙伴'])
 })
+
+test('preset toggles keep list continuations, blank lines and fenced examples verbatim',()=>{
+ const text='## 主要职责\n\n- 跟进事项\n  每周一次\n\n```md\n- 跟进事项\n## 主要职责\n```\n\n## 补充\n请确认。'
+ const added=toggleDocumentItem(text,'duties','跟进事项')
+ assert.ok(added.includes('  每周一次\n\n```md\n- 跟进事项\n## 主要职责\n```'))
+ assert.equal(toggleDocumentItem(added,'duties','跟进事项'),text)
+})
+
+test('clearing the tone and personality chapters clears their saved speech fields',()=>{
+ const next=withPersonaDocument(profile,'## 语气\n\n## 额外要求\n自定义')
+ assert.equal(next.tone,'')
+ assert.equal(next.personality,'')
+})

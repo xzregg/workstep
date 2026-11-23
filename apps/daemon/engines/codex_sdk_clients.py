@@ -13,12 +13,15 @@ from contextlib import suppress
 import uuid
 
 from engines.core.session_pool import SessionClientLease, SessionClientPool
+from engines.core.session_retention import claim_session_retention
 from engines.codex_sdk_approvals import CodexApprovalRouter, deny_request
 from engines.core.process_cleanup import finish_cleanup
 
 
 def client_fingerprint(client_config: Any, thread_kwargs: dict) -> str:
     """Run in a worker: include credentials/config identity without logging them."""
+    from services.conversation_context import MESSAGE_CONTEXT_ENV
+
     env = client_config.env if client_config.env is not None else os.environ
     codex_home = Path(env.get('CODEX_HOME') or Path.home() / '.codex')
     files = [codex_home / 'config.toml', codex_home / 'auth.json']
@@ -44,8 +47,10 @@ def client_fingerprint(client_config: Any, thread_kwargs: dict) -> str:
     settings = {k: v for k, v in thread_kwargs.items() if k != 'developer_instructions'}
     settings['config'] = {k: v for k, v in (settings.get('config') or {}).items()
                           if k != 'developer_instructions'}
+    process_env = ({key: value for key, value in client_config.env.items() if key not in MESSAGE_CONTEXT_ENV}
+                   if client_config.env is not None else None)
     payload = (client_config.codex_bin, client_config.cwd, client_config.config_overrides,
-               client_config.env, settings, stamps)
+               process_env, settings, stamps)
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -73,12 +78,14 @@ class CodexClientLease(SessionClientLease):
 
 
 class CodexClientPool(SessionClientPool):
-    def __init__(self, *, idle_seconds=600, max_idle=8, sessions_per_process=5, max_idle_workers=2):
+    def __init__(self, *, idle_seconds=600, max_idle=8, sessions_per_process=5,
+                 max_idle_workers=1, keep_warm=True):
         super().__init__(idle_seconds=idle_seconds, max_idle=max_idle)
         if sessions_per_process < 1:
             raise ValueError('sessions_per_process must be positive')
         self.sessions_per_process = sessions_per_process
         self.max_idle_workers = max_idle_workers
+        self.keep_warm = keep_warm
         self._workers = []
         self._reservations = set()
         self._detaching = set()
@@ -119,14 +126,14 @@ class CodexClientPool(SessionClientPool):
                 if self._closed or self._entries.get(key) is not old:
                     raise RuntimeError('Engine client has been closed')
                 if alive and old.fingerprint == fingerprint and old.worker.accepting:
-                    return old
+                    return claim_session_retention(self, old)
                 if not alive:
                     await self._retire_worker(old.worker)
                 else:
                     await self.discard(old)
             worker = next((w for w in self._workers if w.accepting and w.cwd == cwd
                            and w.fingerprint == fingerprint
-                           and sum(e.busy for e in w.entries) < self.sessions_per_process), None)
+                           and sum(bool(e.busy or e.retention_owner) for e in w.entries) < self.sessions_per_process), None)
             if worker is None:
                 worker = CodexWorker(cwd, fingerprint, factory())
                 self._workers.append(worker)
@@ -135,12 +142,12 @@ class CodexClientPool(SessionClientPool):
             owned = entry
             worker.entries.add(entry)
             # Reserve the active slot before awaiting stale-session cleanup.
-            idle = [e for e in self._entries.values() if e.worker is worker and not e.busy]
+            idle = [e for e in self._entries.values() if e.worker is worker and not e.busy and not e.retention_owner]
             for stale in idle[:max(0, len(worker.entries)-self.sessions_per_process)]:
                 await self.discard(stale)
             if self._closed or self._entries.get(key) is not entry:
                 raise RuntimeError('Engine client has been closed')
-            return entry
+            return claim_session_retention(self, entry)
         except BaseException:
             if owned is not None and self._entries.get(owned.key) is owned:
                 await asyncio.shield(self.discard(owned))
@@ -186,7 +193,9 @@ class CodexClientPool(SessionClientPool):
             entry.worker for entry in reversed(self._entries.values())
             if not entry.busy and all(not lease.busy for lease in entry.worker.entries)
         )
-        for worker in list(idle_workers)[self.max_idle_workers:]:
+        protected = [w for w in idle_workers if any(e.retention_owner for e in w.entries)]
+        ordinary = [w for w in idle_workers if w not in protected]
+        for worker in ordinary[max(0, self.max_idle_workers-len(protected)):]:
             self._reclaim_idle_worker(worker)
 
     def _reclaim_idle_worker(self, worker):
@@ -205,8 +214,15 @@ class CodexClientPool(SessionClientPool):
         closing.add_done_callback(forget_cleanup)
 
     def _expire(self, entry):
+        if entry.retention_owner:
+            return
         if (self._entries.get(entry.key) is entry and not entry.busy
                 and len(entry.worker.entries) == 1):
+            # Keep the last loaded context so the retained transport stays
+            # reusable after the idle window. Explicit stop/close still reaps it.
+            if self.keep_warm and entry.worker.accepting and not self._closed:
+                entry.timer = None
+                return
             self._reclaim_idle_worker(entry.worker)
         else:
             super()._expire(entry)

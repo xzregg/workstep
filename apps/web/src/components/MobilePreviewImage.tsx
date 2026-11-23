@@ -1,18 +1,23 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import { imagePreviewSwipeDirection } from '../utils/imagePreviewSwipe'
 
 type Point = { x: number; y: number }
 type View = Point & { scale: number }
 const INITIAL: View = { x: 0, y: 0, scale: 1 }
 
 /** Touch gestures stay inside the image; the close button and toolbar never scale. */
-export default function MobilePreviewImage({ src, alt }: { src: string; alt: string }) {
+export default function MobilePreviewImage({ src, alt, onSwipe }: {
+  src: string
+  alt: string
+  onSwipe?: (direction: -1 | 1) => void
+}) {
   const viewport = useRef<HTMLDivElement>(null)
   const pointers = useRef(new Map<number, Point>())
   const current = useRef(INITIAL)
   const [view, setView] = useState(INITIAL)
   const tap = useRef<{ point: Point; time: number } | null>(null)
   const lastTouch = useRef(0)
-  const start = useRef<{ point: Point; time: number; moved: boolean } | null>(null)
+  const start = useRef<{ point: Point; time: number; moved: boolean; canSwipe: boolean } | null>(null)
 
   const apply = (next: View) => {
     const rect = viewport.current!.getBoundingClientRect()
@@ -49,8 +54,9 @@ export default function MobilePreviewImage({ src, alt }: { src: string; alt: str
     event.currentTarget.setPointerCapture?.(event.pointerId)
     const point = { x: event.clientX, y: event.clientY }
     pointers.current.set(event.pointerId, point)
-    start.current = { point, time: Date.now(), moved: pointers.current.size > 1 }
-    if (pointers.current.size > 1) tap.current = null
+    const pinching = pointers.current.size > 1
+    start.current = { point, time: Date.now(), moved: pinching, canSwipe: !pinching && current.current.scale === 1 }
+    if (pinching) tap.current = null
   }
 
   const move = (event: PointerEvent<HTMLDivElement>) => {
@@ -80,7 +86,12 @@ export default function MobilePreviewImage({ src, alt }: { src: string; alt: str
   const end = (event: PointerEvent<HTMLDivElement>) => {
     if (!pointers.current.delete(event.pointerId)) return
     const gesture = start.current
-    if (event.type === 'pointerup' && event.pointerType !== 'mouse' && gesture && !gesture.moved && Date.now() - gesture.time < 300) {
+    const direction = event.type === 'pointerup' && gesture?.canSwipe && onSwipe
+      ? imagePreviewSwipeDirection(event.clientX - gesture.point.x, event.clientY - gesture.point.y) : 0
+    if (direction) {
+      tap.current = null
+      onSwipe?.(direction)
+    } else if (event.type === 'pointerup' && event.pointerType !== 'mouse' && gesture && !gesture.moved && Date.now() - gesture.time < 300) {
       const point = { x: event.clientX, y: event.clientY }
       const last = tap.current
       if (last && Date.now() - last.time < 300 && Math.hypot(point.x - last.point.x, point.y - last.point.y) < 24) {

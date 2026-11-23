@@ -1,3 +1,4 @@
+import { clearChatSend, markChatSend, moveChatSend } from '../utils/runtimeDiagnostics'
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, chatSessionApi } from '../api/client'
 import { useI18n } from '../i18n'
@@ -55,6 +56,7 @@ export function useChatSessionActions({
     const optimisticId = useChatSessionStore.getState().addUserMessage(sessionId, content)
     flushWsSubscriptionNow()
     watchPendingCompletion(projectId, { sessionId })
+    const sendStarted = markChatSend(sessionId)
     try {
       const accepted = await chatSessionApi.chat(sessionId, projectId, content, randomUuid(), {
         face_person_ids: facePersonIds.length?facePersonIds:undefined,
@@ -64,6 +66,7 @@ export function useChatSessionActions({
         goal_mode: goalCommand ? false : goalMode && effectiveEngine === 'codex_sdk' || undefined,
       })
       if (accepted.session_id && accepted.session_id !== sessionId) {
+        moveChatSend(sessionId, accepted.session_id, sendStarted)
         const store = useChatSessionStore.getState()
         const oldSession = store.sessions[sessionId]
         store.newSession(accepted.session_id)
@@ -100,6 +103,7 @@ export function useChatSessionActions({
       }).catch(() => undefined)
       return true
     } catch (reason) {
+      clearChatSend(sessionId, sendStarted)
       unwatchPendingCompletion(projectId, { sessionId })
       useChatSessionStore.getState().removeMessage(sessionId, optimisticId)
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))

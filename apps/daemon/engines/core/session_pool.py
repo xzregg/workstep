@@ -7,6 +7,7 @@ from contextlib import aclosing
 from functools import wraps
 
 from engines.core.process_cleanup import close_sdk_client, finish_cleanup
+from engines.core.session_retention import claim_session_retention
 
 
 def exclusive_engine_run(function):
@@ -35,6 +36,7 @@ class SessionClientLease:
     timer: asyncio.TimerHandle | None = None
     closing: asyncio.Task | None = None
     on_close: Callable[[], None] | None = None
+    retention_owner: str | None = None
 
 
 class SessionClientPool:
@@ -71,7 +73,7 @@ class SessionClientPool:
                 if self._closed or self._entries.get(key) is not entry:
                     raise RuntimeError('Engine client has been closed')
                 if entry.fingerprint == fingerprint and alive:
-                    return entry
+                    return claim_session_retention(self, entry)
             except BaseException:
                 await self.discard(entry)
                 raise
@@ -84,14 +86,14 @@ class SessionClientPool:
                     await self._close_entry(replacement)
                     raise RuntimeError('Engine client pool is closed')
                 self._entries[key] = replacement
-                return replacement
+                return claim_session_retention(self, replacement)
             except BaseException:
                 if self._entries.get(key) is entry:
                     self._entries.pop(key)
                 raise
         entry = SessionClientLease(key, fingerprint, factory())
         self._entries[key] = entry
-        return entry
+        return claim_session_retention(self, entry)
 
     def bind(self, entry: SessionClientLease, session_id: str, thread: Any) -> None:
         key = (entry.key[0], session_id)
@@ -115,16 +117,29 @@ class SessionClientPool:
         # Dict insertion order is idle LRU order.
         self._entries.pop(entry.key)
         self._entries[entry.key] = entry
-        entry.timer = asyncio.get_running_loop().call_later(self.idle_seconds, self._expire, entry)
-        idle = [e for e in self._entries.values() if not e.busy]
+        if entry.timer:
+            entry.timer.cancel()
+            entry.timer = None
+        if not entry.retention_owner:
+            entry.timer = asyncio.get_running_loop().call_later(self.idle_seconds, self._expire, entry)
+        idle = [e for e in self._entries.values() if not e.busy and not e.retention_owner]
         for stale in idle[:max(0, len(idle) - self.max_idle)]:
             if not stale.busy and self._entries.get(stale.key) is stale:
                 await self.discard(stale)
 
     def _expire(self, entry: SessionClientLease) -> None:
-        if self._entries.get(entry.key) is entry and not entry.busy:
+        if self._entries.get(entry.key) is entry and not entry.busy and not entry.retention_owner:
             self._entries.pop(entry.key)
             self._schedule_close(entry)
+
+    def unretain(self, owner: str, *, except_entry=None) -> None:
+        for entry in self._entries.values():
+            if entry is not except_entry and entry.retention_owner == owner:
+                entry.retention_owner = None
+                if not entry.busy:
+                    if entry.timer:
+                        entry.timer.cancel()
+                    entry.timer = asyncio.get_running_loop().call_later(self.idle_seconds, self._expire, entry)
 
     def _schedule_close(self, entry: SessionClientLease) -> asyncio.Task:
         if entry.timer:
@@ -257,7 +272,7 @@ def startup_fingerprint(value) -> str:
     import json
     import os
     from pathlib import Path
-    from services.conversation_context import execution_env
+    from services.conversation_context import MESSAGE_CONTEXT_ENV, execution_env
     from services.coordinator_source import coordinator_source_env
     paths = {Path.home() / name for name in (
         '.claude/settings.json', '.claude/.credentials.json',
@@ -299,6 +314,8 @@ def startup_fingerprint(value) -> str:
         except OSError:
             stamps.append((str(path), None, None))
     env = execution_env(dict(os.environ))
+    for key in MESSAGE_CONTEXT_ENV:
+        env.pop(key, None)
     env.update(coordinator_source_env())
     # Claude rewrites usage counters in this file after every reply. Only
     # execution/auth/MCP settings affect the transport, not those counters.

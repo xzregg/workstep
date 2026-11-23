@@ -64,6 +64,37 @@ test('Android prefers the native chime and falls back to predecoded playback', a
   }
 })
 
+test('Android waits for native chime completion after startup and does not replay an interrupted chime', async context => {
+  const {window} = installDomEnvironment()
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  const requests: Array<{id: string; type: string}> = []
+  const bridge: NonNullable<Window['WorkStepWakeChime']> = {
+    onmessage: null,
+    postMessage(data) { requests.push(JSON.parse(data)) },
+  }
+  const signal = new AbortController().signal
+  window.WorkStepWakeChime = bridge
+  const send = (id: string, status: string) => bridge.onmessage?.({ data: JSON.stringify({ id, status }) })
+  const media = { play() { assert.fail('must not replay a sound that already started') } } as unknown as HTMLAudioElement
+  try {
+    const first = playWakeSound(media, signal)
+    context.mock.timers.tick(1400)
+    send(requests[0].id, 'started')
+    context.mock.timers.tick(800)
+    assert.deepEqual(requests.map(request => request.type), ['wake-chime'])
+    send(requests[0].id, 'done')
+    assert.equal(await first, true)
+
+    const next = playWakeSound(media, signal)
+    send(requests[1].id, 'started')
+    send(requests[1].id, 'error')
+    assert.equal(await next, false)
+  } finally {
+    context.mock.timers.reset()
+    await window.happyDOM.close()
+  }
+})
+
 test('Android gateway warms only the wake detector and reuses it across trials', async () => {
   const {window} = installDomEnvironment()
   useLocaleStore.setState({ locale: 'zh-CN' })
@@ -119,7 +150,7 @@ test('gateway devices sharing an origin keep independent wake preferences', asyn
   } finally { await window.happyDOM.close() }
 })
 
-test('wake settings applies the master switch and tests the unsaved phrase on demand', async () => {
+test('wake settings applies the master switch and tests the unsaved phrase on demand', async context => {
   const { window } = installDomEnvironment(); useLocaleStore.setState({locale:'zh-CN'})
   const element = document.body.appendChild(document.createElement('div')), root = createRoot(element)
   const original = {...voiceWakeApi}
@@ -192,8 +223,9 @@ test('wake settings applies the master switch and tests the unsaved phrase on de
     assert.match(element.textContent!,/已听到唤醒词/)
     assert.equal(sounds,1,'matching a draft without a greeting plays the default chime')
     assert.equal(closed,1)
+    const greetingOptions = '我在，您说 | 有何贵干'
     await act(async()=>{
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(greeting,'我在，您说')
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(greeting,greetingOptions)
       greeting.dispatchEvent(new window.Event('input',{bubbles:true}))
     })
     const utterances: { type: string; id: string; text?: string }[] = []
@@ -203,15 +235,22 @@ test('wake settings applies the master switch and tests the unsaved phrase on de
     window.WorkStepSpeech = bridge
     speechOutputApi.status = async () => ({ ...outputStatus, settings: { ...outputStatus.settings, mode: 'system' } })
     const startTrial = () => act(async()=>element.querySelector<HTMLButtonElement>('[data-test-wake]')!.click())
+    let roll = 0
+    context.mock.method(Math,'random',()=>roll)
     await startTrial()
     await act(async()=>frame(Int16Array.of(1),0))
     assert.equal(utterances[0]?.text,'我在，您说')
     assert.equal(sounds,1)
     assert.equal(element.querySelector<HTMLButtonElement>('[data-save-wake]')!.disabled,true)
     await act(async()=>bridge.onmessage?.({data:JSON.stringify({id:utterances[0].id,status:'done'})}))
+    roll = .99
+    await startTrial()
+    await act(async()=>frame(Int16Array.of(1),0))
+    assert.equal(utterances[1]?.text,'有何贵干')
+    await act(async()=>bridge.onmessage?.({data:JSON.stringify({id:utterances[1].id,status:'done'})}))
     await act(async()=>element.querySelector<HTMLButtonElement>('[data-save-wake]')!.click())
     assert.equal(saved.keyword,'你好小舟');assert.equal(dirty,false)
-    assert.equal(saved.greeting,'我在，您说')
+    assert.equal(saved.greeting,greetingOptions)
     assert.equal(saved.sound_enabled,true)
     assert.equal(window.localStorage.getItem('workstep.digital-person.wake-greeting'),null)
     saved=undefined
@@ -222,19 +261,80 @@ test('wake settings applies the master switch and tests the unsaved phrase on de
     await startTrial()
     await act(async()=>frame(Int16Array.of(1),0))
     assert.equal(sounds,1)
-    assert.equal(utterances.length,1,'the unchecked draft suppresses both forms of audio before saving')
+    assert.equal(utterances.length,2,'the unchecked draft suppresses both forms of audio before saving')
     await act(async()=>element.querySelector<HTMLButtonElement>('[data-save-wake]')!.click())
     assert.equal(window.localStorage.getItem('workstep.digital-person.wake-sound'),null)
     assert.equal(saved.sound_enabled,false)
-    assert.equal(saved.greeting,'我在，您说')
+    assert.equal(saved.greeting,greetingOptions)
     assert.equal(dirty,false)
     localStorage.setItem('workstep.digital-person.wake-greeting','旧本地欢迎语')
     localStorage.setItem('workstep.digital-person.wake-sound','true')
     voiceWakeApi.get=async()=>({...saved,available:false,listening:false})
     await act(async()=>root.render(<MemoryRouter><I18nProvider><VoiceWakeSettings key="other-client" /></I18nProvider></MemoryRouter>))
-    assert.equal(element.querySelector<HTMLInputElement>('[name=wake_greeting]')!.value,'我在，您说')
+    assert.equal(element.querySelector<HTMLInputElement>('[name=wake_greeting]')!.value,greetingOptions)
     assert.equal(element.querySelector<HTMLInputElement>('[name=wake_sound]')!.checked,false)
   } finally {await act(async()=>root.unmount());Object.assign(voiceWakeApi,original);voiceCapture.start=originalCapture;wakeWordRuntime.load=originalLoad;globalThis.Audio=originalAudio;speechOutputApi.status=originalOutput;await window.happyDOM.close()}
+})
+
+test('Android gateway reuses a detector on quick return and releases the microphone away from the page', async context => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('https://gateway.example/workspace/device-a/companion')
+  Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'Android WebView' })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  const original = { status: speechApi.status, get: voiceWakeApi.get, start: voiceCapture.start, load: wakeWordRuntime.load }
+  const detectors: AbortSignal[] = [], captures: AbortSignal[] = []
+  let resets = 0, listening = false, keyword = '你好小研'
+  const onListeningChange = (value: boolean) => { listening = value }
+  const enter = () => act(async () => root.render(<I18nProvider><DigitalPersonWake projectId="p" blocked={false} onListeningChange={onListeningChange} /></I18nProvider>))
+  const leave = () => act(async () => root.render(null))
+  speechApi.status = async () => ({ enabled: true, ready: true }) as Awaited<ReturnType<typeof speechApi.status>>
+  voiceWakeApi.get = async () => ({ keyword, sensitivity: 'balanced', available: true, listening: false })
+  voiceCapture.start = async (_frame, signal) => { captures.push(signal); return { stop() {}, flush() {} } }
+  wakeWordRuntime.load = async () => ({
+    preloadWakeWord: async () => new ArrayBuffer(0),
+    openWakeWord: async (_config, signal) => {
+      detectors.push(signal)
+      return { matches: async () => false, reset: async () => { resets++ }, close() {} }
+    },
+  })
+  try {
+    setWakeEnabled(true)
+    await enter()
+    assert.equal(listening, true)
+    await leave()
+    assert.equal(listening, false)
+    assert.equal(captures[0].aborted, true)
+    await enter()
+    assert.equal(listening, true)
+    assert.equal(detectors.length, 1)
+    assert.equal(resets, 2)
+    await leave()
+    keyword = '你好小步'
+    await enter()
+    assert.equal(detectors.length, 2)
+    assert.equal(detectors[0].aborted, true)
+    await leave()
+    setWakeEnabled(false)
+    assert.equal(detectors[1].aborted, true)
+    setWakeEnabled(true)
+    await enter()
+    await leave()
+    context.mock.timers.tick(30000)
+    assert.equal(detectors[2].aborted, true)
+    await enter()
+    await leave()
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    document.dispatchEvent(new window.Event('visibilitychange'))
+    assert.equal(detectors[3].aborted, true)
+  } finally {
+    await act(async () => root.unmount())
+    setWakeEnabled(false)
+    context.mock.timers.reset()
+    speechApi.status = original.status; voiceWakeApi.get = original.get
+    voiceCapture.start = original.start; wakeWordRuntime.load = original.load
+    await window.happyDOM.close()
+  }
 })
 
 test('a settings test suspends page listening and the master switch releases it', async () => {

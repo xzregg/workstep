@@ -2,7 +2,7 @@ import SmoothMessageHeight from './SmoothMessageHeight'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import type { ProjectFileLink } from '../utils/markdownFilePreview'
 import FilePreviewDialog from './FilePreviewDialog'
-import ImagePreview from './ImagePreview'
+import ImagePreview, { type ImagePreviewGallery } from './ImagePreview'
 import MarkdownContent from './MarkdownContent'
 import useStreamReveal from '../hooks/useStreamReveal'
 import { REVEAL_SETTLE_MS } from './StreamRevealText'
@@ -37,8 +37,6 @@ interface MarkdownMessageProps {
   plainText?: boolean
   /** Mermaid render delay; use 0 for complete, non-streaming file content. */
   mermaidRenderDelayMs?: number
-  /** When set, images render as clickable thumbnails calling this with (src, alt). */
-  onImageClick?: (src: string, alt: string) => void
 }
 
 /**
@@ -55,12 +53,11 @@ function MarkdownMessage({
   compactParagraphs = false,
   plainText = false,
   mermaidRenderDelayMs,
-  onImageClick,
   reveal = 'a',
 }: MarkdownMessageProps) {
   const [previewFile, setPreviewFile] = useState<ProjectFileLink | null>(null)
   const taskFilePreview = useTaskFilePreview()
-  const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
+  const [imageGallery, setImageGallery] = useState<ImagePreviewGallery | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const animateInitialReveal = useRef(revealInitial || content.length === 0)
   const selectionResumeContent = useRef<string | null>(null)
@@ -123,10 +120,14 @@ function MarkdownMessage({
     return () => clearTimeout(timer)
   }, [revealing, revealedContent, settling])
   const handleFileClick = useCallback((file: ProjectFileLink) => setPreviewFile(file), [])
-  const handleImageClick = useCallback((src: string, alt: string) => {
-    if (onImageClick) onImageClick(src, alt)
-    else setPreviewImage({ src, alt })
-  }, [onImageClick])
+  const handleImageClick = useCallback((selected: HTMLButtonElement) => {
+    // Snapshot the rendered thumbnails in reading order, including duplicate URLs.
+    const buttons = Array.from(rootRef.current!.querySelectorAll<HTMLButtonElement>('.markdown-image-click[data-image-src]'))
+    setImageGallery({
+      images: buttons.map(button => ({ src: button.dataset.imageSrc!, alt: button.querySelector('img')?.alt })),
+      initialIndex: buttons.indexOf(selected),
+    })
+  }, [])
 
   return (
     <>
@@ -156,12 +157,11 @@ function MarkdownMessage({
           onClose={() => setPreviewFile(null)}
         />
       )}
-      {previewImage && (
+      {imageGallery && (
         <ImagePreview
-          src={previewImage.src}
-          alt={previewImage.alt}
+          gallery={imageGallery}
           projectId={projectId}
-          onClose={() => setPreviewImage(null)}
+          onClose={() => setImageGallery(null)}
         />
       )}
     </>

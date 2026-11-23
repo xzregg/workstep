@@ -153,9 +153,12 @@ async def memory_atlas_detail(knowledge_id: int = Path(gt=0, le=2**63 - 1)):
 
 
 @router.get('/memory/view')
-async def memory_view(query: str = Query(default='', max_length=1000)):
+async def memory_view(query: str = Query(default='', max_length=1000),
+                      kind: Literal['','preference','experience','fact','event'] = '',
+                      project_id: str = Query(default='', max_length=256),
+                      page: int = Query(default=1, ge=1, le=2**31 - 1)):
     from services import memory_visualization
-    return await memory_visualization.browse(runtime().projects, query)
+    return await memory_visualization.browse(runtime().projects, query, kind=kind, project_id=project_id, page=page)
 
 
 @router.get('/memory/source/{source_id}')

@@ -17,7 +17,7 @@ test('running mobile dictation stays in the draft until submitted to the convers
  Object.assign(globalThis,{history:window.history})
  window.innerWidth=390
  const original={...speechApi},pending={...pendingMessageInsertApi},start=voiceCapture.start
- let frame!:(pcm:Int16Array,level:number)=>void,sends=0
+ let frame!:Parameters<typeof voiceCapture.start>[0],sends=0
  const queued:string[][]=[]
  pendingMessageInsertApi.list=async()=>({items:[]})
  pendingMessageInsertApi.create=async(project,target,content)=>{
@@ -47,7 +47,10 @@ test('running mobile dictation stays in the draft until submitted to the convers
   assert.ok(mic)
   assert.equal(mic.disabled,false)
   await act(async()=>mic.click())
-  await act(async()=>frame(new Int16Array(8000).fill(5000),.4))
+  assert.equal(document.querySelector('.chat-input-send')?.getAttribute('data-state'),'stopped')
+  await act(async()=>frame(new Int16Array(8000).fill(5000),.4,{
+   lastVoice:8000,hasSpeech:true,recentSpeech:true,candidate:false,canCommit:false,
+  }))
   await act(async()=>document.querySelector<HTMLButtonElement>('.voice-input-secondary-actions button:last-child')!.click())
   assert.equal(document.querySelector('textarea')!.value,'语音补充内容')
   assert.deepEqual(queued,[])

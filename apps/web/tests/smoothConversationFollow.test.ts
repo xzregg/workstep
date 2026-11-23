@@ -36,6 +36,14 @@ test('bottom follow coalesces updates, moves continuously and stops when settled
     tick(1700)
     assert.equal(following.current,false,'touch scrolling toward history stops follow before another frame')
     assert.equal(container.scrollTop,position)
+
+    let roundedTop=position
+    Object.defineProperty(container,'scrollTop',{get:()=>roundedTop,set:value=>{roundedTop=Math.round(value)}})
+    following.current=true
+    followConversationBottom(container,programmatic,following)
+    for(let time=1716;time<3200;time+=16)tick(time)
+    assert.equal(container.scrollTop,700,'follow reaches the bottom when the browser rounds scrollTop')
+    assert.equal(frames.size,0)
   } finally {
     stopConversationFollow(container)
     globalThis.requestAnimationFrame=original.request;globalThis.cancelAnimationFrame=original.cancel

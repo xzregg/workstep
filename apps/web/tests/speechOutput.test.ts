@@ -14,19 +14,24 @@ test('a host wake greeting replays twice without browser synthesis', async () =>
   let downloads = 0, starts = 0
   let plays = 0
   const volumes: number[] = []
+  const scheduled: Float32Array[] = []
   const previousWindow = globalThis.window
   globalThis.window = { WorkStepAndroid: {} } as Window & typeof globalThis
   class Context {
     state = 'running'; currentTime = 0; destination = {}
     resume() { return Promise.resolve() }
-    createBuffer() { return { duration: .1, sampleRate: 24000, numberOfChannels: 1, getChannelData: () => new Float32Array(1) } }
+    createBuffer(_channels: number, length: number, sampleRate: number) {
+      const data = new Float32Array(length)
+      return { duration: length / sampleRate, length, sampleRate, numberOfChannels: 1, getChannelData: () => data }
+    }
     createGain() {
       return { gain: { set value(value: number) { volumes.push(value) } }, connect() {}, disconnect() {} }
     }
     createBufferSource() {
       return {
-        onended: null as (() => void) | null, playbackRate: { value: 1 }, connect() {}, disconnect() {}, stop() {},
-        start() { plays++; setImmediate(() => this.onended?.()) },
+        onended: null as (() => void) | null, buffer: null as AudioBuffer | null,
+        playbackRate: { value: 1 }, connect() {}, disconnect() {}, stop() {},
+        start() { plays++; scheduled.push(this.buffer!.getChannelData(0)); setImmediate(() => this.onended?.()) },
       }
     }
   }
@@ -35,11 +40,12 @@ test('a host wake greeting replays twice without browser synthesis', async () =>
   speechOutputApi.start = async () => { starts++; return { id: 'unexpected' } }
   voiceWakeApi.audio = async () => {
     downloads++
-    return { status: 'ready', text: '我在，您说', volume: .4, chunks: [{ audio: 'AAA=', format: 'pcm', sampleRate: 24000 }] }
+    return { status: 'ready', text: '我在，您说', normalized: true, volume: .4,
+      chunks: [{ audio: 'ABA=', format: 'pcm', sampleRate: 24000 }] }
   }
   const { signal } = new AbortController()
   try {
-    const greeting = await loadSavedWakeGreeting('我在，您说', 'greeting-cache-test', signal)
+    const [greeting] = await loadSavedWakeGreeting('我在，您说', 'greeting-cache-test', signal)
     assert.ok(greeting)
     const first = playWakeGreeting(greeting, 'greeting-cache-test', undefined, signal)
     await new Promise(resolve => setImmediate(resolve))
@@ -49,7 +55,12 @@ test('a host wake greeting replays twice without browser synthesis', async () =>
     assert.equal(downloads, 1)
     assert.equal(starts, 0)
     assert.equal(plays, 2)
-    assert.deepEqual(volumes, [.8, .8])
+    for (const data of scheduled) {
+      assert.ok(data.length >= 4801)
+      assert.ok(data.subarray(0, -1).every(value => value === 0))
+      assert.equal(data.at(-1), .125)
+    }
+    assert.deepEqual(volumes, [.4, .4], 'server-normalized greetings use the configured volume without a second boost')
   } finally {
     globalThis.window = previousWindow
     globalThis.AudioContext = previous
@@ -76,6 +87,9 @@ test('an Android system wake greeting keeps playing past six seconds until nativ
     context.mock.timers.tick(180)
     assert.equal(calls[0]?.type, 'speak')
     assert.equal(calls[0]?.volume, .8)
+    const other = new SpeechOutputPlayer({ settings: { ...outputStatus.settings, mode: 'system' } })
+    other.enqueue(['另一段播报'])
+    assert.deepEqual(calls.map(call => call.type), ['speak'], 'other speech must not interrupt the wake greeting')
     context.mock.timers.tick(7000)
     assert.deepEqual(calls.map(call => call.type), ['speak'])
     bridge.onmessage?.({ data: JSON.stringify({ id: calls[0].id, status: 'done' }) })
@@ -83,6 +97,66 @@ test('an Android system wake greeting keeps playing past six seconds until nativ
   } finally {
     controller.abort()
     globalThis.window = previous
+  }
+})
+
+for (const format of ['pcm', 'wav'] as const) test(`Android sends the full cached ${format} greeting to the native player and waits for completion`, async () => {
+  const previous = globalThis.window
+  const requests: Array<{ id: string; type: string; chunks?: string[] }> = []
+  const bridge: NonNullable<Window['WorkStepWakeGreeting']> = {
+    onmessage: null, postMessage(data) { requests.push(JSON.parse(data)) },
+  }
+  globalThis.window = { WorkStepAndroid: {}, WorkStepWakeGreeting: bridge } as Window & typeof globalThis
+  const controller = new AbortController()
+  try {
+    let completed = false
+    const wrap = (audio: string) => format === 'pcm' ? audio : Buffer.concat([
+      // 24 kHz mono PCM16 WAV with a two-byte JUNK chunk before the audio.
+      Buffer.from('524946463000000057415645666d74201000000001000100c05d000080bb0000020010004a554e4b0200000000006461746102000000', 'hex'),
+      Buffer.from(audio, 'base64'),
+    ]).toString('base64')
+    const played = playWakeGreeting({
+      text: '完整欢迎语', settings: { ...outputStatus.settings, mode: 'remote' },
+      chunks: [
+        { audio: wrap('AAQ='), format, sampleRate: 24000 },
+        { audio: wrap('AAg='), format, sampleRate: 24000 },
+      ],
+    }, '', undefined, controller.signal).then(value => { completed = true; return value })
+    assert.equal(requests[0]?.type, 'wake-greeting')
+    assert.deepEqual(requests[0]?.chunks, ['AAQ=', 'AAg='])
+    bridge.onmessage?.({ data: JSON.stringify({ id: requests[0].id, status: 'started' }) })
+    await Promise.resolve()
+    assert.equal(completed, false)
+    bridge.onmessage?.({ data: JSON.stringify({ id: requests[0].id, status: 'done' }) })
+    assert.equal(await played, true)
+  } finally {
+    controller.abort()
+    globalThis.window = previous
+  }
+})
+
+test('an uncached wake greeting waits for all audio and discards a truncated response', async () => {
+  const original = { ...speechOutputApi }, previous = globalThis.AudioContext
+  let chunks = 0, contexts = 0
+  globalThis.AudioContext = class { constructor() { contexts++ } } as unknown as typeof AudioContext
+  speechOutputApi.start = async () => ({ id: 'greeting' })
+  speechOutputApi.next = async () => ++chunks === 1
+    ? { done: false, audio: 'AAA=', format: 'pcm', sample_rate: 24000 }
+    : { done: true, error: 'Connection lost' }
+  speechOutputApi.cancel = async () => {}
+  try {
+    const failure = new Promise<Error>(onError => {
+      const player = new SpeechOutputPlayer({
+        settings: { ...outputStatus.settings, mode: 'remote' }, wakeGreeting: true, onError,
+      })
+      player.enqueue(['完整欢迎语'])
+    })
+    assert.match((await failure).message, /Connection lost/)
+    assert.equal(chunks, 2)
+    assert.equal(contexts, 0, 'the first audio chunk never starts a playback graph')
+  } finally {
+    globalThis.AudioContext = previous
+    Object.assign(speechOutputApi, original)
   }
 })
 

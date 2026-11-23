@@ -289,3 +289,47 @@ test('caret navigation crosses an inline image without a visual line break', asy
     await window.happyDOM.close()
   }
 })
+
+test('pasting a large diagnostics report attaches all of it without expanding the composer', async () => {
+  const { window } = installDomEnvironment()
+  const payload = JSON.stringify({
+    schemaVersion: 1, exportedAt: '2026-11-23T00:00:00.000Z',
+    environment: { platform: 'android' }, recording: null,
+    logs: Array.from({ length: 500 }, () => ({ summary: 'recorded diagnostic event '.repeat(8) })),
+    truncated: false,
+  })
+  const ordinaryText = JSON.stringify({ schemaVersion: 1, body: 'x'.repeat(payload.length) })
+  const files: File[] = []
+  const changes: string[] = []
+  let root!: Root
+  try {
+    const container = window.document.body.appendChild(window.document.createElement('div'))
+    await act(async () => {
+      root = createRoot(container as never)
+      root.render(<Harness initial="请检查" onChange={(value) => changes.push(value)} imageAttach={{
+        upload: async (file) => {
+          files.push(file)
+          return { url: `.workstep/uploads/${file.name}`, filename: file.name, size: file.size }
+        },
+      }} />)
+    })
+    const textarea = container.querySelector('textarea')!
+    const paste = async (text: string) => {
+      const event = new window.Event('paste', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'clipboardData', { value: { items: [], getData: () => text } })
+      await act(async () => { textarea.dispatchEvent(event) })
+      return event.defaultPrevented
+    }
+    assert.equal(await paste(ordinaryText), false)
+    assert.equal(await paste(payload), true)
+    assert.equal(files.length, 1)
+    assert.equal(files[0].type, 'application/json')
+    assert.equal(await files[0].text(), payload)
+    assert.match(changes.at(-1) ?? '', /\[WorkStep-runtime-diagnostics\.json\]\(\.workstep\/uploads\/WorkStep-runtime-diagnostics\.json\)/)
+    assert.match(changes.at(-1) ?? '', /请检查/)
+    assert.ok((changes.at(-1)?.length ?? 0) < 160)
+  } finally {
+    if (root) await act(async () => { root.unmount() })
+    await window.happyDOM.close()
+  }
+})

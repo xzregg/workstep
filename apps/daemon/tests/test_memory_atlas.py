@@ -70,12 +70,38 @@ async def test_atlas_overview_caps_at_500_without_building_relationships(runtime
     def unexpected_links(*args):
         raise AssertionError('The overview must not build the relationship graph')
 
-    monkeypatch.setattr(memory_atlas, '_links', unexpected_links)
-    page = await memory_atlas.page(current.projects, 0, 500)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(memory_atlas, '_links', unexpected_links)
+        page = await memory_atlas.page(current.projects, 0, 500)
     assert len(page['items']) == 500
     assert all(set(star) == {'id', 'kind', 'time', 'importance'} for star in page['items'])
     assert page['links'] == []
     assert page['next_cursor'] == first + 1
+    detail = await memory_atlas.detail(current.projects, first + 500)
+    assert 499 <= len(detail['links']) <= 997
+
+
+async def test_atlas_detail_extends_through_related_stars(runtime):
+    from services import digital_person_memory_index as index
+    from services import memory_atlas
+
+    current, _, _ = await seed(runtime, ['A 的知识', 'B 的知识', 'C 的知识', 'D 的知识', '独立知识'])
+    await extract_seed_knowledge()
+    page = await memory_atlas.page(current.projects, 0, 500)
+    ids = [int(star['id'].split(':')[1]) for star in reversed(page['items'])]
+    a, b, c, d, unrelated = ids
+    with index.connect() as db:
+        db.executemany('INSERT INTO memory_entities VALUES(?,?,?,?)', [
+            (node, 'object', name, name)
+            for left, right, name in [(a, b, '甲'), (b, c, '乙'), (c, d, '丙')]
+            for node in (left, right)
+        ])
+    detail = await memory_atlas.detail(current.projects, a)
+    assert detail['links'] == [
+        {'from': f'knowledge:{left}', 'to': f'knowledge:{right}'}
+        for left, right in [(a, b), (b, c), (c, d)]
+    ]
+    assert (await memory_atlas.detail(current.projects, unrelated))['links'] == []
 
 
 async def test_atlas_routes_keep_host_scope_and_async_access(runtime, monkeypatch):
@@ -119,7 +145,15 @@ async def test_atlas_routes_keep_host_scope_and_async_access(runtime, monkeypatc
         assert (await client.get(path, params={'ids': 2**63})).status_code == 422
         assert (await client.get(path, params={'limit': 500})).status_code == 200
         assert (await client.get(path, params={'limit': 501})).status_code == 422
-        detail = await client.get(f'{path}/{knowledge_id}')
+        entered.clear()
+        release.clear()
+        pending = asyncio.create_task(client.get(f'{path}/{knowledge_id}'))
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            assert (await asyncio.wait_for(client.get('/openapi.json'), .5)).status_code == 200
+        finally:
+            release.set()
+        detail = await pending
         assert detail.status_code == 200 and detail.json()['sources'][0]['project_name'] == project.name
         actor = ActorSnapshot(actor_id='u', user_name='u', device_id='d', device_name='d',
                               source='remote_project', project_id=project.id, access_level='edit')

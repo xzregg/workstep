@@ -1,4 +1,5 @@
-import { memo, useRef } from 'react'
+import { memo, Profiler, useState, type ProfilerOnRenderCallback, type ReactElement } from 'react'
+import { runtimeMark } from '../utils/runtimeDiagnostics'
 import ProposedPlanMessage from './ProposedPlanMessage'
 import {
   buildMessageTimeline,
@@ -27,20 +28,22 @@ function MessageTimeline({
   suppressTextPlan = false,
 }: MessageTimelineProps) {
   const timeline = buildMessageTimeline(events)
-  const initialTextIds = useRef(new Set(timeline.filter(item => item.type === 'text').map(item => item.id)))
+  const [initialTextIds] = useState(() => new Set(timeline.filter(item => item.type === 'text').map(item => item.id)))
   const streamedText = timelineText(timeline)
   const canInterleaveText = Boolean(streamedText) && (
     content.startsWith(streamedText) || streamedText.startsWith(content)
   )
-  const initialTrailing = useRef(canInterleaveText && content.startsWith(streamedText)
-    ? content.slice(streamedText.length) : '')
+  const [hasInitialTrailing] = useState(() => canInterleaveText
+    && content.length > streamedText.length && content.startsWith(streamedText))
 
-  if (!canInterleaveText) {
+  // A single text run has no process boundary to display. Keep the full body
+  // together even when the rolling event window happens to match a prefix.
+  if (!canInterleaveText || (timeline.length === 1 && timeline[0].type === 'text')) {
     // Keep the same shell and first child before/after the first text event.
     // A live paragraph must update the empty renderer, not mount as history.
-    return <div className="llm-message-timeline">
+    return profileTimeline(<div className="llm-message-timeline">
       <ProposedPlanMessage key="body" content={content} streaming={streaming} projectId={projectId} suppressPlan={suppressTextPlan} />
-    </div>
+    </div>)
   }
 
   const textItems = timeline.filter(
@@ -49,23 +52,33 @@ function MessageTimeline({
   const trailingContent = content.startsWith(streamedText)
     ? content.slice(streamedText.length)
     : ''
-  return (
+  return profileTimeline(
     <div className="llm-message-timeline">
       {textItems.map((item, index) => (
         <ProposedPlanMessage
           key={index === 0 ? 'body' : item.id}
           content={item.content}
-          revealInitial={!initialTextIds.current.has(item.id)}
+          revealInitial={!initialTextIds.has(item.id)}
           streaming={streaming && item === textItems[textItems.length - 1] && !trailingContent}
           projectId={projectId}
           suppressPlan={suppressTextPlan}
         />
       ))}
       {trailingContent && (
-        <ProposedPlanMessage key="trailing" content={trailingContent} revealInitial={!initialTrailing.current} streaming={streaming} projectId={projectId} suppressPlan={suppressTextPlan} />
+        <ProposedPlanMessage key="trailing" content={trailingContent} revealInitial={!hasInitialTrailing} streaming={streaming} projectId={projectId} suppressPlan={suppressTextPlan} />
       )}
     </div>
   )
+}
+
+const measure: ProfilerOnRenderCallback = (_id, _phase, duration, _baseDuration, startedAt) => {
+  runtimeMark('chat-react-render', startedAt, duration)
+}
+
+function profileTimeline(timeline: ReactElement) {
+  return import.meta.env?.MODE === 'profile'
+    ? <Profiler id="MessageTimeline" onRender={measure}>{timeline}</Profiler>
+    : timeline
 }
 
 export default memo(MessageTimeline)

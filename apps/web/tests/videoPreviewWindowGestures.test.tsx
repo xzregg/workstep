@@ -18,7 +18,7 @@ for(const placement of ['avatar','top-right'] as const) test(`camera preview mov
   await act(async()=>video.dispatchEvent(new window.Event('loadedmetadata')))
   const header=host.querySelector<HTMLElement>('[data-video-drag]')!
   const pointer=(target:EventTarget,type:string,x:number,y:number)=>target.dispatchEvent(new window.PointerEvent(type,{bubbles:true,pointerId:1,button:0,clientX:x,clientY:y}))
-  if(placement==='top-right'){assert.equal(parseFloat(panel.style.top),40);assert.equal(parseFloat(panel.style.left)+parseFloat(panel.style.width),374)}
+  if(placement==='top-right'){assert.equal(parseFloat(panel.style.top),16,'no space above the video is reserved for controls');assert.equal(parseFloat(panel.style.left)+parseFloat(panel.style.width),374)}
   const left=parseFloat(panel.style.left)
   await act(async()=>{pointer(header,'pointerdown',100,100);pointer(window,'pointermove',60,130);pointer(window,'pointerup',60,130)})
   assert.equal(parseFloat(panel.style.left),left-40)
@@ -39,7 +39,7 @@ for(const placement of ['avatar','top-right'] as const) test(`camera preview mov
  }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
 })
 
-test('double click and touch double tap enlarge the window and restore its previous placement',async()=>{
+test('double click and double tap zoom around the selected point without resizing the window',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
  Object.defineProperties(window,{innerWidth:{value:390,configurable:true},innerHeight:{value:844,configurable:true}})
  try{
@@ -47,14 +47,26 @@ test('double click and touch double tap enlarge the window and restore its previ
   const panel=host.querySelector<HTMLElement>('.video-preview-window')!,video=host.querySelector('video')!,surface=host.querySelector<HTMLElement>('[data-video-drag]')!
   Object.defineProperties(video,{videoWidth:{value:720},videoHeight:{value:1280}})
   await act(async()=>video.dispatchEvent(new window.Event('loadedmetadata')))
+  surface.getBoundingClientRect=()=>new window.DOMRect(100,100,200,400) as DOMRect
   const before=panel.style.cssText
-  await act(async()=>surface.dispatchEvent(new window.MouseEvent('dblclick',{bubbles:true})))
-  assert.equal(panel.getAttribute('data-video-expanded'),'true')
-  assert.ok(parseFloat(panel.style.height)>500,'double click enlarges the preview')
-  await act(async()=>surface.dispatchEvent(new window.MouseEvent('dblclick',{bubbles:true})))
-  assert.equal(panel.style.cssText,before,'second double click restores position and size')
-  const touch=(type:string)=>surface.dispatchEvent(new window.PointerEvent(type,{bubbles:true,button:0,pointerId:7,pointerType:'touch',clientX:200,clientY:200}))
-  await act(async()=>{touch('pointerdown');touch('pointerup');touch('pointerdown');touch('pointerup')})
-  assert.equal(panel.getAttribute('data-video-expanded'),'true','touch double tap works even when native click events are suppressed')
+  const click=()=>surface.dispatchEvent(new window.MouseEvent('dblclick',{bubbles:true,clientX:150,clientY:400}))
+  const picture=()=>host.querySelector<HTMLElement>('.video-preview-picture')
+  await act(async()=>click())
+  assert.equal(surface.getAttribute('aria-pressed'),'true')
+  assert.equal(picture()?.style.transformOrigin,'25% 75%')
+  assert.equal(panel.style.cssText,before)
+  await act(async()=>click())
+  assert.equal(surface.getAttribute('aria-pressed'),'false')
+  assert.equal(picture()?.style.transformOrigin,'')
+  const touch=(type:string,x=250,y=200)=>surface.dispatchEvent(new window.PointerEvent(type,{bubbles:true,button:0,pointerId:7,pointerType:'touch',clientX:x,clientY:y}))
+  const doubleTap=()=>{touch('pointerdown');touch('pointerup');touch('pointerdown');touch('pointerup')}
+  await act(async()=>{doubleTap();click()})
+  assert.equal(surface.getAttribute('aria-pressed'),'true','the native double click after a touch double tap is ignored')
+  assert.equal(picture()?.style.transformOrigin,'75% 25%')
+  assert.equal(panel.style.cssText,before)
+  await act(async()=>doubleTap())
+  assert.equal(surface.getAttribute('aria-pressed'),'false')
+  await act(async()=>{touch('pointerdown');touch('pointermove',270);touch('pointerup',270);touch('pointerdown');touch('pointerup')})
+  assert.equal(surface.getAttribute('aria-pressed'),'false','a drag followed by a tap does not zoom')
  }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
 })

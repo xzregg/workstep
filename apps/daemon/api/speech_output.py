@@ -36,7 +36,7 @@ class Settings(BaseModel):
 class Synthesis(BaseModel):
     text: str = Field(min_length=1, max_length=1200)
     settings: Settings | None = None
-    preview_prompt: str = Field(default='', max_length=500)
+    preview_prompt: str = Field(default='', max_length=6500)
     digital_session_id: str = Field(default='', max_length=128)
 
 
@@ -79,7 +79,7 @@ async def connection_secret(body: SpeechCredentialRequest, response: Response):
 async def configure(body: Settings):
     authorize(manage=True)
     try:
-        return await service.configure(body.model_dump())
+        return await service.configure(body.model_dump(), preview_owner=owner())
     except ValueError as exc:
         raise translated(exc) from exc
 

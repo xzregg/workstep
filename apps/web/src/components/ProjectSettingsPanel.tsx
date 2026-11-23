@@ -22,6 +22,7 @@ import SkillCenterSettings from '../pages/SkillCenterSettings'
 import ProjectSharingTabs from './ProjectSharingTabs'
 import { useProjectSettingsDraftGuard } from './useProjectSettingsDraftGuard'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
+import '../pages/SettingsPage.css'
 
 interface ProjectSettingsPanelProps {
   project: Project | null
@@ -276,13 +277,12 @@ function LocalProjectSettingsPanel({
   return (
     <>
     {confirmation}
-    <div className="modal-overlay" onClick={requestClose}>
+    <div className="modal-overlay settings-dialog-overlay" onClick={requestClose}>
       <ResizablePanel
-        className="modal"
+        className="modal settings-dialog-panel"
         role="dialog"
         aria-modal="true"
         aria-label={`${t('projectSettings.title')} · ${project.name}`}
-        style={{ width: 860, height: '78vh', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="modal-header" style={{ flexShrink: 0, paddingLeft: 20 }}>
