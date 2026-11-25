@@ -22,5 +22,7 @@
 .speech-input-connection .speech-model-actions > span { color: var(--text-muted); font-size: var(--text-body); align-self: center; }
 .voiceprint-settings { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; padding-block: var(--space-4); border-block: .5px solid var(--border); }
 .voiceprint-settings progress { width: 100%; }
-.voiceprint-prompt { padding: var(--space-3); background: var(--surface); border-radius: var(--radius-sm); }
+.voiceprint-prompt { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; overflow-wrap: anywhere; padding: var(--space-3); background: var(--surface); border-radius: var(--radius-sm); }
+.voiceprint-prompt > p { margin: 0; }
+.speech-settings .voiceprint-prompt-text { color: var(--text-primary); }
 .voiceprint-settings .speech-model-actions { flex-wrap: wrap; }

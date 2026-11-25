@@ -147,7 +147,13 @@ export default function VoiceprintSettings({ initialStatus, disabled, mirror, on
     {status.error && <p role="alert">{t(status.error as Parameters<typeof t>[0])}</p>}
     <p>{t('voiceprint.limitations')}</p>
     {phase === 'recording' && <>
-      <p className="voiceprint-prompt">{t(kind === 'enroll' ? 'voiceprint.prompt' : 'voiceprint.testPrompt')}</p>
+      <div className="voiceprint-prompt">
+        {kind === 'enroll' ? <>
+          <p>{t('voiceprint.promptIntro')}</p>
+          <p className="voiceprint-prompt-text">{t('voiceprint.prompt')}</p>
+          <p>{t('voiceprint.promptDuration')}</p>
+        </> : <p>{t('voiceprint.testPrompt')}</p>}
+      </div>
       <span role="status">{t('voiceprint.recording', { seconds })}</span>
       <div className="speech-model-actions">
         <Button onClick={() => void finish()} disabled={seconds < (kind === 'enroll' ? 6 : 1)}>{t(kind === 'enroll' ? 'voiceprint.saveRecording' : 'voiceprint.verifyRecording')}</Button>

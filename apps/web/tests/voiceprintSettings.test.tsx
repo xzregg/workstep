@@ -25,9 +25,19 @@ test('voiceprint enrollment, test, scope and deletion own their audio and saved 
   await act(async()=>root.render(<I18nProvider><VoiceprintSettings initialStatus={initial} disabled={false} onBusyChange={value=>{busy=value}}/></I18nProvider>))
   assert.equal(host.querySelector<HTMLInputElement>('input')!.disabled,true)
   await act(async()=>button('录入声纹').click());assert.equal(busy,true)
+  const prompt = host.querySelector('.voiceprint-prompt')!
+  assert.deepEqual([...prompt.querySelectorAll('p')].map(p=>p.textContent), [
+   '请自然朗读：',
+   '今天我想整理一下接下来的工作安排。我会清楚地说出自己的想法，也会在句子之间稍作停顿。',
+   '请累计朗读至少 6 秒。',
+  ])
+  assert.equal(prompt.querySelector('.voiceprint-prompt-text')?.textContent?.includes('请'), false)
+  assert.equal(prompt.querySelectorAll('br').length, 0)
   assert.equal(button('完成并保存').disabled,true)
   await act(async()=>callback(new Int16Array(96000),.2,{lastVoice:96000,hasSpeech:true,recentSpeech:true,candidate:false,canCommit:false}))
   assert.equal(button('完成并保存').disabled,false)
+  assert.equal(host.querySelector('.voiceprint-prompt') === prompt, true)
+  assert.equal(prompt.querySelectorAll('p').length, 3)
   await act(async()=>button('完成并保存').click())
   assert.deepEqual(submitted,[192000]);assert.equal(busy,false);assert.match(host.textContent!,/声纹已保存/)
   await act(async()=>host.querySelector<HTMLInputElement>('input')!.click())
@@ -35,6 +45,8 @@ test('voiceprint enrollment, test, scope and deletion own their audio and saved 
   await act(async()=>{const select=host.querySelector('select')!;select.value='all';select.dispatchEvent(new window.Event('change',{bubbles:true}))})
   assert.equal(saves.at(-1)?.scope,'all')
   await act(async()=>button('测试声纹').click())
+  assert.equal(host.querySelector('.voiceprint-prompt')?.textContent, '请说一句完整的话，测试是否能匹配你的声音。')
+  assert.equal(host.querySelectorAll('.voiceprint-prompt-text').length, 0)
   await act(async()=>callback(new Int16Array(32000),.2,{lastVoice:32000,hasSpeech:true,recentSpeech:true,candidate:false,canCommit:false}))
   await act(async()=>button('完成并验证').click())
   assert.match(host.textContent!,/未匹配到你的声音/)

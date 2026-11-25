@@ -1,5 +1,6 @@
 export const zhCN = {
-  voiceprint: {"title": "声纹识别", "description": "录入你的声音，开启后只接收与声纹匹配的语音。", "privacy": "声纹特征加密保存在当前 WorkStep 主机，录入和测试音频均不保存。", "source": "模型来源与使用说明", "download": "下载声纹模型（27 MiB）", "enable": "只识别我的声音", "scope": "生效范围", "calls": "仅连续对话", "all": "全部语音输入", "enrolled": "已录入声纹", "empty": "尚未录入声纹", "limitations": "短句、远距离收音和声音变化可能影响匹配。多人同时讲话仍可能干扰识别；声纹不用于登录或身份认证。", "prompt": "请自然朗读：今天我想整理一下接下来的工作安排。我会清楚地说出自己的想法，也会在句子之间稍作停顿。请累计朗读至少 6 秒。", "testPrompt": "请说一句完整的话，测试是否能匹配你的声音。", "recording": "已采集有效语音 {seconds} 秒", "saveRecording": "完成并保存", "verifyRecording": "完成并验证", "enroll": "录入声纹", "reEnroll": "重新录入", "test": "测试声纹", "delete": "删除声纹", "deleteConfirm": "删除后会关闭声纹过滤，再次使用需要重新录入。", "saved": "声纹已保存，可开启“只识别我的声音”。", "matched": "声纹匹配成功", "unmatched": "未匹配到你的声音，本段语音已忽略。", "insufficient": "语音过短或音量不足，无法确认声纹，请再说完整一些。", "invalidFeatures": "未取得有效声纹，请换到安静环境后重试。", "profileUnavailable": "声纹数据无法读取，请删除后重新录入。", "invalidScope": "声纹生效范围无效。", "enrollFirst": "请先下载模型并录入声纹。", "invalidAudio": "请录制 20 秒以内的有效语音。", "downloadFirst": "请先下载声纹模型和本地语音运行库。", "needMoreSpeech": "有效语音不足，请在安静环境中清晰朗读后重试。", "runtimeRequired": "请先下载一个本地语音模型，声纹识别会复用其运行库。", "localOnly": "声纹过滤仅支持本地语音识别，请先关闭声纹过滤再切换服务。", "downloadFailed": "声纹模型下载失败，请检查网络与磁盘空间后重试。"},
+  digitalCalendar: {"title": "日历", "today": "今天", "previousMonth": "上个月", "nextMonth": "下个月", "add": "新增日程", "edit": "编辑日程", "content": "日程内容", "placeholder": "记下要做的事…", "time": "时间", "reminder": "提醒", "onTime": "日程开始时", "beforeMinutes": "提前 {count} 分钟", "empty": "这一天没有日程", "delete": "删除日程", "undo": "撤销", "deleted": "日程已删除", "loadFailed": "日程暂时无法读取", "save": "添加", "saveChanges": "保存", "discard": "放弃修改", "discardMessage": "尚有未保存的日程内容，是否放弃？", "day": "{date}，{count} 项日程", "notified": "已提醒", "retrying": "提醒发送失败，正在重试", "zone": "时区：{zone}"},
+  voiceprint: {"title": "声纹识别", "description": "录入你的声音，开启后只接收与声纹匹配的语音。", "privacy": "声纹特征加密保存在当前 WorkStep 主机，录入和测试音频均不保存。", "source": "模型来源与使用说明", "download": "下载声纹模型（27 MiB）", "enable": "只识别我的声音", "scope": "生效范围", "calls": "仅连续对话", "all": "全部语音输入", "enrolled": "已录入声纹", "empty": "尚未录入声纹", "limitations": "短句、远距离收音和声音变化可能影响匹配。多人同时讲话仍可能干扰识别；声纹不用于登录或身份认证。", "promptIntro": "请自然朗读：", "prompt": "今天我想整理一下接下来的工作安排。我会清楚地说出自己的想法，也会在句子之间稍作停顿。", "promptDuration": "请累计朗读至少 6 秒。", "testPrompt": "请说一句完整的话，测试是否能匹配你的声音。", "recording": "已采集有效语音 {seconds} 秒", "saveRecording": "完成并保存", "verifyRecording": "完成并验证", "enroll": "录入声纹", "reEnroll": "重新录入", "test": "测试声纹", "delete": "删除声纹", "deleteConfirm": "删除后会关闭声纹过滤，再次使用需要重新录入。", "saved": "声纹已保存，可开启“只识别我的声音”。", "matched": "声纹匹配成功", "unmatched": "未匹配到你的声音，本段语音已忽略。", "insufficient": "语音过短或音量不足，无法确认声纹，请再说完整一些。", "invalidFeatures": "未取得有效声纹，请换到安静环境后重试。", "profileUnavailable": "声纹数据无法读取，请删除后重新录入。", "invalidScope": "声纹生效范围无效。", "enrollFirst": "请先下载模型并录入声纹。", "invalidAudio": "请录制 20 秒以内的有效语音。", "downloadFirst": "请先下载声纹模型和本地语音运行库。", "needMoreSpeech": "有效语音不足，请在安静环境中清晰朗读后重试。", "runtimeRequired": "请先下载一个本地语音模型，声纹识别会复用其运行库。", "localOnly": "声纹过滤仅支持本地语音识别，请先关闭声纹过滤再切换服务。", "downloadFailed": "声纹模型下载失败，请检查网络与磁盘空间后重试。"},
   digitalPersonUi: {
     missing: '未找到该对话，请说出完整标题。',
     ambiguous: '有多段同名对话，请补充项目名称。',
@@ -56,10 +57,8 @@ export const zhCN = {
    "homeSwitchToVoiceInput":"切换到语音输入","homeHoldToCall":"长按切换通话","homeQueueSupplement":"加入待发送","homePendingTitle":"待发送","homePendingHint":"仅在点击发送后插入对话，不会自动发送。","homePendingFailed":"消息未发送，内容已保留，请重试。","homeUnmuteVoice":"恢复麦克风", "homeStartVoiceInput":"开始语音输入", "homeStartSupplementVoice":"语音补充", "homeCancelVoiceInput":"取消语音输入", "homeClearVoiceInput":"清除识别文字", "homeStartContinuousVoice":"开始连续对话", "homeEndContinuousVoice":"结束连续对话",
     runProcessedSources: '{messages}条消息 · {sessions}个会话',
     runNotificationFailed: '通知发送失败',
-    runNotificationReasonMissing: '原因未记录',
     notificationDelegation: '委派通知',
     notificationModelReason: "LLM 理由：{reason}",
-    notificationModelReasonMissing: "LLM 未提供不通知理由，具体理由未记录。",
     notificationCategoryLlm: "LLM 决定不通知",
     notificationCategoryQuiet: "免打扰",
     notificationCategoryError: "通知投递报错",
@@ -91,7 +90,6 @@ export const zhCN = {
     notificationReasonDeliveryFailed: "投递失败，请检查通知状态。",
     notificationReasonNoTargets: "未取得任何目标投递回执，不能确认发送成功。",
     notificationReasonAssessmentFailed: "本轮思考未完成，通知决策未完成。",
-    notificationReasonUnknown: "原因未记录，无法确定；不会据此补发。",
 
     runMemoriesAdded: '新增{count}条记忆',
     runKindAdded: '新增{count}条{kind}',
@@ -1036,6 +1034,7 @@ export const zhCN = {
       codex_sdk: 'Codex',
       deepseek_harness: 'DeepSeek Harness',
       antigravity: 'Antigravity ACP',
+      tau: 'Tau',
     },
     description: {
       claude: 'Anthropic 官方编码 CLI',
@@ -1050,6 +1049,7 @@ export const zhCN = {
       codex_sdk: 'OpenAI 官方 Codex SDK，内嵌驱动 Codex',
       deepseek_harness: 'DeepSeek 官方 Harness SDK，本地运行完整编码 Agent',
       antigravity: '沿用 Antigravity 本机登录与设置，使用账号可用模型',
+      tau: 'Hugging Face Tau 编码 Agent，运行依赖需手动安装',
     },
     defaultDescription: 'WorkStep 执行引擎',
     visibilityOn: '开启',

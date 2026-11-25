@@ -60,6 +60,44 @@ _LEGACY_MEMORY_HISTORY = WorkstepTool(
 
 WORKSTEP_TOOLS: list[WorkstepTool] = [
     WorkstepTool(
+        name='workstep_list_digital_hub_calendar',
+        description='Query host calendar Markdown schedules by timezone-aware ISO8601 since/before (inclusive/exclusive). Default: yesterday through next month. Returns id, revision, content, starts_at, reminder_at and reminder_status. Use current clock for relative dates. Host scope only.',
+        method='GET', path='/api/digital-person/calendar',
+        parameters={'since':{'type':'string'},'before':{'type':'string'},'limit':{'type':'integer','minimum':1,'maximum':500},'offset':{'type':'integer','minimum':0}},
+        query_params=('since','before','limit','offset'),
+    ),
+    WorkstepTool(
+        name='workstep_get_digital_hub_calendar_event',
+        description='Read one host calendar schedule including its full Markdown content and current revision.',
+        method='GET',path='/api/digital-person/calendar/{event_id}',
+        parameters={'event_id':{'type':'string'}},required=('event_id',),path_params=('event_id',),
+    ),
+    *[WorkstepTool(
+        name='workstep_'+action+'_digital_hub_calendar_event',
+        description=('Create' if action=='create' else 'Update')+' a host calendar schedule only on user request. Markdown content has no separate title. starts_at must be ISO8601 with an offset; timezone_name is an IANA zone. Ask for missing/ambiguous time. Confirm only after successful persistence. Reuse request_id for creation retries; update requires the latest revision.',
+        method='POST' if action=='create' else 'PUT',path='/api/digital-person/calendar'+('' if action=='create' else '/{event_id}'),
+        parameters={**{key:{'type':'string'} for key in ('content','starts_at','timezone_name')},'reminder_minutes':{'type':'integer','minimum':0,'maximum':10080},
+                    **({'request_id':{'type':'string'}} if action=='create' else {'event_id':{'type':'string'},'revision':{'type':'string'}})},
+        required=('content','starts_at') if action=='create' else ('event_id','revision','content','starts_at'),
+        path_params=() if action=='create' else ('event_id',),
+        body_params=('content','starts_at','timezone_name','reminder_minutes','request_id') if action=='create' else ('content','starts_at','timezone_name','reminder_minutes','revision'),
+        read_only=False,side_effect='Persist a host calendar schedule',
+    ) for action in ('create','update')],
+    WorkstepTool(
+        name='workstep_delete_digital_hub_calendar_event',
+        description='Delete a listed host calendar schedule only on user request. Requires its exact id and current revision. Stops pending reminders; do not guess IDs.',
+        method='DELETE',path='/api/digital-person/calendar/{event_id}',
+        parameters={'event_id':{'type':'string'},'revision':{'type':'string'}},required=('event_id','revision'),path_params=('event_id',),query_params=('revision',),
+        read_only=False,side_effect='Delete a host calendar schedule and cancel its reminder',
+    ),
+    WorkstepTool(
+        name='workstep_remind_digital_hub_calendar_event',
+        description='Deliver a host calendar reminder using shared receipts. Default requires reminder_at <= current clock. Reflection may set early=true for an event starting within 30 minutes; each advance notice is deduplicated separately and preserves the scheduled reminder. Already delivered reminders are not sent twice. Never send the same reminder through a second message tool.',
+        method='POST',path='/api/digital-person/calendar/{event_id}/remind',
+        parameters={'event_id':{'type':'string'},'revision':{'type':'string'},'early':{'type':'boolean'}},required=('event_id','revision'),path_params=('event_id',),body_params=('revision','early'),
+        read_only=False,side_effect='Deliver a due calendar reminder to the digital hub and its enabled notification destinations',
+    ),
+    WorkstepTool(
         name="workstep_list_digital_hub_voices",
         description="Read the digital hub's current speech mode and local model voice IDs with availability. System voices belong to the playback device. No credentials are returned.",
         method="GET", path="/api/digital-person/voice",

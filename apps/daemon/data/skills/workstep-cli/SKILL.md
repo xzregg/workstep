@@ -40,7 +40,7 @@ the sender ID and display name (`WORKSTEP_MESSAGE_ID`, `WORKSTEP_SENDER_ID`,
 | Projects, quick buttons and Actions | [Projects](references/projects.md) |
 | Workflows, step keys, buttons and Actions | [Workflows](references/workflows.md) |
 | Tasks, execution, archive lessons, worktrees and stage controls | [Tasks](references/tasks.md) |
-| Reminders, recurring/one-time schedules and scheduled task instructions | [Schedules](references/schedules.md) |
+| Reminders and schedules | [Schedules](references/schedules.md), [Calendar](references/calendar.md) |
 | Bots, sessions, notifications, bindings and files | [Channels](references/channels.md) |
 | Engines, skill drafts and skins | [Extensions](references/extensions.md) |
 | Creating/importing execution engines | [Engine guides](references/custom-engine.md) |

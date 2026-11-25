@@ -1,6 +1,7 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const jaJP: Messages = {
+  digitalCalendar: zhCN.digitalCalendar,
   voiceprint: zhCN.voiceprint,
   digitalPersonUi: zhCN.digitalPersonUi,
   faceEnrollment: {front:'正面を向く',left:'少し左を向く',right:'少し右を向く',up:'少し上を向く',down:'少し下を向く',action:'現在の動作',auto:'角度が合ったら、そのまま静止すると自動で撮影します。',preview:'サンプルの確認',prev:'前へ',next:'次へ',review:'1枚ずつ確認し、必要な写真だけ撮り直せます。',retake:'撮り直す',cancelRetake:'撮り直しを中止',openCamera:'カメラをオンにしてください',adjustPose:'向きを調整してください：{pose}',hold:'その角度のまま静止してください',needOne:'はっきり見える顔が1つだけ入るようにしてください',moveCloser:'カメラにもう少し近づいてください',centerFace:'顔を画面の中央に合わせてください',lighting:'暗すぎる場所や直射光を避けてください',blur:'ぶれないように静止してください',privacy:'写真は登録中だけ表示し、保存時は顔の特徴量のみをアップロードします。'},
@@ -42,10 +43,8 @@ export const jaJP: Messages = {
    "homeSwitchToVoiceInput":"切换到语音输入","homeHoldToCall":"长按切换通话","homeQueueSupplement":"加入待发送","homePendingTitle":"待发送","homePendingHint":"仅在点击发送后插入对话，不会自动发送。","homePendingFailed":"消息未发送，内容已保留，请重试。","homeUnmuteVoice":"マイクのミュートを解除", "homeStartVoiceInput":"音声入力を開始", "homeStartSupplementVoice":"追加メッセージを音声入力", "homeCancelVoiceInput":"音声入力をキャンセル", "homeClearVoiceInput":"認識したテキストを消去", "homeStartContinuousVoice":"連続会話を開始", "homeEndContinuousVoice":"連続会話を終了",
     runProcessedSources: '{messages} 件 · 会話 {sessions} 件',
     runNotificationFailed: '通知の送信に失敗',
-    runNotificationReasonMissing: '理由は記録されていません',
     notificationDelegation: '委派通知',
     notificationModelReason: "LLM 理由：{reason}",
-    notificationModelReasonMissing: "LLM 未提供不通知理由，具体理由未记录。",
     notificationCategoryLlm: "LLM 决定不通知",
     notificationCategoryQuiet: "免打扰",
     notificationCategoryError: "通知投递报错",
@@ -77,7 +76,6 @@ export const jaJP: Messages = {
     notificationReasonDeliveryFailed: "投递失败，请检查通知状态。",
     notificationReasonNoTargets: "未取得任何目标投递回执，不能确认发送成功。",
     notificationReasonAssessmentFailed: "本轮思考未完成，通知决策未完成。",
-    notificationReasonUnknown: "原因未记录，无法确定；不会据此补发。",
 
     runMemoriesAdded: '記憶 {count} 件を追加',
     runKindAdded: '{kind}を{count}件追加',
@@ -858,6 +856,7 @@ export const jaJP: Messages = {
       codex_sdk: 'Codex',
       deepseek_harness: 'DeepSeek Harness',
       antigravity: 'Antigravity ACP',
+      tau: 'Tau',
     },
     description: {
       claude: 'Anthropic 公式コーディング CLI',
@@ -872,6 +871,7 @@ export const jaJP: Messages = {
       codex_sdk: 'OpenAI 公式 Codex SDK（Codex を内蔵駆動）',
       deepseek_harness: 'DeepSeek 公式 Harness SDK（完全なコーディング Agent をローカル実行）',
       antigravity: '沿用 Antigravity 本机登录与设置，使用账号可用模型',
+      tau: 'Hugging Face Tau 编码 Agent，运行依赖需手动安装',
     },
     defaultDescription: 'WorkStep 実行エンジン',
     visibilityOn: '开启',

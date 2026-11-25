@@ -1326,6 +1326,9 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         context = extra.get('digital_person_context')
         if context is not None:
             parts = self._digital_person_prompt_parts(session)
+            if parts.get('identity', '').startswith('[WorkStep digital hub]\n'):
+                from services.digital_calendar import CHAT_RULES
+                parts['calendar'] = CHAT_RULES
             if self._config.name == 'chat_session' and parts.get('identity', '').startswith('[WorkStep digital hub]\n'):
                 from services.digital_person import COMPANION_UI_PROMPT
                 parts['companion_ui'] = COMPANION_UI_PROMPT

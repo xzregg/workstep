@@ -114,7 +114,7 @@ def matches_subscription(event: dict[str, Any], sub: WsSubscription) -> bool:
     if not sub.active:
         return True
     if event.get("type") == "CUSTOM" and event.get("name") in {
-        "workstep.gateway_connection_changed", "workstep.speech_output_changed", "workstep.digital_person_changed",
+        "workstep.gateway_connection_changed", "workstep.speech_output_changed", "workstep.digital_person_changed", "workstep.digital_calendar_changed",
     }:
         return not sub.project_id
     if (

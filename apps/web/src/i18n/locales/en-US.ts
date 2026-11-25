@@ -1,6 +1,7 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const enUS: Messages = {
+  digitalCalendar: zhCN.digitalCalendar,
   voiceprint: zhCN.voiceprint,
   digitalPersonUi: {
     missing: 'Conversation not found. Try the full title.',
@@ -58,10 +59,8 @@ export const enUS: Messages = {
    "homeSwitchToVoiceInput":"Switch to voice input","homeHoldToCall":"Hold to toggle the call","homeQueueSupplement":"加入待发送","homePendingTitle":"待发送","homePendingHint":"仅在点击发送后插入对话，不会自动发送。","homePendingFailed":"消息未发送，内容已保留，请重试。","homeUnmuteVoice":"Unmute microphone", "homeStartVoiceInput":"Start voice input", "homeStartSupplementVoice":"Dictate a follow-up", "homeCancelVoiceInput":"Cancel voice input", "homeClearVoiceInput":"Clear recognized text", "homeStartContinuousVoice":"Start continuous conversation", "homeEndContinuousVoice":"End continuous conversation",
     runProcessedSources: '{messages} messages · {sessions} chats',
     runNotificationFailed: 'Notification failed',
-    runNotificationReasonMissing: 'Reason not recorded',
     notificationDelegation: '委派通知',
     notificationModelReason: "LLM 理由：{reason}",
-    notificationModelReasonMissing: "LLM 未提供不通知理由，具体理由未记录。",
     notificationCategoryLlm: "LLM 决定不通知",
     notificationCategoryQuiet: "免打扰",
     notificationCategoryError: "通知投递报错",
@@ -93,7 +92,6 @@ export const enUS: Messages = {
     notificationReasonDeliveryFailed: "投递失败，请检查通知状态。",
     notificationReasonNoTargets: "未取得任何目标投递回执，不能确认发送成功。",
     notificationReasonAssessmentFailed: "本轮思考未完成，通知决策未完成。",
-    notificationReasonUnknown: "原因未记录，无法确定；不会据此补发。",
 
     runMemoriesAdded: 'Memories added: {count}',
     runKindAdded: '{kind} added: {count}',
@@ -890,6 +888,7 @@ export const enUS: Messages = {
       codex_sdk: 'Codex',
       deepseek_harness: 'DeepSeek Harness',
       antigravity: 'Antigravity ACP',
+      tau: 'Tau',
     },
     description: {
       claude: "Anthropic's official coding CLI",
@@ -904,6 +903,7 @@ export const enUS: Messages = {
       codex_sdk: "OpenAI's official Codex SDK, drives Codex internally",
       deepseek_harness: "DeepSeek's official Harness SDK running the full local coding agent",
       antigravity: '沿用 Antigravity 本机登录与设置，使用账号可用模型',
+      tau: 'Hugging Face Tau 编码 Agent，运行依赖需手动安装',
     },
     defaultDescription: 'WorkStep execution engine',
     visibilityOn: 'On',

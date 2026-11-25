@@ -8,7 +8,7 @@ const reasonKeys:Record<string,string>={
  archived_source:'ArchivedSource',contact_policy:'ContactPolicy',source_busy:'SourceBusy',duplicate:'Duplicate',
  disabled:'Disabled',quiet_hours:'QuietHours',face_welcome:'FaceWelcome',target_missing:'TargetMissing',
  stale_result:'StaleResult',invalid_evidence:'InvalidEvidence',action_not_applicable:'ActionNotApplicable',
- delivered:'Delivered',delivery_failed:'DeliveryFailed',no_targets:'NoTargets',assessment_failed:'AssessmentFailed',receipt_unavailable:'ReceiptUnavailable',unknown:'Unknown',
+ delivered:'Delivered',delivery_failed:'DeliveryFailed',no_targets:'NoTargets',assessment_failed:'AssessmentFailed',receipt_unavailable:'ReceiptUnavailable',
 }
 
 export function DigitalPersonRunNotificationStatus({run}:{run:DigitalRunDetail}){
@@ -22,17 +22,21 @@ export function DigitalPersonRunNotificationStatus({run}:{run:DigitalRunDetail})
 export function DigitalPersonRunNotificationReasons({run}:{run:DigitalRunDetail}){
  const {t}=useI18n()
  const explain=(item:DigitalRunNotification)=>{
-  const reason=Object.hasOwn(reasonKeys,item.reason)?item.reason:'unknown'
+  const reason=item.reason,modelReason=item.model_reason?.trim()
+  if(!Object.hasOwn(reasonKeys,reason)||(reason==='model_silent'&&!modelReason))return null
   const category=reason==='model_silent'?'Llm':reason==='quiet_hours'?'Quiet':reason==='delivery_failed'?'Error'
-   : reason==='target_missing'?'Target':reason==='no_targets'?'Receipt': ['unknown','receipt_unavailable'].includes(reason)?'Unknown'
+   : reason==='target_missing'?'Target':reason==='no_targets'?'Receipt': reason==='receipt_unavailable'?'Unknown'
    : reason==='delivered'?'Delivered':reason==='assessment_failed'?'Assessment':['no_work','internal_only'].includes(reason)?'Internal': 'Policy'
-  const description=reason==='model_silent'?(item.model_reason?t('digitalPerson.notificationModelReason',{reason:item.model_reason}):t('digitalPerson.notificationModelReasonMissing'))
-   :t(`digitalPerson.notificationReason${reasonKeys[reason]??'Unknown'}` as never)
-  return <>{t(`digitalPerson.notificationCategory${category}` as never)} · {description}{reason!=='model_silent'&&item.model_reason&&<> · {t('digitalPerson.notificationModelReason',{reason:item.model_reason})}</>}</>
+  const description=reason==='model_silent'?t('digitalPerson.notificationModelReason',{reason:modelReason!})
+   :t(`digitalPerson.notificationReason${reasonKeys[reason]}` as never)
+  return <>{t(`digitalPerson.notificationCategory${category}` as never)} · {description}{reason!=='model_silent'&&modelReason&&<> · {t('digitalPerson.notificationModelReason',{reason:modelReason!})}</>}</>
  }
+ const primary=explain(run.notification??(run.status==='delivery_failed'||!!run.outcome?.failed?{state:'delivery_failed',reason:'delivery_failed'}:{state:'unknown',reason:'unknown'}))
+ const notices=(run.delegation_notifications??[]).map(explain).filter(item=>item!==null)
+ if(!primary&&!notices.length)return null
  return <div className="digital-run-outcome digital-run-notification-reasons">
-  <span className="digital-run-notification-audit">{explain(run.notification??(run.status==='delivery_failed'||!!run.outcome?.failed?{state:'delivery_failed',reason:'delivery_failed'}:{state:'unknown',reason:'unknown'}))}</span>
-  {(run.delegation_notifications??[]).map((notice,index)=><span className="digital-run-notification-audit" key={index}>{t('digitalPerson.notificationDelegation')} · {explain(notice)}</span>)}
+  {primary&&<span className="digital-run-notification-audit">{primary}</span>}
+  {notices.map((notice,index)=><span className="digital-run-notification-audit" key={index}>{t('digitalPerson.notificationDelegation')} · {notice}</span>)}
  </div>
 }
 
@@ -51,15 +55,13 @@ export function DigitalPersonRunDelivery({run, summaryInList}: {run: DigitalRunD
   : sent ? t('digitalPerson.runMessagesSent',{count:sent})
   : status==='notified' ? t('digitalPerson.statusNotified') : ''
  const audit=run.notification
- const explain=(reason:string)=>t(`digitalPerson.notificationReason${reasonKeys[reason]??'Unknown'}` as never)
+ const failureDetail=reasons.length ? reasons.map(reason=>errorText(reason)).join(' · ')
+  : audit?.reason==='no_targets' ? t('digitalPerson.notificationReasonNoTargets') : ''
  return <div className="digital-run-outcome digital-run-notification">
   {label&&<span><Icon name={status==='notifying'?'loader-circle':status==='silent'?'lightbulb':'send'} size={14} className={status==='notifying'?'task-status-spinner':undefined}/><span>{label}</span></span>}
   {status!=='running'&&<DigitalPersonRunNotificationReasons run={run}/>}
   {failed&&!pending&&<span className="digital-run-outcome-failed" role="alert">
-   <Icon name="circle-alert" size={14}/><span>{t('digitalPerson.runNotificationFailed')} · {
-    reasons.length ? reasons.map(reason=>errorText(reason)).join(' · ')
-     : audit?.reason==='no_targets' ? explain(audit.reason) : t('digitalPerson.runNotificationReasonMissing')
-   }</span>
+   <Icon name="circle-alert" size={14}/><span>{t('digitalPerson.runNotificationFailed')}{failureDetail&&<> · {failureDetail}</>}</span>
   </span>}
  </div>
 }

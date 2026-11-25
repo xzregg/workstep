@@ -49,8 +49,6 @@
 
 @media(min-width:1024px){
  .digital-home{--home-camera-width:clamp(320px,28vw,400px)}
- .digital-home:has(.digital-person-camera--panel:not([hidden]) .video-preview-window--docked) .digital-home-caption-frame,
- .digital-home:has(.digital-person-camera--panel:not([hidden]) .video-preview-window--docked) .digital-home-chat{right:calc(var(--home-camera-width) + var(--home-content-inset,var(--space-6)) + var(--space-4))}
 }
 
 .camera-panel-resize{display:none}

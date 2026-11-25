@@ -23,10 +23,8 @@ export const frFR: Messages = {
    "homeSwitchToVoiceInput":"切换到语音输入","homeHoldToCall":"长按切换通话","homeQueueSupplement":"加入待发送","homePendingTitle":"待发送","homePendingHint":"仅在点击发送后插入对话，不会自动发送。","homePendingFailed":"消息未发送，内容已保留，请重试。","homeUnmuteVoice":"Réactiver le microphone", "homeStartVoiceInput":"Démarrer la saisie vocale", "homeStartSupplementVoice":"Dicter un complément", "homeCancelVoiceInput":"Annuler la saisie vocale", "homeClearVoiceInput":"Effacer le texte reconnu", "homeStartContinuousVoice":"Démarrer la conversation continue", "homeEndContinuousVoice":"Terminer la conversation continue",
     runProcessedSources: '{messages} messages · {sessions} échanges',
     runNotificationFailed: 'Échec de la notification',
-    runNotificationReasonMissing: 'Motif non enregistré',
     notificationDelegation: '委派通知',
     notificationModelReason: "LLM 理由：{reason}",
-    notificationModelReasonMissing: "LLM 未提供不通知理由，具体理由未记录。",
     notificationCategoryLlm: "LLM 决定不通知",
     notificationCategoryQuiet: "免打扰",
     notificationCategoryError: "通知投递报错",
@@ -58,7 +56,6 @@ export const frFR: Messages = {
     notificationReasonDeliveryFailed: "投递失败，请检查通知状态。",
     notificationReasonNoTargets: "未取得任何目标投递回执，不能确认发送成功。",
     notificationReasonAssessmentFailed: "本轮思考未完成，通知决策未完成。",
-    notificationReasonUnknown: "原因未记录，无法确定；不会据此补发。",
 
     runMemoriesAdded: 'Souvenirs ajoutés : {count}',
     runKindAdded: '{kind} ajoutés : {count}',

@@ -1,10 +1,18 @@
 # 引擎安装、版本选择与回退
 
-设置 → 执行引擎 → **安装与版本**提供主包大小、确切版本选择、安装过程和上一版本回退。适用于 Codex CLI、Claude Code CLI，以及 Codex、Claude、Qoder、DeepSeek Harness 和 Antigravity ACP。Pydantic AI 随项目依赖管理；Hermes、OpenClaw 仍由外部安装方式管理。
+设置 → 执行引擎 → **安装与版本**提供主包大小、确切版本选择、安装过程和上一版本回退。适用于 Codex CLI、Claude Code CLI，以及 Codex、Claude、Qoder、DeepSeek Harness、Tau 和 Antigravity ACP。Pydantic AI 随项目依赖管理；Hermes、OpenClaw 仍由外部安装方式管理。
 
 Antigravity ACP（`antigravity`）通过同一“安装与版本”面板安装官方 `agy` 原生程序，目标固定为 `$WORKSTEP_CONFIG_DIR/runtime/native/antigravity/agy`（默认 `~/.workstep/`，Windows 为 `agy.exe`）。不执行官方 shell／PowerShell 安装器，不写 `~/.local/bin`、系统目录、PATH 或 shell 配置。路径优先级为显式配置／`ANTIGRAVITY_BIN`、WorkStep 托管目录、宿主机已有 CLI；显式路径启用时禁止托管版本切换。版本面板只把托管目录中的程序计为已安装版本，宿主同版本 CLI 不会阻止安装独立副本。CLI 自己管理账号认证，WorkStep 不复制 IDE 凭据；需要登录时在终端运行托管目录里的完整 `agy` 路径。安装后重新扫描、测试，并在展开配置中刷新和选择模型。
 
 原生版本来源是[官方安装器](https://antigravity.google/docs/getting-started/)使用的平台发布清单，平台覆盖 macOS／Windows／Linux 的 x64 与 arm64（Linux 含 musl）。官方下载仅提供当前版本清单，因此版本列表显示当前官方版本和 WorkStep 已记录的同平台确切版本，不虚构完整历史目录。操作记录保存不可变下载地址、大小和 SHA-512，供重试与回退；接管前的外部安装若没有相应清单，不声明可回退。下载复用 `ResourceDownload` 断点续传和真实字节进度；校验通过后只提取已知普通可执行文件，在托管目录内暂存并验证版本，再原子替换。失败保留原程序，不随桌面包或镜像预装。
+
+## Tau 的内置适配与按需安装
+
+Tau 的适配代码随 WorkStep 提供，但官方 `tau-ai` SDK 及其依赖不随 daemon／桌面包预装，也不加入应用的 `pyproject.toml` 或 `uv.lock`。未安装时仍可在设置 → 执行引擎看到 Tau；由用户打开“安装与版本”、选择版本并确认后才下载到可写的 Python 引擎运行时目录。列表扫描和应用启动不触发安装。需要 Python 3.12 或更新版本；当前适配已验证 SDK 0.4.12。包仓库的可选版本不等于全部经过兼容性验证。
+
+从原自定义 Tau 接入升级时，保留引擎 ID `tau`、供应商选择和模型；`tau_engine` 配置覆盖旧 `custom_engine_config.tau` 中的同名参数，未覆盖项继续兼容读取。已有的 `runtime/engines/tau/dependencies/python` SDK 可原地复用；之后手动安装的托管 SDK 优先。原生会话继续使用 `runtime/engines/tau-sessions`，不迁移或删除历史文件。内置类优先于同 ID 自定义包，不再经用户包加载适配代码。
+
+图片直接作为原生内容块传递，正文路径保留；默认网络无数据超时为 300 秒，单次模型请求总时限 900 秒，bash 上限 300 秒，均可保存或按轮覆盖。空回复、断流、截断和轮数耗尽不报告成功。恢复、审批、实时消息、工具禁用和取消清理有离线 SDK 回归；SDK 更新后需重启后台、重新扫描及测试。
 
 ## 版本来源与约束
 

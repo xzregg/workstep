@@ -23,6 +23,7 @@ export const ENGINE_LABELS: Record<string, TKey> = {
   codex_sdk: 'engine.label.codex_sdk',
   deepseek_harness: 'engine.label.deepseek_harness',
   antigravity: 'engine.label.antigravity',
+  tau: 'engine.label.tau',
 }
 
 export const ENGINE_DESCRIPTIONS: Record<string, TKey> = {
@@ -38,6 +39,7 @@ export const ENGINE_DESCRIPTIONS: Record<string, TKey> = {
   codex_sdk: 'engine.description.codex_sdk',
   deepseek_harness: 'engine.description.deepseek_harness',
   antigravity: 'engine.description.antigravity',
+  tau: 'engine.description.tau',
 }
 
 export const ENGINE_COLORS: Record<string, string> = {
@@ -53,6 +55,7 @@ export const ENGINE_COLORS: Record<string, string> = {
   codex_sdk: '#2563eb',
   deepseek_harness: '#4d6bfe',
   antigravity: '#4285f4',
+  tau: '#d97706',
 }
 
 const customMetadata = new Map<string, { name?: string; description?: string }>()

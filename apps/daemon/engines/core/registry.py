@@ -205,6 +205,7 @@ def get_available_engines() -> list[dict]:
                 "codex_sdk",
                 "deepseek_harness",
                 "qoder_sdk",
+                "tau",
             }:
                 mode = "sdk"
             else:

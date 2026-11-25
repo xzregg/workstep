@@ -16,6 +16,9 @@ _MANAGED_ENGINE_MODULES = frozenset({
     "deepseek_harness_runtime",
     "openai_codex",
     "qoder_agent_sdk",
+    "tau_agent",
+    "tau_ai",
+    "tau_coding",
 })
 
 

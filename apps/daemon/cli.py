@@ -204,6 +204,36 @@ def build_parser() -> argparse.ArgumentParser:
     person = subparsers.add_parser('digital-hub', aliases=['digital-person'], help='query digital hub identity, manage standing memory, trigger reflection, or delegate work')
     person_sub = person.add_subparsers(dest='subcommand', required=True)
     add_json(person_sub.add_parser('info', help='read digital hub name, role, level, experience, statistics and available skills'))
+    calendar = person_sub.add_parser('calendar', help='query or manage Markdown schedules and due reminders')
+    calendar_sub = calendar.add_subparsers(dest='calendar_action', required=True)
+    calendar_list = calendar_sub.add_parser('list')
+    for flag in ('since','before'):
+        calendar_list.add_argument('--'+flag, help='timezone-aware ISO8601 time')
+    calendar_list.add_argument('--limit',type=int,default=200)
+    calendar_list.add_argument('--offset',type=int,default=0)
+    add_json(calendar_list)
+    for action in ('get','delete','remind'):
+        item = calendar_sub.add_parser(action)
+        item.add_argument('--id',dest='event_id',required=True)
+        if action != 'get':
+            item.add_argument('--revision',required=True)
+        if action == 'remind':
+            item.add_argument('--early',action='store_true',help='reflection advance notice for an event starting within 30 minutes')
+        add_json(item)
+    for action in ('create','update'):
+        item = calendar_sub.add_parser(action)
+        if action == 'update':
+            item.add_argument('--id',dest='event_id',required=True)
+            item.add_argument('--revision',required=True)
+        content = item.add_mutually_exclusive_group(required=True)
+        content.add_argument('--content')
+        content.add_argument('--content-file')
+        item.add_argument('--at',dest='starts_at',required=True,help='timezone-aware ISO8601 start time; minute precision')
+        item.add_argument('--timezone',dest='timezone_name',default='UTC')
+        item.add_argument('--reminder-minutes',type=int,default=0)
+        if action == 'create':
+            item.add_argument('--idempotency-key',dest='request_id')
+        add_json(item)
     identity = person_sub.add_parser('identity', help='resume identity setup or explicitly reset it for later edits')
     identity_sub = identity.add_subparsers(dest='identity_action', required=True)
     add_json(identity_sub.add_parser('status'))
@@ -664,6 +694,20 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
         return await client.call('workstep_memory_' + operation, {
             key: getattr(args, key) for key in fields if getattr(args, key, None) is not None})
     if command in ('digital-hub', 'digital-person'):
+        if args.subcommand == 'calendar':
+            action = args.calendar_action
+            if action == 'list':
+                return await client.call('workstep_list_digital_hub_calendar',{
+                    key:getattr(args,key) for key in ('since','before','limit','offset') if getattr(args,key,None) is not None})
+            arguments = {key:getattr(args,key) for key in ('event_id','revision','starts_at','timezone_name','reminder_minutes','request_id','early') if getattr(args,key,None) is not None}
+            if action in ('create','update'):
+                if args.content_file:
+                    arguments['content'] = await asyncio.to_thread(Path(args.content_file).read_text,encoding='utf-8')
+                else:
+                    arguments['content'] = args.content
+            if action != 'get':
+                arguments['confirm'] = 'yes'
+            return await client.call('workstep_'+action+'_digital_hub_calendar_event',arguments)
         if args.subcommand == 'identity':
             if args.identity_action == 'status':
                 return await client.call('workstep_get_digital_hub_identity_setup', {})

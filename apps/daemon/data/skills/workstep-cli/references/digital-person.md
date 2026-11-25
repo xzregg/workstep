@@ -1,6 +1,7 @@
 # Digital hub（数字中枢）
 
 For available voices and changing your playback voice, read [Voice](voice.md).
+For personal calendar schedules, chat creation/deletion and due reminders, read [Calendar](calendar.md).
 
 Identity setup and later edits (host scope only):
 

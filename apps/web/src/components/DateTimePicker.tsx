@@ -25,6 +25,9 @@ interface DateTimePickerProps {
   min?: string
   onChange: (value: string) => void
   disabled?: boolean
+  precision?: 'minute' | 'second'
+  ariaLabel?: string
+  popupClassName?: string
 }
 
 function parseLocalValue(value: string): Dayjs | null {
@@ -33,7 +36,7 @@ function parseLocalValue(value: string): Dayjs | null {
   return date.isValid() ? date : null
 }
 
-export default function DateTimePicker({ value, min, onChange, disabled }: DateTimePickerProps) {
+export default function DateTimePicker({ value, min, onChange, disabled, precision='second', ariaLabel, popupClassName }: DateTimePickerProps) {
   const skin = useActiveSkin()
   const compact = useCompactLayout()
   const tokens = effectiveSkinTokens(skin, compact)
@@ -61,14 +64,14 @@ export default function DateTimePicker({ value, min, onChange, disabled }: DateT
   }, [dayjsLocale])
   const handleChange = (date: Dayjs | null) => {
     if (!date) return onChange('')
-    const adjusted = !date.isAfter(dayjs()) && Math.abs(date.diff(dayjs(), 'second')) <= 2
+    const adjusted = precision === 'minute' ? date.startOf('minute') : !date.isAfter(dayjs()) && Math.abs(date.diff(dayjs(), 'second')) <= 2
       ? dayjs().add(1, 'second')
       : date
     onChange(adjusted.format('YYYY-MM-DDTHH:mm:ss'))
   }
   const now = dayjs()
   const presets = [
-    { label: t('taskList.scheduledPresetNow'), value: now.add(1, 'second') },
+    { label: t('taskList.scheduledPresetNow'), value: precision==='minute'?now.add(1,'minute').startOf('minute'):now.add(1, 'second') },
     { label: t('taskList.scheduledPresetTomorrow'), value: now.add(1, 'day') },
     { label: t('taskList.scheduledPresetNextWeek'), value: now.add(1, 'week') },
     { label: t('taskList.scheduledPresetNextMonth'), value: now.add(1, 'month').startOf('month') },
@@ -84,8 +87,8 @@ export default function DateTimePicker({ value, min, onChange, disabled }: DateT
         onChange={handleChange}
         minDate={minimum || undefined}
         disabledDate={(current) => Boolean(minimum && current.isBefore(minimum, 'day'))}
-        showTime={{ format: 'HH:mm:ss', minuteStep: 1, secondStep: 1 }}
-        format="YYYY-MM-DD HH:mm:ss"
+        showTime={{ format: precision==='minute'?'HH:mm':'HH:mm:ss', minuteStep: 1, secondStep: 1 }}
+        format={precision==='minute'?'YYYY-MM-DD HH:mm':'YYYY-MM-DD HH:mm:ss'}
         locale={antdLocale.DatePicker}
         showNow={false}
         renderExtraFooter={() => (
@@ -105,7 +108,8 @@ export default function DateTimePicker({ value, min, onChange, disabled }: DateT
         allowClear
         disabled={disabled}
         placeholder={t('taskList.scheduledPickerPlaceholder')}
-        aria-label={t('taskList.scheduledPickerLabel')}
+        aria-label={ariaLabel??t('taskList.scheduledPickerLabel')}
+        classNames={popupClassName?{popup:{root:popupClassName}}:undefined}
         style={{ width: '100%' }}
       />
     </ConfigProvider>

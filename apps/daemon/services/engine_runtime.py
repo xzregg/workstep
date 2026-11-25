@@ -68,7 +68,9 @@ class EngineRuntimeManager:
             try:
                 return managed_package_version(spec.name)
             except importlib.metadata.PackageNotFoundError:
-                return None
+                # Builtin adapters may adopt an existing user-installed SDK in place.
+                cls = next((c for c in list_all_engines().values() if c.RUNTIME_PACKAGE == spec), None)
+                return cls.get_version() if cls else None
         cls = next(c for c in list_all_engines().values() if c.RUNTIME_PACKAGE == spec)
         raw = cls.get_version() or ""
         match = re.search(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", raw)

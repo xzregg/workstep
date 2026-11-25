@@ -208,6 +208,8 @@ class DigitalPersonRuntime:
         self._cycle_task = None
         self._active_check = None
         self._active_assessment_task = None
+        from services.digital_calendar import CalendarRuntime
+        self.calendar = CalendarRuntime(self)
         from services.digital_person_followup import DelegationFollower
         from services.digital_person_delegations import DelegationManagement
         self._follower = DelegationFollower(self)
@@ -906,7 +908,7 @@ class DigitalPersonRuntime:
                 'channel':'digital_person','project_id':home.id,'session_id':sid,
                 'value':{'message_id':mid,'text':text}})
 
-    async def _notify(self, text, source_ids, run_id):
+    async def _notify(self, text, source_ids, run_id, *, calendar=False, previous_receipts=None):
         text = redact(text)
         state = await self.state()
         from services.digital_person_tasks import resolve_task
@@ -922,12 +924,14 @@ class DigitalPersonRuntime:
         routes = await self.bots._load() if self.bots else {'sessions': {}, 'session_sources': {}}
         scope = run.get('sources', {}).get('companion', {}).get('scope') if isinstance(run.get('sources'), dict) else None
         reflection = run.get('trigger') in ('manual', 'interval')
-        proactive = reflection and scope == 'local' and run.get('origin_session_id') not in routes.get('session_sources', {})
+        proactive = calendar or (reflection and scope == 'local' and run.get('origin_session_id') not in routes.get('session_sources', {}))
         if proactive:
             main_id = (await self.main_session())['id']
             targets = {main_id}
-        receipts = []
+        receipts = [row for row in (previous_receipts or []) if row.get('status') == 'delivered']
         for sid in targets:
+            if any(row.get('kind') == 'local' and (calendar or row.get('session_id') == sid) for row in receipts):
+                continue
             source_project = (run.get('sources') or {}).get('origin_project_id') if isinstance(run.get('sources'),dict) else None
             local_options = {'project_id':source_project} if source_project and not proactive and sid == run.get('origin_session_id') else {}
             try:
@@ -947,6 +951,8 @@ class DigitalPersonRuntime:
             destination = (main_id if binding.get('use_main_session')
                            and binding['conversation_type'] == 'single' else routes['sessions'].get(route))
             if destination not in targets:
+                continue
+            if any(row.get('kind') == 'channel' and row.get('binding_id') == binding['id'] for row in receipts):
                 continue
             try:
                 from services.digital_person_channels import send_binding
@@ -1244,6 +1250,7 @@ class DigitalPersonRuntime:
         from services.memory_knowledge import ensure_schema
         await asyncio.to_thread(ensure_schema)
         self._loop_task = asyncio.create_task(self._loop())
+        self.calendar.start()
 
     async def follow_delegations(self, profile=None):
         profile = profile or await asyncio.to_thread(digital_person.get_profile)
@@ -1344,6 +1351,7 @@ class DigitalPersonRuntime:
             await checker.stop_current(sid, pid)
 
     async def shutdown(self):
+        await self.calendar.shutdown()
         if self._loop_task:
             self._loop_task.cancel()
         await self.stop_check()

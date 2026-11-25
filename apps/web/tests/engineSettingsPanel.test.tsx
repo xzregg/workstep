@@ -48,6 +48,46 @@ test('Antigravity uses the shared runtime version installer instead of a shell i
   }
 })
 
+test('Tau stays uninstalled until the user confirms its optional runtime installation', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originals = { list: engineApi.list, executionConfig: engineApi.executionConfig,
+    runtime: engineApi.runtime, runtimeOperation: engineApi.runtimeOperation,
+    startRuntimeOperation: engineApi.startRuntimeOperation }
+  const submitted: unknown[] = []
+  engineApi.list = async () => ({ engines: [{ id:'tau', installed:false,
+    runtime_manageable:true, installable:false, config:null } as EngineInfo] })
+  engineApi.executionConfig = async () => ({ engine: '' })
+  engineApi.runtimeOperation = async () => null
+  engineApi.runtime = async () => ({ engine_id:'tau', current_version:null, default_version:'0.4.12',
+    versions:[{version:'0.4.12',size_bytes:1024,prerelease:false}], history:[], requires_terms:false,
+    requires_restart:false, configured_path:null, rollback_version:null, minimum_version:'0', size_scope:'primary_package',
+    terms_url:null, error:null })
+  engineApi.startRuntimeOperation = async (id, input) => {
+    submitted.push([id, input])
+    return {id:'op',engine_id:id,status:'failed',stage:'failed',message:'fixture',target_version:'0.4.12'} as import('../src/api/client').EngineRuntimeOperation
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><EngineSettingsPanel hidden={false} refreshRevision={0} preferredProviderProtocol="" /></I18nProvider>))
+    const card = container.querySelector('[data-engine-id="tau"]')!
+    assert.equal(submitted.length, 0)
+    assert.match(card.textContent || '', /Tau/)
+    assert.equal(card.getAttribute('data-available'), 'true')
+    await act(async () => card.querySelector<HTMLButtonElement>('.engine-runtime-control > button')!.click())
+    assert.equal(card.querySelector<HTMLSelectElement>('select')!.value, '0.4.12')
+    await act(async () => card.querySelector<HTMLButtonElement>('.engine-runtime-actions > .btn-primary')!.click())
+    assert.ok(container.querySelector('[role="dialog"]'))
+    await act(async () => container.querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
+    assert.deepEqual(submitted, [['tau', {version:'0.4.12',rollback:false,accept_third_party_terms:false}]])
+  } finally {
+    Object.assign(engineApi, originals)
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
 test('Antigravity ACP refreshes models and persist a selected model', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))

@@ -308,6 +308,9 @@ export function useWebSocket() {
             if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.digital_person_changed') {
               window.dispatchEvent(new Event('workstep:digital-person-changed'))
             }
+            if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.digital_calendar_changed') {
+              window.dispatchEvent(new Event('workstep:digital-calendar-changed'))
+            }
             if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.speech_output_changed') {
               const speechChanged = new Event(OUTPUT_CHANGED)
               invalidateSpeechOutputSettings(speechChanged)

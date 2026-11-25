@@ -16,6 +16,7 @@ import {callStates,orbPhaseFor} from './avatar/particlePalette'
 import MemoryAtlas,{AtlasBackdrop} from './MemoryAtlas'
 import DigitalPersonPresence from './DigitalPersonPresence'
 import DigitalPersonHomeInsights from './DigitalPersonHomeInsights'
+import DigitalPersonCalendar from './DigitalPersonCalendar'
 import AvatarPresentation from '../AvatarPresentation'
 import {selectRobotActivity} from './avatar/robotActivity'
 import {useDigitalPersonAffect} from './useDigitalPersonAffect'
@@ -269,6 +270,7 @@ export default function DigitalPersonHome(props:Props){
     {welcome.text&&<p className="digital-home-welcome" role="status">{welcome.text}</p>}
    </section>
    <DigitalPersonHomeInsights onConversationChange={setDelegationShown} atlasAction={atlasToggle} active={active} canControlWake={canCompose} name={profile.name} role={profile.role} state={identityState} activity={activity} affect={affect.state} chatShown={transcriptVisible} onInspect={mute}/>
+   <DigitalPersonCalendar active={active&&!transcriptVisible&&!delegationShown&&!conversationWindow} projectId={projectId} canEdit={canCompose}/>
    {!transcriptVisible&&!conversationWindow&&!delegationShown&&<DigitalPersonCaptions projectId={projectId} messages={messages} feedback={activity?.feedback} sessionId={sessionId} greeting={identitySetupGreetingKey(profile)?t(identitySetupGreetingKey(profile)!):profile.greeting} liveText={voiceCaption} voicePhase={!hasVoiceDraft&&voiceActive?voicePhase:undefined}
     voiceDraft={hasVoiceDraft?dialogue.draft:undefined}
     onStartVoiceEdit={()=>{mute();dialogue.editDraft(voiceCaption)}}

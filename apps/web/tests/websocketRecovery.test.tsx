@@ -36,7 +36,9 @@ test('identity mutations notify the mounted digital hub profile consumers', asyn
  const {window}=installDomEnvironment(),originalSocket=globalThis.WebSocket
  globalThis.WebSocket=Socket as never;Socket.instances=[]
  let changes=0
+ let calendarChanges=0
  window.addEventListener('workstep:digital-person-changed',()=>{changes++})
+ window.addEventListener('workstep:digital-calendar-changed',()=>{calendarChanges++})
  const root=createRoot(document.body.appendChild(document.createElement('div')))
  function Harness(){useWebSocket();return null}
  try{
@@ -44,6 +46,8 @@ test('identity mutations notify the mounted digital hub profile consumers', asyn
   await act(async()=>Socket.instances[0].open())
   await act(async()=>Socket.instances[0].receive({type:'CUSTOM',name:'workstep.digital_person_changed',value:{}}))
   assert.equal(changes,1)
+  await act(async()=>Socket.instances[0].receive({type:'CUSTOM',name:'workstep.digital_calendar_changed',value:{}}))
+  assert.equal(calendarChanges,1)
  }finally{await act(async()=>root.unmount());globalThis.WebSocket=originalSocket;await window.happyDOM.close()}
 })
 
