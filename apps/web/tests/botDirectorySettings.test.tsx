@@ -43,7 +43,7 @@ test('directory searches only local API, refreshes explicitly and saves disabled
     assert.equal(saved[0].directory_enabled,false)
     assert.equal('proactive_send_enabled' in saved[0],false)
     assert.equal(dirty.at(-1),false)
-    assert.equal(container.querySelector('table'),null)
+    assert.ok(container.querySelector('table') === null)
   } finally { await act(async () => root.unmount()); container.remove(); globalThis.fetch=original }
 })
 

@@ -59,11 +59,11 @@ test('skin select opens a themed list, respects disabled and forwards a real cha
     assert.equal((document.querySelector('[data-value=b]') as HTMLButtonElement).disabled, true)
     await act(async () => (document.querySelector('[data-value=c]') as HTMLButtonElement).click())
     assert.deepEqual(changes, ['c'])
-    assert.equal(document.querySelector('[role=listbox]'), null)
-    assert.equal(document.activeElement, document.querySelector('[role=combobox]'))
+    assert.ok(document.querySelector('[role=listbox]') === null)
+    assert.ok(document.activeElement === document.querySelector('[role=combobox]'))
     await act(async () => (document.querySelector('[role=combobox]') as HTMLButtonElement).click())
     await act(async () => document.querySelector('[role=listbox]')!.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
-    assert.equal(document.querySelector('[role=listbox]'), null)
+    assert.ok(document.querySelector('[role=listbox]') === null)
   } finally { await act(async () => root.unmount()); restoreDefaultSkin(); await window.happyDOM.close() }
 })
 
@@ -99,7 +99,7 @@ test('Escape closes only a selector nested inside a dialog', async () => {
     await act(async () => (document.querySelector('[role=combobox]') as HTMLButtonElement).click())
     await act(async () => document.querySelector('[role=listbox]')!.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     assert.equal(parentClosed, 0)
-    assert.equal(document.querySelector('[role=listbox]'), null)
+    assert.ok(document.querySelector('[role=listbox]') === null)
   } finally { await act(async () => root.unmount()); restoreDefaultSkin(); await window.happyDOM.close() }
 })
 
@@ -120,9 +120,9 @@ test('default appearance uses the same searchable popup even with only two optio
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(search, '设备乙')
       search.dispatchEvent(new window.Event('input', { bubbles: true }))
     })
-    assert.equal(document.querySelector('[data-value=a]'), null)
+    assert.ok(document.querySelector('[data-value=a]') === null)
     await act(async () => document.querySelector<HTMLButtonElement>('[data-value=b]')!.click())
     assert.deepEqual(changes, ['b'])
-    assert.equal(document.activeElement, trigger)
+    assert.ok(document.activeElement === trigger)
   } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })

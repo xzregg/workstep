@@ -1,6 +1,7 @@
 """Guardrails for text injected into model prompts."""
 
 import re
+import pytest
 
 from agent_assistants.context_handoff import render_handoff, render_handoff_reference
 from services.prompt import assemble_followup_prompt, assemble_prompt
@@ -8,6 +9,28 @@ from services.tool_registry import workstep_tools_instruction
 
 
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
+
+
+@pytest.mark.parametrize("status,paused,step", [
+    ("completed", False, "done"), ("pending", True, "role"),
+    ("pending", False, "name"), ("pending", False, "role"),
+    ("pending", False, "personality"), ("pending", False, "duties"),
+    ("pending", False, "confirm"),
+])
+def test_identity_setup_prompt_scaffolding_is_english(monkeypatch, status, paused, step):
+    from services import digital_person
+
+    menus = {field: {"options": [{"id": str(i), "label": label}
+              for i, label in enumerate(labels, 1)], "multiple": field != "role"}
+             for field, labels in digital_person.IDENTITY_MENUS.items()}
+    state = {"status": status, "paused": paused, "step": step, "menus": menus}
+    monkeypatch.setattr(digital_person, "identity_setup_status", lambda: state)
+    prompt = digital_person.identity_setup_prompt()
+    assert not CJK_RE.search(prompt)
+    assert "user's language" in prompt
+    if status == "pending":
+        state["answers"] = {"name": "澄知"}
+        assert "澄知" in digital_person.identity_setup_prompt()
 
 
 def test_prompt_templates_have_no_cjk(tmp_path):

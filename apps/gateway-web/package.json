@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
-    "test": "node --import ./tests/helpers/offline-websocket.mjs --import tsx --test tests/*.test.tsx"
+    "test": "node ../../scripts/check-dom-assertions.cjs . && node --import ./tests/helpers/offline-websocket.mjs --import tsx --test --test-concurrency=2 tests/*.test.tsx"
   },
   "dependencies": {
     "antd": "^6.6.1",

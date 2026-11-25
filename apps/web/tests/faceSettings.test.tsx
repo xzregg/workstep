@@ -107,7 +107,7 @@ test('five stable poses auto-capture in one stream; preview supports single reta
   assert.equal(box()?.style.left,'20%')
   faceCount=2
   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,260))})
-  assert.equal(box(),null)
+  assert.ok(box() === null)
   faceCount=1
   faceBox=[-.05,.2,.45,.5]
   await waitFor('.face-enrollment-cue','请把脸移到画面中央')
@@ -132,7 +132,7 @@ test('five stable poses auto-capture in one stream; preview supports single reta
   }
   pose={yaw:0,pitch:20,roll:0};embedding=.5
   await waitFor('.face-enrollment-index','5 / 5');assert.equal(ui.stops(),1)
-  assert.equal(box(),null)
+  assert.ok(box() === null)
   await ui.click('下一张');await waitFor('.face-enrollment-index','1 / 5')
   await ui.click('上一张');await ui.click('重录此张');ui.readyVideo();embedding=.9
   await waitFor('.face-enrollment-index','5 / 5');assert.equal(ui.stops(),2)
@@ -192,7 +192,11 @@ test('camera sends the visible preview annotations independently of message cont
   assert.equal(ui.host.querySelectorAll('.face-box').length,2)
   assert.deepEqual(Array.from(ui.host.querySelectorAll('.face-box span'),node=>node.textContent),['预览称呼 · 同事'])
   video.marker='current'
-  assert.deepEqual(await send(),['current'])
+  const editor=document.body.appendChild(document.createElement('textarea'))
+  await act(async()=>editor.focus())
+  assert.deepEqual(await send(),['current'],'sending still recognizes its frozen frame while preview is paused')
+  await act(async()=>editor.blur())
+  editor.remove()
   assert.deepEqual(requests,[['current']]);assert.equal(uploaded,'current');assert.equal(boxes,2)
   assert.deepEqual(annotations,['预览称呼 · 同事'])
   faceApi.catalog=async()=>({...catalog,revision:2,settings:{...settings,show_boxes:false,show_names:false,include_people:false,include_relationship:false}})
@@ -255,7 +259,7 @@ for(const scenario of ['ready','failed','disabled','closed'] as const)test(`came
   })
   if(scenario==='disabled'){
    assert.equal(calls,0)
-   assert.equal(status(),null)
+   assert.ok(status() === null)
    return
   }
   assert.equal(calls,1)
@@ -265,8 +269,8 @@ for(const scenario of ['ready','failed','disabled','closed'] as const)test(`came
   await act(async()=>finish())
   if(scenario==='failed'){
    assert.match(status()?.textContent??'',/人脸识别暂不可用/)
-   assert.equal(status()?.querySelector('.spinner'),null)
-  }else assert.equal(status(),null)
+   assert.ok(status()?.querySelector('.spinner') === null)
+  }else assert.ok(status() === null)
  }finally{await ui.close()}
 })
 
@@ -292,15 +296,16 @@ test('preview requires fresh frames, expires on a frozen stream and clears on li
   await until(()=>calls===1)
   await wait(220)
   assert.equal(calls,1)
-  assert.equal(known(),null)
+  assert.ok(known() === null)
   mediaTime++
   await until(()=>Boolean(known()))
   await until(()=>!known())
+  assert.ok(ui.host.querySelector('.face-box') === null, 'an expired frame must not leave a box on the moving video')
   assert.equal(calls,2)
   for(let i=0;i<2;i++){mediaTime++;await until(()=>calls===3+i)}
   assert.ok(known())
   await act(async()=>{revision++;window.dispatchEvent(new window.Event(FACE_CHANGED))})
-  assert.equal(known(),null)
+  assert.ok(known() === null)
  }finally{await ui.close()}
 })
 
@@ -317,5 +322,33 @@ test('camera interruption releases a pending enrollment even when inference neve
   assert.equal(ui.stops(),1)
   assert.match(ui.host.textContent||'',/请打开摄像头/)
   assert.equal(ui.host.querySelector<HTMLButtonElement>('.face-panel-header button')!.disabled,false)
+ }finally{await ui.close()}
+})
+
+
+test('typing pauses preview inference without closing the camera',async()=>{
+ const ui=await setup()
+ let calls=0
+ faceRuntime.detect=async()=>{calls++;return []}
+ const wait=async(ms:number)=>act(async()=>{await new Promise(resolve=>setTimeout(resolve,ms))})
+ try{
+  await act(async()=>ui.root.render(<I18nProvider><DigitalPersonCamera projectId="demo"/></I18nProvider>))
+  await ui.click('打开摄像头')
+  ui.readyVideo()
+  await wait(140)
+  assert.ok(calls>0)
+  const editor=document.body.appendChild(document.createElement('textarea'))
+  await act(async()=>editor.focus())
+  await wait(140)
+  const paused=calls
+  await wait(240)
+  assert.equal(calls,paused,'background face inference must yield while an editor has focus')
+  assert.equal(ui.stops(),0,'camera preview and its media stream stay open')
+  // Closing the editor resumes periodic preview without reopening the camera.
+  await act(async()=>editor.blur())
+  await wait(340)
+  assert.ok(calls>paused)
+  assert.equal(ui.stops(),0)
+  editor.remove()
  }finally{await ui.close()}
 })

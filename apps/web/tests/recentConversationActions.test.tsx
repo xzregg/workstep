@@ -113,3 +113,25 @@ for (const action of ['archive', 'rename', 'delete'] as const) test(`recent conv
     await window.happyDOM.close()
   }
 })
+
+test('protected hub conversation keeps rename but hides archive and delete in recent menu', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const { default: RecentConversationActions } = await import('../src/components/RecentConversationActions')
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><MemoryRouter><RecentConversationActions
+      entry={{ kind: 'session', id: 'hub', projectId: 'p', title: '主动对话', visitedAt: Date.now() }}
+      session={{ id: 'hub', title: '主动对话', lifecycle_protected: true }} hovered now={Date.now()}
+    /></MemoryRouter></I18nProvider>))
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="更多操作"]')!.click())
+    const labels = [...document.querySelectorAll('button')].map(button => button.textContent)
+    assert.ok(labels.includes('重命名'))
+    assert.ok(!labels.includes('归档对话'))
+    assert.ok(!labels.includes('删除'))
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

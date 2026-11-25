@@ -58,7 +58,7 @@ test('select all copies the complete composer value including image markdown', a
 
     assert.equal(copyEvent.defaultPrevented, true)
     assert.equal(clipboard.get('text/plain'), value)
-    assert.equal(image.closest('[data-all-selected="true"]'), editor)
+    assert.ok(image.closest('[data-all-selected="true"]') === editor)
 
     await act(async () => { root.unmount() })
   } finally {

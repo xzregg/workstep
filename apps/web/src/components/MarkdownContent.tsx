@@ -1,4 +1,4 @@
-import { createContext, isValidElement, memo, useCallback, useContext, useLayoutEffect, useMemo, useRef, type ReactNode, type RefObject, type ComponentProps } from 'react'
+import { createContext, isValidElement, memo, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type ComponentProps } from 'react'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { splitMarkdownBlocks } from '../utils/markdownBlocks'
@@ -146,6 +146,7 @@ function MarkdownContent({
   const normalizedContent = structured
     ? content.replace(/^\s*<json>/, '').replace(/<\/json>\s*$/, '')
     : convertFileCitations(convertVisualizeMarkers(content))
+  const [historyParser] = useState(() => !streaming && !animateReveal)
   const previousContent = useRef(animateInitialReveal ? '' : normalizedContent)
   const revealFrom = Math.max(
     normalizedContent.length - REVEAL_WINDOW_CHARS,
@@ -247,7 +248,8 @@ function MarkdownContent({
           ) return null
           return <span key={index}>{segment.text}</span>
         }) : (
-          splitMarkdownBlocks(markdown).map(block => <MarkdownBlock key={block.offset}
+          (historyParser && !streaming && markdown.length >= 2048
+            ? [{ offset: 0, content: markdown }] : splitMarkdownBlocks(markdown)).map(block => <MarkdownBlock key={block.offset}
             content={block.content} source={normalizedContent.slice(block.offset, block.offset + block.content.length)} components={components} freezeReveal={freezeReveal} enabled={animateReveal && block.offset + block.content.length > revealFrom}
             incompleteCitation={(streaming || animateReveal) && block.offset + block.content.length === markdown.length
               ? incompleteWebCitationAtEnd(block.content) : undefined}

@@ -191,7 +191,7 @@ for (const width of [320, 390, 1023, 1440]) {
       }} onSend={() => { sent++ }} /></I18nProvider>)
       await act(async () => render(''))
       const mobile = width <= 1023
-      if (mobile) assert.equal(document.querySelector('.voice-microphone'), null)
+      if (mobile) assert.ok(document.querySelector('.voice-microphone') === null)
       const input = document.querySelector('textarea')!
       const preview = () => document.querySelector('.voice-input-transcript')?.textContent
       const trigger = document.querySelector<HTMLButtonElement>(mobile ? '.chat-input-send' : '.voice-microphone')!
@@ -199,7 +199,7 @@ for (const width of [320, 390, 1023, 1440]) {
       assert.ok(document.querySelector('.voice-input'))
       assert.equal(document.querySelector('.chat-input-editor')?.getAttribute('data-voice-mode'), 'true')
       assert.deepEqual(changes, [])
-      assert.equal(document.querySelector('textarea'), input)
+      assert.ok(document.querySelector('textarea') === input)
       assert.equal(input.disabled, false, 'the touch target must remain enabled')
       assert.equal(input.readOnly, true, 'freeze editing without disabling the touch target')
       await act(async () => frames(20, .02))
@@ -700,7 +700,7 @@ test('mobile native long press stays available with speech enabled or disabled',
     await act(async () => root.render(<I18nProvider><ChatInput value="草稿" placeholder="输入消息…" onChange={() => {}} onSend={() => {}} /></I18nProvider>))
     assert.equal(document.querySelector('textarea')!.placeholder, '输入消息…')
     await act(press)
-    assert.equal(document.querySelector('.voice-input'), null)
+    assert.ok(document.querySelector('.voice-input') === null)
     assert.equal(captures, 0)
     assert.equal(sessions, 0)
     const contextMenu = new window.Event('contextmenu', { bubbles: true, cancelable: true })
@@ -721,7 +721,7 @@ test('mobile native long press stays available with speech enabled or disabled',
     await act(async () => window.dispatchEvent(new window.Event('workstep:speech-settings-changed')))
     await act(async () => new Promise(done => setTimeout(done, 530)))
     assert.equal(captures, 0)
-    assert.equal(document.querySelector('.voice-input'), null)
+    assert.ok(document.querySelector('.voice-input') === null)
   } finally {
     await act(async () => root.unmount()); await window.happyDOM.close()
     speechApi.status = original.status; voiceCapture.start = original.capture; speechApi.start = original.start
@@ -763,7 +763,7 @@ test('mobile empty composer uses click dictation and switches to send for text',
     await act(async () => microphone.click())
     assert.equal(document.querySelector('.voice-input-draft')?.textContent, '草稿')
     await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent === '取消录音')!.click())
-    assert.equal(document.querySelector('.voice-input-draft'), null)
+    assert.ok(document.querySelector('.voice-input-draft') === null)
     assert.equal(document.querySelector('textarea')?.value, '草稿')
     await render('', true)
     await act(async () => action().click())
@@ -829,8 +829,38 @@ test('automatic recognition keeps pre-roll and invalidates an in-flight candidat
   await act(async()=>checkpoint())
   assert.deepEqual(sent,['续说后的结果'])
   assert.equal(requests[1].length,20*512)
-  assert.deepEqual(requests[2],{length:0,final:true},'reuse the new candidate after confirming silence')
+  assert.deepEqual(requests[2],{length:11*512,final:true},'final recognition retains the tail even when VAD reports silence')
  }finally{await act(async()=>root.unmount());Object.assign(speechApi,original);voiceCapture.start=start;await window.happyDOM.close()}
+})
+
+for (const phoneCall of [false, true]) test(`SenseVoice final includes quiet tail after pause preview (${phoneCall})`, async () => {
+ const {window}=installDomEnvironment(),root=createRoot(document.body.appendChild(document.createElement('div')))
+ const original={...speechApi},capture=voiceCapture.start
+ let chunk!:Parameters<typeof voiceCapture.start>[0],voice!:ReturnType<typeof useVoiceInput>
+ let turn={lastVoice:19200,hasSpeech:true,recentSpeech:true,candidate:false,canCommit:false}
+ const requests:{samples:number;final:boolean;tail:boolean}[]=[],sent:string[]=[]
+ speechApi.start=async()=>({id:'quiet-tail',sample_rate:16000,max_seconds:120,max_frame_samples:128000,streaming:'segment'})
+ speechApi.cancel=async()=>({cancelled:true})
+ speechApi.audio=async(id,_p,sequence,audio,final)=>{
+  const bytes=Uint8Array.from(atob(audio),char=>char.charCodeAt(0)),view=new DataView(bytes.buffer)
+  let tail=false
+  for(let i=0;i<bytes.length;i+=2)if(view.getInt16(i,true)===73)tail=true
+  requests.push({samples:bytes.length/2,final,tail})
+  return {id,sequence,final,text:final&&tail?'打开工作台':'打开工作'}
+ }
+ voiceCapture.start=async callback=>{chunk=callback;return {stop(){},flush:async()=>turn}}
+ function Harness(){voice=useVoiceInput({ownerKey:'quiet-tail',disabled:false,compact:false,value:'',cursor:0,automatic:true,onInsert:text=>sent.push(text)});return <span>{voice.text}</span>}
+ try{
+  await act(async()=>root.render(<Harness/>));await act(async()=>voice.start(phoneCall))
+  await act(async()=>chunk(new Int16Array(19200).fill(1000),.3,turn))
+  await act(async()=>{turn={...turn,recentSpeech:false,candidate:true};chunk(new Int16Array(4096),0,turn)})
+  assert.equal(document.querySelector('span')!.textContent,'打开工作')
+  assert.deepEqual(sent,[])
+  await act(async()=>{turn={...turn,canCommit:true};chunk(new Int16Array(phoneCall?16384:5632).fill(73),.01,turn)})
+  assert.equal(requests.at(-1)!.final,true)
+  assert.equal(requests.at(-1)!.tail,true,'VAD is a boundary signal, not permission to discard low-volume PCM')
+  assert.deepEqual(sent,['打开工作台'])
+ }finally{await act(async()=>root.unmount());Object.assign(speechApi,original);voiceCapture.start=capture;await window.happyDOM.close()}
 })
 
 test('the listening meter gates input by recent speech and capture time, clears on device loss', async () => {
@@ -899,4 +929,58 @@ test('the listening meter gates input by recent speech and capture time, clears 
     await act(async()=>root.unmount())
     await window.happyDOM.close()
   }
+})
+
+for (const phoneCall of [false, true]) test(`SenseVoice refreshes long-speech previews without committing or losing the final tail (${phoneCall})`, async () => {
+  const {window}=installDomEnvironment(), root=createRoot(document.body.appendChild(document.createElement('div')))
+  const original={...speechApi}, capture=voiceCapture.start
+  let voice!:ReturnType<typeof useVoiceInput>, chunk!:Parameters<typeof voiceCapture.start>[0]
+  const inserted:string[]=[], requests:{final:boolean; samples:number; preview:boolean}[]=[]
+  let total=0
+  speechApi.start=async()=>({id:'long',sample_rate:16000,max_seconds:120,max_frame_samples:128000,streaming:'segment'})
+  speechApi.cancel=async()=>({cancelled:true})
+  speechApi.audio=async(id,_project,sequence,audio,final,_signal,preview=true)=>{
+    total+=atob(audio).length/2;requests.push({final,samples:total,preview})
+    return {id,sequence,final,text:final?'完整的最终句子。':`预览${sequence}`}
+  }
+  voiceCapture.start=async callback=>{chunk=callback;return {stop(){},flush(){}}}
+  function Harness(){voice=useVoiceInput({ownerKey:'long',disabled:false,compact:false,continuous:true,value:'',cursor:0,onInsert:text=>inserted.push(text)});return null}
+  const push=async(samples:number)=>act(async()=>chunk(new Int16Array(samples),.3,{lastVoice:total+samples,hasSpeech:true,recentSpeech:true,candidate:false,canCommit:false}))
+  try {
+    await act(async()=>root.render(<Harness/>));await act(async()=>voice.start(phoneCall))
+    await push(19200)
+    assert.equal(requests.length,1,'ordinary dictation and calls both preview the first prefix')
+    assert.match(voice.text,/预览0/);assert.deepEqual(inserted,[])
+    await push(16000);assert.equal(requests.length,1,'do not decode every incoming audio frame')
+    await push(22400);assert.equal(requests.length,2,'refresh during a long uninterrupted sentence')
+    assert.match(voice.text,/预览1/);assert.deepEqual(inserted,[])
+    await push(1600);await act(async()=>voice.finish())
+    assert.equal(requests.at(-1)?.final,true);assert.equal(total,59200,'finalization retains audio after the last preview')
+    assert.deepEqual(inserted,['完整的最终句子。'])
+  } finally {await act(async()=>root.unmount());Object.assign(speechApi,original);voiceCapture.start=capture;await window.happyDOM.close()}
+})
+
+test('resuming after a short pause preserves the visible prefix and discards a late pause candidate', async()=>{
+ const {window}=installDomEnvironment(),root=createRoot(document.body.appendChild(document.createElement('div')))
+ const original={...speechApi},capture=voiceCapture.start
+ let voice!:ReturnType<typeof useVoiceInput>,chunk!:Parameters<typeof voiceCapture.start>[0],release!:()=>void
+ let turn={lastVoice:19200,hasSpeech:true,recentSpeech:true,candidate:false,canCommit:false}
+ const inserted:string[]=[]
+ speechApi.start=async()=>({id:'resume',sample_rate:16000,max_seconds:120,max_frame_samples:128000,streaming:'segment'})
+ speechApi.cancel=async()=>({cancelled:true})
+ speechApi.audio=async(id,_p,sequence,_audio,final)=>{
+  if(sequence===1)await new Promise<void>(done=>{release=done})
+  return {id,sequence,final,text:final?'续说后的完整句子':'预览'+sequence}
+ }
+ voiceCapture.start=async callback=>{chunk=callback;return {stop(){},flush:()=>turn}}
+ function Harness(){voice=useVoiceInput({ownerKey:'resume',disabled:false,compact:false,automatic:true,value:'',cursor:0,onInsert:text=>inserted.push(text)});return null}
+ try{
+  await act(async()=>root.render(<Harness/>));await act(async()=>voice.start())
+  await act(async()=>chunk(new Int16Array(19200),.2,turn));assert.equal(voice.text,'预览0')
+  await act(async()=>{turn={...turn,recentSpeech:false,candidate:true};chunk(new Int16Array(4000),0,turn)})
+  await act(async()=>{turn={...turn,lastVoice:23712,recentSpeech:true,candidate:false};chunk(new Int16Array(512),.2,turn);release()})
+  assert.equal(voice.text,'预览0','continue showing the useful prefix while a newer transcript is pending')
+  assert.deepEqual(inserted,[])
+  await act(async()=>voice.finish());assert.deepEqual(inserted,['续说后的完整句子'])
+ }finally{await act(async()=>root.unmount());Object.assign(speechApi,original);voiceCapture.start=capture;await window.happyDOM.close()}
 })

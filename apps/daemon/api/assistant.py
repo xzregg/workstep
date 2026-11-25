@@ -208,7 +208,7 @@ async def set_concurrency_config(req: ConcurrencyConfigRequest):
 
 @router.put("/{name}/config")
 async def set_assistant_config(name: str, req: AssistantConfigRequest):
-    if name == "digital_person":
+    if name in {"digital_person", "digital_person_reflection"}:
         require_catalog_project("")
     config = assistant_registry.get(name)
     if config is None:
@@ -262,7 +262,22 @@ async def set_assistant_config(name: str, req: AssistantConfigRequest):
             ),
         }
 
-    saved = await asyncio.to_thread(save)
+    if name in {'digital_person', 'digital_person_reflection'}:
+        from api.digital_person import runtime
+        from services.digital_person_execution import save_execution_config
+        default_model = model or await asyncio.to_thread(config_store.get_engine_default_model, effective_engine)
+        try:
+            saved = await save_execution_config(runtime(), name, {
+                'engine': effective_engine, 'provider_id': provider_id,
+                'model': default_model, 'fast_model': fast_model or default_model,
+                'vision_model': vision_model, 'thinking_effort': thinking_effort,
+            }, save)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=503, detail='Unable to save model configuration. Please retry.') from exc
+    else:
+        saved = await asyncio.to_thread(save)
     return {
         "saved": True,
         "configured": {

@@ -46,7 +46,7 @@ test('test tab uses unsaved settings, lists tools, explicitly executes and route
     assert.match(document.querySelector('.connector-test-output')!.textContent!, /5/)
     needsAuth = true
     await click('[data-connector-diagnose]')
-    assert.equal(document.querySelector('[data-connector-invoke]'), null, 'failed re-test clears old callable tools')
+    assert.ok(document.querySelector('[data-connector-invoke]') === null, 'failed re-test clears old callable tools')
     await click('[data-connector-configure-auth]')
     assert.equal(document.querySelector('[data-connector-tab=config]')!.getAttribute('aria-selected'), 'true')
     assert.ok(document.querySelector('.connector-authentication'))
@@ -77,7 +77,7 @@ test('changing a draft aborts the pending test and ignores its late response', a
     await act(async () => render('https://example.com/new'))
     assert.equal(signal?.aborted, true)
     await act(async () => finish({ ok: true, status: 'connected', message: 'old result', tool_count: 1, tools: [{ name: 'old', description: '', input_schema: {} }] }))
-    assert.equal(document.querySelector('.connector-test-tools'), null)
+    assert.ok(document.querySelector('.connector-test-tools') === null)
     assert.equal(document.querySelector<HTMLButtonElement>('[data-connector-diagnose]')!.disabled, false)
   } finally {
     connectorApi.diagnose = original

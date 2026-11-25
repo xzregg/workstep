@@ -211,6 +211,48 @@ class SpeechOutputService:
         async with self.lock:
             return await finish_cleanup(self._configure(value, preview_owner))
 
+    def _voice_models(self, settings):
+        models = []
+        for model_id in LOCAL_MODELS:
+            error = (self.resources.platform_error(model_id) or self.resources.runtime_error(model_id)
+                     or ('' if self.resources.installed(model_id) else 'Please download the speech output model first'))
+            options = voices(model_id)
+            if model_id == 'omnivoice' and not self.resources.omni_design_ready():
+                options = [row for row in options if row['id'] != OMNI_PERSONA_VOICE]
+            if not settings['reference_id'] or not reference_path(self.root, settings['reference_id']).is_file():
+                options = [row for row in options if row['id'] != 'reference']
+            if not options:
+                error = error or 'Install the OmniVoice voice design runtime first'
+            models.append(dict(id=model_id, name=MODELS[model_id]['name'], available=not bool(error),
+                               unavailable_reason=error, voices=options))
+        return models
+
+    async def voice_options(self):
+        async with self.lock:
+            await self._load()
+            models = await asyncio.to_thread(self._voice_models, self.cache)
+            return dict(mode=self.cache['mode'], model_id=self.cache['model_id'], voice=self.cache['voice'],
+                        models=models, scope='host',
+                        system_voice_device_managed=self.cache['mode'] == 'system')
+
+    async def select_voice(self, voice, model_id=None):
+        async with self.lock:
+            await self._load()
+            if model_id is None and self.cache['mode'] != 'local':
+                raise ValueError('Select an available local model explicitly; system voices are managed on the playback device')
+            selected = model_id or self.cache['model_id']
+            models = await asyncio.to_thread(self._voice_models, self.cache)
+            model = next((row for row in models if row['id'] == selected), None)
+            if model is None or not model['available']:
+                raise ValueError('Please select an installed and available local voice model')
+            if voice not in {row['id'] for row in model['voices']}:
+                raise ValueError('Please select a voice supported by the chosen model')
+            value = {**self.cache, 'mode': 'local', 'model_id': selected, 'voice': voice}
+            if self.cache['mode'] != 'local' or self.cache['model_id'] != selected:
+                value['instructions'] = ''
+            result = await finish_cleanup(self._configure(value, None))
+            return {key: result[key] for key in ('mode', 'model_id', 'voice', 'rate', 'volume')}
+
     async def _configure(self, value, preview_owner):
         await self._load()
         result = self._resolve(value)
@@ -420,7 +462,8 @@ class SpeechOutputService:
     async def _pump(self, session, settings, text):
         count = 0
         try:
-            async with asyncio.timeout(360 if settings['mode'] == 'local' and MODELS[settings['model_id']]['runtime'] == 'qwen' else 120):
+            timeout = max(360, min(600, len(text))) if settings['mode'] == 'local' else 120
+            async with asyncio.timeout(timeout):
                 async with aclosing(self._audio(settings, text)) as stream:
                     async for event in stream:
                         raw = base64.b64decode(event['audio'], validate=True)

@@ -182,7 +182,7 @@ test('global speech settings offers input and output, preserves output drafts an
     await act(async () => root.render(<I18nProvider><VoiceInputSettings /></I18nProvider>))
     assert.equal(host.querySelector('h1')!.textContent, '语音设置')
     assert.deepEqual([...host.querySelectorAll('[role=tab]')].map(tab => tab.textContent), ['输入','输出'])
-    assert.equal(host.querySelector('.voice-wake-settings'), null)
+    assert.ok(host.querySelector('.voice-wake-settings') === null)
     assert.equal(wakeLoads, 0)
     await switchTab('输出')
     const output = host.querySelector<HTMLElement>('#speech-panel-output')!

@@ -18,6 +18,24 @@ import {SpeechOutputPlayer} from '../src/utils/speechOutput'
 const home={id:'home',name:'默认工作区',path:'/home',is_default_workspace:true,workflows:[]}
 const profile={enabled:true,name:'小研',role:'研发伙伴',personality:'直接',duties:'跟进',greeting:'你好',avatar:'robot' as const}
 
+test('enabling the hub waits for refreshed profile instead of redirecting from cached disabled state',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const old={...digitalPersonApi};let path='',resolveProfile!:(value:any)=>void
+ digitalPersonApi.get=async()=>({...profile,enabled:false})
+ useProjectStore.setState({projects:[home],activeProject:home})
+ function Location(){path=useLocation().pathname;return null}
+ const render=(active:boolean)=>root.render(<MemoryRouter initialEntries={['/companion']}><I18nProvider><DigitalPersonHomePage active={active}/><Location/></I18nProvider></MemoryRouter>)
+ try{
+  await act(async()=>render(false))
+  digitalPersonApi.get=()=>new Promise(resolve=>{resolveProfile=resolve})
+  await act(async()=>window.dispatchEvent(new window.Event('workstep:digital-person-changed')))
+  await act(async()=>render(true))
+  assert.equal(path,'/companion','cached disabled data cannot cancel first activation while the new profile loads')
+  await act(async()=>resolveProfile({...profile,enabled:false}))
+  assert.equal(path,'/chat','a confirmed disabled profile still returns to the workbench')
+ }finally{await act(async()=>root.unmount());await window.happyDOM.close();Object.assign(digitalPersonApi,old)}
+})
+
 test('disabled digital person returns to workbench without creating a main chat',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
  const old={...digitalPersonApi};let calls=0,path=''
@@ -41,7 +59,7 @@ test('home rejects a main session belonging to a different workspace',async()=>{
  try{
   await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonHomePage/></I18nProvider></MemoryRouter>))
   assert.match(host.textContent!,/工作区已变更/)
-  assert.equal(host.querySelector('.digital-home'),null)
+  assert.ok(host.querySelector('.digital-home') === null)
  }finally{await act(async()=>root.unmount());await window.happyDOM.close();Object.assign(digitalPersonApi,old)}
 })
 
@@ -86,11 +104,11 @@ test('home resolves and loads the persisted main chat once using the shared chat
   assert.deepEqual(spoken,['切页前。','切页后。'])
   assert.equal(stops,before)
   await act(async()=>host.querySelector<HTMLAnchorElement>('#home-link')!.click())
-  assert.equal(avatar.closest('[hidden]'),null)
+  assert.ok(avatar.closest('[hidden]') === null)
   assert.equal(mainCalls,1);assert.equal(historyCalls,1)
   await act(async()=>host.querySelector<HTMLAnchorElement>('#tasks-link')!.click())
   await act(async()=>useProjectStore.setState({activeProject:{...home,id:'other',is_default_workspace:false}}))
-  assert.equal(host.querySelector('.digital-home'),null)
+  assert.ok(host.querySelector('.digital-home') === null)
   assert.ok(stops>before)
  }finally{await act(async()=>root.unmount());await window.happyDOM.close();Object.assign(digitalPersonApi,oldPerson);Object.assign(digitalRuntimeApi,oldRuntime);Object.assign(chatSessionApi,oldChat);Object.assign(SpeechOutputPlayer.prototype,{enqueue,stop});assistantApi.list=oldAssistant;providerApi.list=oldProviders;speechOutputApi.status=oldOutput;globalThis.fetch=oldFetch}
 })

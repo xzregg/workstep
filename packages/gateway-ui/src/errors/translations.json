@@ -1,5 +1,14 @@
 {
   "zh-TW": {
+    "errors.identitySetupPaused": "身分引導已暫停，請明確繼續後再修改。",
+    "errors.identitySetupAnswerMode": "請批次提交身分資訊或修改單一欄位，不要混用。",
+    "errors.identitySetupChanged": "身分設定進度已變更，請先讀取目前進度再繼續。",
+    "errors.identitySetupConflict": "身分已在設定中修改，請明確重設引導後繼續。",
+    "errors.identitySetupOrder": "請先回答目前的身分設定問題。",
+    "errors.identitySetupRequired": "名稱為必填項；略過非必填項時無須提供內容。",
+    "errors.identitySetupEmpty": "身分設定的回答不能為空。",
+    "errors.identitySetupReview": "請先完成身分問題並查看摘要，再確認儲存。",
+    "errors.identitySetupSave": "無法儲存身分設定，請重試。",
     "errors.providerNotFound": "供應商不存在",
     "errors.providerNotFoundWithId": "供應商不存在：{p0}",
     "errors.providerDisabled": "所選供應商已停用",
@@ -1762,6 +1771,15 @@
     "errors.message1313231b74ff": "預設主題無法覆蓋"
   },
   "ja-JP": {
+    "errors.identitySetupPaused": "設定は一時停止中です。続行を明示してから変更してください。",
+    "errors.identitySetupAnswerMode": "複数の回答か単一の項目のどちらかを指定してください。",
+    "errors.identitySetupChanged": "設定の進行状況が変わりました。現在の状態を確認してください。",
+    "errors.identitySetupConflict": "設定画面でプロフィールが変更されました。案内をリセットしてください。",
+    "errors.identitySetupOrder": "現在のプロフィール設定の質問に回答してください。",
+    "errors.identitySetupRequired": "名前は必須です。任意の回答は値を入力せずにスキップできます。",
+    "errors.identitySetupEmpty": "回答を入力してください。",
+    "errors.identitySetupReview": "質問への回答を終え、概要を確認してから確定してください。",
+    "errors.identitySetupSave": "プロフィール設定を保存できません。再試行してください。",
     "errors.providerNotFound": "サプライヤーが存在しません",
     "errors.providerNotFoundWithId": "サプライヤーが存在しません: {p0}",
     "errors.providerDisabled": "選択したサプライヤーは無効化されています",
@@ -3524,6 +3542,15 @@
     "errors.message1313231b74ff": "デフォルトのスキンは上書きできません"
   },
   "fr-FR": {
+    "errors.identitySetupPaused": "La configuration est en pause. Demandez explicitement sa reprise.",
+    "errors.identitySetupAnswerMode": "Fournissez plusieurs réponses ou un seul champ, sans les mélanger.",
+    "errors.identitySetupChanged": "La configuration a changé. Consultez son état actuel avant de continuer.",
+    "errors.identitySetupConflict": "L’identité a été modifiée dans les paramètres. Réinitialisez explicitement la configuration.",
+    "errors.identitySetupOrder": "Répondez d’abord à la question actuelle.",
+    "errors.identitySetupRequired": "Le nom est obligatoire. Les réponses facultatives peuvent être ignorées sans valeur.",
+    "errors.identitySetupEmpty": "La réponse ne peut pas être vide.",
+    "errors.identitySetupReview": "Terminez les questions et vérifiez le récapitulatif avant de confirmer.",
+    "errors.identitySetupSave": "Impossible d’enregistrer l’identité. Veuillez réessayer.",
     "errors.providerNotFound": "Le fournisseur n'existe pas",
     "errors.providerNotFoundWithId": "Le fournisseur n'existe pas : {p0}",
     "errors.providerDisabled": "Le fournisseur sélectionné est désactivé",
@@ -5286,6 +5313,15 @@
     "errors.message82c6293bb9d8": "Tous les fichiers source Python doivent figurer dans files"
   },
   "de-DE": {
+    "errors.identitySetupPaused": "Die Einrichtung ist pausiert. Setzen Sie sie ausdrücklich fort.",
+    "errors.identitySetupAnswerMode": "Übermitteln Sie entweder mehrere Antworten oder ein einzelnes Feld.",
+    "errors.identitySetupChanged": "Die Einrichtung hat sich geändert. Lesen Sie zuerst den aktuellen Stand.",
+    "errors.identitySetupConflict": "Die Identität wurde in den Einstellungen geändert. Setzen Sie die Einrichtung ausdrücklich zurück.",
+    "errors.identitySetupOrder": "Beantworten Sie zuerst die aktuelle Frage.",
+    "errors.identitySetupRequired": "Ein Name ist erforderlich. Optionale Antworten können ohne Wert übersprungen werden.",
+    "errors.identitySetupEmpty": "Die Antwort darf nicht leer sein.",
+    "errors.identitySetupReview": "Beantworten Sie alle Fragen und prüfen Sie die Zusammenfassung vor der Bestätigung.",
+    "errors.identitySetupSave": "Die Identität konnte nicht gespeichert werden. Bitte erneut versuchen.",
     "errors.providerNotFound": "Anbieter nicht gefunden",
     "errors.providerNotFoundWithId": "Anbieter nicht gefunden: {p0}",
     "errors.providerDisabled": "Der ausgewählte Anbieter ist deaktiviert",
@@ -7048,6 +7084,15 @@
     "errors.messageb1583b9ba332": "Nicht festgeschriebene Änderungen im Zielarbeitsverzeichnis überschneiden sich mit dem Merge-Ergebnis. Sie wurden beibehalten. Bearbeiten Sie zuerst die betroffenen Dateien.\n"
   },
   "ar": {
+    "errors.identitySetupPaused": "تم إيقاف الإعداد مؤقتاً. اطلب استئنافه صراحة قبل المتابعة.",
+    "errors.identitySetupAnswerMode": "قدّم مجموعة إجابات أو حقلاً واحداً، دون الجمع بينهما.",
+    "errors.identitySetupChanged": "تغير إعداد الهوية. اقرأ الحالة الحالية قبل المتابعة.",
+    "errors.identitySetupConflict": "تم تغيير الهوية في الإعدادات. أعد ضبط الإعداد صراحة للمتابعة.",
+    "errors.identitySetupOrder": "أجب عن السؤال الحالي لإعداد الهوية أولاً.",
+    "errors.identitySetupRequired": "الاسم مطلوب. يمكن تخطي الإجابات الاختيارية دون إدخال قيمة.",
+    "errors.identitySetupEmpty": "لا يمكن أن تكون الإجابة فارغة.",
+    "errors.identitySetupReview": "أكمل الأسئلة وراجع الملخص قبل التأكيد.",
+    "errors.identitySetupSave": "تعذر حفظ إعداد الهوية. يرجى المحاولة مجدداً.",
     "errors.providerNotFound": "المورد غير موجود",
     "errors.providerNotFoundWithId": "المورد غير موجود: {p0}",
     "errors.providerDisabled": "المورد المحدد معطّل",

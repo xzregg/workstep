@@ -87,7 +87,7 @@ test('left/right composer resizing uses width, preserves the mounted draft and s
     assert.equal(window.localStorage.getItem('workstep-chat-composer-width'), '308')
     assert.equal(window.localStorage.getItem('workstep-chat-composer-height'), null)
     await act(async () => applySkin({ ...skin, layout: { composerPosition: 'right' } }))
-    assert.equal(host.querySelector('[data-height]'), composer)
+    assert.ok(host.querySelector('[data-height]') === composer)
     assert.equal(composer.dataset.position, 'right')
     await act(async () => separator.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })))
     assert.equal(window.localStorage.getItem('workstep-chat-composer-width'), '308')

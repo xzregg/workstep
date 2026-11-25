@@ -5,7 +5,20 @@ import type {AtlasLink} from '../../api/digitalPerson'
 
 type Point={x:number;y:number}
 type Scene={orbits:ReturnType<typeof knowledgeSpiral>;candidates:AtlasLink[];selected?:string;focus?:string;continueFrom?:(id:string)=>void;recall?:{ranks:ReadonlyMap<string,number>;step:number}}
-const rotationFrameInterval=1000/24
+// A busy browser can still deliver short RAF gaps between expensive atlas draws.
+// Measure the work we own, and require sustained cost before lowering quality.
+export function createAtlasFrameBudget(){
+  let level=0,slow=0
+  const resolutions=[1,.75,.5],rates=[24,18,12]
+  return {
+    get resolution(){return resolutions[level]},
+    get interval(){return 1000/rates[level]},
+    record(milliseconds:number){
+      slow=milliseconds>=12?slow+1:0
+      if(slow>=6){level=Math.min(level+1,resolutions.length-1);slow=0}
+    },
+  }
+}
 
 export function useMemoryAtlasMotion(
   sky:RefObject<HTMLDivElement|null>,canvas:RefObject<HTMLCanvasElement|null>,
@@ -14,8 +27,7 @@ export function useMemoryAtlasMotion(
   const sceneRef=useRef(scene)
   const pausedRef=useRef(paused)
   const time=useRef(0)
-  const resolution=useRef(1)
-  const slowFrames=useRef(0)
+  const budget=useRef(createAtlasFrameBudget())
   const view=useRef({...initialGalaxyView})
   const [adjusted,setAdjusted]=useState(false)
   const requestDraw=useRef<()=>void>(()=>{})
@@ -126,7 +138,7 @@ export function useMemoryAtlasMotion(
     function draw(){
       const scene=sceneRef.current
       const sampling=layer!.hasAttribute('data-atlas-sampling')
-      const started=sampling?performance.now():0
+      const started=sampling||androidWebView?performance.now():0
       syncScene(scene)
       const projection=galaxyFrame(view.current,time.current)
       const batchStars=canBatchStars()
@@ -219,9 +231,11 @@ export function useMemoryAtlasMotion(
       ;[linked,endpoints]=[endpoints,linked]
       if(tail&&links.length>0&&links.length<focusedChainDepth)scene.continueFrom?.(tail)
       const updated=sampling?performance.now():0
-      paint(projection,width,height,markers,resolution.current)
+      paint(projection,width,height,markers,budget.current.resolution)
+      const finished=sampling||androidWebView?performance.now():0
+      if(androidWebView)budget.current.record(finished-started)
       if(sampling)layer!.dispatchEvent(new window.CustomEvent('workstep:atlas-profile-frame',{
-        detail:{particles:performance.now()-updated,markers:updated-started},
+        detail:{particles:finished-updated,markers:updated-started},
       }))
     }
     const canDraw=()=>visible&&!document.hidden
@@ -241,15 +255,9 @@ export function useMemoryAtlasMotion(
         if(lastTick!==undefined){
           const gap=now-lastTick
           time.current+=Math.min(gap,100)/1000
-          if(androidWebView&&resolution.current===1){
-            slowFrames.current=gap>80?slowFrames.current+1:0
-            if(slowFrames.current>=6){
-              resolution.current=.75
-              dirty=true
-            }
-          }
         }
         lastTick=now
+        const rotationFrameInterval=budget.current.interval
         nextRotationFrame??=now+rotationFrameInterval
         // Carry the deadline forward to avoid rounding 24 Hz down to 20 on 60 Hz displays.
         const overdue=now-nextRotationFrame+.01

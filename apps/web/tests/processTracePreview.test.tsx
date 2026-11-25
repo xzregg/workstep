@@ -32,10 +32,10 @@ test('running process stays closed and previews only the latest two timeline ite
 
     await act(async () => render([first]))
     const session = container.querySelector<HTMLDivElement>('.process-trace-session')!
-    assert.equal(container.querySelector('.process-trace-preview'), preview)
+    assert.ok(container.querySelector('.process-trace-preview') === preview)
     assert.equal(preview.dataset.visible, 'true')
     assert.equal(session.dataset.open, undefined)
-    assert.equal(container.querySelector('.process-trace-body'), null)
+    assert.ok(container.querySelector('.process-trace-body') === null)
     assert.match(container.querySelector('.process-trace-preview')!.textContent!, /First thought/)
     assert.doesNotMatch(container.querySelector('.process-trace-preview')!.textContent!, /思考过程/)
     assert.equal(container.querySelectorAll('.process-trace-preview-item .process-trace-thinking-label').length, 0)
@@ -67,14 +67,14 @@ test('running process stays closed and previews only the latest two timeline ite
         .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
     })
     assert.equal(session.dataset.open, 'true')
-    assert.equal(container.querySelector('.process-trace-preview'), preview)
+    assert.ok(container.querySelector('.process-trace-preview') === preview)
     assert.equal(preview.dataset.visible, undefined)
     assert.match(container.querySelector('.process-trace-body')!.textContent!, /First thought/)
 
     await act(async () => render([first, second, third, fourth, update], false))
     assert.equal(session.dataset.open, undefined)
-    assert.equal(container.querySelector('.process-trace-preview'), null)
-    assert.equal(container.querySelector('.process-trace-body'), null)
+    assert.ok(container.querySelector('.process-trace-preview') === null)
+    assert.ok(container.querySelector('.process-trace-body') === null)
 
     await act(async () => {
       container.querySelector<HTMLDivElement>('.process-trace-session-summary')!
@@ -106,7 +106,7 @@ test('running preview stays at two compact rows on mobile', async () => {
     assert.equal(container.querySelectorAll('.process-trace-preview-item .process-trace-thinking-label').length, 0)
     assert.match(container.querySelector('.process-trace-preview')!.textContent!, /Latest/)
     assert.doesNotMatch(container.querySelector('.process-trace-preview')!.textContent!, /First/)
-    assert.equal(container.querySelector('.process-trace-body'), null)
+    assert.ok(container.querySelector('.process-trace-body') === null)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()
@@ -234,7 +234,7 @@ test('collapsed tools reuse expanded icons, command count and duration without s
     assert.ok(summary.querySelector('.llm-tool-call-icon svg'))
     assert.match(summary.textContent!, /2.*命令.*2/)
     assert.doesNotMatch(preview.textContent!, /rg wake_word/)
-    assert.equal(preview.querySelector('.llm-tool-call-detail'), null)
+    assert.ok(preview.querySelector('.llm-tool-call-detail') === null)
     const text = summary.textContent
     await act(async () => container.querySelector<HTMLElement>('.process-trace-session-summary')!.click())
     assert.equal(container.querySelector('.process-trace-body .llm-tool-group > summary')!.textContent, text)

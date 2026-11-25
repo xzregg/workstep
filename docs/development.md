@@ -135,9 +135,11 @@ corepack yarn build
 
 前端 `yarn test` 默认最多并发运行 2 个测试文件，避免测试进程同时编译 TypeScript、加载 DOM 和组件依赖时挤占桌面资源。仅验证局部改动时，在 `apps/web` 使用 `rtk proxy yarn node --no-experimental-global-navigator --loader ./scripts/test-loader.mjs --test --test-concurrency=2 tests/<文件名>.test.tsx` 运行对应测试。直接调用 `node --test` 不会继承 `package.json` 中的并发限制，必须显式指定 `--test-concurrency=2`。本机各应用的全量测试依次执行；多个聊天同时工作时也不要重叠启动全量测试。RTK 只过滤命令输出，不限制 CPU 或内存。
 
+前端测试遵守 [Web 开发指导中的 DOM 断言规则](../apps/web/AGENTS.md#前端开发规范appsweb)，将元素存在性、节点身份、文本、属性或数量转换为布尔值或简单值后再断言。DOM 数组应映射为简单值后比较，保留数量、顺序和身份检查。Web 与 Gateway Web 的 `yarn test` 先运行 `scripts/check-dom-assertions.cjs`，拦截直接接收 DOM 对象或数组的 Node 等值断言；局部测试可先在应用目录运行 `rtk proxy node ../../scripts/check-dom-assertions.cjs .`。
+
 官网在 `apps/landing`，也使用 Yarn。仓库检查可运行 `python scripts/check_repository_health.py`。行为变更先写失败回归，再实现和验证；跨层变更还需运行相关 API、组件和端到端检查。不要提交构建产物、数据库、日志、密钥或个人配置。
 
-本机 RTK 0.47.0 的未知命令回退路径存在停止时遗留子进程的问题：向 `rtk node --test ...` 包装器发送 SIGTERM 后，Node 测试主进程及其子进程仍存活。相同条件下 `rtk proxy node --test ...` 正常回收。Node/Yarn 测试统一使用 `rtk proxy node` / `rtk proxy yarn`，避免直接使用 `rtk node` / `rtk yarn`；强制结束包装器仍不能保证清理整棵进程树。
+本机 RTK 0.47.0 在仅向包装器发送 SIGTERM 后可能遗留 Node 测试主进程及其子进程，`rtk proxy` 也不能保证回收整棵进程树。Node/Yarn 测试统一使用 `rtk proxy node` / `rtk proxy yarn`，避免未知命令回退路径；停止测试时须核对并终止本次运行的进程组及残留子进程。断言失败时展开 DOM 对象造成的内存增长发生在 Node 内部，与是否使用 RTK 无关，切换包装器不能修复。
 
 从设置页安装的可选引擎 SDK 位于 `~/.workstep/runtime/python-packages`（或 `WORKSTEP_ENGINE_PACKAGE_DIR`），不在 uv 管理的环境和 `uv.lock` 中；daemon 启动时将该目录加入导入路径。重新同步锁定依赖可运行 `uv sync --dev`，所选 SDK 版本不会因此被覆盖。
 

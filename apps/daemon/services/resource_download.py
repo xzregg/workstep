@@ -39,14 +39,14 @@ class ResourceDownload:
 
     @staticmethod
     def matches(path, size, expected, kind):
-        hasher = hashlib.sha256() if kind == 'sha256' else hashlib.sha1()
+        hasher = hashlib.new(kind if kind in ('sha256', 'sha512') else 'sha1')
         if kind == 'git':
             hasher.update(f'blob {size}\0'.encode())
         with path.open('rb') as source:
             return hashlib.file_digest(source, lambda: hasher).hexdigest() == expected
 
     async def fetch(self, client, url, target, size, expected, state, kind='sha256'):
-        length = {'sha256': 64, 'git': 40}.get(kind)
+        length = {'sha256': 64, 'sha512': 128, 'git': 40}.get(kind)
         if length is None or len(expected) != length or not re.fullmatch(r'[a-f0-9]+', expected) or size < 0:
             raise ValueError('Invalid resource download manifest')
         name = target.relative_to(self.stage) if target.is_relative_to(self.stage) else target.name

@@ -98,6 +98,19 @@ test('preview hold expires and rejects other people, missing faces and ambiguous
  assert.equal(departed.update([miss],300,.65)[0].person,null)
 })
 
+test('preview boxes expire when inference pauses, including unknown and late frames',()=>{
+ const tracker=new PreviewFaceTracking(similarity)
+ const unknown=observation(.95)
+ tracker.update([unknown],100,.65)
+ assert.equal(tracker.visible(1599).length,1)
+ assert.equal(tracker.nextExpiry(100),1600)
+ assert.deepEqual(tracker.visible(1600),[])
+ tracker.update([frontal],2000,.65)
+ tracker.update([frontal],2100,.65)
+ assert.deepEqual(tracker.visible(3600),[])
+ assert.equal(tracker.nextExpiry(3600),Infinity)
+})
+
 test('stalled recognition times out and late GPU completion cannot become a captured sample',async()=>{
  let finish!:(value:string)=>void
  const work=new Promise<string>(resolve=>{finish=resolve})

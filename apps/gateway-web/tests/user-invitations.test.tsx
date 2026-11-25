@@ -30,7 +30,7 @@ test('invitation action copies the existing link and shows a floating success me
   fireEvent.click(screen.getByRole('button', { name: '获取邀请链接' }))
   await waitFor(() => assert.equal(copied.length, 1))
   await screen.findByText('复制成功')
-  assert.equal(screen.getByText('复制成功').closest('.gateway-user-invitation'), null)
+  assert.ok(screen.getByText('复制成功').closest('.gateway-user-invitation') === null)
   fireEvent.click(screen.getByRole('button', { name: '获取邀请链接' }))
   await waitFor(() => assert.equal(copied.length, 2))
   assert.deepEqual(copied, ['https://gateway.test/auth/invite#token-1', 'https://gateway.test/auth/invite#token-1'])
@@ -42,7 +42,7 @@ test('clipboard failure shows a floating error without adding fields to the tabl
   render(<UserInvitationButton userId="user-1" csrf="csrf" disabled={false} />)
   fireEvent.click(screen.getByRole('button', { name: '获取邀请链接' }))
   await screen.findByText('复制失败，请允许浏览器访问剪贴板后重试。')
-  assert.equal(screen.queryByLabelText('邀请链接'), null)
+  assert.ok(screen.queryByLabelText('邀请链接') === null)
 })
 
 test('activation asks only for credentials, supports conflict retry and consumes on submit', async () => {
@@ -59,7 +59,7 @@ test('activation asks only for credentials, supports conflict retry and consumes
   render(<MemoryRouter initialEntries={['/auth/invite#secret-token']}><UserInvitationPage /></MemoryRouter>)
   await screen.findByText(/你好，邀请用户/)
   assert.equal(accepted, 0)
-  assert.equal(screen.queryByLabelText('显示名称'), null)
+  assert.ok(screen.queryByLabelText('显示名称') === null)
   const submit = screen.getByRole('button', { name: '完成设置' }) as HTMLButtonElement
   assert.equal(submit.disabled, true)
   fireEvent.change(screen.getByLabelText('登录名'), { target: { value: 'invitee' } })
@@ -72,7 +72,7 @@ test('activation asks only for credentials, supports conflict retry and consumes
   fireEvent.change(screen.getByLabelText('登录名'), { target: { value: 'newname' } })
   fireEvent.click(submit)
   await screen.findByText('账号设置成功，邀请链接已失效。')
-  assert.equal(screen.queryByLabelText('密码'), null)
+  assert.ok(screen.queryByLabelText('密码') === null)
   assert.equal(screen.getByRole('link', { name: '前往登录' }).getAttribute('href'), '/auth')
 })
 
@@ -80,7 +80,7 @@ test('invalid invitations do not show a credentials form', async () => {
   globalThis.fetch = async () => new Response(null, { status: 410 })
   render(<MemoryRouter initialEntries={['/auth/invite#expired-token']}><UserInvitationPage /></MemoryRouter>)
   await screen.findByText(/邀请链接已失效/)
-  assert.equal(screen.queryByLabelText('密码'), null)
+  assert.ok(screen.queryByLabelText('密码') === null)
 })
 
 test('existing login name is prefilled and password reset signs the user in', async () => {

@@ -1,13 +1,18 @@
 # 引擎安装、版本选择与回退
 
-设置 → 执行引擎 → **安装与版本**提供主包大小、确切版本选择、安装过程和上一版本回退。适用于 Codex CLI、Claude Code CLI，以及 Codex、Claude、Qoder、DeepSeek Harness SDK。Pydantic AI 随项目依赖管理；Hermes、OpenClaw 仍由外部安装方式管理。
+设置 → 执行引擎 → **安装与版本**提供主包大小、确切版本选择、安装过程和上一版本回退。适用于 Codex CLI、Claude Code CLI，以及 Codex、Claude、Qoder、DeepSeek Harness 和 Antigravity ACP。Pydantic AI 随项目依赖管理；Hermes、OpenClaw 仍由外部安装方式管理。
+
+Antigravity ACP（`antigravity`）通过同一“安装与版本”面板安装官方 `agy` 原生程序，目标固定为 `$WORKSTEP_CONFIG_DIR/runtime/native/antigravity/agy`（默认 `~/.workstep/`，Windows 为 `agy.exe`）。不执行官方 shell／PowerShell 安装器，不写 `~/.local/bin`、系统目录、PATH 或 shell 配置。路径优先级为显式配置／`ANTIGRAVITY_BIN`、WorkStep 托管目录、宿主机已有 CLI；显式路径启用时禁止托管版本切换。版本面板只把托管目录中的程序计为已安装版本，宿主同版本 CLI 不会阻止安装独立副本。CLI 自己管理账号认证，WorkStep 不复制 IDE 凭据；需要登录时在终端运行托管目录里的完整 `agy` 路径。安装后重新扫描、测试，并在展开配置中刷新和选择模型。
+
+原生版本来源是[官方安装器](https://antigravity.google/docs/getting-started/)使用的平台发布清单，平台覆盖 macOS／Windows／Linux 的 x64 与 arm64（Linux 含 musl）。官方下载仅提供当前版本清单，因此版本列表显示当前官方版本和 WorkStep 已记录的同平台确切版本，不虚构完整历史目录。操作记录保存不可变下载地址、大小和 SHA-512，供重试与回退；接管前的外部安装若没有相应清单，不声明可回退。下载复用 `ResourceDownload` 断点续传和真实字节进度；校验通过后只提取已知普通可执行文件，在托管目录内暂存并验证版本，再原子替换。失败保留原程序，不随桌面包或镜像预装。
 
 ## 版本来源与约束
 
-每个引擎在自己的适配器文件中声明 `RUNTIME_PACKAGE`（`engines/core/packages.py: RuntimePackage`），只配置包名和 PyPI/npm 来源。无需在前端维护包名或支持列表；引擎列表中的 `runtime_manageable` 控制入口。
+每个引擎在自己的适配器文件中声明 `RUNTIME_PACKAGE`（`engines/core/packages.py: RuntimePackage`），配置包名及 PyPI/npm/native 来源。无需在前端维护包名或支持列表；引擎列表中的 `runtime_manageable` 控制入口。
 
 - PyPI 仅列出满足本机 Python、平台 wheel 标签和最低版本要求的非撤回安装包；不自动构建源码包。
 - npm 从官方 registry 读取版本和发布标签；Node 兼容性和依赖安装由 npm 最终校验。
+- native 由 `services/antigravity_runtime.py` 读取官方平台清单、限定下载来源、提取和验证单文件程序；统一 runtime 管理操作、进度、互斥与历史。
 - 所有受管理引擎不在代码中固定业务版本；首次安装和更新默认采用包仓库的 `latest`，也可以显式选择仓库返回的兼容版本。
 - 列表标记预发布版本；可选版本表示包可获取，不代表每个版本都经过 WorkStep 兼容性验证。
 - 使用自定义可执行文件路径时禁用版本切换，避免更新其他位置的程序。清除路径配置后才能使用包管理。
@@ -18,7 +23,7 @@
 
 仅主包下载阶段显示「已下载 / 总大小」和百分比。总大小未知时只显示已下载量；读取元数据、安装依赖、解压和版本校验阶段显示持续活动状态，不产生模拟百分比。主包下载达到 100% 不表示安装完成。
 
-下载安装包会校验仓库提供的 SHA-256（PyPI）或 SRI/SHA 摘要（npm），失败时不运行安装命令。实现依据：[PyPI JSON API](https://docs.pypi.org/api/json/)、[npm 本地压缩包安装](https://docs.npmjs.com/cli/v11/commands/npm-install/)。
+下载安装包会校验仓库提供的 SHA-256（PyPI）、SRI/SHA 摘要（npm）或 SHA-512（Antigravity 官方清单），失败时不运行安装命令。实现依据：[PyPI JSON API](https://docs.pypi.org/api/json/)、[npm 本地压缩包安装](https://docs.npmjs.com/cli/v11/commands/npm-install/)。
 
 ## 安装与恢复
 
@@ -48,4 +53,4 @@
 - `POST /api/engine/{id}/runtime/operation`：`{version, rollback: false, accept_third_party_terms}` 安装；`{rollback: true, accept_third_party_terms}` 恢复服务器保存的上一版本；接受任务后返回 202。
 - 原 `/install`、`/update` 为旧客户端保留，不提供新版本选择、下载进度和历史保证；新界面统一使用 runtime API。
 
-前端组合模块为 `EngineRuntimeControl`；`SettingsPage` 只负责按能力组装和完成后的引擎刷新。`EngineInstallProgress` 只展示测量数据。测试：`tests/test_engine_runtime.py`（离线 registry/安装器边界及真实流式字节）、前端 `engineRuntimeControl.test.tsx` 与 `engineInstallProgress.test.tsx`。
+前端组合模块为 `EngineRuntimeControl`；`SettingsPage` 只负责按能力组装和完成后的引擎刷新。`EngineInstallProgress` 只展示测量数据。测试：`tests/test_engine_runtime.py`（离线 registry/安装器边界及真实流式字节）、`test_antigravity_runtime.py`（托管路径、版本校验、回退、断点续传和慢解压 canary）、前端 `engineRuntimeControl.test.tsx` 与 `engineInstallProgress.test.tsx`。

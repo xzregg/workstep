@@ -45,7 +45,7 @@ test('Git action panels escape clipping containers, clamp to the viewport and fo
     assert.equal(closed, 2)
   } finally {
     await act(async () => root.unmount())
-    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
     window.HTMLElement.prototype.getBoundingClientRect = original
     container.remove()
     await window.happyDOM.close()

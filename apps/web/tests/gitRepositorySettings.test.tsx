@@ -125,7 +125,7 @@ test('remote project settings save repository identity without loading host cred
   try {
     await act(async () => root.render(<I18nProvider><GitApiContext.Provider value={{ api, shared: false, projectScoped: true, readOnly: false, browseWorkspace: async () => { throw new Error('unused') } }}><GitRepositorySettings id="remote-tree" /></GitApiContext.Provider></I18nProvider>))
     assert.equal(credentialReads, 0)
-    assert.equal(container.querySelector('input[name="gitAuthHost"]'), null)
+    assert.ok(container.querySelector('input[name="gitAuthHost"]') === null)
     assert.equal(container.querySelectorAll('button').length, 1)
     await act(async () => container.querySelector<HTMLButtonElement>('button')!.click())
     assert.equal(saved, 1)

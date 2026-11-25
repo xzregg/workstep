@@ -181,7 +181,7 @@ export default function EngineRuntimeControl({ engineId, onChanged }: {
         confirmText={confirmation === 'rollback' ? t('settings.runtimeConfirmRollback') : t('settings.runtimeConfirmInstall')}
         confirmDisabled={blocked || !target || Boolean(catalog?.requires_terms && !acceptTerms)} loading={submitting}
         onCancel={() => { if (!submitting) setConfirmation(null) }} onConfirm={() => void submit()}>
-        <p>{t('settings.runtimeRestart')}</p>
+        {catalog?.requires_restart !== false && <p>{t('settings.runtimeRestart')}</p>}
         {catalog?.requires_terms && <label className="engine-runtime-terms">
           <input type="checkbox" checked={acceptTerms} onChange={event => setAcceptTerms(event.target.checked)} />
           <span>{t('settings.runtimeTerms')}{' '}

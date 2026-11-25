@@ -30,7 +30,7 @@ for (const compact of [false, true]) test(`Git entry uses ${compact ? 'page navi
     await act(async () => entry.click())
     if (compact) {
       assert.equal(container.querySelector('output')?.textContent, '/git?project_id=p')
-      assert.equal(document.querySelector('.git-window'), null)
+      assert.ok(document.querySelector('.git-window') === null)
     } else {
       assert.equal(container.querySelector('output')?.textContent, source)
       const dialog = document.querySelector<HTMLElement>('.git-window')!
@@ -39,11 +39,11 @@ for (const compact of [false, true]) test(`Git entry uses ${compact ? 'page navi
       assert.equal(dialog.querySelectorAll('.resizable-panel-handle').length, 8)
       assert.ok(dialog.querySelector('[data-dialog-drag-handle]'))
       await act(async () => dialog.querySelector<HTMLButtonElement>('.git-window-close')!.click())
-      assert.equal(document.querySelector('.git-window'), null)
-      assert.equal(document.activeElement, entry)
+      assert.ok(document.querySelector('.git-window') === null)
+      assert.ok(document.activeElement === entry)
       await act(async () => entry.click())
       await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
-      assert.equal(document.querySelector('.git-window'), null)
+      assert.ok(document.querySelector('.git-window') === null)
       assert.equal(container.querySelector('output')?.textContent, source)
     }
   } finally {

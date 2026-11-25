@@ -10,10 +10,12 @@ from engines.core.session_pool import ManagedConnection, get_session_pool, start
 
 
 class SessionAgent:
-    def __init__(self, value, pool, lease):
+    def __init__(self, value, pool, lease, *, drop_replayed_history=False):
         self.value, self.pool, self.lease = value, pool, lease
         self.success = False
         self.tasks = set()
+        self.drop_replayed_history = drop_replayed_history
+        self._history_phase = False
 
     def __getattr__(self, name):
         return getattr(self.value.client, name)
@@ -31,7 +33,15 @@ class SessionAgent:
 
     async def _restore(self, name, **kwargs):
         if self.lease.thread != kwargs['session_id']:
-            response = await getattr(self.value.client, name)(**kwargs)
+            handler = self.value.handler
+            previous = handler.suppress_history
+            handler.suppress_history = previous or self.drop_replayed_history
+            try:
+                response = await getattr(self.value.client, name)(**kwargs)
+            except BaseException:
+                handler.suppress_history = previous
+                raise
+            self._history_phase = self.drop_replayed_history
             self.pool.bind(self.lease, kwargs['session_id'], kwargs['session_id'])
             return response
         return SimpleNamespace()
@@ -45,6 +55,13 @@ class SessionAgent:
     async def prompt(self, **kwargs):
         self.tasks.add(asyncio.current_task())
         self.success = False
+        if self._history_phase:
+            # ACP dispatches notifications as tasks. Keep restore filtering
+            # enabled through session setup, then flush already-ready callbacks
+            # before sending this turn's first prompt.
+            await asyncio.sleep(0)
+            self.value.handler.suppress_history = False
+            self._history_phase = False
         response = await self.value.client.prompt(**kwargs)
         self.success = str(getattr(response, 'stop_reason', 'end_turn')) == 'end_turn'
         return response
@@ -87,11 +104,13 @@ async def pooled_acp_process(engine, handler, cmd, *, cwd, env, session_id, sett
         handler.updates = asyncio.Queue()
         engine._handler = handler
         lease.on_close = lambda: cancel_handler(handler)
-        agent = SessionAgent(value, pool, lease)
+        agent = SessionAgent(value, pool, lease, drop_replayed_history=bool(
+            getattr(engine, 'DROP_REPLAYED_HISTORY_ON_RESUME', False)))
         yield agent, value.process
         complete = agent.success and engine.supports_process_reuse
     finally:
         if agent is not None:
+            handler.suppress_history = False
             handler.permission_mode = 'deny'
             cancel_handler(handler)
             for task in agent.tasks:

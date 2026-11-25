@@ -50,7 +50,7 @@ for (const projectScoped of [false, true]) test(`phone gateway ${projectScoped ?
     const share = document.querySelector<HTMLButtonElement>('.mobile-session-link')
     assert.ok(share)
     assert.equal(share.getAttribute('aria-label'), '复制对话链接')
-    assert.equal(document.querySelector('.mobile-sheet .mobile-session-link'), null)
+    assert.ok(document.querySelector('.mobile-sheet .mobile-session-link') === null)
     const plus = document.querySelector<HTMLButtonElement>('.chat-input-attach')
     assert.ok(plus)
     await act(async () => plus.click())
@@ -63,7 +63,7 @@ for (const projectScoped of [false, true]) test(`phone gateway ${projectScoped ?
     if (roleButton) {
       await act(async () => roleButton.click())
       assert.ok(document.querySelector('.chat-role-picker[role="dialog"]'))
-      assert.equal(document.querySelector('.mobile-sheet'), null)
+      assert.ok(document.querySelector('.mobile-sheet') === null)
     }
   } finally {
     await act(async () => root.unmount())

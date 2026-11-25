@@ -41,6 +41,7 @@ export function applyWorkflowPatch(
   selectedIds: Set<number> | null,
 ): any {
   const base = baseSteps && typeof baseSteps === 'object' ? baseSteps : {}
+  if (selectedIds?.size === 0) return base
   const baseNodes = Array.isArray(base.nodes) ? base.nodes : []
   const nodesById = new Map<number, Record<string, unknown>>()
   const order: number[] = []

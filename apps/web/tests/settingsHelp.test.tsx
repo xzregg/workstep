@@ -39,7 +39,7 @@ test('settings help opens the corresponding local chapter, follows language and 
     assert.deepEqual(opened, ['/landing/?lang=en-US#docs/templates-ai-flow', '_blank', 'noopener,noreferrer'])
     assert.ok(document.querySelector('.manual-help-overlay'), 'opening a browser keeps the reader open')
     await act(async () => document.querySelector<HTMLButtonElement>('.manual-help-close')!.click())
-    assert.equal(document.querySelector('.manual-help-overlay'), null)
+    assert.ok(document.querySelector('.manual-help-overlay') === null)
     assert.ok(host.querySelector('h1'))
   } finally {
     await act(async () => root.unmount())

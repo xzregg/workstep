@@ -51,7 +51,7 @@ test('one disclosure loads matching memories with the thought and keeps affinity
  assert.doesNotMatch(detail.textContent!,/4条消息|2个会话|未发通知|好感度/)
  assert.deepEqual(calls.sort(),['/api/digital-person/runs/r1','/api/digital-person/runs/r1/knowledge'])
  await act(async()=>rows[0].querySelector<HTMLElement>('time')!.click())
- assert.equal(rows[0].querySelector('.digital-person-run-detail'),null)
+ assert.ok(rows[0].querySelector('.digital-person-run-detail') === null)
  status=403
  await act(async()=>toggle(0).click())
  assert.match(rows[0].querySelector('[role="alert"]')!.textContent!,/没有权限/)

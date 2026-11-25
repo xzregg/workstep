@@ -59,7 +59,7 @@ async def test_semantic_quality(name,messages,expectation):
                 historical_batch=False,memory_only=False,clock='2026-11-14T06:05:00+00:00')
         return {'content':'Use the engine terminal to run workstep-cli memory pending. This test has no other stored knowledge or tools.'}
     result=await asyncio.wait_for(Agent(model,tools=[terminal],system_prompt=instruction(DigitalPersonProfile())).run(
-        'WorkStep internal event digital_person.reflection. Review the pending batch and return the result.',
+        'Start this background assessment: follow the system instructions to retrieve the pending messages and return the result.',
         usage_limits=UsageLimits(request_limit=8)),240)
     output=parse_check_result(str(result.output))
     assert any('memory pending' in command for command in calls)

@@ -278,18 +278,24 @@ export interface CoordinatorEngineSummary {
   supports_controlled_skills?: boolean
 }
 
+export interface EngineQuotaWindow {
+  used_percent: number
+  remaining_percent: number
+  resets_at?: number | null
+  window_duration_mins?: number | null
+  kind?: string | null
+  label?: string | null
+}
+
 export interface EngineQuota {
   engine_id: string
   limit_name?: string | null
   plan_type?: string | null
-  primary: {
-    used_percent: number
-    remaining_percent: number
-    resets_at?: number | null
-    window_duration_mins?: number | null
-  }
-  secondary?: EngineQuota['primary'] | null
-  credits?: { balance?: string | null; has_credits: boolean; unlimited: boolean }
+  collected_at?: number
+  primary?: EngineQuotaWindow | null
+  secondary?: EngineQuotaWindow | null
+  groups?: { name: string; windows: EngineQuotaWindow[] }[]
+  credits?: { balance?: string | null; has_credits?: boolean; unlimited: boolean; unit?: string | null }
   individual_limit?: {
     limit: string
     used: string

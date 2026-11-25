@@ -2,6 +2,7 @@ import {setProactiveSpeechContext} from './digitalPersonProactive'
 import {useCallback,useEffect,useEffectEvent,useLayoutEffect,useMemo,useRef,useState,type ReactNode} from 'react'
 import {useNavigate} from 'react-router-dom'
 import type {DigitalActivity,DigitalPersonProfile} from '../../api/digitalPerson'
+import {identitySetupGreetingKey} from './identitySetupGreeting'
 import type {AssistantChatMessage} from '../../stores/assistantStore'
 import {useI18n} from '../../i18n'
 import {useCompactLayout} from '../../hooks/useCompactLayout'
@@ -29,9 +30,11 @@ import {homePreferenceScope,readHomePreference,useHomePreference,writeHomePrefer
 import {useAssistantPendingInserts} from '../../hooks/useAssistantPendingInserts'
 import {DIGITAL_OUTPUT_FRAME,type DigitalOutputFrame} from './digitalPersonVoiceEvents'
 import DigitalPersonCaptions from './DigitalPersonCaptions'
+import DigitalPersonConversationFrame from './DigitalPersonConversationFrame'
 import {DigitalPersonConversationDialog} from './DigitalPersonDelegationDialog'
 import {useDigitalPersonUiActions} from './useDigitalPersonUiActions'
 import {primeSpeechOutput,speechText} from '../../utils/speechOutput'
+import {pendingInteractionItems} from '../../utils/interaction'
 import {useFaceWelcome} from './useFaceWelcome'
 import './DigitalPersonHome.css'
 
@@ -65,6 +68,9 @@ export default function DigitalPersonHome(props:Props){
  const updateDraft=(text:string)=>{draft.current=text;props.onDraft(text)}
  const preferenceScope=homePreferenceScope(projectId)
  const atlas=useHomePreference(preferenceScope,'atlas')
+ const atlasMode=useRef(atlas);atlasMode.current=atlas
+ const playbackSample=useRef(outputFrame)
+ const readPlaybackLevel=useCallback(()=>playbackSample.current.playing?playbackSample.current.level:0,[])
  const speakerMuted=useHomePreference(preferenceScope,'speakerMuted')
  const savedMicrophone=useMemo(()=>readHomePreference(preferenceScope,'microphone'),[preferenceScope])
  const microphoneRestored=useRef<string|null>(null)
@@ -72,8 +78,10 @@ export default function DigitalPersonHome(props:Props){
  const avatarAnchor=useRef<HTMLElement>(null)
  const [atlasPreviewTarget,setAtlasPreviewTarget]=useState<HTMLDivElement|null>(null)
  const ui=useDigitalPersonUiActions(active,sessionId,props.uiReply)
+ const [delegationShown,setDelegationShown]=useState(false)
  const conversationWindow=ui.panel
  const transcriptVisible=chatShown&&!conversationWindow
+ const presentationPaused=compact&&(Boolean(conversationWindow)||delegationShown||transcriptVisible||keyboardShown)
  if(!active){
   if(chatShown)setChatShown(false)
   if(facesShown)setFacesShown(false)
@@ -95,7 +103,9 @@ export default function DigitalPersonHome(props:Props){
  const dialogue=useDigitalPersonDialogue({projectId,sessionId,active:canCompose,running,speaking:outputBusy,showLevel:!atlas,
   onRecognized:text=>recognized.current(text),onSendDraft:text=>submitVoiceDraft.current(text),onStop:props.onStop})
  useEffect(()=>{
-  setOutput({projectId,sessionId,playing:false,level:0,busy:false})
+  let published:DigitalOutputFrame={projectId,sessionId,playing:false,level:0,busy:false}
+  playbackSample.current=published
+  setOutput(published)
   const sources=new Map<string,DigitalOutputFrame>()
   const frame=(event:Event)=>{
    const value=(event as CustomEvent<DigitalOutputFrame>).detail
@@ -105,7 +115,15 @@ export default function DigitalPersonHome(props:Props){
    else sources.delete(key)
    const frames=Array.from(sources.values())
    const audible=frames.filter(item=>item.playing).sort((a,b)=>b.level-a.level)
-   setOutput({...(audible[0]??frames[0]??value),busy:frames.length>0})
+   const next={...(audible[0]??frames[0]??value),busy:frames.length>0}
+   playbackSample.current=next
+   // Atlas amplitude is read by its visual meter. Publishing every 50 ms would
+   // rerender the transcript, camera and composer even while the user types.
+   if(next.playing===published.playing&&next.busy===published.busy&&next.readingId===published.readingId
+     &&next.source===published.source&&next.metered===published.metered
+     &&(atlasMode.current||next.level===published.level))return
+   published=next
+   setOutput(next)
   }
   window.addEventListener(DIGITAL_OUTPUT_FRAME,frame)
   return()=>window.removeEventListener(DIGITAL_OUTPUT_FRAME,frame)
@@ -121,6 +139,16 @@ export default function DigitalPersonHome(props:Props){
  },[active,transcriptVisible])
  const mute=dialogue.mute
  const lastMessage=messages.at(-1)
+ const revealedInteraction=useRef('')
+ const pendingInteraction=running&&lastMessage?.role==='assistant'
+  ?pendingInteractionItems(lastMessage.events??[]).at(-1)?.request.interaction_id:''
+ useEffect(()=>{
+  if(!active||!pendingInteraction)return
+  const key=`${sessionId}:${pendingInteraction}`
+  if(revealedInteraction.current===key)return
+  revealedInteraction.current=key
+  mute();setKeyboardShown(false);setChatShown(true)
+ },[active,sessionId,pendingInteraction,mute])
  const affect=useDigitalPersonAffect(projectId,sessionId,`${lastMessage?.id??''}:${lastMessage?.status??''}`)
  const hasVoiceDraft=!dialogue.continuous&&dialogue.draft!==null
  const micEnabled=dialogue.connected&&!dialogue.muted
@@ -143,9 +171,10 @@ export default function DigitalPersonHome(props:Props){
  const voicePhase=dialogue.phase
  const voiceActive=['requesting','preparing','recording','finishing'].includes(voicePhase)
  const welcome=useFaceWelcome({projectId,sessionId,active:canCompose&&profile.enabled,muted:speakerMuted,privateSpeechFallback:t('faceWelcome.defaultPhrase'),
-  blocked:running||(outputBusy&&output.source!=='welcome')||keyboardShown||transcriptVisible||facesShown||
+  speechBusy:outputBusy||wakeGreeting,
+  blocked:running||keyboardShown||transcriptVisible||facesShown||
    Boolean(conversationWindow)||Boolean(props.inputValue.trim())||dialogue.connected||dialogue.continuous||
-   dialogue.sending||dialogue.draft!=null||wakeGreeting||voiceActive})
+   dialogue.sending||dialogue.draft!=null||voiceActive})
  const wakeEnabled=useWakeEnabled()
  const wakeBlocked=restoringMicrophone||running||facesShown||transcriptVisible||keyboardShown||dialogue.draft!==null||micEnabled||dialogue.continuous
  const state=output.playing?'speaking':running||outputBusy?'thinking':microphoneOn?'listening':activity?.checking?'checking':'idle'
@@ -217,12 +246,13 @@ export default function DigitalPersonHome(props:Props){
  const microphoneAction=t(dialogue.continuous
   ?(microphoneOn?'digitalPerson.homeMute':'digitalPerson.homeUnmuteVoice')
   :(microphoneOn?'digitalPerson.homeCancelVoiceInput':'digitalPerson.homeStartVoiceInput'))
- const transcriptButton=<Button variant="ghost" className="digital-home-dock-transcript" aria-expanded={transcriptVisible} onClick={()=>{mute();setChatShown(true)}}><Icon name="message-circle-heart" size={16}/><span>{t('digitalPerson.homeExpandConversation')}</span></Button>
+ const transcriptButton=<Button variant="ghost" className={`digital-home-dock-transcript${compact?' digital-home-settings':''}`} aria-label={t('digitalPerson.homeExpandConversation')} title={t('digitalPerson.homeExpandConversation')} aria-expanded={transcriptVisible} onClick={()=>{mute();setChatShown(true)}}><Icon name="message-circle-heart" size={16}/>{!compact&&<span>{t('digitalPerson.homeExpandConversation')}</span>}</Button>
  const atlasToggle=<Button variant="ghost" className="digital-home-atlas-toggle" onClick={()=>writeHomePreference(preferenceScope,'atlas',!atlas)}><span>{t(atlas?'digitalPerson.title':'digitalMemoryView.atlas')}</span></Button>
- return <main className={`digital-home${atlas?' digital-home--atlas':''}${transcriptVisible?' digital-home--chat':''}${ui.panel?' digital-home--conversation-window':''}`} data-state={state}>
+ return <main className={`digital-home${atlas?' digital-home--atlas':''}${transcriptVisible||delegationShown?' digital-home--chat':''}${ui.panel?' digital-home--conversation-window':''}`} data-state={state}>
   {atlas&&active&&!compact&&<AtlasBackdrop/>}
   <header className="digital-home-header">
    <div className="digital-home-brand"><BrandIcon size={26}/><strong>WorkStep</strong><span>{t('digitalPerson.homeWorkspace')}</span></div>
+   {!transcriptVisible&&transcriptButton}
    <Button variant="ghost" className="digital-home-settings digital-home-face-entry" disabled={!active} aria-label={t('faceRecognition.title')} title={t('faceRecognition.title')} aria-expanded={facesShown} aria-haspopup="dialog" onClick={()=>{mute();setFacesShown(true)}}><Icon name="scan-face" size={16}/></Button>
    <Button variant="ghost" className="digital-home-settings" aria-label={t('digitalPerson.title')} onClick={()=>{mute();window.dispatchEvent(new window.Event('workstep:open-digital-person-settings'))}}><Icon name="settings" size={16}/></Button>
    <Button variant="ghost" className="digital-home-back" aria-label={t('digitalPerson.homeBack')} onClick={returnWorkbench}><Icon name="chevron-right" size={16}/><span>{t('digitalPerson.homeBack')}</span></Button>
@@ -232,37 +262,39 @@ export default function DigitalPersonHome(props:Props){
     onWake={dialogue.startWakeContinuous} onListeningChange={setWakeListening} onGreetingChange={setWakeGreeting}/>}
   <div className="digital-home-main">
    <section ref={avatarAnchor} className="digital-home-stage" aria-label={profile.name}>
-    {atlas?(active&&<MemoryAtlas key={projectId+'/'+sessionId} projectId={projectId} sessionId={sessionId} voiceLevel={output.playing?output.level:0} previewTarget={atlasPreviewTarget} paused={compact&&(transcriptVisible||(canCompose&&keyboardShown))}/>):<AvatarPresentation projectId={projectId} sessionId={sessionId} name={profile.name} active={active}
+    {atlas?(active&&<MemoryAtlas key={projectId+'/'+sessionId} projectId={projectId} sessionId={sessionId} voiceLevel={output.playing?.35:0} readVoiceLevel={readPlaybackLevel} previewTarget={atlasPreviewTarget} paused={presentationPaused}/>):<AvatarPresentation projectId={projectId} sessionId={sessionId} name={profile.name} active={active} paused={presentationPaused}
       phase={avatarPhase} callState={callStates[orbPhase]} inputLevel={microphoneOn?dialogue.level:0} metered={outputFrame.metered!==false} activityId={motionActivity?.key} speaking={output.playing} level={output.level}
       affinity={affect.state?.affinity} emotion={affect.state?.emotion} intensity={Math.max(Math.abs(affect.state?.valence??0),affect.state?.arousal??0)/100}
-      fallback={presentation=><DigitalPersonPresence key={`${projectId}/${sessionId}`} active={active} presentation={presentation} phase={orbPhase} readSpeechLevel={microphoneOn?dialogue.readSpeechLevel:undefined} metered={outputFrame.metered!==false} reply={lastMessage?.role==='assistant'?lastMessage:undefined} name={profile.name}/>}/>}
+      fallback={presentation=><DigitalPersonPresence key={`${projectId}/${sessionId}`} active={active} paused={presentationPaused} presentation={presentation} phase={orbPhase} readSpeechLevel={microphoneOn?dialogue.readSpeechLevel:undefined} metered={outputFrame.metered!==false} reply={lastMessage?.role==='assistant'?lastMessage:undefined} name={profile.name}/>}/>}
+    {welcome.text&&<p className="digital-home-welcome" role="status">{welcome.text}</p>}
    </section>
-   <DigitalPersonHomeInsights atlasAction={atlasToggle} active={active} canControlWake={canCompose} name={profile.name} role={profile.role} state={identityState} activity={activity} affect={affect.state} chatShown={transcriptVisible} onInspect={mute}/>
-   {!transcriptVisible&&<DigitalPersonCaptions projectId={projectId} messages={messages} feedback={activity?.feedback} sessionId={sessionId} greeting={profile.greeting} liveText={voiceCaption} voicePhase={!hasVoiceDraft&&voiceActive?voicePhase:undefined}
+   <DigitalPersonHomeInsights onConversationChange={setDelegationShown} atlasAction={atlasToggle} active={active} canControlWake={canCompose} name={profile.name} role={profile.role} state={identityState} activity={activity} affect={affect.state} chatShown={transcriptVisible} onInspect={mute}/>
+   {!transcriptVisible&&!conversationWindow&&!delegationShown&&<DigitalPersonCaptions projectId={projectId} messages={messages} feedback={activity?.feedback} sessionId={sessionId} greeting={identitySetupGreetingKey(profile)?t(identitySetupGreetingKey(profile)!):profile.greeting} liveText={voiceCaption} voicePhase={!hasVoiceDraft&&voiceActive?voicePhase:undefined}
     voiceDraft={hasVoiceDraft?dialogue.draft:undefined}
     onStartVoiceEdit={()=>{mute();dialogue.editDraft(voiceCaption)}}
     onChangeVoiceDraft={canCompose&&hasVoiceDraft&&!dialogue.sending?dialogue.editDraft:undefined}
     onClearVoice={canCompose&&!dialogue.continuous&&!dialogue.sending?dialogue.clearDraft:undefined}
     frameRef={atlas?setAtlasPreviewTarget:undefined}
     readingId={output.readingId} onToggleSpeech={toggleCaptionSpeech}/>}
-   {transcriptVisible&&<section className="digital-home-chat" aria-label={t('digitalPerson.homeTranscript')}><header><h2>{t('digitalPerson.homeTranscript')}</h2><Button variant="ghost" onClick={()=>setChatShown(false)} aria-label={t('common.close')}><Icon name="x" size={18}/></Button></header>{props.children}</section>}
+   {transcriptVisible&&<DigitalPersonConversationFrame className="digital-home-chat" role="dialog" aria-label={t('digitalPerson.homeTranscript')} title={t('digitalPerson.homeTranscript')} onClose={()=>setChatShown(false)}>{props.children}</DigitalPersonConversationFrame>}
    {conversationWindow&&<DigitalPersonConversationDialog key={conversationWindow.id} projectId={conversationWindow.projectId}
     initialSessionId={conversationWindow.sessionId} initialHistory={conversationWindow.initialHistory} title={conversationWindow.title} onClose={ui.close}
     floating={{anchor:avatarAnchor,closing:conversationWindow.closing,onExited:()=>ui.finishClosing(conversationWindow.id)}}/>}
   </div>
   {(props.error||dialogue.error)&&<p className="digital-home-error" role="alert">{props.error||t(dialogue.error as never)}</p>}
+  {dialogue.notice&&<p className="voice-input-notice" role="status">{t(dialogue.notice as never)}</p>}
   {ui.issue&&<p className="digital-home-error" role="status">{t(`digitalPersonUi.${ui.issue}`)}</p>}
-  {welcome.text&&<p className="digital-home-welcome" role="status">{welcome.text}</p>}
   <footer className="digital-home-footer">
-   <DigitalPersonCamera key={`${projectId}/${sessionId}`} compact projectId={projectId} preferenceScope={preferenceScope} active={active&&!facesShown} onWelcomeFrame={welcome.observe} onOpen={primeSpeechOutput} onPrepare={props.onPrepareCamera} presentation={compact?'window':'panel'} panelContent={<section className="digital-home-camera-perception"><Button variant="ghost" onClick={()=>{mute();setFacesShown(true)}}><Icon name="scan-face" size={16}/>{t('faceRecognition.title')}<Icon name="chevron-right" size={14}/></Button></section>}>{!transcriptVisible&&<DigitalPersonHomeComposer shown={canCompose&&keyboardShown} onClose={()=>setKeyboardShown(false)} anchorRef={textButton} inputRef={inputRef} value={props.inputValue} onChange={updateDraft} onSend={sendText} onSendPending={(content,ids)=>{primeSpeechOutput();return props.onSendPending?.(content,ids)??Promise.resolve(false)}} pendingPanel={pending.panel} pendingError={pending.error} queueEnabled={pending.queueEnabled} queueCurrentInput={pending.queueCurrentInput} projectId={projectId} sessionId={sessionId} messages={messages} running={running} voiceDisabled={dialogue.connected} active={canCompose} onStop={()=>{void props.onStop()}}/>}
-   {!transcriptVisible&&<DigitalPersonVoiceDock canCompose={canCompose} speakerMuted={speakerMuted} onToggleSound={()=>writeHomePreference(preferenceScope,'speakerMuted',!speakerMuted)}
+   <DigitalPersonCamera key={`${projectId}/${sessionId}`} compact projectId={projectId} preferenceScope={preferenceScope} active={active&&!facesShown} onWelcomeFrame={welcome.observe} onOpen={primeSpeechOutput} onManualOpen={welcome.cameraOpened} onManualClose={welcome.cameraClosed} onPrepare={props.onPrepareCamera} presentation={compact?'window':'panel'}>{!transcriptVisible&&!delegationShown&&<DigitalPersonHomeComposer shown={canCompose&&keyboardShown} onClose={()=>setKeyboardShown(false)} anchorRef={textButton} inputRef={inputRef} value={props.inputValue} onChange={updateDraft} onSend={sendText} onSendPending={(content,ids)=>{primeSpeechOutput();return props.onSendPending?.(content,ids)??Promise.resolve(false)}} pendingPanel={pending.panel} pendingError={pending.error} queueEnabled={pending.queueEnabled} queueCurrentInput={pending.queueCurrentInput} projectId={projectId} sessionId={sessionId} messages={messages} running={running} voiceDisabled={dialogue.connected} active={canCompose} onStop={()=>{void props.onStop()}}/>}
+   {!transcriptVisible&&!delegationShown&&<DigitalPersonVoiceDock canCompose={canCompose} speakerMuted={speakerMuted} onToggleSound={()=>writeHomePreference(preferenceScope,'speakerMuted',!speakerMuted)}
     microphoneOn={microphoneOn&&voicePhase!=='requesting'} microphoneAction={microphoneAction}
     readSpeechLevel={microphoneOn&&(dialogue.phase==='recording'||dialogue.phase==='preparing')?dialogue.readSpeechLevel:undefined}
     microphoneDisabled={!canCompose||(!dialogue.continuous&&!micEnabled&&(dialogue.sending||running))} microphonePending={microphonePending}
     onMicrophone={toggleMicrophone} onHoldMicrophone={()=>{if(!dialogue.sending&&!running)toggleCall()}}
     action={voiceAction} actionDisabled={voiceAction==='send'&&!dialogue.draft?.trim()} sending={dialogue.sending} stopping={props.stopping}
-    onAction={voiceAction==='stop'?dialogue.stopReply:voiceAction==='send'?dialogue.sendDraft:toggleCall}/>}
-   {!transcriptVisible&&<div className="digital-home-input-actions"><Button variant="ghost" ref={textButton} className="digital-home-keyboard" disabled={!canCompose} onClick={openText} aria-label={t('digitalPerson.homeKeyboard')} aria-haspopup="dialog" aria-expanded={canCompose&&keyboardShown}><Icon name="keyboard" size={24}/></Button>{transcriptButton}</div>}</DigitalPersonCamera>
+    onAction={voiceAction==='stop'?dialogue.stopReply:voiceAction==='send'?dialogue.sendDraft:toggleCall}
+    keyboardControl={<Button variant="ghost" ref={textButton} className="digital-home-keyboard" disabled={!canCompose} onClick={openText} aria-label={t('digitalPerson.homeKeyboard')} aria-haspopup="dialog" aria-expanded={canCompose&&keyboardShown}><Icon name="keyboard" size={24}/></Button>}/>}
+   </DigitalPersonCamera>
    <DigitalPersonSpeech ref={speech} muted={speechMuted} blockNew={blockNewSpeech} manualEnabled={!blockNewSpeech} hideControls profile={{...profile,auto_speak:true}} projectId={projectId} sessionId={sessionId} messages={messages} active={active}/>
   </footer>
   {facesShown&&active&&<FaceHomePanel key={`${projectId}/${sessionId}`} onClose={()=>setFacesShown(false)}/>}

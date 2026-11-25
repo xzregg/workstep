@@ -1,3 +1,4 @@
+import { useFlowProposalConfirmation } from '../hooks/useFlowProposalConfirmation'
 import SettingsHelpButton from '../components/SettingsHelpButton'
 import { visibleTemplates } from '../utils/contentLocale'
 import ResizablePanel from '../components/ResizablePanel'
@@ -48,7 +49,7 @@ export default function TemplateSettings() {
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const [aiGenBusy, setAiGenBusy] = useState(false)
   const [aiConfirmClose, setAiConfirmClose] = useState(false)
-  const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
+  const proposalConfirmation = useFlowProposalConfirmation(`template:${editing?.id}`)
   const canvasRef = useRef<FlowCanvasHandle>(null)
 
   // Dirty when either the canvas (FlowCanvas) or metadata (name/desc/id) changed
@@ -96,7 +97,7 @@ export default function TemplateSettings() {
       setMetaDirty(false)
       setAiPanelOpen(false)
       setAiConfirmClose(false)
-      setPendingAiSteps(null)
+      proposalConfirmation.cancel()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('templateSettings.loadTemplateFailed'))
     }
@@ -108,7 +109,7 @@ export default function TemplateSettings() {
     setMetaDirty(false)
     setAiPanelOpen(false)
     setAiConfirmClose(false)
-    setPendingAiSteps(null)
+    proposalConfirmation.cancel()
   }
 
   const metaError = (() => {
@@ -390,8 +391,9 @@ export default function TemplateSettings() {
                 workflowId={`template:${editing.id}`}
                 workflowName={meta.name}
                 getCanvasSteps={() => canvasRef.current?.getSteps()}
+                onPreview={(steps) => canvasRef.current?.previewSteps(steps)}
                 onProposal={(steps) => {
-                  if (canvasDirty) { setPendingAiSteps(steps); return }
+                  if (canvasDirty) return proposalConfirmation.request(steps, () => canvasRef.current?.loadSteps(steps))
                   canvasRef.current?.loadSteps(steps)
                 }}
                 onRestore={(steps) => canvasRef.current?.loadSteps(steps)}
@@ -417,16 +419,13 @@ export default function TemplateSettings() {
           />
 
           <ConfirmDialog
-            open={pendingAiSteps !== null}
+            open={proposalConfirmation.steps !== null}
             title={t('canvas.proposalOverwriteTitle')}
             message={t('canvas.proposalOverwriteMessage')}
             confirmText={t('canvas.applyProposal')}
             danger
-            onConfirm={() => {
-              if (pendingAiSteps !== null) canvasRef.current?.loadSteps(pendingAiSteps)
-              setPendingAiSteps(null)
-            }}
-            onCancel={() => setPendingAiSteps(null)}
+            onConfirm={() => void proposalConfirmation.confirm()}
+            onCancel={proposalConfirmation.cancel}
           />
 
           {/* Unsaved changes confirm */}

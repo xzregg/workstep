@@ -93,7 +93,7 @@ test('warming sample renders collecting state instead of false zeros', async () 
   const original = statisticsApi.system
   statisticsApi.system = async () => ({ ...report, status: 'warming', sample: null, history: [] })
   const view = await mount(<SystemStatisticsPanel />)
-  try { assert.match(view.container.textContent || '', /采样中/); assert.equal(view.container.querySelector('table'), null) }
+  try { assert.match(view.container.textContent || '', /采样中/); assert.ok(view.container.querySelector('table') === null) }
   finally { await view.close(); statisticsApi.system = original }
 })
 
@@ -107,7 +107,7 @@ test('page mounts only active statistics tab and hides host metrics in remote br
     assert.equal(systemCalls, 1); assert.equal(businessCalls, 0)
     await act(async () => button(view.container, '业务统计').click())
     assert.equal(businessCalls, 1)
-    assert.equal(view.container.querySelector('.system-statistics'), null)
+    assert.ok(view.container.querySelector('.system-statistics') === null)
     await act(async () => button(view.container, '系统运行').click())
     assert.equal(systemCalls, 2)
   } finally { await view.close() }
@@ -135,7 +135,7 @@ test('mobile LAN and Gateway owner workspaces can open the same system panel as 
         assert.equal(view.container.querySelectorAll('.system-host-card').length, 4)
         assert.match(view.container.textContent || '', /Daemon 状态/)
         await act(async () => button(view.container, '业务统计').click())
-        assert.equal(view.container.querySelector('.system-statistics'), null)
+        assert.ok(view.container.querySelector('.system-statistics') === null)
       } finally { await view.close() }
     }
   } finally {
@@ -223,7 +223,7 @@ test('trend pointer coordinates and tooltip follow samples across the full chart
       previousLeft = left
     }
     await act(async () => chart.dispatchEvent(new view.window.PointerEvent('pointerout', { bubbles: true })))
-    assert.equal(view.container.querySelector('.system-chart-tooltip'), null)
+    assert.ok(view.container.querySelector('.system-chart-tooltip') === null)
   } finally { await view.close() }
 })
 

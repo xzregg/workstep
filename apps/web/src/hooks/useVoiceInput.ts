@@ -46,17 +46,19 @@ interface Run {
   speechMeter?: { level: number; capturedAt: number };
   turn?: TurnState; id?: string; project: string; token: AbortController; capture?: VoiceCapture;
   opening: boolean; streaming?: SpeechStreaming; candidateAt?: number; checking: boolean;
+  previewSamples?: number; previewInterval?: number; sentSamples?: number;
   queue: Int16Array[]; queued: number; pumping: boolean; sequence: number; text: string; nextMeterAt: number;
   finishing: boolean; draining: boolean; finalizing: boolean; maxFrameSamples: number; capturedSamples: number; cursor: number; draft: string
 }
 const SAMPLE_RATE = 16000
 const PHONE_STREAM_BATCH = SAMPLE_RATE * 0.32
-const PHONE_INITIAL_PREVIEW = SAMPLE_RATE * 1.2
+const INITIAL_PREVIEW = SAMPLE_RATE * 1.2
 const SPEECH_METER_MAX_AGE_MS = 160
 const VAD_ONLY_LEVEL = .12
 const RECORDING_LIMIT = 120 * SAMPLE_RATE
 const transcript = (r: Run) => (r.completedText ?? '') + r.text
-const recognitionTurn = (r: Run) => r.deliverSegments ? r.segments?.[0]?.turn : r.turn
+const recognitionTurn = (r: Run) => r.segments ? r.segments[0]?.turn : r.turn
+const recognitionSamples = (r: Run) => r.segments ? r.segments[0]?.samples ?? 0 : (r.sentSamples ?? 0) + r.queued
 
 export function useVoiceInput(options: Options) {
   const [mode, setMode] = useState(false)
@@ -125,6 +127,9 @@ export function useVoiceInput(options: Options) {
     r.streaming = undefined
     r.sequence = 0
     r.candidateAt = undefined
+    r.previewSamples = undefined
+    r.previewInterval = undefined
+    r.sentSamples = 0
     r.finalizing = false
     r.text = ''
     setText(r.completedText ?? '')
@@ -134,11 +139,18 @@ export function useVoiceInput(options: Options) {
   const submit = async (r: Run, samples: Int16Array, final: boolean, preview = true, candidateAt?: number) => {
     const sequence = r.sequence++
     const sentAt = performance.now()
+    r.sentSamples = (r.sentSamples ?? 0) + samples.length
+    const previewSamples = recognitionSamples(r)
     const result: SpeechResult = await withDeadline(speechApi.audio(r.id!, r.project, sequence, pcmBase64(samples), final, r.token.signal, preview),
       20000, 'speech.serviceTimeout', r.token.signal)
     if (!live(r)) return
     if (result.id !== r.id || result.sequence !== sequence || result.final !== final) throw new Error('speech.responseMismatch')
     const requestMs = performance.now() - sentAt
+    if (preview && !final) {
+      r.previewSamples = previewSamples
+      // Slow CPUs refresh less often; never replay every queued hypothesis.
+      r.previewInterval = Math.max(SAMPLE_RATE * 2.4, requestMs * 32)
+    }
     const queuedMs = r.queued / 16
     if (requestMs >= 1000 || queuedMs >= 2000) {
       browserDiagnostics.recordSpeechTiming({ requestMs, processingMs: result.processing_ms, queuedMs })
@@ -147,6 +159,8 @@ export function useVoiceInput(options: Options) {
     if (preview) r.text = result.text
     if (result.final) commit(r)
     else if (preview) setText(transcript(r))
+    if (result.speaker_status === 'matched') setNotice('')
+    else if (result.final && result.speaker_status) setNotice(`voiceprint.${result.speaker_status}`)
   }
   const pump = async (r: Run) => {
     if (r.pumping || r.draining || !r.id || !live(r)) return
@@ -155,20 +169,16 @@ export function useVoiceInput(options: Options) {
       while (live(r) && !r.draining && !r.finalizing) {
         const segmentComplete = r.segments ? r.segments[0]?.complete : r.finishing
         const turn = recognitionTurn(r)
-        if (r.deliverSegments && segmentComplete && r.streaming === 'segment' && turn?.canCommit && r.candidateAt === turn.lastVoice) {
-          // All queued samples after the speculative decode are confirmed silence.
-          r.queue.length = 0; r.queued = 0
-        }
+        // VAD locates the boundary; low-confidence frames can still contain
+        // quiet final syllables. Final decoding must include that PCM too.
         const candidate = (!r.segments || r.deliverSegments) && r.streaming === 'segment' && turn?.candidate && r.candidateAt !== turn.lastVoice
         if (!r.queue.length && !segmentComplete && !candidate) break
         const buffered = r.streaming === 'segment' || r.streaming === 'final'
         const streamingBatch = r.phoneCall && r.streaming === 'native' ? PHONE_STREAM_BATCH : 8000
         const minimum = buffered ? r.maxFrameSamples : r.turn ? streamingBatch : 1
-        // Decode one early prefix during uninterrupted speech. Subsequent
-        // SenseVoice previews still wait for a pause to avoid repeated work.
-        const initialPreview = r.phoneCall && r.streaming === 'segment' && r.sequence === 0
-          && turn?.recentSpeech && r.queued >= PHONE_INITIAL_PREVIEW
-        if (!segmentComplete && !candidate && !initialPreview && r.queued < minimum) break
+        const longPreview = r.streaming === 'segment' && (!turn || turn.recentSpeech)
+          && recognitionSamples(r) - (r.previewSamples ?? 0) >= (r.previewSamples === undefined ? INITIAL_PREVIEW : r.previewInterval!)
+        if (!segmentComplete && !candidate && !longPreview && r.queued < minimum) break
         // Catch up with the latest audio in one request rather than replaying
         // every outdated half-second hypothesis after a slow decode.
         const batch: Int16Array[] = []
@@ -185,7 +195,7 @@ export function useVoiceInput(options: Options) {
         if (final) r.finalizing = true
         const candidateAt = !final && candidate && !r.queue.length ? turn?.lastVoice : undefined
         if (candidateAt !== undefined) r.candidateAt = candidateAt
-        await submit(r, samples, final, r.streaming !== 'segment' || final || initialPreview || candidateAt !== undefined, candidateAt)
+        await submit(r, samples, final, r.streaming !== 'segment' || final || Boolean(longPreview && !r.queue.length) || candidateAt !== undefined, candidateAt)
         if (final) break
       }
     } catch (reason) { fail(r, reason) }
@@ -215,14 +225,10 @@ export function useVoiceInput(options: Options) {
       if (r.turn && !turn) throw new Error('speech.recordingCheckTimeout')
       if (turn) r.turn = turn
       if (automatic && r.turn && !r.turn.canCommit && r.capturedSamples < RECORDING_LIMIT) {
-        if (r.candidateAt !== r.turn.lastVoice) { r.text = ''; setText('') }
         return
       }
-      // The checkpoint includes all PCM posted before the worklet's flush ack.
-      // If SenseVoice decoded this same speech, only unvoiced tail remains.
-      if (automatic && r.streaming === 'segment' && r.turn?.canCommit && r.candidateAt === r.turn.lastVoice) {
-        r.queue = []; r.queued = 0; setCatchingUp(false)
-      }
+      // Keep the checkpoint's complete tail for final whole-utterance decoding,
+      // including quiet speech that did not advance VAD's lastVoice marker.
       r.finishing = true; setPhase('finishing'); setLevel(0)
     }
     catch (reason) { fail(r, reason); return }
@@ -246,7 +252,7 @@ export function useVoiceInput(options: Options) {
     r.opening = true
     if (!r.segments) setPhase(r.finishing ? 'finishing' : 'preparing')
     try {
-      const creating = speechApi.start(r.project, r.token.signal)
+      const creating = r.phoneCall ? speechApi.start(r.project, r.token.signal, true) : speechApi.start(r.project, r.token.signal)
       void creating.then(session => {
         if (!live(r)) void speechApi.cancel(session.id, r.project).catch(() => {})
       }, () => {})
@@ -282,11 +288,8 @@ export function useVoiceInput(options: Options) {
     if (!tail.hasSpeech) tail.samples = keepPreRoll(tail.frames, tail.samples)
     if (tail === segments[0]) {
       r.queued = tail.hasSpeech ? r.queued + samples.length : tail.samples
-      if (r.deliverSegments && r.candidateAt === tail.turn?.lastVoice && r.candidateAt !== undefined && r.candidateAt !== turn.lastVoice) {
-        r.text = ''; setText('')
-      }
     }
-    if (r.deliverSegments) tail.turn = turn
+    tail.turn = turn
     if (turn.canCommit) {
       tail.complete = true
       segments.push(newSegment())
@@ -347,9 +350,7 @@ export function useVoiceInput(options: Options) {
         // through temporary network stalls instead of discarding it at 4s.
         r.queue.push(samples); r.queued += samples.length
         if (r.turn && turn) {
-          const lastVoice = r.turn.lastVoice
           r.turn = turn
-          if (r.candidateAt === lastVoice && r.turn.lastVoice !== lastVoice) { r.text = ''; setText('') }
           if (!r.turn.hasSpeech) {
             r.queued = keepPreRoll(r.queue, r.queued)
             if (r.capturedSamples === RECORDING_LIMIT) cancel()

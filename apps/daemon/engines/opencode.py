@@ -334,14 +334,6 @@ class OpencodeEngine(AcpEngineBase):
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}
 
-    async def get_quota(self, cwd: str = "") -> dict | None:
-        """opencode 暂无账户额度原生接口：如实返回 None。
-
-        ACP 只给上下文用量快照（usage_update 的 used/size/cost），没有订阅
-        余额/配额端点；显式声明避免上层误判为“支持但查不到”。
-        """
-        return None
-
     @staticmethod
     def _agent_capability(response, name=None, nested=None):
         # opencode 的 session/load 会把整段历史当实时 update 重播，

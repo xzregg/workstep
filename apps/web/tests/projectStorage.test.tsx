@@ -156,11 +156,11 @@ test(`gateway project picker loads permission before browsing on a phone: owner=
     await act(async () => render())
     assert.deepEqual(calls, ['/workspace/device-one/api/managed/mode'])
     assert.doesNotMatch(container.textContent ?? '', /仅在电脑本机可用/)
-    assert.equal(container.querySelector('[role="option"]'), null)
+    assert.ok(container.querySelector('[role="option"]') === null)
     await act(async () => resolvePermission(Response.json({ managed: true, can_manage_remote_projects: owner })))
     if (!owner) {
       assert.match(container.textContent ?? '', /仅在电脑本机可用/)
-      assert.equal(container.querySelector('[role="option"]'), null)
+      assert.ok(container.querySelector('[role="option"]') === null)
       assert.deepEqual(added, [])
       assert.equal(calls.length, 1)
       return
@@ -206,7 +206,7 @@ for (const owner of [true,false]) {
     await act(async()=>confirm.click())
     assert.equal(added,1)
    } else {
-    assert.equal(container.querySelector('[role=listbox]'),null)
+    assert.ok(container.querySelector('[role=listbox]') === null)
     assert.equal(added,0)
    }
   } finally {

@@ -189,6 +189,7 @@ export interface ChatSessionSummary {
   workflow_id: string
   title: string
   archived?: boolean
+  lifecycle_protected?: boolean
   archived_at?: string | null
   source?: 'chat' | 'channel'
   channel_platform?: string | null

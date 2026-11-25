@@ -4,7 +4,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { installDomEnvironment } from './helpers/domEnv'
 import SessionRowActions from '../src/components/SessionRowActions'
-import { I18nProvider } from '../src/i18n'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 
 test('touch time reveals archive, and a row click hides it again', async () => {
   const { window } = installDomEnvironment()
@@ -19,19 +19,19 @@ test('touch time reveals archive, and a row click hides it again', async () => {
     </div></I18nProvider>))
     const time = container.querySelector<HTMLButtonElement>('.ws-session-time-button')
     assert.ok(time)
-    assert.equal(container.querySelector('.ws-more-btn'), null)
+    assert.ok(container.querySelector('.ws-more-btn') === null)
     await act(async () => time.click())
     const archive = container.querySelector<HTMLButtonElement>('.ws-more-btn')
     assert.ok(archive)
     assert.equal(container.querySelectorAll('.ws-more-btn').length, 1)
-    assert.equal(container.querySelector('.ws-session-time-button'), null)
+    assert.ok(container.querySelector('.ws-session-time-button') === null)
     await act(async () => archive.dispatchEvent(new window.Event('pointerdown', { bubbles: true })))
     assert.equal(rowPointerDown, 0, 'archive press must not start the row long-press menu')
     await act(async () => archive.click())
     assert.deepEqual(archived, ['session-1'])
     await act(async () => container.querySelector('.ws-row')?.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
     assert.ok(container.querySelector('.ws-session-time-button'))
-    assert.equal(container.querySelector('.ws-more-btn'), null)
+    assert.ok(container.querySelector('.ws-more-btn') === null)
   } finally {
     await act(async () => root.unmount())
     container.remove()
@@ -49,7 +49,7 @@ test('mouse hover exposes archive and more actions without replacing the time bu
       hovered now={Date.now()} onArchive={() => {}} onMore={() => {}}
     /></I18nProvider>))
     assert.equal(container.querySelectorAll('.ws-more-btn').length, 2)
-    assert.equal(container.querySelector('.ws-session-time-button'), null)
+    assert.ok(container.querySelector('.ws-session-time-button') === null)
   } finally {
     await act(async () => root.unmount())
     container.remove()
@@ -73,6 +73,27 @@ test('persistent desktop actions keep the timestamp and more menu before and dur
       await act(async () => buttons[buttons.length - 1].click())
     }
     assert.equal(more, 2)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('protected hub conversations expose no archive action on hover or touch', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    for (const hovered of [false, true]) {
+      await act(async () => root.render(<I18nProvider><SessionRowActions
+        session={{ id: 'hub', title: '主动思考', lifecycle_protected: true, created_at: '2026-09-25T00:00:00Z' }}
+        hovered={hovered} showMore now={Date.now()} onArchive={() => assert.fail('protected')} onMore={() => {}}
+      /></I18nProvider>))
+      await act(async () => container.querySelector<HTMLButtonElement>('.ws-session-time-button')!.click())
+      assert.ok(container.querySelector('[aria-label="归档对话"]') === null)
+      assert.ok(container.querySelector('[aria-label="更多操作"]'))
+    }
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

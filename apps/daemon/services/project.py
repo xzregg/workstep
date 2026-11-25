@@ -410,6 +410,13 @@ class ProjectManager:
         except Exception as e:
             logger.warning("Failed to load projects from config: %s", e)
 
+    def _new_project_id(self) -> str:
+        existing_ids = {project.id for project in self._projects.values()}
+        while True:
+            project_id = uuid.uuid4().hex[:8]
+            if project_id not in existing_ids and not external_directory(project_id).exists():
+                return project_id
+
     def init_project(self, path: str | Path, name: str | None = None, follow_project: bool = True) -> Project:
         """Initialize a new WorkStep project at the given path.
 
@@ -437,7 +444,7 @@ class ProjectManager:
             project = self.register(path, name=name)
             self._save_config()
             return project
-        project_id = str(uuid.uuid4())
+        project_id = self._new_project_id()
         ws_dir = path / settings.workstep_dir if follow_project else external_directory(project_id)
         if ws_dir.exists() and any(ws_dir.iterdir()):
             raise ValueError("Project data directory is not empty, cannot overwrite")
@@ -599,7 +606,7 @@ class ProjectManager:
 
         db = init_db(str(db_path))
         db.close()
-        project = Project(path=path, db=db, steps={}, name=name or path.name, id=project_id or str(uuid.uuid4()), follow_project=identity.get("follow_project", True))
+        project = Project(path=path, db=db, steps={}, name=name or path.name, id=project_id or self._new_project_id(), follow_project=identity.get("follow_project", True))
         self._projects[path_str] = project
 
         # Restore existing workflows without seeding empty projects.

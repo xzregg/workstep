@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { OUTPUT_CHANGED, type OutputSettings } from '../api/speechOutput'
 import { loadSpeechOutputSettings, invalidateSpeechOutputSettings } from '../utils/speechOutputSettings'
-import { SpeechOutputPlayer, speechText, takeSpeechSentences } from '../utils/speechOutput'
+import { completedSpeechBatches, SpeechOutputPlayer, speechText } from '../utils/speechOutput'
 import { useI18n, localizeErrorDisplay } from '../i18n'
 import Button from './Button'
 import Icon from './Icon'
@@ -46,13 +46,13 @@ export default function MessageSpeechButton({ content, projectId = '' }: { conte
       const config = settings ?? await loadSpeechOutputSettings(projectId)
       if (request !== generation.current) return
       setSettings(config)
-      const current = new SpeechOutputPlayer({ settings: config, projectId,
+      const current = new SpeechOutputPlayer({ settings: config, projectId, completeReply: true,
         onState: value => { if (player.current === current) setPlaying(value) },
         onError: reason => { if (player.current === current) { setPlaying(false); setError(reason.message) } },
       })
       player.current = current
       await current.unlock()
-      if (player.current === current) current.enqueue(takeSpeechSentences(text, true).sentences)
+      if (player.current === current) current.enqueue(completedSpeechBatches(text), { final: true })
     } catch (reason) {
       if (request !== generation.current) return
       stop(); setError(reason instanceof Error ? reason.message : String(reason))

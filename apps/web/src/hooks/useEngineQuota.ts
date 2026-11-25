@@ -10,15 +10,16 @@ export function useEngineQuota(projectId: string | undefined, engine: string, ru
   } | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const requestIdRef = useRef(0)
+  const previous = useRef({ projectId, engine, running })
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force = true) => {
     if (!projectId) return
     const requestId = ++requestIdRef.current
     setRefreshing(true)
     try {
-      const result = await engineApi.quota(engine, projectId)
+      const result = await engineApi.quota(engine, projectId, force)
       if (requestIdRef.current === requestId) {
-        setSnapshot({ projectId, engine, quota: result.quota })
+        setSnapshot({ projectId, engine, quota: result.supported === false || (result.status && result.status !== 'ok') ? null : result.quota })
       }
     } catch {
       if (requestIdRef.current === requestId) {
@@ -35,9 +36,14 @@ export function useEngineQuota(projectId: string | undefined, engine: string, ru
       setRefreshing(false)
       return
     }
-    void refresh()
-    return () => { requestIdRef.current += 1 }
-  }, [running, projectId, refresh])
+    const before = previous.current
+    const completed = before.projectId === projectId && before.engine === engine && before.running && !running
+    const started = before.projectId === projectId && before.engine === engine && !before.running && running
+    previous.current = { projectId, engine, running }
+    if (!started) void refresh(completed)
+  }, [running, projectId, engine, refresh])
+
+  useEffect(() => () => { requestIdRef.current += 1 }, [projectId, engine])
 
   const quota = snapshot && snapshot.projectId === projectId && snapshot.engine === engine
     ? snapshot.quota

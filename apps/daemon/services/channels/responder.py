@@ -20,6 +20,10 @@ class ChatSessionResponder:
         self._chat_module = chat_module
         self._modules = {"channel_chat": chat_module}
 
+    def set_main_chat(self, module):
+        # Borrow the actual foreground runtime: one session must have one queue.
+        self._modules['chat_session'] = module
+
     def _module_for(self, assistant_id: str):
         existing = self._modules.get(assistant_id)
         if existing is not None:
@@ -36,20 +40,21 @@ class ChatSessionResponder:
 
     async def shutdown(self) -> None:
         for assistant_id, module in tuple(self._modules.items()):
-            if assistant_id != "channel_chat":
+            if assistant_id not in {"channel_chat", "chat_session"}:
                 await module.shutdown()
-        self._modules = {"channel_chat": self._chat_module}
+        self._modules = {key: module for key, module in self._modules.items()
+                         if key in {"channel_chat", "chat_session"}}
 
     async def stop(self, project_id: str, session_id: str, assistant_message_id: str) -> bool:
-        module = self._module_for("channel_chat")
-        if not any(state.get("session_id") == session_id and state.get("assistant_message_id") == assistant_message_id
+        for module in self._modules.values():
+            if any(state.get("session_id") == session_id and state.get("assistant_message_id") == assistant_message_id
                    and state.get("project_id") == project_id and state.get("status") in {"queued", "running", "stopping"}
                    for state in module._turn_states.values()):
-            return False
-        return await module.stop_current(session_id, project_id=project_id, expected_message_id=assistant_message_id)
+                return await module.stop_current(session_id, project_id=project_id, expected_message_id=assistant_message_id)
+        return False
 
     def reply_metadata(self, turn_id: str) -> dict:
-        module = self._module_for('channel_chat')
+        module = next((module for module in self._modules.values() if turn_id in module._turn_states), self._chat_module)
         state = module._turn_states.get(turn_id, {})
         session = module._sessions.get(state.get('memory_key'))
         return {'model': getattr(session, 'model', '') or '',
@@ -69,12 +74,13 @@ class ChatSessionResponder:
         title: str = "渠道对话",
         on_started=None,
         on_event=None,
+        message_context: dict | None = None,
     ) -> tuple[str, str]:
         defaults = await asyncio.to_thread(
             config_store.get_assistant_defaults, assistant_id
         )
-        engine = defaults.get("engine") or None
-        selected_model = model or defaults.get("model") or None
+        engine = (defaults.get("engine") or None) if assistant_id != 'chat_session' else None
+        selected_model = (model or defaults.get("model") or None) if assistant_id != 'chat_session' else None
         module = self._module_for(assistant_id)
         if session_id:
             def reuse(_project):
@@ -91,6 +97,8 @@ class ChatSessionResponder:
                 return True
             reusable = await self._project_manager.run_db(project_id, reuse)
             if not reusable:
+                if assistant_id == 'chat_session':
+                    raise ValueError('The main conversation changed. Please retry.')
                 session_id = None
         if not session_id:
             session = await self._project_manager.run_db(
@@ -121,6 +129,7 @@ class ChatSessionResponder:
                     engine=engine,
                     model=selected_model,
                     schedule=False,
+                    message_context=message_context,
                 ),
             )
             expected_message_id["value"] = str(

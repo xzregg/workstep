@@ -10,6 +10,12 @@ from engines.core.events import InternalEvent, acp_raw_event
 from engines.core.interactions import elicitation_request, permission_request
 from engines.core.interaction_policy import automatic_response, mode_decision
 
+_HISTORY_UPDATES = tuple(getattr(schema, name) for name in (
+    'AgentMessageChunk', 'AgentThoughtChunk', 'UserMessageChunk',
+    'ToolCallStart', 'ToolCallProgress', 'AgentPlanUpdate', 'Plan',
+    'AgentPlanContentUpdate', 'AgentPlanRemovedUpdate',
+) if hasattr(schema, name))
+
 
 class ACPStreamingClient:
     """Receive ACP notifications and apply the configured permission policy."""
@@ -18,6 +24,7 @@ class ACPStreamingClient:
         self.updates: asyncio.Queue = asyncio.Queue()
         self.permission_mode = permission_mode
         self.permission_decision = permission_decision
+        self.suppress_history = False
         # tool_call_id → Future[option_id | None], parked until the UI responds.
         self._approval_futures: dict[str, asyncio.Future[str | None]] = {}
         self._default_allow_options: dict[str, str | None] = {}
@@ -45,6 +52,10 @@ class ACPStreamingClient:
         return True
 
     async def session_update(self, session_id, update, **kwargs):
+        # session/load may replay old bodies/tools. Only the restore request
+        # enables this phase; genuine new-turn text is never deduplicated.
+        if self.suppress_history and isinstance(update, _HISTORY_UPDATES):
+            return
         await self.updates.put(update)
 
     def resolve_elicitation(

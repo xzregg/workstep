@@ -60,7 +60,7 @@ test('hosted proxy displays actual daemon URLs and reuses existing remote key', 
     await act(async () => root.render(<I18nProvider><DecisionModelSettings /></I18nProvider>))
     assert.match(document.body.textContent!, /192.168.1.10:9876/)
     assert.match(document.body.textContent!, /沿用远程访问密钥/)
-    assert.equal(document.getElementById('decision-access-key'), null)
+    assert.ok(document.getElementById('decision-access-key') === null)
     await act(async () => (document.getElementById('decision-proxy-enabled') as HTMLInputElement).click())
     await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent === '保存配置')!.click())
     assert.equal((submitted as { proxy_enabled: boolean }).proxy_enabled, true)

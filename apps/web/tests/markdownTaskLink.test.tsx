@@ -64,7 +64,7 @@ test('task links reject cross-project targets and report deleted tasks without n
     await act(async () => root.render(<I18nProvider><MemoryRouter>
       <MarkdownContent projectId="p1" content="[跨项目](workstep-task://open?project_id=other&task_id=t1)" />
     </MemoryRouter></I18nProvider>))
-    assert.equal(container.querySelector('.markdown-task-link'), null)
+    assert.ok(container.querySelector('.markdown-task-link') === null)
     assert.equal(calls, 0)
     await act(async () => root.render(<I18nProvider><MemoryRouter>
       <MarkdownContent projectId="p1" content="[打开任务详情](workstep-task://open?project_id=p1&task_id=missing)" />
@@ -93,8 +93,8 @@ test('streaming task links stay disabled and completion preserves the existing t
     const button=host.querySelector('.markdown-task-link') as HTMLButtonElement
     assert.ok(button.disabled)
     await render(false)
-    assert.equal(host.querySelector('p'),paragraph)
-    assert.equal(host.querySelector('.markdown-task-link'),button)
+    assert.ok(host.querySelector('p') === paragraph)
+    assert.ok(host.querySelector('.markdown-task-link') === button)
     assert.equal(button.disabled,false)
   } finally {
     await act(async()=>root.unmount())

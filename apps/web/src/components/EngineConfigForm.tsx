@@ -17,6 +17,7 @@ import Textarea from './Textarea'
 import { useI18n } from '../i18n'
 import { visiblePermissionFields, permissionFormValues } from '../utils/permissionLabels'
 import { engineConfigOptionLabel, engineConfigOptionDescription } from '../utils/thinkingEffort'
+import './EngineConfigForm.css'
 
 export interface EngineConfigFormHandle {
   save: () => void
@@ -441,9 +442,7 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
       borderTop: '1px solid var(--border-soft)',
       background: 'var(--surface)',
     }}>
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10,
-      }}>
+      <div className="engine-config-form-grid">
         {fields.map((field) => renderField(field))}
       </div>
       <div style={{

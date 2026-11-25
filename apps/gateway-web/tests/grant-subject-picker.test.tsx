@@ -25,7 +25,7 @@ test('group clicks filter members, member name search keeps selection and return
  render(<Picker />)
  fireEvent.click(await screen.findByRole('checkbox', { name: '李四' }))
  fireEvent.click(await screen.findByRole('button', { name: '研发组 1' }))
- await waitFor(() => assert.equal(screen.queryByRole('checkbox', { name: '李四' }), null))
+ await waitFor(() => assert.ok(screen.queryByRole('checkbox', { name: '李四' }) === null))
  assert.ok(screen.getByText('选择：李四'))
  assert.ok(screen.getByRole('checkbox', { name: '张三' }))
  fireEvent.change(screen.getByLabelText('搜索授权对象'), { target: { value: '无人' } })

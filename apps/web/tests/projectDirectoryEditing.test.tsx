@@ -85,7 +85,7 @@ test('directory context menu creates, renames and deletes a file; edit mode save
     const editButton = document.querySelector<HTMLButtonElement>('.project-directory-preview [aria-label="Edit mode"]')
     const downloadButton = document.querySelector('.project-directory-preview .artifact-download-button')
     assert.ok(editButton)
-    assert.equal(downloadButton?.previousElementSibling, editButton)
+    assert.ok(downloadButton?.previousElementSibling === editButton)
     assert.ok(editButton.classList.contains('artifact-toolbar-icon-button'))
     await click(editButton)
     const editor = document.querySelector<HTMLTextAreaElement>('.project-directory-editor-textarea')
@@ -117,7 +117,7 @@ test('directory context menu creates, renames and deletes a file; edit mode save
     await click(menuItem('Delete'))
     await click(confirm())
     assert.equal(files.size, 0)
-    assert.equal(document.querySelector('[title="/srv/demo/renamed.txt"]'), null)
+    assert.ok(document.querySelector('[title="/srv/demo/renamed.txt"]') === null)
   } finally {
     await act(async () => root.unmount())
     globalThis.fetch = originalFetch

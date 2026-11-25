@@ -38,11 +38,11 @@ for (const android of [false, true]) {
       fail = true
       await act(async () => button.click())
       assert.match(container.querySelector('[role="alert"]')?.textContent || '', /手动复制/)
-      assert.equal(document.activeElement, report)
+      assert.ok(document.activeElement === report)
       assert.equal(writes.length, 1)
       fail = false
       await act(async () => button.click())
-      assert.equal(container.querySelector('[role="alert"]'), null)
+      assert.ok(container.querySelector('[role="alert"]') === null)
     } finally {
       browserDiagnostics.clear()
       await act(async () => root.unmount())
@@ -87,7 +87,7 @@ test('desktop feedback opens the shared window, prevents duplicate requests and 
     fail = false
     await act(async () => button.click())
     await act(async () => release())
-    assert.equal(container.querySelector('[role="alert"]'), null)
+    assert.ok(container.querySelector('[role="alert"]') === null)
   } finally {
     await act(async () => root.unmount())
     container.remove()

@@ -98,6 +98,40 @@ def omnivoice(bundle, runtime, working):
         yield generate
 
 
+class OmniVoiceSpeaker:
+    """Keep one bounded, in-memory speaker prompt instead of redesigning each chunk."""
+
+    PROMPT = '你好，很高兴和你交流。我们慢慢说。'
+
+    def __init__(self, model, mx):
+        self.model, self.mx = model, mx
+        self.style = None
+        self.tokens = None
+
+    def generate(self, request):
+        text = request['text']
+        language = 'zh' if re.search(r'[\u3400-\u9fff]', text) else 'en'
+        reference = request.get('reference')
+        if reference:
+            options = {'ref_audio': reference, 'ref_text': request.get('reference_text') or None}
+        else:
+            style = request['instructions']
+            if self.tokens is None or self.style != style:
+                # A constant prompt fixes speaker identity independently of reply wording.
+                self.mx.random.seed(1)
+                audio = self.mx.concatenate([result.audio.reshape(-1) for result in self.model.generate(
+                    text=self.PROMPT, language='zh', instruct=style, num_steps=16)])
+                tokens = self.model.audio_tokenizer.encode(audio[None, :, None])[0]
+                self.mx.eval(tokens)
+                self.style, self.tokens = style, tokens
+            options = {'ref_tokens': self.tokens, 'ref_text': self.PROMPT}
+        # Bound diffusion attention memory; every chunk uses the same real speaker prompt.
+        for start in range(0, len(text), 80):
+            self.mx.random.seed(1)
+            yield from self.model.generate(text=text[start:start + 80], language=language,
+                                           instruct=request['instructions'], num_steps=16, **options)
+
+
 @contextmanager
 def omnivoice_design(bundle, runtime):
     sys.path.insert(0, str(runtime))
@@ -128,17 +162,10 @@ def omnivoice_design(bundle, runtime):
     finally:
         family.Model = original
 
+    speaker = OmniVoiceSpeaker(model, mx)
+
     def generate(request):
-        text = request['text']
-        language = 'zh' if re.search(r'[\u3400-\u9fff]', text) else 'en'
-        reference = request.get('reference')
-        options = {'ref_audio': reference, 'ref_text': request.get('reference_text') or None} if reference else {}
-        samples = []
-        for start in range(0, len(text), 80):
-            mx.random.seed(1)
-            for result in model.generate(text=text[start:start + 80], language=language,
-                                         instruct=request['instructions'], num_steps=16, **options):
-                samples.append(np.asarray(result.audio, dtype=np.float32))
+        samples = [np.asarray(result.audio, dtype=np.float32) for result in speaker.generate(request)]
         pcm = np.concatenate(samples).clip(-1, 1)
         output = io.BytesIO()
         with wave.open(output, 'wb') as wav:

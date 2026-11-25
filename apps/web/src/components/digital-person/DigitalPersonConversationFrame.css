@@ -1,0 +1,13 @@
+.digital-person-conversation-frame{display:flex;flex-direction:column;min-height:0;color:var(--fg);background:var(--bg);border:.5px solid var(--border-soft);border-radius:var(--radius-md)}
+.digital-person-conversation-frame>header{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2) var(--space-4);border-bottom:.5px solid var(--border-soft);flex-shrink:0}
+.digital-person-conversation-frame>header>h2{flex:1;min-width:0;margin:0;font-size:var(--text-title-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.digital-person-conversation-frame .digital-person-delegation-close{padding:0;flex-shrink:0}
+.digital-person-conversation-frame>.digital-person-delegation-content{border-radius:0 0 var(--radius-md) var(--radius-md)}
+.digital-person-inline-conversation{position:absolute;inset:0;z-index:5;pointer-events:none}
+.digital-person-inline-conversation>.digital-person-conversation-frame{pointer-events:auto}
+
+.digital-person-delegation-project{margin:0;min-width:0;max-width:40%;display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-caption);color:var(--text-muted)}
+.digital-person-delegation-project svg{flex:none}
+.digital-person-delegation-content{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;overflow:hidden;border-radius:0 0 var(--radius-xl) var(--radius-xl)}
+.digital-person-delegation-content>.assistant-chat-panel{flex:1;min-height:0}
+.digital-person-delegation-project span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

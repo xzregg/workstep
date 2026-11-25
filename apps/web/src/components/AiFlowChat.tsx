@@ -44,7 +44,9 @@ import { applyWorkflowPatch } from '../utils/workflowPatch'
 export interface AiFlowChatProps {
   projectId: string
   /** Called with the steps ({nodes, connections}) of each validated proposal. */
-  onProposal?: (steps: any, proposal?: GenProposalCard) => void
+  onProposal?: (steps: any, proposal?: GenProposalCard) => unknown
+  /** Display-only proposal; never persists or dirties the actual canvas. */
+  onPreview?: (steps: any | null, proposal?: GenProposalCard) => void
   /** Restores a captured canvas directly, without proposal overwrite confirmation. */
   onRestore?: (steps: any) => void
   /** Fired when a generation turn starts/ends. */
@@ -69,6 +71,7 @@ const EMPTY_PROPOSALS: GenProposalCard[] = []
 export default function AiFlowChat({
   projectId,
   onProposal,
+  onPreview,
   onRestore,
   onBusyChange,
   title,
@@ -124,6 +127,8 @@ export default function AiFlowChat({
       && card.autoApply !== true
       && (card.stepChanges?.length ?? 0) > 0,
   )
+  const applyInFlight = useRef(false)
+  const proposalsRef = useRef(latestProposals)
   const getCanvasStepsRef = useRef(getCanvasSteps)
   getCanvasStepsRef.current = getCanvasSteps
 
@@ -139,30 +144,39 @@ export default function AiFlowChat({
 
   // A fresh proposals batch resets the "applied" highlight.
   useEffect(() => {
+    proposalsRef.current = latestProposals
     setAppliedCardId(null)
   }, [latestProposals])
 
-  const applyFlowSteps = useCallback((
+  const applyFlowSteps = useCallback(async (
     steps: any,
     proposalId: string,
     mergePatch = true,
   ) => {
+    if (applyInFlight.current) return false
+    applyInFlight.current = true
+    const batch = latestProposals
     // 仅当按钮载荷携带 proposalId 时才更新“已应用”标记：历史按钮没有该字段，
     // 置空会让 autoApply effect 把最近一轮自动方案重新应用，覆盖用户刚选的方案。
-    if (proposalId) setAppliedCardId(proposalId)
     const proposal = latestProposals.find((item) => item.id === proposalId)
     const currentSteps = getCanvasStepsRef.current?.() ?? { nodes: [], connections: [] }
     const resolvedSteps = mergePatch && proposal?.patch
       ? applyWorkflowPatch(currentSteps, proposal.patch, null)
       : steps
-    onProposal?.(resolvedSteps, proposal)
-  }, [latestProposals, onProposal])
+    try {
+      const accepted = await onProposal?.(resolvedSteps, proposal)
+      if (accepted !== false && proposalId && proposalsRef.current === batch) setAppliedCardId(proposalId)
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : t('common.unknownError'))
+    } finally { applyInFlight.current = false }
+  }, [latestProposals, onProposal, t])
 
   useEffect(() => {
+    if (onPreview) return
     const proposal = pendingAutoApplyProposal(latestProposals, appliedCardId)
     if (!proposal) return
     applyFlowSteps(proposal.steps, proposal.id ?? '')
-  }, [appliedCardId, latestProposals, applyFlowSteps])
+  }, [appliedCardId, latestProposals, applyFlowSteps, onPreview])
 
   const handleRestore = useCallback(() => {
     if (restoreSteps === null) return
@@ -412,9 +426,10 @@ export default function AiFlowChat({
           </Button>
         ) : undefined}
         afterMessages={<>
-        {partialApplyCards.length > 0 && (
+        {(onPreview ? latestProposals.length : partialApplyCards.length) > 0 && (
           <FlowStepApplyPanel
-            cards={partialApplyCards}
+            cards={onPreview ? latestProposals : partialApplyCards}
+            onPreview={onPreview}
             currentSteps={() => getCanvasStepsRef.current?.() ?? { nodes: [], connections: [] }}
             onApply={(steps, card) => applyFlowSteps(steps, card.id, false)}
             appliedCardId={appliedCardId}

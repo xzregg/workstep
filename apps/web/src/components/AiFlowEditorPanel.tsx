@@ -9,7 +9,8 @@ interface AiFlowEditorPanelProps {
   workflowId?: string
   workflowName?: string
   getCanvasSteps?: () => any
-  onProposal: (steps: any, proposal?: GenProposalCard) => void
+  onProposal: (steps: any, proposal?: GenProposalCard) => unknown
+  onPreview?: (steps: any | null, proposal?: GenProposalCard) => void
   onRestore: (steps: any) => void
   onBusyChange: (busy: boolean) => void
   onRequestClose: () => void
@@ -22,6 +23,7 @@ export default function AiFlowEditorPanel({
   workflowName,
   getCanvasSteps,
   onProposal,
+  onPreview,
   onRestore,
   onBusyChange,
   onRequestClose,
@@ -75,11 +77,13 @@ export default function AiFlowEditorPanel({
           </Button>
         </header>
         <AiFlowChat
+          key={`${projectId}:${workflowId || 'new'}`}
           projectId={projectId}
           workflowId={workflowId}
           workflowName={workflowName}
           getCanvasSteps={getCanvasSteps}
           onProposal={onProposal}
+          onPreview={onPreview}
           onRestore={onRestore}
           onBusyChange={onBusyChange}
           onClose={onRequestClose}

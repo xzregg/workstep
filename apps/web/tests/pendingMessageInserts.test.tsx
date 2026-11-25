@@ -35,7 +35,7 @@ test('pending messages render uploaded images, preview them and preserve edit so
     await act(async () => container.querySelector<HTMLButtonElement>('.markdown-image-click')!.click())
     assert.ok(document.querySelector('.image-preview'))
     await act(async () => window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' })))
-    assert.equal(document.querySelector('.image-preview'), null)
+    assert.ok(document.querySelector('.image-preview') === null)
     await act(async () => container.querySelector<HTMLButtonElement>('.pending-insert-button--send')!.click())
     assert.deepEqual(sent, item)
     // 图标按钮依次为编辑和删除。
@@ -43,7 +43,7 @@ test('pending messages render uploaded images, preview them and preserve edit so
     assert.deepEqual(edited, item)
     await act(async () => root.render(<I18nProvider><PendingMessageInserts {...props} editingId={item.id} editingContent={content} /></I18nProvider>))
     assert.equal(container.querySelector('textarea')?.value, content)
-    assert.equal(container.querySelector('.pending-insert-content'), null)
+    assert.ok(container.querySelector('.pending-insert-content') === null)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

@@ -66,7 +66,7 @@ test('task window reuses schedule management to create, edit and delete only bou
     const confirm=document.querySelector('.confirm-dialog-panel')!
     await act(async()=>[...confirm.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent==='删除')!.click())
     assert.equal(records.length,0)
-    assert.equal(container.querySelector('.task-schedules-count'),null)
+    assert.ok(container.querySelector('.task-schedules-count') === null)
     assert.equal(listReads,4,'one initial list and one per mutation')
   } finally {await act(async()=>root.unmount());container.remove();Object.assign(scheduleApi,originals);workflowApi.get=originalWorkflow;taskApi.list=originalTasks;await window.happyDOM.close()}
 })
@@ -86,10 +86,10 @@ test('task schedule entry counts bound schedules, hides completed once rules and
     assert.ok(dialog)
     assert.match(dialog.textContent!,/规则-periodic|规则-paused|规则-future/)
     assert.doesNotMatch(dialog.textContent!,/规则-done|Once at|T23:00/)
-    assert.equal(dialog.querySelector('input,textarea'),null)
+    assert.ok(dialog.querySelector('input,textarea') === null)
     assert.equal(reads,2,'opening refreshes the bound list')
     await act(async()=>[...dialog.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.getAttribute('aria-label')==='关闭')!.click())
-    assert.equal(document.querySelector('[role="dialog"]'),null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
   } finally {await act(async()=>root.unmount());container.remove();await window.happyDOM.close()}
 })
 
@@ -100,11 +100,11 @@ test('zero schedules keep the entry available without a badge and loading errors
   const load=async()=>{if(fail) throw new Error('读取失败');return {schedules:[]}}
   try {
     await act(async()=>root.render(<I18nProvider><TaskSchedules taskId="task-a" load={load}/></I18nProvider>))
-    assert.equal(container.querySelector('.task-schedules-count'),null)
+    assert.ok(container.querySelector('.task-schedules-count') === null)
     fail=false
     await act(async()=>container.querySelector<HTMLButtonElement>('button')!.click())
     assert.match(document.querySelector('[role="dialog"]')!.textContent!,/暂无/)
-    assert.equal(document.querySelector('[role="alert"]'),null)
+    assert.ok(document.querySelector('[role="alert"]') === null)
   } finally {await act(async()=>root.unmount());container.remove();await window.happyDOM.close()}
 })
 

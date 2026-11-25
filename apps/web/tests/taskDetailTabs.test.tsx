@@ -18,7 +18,7 @@ test('detail actions follow the tabs without joining the tab keyboard order', as
     const tablist = container.querySelector('[role="tablist"]')!
     const actions = container.querySelector('.task-detail-primary-tabs-actions')!
     assert.equal(tablist.contains(actions), false)
-    assert.equal(tablist.nextElementSibling, actions)
+    assert.ok(tablist.nextElementSibling === actions)
     assert.equal(tablist.querySelectorAll('button').length, 2)
     await act(async () => actions.querySelector('button')!.click())
     assert.equal(clicked, true)

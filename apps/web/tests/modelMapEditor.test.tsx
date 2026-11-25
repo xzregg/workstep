@@ -57,7 +57,7 @@ test('model map editor renders normalized values and emits edited JSON', async (
     assert.equal(model.value, 'qwen3-max')
     assert.deepEqual([...model.options].map((option) => option.value), ['', 'qwen3-max', 'qwen3.8-max'])
     assert.equal(name.value, 'Qwen Max')
-    assert.equal(container.querySelector('.field-hint'), null)
+    assert.ok(container.querySelector('.field-hint') === null)
 
     await change(window, model, 'qwen3.8-max')
 

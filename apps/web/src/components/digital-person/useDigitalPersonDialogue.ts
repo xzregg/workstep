@@ -184,7 +184,7 @@ export function useDigitalPersonDialogue(options:Options){
   stopDigitalSpeech(options.projectId,options.sessionId)
   if(options.running)void options.onStop().catch(()=>setError('digitalPerson.homeInterruptFailed'))
  }
- return {connected,continuous:continuous&&connected,muted,playbackPaused,callMicMuted:continuous&&connected&&callMicMuted,error,phase:voice.phase,text:voice.hasSpeech?voice.text:'',level:voice.level,readSpeechLevel:voice.readSpeechLevel,
+ return {connected,continuous:continuous&&connected,muted,playbackPaused,callMicMuted:continuous&&connected&&callMicMuted,error,notice:voice.notice,phase:voice.phase,text:voice.hasSpeech?voice.text:'',level:voice.level,readSpeechLevel:voice.readSpeechLevel,
   draft,sending,sendDraft,clearDraft,editDraft,toggle,
   startContinuous:()=>{wakeCall.current=false;begin(true)},
   startWakeContinuous:()=>{wakeCall.current=true;begin(true)},mute,end,stopReply}

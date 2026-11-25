@@ -4,7 +4,7 @@ import { OUTPUT_CHANGED, type OutputSettings } from '../../api/speechOutput'
 import { useI18n, localizeErrorDisplay } from '../../i18n'
 import type { AssistantChatEvent, AssistantChatMessage } from '../../stores/assistantStore'
 import { newCommentarySentences } from './digitalPersonCommentary'
-import { primeSpeechOutput, SpeechOutputPlayer, speechText, streamingSpeechLimit, takeSpeechSentences } from '../../utils/speechOutput'
+import { completedSpeechBatches, primeSpeechOutput, SpeechOutputPlayer, speechText, streamingSpeechLimit, takeSpeechSentences } from '../../utils/speechOutput'
 import { loadSpeechOutputSettings, invalidateSpeechOutputSettings } from '../../utils/speechOutputSettings'
 import {DIGITAL_OUTPUT_FRAME,STOP_DIGITAL_SPEECH,type DigitalOutputFrame} from './digitalPersonVoiceEvents'
 import {captionContent} from './DigitalPersonCaptions'
@@ -91,7 +91,7 @@ export default function DigitalPersonSpeech({ ref, profile, projectId, sessionId
 
   const makePlayer = (config:OutputSettings, readingId?: string) => {
     outputFrame.current.metered=config.mode!=='system'&&config.volume>0
-    const result = new SpeechOutputPlayer({ projectId, coalesce: !!readingId, batchStreaming: !readingId, digitalSessionId: sessionId ?? undefined,
+    const result = new SpeechOutputPlayer({ projectId, completeReply: !!readingId, batchStreaming: !readingId, digitalSessionId: sessionId ?? undefined,
       settings: { ...config, rate: profile.voice_rate ?? config.rate }, systemVoice: profile.voice_name,
       onPlayback: value=>{if(player.current===result){outputFrame.current.playing=value;publishOutput()}},
       onLevel: value=>{if(player.current===result){outputFrame.current.level=value;publishOutput()}},
@@ -125,7 +125,7 @@ export default function DigitalPersonSpeech({ ref, profile, projectId, sessionId
     if (recovery.current && (recovery.current.readingId ?? tracked.current.id) === id && recovery.current.remaining.length) { void retry(); return }
     const message=messages.find(row=>row.id===id&&row.role==='assistant'&&row.status!=='running')
     if(!message)return
-    const {sentences}=takeSpeechSentences(speechText(captionContent(message.content)),true,true)
+    const sentences=completedSpeechBatches(speechText(captionContent(message.content)))
     if(!sentences.length)return
     primeSpeechOutput()
     stop();tracked.current.suppressed=true;setError('')
@@ -136,7 +136,7 @@ export default function DigitalPersonSpeech({ ref, profile, projectId, sessionId
       if(manual.current!==request)return
       const current=makePlayer(config,id)
       await current.unlock()
-      if(manual.current===request)current.enqueue(sentences)
+      if(manual.current===request)current.enqueue(sentences, { final: true })
     }catch(reason){
       if(manual.current!==request)return
       stop();rememberFailure(reason,sentences,id)

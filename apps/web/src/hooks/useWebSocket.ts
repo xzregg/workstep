@@ -4,6 +4,8 @@ import { usePrototypeStore } from '../stores/prototypeStore'
 import { postAndroidNotification } from '../utils/completionNotifications'
 import { gatewayFetch, gatewayResourceUrl } from '../utils/gatewayWorkspacePath'
 import { CUSTOM, isCustom, isToolEvent } from '../utils/agui'
+import { OUTPUT_CHANGED } from '../api/speechOutput'
+import { invalidateSpeechOutputSettings } from '../utils/speechOutputSettings'
 /**
  * useWebSocket — WebSocket connection with auto-reconnect.
  *
@@ -235,6 +237,9 @@ export function useWebSocket() {
           // state; re-fetch so the board reflects recovered runs immediately.
           const projectId = scopeId || useProjectStore.getState().activeProject?.id
           if (isReconnect) {
+            const speechChanged = new Event(OUTPUT_CHANGED)
+            invalidateSpeechOutputSettings(speechChanged)
+            window.dispatchEvent(speechChanged)
             const project = useProjectStore.getState().activeProject
             if (projectId && project?.type !== 'remote') {
               useProjectStore.getState().refreshProjects()
@@ -299,6 +304,14 @@ export function useWebSocket() {
             }
             if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.gateway_connection_changed') {
               window.dispatchEvent(new Event('workstep:gateway-connection-changed'))
+            }
+            if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.digital_person_changed') {
+              window.dispatchEvent(new Event('workstep:digital-person-changed'))
+            }
+            if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.speech_output_changed') {
+              const speechChanged = new Event(OUTPUT_CHANGED)
+              invalidateSpeechOutputSettings(speechChanged)
+              window.dispatchEvent(speechChanged)
             }
             if (parsed.type === 'CUSTOM' && parsed.name === 'channel.session_changed') {
               const projectId = scopeId || useProjectStore.getState().activeProject?.id

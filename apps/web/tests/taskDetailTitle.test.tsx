@@ -39,10 +39,10 @@ test('title double click edits, saves, cancels, validates and retains failed dra
   try {
     await act(async () => render())
     await open()
-    assert.equal(document.activeElement, container.querySelector('input'))
+    assert.ok(document.activeElement === container.querySelector('input'))
     await change('  Renamed  '); await key('Enter')
     assert.deepEqual(calls, ['Renamed'])
-    assert.equal(container.querySelector('input'), null)
+    assert.ok(container.querySelector('input') === null)
     await open(); await change('Cancel'); await key('Escape')
     assert.deepEqual(calls, ['Renamed'])
     await open(); await change('   '); await key('Enter')
@@ -57,7 +57,7 @@ test('title double click edits, saves, cancels, validates and retains failed dra
     assert.deepEqual(calls, ['Renamed', 'Retry', 'Retry'])
     assert.equal(headerDoubleClicks, 0)
     await act(async () => render(false)); await open()
-    assert.equal(container.querySelector('input'), null)
+    assert.ok(container.querySelector('input') === null)
   } finally {
     await act(async () => root.unmount())
     useTaskStore.setState({ renameTask: original })

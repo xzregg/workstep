@@ -22,11 +22,11 @@ test('ClawBot QR authorization saves a receipt without exposing credentials', as
   const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><BotSettingsEditor platform="weixin" onSaved={() => { saved++ }} onCancel={() => {}} onDirtyChange={() => {}} onBusyChange={() => {}} /></I18nProvider>))
-    assert.equal(container.querySelector('input[type="password"]'), null)
+    assert.ok(container.querySelector('input[type="password"]') === null)
     const save = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '保存')!
     assert.equal(save().disabled, true)
-    assert.equal(container.querySelector('select:not([required])'), null)
-    assert.equal(container.querySelector('input[type="checkbox"]'), null)
+    assert.ok(container.querySelector('select:not([required])') === null)
+    assert.ok(container.querySelector('input[type="checkbox"]') === null)
     assert.equal(container.querySelector<HTMLInputElement>('input')!.value, 'ClawBot')
     await act(async () => useProjectStore.setState({ projects: [
       { id: 'other', name: '其他项目', type: 'local' },
@@ -95,7 +95,7 @@ test('expired QR can refresh and failed requests preserve a retry action', async
     await act(async () => root.render(<I18nProvider><WeixinLoginPanel onAuthorized={id => { authorized = id }} onActiveChange={() => {}} /></I18nProvider>))
     await click()
     assert.match(container.textContent!, /二维码已过期/)
-    assert.equal(container.querySelector('[role="img"]'), null)
+    assert.ok(container.querySelector('[role="img"]') === null)
     await click()
     assert.match(container.querySelector('[role="alert"]')!.textContent!, /网络异常/)
     await click()

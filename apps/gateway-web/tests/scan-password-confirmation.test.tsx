@@ -40,7 +40,7 @@ for (const kind of ['purge-users', 'purge-groups', 'device', 'role', 'provider',
       : <AdminSkillActionDialog csrf="csrf" onClose={close} onDone={saved}
         action={{kind:'approve',skillId:'s',versionId:'v',version:'1.0'}} />
     render(<PasswordConfirmationRequired.Provider value={false}>{element}</PasswordConfirmationRequired.Provider>)
-    assert.equal(document.querySelector('input[type=password]'), null)
+    assert.ok(document.querySelector('input[type=password]') === null)
     assert.ok(screen.getByRole('button', {name:'取消'}))
     const confirm = screen.getAllByRole('button').find(button => button.textContent !== '取消')!
     assert.equal((confirm as HTMLButtonElement).disabled, false)

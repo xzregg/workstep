@@ -28,7 +28,7 @@ test('quick prompt renders safe HTML links and accepts an empty prompt', async (
     assert.equal(link.target, '_blank')
     assert.equal(link.rel, 'noopener noreferrer')
     assert.equal(link.hasAttribute('onclick'), false)
-    assert.equal(container.querySelector('script'), null)
+    assert.ok(container.querySelector('script') === null)
 
     await act(async () => link.click())
     assert.equal(selected, null)
@@ -72,8 +72,8 @@ test('display-only quick button renders safe HTML without an executable button',
         onSelect={() => { selected = true }}
       />,
     ))
-    assert.equal(container.querySelector('button'), null)
-    assert.equal(container.querySelector('img'), null)
+    assert.ok(container.querySelector('button') === null)
+    assert.ok(container.querySelector('img') === null)
     assert.equal(container.textContent, '说明')
     await act(async () => container.click())
     assert.equal(selected, false)
@@ -102,7 +102,7 @@ test('display button renders only its HTML content, not the configured title', a
     const link = container.querySelector<HTMLAnchorElement>('a')!
     assert.equal(link.textContent, '打开前端')
     assert.equal(link.hasAttribute('onclick'), false)
-    assert.equal(container.querySelector('button'), null)
+    assert.ok(container.querySelector('button') === null)
   } finally {
     await act(async () => root.unmount())
     container.remove()

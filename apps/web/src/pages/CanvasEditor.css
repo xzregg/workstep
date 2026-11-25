@@ -1,0 +1,6 @@
+/* Keep the same live canvas visible while selecting AI changes on a narrow screen. */
+@media (max-width: 1023px) {
+  .canvas-editor-shell--assistant { flex-direction: column !important; }
+  .canvas-editor-shell--assistant > .canvas-editor-content { flex: 0 0 36% !important; min-height: 160px; overflow: hidden; }
+  .canvas-editor-shell--assistant > .ai-flow-editor-host { position: relative; inset: auto; z-index: auto; flex: 1; min-height: 0; border-top: 1px solid var(--border-soft); }
+}

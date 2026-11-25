@@ -23,7 +23,7 @@ test('expanded categories survive navigation permission refresh and can still be
  await waitFor(() => assert.equal(group.open, true))
  fireEvent.click(screen.getByRole('link', { name: '用户管理' }))
  view.rerender(<MemoryRouter><AdminNavigation roles={[]} /></MemoryRouter>)
- assert.equal(screen.queryByText('用户与权限'), null)
+ assert.ok(screen.queryByText('用户与权限') === null)
  view.rerender(<MemoryRouter><AdminNavigation roles={['super_admin']} /></MemoryRouter>)
  const restored = screen.getByText('用户与权限').closest('details')!
  assert.equal(restored.open, true)
@@ -39,7 +39,7 @@ test('mobile menu opens collapsed, follows a destination and closes without losi
  render(<MemoryRouter initialEntries={['/admin/users']}><AdminLayout roles={['super_admin']}><p>用户表格</p></AdminLayout></MemoryRouter>)
  const trigger = screen.getByRole('button', { name: '打开管理菜单' })
  assert.equal(trigger.getAttribute('aria-expanded'), 'false')
- assert.equal(screen.queryByRole('dialog'), null)
+ assert.ok(screen.queryByRole('dialog') === null)
  fireEvent.click(trigger)
  const dialog = screen.getByRole('dialog', { name: '移动端管理菜单' })
  assert.equal(trigger.getAttribute('aria-expanded'), 'true')
@@ -49,7 +49,7 @@ test('mobile menu opens collapsed, follows a destination and closes without losi
  await waitFor(() => assert.equal(group.open, true))
  fireEvent.click(within(dialog).getByRole('link', { name: '平台设置' }))
  await waitFor(() => assert.equal(trigger.getAttribute('aria-expanded'), 'false'))
- assert.equal(screen.queryByRole('dialog'), null)
+ assert.ok(screen.queryByRole('dialog') === null)
  assert.equal(document.querySelector('.gateway-admin-breadcrumb strong')?.textContent, '平台设置')
  assert.ok(screen.getByText('用户表格'))
 })
@@ -59,13 +59,13 @@ test('native dismissal and the close button restore the collapsed mobile trigger
  const trigger = screen.getByRole('button', { name: '打开管理菜单' })
  fireEvent.click(trigger)
  const dialog = screen.getByRole('dialog', { name: '移动端管理菜单' }) as HTMLDialogElement
- assert.equal(within(dialog).queryByText('用户与权限'), null)
+ assert.ok(within(dialog).queryByText('用户与权限') === null)
  dialog.close()
  await waitFor(() => assert.equal(trigger.getAttribute('aria-expanded'), 'false'))
  fireEvent.click(trigger)
  fireEvent.click(screen.getByRole('button', { name: '关闭管理菜单' }))
  await waitFor(() => assert.equal(trigger.getAttribute('aria-expanded'), 'false'))
- assert.equal(screen.queryByRole('dialog'), null)
+ assert.ok(screen.queryByRole('dialog') === null)
 })
 
 test('the brand returns to overview and closes the mobile menu', async () => {
@@ -84,8 +84,8 @@ test('the brand returns to overview and closes the mobile menu', async () => {
  const system = screen.getByText('系统设置').closest('details')!
  assert.equal(within(users).getByText('用户与用户组权限').getAttribute('href'), '/admin/permissions')
  assert.equal(within(system).getByText('网关平台权限').getAttribute('href'), '/admin/platform-permissions')
- assert.equal(within(users).queryByText('网关平台权限'), null)
- assert.equal(within(system).queryByText('用户与用户组权限'), null)
+ assert.ok(within(users).queryByText('网关平台权限') === null)
+ assert.ok(within(system).queryByText('用户与用户组权限') === null)
  })
 
 test('direct entry expands the current category so the active destination is visible', () => {
@@ -125,10 +125,10 @@ test('admin navigation preserves menu nodes and permissions while updating only 
   try {
    fireEvent.click(within(sidebar).getByText('设备管理', { selector: 'a' }))
    await screen.findByText('设备内容')
-   assert.equal(screen.queryByText('用户内容'), null)
+   assert.ok(screen.queryByText('用户内容') === null)
    assert.equal(requests, 1)
-   assert.equal(within(sidebar).getByText('用户与权限').closest('details'), group)
-   assert.equal(within(sidebar).getByRole('link', { name: '用户管理' }), users)
+   assert.ok(within(sidebar).getByText('用户与权限').closest('details') === group)
+   assert.ok(within(sidebar).getByRole('link', { name: '用户管理' }) === users)
    assert.equal(sidebar.scrollTop, 120)
    assert.equal(mutations.flatMap(record => Array.from(record.removedNodes)).length, 0)
    fireEvent.click(users)
@@ -144,6 +144,6 @@ test('admin navigation preserves menu nodes and permissions while updating only 
   fireEvent(window, new dom.window.Event('gateway-auth-changed'))
   await screen.findByText('用户内容')
   assert.equal(requests, 4)
-  assert.equal(within(sidebar).queryByText('设备管理', { selector: 'a' }), null)
+  assert.ok(within(sidebar).queryByText('设备管理', { selector: 'a' }) === null)
  } finally { globalThis.fetch = originalFetch }
 })

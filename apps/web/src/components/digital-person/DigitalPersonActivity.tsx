@@ -8,7 +8,7 @@ import { DIGITAL_ACTIVITY_CHANGED } from './useDigitalActivity'
 import Spinner from '../Spinner'
 import DigitalPersonRunDetail from './DigitalPersonRunDetail'
 import {DigitalPersonRunHeader} from './DigitalPersonRunKnowledge'
-import DigitalPersonRunOutcome from './DigitalPersonRunOutcome'
+import DigitalPersonRunOutcome, {DigitalPersonRunNotificationReasons} from './DigitalPersonRunOutcome'
 import DigitalPersonDelegationDialog from './DigitalPersonDelegationDialog'
 import './DigitalPersonActivity.css'
 
@@ -95,6 +95,7 @@ export default function DigitalPersonActivity({checking = false, titleId}: {chec
               <DigitalPersonRunOutcome outcome={run.outcome}/>
               <time dateTime={run.created_at} title={new Date(run.created_at).toLocaleString()}>{timestamp(run.created_at)}</time>
             </DigitalPersonRunHeader>
+            {!expanded&&!['running','notifying'].includes(run.status)&&<DigitalPersonRunNotificationReasons run={run}/>}
             {expanded && <DigitalPersonRunDetail key={run.id} id={run.id} processingInList={run.processing} affinityInList={!!run.outcome}
               summaryInList={run.processing ? undefined : run.summary} onRetryDelivery={()=>action('retry',()=>digitalRuntimeApi.retryDelivery(run.id))} busy={!!busy}/>}
           </div>

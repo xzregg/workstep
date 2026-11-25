@@ -50,7 +50,7 @@ test('argument placeholder shows JSON without saving it, accepts pasted arrays a
   connectorApi.save = async value => { saved.push(value.args || []); return value as never }
   try {
     await act(async () => root.render(<I18nProvider><ConnectorEditor initial={{ name: 'Local', kind: 'mcp', transport: 'stdio', command: 'npx' }} onClose={() => {}} onSaved={() => {}} /></I18nProvider>))
-    assert.equal(document.querySelector('.connector-editor textarea'), null, 'visual rows are the default')
+    assert.ok(document.querySelector('.connector-editor textarea') === null, 'visual rows are the default')
     await act(async () => document.querySelector<HTMLButtonElement>('[data-connector-args-source]')!.click())
     const args = document.querySelector<HTMLTextAreaElement>('.connector-editor textarea')!
     assert.ok(Array.isArray(JSON.parse(args.placeholder)))
@@ -130,7 +130,7 @@ test('editing saved authentication preserves credentials and SSE, none explicitl
   connectorApi.save = async value => { writes.push(value); return value as never }
   try {
     await act(async () => root.render(<I18nProvider><ConnectorEditor initial={{ id: 'demo', revision: 1, name: 'Existing', url: 'https://example.com/sse', transport: 'sse', has_credentials: true, header_names: ['Authorization'], env_names: [] }} onClose={() => {}} onSaved={() => {}} /></I18nProvider>))
-    assert.equal(document.querySelector('.connector-token-input'), null)
+    assert.ok(document.querySelector('.connector-token-input') === null)
     await act(async () => document.querySelector<HTMLButtonElement>('[data-connector-mode=remote]')!.click())
     await act(async () => document.querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
     assert.equal(Object.hasOwn(writes[0], 'headers'), false)

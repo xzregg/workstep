@@ -42,8 +42,8 @@ test('remote Git page loads only its project repositories and scopes worktree re
     assert.equal(settingsLoads, 0)
     await act(async () => container.querySelector<HTMLButtonElement>('.git-settings-toggle')!.click())
     assert.ok(container.querySelector('[name="gitIdentityName"]'))
-    assert.equal(container.querySelector('[name="gitAuthToken"]'), null)
-    assert.equal(container.querySelector('.git-scan-settings'), null)
+    assert.ok(container.querySelector('[name="gitAuthToken"]') === null)
+    assert.ok(container.querySelector('.git-scan-settings') === null)
     assert.ok(calls.every(path => !path.includes('/credentials')))
   } finally {
     await act(async () => root.unmount())
@@ -74,10 +74,10 @@ test('failed project repository scan does not claim no repository or offer initi
     await act(async () => root.render(<I18nProvider><MemoryRouter initialEntries={['/git?project_id=remote%3Ap']}><GitWorkspace /></MemoryRouter></I18nProvider>))
     assert.match(container.textContent || '', /File is outside/)
     assert.doesNotMatch(container.textContent || '', /尚未发现 Git 仓库|检查扫描层级/)
-    assert.equal(container.querySelector('.git-empty-actions'), null)
+    assert.ok(container.querySelector('.git-empty-actions') === null)
     failed = false
     await act(async () => container.querySelector<HTMLButtonElement>('.git-error button')!.click())
-    assert.equal(container.querySelector('.git-error'), null)
+    assert.ok(container.querySelector('.git-error') === null)
     assert.match(container.textContent || '', /尚未发现 Git 仓库/)
   } finally {
     await act(async () => root.unmount())

@@ -17,6 +17,11 @@ const recentFaceWindowMs=1000
 export function matchedPersonIds(faces:FaceObservation[]){
  return [...new Set(faces.flatMap(face=>face.person?[face.person.id]:[]))]
 }
+export function previewFrameDelay(hz:number,elapsed:number,mobile:boolean){
+ const cadence=Math.max(0,1000/hz-elapsed)
+ // Leave time for input even when inference exceeds its configured interval.
+ return mobile?Math.max(cadence,100,elapsed*2):cadence
+}
 export function useFaceRecognition(active:boolean,video:RefObject<HTMLVideoElement|null>,enrollment=false,onWelcomeFrame?:FaceWelcomeObserver){
  const welcomeObserver=useRef(onWelcomeFrame);welcomeObserver.current=onWelcomeFrame
  const {t}=useI18n(),[faces,setFaces]=useState<FaceObservation[]>([]),[notice,setNotice]=useState('')
@@ -55,7 +60,14 @@ export function useFaceRecognition(active:boolean,video:RefObject<HTMLVideoEleme
   setLoading(false)
   if(!active){setFaces([]);setNotice('');return}
   let timer:ReturnType<typeof setTimeout>,poll:ReturnType<typeof setTimeout>,expiry:ReturnType<typeof setTimeout>,closed=false
-  let firstFrame=true
+  let firstFrame=true,resumePreviewAt=0
+  const mobile=Boolean(window.WorkStepAndroid)||/\bAndroid\b/i.test(navigator.userAgent)
+  const interacting=(event:Event)=>{
+   if(event.type==='pointermove'&&!(event as PointerEvent).buttons)return
+   resumePreviewAt=performance.now()+250
+  }
+  const interactionTypes=['pointerdown','pointermove','keydown','input','wheel']
+  for(const type of interactionTypes)document.addEventListener(type,interacting,{capture:true,passive:true})
   let tracking=new PreviewFaceTracking(faceRuntime.similarity)
   let previewStream:HTMLVideoElement['srcObject']=null,previewRevision:number|undefined,mediaTime=-1
   const valid=()=>!closed&&request===token.current
@@ -71,6 +83,10 @@ export function useFaceRecognition(active:boolean,video:RefObject<HTMLVideoEleme
   const tick=async()=>{
    if(!valid())return
    const start=performance.now(),value=catalog.current,source=video.current,stream=source?.srcObject??null
+   if(document.hidden||start<resumePreviewAt||document.activeElement?.matches('input, textarea, [contenteditable="true"]')){
+    timer=setTimeout(()=>void tick(),100)
+    return
+   }
    if(previewStream!==stream||previewRevision!==value?.revision){
     reset();previewStream=stream;previewRevision=value?.revision
    }
@@ -84,22 +100,23 @@ export function useFaceRecognition(active:boolean,video:RefObject<HTMLVideoEleme
      if(valid()&&firstFrame){firstFrame=false;setLoading(false)}
      if(valid()&&source===video.current&&stream===source.srcObject){
       if(currentTracking===tracking&&value.revision===catalog.current?.revision){
-       const stable=tracking.update(result,start,value.settings.threshold)
+       tracking.update(result,start,value.settings.threshold)
+       const stable=tracking.visible(performance.now())
        publish()
        if(value.welcome?.enabled&&value.model_version===FACE_MODEL_VERSION){
-        const people=result.map((face,index)=>!face.enhanced&&!face.ambiguous&&face.person?.id===stable[index].person?.id?face.person?.id??null:null)
+        const people=result.map((face,index)=>!face.enhanced&&!face.ambiguous&&face.person?.id===stable[index]?.person?.id?face.person?.id??null:null)
         welcomeObserver.current?.({at:start,ids:people,revision:value.revision,awayMinutes:value.welcome.away_minutes})
        }
        // The upload fallback still requires a fresh match on the original
        // preview pixels. Held labels and retry matches do not refresh it.
-       const ids=matchedPersonIds(result.filter((face,index)=>!face.enhanced&&face.person?.id===stable[index].person?.id))
+       const ids=performance.now()-start<recentFaceWindowMs?matchedPersonIds(result.filter((face,index)=>!face.enhanced&&face.person?.id===stable[index]?.person?.id)):[]
        if(includesFaceContext(value.settings)&&ids.length)latestMatch.current={ids,at:start,revision:value.revision,stream}
       }
       setNotice('')
      }
     }
    }catch(e){fail(e);return} // Reopen to retry; never spin on a broken GPU.
-   if(valid())timer=setTimeout(()=>void tick(),Math.max(0,1000/presets[value?.settings.preset??'balanced'].hz-(performance.now()-start)))
+   if(valid())timer=setTimeout(()=>void tick(),previewFrameDelay(presets[value?.settings.preset??'balanced'].hz,performance.now()-start,mobile))
   }
   const reload=async()=>{
    reset();catalog.current=null;catalogTime.current=0
@@ -113,7 +130,7 @@ export function useFaceRecognition(active:boolean,video:RefObject<HTMLVideoEleme
   void refresh().then(()=>{if(valid()){void tick();poll=setTimeout(()=>void check(),5000)}}).catch(fail)
   window.addEventListener(FACE_CHANGED,changed)
   const clearCatalog=()=>{token.current++;catalog.current=null;latestMatch.current=null}
-  return()=>{closed=true;clearCatalog();clearTimeout(timer);clearTimeout(poll);clearTimeout(expiry);window.removeEventListener(FACE_CHANGED,changed);welcomeObserver.current?.(null)}
+  return()=>{closed=true;clearCatalog();clearTimeout(timer);clearTimeout(poll);clearTimeout(expiry);window.removeEventListener(FACE_CHANGED,changed);for(const type of interactionTypes)document.removeEventListener(type,interacting,true);welcomeObserver.current?.(null)}
  },[active,enrollment,refresh,t,video])
  return {faces,notice,loading:active&&loading,analyze,recentMatch,catalog:catalog.current}
 }

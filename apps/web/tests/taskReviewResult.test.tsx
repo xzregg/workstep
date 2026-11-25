@@ -17,7 +17,7 @@ test('review result shows status and gates decision controls by actionability', 
   try {
     await act(async () => root.render(render(false)))
     assert.equal(container.querySelector('.status-badge')?.getAttribute('data-s'), 'paused')
-    assert.equal(container.querySelector('textarea'), null)
+    assert.ok(container.querySelector('textarea') === null)
     await act(async () => root.render(render(true)))
     assert.ok(container.querySelector('textarea'))
   } finally {

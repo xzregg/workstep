@@ -288,7 +288,6 @@ const MessageItem = memo(function MessageItem({
             onFork={message.status !== 'running' && onForkMessage
               ? () => onForkMessage(message.id, message.status === 'error')
               : undefined}
-            compact={Boolean(renderMessageActions)}
             actions={message.status !== 'running' && canEdit ? renderMessageActions?.(message.id) : undefined}
           />
         ) : undefined

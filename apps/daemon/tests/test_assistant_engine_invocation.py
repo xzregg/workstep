@@ -50,25 +50,28 @@ async def _record(received, event):
     received.append(event)
 
 @pytest.mark.anyio
-async def test_internal_event_has_explicit_source_at_engine_boundary():
+@pytest.mark.parametrize('event_type', ['digital_person.reflection', 'digital_person.delegation_followup'])
+async def test_internal_event_has_explicit_source_at_engine_boundary(event_type):
     from agent_assistants.engine_invocation import run_engine_turn
     class Engine:
         capabilities=SimpleNamespace(supports_thinking_effort=False)
         supports_resume=False
         supports_message_history=False
         async def spawn(self,prompt,cwd,model,session_id,**kwargs):
-            assert 'WorkStep internal event' in prompt
-            assert 'digital_person.reflection' in prompt
-            assert 'not a user message' in prompt
+            if event_type == 'digital_person.reflection':
+                assert prompt == 'recent events'
+            else:
+                assert f'WorkStep internal event "{event_type}"' in prompt
+                assert 'not a user message' in prompt
             assert 'internal_event' not in kwargs
             yield InternalEvent(type='prompt_input',data={'prompt':prompt})
             yield InternalEvent(type='agent_message_chunk',data={'content':{'text':'done'}})
     received=[]
     text,_,_=await run_engine_turn('fake',None,'/tmp','recent events',None,
-        internal_event='digital_person.reflection',engine_factory=lambda _:Engine(),
+        internal_event=event_type,engine_factory=lambda _:Engine(),
         settings_store=SimpleNamespace(),on_event=lambda e:_record(received,e))
     assert text=='done'
-    assert received[0].data['internal_event']=='digital_person.reflection'
+    assert received[0].data['internal_event']==event_type
 
 
 @pytest.mark.anyio

@@ -26,7 +26,7 @@ test('round tabs start at the right edge and preserve manual scrolling until ano
     await act(async () => render(8))
     const tabs = container.querySelector<HTMLElement>('[role="tablist"]')!
     assert.equal(tabs.scrollLeft, 640)
-    assert.equal(tabs.querySelector('[aria-selected="true"]'), tabs.lastElementChild)
+    assert.ok(tabs.querySelector('[aria-selected="true"]') === tabs.lastElementChild)
 
     tabs.scrollLeft = 40
     await act(async () => tabs.querySelector<HTMLButtonElement>('[role="tab"]')!.click())

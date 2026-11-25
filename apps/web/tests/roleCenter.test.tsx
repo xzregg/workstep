@@ -85,7 +85,7 @@ test('role library filters categories and searches, then persists an edited prom
     assert.equal(savedRoles.length, 1)
     assert.equal((savedRoles[0] as any).prompt, '# 架构\n新增验证条件')
     assert.equal((savedRoles[0] as any).expected_revision, 'a'.repeat(64))
-    assert.equal(document.querySelector('.role-center-editor-overlay'), null)
+    assert.ok(document.querySelector('.role-center-editor-overlay') === null)
   })
 })
 
@@ -138,7 +138,7 @@ test('custom role required fields, failed save recovery and unsaved close protec
     await input('角色提示词', '未保存内容')
     await click('关闭角色编辑')
     await click('放弃修改')
-    assert.equal(document.querySelector('.role-center-editor-overlay'), null)
+    assert.ok(document.querySelector('.role-center-editor-overlay') === null)
   })
 })
 
@@ -176,7 +176,7 @@ test('failed role detail load is retryable without opening a blank editable draf
     roleCenterApi.getRole = async () => { throw new Error('读取失败') }
     await click('编辑角色：架构专家')
     assert.match(document.querySelector('.role-center-editor-error')!.textContent!, /读取失败/)
-    assert.equal(document.querySelector('[aria-label="角色提示词"]'), null)
+    assert.ok(document.querySelector('[aria-label="角色提示词"]') === null)
     roleCenterApi.getRole = get
     await click('重试')
     assert.equal((document.querySelector('[aria-label="角色提示词"]') as HTMLTextAreaElement).value, '原始架构提示词')

@@ -50,7 +50,7 @@ test('upload sits before hidden switch, targets selected directory, refreshes an
     await upload()
     assert.match(document.querySelector('[role="alert"]')?.textContent || '', /Entry already exists/)
     await act(async () => root.render(<I18nProvider><ProjectDirectoryBrowser projectId="one" readOnly /></I18nProvider>))
-    assert.equal(document.querySelector('.project-directory-upload'), null)
+    assert.ok(document.querySelector('.project-directory-upload') === null)
   } finally {
     await act(async () => root.unmount())
     fsApi.browse = originalBrowse

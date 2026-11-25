@@ -40,7 +40,7 @@ test('recent records are expanded immediately and clicks reopen the original tar
     assert.deepEqual(rows().map(x => x.textContent), ['原任务', '原会话'])
     assert.ok(rows()[0].querySelector('svg.lucide-workflow'), 'tasks use the same workflow icon as the project tree')
     assert.ok(rows()[1].querySelector('svg.lucide-bot'), 'conversations keep the existing bot icon')
-    assert.equal(container.querySelector('input'), null)
+    assert.ok(container.querySelector('input') === null)
     assert.ok(useRecentActivityStore.getState().targets.every(target => target.projectId !== 'removed'), 'unreadable records are excluded from status subscriptions')
     useChatListStore.setState({ selectedIds: new Set(['previous']), selectionProjectId: 'p', selectAnchor: 'previous' })
     await act(async () => rows()[1].click())
@@ -133,12 +133,12 @@ test('recent sessions and cross-project tasks show spinners only while running',
     await act(async () => useRecentActivityStore.getState().refreshTasks())
     assert.ok(container.querySelector('.layout-recent-row .sidebar-completion-dot'), 'task outcomes appear in the recent row')
     await act(async () => container.querySelector<HTMLButtonElement>('.layout-recent-row')!.click())
-    assert.equal(container.querySelector('.sidebar-completion-dot'), null, 'opening a task acknowledges completion')
+    assert.ok(container.querySelector('.sidebar-completion-dot') === null, 'opening a task acknowledges completion')
     status = 'running'
     await act(async () => useRecentActivityStore.getState().refreshTasks())
     status = 'failed'
     await act(async () => useRecentActivityStore.getState().refreshTasks())
-    assert.equal(container.querySelector('.sidebar-failure-dot'), null, 'an open task is already read')
+    assert.ok(container.querySelector('.sidebar-failure-dot') === null, 'an open task is already read')
   } finally {
     await act(async () => root.unmount())
     taskApi.get = originalGet
@@ -170,11 +170,11 @@ test('recent sessions share completion and failure dots and acknowledge them on 
     assert.ok(container.querySelector('.sidebar-failure-dot'), 'failure wins over completion')
     await act(async () => useChatSessionStore.setState({ sessions: { s1: { running: true, messages: [{ status: 'error' }] } as AssistantSessionState } }))
     assert.ok(container.querySelector('.task-status-spinner'))
-    assert.equal(container.querySelector('.sidebar-failure-dot'), null)
+    assert.ok(container.querySelector('.sidebar-failure-dot') === null)
     await act(async () => useChatSessionStore.setState({ sessions: { s1: { running: false, messages: [{ status: 'done' }] } as AssistantSessionState } }))
     assert.ok(container.querySelector('.sidebar-completion-dot'), 'live success overrides cached failure')
     await act(async () => container.querySelector<HTMLButtonElement>('.layout-recent-row')!.click())
-    assert.equal(container.querySelector('.sidebar-completion-dot'), null)
+    assert.ok(container.querySelector('.sidebar-completion-dot') === null)
     assert.equal(useSidebarActivityStore.getState().readFailedSessions.s1, true)
   } finally {
     await act(async () => root.unmount())

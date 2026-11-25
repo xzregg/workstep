@@ -48,6 +48,6 @@ test('remote device tabs switch directly through a ticket with offline devices d
   assert.match(element.querySelector('[role=alert]')?.textContent??'',/离线/)
   await act(async()=>button('另一电脑').click())
   assert.equal(action,'http://d-two.localhost:8700/api/remote/redeem');assert.equal(ticket,'ticket')
-  assert.equal(document.querySelector('form'),null)
+  assert.ok(document.querySelector('form') === null)
  }finally{await act(async()=>root.unmount());element.remove();globalThis.fetch=original;window.HTMLFormElement.prototype.submit=originalSubmit;await window.happyDOM.close()}
 })

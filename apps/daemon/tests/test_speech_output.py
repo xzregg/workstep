@@ -698,7 +698,7 @@ def test_qwen_worker_dispatches_custom_and_design_and_converts_pcm(monkeypatch):
     spec = importlib.util.spec_from_file_location('private_qwen_worker', path)
     worker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(worker)
-    calls = []
+    calls, seeds = [], []
     class Samples:
         def reshape(self, *args): return self
         def __mul__(self, value): return self
@@ -708,6 +708,7 @@ def test_qwen_worker_dispatches_custom_and_design_and_converts_pcm(monkeypatch):
         def tobytes(self): return b'\x00\x00'
     monkeypatch.setitem(sys.modules, 'numpy', SimpleNamespace(asarray=lambda *args, **kwargs: Samples(), float32=float, clip=lambda *args: Samples()))
     monkeypatch.setitem(sys.modules, 'librosa', SimpleNamespace())
+    monkeypatch.setitem(sys.modules, 'torch', SimpleNamespace(manual_seed=seeds.append))
     def generate(**kwargs):
         calls.append(kwargs)
         return [[0]], 24000
@@ -717,6 +718,9 @@ def test_qwen_worker_dispatches_custom_and_design_and_converts_pcm(monkeypatch):
     model.model.tts_model_type = 'voice_design'
     worker.synthesize(model, dict(text='你好', voice='design', instructions='年轻女声'))
     assert 'speaker' not in calls[-1] and calls[-1]['instruct'] == '年轻女声'
+    assert seeds == [1, 1]
+    worker.synthesize(model, dict(text='长正文。' * 250, voice='design', instructions='年轻女声'))
+    assert calls[-1]['max_new_tokens'] == 8000
 
 
 @pytest.mark.asyncio

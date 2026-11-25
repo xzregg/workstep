@@ -163,7 +163,7 @@ test('opens an enlarged preview and exposes zoom controls', async () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     })
-    assert.equal(document.body.querySelector('.mermaid-preview'), null)
+    assert.ok(document.body.querySelector('.mermaid-preview') === null)
   } finally {
     await act(async () => root.unmount())
     container.remove()

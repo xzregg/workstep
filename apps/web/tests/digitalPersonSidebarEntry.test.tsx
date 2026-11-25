@@ -25,6 +25,6 @@ test('default workspace entry follows the enabled digital person name; ordinary 
     assert.equal(container.querySelector('button')!.textContent,'与小舟对话')
     enabled=false
     await act(async()=>window.dispatchEvent(new window.Event(DIGITAL_PERSON_CHANGED)))
-    assert.equal(container.querySelector('button'),null)
+    assert.ok(container.querySelector('button') === null)
   } finally { await act(async()=>root.unmount()); digitalPersonApi.get=original; await window.happyDOM.close() }
 })

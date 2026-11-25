@@ -1,0 +1,8 @@
+.homepage-faq-content { max-width: 900px; }
+.homepage-faq-item { border-bottom: 1px solid var(--border-soft); padding-block: 20px; }
+.homepage-faq-item summary { display: flex; justify-content: space-between; align-items: center; gap: 20px; min-height: 24px; cursor: pointer; list-style: none; color: var(--fg); font-size: 16px; font-weight: 600; line-height: 1.6; }
+.homepage-faq-item summary::-webkit-details-marker { display: none; }
+.homepage-faq-item summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; border-radius: 4px; }
+.homepage-faq-item summary svg { flex-shrink: 0; color: var(--muted); }
+.homepage-faq-item[open] summary svg { transform: rotate(45deg); }
+.homepage-faq-item p { margin: 14px 0 0; max-width: 75ch; color: var(--muted); font-size: 15px; line-height: 1.85; overflow-wrap: anywhere; }

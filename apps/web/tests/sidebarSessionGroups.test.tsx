@@ -109,7 +109,7 @@ test('heading context menu creates a named group, validates blank input, and ret
     fail = false
     await act(async () => confirm.click())
     assert.equal(calls, 2)
-    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
     assert.ok(container.querySelector('[data-session-group="new"]'))
   } finally {
     Object.assign(chatGroupApi, original)
@@ -174,7 +174,7 @@ test('group menu creates once in its own group without a standalone plus and exp
     const add = document.querySelector<SVGElement>('.sidebar-action-menu .lucide-plus')!.closest('button')!
     await act(async () => { add.click(); add.click() })
     assert.deepEqual(calls, ['target'])
-    assert.equal(document.querySelector('.sidebar-action-menu'), null)
+    assert.ok(document.querySelector('.sidebar-action-menu') === null)
     await act(async () => finish('new-session'))
     assert.equal(document.querySelector('.sidebar-session-group-toggle')!.getAttribute('aria-expanded'), 'true')
     await act(async () => document.querySelector('.sidebar-session-group-header')!.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
@@ -223,10 +223,44 @@ test('group running indicator survives collapse and group drag persists order wi
     assert.deepEqual(calls,[{action:'reorder',group_id:'second',target_group_id:'first',before:true}])
     assert.equal(document.querySelector('[data-session-group]')!.getAttribute('data-session-group'),'second')
     await act(async () => root.render(render(false)))
-    assert.equal(document.querySelector('.task-status-spinner'),null)
+    assert.ok(document.querySelector('.task-status-spinner') === null)
   } finally {
     Object.assign(chatGroupApi,original)
     await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('protected hub conversations stay above groups once even when grouped and collapsed', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const original = { ...chatGroupApi }
+  chatGroupApi.list = async () => ({ groups: [{ id: 'hub-group', name: '研发', source: 'chat', session_ids: ['main', 'ordinary'] }] })
+  let mutations = 0
+  chatGroupApi.mutate = async () => { mutations++; return { groups: [], removed: [], skipped: [] } }
+  try {
+    await act(async () => root.render(<I18nProvider><SidebarSessionGroups projectId="hub-pin" source="chat" canManage
+      sessions={[
+        { id: 'ordinary', title: '普通会话' },
+        { id: 'main', title: '已改名的主会话', lifecycle_protected: true },
+        { id: 'reflection', title: '已改名的思考', lifecycle_protected: true },
+        { id: 'same-name', title: '主动思考' },
+      ] as never} renderSession={session => <div key={session.id} data-session={session.id}>{session.title}</div>} /></I18nProvider>))
+    const ids = () => [...container.querySelectorAll('[data-session]')].map(row => row.getAttribute('data-session'))
+    assert.deepEqual(ids(), ['main', 'reflection', 'ordinary', 'same-name'])
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-expanded]')!.click())
+    assert.deepEqual(ids(), ['main', 'reflection', 'same-name'])
+    const dataTransfer = new window.DataTransfer()
+    writeChatSessionDrag(dataTransfer as unknown as DataTransfer, 'hub-pin', 'reflection')
+    const event = new window.Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })
+    await act(async () => container.querySelector('.sidebar-session-group-header')!.dispatchEvent(event))
+    assert.equal(mutations, 0, 'pinned conversations cannot be moved into a collapsible group')
+  } finally {
+    Object.assign(chatGroupApi, original)
+    await act(async () => root.unmount())
+    container.remove()
     await window.happyDOM.close()
   }
 })

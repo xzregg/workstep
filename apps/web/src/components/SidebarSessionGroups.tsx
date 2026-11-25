@@ -153,7 +153,7 @@ export default function SidebarSessionGroups({ projectId, source, sessions, canM
   }
   const drop = (event: DragEvent, groupId: string | null) => {
     const payload = readChatSessionDrag(event.dataTransfer)
-    if (!canManage || busy || !payload || payload.projectId !== projectId || !sessions.some(s => s.id === payload.sessionId)) return
+    if (!canManage || busy || !payload || payload.projectId !== projectId || !sessions.some(s => s.id === payload.sessionId && !s.lifecycle_protected)) return
     event.preventDefault(); event.stopPropagation(); setDropTarget(null)
     void mutate({ action: 'move', group_id: groupId, session_id: payload.sessionId })
   }
@@ -193,6 +193,8 @@ export default function SidebarSessionGroups({ projectId, source, sessions, canM
   }
   const createGroup = () => { setName(''); setError(''); setDialog({ action: 'create' }) }
   const renderRow = (session: ChatSessionSummary) => renderSession(session, createGroup)
+  const pinned = sessions.filter(session => session.lifecycle_protected)
+  const ordinary = sessions.filter(session => !session.lifecycle_protected)
   const visibleGroups = groups.filter(group => group.source === source)
   const grouped = new Set(visibleGroups.flatMap(group => group.session_ids))
   const closeDialog = () => {
@@ -210,8 +212,9 @@ export default function SidebarSessionGroups({ projectId, source, sessions, canM
     {error && <div className="sidebar-session-group-error" role="alert">{localizeErrorDisplay(error)}
       {!loaded && <button type="button" onClick={() => void load()}>{t('common.retry')}</button>}
     </div>}
+    {pinned.map(renderRow)}
     {visibleGroups.map(group => {
-      const members = sessions.filter(session => group.session_ids.includes(session.id))
+      const members = ordinary.filter(session => group.session_ids.includes(session.id))
       return <div key={group.id} className="sidebar-session-group" data-session-group={group.id}
         onDropCapture={event => {
           const payload = readChatSessionDrag(event.dataTransfer)
@@ -241,7 +244,7 @@ export default function SidebarSessionGroups({ projectId, source, sessions, canM
             <Icon name="layers" size={13} /><span className="sidebar-session-group-name" title={group.name}>{group.name}</span>
             <span className="sidebar-session-group-count">{members.length}</span>
           </button>
-          <SidebarStatusIndicator running={group.session_ids.some(id => runningSessions[id])}
+          <SidebarStatusIndicator running={group.session_ids.some(id => runningSessions[id] && !pinned.some(session => session.id === id))}
             runningTitle={t('chatSession.runningHint')} failedTitle={t('layout.failedState')} completedTitle={t('layout.completedUnread')} />
 
           {canManage && <button type="button" className="sidebar-session-group-more" aria-label={t('sessionGroups.actions')} disabled={busy}
@@ -257,7 +260,7 @@ export default function SidebarSessionGroups({ projectId, source, sessions, canM
         const payload = readChatSessionDrag(event.dataTransfer)
         if (payload && grouped.has(payload.sessionId)) drop(event, null)
       }}>
-      {sessions.filter(session => !grouped.has(session.id)).map(renderRow)}
+      {ordinary.filter(session => !grouped.has(session.id)).map(renderRow)}
     </div>
     {!sessions.length && !visibleGroups.length && canManage && <button type="button" className="sidebar-session-group-create" disabled={!loaded || busy}
       onClick={() => { setName(''); setDialog({ action: 'create' }) }}>{t('sessionGroups.create')}</button>}

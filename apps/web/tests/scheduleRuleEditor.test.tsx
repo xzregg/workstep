@@ -46,7 +46,7 @@ test('shared frequency editor uses project tabs and edits intervals, weekdays an
     await click('单次')
     assert.equal(current.kind,'once')
     assert.ok(container.querySelector('input[type="datetime-local"]'))
-    assert.equal(container.querySelector('input[type="date"]'),null)
+    assert.ok(container.querySelector('input[type="date"]') === null)
     await click('周期')
     assert.equal(current.kind,'daily')
     assert.equal(current.timezone,'Asia/Shanghai')

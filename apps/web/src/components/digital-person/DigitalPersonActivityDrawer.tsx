@@ -8,20 +8,20 @@ import Icon from '../Icon'
 import './DigitalPersonActivityDrawer.css'
 
 /** Mobile presentation of the same activity lists and request owner used on desktop. */
-export default function DigitalPersonActivityDrawer({available,onOpen,children}:{available:boolean;onOpen:()=>void;children:ReactNode}){
+export default function DigitalPersonActivityDrawer({available,onOpen,children,covered=false}:{covered?:boolean;available:boolean;onOpen:()=>void;children:ReactNode}){
  const compact=useCompactLayout()
  if(!compact)return children
- return available?<MobileActivityDrawer onOpen={onOpen}>{children}</MobileActivityDrawer>:null
+ return available?<MobileActivityDrawer onOpen={onOpen} covered={covered}>{children}</MobileActivityDrawer>:null
 }
 
-function MobileActivityDrawer({onOpen,children}:{onOpen:()=>void;children:ReactNode}){
+function MobileActivityDrawer({onOpen,children,covered}:{covered:boolean;onOpen:()=>void;children:ReactNode}){
  const {t}=useI18n(),id=useId(),panel=useRef<HTMLDivElement>(null)
  const [open,setShown]=useState(false)
  const close=()=>setShown(false)
  useOverlay(open,close,panel)
  return <>
   <Button variant="ghost" className="digital-home-activity-entry" aria-expanded={open} aria-controls={id} aria-haspopup="dialog" onClick={()=>{onOpen();setShown(true)}}><Icon name="list" size={16}/>{t('digitalPerson.homeProactiveActivity')}</Button>
-  {open&&createPortal(<div className="digital-home-activity-backdrop" onClick={close}>
+  {open&&createPortal(<div className="digital-home-activity-backdrop" hidden={covered} inert={covered||undefined} onClick={close}>
    <div ref={panel} id={id} className="digital-home-activity-dialog" role="dialog" aria-modal="true" aria-label={t('digitalPerson.homeProactiveActivity')} tabIndex={-1} onClick={event=>event.stopPropagation()}>
     <Button variant="icon" className="digital-home-activity-close" aria-label={t('common.close')} onClick={close}><Icon name="x"/></Button>
     {children}

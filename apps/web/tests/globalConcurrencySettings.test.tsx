@@ -56,7 +56,7 @@ test('global concurrency settings load and save task and chat limits', async () 
     assert.equal(taskInput?.type, 'text')
     assert.equal(taskInput?.inputMode, 'numeric')
     assert.equal(taskInput?.pattern, '[1-9][0-9]*')
-    assert.equal(taskInput?.list, null)
+    assert.ok(taskInput?.list === null)
     assert.equal(exemptInput?.checked, false)
     const autoResume = container.querySelector<HTMLInputElement>('#global-chat-auto-resume')!
     assert.equal(autoResume.checked, false)

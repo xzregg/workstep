@@ -78,6 +78,51 @@ def test_init_project_returns_project(tmp_path, manager):
     assert proj.db.is_closed()
 
 
+def test_new_project_uses_short_id_and_retries_collisions(tmp_path, manager, monkeypatch):
+    from uuid import UUID
+    from services.project_storage import external_directory
+
+    m, _, _ = manager
+    values = iter(UUID(value + "-0000-4000-8000-000000000000") for value in (
+        "164938b7", "164938b7", "deadbeef", "abcd1234",
+    ))
+    monkeypatch.setattr("services.project.uuid.uuid4", lambda: next(values))
+    external_directory("deadbeef").mkdir(parents=True)
+    first = m.init_project(tmp_path / "first")
+    (tmp_path / "second").mkdir()
+    second = m.init_project(tmp_path / "second", follow_project=False)
+
+    assert first.id == "164938b7"
+    assert second.id == "abcd1234"
+    assert json.loads((first.path / ".workstep/project.json").read_text())["id"] == first.id
+    m.unregister(first.id)
+    assert m.register(first.path).id == first.id
+
+
+def test_register_legacy_empty_project_gets_short_id(tmp_path, manager):
+    m, _, _ = manager
+    ws_dir = tmp_path / ".workstep"
+    db = init_db(str(ws_dir / "workstep.db"))
+    db.close()
+
+    project = m.register(tmp_path)
+
+    assert len(project.id) == 8
+    assert all(char in "0123456789abcdef" for char in project.id)
+
+
+def test_register_preserves_existing_uuid_project_id(tmp_path, manager):
+    from services.project_storage import write_identity
+
+    m, _, _ = manager
+    project = m.init_project(tmp_path)
+    m.unregister(project.id)
+    old_id = "5739c385-0f1b-4292-bd18-5beeb30f71fa"
+    write_identity(tmp_path, old_id, True)
+
+    assert m.register(tmp_path).id == old_id
+
+
 def test_init_project_idempotent(tmp_path, manager):
     """Calling init twice returns the same project, doesn't overwrite."""
     m, _, _ = manager

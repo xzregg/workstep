@@ -35,7 +35,7 @@ test('remote sidebar shows WebSocket latency without adding requests and hides s
     }
     await act(async () => useWebSocketConnectionStore.setState({ latencyMs: null }))
     assert.equal(container.querySelector('[role=status]')!.textContent, '网关已连接')
-    assert.equal(container.querySelector('.gateway-connection-latency'), null)
+    assert.ok(container.querySelector('.gateway-connection-latency') === null)
     await act(async () => useWebSocketConnectionStore.setState({ connected: false, latencyMs: null }))
     assert.match(container.querySelector('[role=status]')!.textContent!, /连接中/)
     assert.doesNotMatch(container.textContent!, /128 ms/)

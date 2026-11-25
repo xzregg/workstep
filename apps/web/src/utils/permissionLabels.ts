@@ -1,7 +1,7 @@
 import type { TFunction, TKey } from '../i18n'
 import type { PermissionConfigOption } from './enginePermissions'
 
-const localizedEngines = new Set(['codex', 'codex_sdk', 'claude', 'claude_agent_sdk', 'qoder_sdk', 'pydantic_ai', 'opencode'])
+const localizedEngines = new Set(['codex', 'codex_sdk', 'claude', 'claude_agent_sdk', 'qoder_sdk', 'pydantic_ai', 'opencode', 'antigravity'])
 
 // Presentation only. Native values and execution policy remain engine-owned.
 function choiceKey(engine: string, field: string, value: string): string | undefined {
@@ -15,6 +15,7 @@ function choiceKey(engine: string, field: string, value: string): string | undef
   if (engine === 'pydantic_ai') return ({ full: 'direct', auto: 'riskAsk', 'read-only': 'writeAsk' } as Record<string, string>)[value]
   if (engine === 'claude' || engine === 'claude_agent_sdk' || engine === 'qoder_sdk') return ({ manual: 'standard', default: 'standard', acceptEdits: 'autoEdit', plan: 'plan', auto: 'autoReview', dontAsk: 'noAsk', bypassPermissions: 'bypass' } as Record<string, string>)[value]
   if (engine === 'opencode') return ({ allow: 'allow', ask: 'ask', deny: 'deny' } as Record<string, string>)[value]
+  if (engine === 'antigravity') return ({ default: 'engineDefault', auto: 'autoReview', 'accept-edits': 'autoEdit', bypassPermissions: 'bypass' } as Record<string, string>)[value]
   return undefined
 }
 
@@ -39,7 +40,7 @@ export function permissionChoice(engine: string, field: Pick<PermissionConfigOpt
 
 
 export function visiblePermissionFields<T extends { key: string; options?: { value: string }[] | null }>(engine: string, fields: T[]): T[] {
-  if (['claude', 'claude_agent_sdk'].includes(engine)) return fields.map(field => field.key === 'permission_mode'
+  if (['claude', 'claude_agent_sdk', 'antigravity'].includes(engine)) return fields.map(field => field.key === 'permission_mode'
     ? { ...field, options: field.options?.filter(option => option.value !== 'plan') } : field)
   if (engine !== 'pydantic_ai') return fields
   return fields.filter(field => field.key !== 'sandbox').map(field => field.key === 'permission_mode'

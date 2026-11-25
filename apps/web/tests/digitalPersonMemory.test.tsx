@@ -37,10 +37,10 @@ test('real memory categories, timeline and original-source pagination',async()=>
  try{
   await act(async()=>root.render(<I18nProvider><DigitalPersonMemory name="小舟" avatar="robot"/></I18nProvider>))
   assert.equal(calls,1);assert.equal(container.querySelectorAll('.digital-memory-node').length,2)
-  assert.equal(container.querySelector('.digital-memory-collection'),null)
+  assert.ok(container.querySelector('.digital-memory-collection') === null)
   assert.equal(container.querySelectorAll('.digital-memory-card').length,0,'brain view does not repeat every record below the diagram')
   assert.ok(container.querySelector('.digital-memory-overview-heading [data-memory-refresh] svg'))
-  assert.equal(container.querySelector('.digital-memory-toolbar [data-memory-refresh]'),null)
+  assert.ok(container.querySelector('.digital-memory-toolbar [data-memory-refresh]') === null)
   const filters=container.querySelector('.digital-memory-toolbar .digital-memory-filters')
   assert.ok(filters,'category filters sit beside the search controls')
   assert.ok(container.querySelector('.digital-memory-search-group input'))
@@ -52,7 +52,7 @@ test('real memory categories, timeline and original-source pagination',async()=>
   await act(async()=>container.querySelector<HTMLButtonElement>('.digital-memory-node')!.click())
   assert.match(container.querySelector('.digital-memory-detail')!.textContent!,/演示项目/)
   assert.equal(container.querySelector('.digital-memory-detail-summary')?.textContent,rows[0].summary)
-  assert.equal(container.querySelector('.digital-memory-detail-title h2'),null,'detail shows one summary instead of repeating it as a title')
+  assert.ok(container.querySelector('.digital-memory-detail-title h2') === null, 'detail shows one summary instead of repeating it as a title')
   assert.equal(reads.length,0,'originals are read only when opened')
   await act(async()=>container.querySelector<HTMLButtonElement>('[data-memory-source]')!.click())
   assert.match(document.querySelector('[role="dialog"]')!.textContent!,/原始依据/)
@@ -79,7 +79,7 @@ test('category and project filters fetch beyond the preview and ignore obsolete 
  const container=document.body.appendChild(document.createElement('div')),root=createRoot(container)
  try{
   await act(async()=>root.render(<I18nProvider><DigitalPersonMemory name="小舟" avatar="robot"/></I18nProvider>))
-  assert.equal(container.querySelector('.digital-memory-cluster[data-kind="preference"]'),null)
+  assert.ok(container.querySelector('.digital-memory-cluster[data-kind="preference"]') === null)
   await act(async()=>container.querySelector<HTMLButtonElement>('[data-memory-kind="preference"]')!.click())
   const select=container.querySelector('select')!
   assert.deepEqual([...select.options].map(item=>item.value),['','p','q'])
@@ -99,9 +99,9 @@ test('failed memory request can recover without showing mock records',async()=>{
  const container=document.body.appendChild(document.createElement('div')),root=createRoot(container)
  try{
  await act(async()=>root.render(<I18nProvider><DigitalPersonMemory name="小舟" avatar="robot"/></I18nProvider>))
- assert.ok(container.querySelector('[role="alert"]'));assert.equal(container.querySelector('[data-memory-empty]'),null)
+ assert.ok(container.querySelector('[role="alert"]'));assert.ok(container.querySelector('[data-memory-empty]') === null)
  fail=false;await act(async()=>container.querySelector<HTMLButtonElement>('[data-memory-refresh]')!.click())
- assert.equal(container.querySelector('[role="alert"]'),null);assert.ok(container.querySelector('[data-memory-empty]'))
+ assert.ok(container.querySelector('[role="alert"]') === null);assert.ok(container.querySelector('[data-memory-empty]'))
  }finally{await act(async()=>root.unmount());digitalMemoryApi.browse=original;container.remove();await window.happyDOM.close()}
 })
 
@@ -139,6 +139,9 @@ test('library totals stay independent of filtered nodes and graph controls work'
   assert.match(container.querySelector('[data-memory-stats]')!.textContent!,/1,286/)
   assert.match(container.querySelector('[data-memory-stats]')!.textContent!,/18,420/)
   assert.equal(container.querySelector('progress')!.value,17800)
+  assert.equal(container.querySelector('.digital-memory-cluster[data-kind=preference] strong')?.textContent,'186')
+  assert.equal(container.querySelector('.digital-memory-cluster[data-kind=event] strong')?.textContent,'264')
+  assert.match(container.querySelector('.digital-memory-legend [data-kind=preference]')!.textContent!,/186/)
   await act(async()=>container.querySelector<HTMLButtonElement>('[data-memory-kind="preference"]')!.click())
   assert.match(container.querySelector('[data-memory-stats]')!.textContent!,/1,286/)
   assert.equal(container.querySelectorAll('.digital-memory-node').length,1)
@@ -158,6 +161,7 @@ test('category pagination reveals all loaded knowledge without changing library 
  try{
   await act(async()=>root.render(<I18nProvider><DigitalPersonMemory name="小舟" avatar="robot"/></I18nProvider>))
   assert.equal(container.querySelectorAll('.digital-memory-node').length,3)
+  assert.equal(container.querySelector('.digital-memory-cluster strong')?.textContent,'—','missing totals do not use visible or loaded counts')
   assert.match(container.querySelector('.digital-memory-pagination')!.textContent!,/1 \/ 3/)
   await act(async()=>container.querySelector<HTMLButtonElement>('[aria-label="下一组"]')!.click())
   assert.match(container.querySelector('.digital-memory-node')!.textContent!,/偏好条目 4/)

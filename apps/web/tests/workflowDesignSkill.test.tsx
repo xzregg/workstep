@@ -33,7 +33,7 @@ test('plus menu inserts the engine skill reference, keeps the idea and never sen
     assert.equal((container.querySelector('textarea') as HTMLTextAreaElement).value, '$workstep-exec 做一个登录页面')
     assert.ok(container.querySelector('[data-kind="workflow-skill"]'))
     await act(async () => root.render(<I18nProvider><Composer sessionId="s2" /></I18nProvider>))
-    assert.equal(container.querySelector('[data-kind="workflow-skill"]'), null)
+    assert.ok(container.querySelector('[data-kind="workflow-skill"]') === null)
   } finally {
     engineApi.inspect = original
     await act(async () => root.unmount())

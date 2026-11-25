@@ -10,9 +10,10 @@ await build({root,logLevel:'error',publicDir:false,build:{outDir:out,emptyOutDir
 const html=await fs.readFile(path.join(out,'tests/fixtures/digital-person-home/index.html'))
 const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--enable-unsafe-swiftshader']})
 const results=[]
+const placementOnly=process.argv.includes('--placement-only')
 const clipAudit=await fs.readFile(path.resolve(root,'../../.agents/skills/desktop-agent-ui/scripts/clip-audit.js'),'utf8')
 try{
- for(const [width,height]of [[320,700],[390,844],[844,390],[1023,900],[1024,900],[1440,1024]]){
+ for(const [width,height]of [[320,700],[390,844],[844,390],[1023,900],[1024,900],[1440,1024],[1920,1080]]){
   const page=await browser.newPage({viewport:{width,height},screen:{width,height},reducedMotion:'reduce'}),errors=[]
   page.on('pageerror',e=>errors.push(e.message))
   await page.route('**/*',async route=>{
@@ -80,22 +81,44 @@ try{
    const camera=page.locator('.digital-person-camera--panel'),cameraBox=await camera.boundingBox(),footer=await page.locator('.digital-home-footer').boundingBox(),info=await page.locator('.digital-home-presence-info').boundingBox()
    assert.ok(cameraBox.width>=320,'desktop camera is enlarged')
    assert.ok(cameraBox.y+cameraBox.height<=footer.y-8,'camera stays above bottom controls')
-   assert.ok(Math.abs(cameraBox.y-info.y-info.height-16)<2,'camera sits directly below reflection metrics with a 16px gap')
+   const atlas=await page.locator('.digital-home-atlas-toggle').boundingBox()
+   assert.ok(Math.abs(cameraBox.y-atlas.y-atlas.height-16)<2,'camera sits directly below the memory atlas button with a 16px gap')
+   assert.ok(Math.abs(cameraBox.x+cameraBox.width-info.x-info.width)<2,'camera aligns with the right status column')
    const caption=await page.locator('.digital-home-caption-frame').boundingBox();assert.ok(caption.x+caption.width<=cameraBox.x-8,'camera does not cover captions')
    const audit=await page.evaluate('('+clipAudit+')({root:".digital-home-footer"})');assert.equal(audit.cut,0,JSON.stringify(audit))
    await panel.locator('[data-video-close]').hover();const hoverAudit=await page.evaluate('('+clipAudit+')({root:".digital-home-footer"})');assert.equal(hoverAudit.cut,0,JSON.stringify(hoverAudit))
    assert.equal(await page.locator('.digital-home-camera-title').count(),0,'one shared header only')
    assert.equal(await header.locator('.video-preview-header-title').count(),1)
    assert.ok((await header.boundingBox()).height<=32,'compact shared header')
-   const perception=page.locator('.digital-home-camera-perception')
-   assert.equal(await perception.getByRole('button').count(),1)
-   assert.match(await perception.innerText(),/人脸识别/)
-   assert.doesNotMatch(await perception.innerText(),/麦克风|声音/)
+   if(!placementOnly){
+    const perception=page.locator('.digital-home-camera-perception')
+    assert.equal(await perception.getByRole('button').count(),1)
+    assert.match(await perception.innerText(),/人脸识别/)
+    assert.doesNotMatch(await perception.innerText(),/麦克风|声音/)
+   }
   }else{
    assert.equal(await panel.getAttribute('data-video-docked'),null,'mobile restores the shared floating preview')
    assert.equal(await page.locator('.digital-person-camera--panel').count(),0)
   }
   await page.screenshot({path:path.join(artifacts,`panel-${width}-${height}.png`)})
+  if(placementOnly){
+   if(width>1023){
+    const camera=page.locator('.digital-person-camera--panel'),before=await camera.boundingBox()
+    const stream=await video.evaluate(v=>{window.keptCameraStream=v.srcObject;return Boolean(v.srcObject)})
+    assert.ok(stream)
+    await header.focus();await page.keyboard.press('ArrowLeft')
+    assert.ok(Math.abs((await camera.boundingBox()).x-before.x+8)<2,'camera remains movable')
+    assert.equal(await video.evaluate(v=>v.srcObject===window.keptCameraStream),true,'moving preserves the stream')
+    await panel.locator('[data-video-close]').click()
+    await page.locator('.digital-home-voice-dock [data-camera-toggle]').click()
+    await page.locator('.video-preview-window[data-video-ready="true"]').waitFor()
+    const reopened=await camera.boundingBox(),atlas=await page.locator('.digital-home-atlas-toggle').boundingBox()
+    assert.ok(Math.abs(reopened.y-atlas.y-atlas.height-16)<2,'reopening restores placement below memory atlas')
+    assert.equal(await camera.getAttribute('data-camera-moved'),'false')
+   }
+   assert.deepEqual(errors,[])
+   results.push({width,height,placementChecked:true});await page.close();continue
+  }
   if(width===390){
    await controls.locator('.digital-person-camera-switch').click()
    await page.waitForFunction(()=>window.videoFixture.constraints.video.facingMode.ideal==='user')

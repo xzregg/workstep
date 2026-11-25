@@ -232,7 +232,7 @@ test('bookmarks round-trip separately from executable steps and can be added fro
     ))
     assert.equal(container.querySelector<HTMLInputElement>('input[aria-label="书签标题"]')?.readOnly, true)
     assert.equal(container.querySelector('textarea')?.readOnly, true)
-    assert.equal(container.querySelector('button[aria-label="删除书签"]'), null)
+    assert.ok(container.querySelector('button[aria-label="删除书签"]') === null)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()
@@ -455,4 +455,72 @@ test('staging then saving does not reload the canvas from its own saved steps', 
     await act(async () => root.unmount())
     await window.happyDOM.close()
   }
+})
+
+
+test('AI preview stays out of serialization, save and dirty tracking; apply animates real changes', async () => {
+  const window = installDom(), container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
+  const canvasRef = createRef<FlowCanvasHandle>(), dirty: boolean[] = [], saved: any[] = []
+  const base = { nodes: [{ id: 1, type: 'write', title: '撰写' }, { id: 2, type: 'manual', title: '整理' }], connections: [{ from: 1, to: 2 }] }
+  const proposal = { nodes: [{ id: 1, type: 'write', title: '按主题归纳' }, { id: 3, type: 'check', title: '核查' }], connections: [{ from: 1, to: 3 }] }
+  try {
+    await act(async () => root.render(<I18nProvider><FlowCanvas ref={canvasRef} initialSteps={base}
+      onSave={steps => { saved.push(steps) }} onDirtyChange={value => { dirty.push(value) }} /></I18nProvider>))
+    const original = canvasRef.current!.getSteps()
+    await act(async () => canvasRef.current!.previewSteps(proposal))
+    assert.match(container.textContent || '', /方案预演.*尚未应用/)
+    assert.ok(container.querySelector('.flow-proposal-node--added'))
+    assert.ok(container.querySelector('.flow-proposal-node--removed'))
+    assert.deepEqual(canvasRef.current!.getSteps(), original)
+    assert.equal(dirty.at(-1), false)
+    const save = [...container.querySelectorAll('button')].find(button => button.textContent === '保存')!
+    await act(async () => save.click())
+    assert.deepEqual(saved[0], original, 'saving during preview saves the real graph only')
+    await act(async () => canvasRef.current!.previewSteps(null))
+    assert.ok(container.querySelector('.flow-proposal-node') === null)
+    assert.deepEqual(canvasRef.current!.getSteps(), original)
+    await act(async () => canvasRef.current!.previewSteps(proposal))
+    await act(async () => canvasRef.current!.loadSteps(proposal))
+    assert.deepEqual(canvasRef.current!.getSteps().nodes.map((n: any) => n.title), ['按主题归纳', '核查'])
+    assert.ok(container.querySelector('.flow-proposal-node--removed.flow-proposal-node--applied'), 'removed node remains only as a transient exit decoration')
+    assert.equal(dirty.at(-1), true)
+    assert.ok(canvasRef.current!.getSteps().nodes.every((n: any) => !n.proposalChange))
+    await act(async () => new Promise(resolve => setTimeout(resolve, 1900)))
+    assert.ok(container.querySelector('.flow-proposal-node') === null)
+  } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
+})
+
+test('switching the workflow source clears preview and its transient timers', async () => {
+  const window = installDom(), container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
+  const canvasRef = createRef<FlowCanvasHandle>()
+  const render = (title: string) => <I18nProvider><FlowCanvas ref={canvasRef} initialSteps={{nodes:[{id:1,type:'start',title}],connections:[]}} onSave={() => {}} /></I18nProvider>
+  try {
+    await act(async () => root.render(render('流程一')))
+    await act(async () => canvasRef.current!.previewSteps({nodes:[{id:2,type:'new',title:'旧流程建议'}],connections:[]}))
+    await act(async () => root.render(render('流程二')))
+    assert.ok(container.querySelector('.flow-proposal-node') === null)
+    assert.doesNotMatch(container.textContent || '', /旧流程建议/)
+    assert.equal(canvasRef.current!.getSteps().nodes[0].title, '流程二')
+  } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
+})
+
+
+test('persisted AI application echo keeps the exit animation and clears dirty state', async () => {
+  const window = installDom(), container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
+  const canvasRef = createRef<FlowCanvasHandle>(), dirty: boolean[] = []
+  const base={nodes:[{id:1,type:'write',title:'撰写'},{id:2,type:'old',title:'旧步骤'}],connections:[]}
+  const next={nodes:[{id:1,type:'write',title:'归纳'}],connections:[]}
+  const render=(steps: any, workflowId='one')=><I18nProvider><FlowCanvas ref={canvasRef} initialSteps={steps} workflowId={workflowId}
+    onSave={()=>{}} onDirtyChange={value=>{dirty.push(value)}} /></I18nProvider>
+  try {
+    await act(async()=>root.render(render(base)))
+    await act(async()=>canvasRef.current!.previewSteps(next))
+    await act(async()=>canvasRef.current!.loadSteps(next))
+    await act(async()=>root.render(render(next)))
+    assert.ok(container.querySelector('.flow-proposal-node--removed.flow-proposal-node--applied'))
+    assert.equal(dirty.at(-1),false)
+    await act(async()=>canvasRef.current!.previewSteps(base))
+    await act(async()=>root.render(render(next,'two')))
+    assert.ok(container.querySelector('.flow-proposal-node') === null, 'switching to an identical workflow clears old preview')
+  } finally {await act(async()=>root.unmount());await window.happyDOM.close()}
 })

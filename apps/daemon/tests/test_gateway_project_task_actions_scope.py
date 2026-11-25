@@ -343,6 +343,9 @@ async def test_project_bridge_engine_quota_is_scoped_and_does_not_block_health(
     calls = []
 
     class QuotaEngine:
+        ENGINE_ID = "codex_sdk"
+        supports_quota = True
+
         async def get_quota(self, cwd=""):
             calls.append(cwd)
             return {"engine_id": "codex_sdk", "primary": {"remaining_percent": 81}}

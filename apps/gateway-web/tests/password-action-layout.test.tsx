@@ -11,7 +11,7 @@ afterEach(cleanup)
 
 test('routine company display changes save without password confirmation', () => {
  render(<AdminCompanyNameDialog name="旧名称" csrf="csrf" onClose={() => {}} onSaved={() => {}} />)
- assert.equal(screen.queryByLabelText('管理员密码'), null)
+ assert.ok(screen.queryByLabelText('管理员密码') === null)
  const save = screen.getByRole('button', { name: '保存公司名称' }) as HTMLButtonElement
  assert.equal(save.disabled, true)
  fireEvent.change(screen.getByLabelText('公司显示名称'), { target: { value: '新名称' } })
@@ -20,7 +20,7 @@ test('routine company display changes save without password confirmation', () =>
 
 test('sessions without password confirmation have no password field in the action row', () => {
  render(<PasswordConfirmationRequired.Provider value={false}><AdminCompanyNameDialog name="旧名称" csrf="csrf" onClose={() => {}} onSaved={() => {}} /></PasswordConfirmationRequired.Provider>)
- assert.equal(screen.queryByLabelText('管理员密码'), null)
+ assert.ok(screen.queryByLabelText('管理员密码') === null)
  fireEvent.change(screen.getByLabelText('公司显示名称'), { target: { value: '新名称' } })
  assert.equal((screen.getByRole('button', { name: '保存公司名称' }) as HTMLButtonElement).disabled, false)
 })

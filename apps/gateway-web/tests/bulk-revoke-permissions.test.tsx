@@ -36,7 +36,7 @@ test('subject selection includes collapsed rules and supports partial rule selec
  assert.ok(within(dialog).getByText(/3 条直接授权规则/))
  assert.equal(within(dialog).getAllByRole('listitem').length, 3)
  fireEvent.click(within(dialog).getByRole('button', {name:'取消'}))
- assert.equal(screen.queryByRole('dialog'), null)
+ assert.ok(screen.queryByRole('dialog') === null)
  assert.ok(screen.getByText('已选 3 条规则'))
 })
 
@@ -100,7 +100,7 @@ test('permission page revokes only selected visible rules and refreshes, changin
  assert.ok(screen.getByText('已选 2 条规则'))
  fireEvent.change(screen.getByLabelText('对象类型筛选'), {target:{value:'group'}})
  await screen.findByText('研发组')
- await waitFor(()=>assert.equal(screen.queryByText('张三'), null))
+ await waitFor(()=>assert.ok(screen.queryByText('张三') === null))
  assert.ok(screen.getByText('已选 0 条规则'))
  fireEvent.click(screen.getByRole('checkbox', {name:'全选当前表格'}))
  await screen.findByText('已选 1 条规则')
@@ -109,7 +109,7 @@ test('permission page revokes only selected visible rules and refreshes, changin
  fireEvent.click(screen.getByRole('button', {name:'撤销所选权限'}))
  await screen.findByText(/当前条件下尚无权限规则/)
  assert.deepEqual(deleted, ['group_capability:3'])
- assert.equal(screen.queryByRole('dialog'), null)
+ assert.ok(screen.queryByRole('dialog') === null)
 })
 
 test('failed administrator verification sends no revoke requests and can be retried', async () => {

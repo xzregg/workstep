@@ -18,7 +18,7 @@ test('workspace preserves chat and derives presence from actual running and wake
   await render();assert.ok(el.querySelector('[data-chat]'));assert.equal(el.querySelector('[data-state]')!.getAttribute('data-state'),'idle')
   await render(true);assert.equal(el.querySelector('[data-state]')!.getAttribute('data-state'),'thinking')
   await act(async()=>useWakeState.setState({listening:true,phase:'recording'}));assert.equal(el.querySelector('[data-state]')!.getAttribute('data-state'),'listening')
-  await render(false,null);assert.equal(el.querySelector('.digital-person-workspace'),null);assert.ok(el.querySelector('[data-chat]'))
+  await render(false,null);assert.ok(el.querySelector('.digital-person-workspace') === null);assert.ok(el.querySelector('[data-chat]'))
  }finally{await act(async()=>root.unmount());useWakeState.setState({listening:false});await window.happyDOM.close()}
 })
 test('manual check reports failure honestly, microphone is started only after a user action',async()=>{
@@ -31,7 +31,7 @@ test('manual check reports failure honestly, microphone is started only after a 
   await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonWorkspace profile={profile} activity={activity} running={false}><div>聊天</div></DigitalPersonWorkspace></I18nProvider></MemoryRouter>))
   assert.equal(wakeReads,0)
   assert.ok(el.querySelector('[data-console-listen]')!.closest('.digital-console-presence'))
-  assert.equal(el.querySelector('.digital-console-command-bar'),null)
+  assert.ok(el.querySelector('.digital-console-command-bar') === null)
   await act(async()=>el.querySelector<HTMLButtonElement>('[data-console-check]')!.click())
   assert.equal(checks,1);assert.match(el.querySelector('[role="alert"]')!.textContent!,/引擎暂不可用/)
   for (const [status,label] of [['delivery_failed','投递失败'],['deferred','免打扰延后'],['cancelled','已取消']]) {

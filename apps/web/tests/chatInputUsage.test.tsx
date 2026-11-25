@@ -6,6 +6,48 @@ import { createRoot } from 'react-dom/client'
 import ChatInputUsage from '../src/components/ChatInputUsage'
 import { I18nProvider } from '../src/i18n'
 
+test('balance-only engines display actual credit balance without inventing a percentage', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact quota={{
+      engine_id: 'custom', credits: { balance: '12.50', unit: 'USD', unlimited: false },
+    }} /></I18nProvider>))
+    const quota = container.querySelector<HTMLElement>('.chat-input-quota')
+    assert.ok(quota)
+    assert.match(quota.textContent || '', /12.50 USD/)
+    assert.doesNotMatch(quota.textContent || '', /%/)
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact quota={null} /></I18nProvider>))
+    assert.ok(container.querySelector('.chat-input-quota') === null)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('Antigravity quota shows each model group and native time window', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact={false} quota={{
+      engine_id:'antigravity',primary:{used_percent:15,remaining_percent:85},
+      groups:[{name:'Gemini Models',windows:[{kind:'weekly',used_percent:15,remaining_percent:85,resets_at:1796181626}]},
+        {name:'Claude and GPT models',windows:[{kind:'weekly',used_percent:27,remaining_percent:73},
+          {kind:'five-hour',used_percent:27,remaining_percent:73}]}],
+    }} /></I18nProvider>))
+    assert.deepEqual([...container.querySelectorAll('.chat-input-quota-group > strong')].map(e=>e.textContent), ['Gemini Models','Claude and GPT models'])
+    assert.equal(container.querySelectorAll('.chat-input-quota-group > span').length, 3)
+    assert.match(container.querySelector('.chat-input-quota')?.getAttribute('aria-label') || '', /85%/)
+    assert.match(container.textContent || '', /85%/)
+    assert.match(container.textContent || '', /73%/)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('compact quota uses an icon and percentage while retaining an accessible label and details', async () => {
   const { window } = installDomEnvironment()
   const container = window.document.body.appendChild(window.document.createElement('div'))
@@ -30,7 +72,7 @@ test('compact quota uses an icon and percentage while retaining an accessible la
     const desktopLabel = quota.cloneNode(true) as HTMLElement
     desktopLabel.querySelector('.chat-input-quota-tip')?.remove()
     assert.match(desktopLabel.textContent || '', /\S+ 75%/)
-    assert.equal(desktopLabel.querySelector('svg'), null)
+    assert.ok(desktopLabel.querySelector('svg') === null)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

@@ -28,14 +28,14 @@ for (const configuredEngine of ['codex', '']) {
         engines={engines} loading={false} onChanged={() => { changed += 1 }}
       /></I18nProvider>))
       assert.equal(loaded, 1)
-      assert.equal(container.querySelector('select'), null, 'default selection is only editable in the dialog')
+      assert.ok(container.querySelector('select') === null, 'default selection is only editable in the dialog')
       const edit = container.querySelector<HTMLButtonElement>('.execution-default-settings-edit')!
       assert.ok(edit)
       await act(async () => edit.click())
       const select = container.querySelector<HTMLSelectElement>('[role="dialog"] select')
       assert.ok(select)
       assert.equal(select.value, configuredEngine || 'pydantic_ai')
-      assert.equal(select.querySelector('option[value=""]'), null)
+      assert.ok(select.querySelector('option[value=""]') === null)
       assert.equal(select.querySelectorAll('option[value="pydantic_ai"]').length, 1)
       assert.equal(select.querySelector('option[value="pydantic_ai"]')?.textContent, 'Pydantic AI')
       assert.equal(Array.from(select.options).filter((option) => option.textContent?.includes('Pydantic AI')).length, 1)
@@ -45,7 +45,7 @@ for (const configuredEngine of ['codex', '']) {
       await act(async () => save.click())
       assert.equal(saved, configuredEngine || 'pydantic_ai')
       assert.equal(changed, 1)
-      assert.equal(container.querySelector('[role="dialog"]'), null, 'successful save closes the editor')
+      assert.ok(container.querySelector('[role="dialog"]') === null, 'successful save closes the editor')
     } finally {
       engineApi.executionConfig = originalGet
       engineApi.setExecutionConfig = originalSave
@@ -93,7 +93,7 @@ test('default engine dialog preserves drafts, handles save failures and only pub
     assert.equal(container.querySelector<HTMLSelectElement>('select')!.value, 'pydantic_ai')
     await click('取消')
     await click('放弃')
-    assert.equal(container.querySelector('[role="dialog"]'), null)
+    assert.ok(container.querySelector('[role="dialog"]') === null)
     assert.equal(calls, 0)
     await click('编辑')
     assert.equal(container.querySelector<HTMLSelectElement>('select')!.value, 'codex')
@@ -106,7 +106,7 @@ test('default engine dialog preserves drafts, handles save failures and only pub
     await click('取消')
     assert.equal(container.querySelectorAll('[role="dialog"]').length, 1, 'saving cannot close the dialog')
     await act(async () => finish({ engine: 'pydantic_ai' }))
-    assert.equal(container.querySelector('[role="dialog"]'), null)
+    assert.ok(container.querySelector('[role="dialog"]') === null)
     assert.match(container.querySelector('.execution-default-settings-current')!.textContent!, /Pydantic AI/)
     assert.equal(changed, 1)
   } finally {

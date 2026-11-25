@@ -148,8 +148,8 @@ test('atlas fetches a selected preview and continues its chain from visible endp
     assert.equal(captions.querySelector('.atlas-preview-full')?.textContent,'当前摘要')
     assert.equal(captions.querySelector('.atlas-detail')?.getAttribute('aria-label'),'Experience')
     assert.ok(captions.querySelector('.atlas-detail'))
-    assert.equal(host.querySelector('.memory-atlas .atlas-detail'),null)
-    assert.equal(captions.querySelector('details'),null)
+    assert.ok(host.querySelector('.memory-atlas .atlas-detail') === null)
+    assert.ok(captions.querySelector('details') === null)
     assert.equal(links()[0]?.getAttribute('data-link'),'knowledge:49/knowledge:50')
     assert.ok(links()[0].closest('.atlas-links[data-focused]'))
     assert.equal(links()[0].getAttribute('data-highlighted'),'true')
@@ -177,7 +177,7 @@ test('atlas fetches a selected preview and continues its chain from visible endp
     assert.doesNotMatch(dialog.textContent!,/已读取/)
     assert.equal(links().length,2)
     await act(async()=>dialog.querySelector<HTMLButtonElement>('[data-memory-close]')!.click())
-    assert.equal(document.querySelector('[role="dialog"]'),null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
     assert.equal(captions.querySelector('.atlas-preview-full')?.textContent,'当前摘要')
 
     const scope={channel:'session_chat',project_id:'p',session_id:'s',messageId:'msg',toolCallId:'a'}
@@ -222,16 +222,16 @@ test('atlas fetches a selected preview and continues its chain from visible endp
     const preview=host.querySelector<HTMLElement>('.atlas-detail')!
     assert.equal(links()[0]?.hasAttribute('data-recall'),false,'manual selection shows its own links')
     await act(async()=>preview.click())
-    assert.equal(host.querySelector('.atlas-detail'),preview)
+    assert.ok(host.querySelector('.atlas-detail') === preview)
     const outside=document.body.appendChild(document.createElement('button'))
     try{
       outside.focus()
       await act(async()=>outside.click())
       paintNext()
-      assert.equal(host.querySelector('.atlas-detail'),null)
+      assert.ok(host.querySelector('.atlas-detail') === null)
       assert.equal(links()[0]?.getAttribute('data-recall'),'true','dismissal restores the latest recall')
       assert.equal(pending.at(-1)?.signal?.aborted,true)
-      assert.equal(document.activeElement,outside,'dismissal preserves the outside target focus')
+      assert.ok(document.activeElement === outside, 'dismissal preserves the outside target focus')
     }finally{outside.remove()}
 
     await recall('d','knowledge:48 | latest single match')
@@ -277,7 +277,7 @@ test('atlas can open a legacy marker without a time field and read its preview o
     assert.deepEqual(requests,[atlas+'?limit=500',atlas+'?limit=48',atlas+'?cursor=50&limit=1'])
     assert.equal(host.querySelector('.atlas-preview-full')?.textContent,'已读取的旧知识')
     assert.equal(host.querySelector('.atlas-preview-header h2')?.textContent,'Knowledge')
-    assert.equal(host.querySelector('.atlas-preview-header time'),null)
+    assert.ok(host.querySelector('.atlas-preview-header time') === null)
   }finally{
     await act(async()=>root.unmount())
     globalThis.fetch=originalFetch

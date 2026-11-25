@@ -8,7 +8,7 @@ import Spinner from '../Spinner'
 import VideoPreviewWindow from '../VideoPreviewWindow'
 import { DigitalPersonCameraControlContext, useDigitalPersonCameraControl } from './digitalPersonCameraControl'
 import './DigitalPersonCamera.css'
-import {useCameraPanelDrag} from './useCameraPanelDrag'
+import {cameraPanelEdges,useCameraPanelDrag} from './useCameraPanelDrag'
 import {matchedPersonIds,useFaceRecognition,type RecognizedFrame,type FaceWelcomeObserver} from '../face-recognition/useFaceRecognition'
 import {copyFrame,type FaceObservation} from '../face-recognition/runtime'
 import FaceOverlay from '../face-recognition/FaceOverlay'
@@ -35,10 +35,12 @@ function cameraPortraitScreen() {
 }
 
 /** Camera remains local; a frame is encoded and uploaded only when a message is sent. */
-export default function DigitalPersonCamera({ projectId, preferenceScope, autoStart = false, active = true, compact = false, floating = false, enabled = true, children, onPrepare, presentation='window', panelContent, enrollment = false, enrollmentTracking, onCaptureReady, onWelcomeFrame, onOpen }: {
-  presentation?:'window'|'panel';panelContent?:ReactNode;projectId?: string; preferenceScope?: string; autoStart?: boolean; active?: boolean; compact?: boolean; floating?: boolean; enabled?: boolean; children?: ReactNode
+export default function DigitalPersonCamera({ projectId, preferenceScope, autoStart = false, active = true, compact = false, floating = false, enabled = true, children, onPrepare, presentation='window', enrollment = false, enrollmentTracking, onCaptureReady, onWelcomeFrame, onOpen, onManualOpen, onManualClose }: {
+  presentation?:'window'|'panel';projectId?: string; preferenceScope?: string; autoStart?: boolean; active?: boolean; compact?: boolean; floating?: boolean; enabled?: boolean; children?: ReactNode
   onWelcomeFrame?: FaceWelcomeObserver
   onOpen?: () => void
+  onManualOpen?: () => void
+  onManualClose?: () => void
   onPrepare?: (prepare: PrepareCameraMessage | null) => void
   enrollment?: boolean
   enrollmentTracking?: {face:FaceObservation|null;progress:number|null}
@@ -168,6 +170,7 @@ export default function DigitalPersonCamera({ projectId, preferenceScope, autoSt
     return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', hide); stop() }
   }, [enabled, autoStart, active, start, stop, projectId, enrollment, preferenceScope])
   const close = () => {
+    if (phase === 'on') onManualClose?.()
     cameraRestored.current = true
     if (preferenceScope) writeHomePreference(preferenceScope,'camera',false)
     stop()
@@ -175,7 +178,10 @@ export default function DigitalPersonCamera({ projectId, preferenceScope, autoSt
   }
   const toggle = () => {
     cameraRestored.current = true
-    if (phase === 'off') void start(facing)
+    if (phase === 'off') {
+      onManualOpen?.()
+      void start(facing)
+    }
     else close()
   }
 
@@ -259,13 +265,16 @@ export default function DigitalPersonCamera({ projectId, preferenceScope, autoSt
     const update=()=>{
       const infoBox=info.getBoundingClientRect()
       const anchorBottom=infoBox.height?infoBox.bottom:main.getBoundingClientRect().top
-      home.style.setProperty('--home-camera-top',`${anchorBottom-home.getBoundingClientRect().top}px`)
+      const homeTop=home.getBoundingClientRect().top
+      home.style.setProperty('--home-camera-top',`${anchorBottom-homeTop}px`)
+      // The desktop footer owns the absolutely positioned preview.
+      home.style.setProperty('--home-camera-container-top',`${footer.getBoundingClientRect().top-homeTop}px`)
       home.style.setProperty('--home-footer-height',`${footer.getBoundingClientRect().height}px`)
     }
     const observer=new ResizeObserver(update)
     for(const element of [footer,info,main,home])observer.observe(element)
     update()
-    return()=>{observer.disconnect();home.style.removeProperty('--home-footer-height');home.style.removeProperty('--home-camera-top')}
+    return()=>{observer.disconnect();home.style.removeProperty('--home-footer-height');home.style.removeProperty('--home-camera-top');home.style.removeProperty('--home-camera-container-top')}
   },[presentation])
   const camera = <div ref={root} style={panelDrag.style} data-camera-moved={Boolean(panelDrag.style)} onPointerDown={panelDrag.onPointerDown} onKeyDown={panelDrag.onKeyDown} className={`digital-person-camera${compact || floating ? ' digital-person-camera--compact' : ''}${floating ? ' digital-person-camera--floating' : ''}${children ? ' digital-person-camera--menu' : ''}${presentation==='panel'?' digital-person-camera--panel':''}`} data-camera-phase={phase} hidden={presentation==='panel'&&phase==='off'&&!error}>
     {!children && <div className="digital-person-camera-actions">
@@ -274,7 +283,7 @@ export default function DigitalPersonCamera({ projectId, preferenceScope, autoSt
       {!compact && !floating && !enrollment && switchButton}
     </div>}
     {compact || floating ? <VideoPreviewWindow presentation={presentation} videoRef={video} overlay={overlay} status={status} actions={switchButton} error={error} getAnchor={getAnchor} label={t('digitalPerson.cameraPreview')} closeLabel={t('digitalPerson.closeCamera')} open={phase !== 'off' || Boolean(error)} onClose={close}/> : <div className="digital-person-camera-media">{preview}</div>}
-    {presentation==='panel'&&panelContent}
+    {presentation==='panel'&&phase==='on'&&cameraPanelEdges.map(edge=><div key={edge} data-camera-resize={edge} className={`camera-panel-resize camera-panel-resize--${edge}`} role="separator" tabIndex={0} aria-label={t(`taskDetail.resize.${edge}` as never)} title={t(`taskDetail.resize.${edge}` as never)}/>)}
   </div>
   if (!children) return camera
   return <DigitalPersonCameraControlContext.Provider value={enabled ? {

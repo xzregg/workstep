@@ -51,17 +51,17 @@ test('automatic entry keeps portal navigation and device tabs out of the first s
   throw Error(url)
  }
  render(<MemoryRouter><ProjectsPage autoEnter portalHeader={<PortalHeader hasAdminAccess/>}/></MemoryRouter>)
- assert.equal(screen.queryByRole('navigation',{name:'工作台导航'}),null)
- assert.equal(screen.queryByRole('tab'),null)
+ assert.ok(screen.queryByRole('navigation', { name: '工作台导航' }) === null)
+ assert.ok(screen.queryByRole('tab') === null)
  acceptSession(Response.json({user:{id:'u'}}))
  await screen.findByText(/正在进入 研发电脑/)
- assert.equal(screen.queryByRole('navigation',{name:'工作台导航'}),null)
- assert.equal(screen.queryByRole('tab'),null)
+ assert.ok(screen.queryByRole('navigation', { name: '工作台导航' }) === null)
+ assert.ok(screen.queryByRole('tab') === null)
  fireEvent.click(screen.getByRole('button',{name:'选择其他设备'}))
  assert.ok(screen.getByRole('navigation',{name:'工作台导航'}))
  assert.ok(screen.getByRole('tab',{name:/研发电脑/}))
  assert.equal(accessSignal?.aborted,true)
- assert.equal(screen.queryByText(/正在进入 研发电脑/),null)
+ assert.ok(screen.queryByText(/正在进入 研发电脑/) === null)
  assert.ok(screen.getByRole('button',{name:'重新连接设备'}))
  acceptAccess(Response.json({url:'https://gateway.test/workspace/d/',ticket:'ticket'}))
  // Flush the stale response, even when the transport ignores cancellation.
@@ -104,16 +104,16 @@ test('successful automatic entry submits the ticket without displaying the porta
  }
  render(<MemoryRouter><ProjectsPage autoEnter portalHeader={<PortalHeader hasAdminAccess/>}/></MemoryRouter>)
  await waitFor(()=>assert.equal(submitted,1))
- assert.equal(screen.queryByRole('navigation',{name:'工作台导航'}),null)
- assert.equal(screen.queryByRole('tab'),null)
+ assert.ok(screen.queryByRole('navigation', { name: '工作台导航' }) === null)
+ assert.ok(screen.queryByRole('tab') === null)
 })
 
 test('portal navigation consolidates devices and projects into My WorkStep',()=>{
  render(<MemoryRouter><PortalHeader hasAdminAccess/></MemoryRouter>)
  assert.equal(screen.getByRole('link',{name:'我的 WorkStep'}).getAttribute('href'),'/')
- assert.equal(screen.queryByRole('link',{name:'我的电脑'}),null)
- assert.equal(screen.queryByRole('link',{name:'我的项目'}),null)
- assert.equal(screen.queryByRole('link',{name:'用户组 Skills'}),null)
+ assert.ok(screen.queryByRole('link', { name: '我的电脑' }) === null)
+ assert.ok(screen.queryByRole('link', { name: '我的项目' }) === null)
+ assert.ok(screen.queryByRole('link', { name: '用户组 Skills' }) === null)
 })
 
 test('unbound workspace goes to the existing installation guide',async()=>{
@@ -134,7 +134,7 @@ test('unauthenticated workspace redirects to the single portal login page',async
  }
  render(<MemoryRouter><Routes><Route path="/" element={<ProjectsPage/>}/><Route path="/auth" element={<h2>登录工作台</h2>}/></Routes></MemoryRouter>)
  await screen.findByRole('heading',{name:'登录工作台'})
- assert.equal(screen.queryByRole('heading',{name:'我的 WorkStep'}),null)
+ assert.ok(screen.queryByRole('heading', { name: '我的 WorkStep' }) === null)
 })
 
 test('legacy initial-password flag does not block the authorized workspace',async()=>{
@@ -150,7 +150,7 @@ test('legacy initial-password flag does not block the authorized workspace',asyn
  await screen.findByRole('tab',{name:/已授权电脑/})
  assert.ok(calls.includes('/api/devices'))
  assert.ok(calls.includes('/api/projects'))
- assert.equal(screen.queryByRole('alert'),null)
+ assert.ok(screen.queryByRole('alert') === null)
 })
 
 test('device tabs show names and open the current workspace directly without iframe',async()=>{
@@ -167,7 +167,7 @@ test('device tabs show names and open the current workspace directly without ifr
  render(<MemoryRouter><ProjectsPage/></MemoryRouter>)
  await waitFor(()=>assert.equal(targets.length,1))
  assert.equal(targets[0],'')
- assert.equal(document.querySelector('iframe'),null)
+ assert.ok(document.querySelector('iframe') === null)
  assert.ok(screen.getByRole('tab',{name:/研发电脑/}))
  fireEvent.click(screen.getByRole('tab',{name:/测试服务器/}))
  await waitFor(()=>assert.equal(targets.length,2))
@@ -190,7 +190,7 @@ test('gateway device tabs and offline message preserve registered names includin
  assert.ok(screen.getByRole('heading',{name:'93a1f068d205 当前离线'}))
  fireEvent.click(screen.getByRole('tab',{name:/钊荣的电脑/}))
  assert.ok(screen.getByRole('heading',{name:'钊荣的电脑 当前离线'}))
- assert.equal(screen.queryByText(/WorkStep 实例/),null)
+ assert.ok(screen.queryByText(/WorkStep 实例/) === null)
 })
 
 test('returning to devices waits for explicit entry instead of reopening the device',async()=>{
@@ -264,7 +264,7 @@ test('failed direct workspace access stays retryable and revoked access stops re
  fireEvent.click(screen.getByRole('button',{name:'立即重试'}))
  await screen.findByRole('alert')
  assert.equal(attempts,2)
- assert.equal(document.querySelector('iframe'),null)
+ assert.ok(document.querySelector('iframe') === null)
 })
 
 test('transient gateway restart automatically reissues the current device ticket',{timeout:12000},async()=>{

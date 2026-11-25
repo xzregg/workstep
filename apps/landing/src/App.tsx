@@ -21,6 +21,7 @@ import { GuidedWalkthrough } from './components/GuidedWalkthrough'
 import { FlowBackdrop } from './components/FlowBackdrop'
 import { GettingStarted } from './components/GettingStarted'
 import { ProductIntro } from './components/ProductIntro'
+import { HomepageFaq } from './components/HomepageFaq'
 
 function scrollToDemos() {
   document.getElementById('mechanisms')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
@@ -57,6 +58,7 @@ export default function App() {
         <EnginesStrip />
         <div className="container recorded-section"><GuidedWalkthrough /></div>
         <GettingStarted />
+        <HomepageFaq />
       </main>}
       {!embedded && <Footer />}
       {openDemo && <DemoModal demo={openDemo} onClose={() => setOpenDemo(null)} />}

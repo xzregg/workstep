@@ -351,7 +351,7 @@ test('local wake listening uses keyword detection and hands over without transcr
   await act(async()=>sound!.dispatchEvent(new window.Event('ended')))
   assert.equal(hits,1)
   assert.deepEqual(greetingStates,[true,false])
-  assert.equal(host.querySelector('[role=switch]'),null)
+  assert.ok(host.querySelector('[role=switch]') === null)
   const previousSound=sound
   const nativeCalls:{type:string;id:string;text?:string}[]=[]
   const bridge:NonNullable<Window['WorkStepSpeech']>={onmessage:null,

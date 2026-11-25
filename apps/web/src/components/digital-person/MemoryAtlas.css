@@ -167,9 +167,10 @@
 @media (min-width:1024px){
   .digital-home.digital-home--atlas{
     isolation:isolate;
+    --home-canvas:#090913;
     --home-ink:#f4effa;--home-muted:#c3b9d2;--home-accent:#bea0e1;
     --home-activity-highlight:#bea0e12b;
-    background:radial-gradient(ellipse at 51% 32%,#241d34 0%,#110f20 40%,#090913 80%);
+    background:radial-gradient(ellipse at 51% 32%,#241d34 0%,#110f20 40%,var(--home-canvas) 80%);
   }
   .atlas-backdrop{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:-1}
   .digital-home--atlas .memory-atlas{background:transparent}

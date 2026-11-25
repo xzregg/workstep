@@ -44,7 +44,7 @@ for (const exit of ['close', 'escape', 'backdrop', 'section']) {
       await attemptExit()
       await act(async () => dialog().querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
       if (exit === 'section') {
-        assert.equal(container.querySelector('.bot-settings-form'), null)
+        assert.ok(container.querySelector('.bot-settings-form') === null)
         assert.equal(closed, 0)
         await act(async () => [...container.querySelectorAll<HTMLButtonElement>('.settings-nav-button')].find(button => button.textContent === '渠道机器人')!.click())
         await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '添加机器人')!.click())

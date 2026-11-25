@@ -82,7 +82,7 @@ test('status view groups real task states, retains card details, updates live an
     assert.ok(container.querySelector('[data-s="tool_approval"]'))
     assert.match(lanes()[3].textContent!, /引擎调用失败/)
     assert.ok(lanes()[1].querySelector('.task-status-spinner'))
-    assert.equal(lanes()[2].querySelector('.task-status-spinner'), null)
+    assert.ok(lanes()[2].querySelector('.task-status-spinner') === null)
     assert.ok(lanes().every(lane => !lane.querySelector('.task-board-lane-add')))
     assert.ok([...container.querySelectorAll('.desktop-task-board .task-board-card')].every(card => card.getAttribute('draggable') === 'false'))
     assert.equal(fetches, 1, 'changing view does not fetch tasks again')

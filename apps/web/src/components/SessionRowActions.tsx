@@ -5,7 +5,7 @@ import { formatConversationDateTime, formatRelativeTime } from '../utils/datetim
 import Button from './Button'
 import Icon from './Icon'
 
-type Session = Pick<ChatSessionSummary, 'id' | 'title' | 'created_at' | 'updated_at'>
+type Session = Pick<ChatSessionSummary, 'id' | 'title' | 'created_at' | 'updated_at' | 'lifecycle_protected'>
 
 export default function SessionRowActions({ session, hovered, now, onArchive, onMore, showMore = false, archiveLabel }: {
   session: Session
@@ -31,7 +31,7 @@ export default function SessionRowActions({ session, hovered, now, onArchive, on
   }, [revealed])
 
   return <div ref={root} className="ws-session-row-actions" data-show-more={showMore || undefined} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, height: 24 }}>
-    {(hovered || revealed) && <Button
+    {!session.lifecycle_protected && (hovered || revealed) && <Button
       variant="icon"
       className="ws-more-btn"
       onPointerDown={event => event.stopPropagation()}

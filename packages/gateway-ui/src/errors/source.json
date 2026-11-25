@@ -1,4 +1,13 @@
 [
+  ["identitySetupPaused", "Identity setup is paused. Resume it explicitly before continuing.", "身份引导已暂停，请明确继续后再修改。"],
+  ["identitySetupAnswerMode", "Provide identity answers or one field, not both.", "请批量提交身份信息或修改单个字段，不要混用。"],
+  ["identitySetupChanged", "Identity setup changed. Read its current status before continuing.", "身份设定进度已变化，请先读取当前进度再继续。"],
+  ["identitySetupConflict", "Identity changed in settings. Explicitly reset setup to continue.", "身份已在设置中修改，请明确重置引导后继续。"],
+  ["identitySetupOrder", "Answer the current identity setup step first.", "请先回答当前的身份设定问题。"],
+  ["identitySetupRequired", "A name is required; optional answers can be skipped without a value.", "名称为必填项；跳过非必填项时无须提供内容。"],
+  ["identitySetupEmpty", "Identity answer must not be empty.", "身份设定的回答不能为空。"],
+  ["identitySetupReview", "Finish identity questions and review the summary before confirming.", "请先完成身份问题并查看汇总，再确认保存。"],
+  ["identitySetupSave", "Unable to save identity setup. Please retry.", "无法保存身份设定，请重试。"],
   ["providerNotFound", "Provider not found", "供应商不存在"],
   ["providerNotFoundWithId", "Provider not found: {p0}", "供应商不存在：{p0}"],
   ["providerDisabled", "Selected provider is disabled", "所选供应商已停用"],

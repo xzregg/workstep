@@ -22,6 +22,29 @@ function QuotaHarness({ engine, running, projectId = 'project-1' }: {
   </div>
 }
 
+test('unsupported engines hide quota even if the response contains stale data', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originalQuota = engineApi.quota
+  engineApi.quota = async () => ({
+    engine_id: 'custom', supported: false, status: 'unsupported',
+    quota: { engine_id: 'custom', primary: { used_percent: 20, remaining_percent: 80 } },
+  })
+  try {
+    await act(async () => root.render(<QuotaHarness engine="custom" running={false} />))
+    assert.ok(
+      container.querySelector('.chat-input-quota') === null,
+      'unsupported engines must hide the quota indicator',
+    )
+    assert.equal(container.querySelector('[data-quota]')?.textContent, '')
+  } finally {
+    engineApi.quota = originalQuota
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('quota ignores stale engine results and refreshes after a run', async () => {
   const { window } = installDomEnvironment()
   const container = window.document.body.appendChild(window.document.createElement('div'))
@@ -49,12 +72,12 @@ test('quota ignores stale engine results and refreshes after a run', async () =>
     await act(async () => requests[2].resolve({ quota: { engine_id: 'engine-b' } } as never))
 
     await act(async () => root.render(<QuotaHarness engine="engine-b" projectId="project-2" running />))
-    assert.equal(container.querySelector('[data-refreshing]')?.textContent, 'true')
+    assert.equal(container.querySelector('[data-refreshing]')?.textContent, 'false')
+    assert.equal(requests.length, 3)
     await act(async () => root.render(<QuotaHarness engine="engine-b" projectId="project-2" running={false} />))
-    assert.equal(requests.length, 5)
+    assert.equal(requests.length, 4)
     await act(async () => requests[3].resolve({ quota: { engine_id: 'engine-b' } } as never))
-    assert.equal(container.querySelector('[data-refreshing]')?.textContent, 'true')
-    await act(async () => requests[4].resolve({ quota: { engine_id: 'engine-b' } } as never))
+    assert.equal(container.querySelector('[data-refreshing]')?.textContent, 'false')
   } finally {
     engineApi.quota = originalQuota
     await act(async () => root.unmount())

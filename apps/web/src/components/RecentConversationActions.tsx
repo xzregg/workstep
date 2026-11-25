@@ -16,7 +16,7 @@ import Icon from './Icon'
 /** The recent list uses the same conversation controls and mutation paths as the project list. */
 export default function RecentConversationActions({ entry, session, hovered, now }: {
   entry: RecentVisit
-  session: Pick<ChatSessionSummary, 'id' | 'title' | 'created_at' | 'updated_at'>
+  session: Pick<ChatSessionSummary, 'id' | 'title' | 'created_at' | 'updated_at' | 'lifecycle_protected'>
   hovered: boolean
   now: number
 }) {
@@ -58,9 +58,9 @@ export default function RecentConversationActions({ entry, session, hovered, now
       }} />}
     {createPortal(<>
       {menu && <SidebarActionMenu ref={menuRef} x={menu.x} y={menu.y}>
-        <SidebarActionItem icon="archive" onClick={() => { void archive() }}>{t('chatSession.archive')}</SidebarActionItem>
+        {!session.lifecycle_protected && <SidebarActionItem icon="archive" onClick={() => { void archive() }}>{t('chatSession.archive')}</SidebarActionItem>}
         <SidebarActionItem icon="pencil" onClick={() => { setMenu(null); setMode('rename') }}>{t('common.rename')}</SidebarActionItem>
-        <SidebarActionItem icon="trash" danger onClick={() => { setMenu(null); setMode('delete') }}>{t('common.delete')}</SidebarActionItem>
+        {!session.lifecycle_protected && <SidebarActionItem icon="trash" danger onClick={() => { setMenu(null); setMode('delete') }}>{t('common.delete')}</SidebarActionItem>}
       </SidebarActionMenu>}
       {mode === 'rename' && <ChatSessionRenameDialog projectId={entry.projectId} sessionId={entry.id} title={session.title}
         onClose={() => setMode(null)} onRenamed={() => {

@@ -39,11 +39,11 @@ test('delegation opens its execution conversation in a dialog without changing t
   assert.match(host.textContent!,/项目已移除的委派/)
   entry.focus();await act(async()=>entry.click())
   for(let i=0;i<200&&!document.querySelector('.digital-person-delegation-content textarea');i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,25))})
-  const dialog=document.querySelector<HTMLElement>('.digital-person-delegation-dialog')!
+  const dialog=document.querySelector<HTMLElement>('.digital-person-inline-conversation .digital-person-conversation-frame')!
   assert.ok(dialog);assert.match(dialog.textContent!,/这是对应委派的真实对话/);assert.ok(dialog.querySelector('textarea'))
   assert.equal(dialog.querySelector('header h2')?.textContent,'核对执行结果')
   assert.equal(dialog.querySelector('.digital-person-delegation-project')?.textContent,'执行项目')
-  assert.equal(dialog.querySelector('.assistant-chat-header'),null,'the dialog supplies the only conversation header')
+  assert.ok(dialog.querySelector('.assistant-chat-header') === null, 'the dialog supplies the only conversation header')
   assert.equal(route,'/digital-person');assert.equal(useProjectStore.getState().activeProject?.id,'home');assert.equal(inspected,1)
   assert.ok(requests.some(url=>url.includes('/chat-sessions/execution?')&&url.includes('project_id=target')))
   assert.equal(dialog.querySelectorAll('.resizable-panel-handle').length,8)
@@ -53,12 +53,12 @@ test('delegation opens its execution conversation in a dialog without changing t
   assert.deepEqual(receipts,[{message_id:'result'}]);assert.match(entry.textContent!,/已完成已查看/,'the displayed result updates the list before the server responds')
   await act(async()=>finishReceipt())
   await act(async()=>document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
-  assert.equal(document.querySelector('.digital-person-delegation-dialog'),null);assert.equal(document.activeElement,entry)
+  assert.ok(document.querySelector('.digital-person-inline-conversation .digital-person-conversation-frame') === null);assert.ok(document.activeElement === entry)
   await act(async()=>host.querySelectorAll<HTMLButtonElement>('.digital-home-work-summary')[1].click())
   assert.match(document.querySelector('[role="alert"]')!.textContent!,/该项目尚未加载/)
   assert.equal(requests.some(url=>url.includes('unknown')),false)
   await act(async()=>document.querySelector<HTMLButtonElement>('.digital-person-delegation-close')!.click())
-  assert.equal(document.querySelector('.digital-person-delegation-dialog'),null)
+  assert.ok(document.querySelector('.digital-person-inline-conversation .digital-person-conversation-frame') === null)
  }finally{await act(async()=>root.unmount());digitalRuntimeApi.records=original;globalThis.fetch=originalFetch;await window.happyDOM.close()}
 })
 test('home records coalesce refreshes and do not poll hidden or inactive views',async()=>{
@@ -98,13 +98,13 @@ test('corner actions open their own information panel instead of settings',async
   const switches=document.querySelector('[role="dialog"]')!.querySelectorAll<HTMLButtonElement>('[role="switch"]')
   assert.equal(switches.length,1)
   assert.equal(switches[0].getAttribute('aria-label'),'语音唤醒')
-  assert.equal(document.querySelector('[role="dialog"] input'),null)
+  assert.ok(document.querySelector('[role="dialog"] input') === null)
   await act(async()=>switches[0].click())
   assert.equal(switches[0].getAttribute('aria-checked'),'true')
   assert.equal(localStorage.getItem('workstep.digital-person.wake-enabled'),'true')
-  await act(async()=>document.querySelector<HTMLButtonElement>('.digital-home-detail-close')!.click());assert.equal(document.activeElement,identity)
+  await act(async()=>document.querySelector<HTMLButtonElement>('.digital-home-detail-close')!.click());assert.ok(document.activeElement === identity)
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-affinity')!.click());assert.match(document.querySelector('[role="dialog"]')!.textContent!,/68/)
-  assert.equal(document.querySelector('[role="dialog"] [role="switch"]'),null)
+  assert.ok(document.querySelector('[role="dialog"] [role="switch"]') === null)
   await act(async()=>document.querySelector<HTMLButtonElement>('.digital-home-detail-close')!.click())
   const reflection=host.querySelector<HTMLButtonElement>('[aria-label="主动思考"]')!
   reflection.focus()
@@ -113,7 +113,7 @@ test('corner actions open their own information panel instead of settings',async
   assert.match(history.textContent!,/今天的思考记录/)
   assert.ok(history.querySelector('footer .digital-home-detail-pages'))
   await act(async()=>history.querySelector<HTMLButtonElement>('.digital-home-detail-close')!.click())
-  assert.equal(document.activeElement,reflection)
+  assert.ok(document.activeElement === reflection)
   assert.equal(settings,0)
  }finally{await act(async()=>root.unmount());useLocaleStore.setState({locale:originalLocale});digitalRuntimeApi.records=original;await window.happyDOM.close()}
 })
@@ -127,7 +127,7 @@ test('activity shows only the delegation timeline, ordered by local date and tim
  digitalRuntimeApi.records=async()=>({checking:false,run_total:1,delegation_total:5,runs:[{id:'r1',summary:'复盘今日安排',status:'silent',created_at:'2026-11-17T01:00:00Z'}],delegations:[
   record('old','核对旧任务','completed','2026-11-16T20:01:00',true),
   record('next','整理工作安排','running','2026-11-17T19:44:00'),
-  record('legacy','历史委派','completed'),
+  {...record('legacy','历史委派','completed'),archived:true},
   record('done','检查构建结果','completed','2026-11-17T17:26:00',false),
   record('failed','修复识别问题','failed','2026-11-17T10:05:00',true),
  ]})
@@ -145,6 +145,9 @@ test('activity shows only the delegation timeline, ordered by local date and tim
   assert.match(rows[1].textContent!,/已完成.*未查看/)
   assert.match(rows[2].textContent!,/失败.*已查看/)
   assert.match(days[2].parentElement!.textContent!,/日期未知/)
+  assert.match(rows[4].textContent!,/已归档/)
+  assert.equal(rows[4].dataset.status,'archived')
+  assert.equal(rows[4].disabled,false)
  }finally{await act(async()=>root.unmount());useLocaleStore.setState({locale:originalLocale});digitalRuntimeApi.records=original;await window.happyDOM.close()}
 })
 
@@ -161,9 +164,8 @@ test('delegation paging coalesces requests and keeps loaded history after refres
   const tasks=host.querySelector<HTMLElement>('[data-activity-scroll="delegations"]')!
   assert.deepEqual(calls,[[0,0]])
   assert.equal(tasks.querySelectorAll('.digital-home-work-summary').length,5)
-  const next=tasks.querySelector<HTMLButtonElement>('.digital-home-work-next')!
-  assert.match(next.textContent!,/加载更早的任务/)
-  await act(async()=>{next.click();tasks.dispatchEvent(new window.Event('scroll'))})
+  assert.ok(tasks.querySelector('.digital-home-work-next') === null, 'desktop paging has no load-older button')
+  await act(async()=>{tasks.dispatchEvent(new window.Event('scroll'));tasks.dispatchEvent(new window.Event('scroll'))})
   assert.deepEqual(calls,[[0,0],[0,5]])
   await act(async()=>resolve!(page(5)))
   assert.equal(tasks.querySelectorAll('.digital-home-work-summary').length,10)
@@ -190,38 +192,39 @@ test('mobile activity drawer reuses records and paging, closes on Escape, backdr
  try{
   await act(async()=>render())
   const entry=host.querySelector<HTMLButtonElement>('.digital-home-activity-entry')!
-  assert.ok(entry);assert.equal(entry.textContent,'动态');assert.equal(document.querySelector('.digital-home-activity-dialog'),null)
+  assert.ok(entry);assert.equal(entry.textContent,'动态');assert.ok(document.querySelector('.digital-home-activity-dialog') === null)
   entry.focus();await act(async()=>entry.click())
-  const dialog=document.querySelector<HTMLElement>('.digital-home-activity-dialog')!
+  let dialog=document.querySelector<HTMLElement>('.digital-home-activity-dialog')!
   assert.ok(dialog);assert.equal(dialog.getAttribute('aria-modal'),'true');assert.equal(dialog.getAttribute('aria-label'),'动态');assert.equal(dialog.querySelector('h2')!.textContent,'动态');assert.equal(inspected,1)
   assert.doesNotMatch(dialog.textContent!,/主动思考|真实思考0/);assert.match(dialog.textContent!,/真实委派0/);assert.equal(dialog.querySelectorAll('.digital-home-work-viewed[data-viewed="false"]').length,5);assert.doesNotMatch(dialog.textContent!,/已通知/)
   assert.deepEqual(calls,[[0,0]],'opening uses existing records without another request')
   const task=dialog.querySelector<HTMLButtonElement>('.digital-home-work-summary')!
   task.focus();await act(async()=>task.click())
-  assert.ok(document.querySelector('.digital-person-delegation-dialog'))
+  assert.ok(document.querySelector('.digital-person-inline-conversation .digital-person-conversation-frame'))
+  assert.equal(document.querySelector<HTMLElement>('.digital-home-activity-backdrop')?.hidden,true)
   await act(async()=>{window.history.back();await new Promise(resolve=>setTimeout(resolve,20))})
-  assert.equal(document.querySelector('.digital-person-delegation-dialog'),null)
-  assert.equal(document.querySelector('.digital-home-activity-dialog'),dialog,'Back closes only the execution dialog')
-  assert.equal(document.activeElement,task)
+  assert.ok(document.querySelector('.digital-person-inline-conversation .digital-person-conversation-frame') === null)
+  assert.ok(document.querySelector('.digital-home-activity-dialog') === dialog, 'Back returns to the same list')
+  assert.ok(document.activeElement === task)
   assert.equal(document.body.style.overflow,'hidden');assert.ok(dialog.contains(document.activeElement))
   dialog.querySelector<HTMLButtonElement>('.digital-home-activity-close')!.focus()
   await act(async()=>document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true})))
-  assert.equal(document.activeElement,dialog.querySelector('.digital-home-work-next'))
+  assert.ok(document.activeElement === dialog.querySelector('.digital-home-work-next'))
   await act(async()=>document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Tab',bubbles:true})))
-  assert.equal(document.activeElement,dialog.querySelector('.digital-home-activity-close'))
+  assert.ok(document.activeElement === dialog.querySelector('.digital-home-activity-close'))
   await act(async()=>dialog.querySelector('[data-activity-scroll="delegations"]')!.dispatchEvent(new window.Event('scroll')))
   assert.deepEqual(calls,[[0,0],[0,5]])
   await act(async()=>{document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await new Promise(resolve=>setTimeout(resolve,20))})
-  assert.equal(document.querySelector('.digital-home-activity-dialog'),null);assert.equal(document.activeElement,entry);assert.equal(document.body.style.overflow,'')
+  assert.ok(document.querySelector('.digital-home-activity-dialog') === null);assert.ok(document.activeElement === entry);assert.equal(document.body.style.overflow,'')
   await act(async()=>entry.click());await act(async()=>{document.querySelector<HTMLDivElement>('.digital-home-activity-backdrop')!.click();await new Promise(resolve=>setTimeout(resolve,20))})
-  assert.equal(document.querySelector('.digital-home-activity-dialog'),null)
+  assert.ok(document.querySelector('.digital-home-activity-dialog') === null)
   await act(async()=>entry.click());await act(async()=>{window.history.back();await new Promise(resolve=>setTimeout(resolve,20))})
-  assert.equal(document.querySelector('.digital-home-activity-dialog'),null)
+  assert.ok(document.querySelector('.digital-home-activity-dialog') === null)
   await act(async()=>entry.click());await act(async()=>document.querySelector<HTMLButtonElement>('.digital-home-activity-close')!.click())
   assert.equal(entry.getAttribute('aria-expanded'),'false')
   await act(async()=>entry.click());await act(async()=>render(true))
-  assert.equal(document.querySelector('.digital-home-activity-dialog'),null)
-  assert.equal(host.querySelector('.digital-home-activity-entry'),null)
+  assert.ok(document.querySelector('.digital-home-activity-dialog') === null)
+  assert.ok(host.querySelector('.digital-home-activity-entry') === null)
   await act(async()=>render())
   assert.equal(host.querySelector('.digital-home-activity-entry')?.getAttribute('aria-expanded'),'false')
  }finally{await act(async()=>root.unmount());digitalRuntimeApi.records=original;await window.happyDOM.close()}

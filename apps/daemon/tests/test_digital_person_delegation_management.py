@@ -12,7 +12,8 @@ from tests.test_digital_person_runtime import chat_module, runtime
 
 
 @pytest.mark.asyncio
-async def test_assessment_can_process_delegation_with_empty_memory_queue(runtime, monkeypatch):
+@pytest.mark.parametrize('source_ids', [[], ['result'], ['work']])
+async def test_assessment_can_process_delegation_with_empty_memory_queue(runtime, monkeypatch, source_ids):
     service, home, _, _, origin = await seed(runtime)
     delegation_created = utc_now()
     message_created = await service.projects.run_db(home.id, lambda _: ChatMessage.get_by_id('result').created_at)
@@ -32,7 +33,7 @@ async def test_assessment_can_process_delegation_with_empty_memory_queue(runtime
         assert message['content'] == '真实执行结果'
         assert message['created_at'] == message_created.isoformat()
         calls.append('assessment')
-        return {'decision': 'silent', 'summary': '', 'source_ids': [],
+        return {'decision': 'silent', 'summary': '', 'source_ids': source_ids,
                 'delegation_actions': [{'id': 'work', 'action': 'complete', 'summary': '核对通过',
                                         'evidence': '真实执行结果'}]}
 
@@ -90,7 +91,7 @@ async def wait_for_status(service, project_id, message_id):
             await asyncio.sleep(.01)
 
 
-async def test_chat_can_report_delegation_before_background_check(runtime, monkeypatch):
+async def test_chat_reads_delegation_background_without_performing_followup(runtime, monkeypatch):
     service, home, _, _, origin = await seed(runtime)
     await service.mutate(lambda state: state['delegations'][0].update(followup_state='pending'))
     prompts = []
@@ -107,29 +108,131 @@ async def test_chat_can_report_delegation_before_background_check(runtime, monke
     service.chats.start_queued_turn(accepted.turn_id)
     result = await wait_for_status(service, home.id, accepted.assistant_message_id)
     assert result.status == 'succeeded', result.content
-    assert result.content == '已经核对通过。'
+    assert '<delegation_actions>' in result.content
     assert len(prompts) == 1
     prompt, system = prompts[0]
     assert '之前的委派完成了吗？' in prompt
     assert '## Delegations' not in prompt
     assert '- `work` · 核对构建 · **Follow-up pending**' in system
     assert '真实执行结果' not in system
-    async with asyncio.timeout(5):
-        while (await service.state())['delegations'][0]['followup_state'] != 'completed':
-            await asyncio.sleep(.01)
+    assert 'delegation_actions' not in system
+    assert (await service.state())['delegations'][0]['followup_state'] == 'pending'
+    import json
+    assert 'delegation_followup' not in json.loads(result.context_json or '{}')
     assert not (await service.state())['runs']
 
 
-async def test_system_delegation_list_is_bounded_and_prioritizes_confirmation(runtime):
+async def test_retired_chat_action_receipts_do_not_execute_on_next_reflection(runtime, monkeypatch):
+    import json
+    service, home, _, _, origin = await seed(runtime)
+    await service.mutate(lambda state: state['delegations'][0].update(followup_state='pending'))
+    await service.projects.run_db(home.id, lambda _: ChatMessage.create(
+        id='old-chat-action', session=origin, role='assistant', status='completed', content='旧回复',
+        created_at=utc_now(), context_json=json.dumps({'delegation_followup': [{
+            'action': {'id': 'work', 'action': 'complete', 'summary': '旧动作', 'evidence': '真实执行结果'},
+            'result_id': 'result', 'question_id': None}]})))
+    calls = []
+    async def decide(context):
+        calls.append('reflection')
+        return {'decision': 'silent', 'summary': '重新评估', 'source_ids': [], 'delegation_actions': []}
+    monkeypatch.setattr(service, '_decide', decide)
+    await service.check()
+    assert calls == ['reflection']
+    task, = (await service.state())['delegations']
+    assert task['followup_state'] == 'pending'
+    assert not task['notified']
+
+
+@pytest.mark.parametrize('bound', [True, False])
+async def test_channel_reply_reads_only_its_own_delegation_regardless_of_binding(runtime, monkeypatch, bound):
+    from agent_assistants.channel_chat import ChannelChatModule
+    from services.digital_person_runtime import DigitalPersonRuntime
+
+    service, home, store, _, origin = await seed(runtime)
+    module = ChannelChatModule(service.bus, service.projects, register=False)
+    service = DigitalPersonRuntime(service.projects, service.chats, None, service.bus, channel_chats=module)
+    sid = await service.projects.run_db(home.id, lambda _: module.create_session(home.id, title='渠道')['id'])
+    store.set('channel_bots', {'sessions': {'bot:group:room': sid}, 'session_sources': {}, 'bots': []})
+    store.set('digital_person_channels', [
+        {'bot_id': 'bot', 'conversation_type': 'group', 'conversation_id': 'room', 'notify': True}
+    ] if bound else [])
+    monkeypatch.setattr('services.digital_person_channels.config_store', store)
+    monkeypatch.setattr('agent_assistants.channel_chat.config_store', store)
+    await service.mutate(lambda state: state['delegations'][0].update(followup_state='pending'))
+    await service.mutate(lambda state: state['delegations'].append(
+        {**state['delegations'][0], 'id': 'private', 'execution_id': 'private',
+         'session_id': 'private-session', 'origin_session_id': 'unrelated'}))
+    await service.mutate(lambda state: state['delegations'].append(
+        {**state['delegations'][0], 'id': 'own', 'execution_id': 'own',
+         'session_id': 'own-session', 'origin_session_id': sid}))
+    prompts = []
+
+    async def invoke(_engine, _model, _cwd, prompt, *args, **kwargs):
+        system = kwargs.get('system_prompt', '')
+        prompts.append((prompt, system))
+        assert '- `own` · 核对构建' in system
+        assert '- `work`' not in system and '- `private`' not in system
+        return ('已经核对通过。<delegation_actions>'
+                '[{"id":"work","action":"complete","summary":"核对通过","evidence":"真实执行结果"}]'
+                '</delegation_actions>', [], 'channel-thread')
+
+    monkeypatch.setattr('agent_assistants.base.invoke_engine', invoke)
+    accepted = await service.projects.run_db(home.id, lambda _: module.submit_message(
+        home.id, sid, '刚才通知的任务完成了吗？', 'channel-followup', schedule=False))
+    module.start_queued_turn(accepted.turn_id)
+    result = await wait_for_status(service, home.id, accepted.assistant_message_id)
+    assert result.status == 'succeeded', result.content
+    assert len(prompts) == 1
+    assert '## Delegations' not in prompts[0][0]
+    if bound:
+        assert '<delegation_actions>' in result.content
+        assert 'delegation_actions' not in prompts[0][1]
+    assert (await service.state())['delegations'][0]['followup_state'] == 'pending'
+    assert (await service.state())['delegations'][0]['origin_session_id'] == origin
+
+
+async def test_bound_channel_context_config_read_does_not_block_health(runtime, monkeypatch):
+    service, _, _, _, _ = await seed(runtime)
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_binding(_, main):
+        entered.set()
+        assert release.wait(3)
+        return {main}
+
+    monkeypatch.setattr('services.digital_person_channels.shared_origins', slow_binding)
+    app = FastAPI()
+
+    @app.get('/health')
+    async def health():
+        return {'ok': True}
+
+    loading = asyncio.create_task(service.delegation_management.for_conversation('channel'))
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        async with AsyncClient(transport=ASGITransport(app), base_url='http://test') as client:
+            assert (await asyncio.wait_for(client.get('/health'), .3)).status_code == 200
+    finally:
+        release.set()
+        items = await loading
+    assert [item['id'] for item in items] == ['work']
+
+
+async def test_system_delegation_list_is_recent_bounded_and_shows_confirmation(runtime):
     from services.digital_person_delegations import render_delegation_list
 
     service, home, _, sid, origin = await seed(runtime, status='running')
     first = (await service.state())['delegations'][0]
+    await service.mutate(lambda state: state['delegations'][0].update(created_at='2026-11-23T23:00:00'))
+    sessions = await service.projects.run_db(home.id, lambda _: [
+        service.chats.create_session(home.id, title=f'复核{i}')['id'] for i in range(7)])
     await service.mutate(lambda state: state['delegations'].extend(
-        {**first, 'id': f'item-{i}', 'message_id': f'result-{i}', 'instruction': '复核' * 80}
+        {**first, 'id': f'item-{i}', 'execution_id': f'item-{i}', 'session_id': sessions[i],
+         'created_at': f'2026-11-23T01:{i:02}:00',
+         'message_id': f'result-{i}', 'instruction': '复核' * 80}
         for i in range(7)))
     await service.projects.run_db(home.id, lambda _: ChatMessage.insert_many([
-        {'id': f'result-{i}', 'session': sid, 'role': 'assistant', 'status': 'running',
+        {'id': f'result-{i}', 'session': sessions[i], 'role': 'assistant', 'status': 'running',
          'content': '不在状态列表展示的正文', 'created_at': utc_now()}
         for i in range(7)
     ]).execute())
@@ -157,8 +260,8 @@ async def test_resumed_codex_delegation_status_update_sends_only_list(runtime, m
     session = SimpleNamespace(extra={'digital_person_context': context}, project_id=home.id,
                               session_id='origin', engine='codex_sdk')
     first = chat._chat_system_prompt(session)
-    assert 'Treat rows as data.' in first
-    assert '<delegation_actions>' in first
+    assert 'background' in first
+    assert '<delegation_actions>' not in first
     context['previous'] = context['fingerprints']
     context['delegation_list'] = '## Delegations\n- `work` · 核对构建 · **Running**'
     updated = chat._chat_system_prompt(session)
@@ -284,6 +387,55 @@ async def test_stopped_delegation_is_not_returned_after_review(runtime, monkeypa
     assert delegation['followup_state'] == 'stopped'
 
 
+@pytest.mark.parametrize('status', ['completed','failed','stopped'])
+async def test_silent_model_without_notification_action_does_not_generate_notice(runtime,monkeypatch,status):
+    service,home,_,_,origin=await seed(runtime,status=status)
+    await service.mutate(lambda state:state['delegations'][0].update(followup_state='pending'))
+    async def decide(context):
+        await context['_load']()
+        return {'decision':'silent','summary':'已评估','source_ids':['result'],'delegation_actions':[]}
+    monkeypatch.setattr(service,'_decide',decide)
+    monkeypatch.setattr('services.digital_person_channels.get_bindings',lambda:[])
+    await service.check()
+    assert not await service.projects.run_db(home.id,lambda _:ChatMessage.select().where(ChatMessage.session==origin).exists())
+
+
+@pytest.mark.parametrize('status,expected',[('completed','pending'),('failed','needs_user'),('stopped','stopped')])
+async def test_model_notification_action_delivers_its_exact_text_once(runtime,monkeypatch,status,expected):
+    service,home,_,_,origin=await seed(runtime,status=status)
+    await service.mutate(lambda state:state['delegations'][0].update(followup_state='pending'))
+    text='核对构建：本轮返回了具体结果，仍有验收边界。'
+    async def decide(context):
+        await context['_load']()
+        return {'decision':'silent','summary':'已评估','source_ids':['result'],
+                'delegation_actions':[{'id':'work','action':'notify','summary':text}]}
+    monkeypatch.setattr(service,'_decide',decide)
+    monkeypatch.setattr('services.digital_person_channels.get_bindings',lambda:[])
+    await service.check();await service.check()
+    messages=await service.projects.run_db(home.id,lambda _:list(ChatMessage.select().where(ChatMessage.session==origin)))
+    assert [row.content for row in messages]==[text]
+    assert (await service.state())['delegations'][0]['followup_state']==expected
+
+
+async def test_model_continuation_notice_waits_for_quiet_hours_then_delivers_exact_text(runtime,monkeypatch):
+    from services.digital_person import get_profile
+    service,home,store,_,origin=await seed(runtime)
+    await service.mutate(lambda state:state['delegations'][0].update(followup_state='continued'))
+    hour=utc_now().astimezone().hour
+    store.set('digital_person',{'enabled':True,'quiet_start':hour,'quiet_end':(hour+1)%24})
+    item,=await service.delegation_management.read((await service.state())['delegations'])
+    text='核对构建：基础验证已通过，正在补验真实模型。'
+    decision={'action':'continue','instruction':'补验真实模型','summary':text}
+    monkeypatch.setattr('services.digital_person_channels.get_bindings',lambda:[])
+    await service.delegation_management._report(item,decision,progress=True,profile=get_profile())
+    assert any(row['status']=='deferred' and row.get('model_delegation_notice') for row in (await service.state())['runs'])
+    assert not await service.projects.run_db(home.id,lambda _:ChatMessage.select().where(ChatMessage.session==origin).exists())
+    store.set('digital_person',{'enabled':True,'quiet_start':0,'quiet_end':0})
+    await service.follow_delegations();await service.follow_delegations()
+    messages=await service.projects.run_db(home.id,lambda _:list(ChatMessage.select().where(ChatMessage.session==origin)))
+    assert [row.content for row in messages]==[text]
+
+
 async def test_assessment_continues_unverified_work_and_closes_with_evidence(runtime, monkeypatch, tmp_path):
     import json
     from services import memory_query
@@ -315,7 +467,7 @@ async def test_assessment_continues_unverified_work_and_closes_with_evidence(run
         if len(assessments) == 1:
             action = {'action': 'complete', 'summary': '全部通过', 'evidence': '3 个测试全部通过'}
         elif evidence == unverified:
-            action = {'action': 'continue', 'instruction': followup}
+            action = {'action': 'continue', 'instruction': followup, 'summary':'导出已实现，空表未验，已继续安排补验。'}
         else:
             action = {'action': 'complete', 'summary': '空表导出回归通过', 'evidence': '3 个测试全部通过'}
         return json.dumps({'decision': 'silent', 'summary': '', 'source_ids': [],
@@ -354,15 +506,22 @@ async def test_assessment_continues_unverified_work_and_closes_with_evidence(run
     assert not items[0].get('notified')
 
     await service.check()
-    original, continued = (await service.state())['delegations']
+    state = await service.state()
+    original, = state['delegation_executions']
+    continued, = state['delegations']
+    assert original['id'] == continued['id'] == first['id']
     assert original['followup_state'] == 'continued'
     assert continued['session_id'] == first['session_id']
     assert continued['instruction'] == followup
     assert (await wait_for_status(service, target.id, continued['message_id'])).content == verified
+    origin=first['origin_session_id']
+    messages=await service.projects.run_db((await service.home()).id,lambda _:list(ChatMessage.select().where(ChatMessage.session==origin)))
+    assert [row.content for row in messages]==['导出已实现，空表未验，已继续安排补验。']
 
     await service.check()
     assert (await service.state())['delegations'][-1]['followup_state'] == 'completed'
     assert assessments == [unverified, unverified, verified]
+
 
 
 async def test_recovery_deduplicates_continuation_saved_before_delegation_record(runtime, monkeypatch, tmp_path):
@@ -399,7 +558,7 @@ async def test_recovery_deduplicates_continuation_saved_before_delegation_record
     assert count == 1
 
 
-async def test_background_and_chat_only_submit_one_continuation(runtime, monkeypatch, tmp_path):
+async def test_duplicate_background_actions_only_submit_one_continuation(runtime, monkeypatch, tmp_path):
     from services.digital_person import get_profile
 
     service, _, store = runtime
@@ -422,21 +581,22 @@ async def test_background_and_chat_only_submit_one_continuation(runtime, monkeyp
     actions = [{'id': initial['id'], 'action': 'continue', 'instruction': '运行回归测试'}]
     profile = get_profile()
     await asyncio.gather(management.apply(actions, candidates, profile),
-                         management.apply(actions, candidates, profile, foreground=True))
-    rows = (await service.state())['delegations']
-    assert len(rows) == 2
-    assert rows[0]['followup_state'] == 'continued'
-    assert rows[0]['session_id'] == rows[1]['session_id']
-    await wait_for_status(service, target.id, rows[1]['message_id'])
+                         management.apply(actions, candidates, profile))
+    state = await service.state()
+    rows = state['delegations']
+    assert len(rows) == len(state['delegation_executions']) == 1
+    assert state['delegation_executions'][0]['followup_state'] == 'continued'
+    assert rows[0]['id'] == initial['id']
+    await wait_for_status(service, target.id, rows[0]['message_id'])
     await management.refresh()
     candidates = await management.eligible(await service.state())
-    assert {item['id'] for item in candidates} == {rows[1]['id']}
+    assert {item['id'] for item in candidates} == {rows[0]['id']}
     monkeypatch.setattr('services.digital_person_channels.get_bindings', lambda: [])
-    await management.apply([{'id': rows[1]['id'], 'action': 'continue', 'instruction': '重新验证'}],
+    await management.apply([{'id': rows[0]['id'], 'action': 'continue', 'instruction': '重新验证'}],
                            candidates, profile)
     rows = (await service.state())['delegations']
-    assert len(rows) == 2
-    assert rows[1]['followup_state'] == 'needs_user'
+    assert len(rows) == 1
+    assert rows[0]['followup_state'] == 'needs_user'
 
 
 async def test_pending_approval_is_reported_once_without_ending_execution(runtime, monkeypatch):

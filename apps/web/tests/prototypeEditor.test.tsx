@@ -60,7 +60,7 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
   try {
     await act(async()=>{root.render(<I18nProvider><PrototypeEditor projectId="p" path="index.html" onClose={()=>{}}/></I18nProvider>);await new Promise(resolve=>setTimeout(resolve,30))})
     assert.equal(document.querySelectorAll('.prototype-divider').length,2)
-    assert.equal(document.querySelector('.prototype-tree'),null,'file tree is collapsed initially')
+    assert.ok(document.querySelector('.prototype-tree') === null, 'file tree is collapsed initially')
     const directory=document.querySelector<HTMLButtonElement>('.prototype-toolbar button[aria-label="文件目录"]')!
     assert.ok(directory,'preview toolbar exposes the file tree')
     assert.equal(directory.getAttribute('aria-expanded'),'false')
@@ -147,7 +147,7 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
     assert.equal(document.querySelector('iframe')!.title,'index.html','unregistered HTML ignored')
     await act(async()=>navigate('ticket-v1','detail.html'))
     assert.equal(document.querySelector('iframe')!.title,'detail.html','preview navigation changes the active document')
-    assert.equal(document.querySelector('input[aria-label="width"]'),null,'old element selection is cleared')
+    assert.ok(document.querySelector('input[aria-label="width"]') === null, 'old element selection is cleared')
     assert.ok(calls.some(call=>call.path.endsWith('/history')&&call.query==='detail.html'),'chat switches to destination document')
     const navigatedFrame=document.querySelector('iframe')!
     await act(async()=>window.dispatchEvent(new window.MessageEvent('message',{source:navigatedFrame.contentWindow,data:{source:'workstep-prototype',token:'ticket-v1',type:'edit',node_id:'n2',operation:'text',values:{text:'New detail'},version:'v1'}})))
@@ -157,7 +157,7 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
     assert.equal(document.querySelectorAll('.prototype-tree [role=treeitem][aria-expanded]').length,1)
     await click('detail.html')
     assert.equal(document.querySelector('iframe')?.title,'detail.html')
-    assert.equal(document.querySelector('.prototype-tree'),null,'switching files collapses the unpinned tree')
+    assert.ok(document.querySelector('.prototype-tree') === null, 'switching files collapses the unpinned tree')
     await click('detail.html')
     await click('index.html')
     const currentFrame=document.querySelector('iframe')!
@@ -167,7 +167,7 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
     await act(async()=>window.dispatchEvent(new window.MessageEvent('message',{source:currentFrame.contentWindow,data:{source:'workstep-prototype',token:'ticket-v1',type:'hover',version:'v1',selection:{...selection,node_id:'n3',text:'Wrong neighbor'}}})))
     assert.match(document.querySelector('.prototype-comment')!.textContent!, /button Second/, 'clicked element remains the comment target')
     await act(async()=>window.dispatchEvent(new window.MessageEvent('message',{source:currentFrame.contentWindow,data:{source:'workstep-prototype',token:'ticket-v1',type:'drag-state',version:'v1',active:true}})))
-    assert.equal(document.querySelector('.prototype-comment'),null,'comments do not obstruct an element drag')
+    assert.ok(document.querySelector('.prototype-comment') === null, 'comments do not obstruct an element drag')
     await act(async()=>window.dispatchEvent(new window.MessageEvent('message',{source:currentFrame.contentWindow,data:{source:'workstep-prototype',token:'ticket-v1',type:'drag-state',version:'v1',active:false}})))
     assert.ok(document.querySelector('.prototype-comment'))
 
@@ -201,15 +201,15 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
     await click('修改历史')
     const historyDialog = document.querySelector('[role="dialog"].prototype-history-dialog')
     assert.ok(historyDialog,'history opens in its own dialog')
-    assert.equal(historyDialog.closest('.prototype-editor'),null,'history is outside the editor layout')
-    assert.equal(document.querySelector('.prototype-columns'),columns)
-    assert.equal(document.querySelector('iframe'),frameBefore)
+    assert.ok(historyDialog.closest('.prototype-editor') === null, 'history is outside the editor layout')
+    assert.ok(document.querySelector('.prototype-columns') === columns)
+    assert.ok(document.querySelector('iframe') === frameBefore)
     assert.match(historyDialog.textContent!,/After/)
     const undoCount=calls.filter(call=>call.path.endsWith('/undo')).length
     await act(async()=>historyDialog.querySelector('button')!.dispatchEvent(undoKey()))
     assert.equal(calls.filter(call=>call.path.endsWith('/undo')).length,undoCount,'history dialog does not undo the underlying editor')
     await act(async()=>historyDialog.querySelector<HTMLButtonElement>('button[aria-label="关闭"]')!.click())
-    assert.equal(document.querySelector('.prototype-history-dialog'),null)
+    assert.ok(document.querySelector('.prototype-history-dialog') === null)
     assert.ok(document.querySelector('.prototype-editor'))
     undoExhausted=true
     await act(async()=>undo.dispatchEvent(new window.KeyboardEvent('keydown',{key:'z',metaKey:true,bubbles:true,cancelable:true})))

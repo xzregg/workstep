@@ -39,15 +39,24 @@ export default function ChatInputUsage({
   const formatTokens = (count: number) =>
     new Intl.NumberFormat(locale).format(Math.max(0, Math.round(count)))
 
+  const credits = quota?.credits
+  const creditBalance = credits?.balance != null
+    ? [credits.balance, credits.unit].filter(Boolean).join(' ')
+    : null
+  const hasCredits = Boolean(credits?.unlimited || creditBalance !== null)
+  const quotaLabel = quota?.primary
+    ? t('chatInput.quotaCompact', { remaining: quota.primary.remaining_percent })
+    : t('chatInput.quotaTitle')
+
   return (
     <>
-          {quota?.primary && (
+          {quota && (quota.primary || hasCredits || quota.individual_limit) && (
             <span
               ref={quotaRef}
               className={`chat-input-context chat-input-quota${quotaTipOpen ? ' is-tip-open' : ''}`}
               tabIndex={0}
               role="button"
-              aria-label={t('chatInput.quotaCompact', { remaining: quota.primary.remaining_percent })}
+              aria-label={quotaLabel}
               onClick={() => {
                 if (compact && quotaRef.current) {
                   const rect = quotaRef.current.getBoundingClientRect()
@@ -60,8 +69,8 @@ export default function ChatInputUsage({
             >
               {compact ? <>
                 <Icon name="circle-dollar-sign" size={14} />
-                <span>{quota.primary.remaining_percent}%</span>
-              </> : t('chatInput.quotaCompact', { remaining: quota.primary.remaining_percent })}
+                <span>{quota.primary ? `${quota.primary.remaining_percent}%` : quota.individual_limit ? `${quota.individual_limit.remaining_percent}%` : quotaLabel}</span>
+              </> : quotaLabel}
               <span className={`chat-input-context-tip chat-input-quota-tip${compact && quotaTipOpen ? ' is-compact-positioned' : ''}`} style={quotaTipStyle}>
                 <span className="chat-input-quota-heading">
                   <strong>{quota.limit_name || t('chatInput.quotaTitle')}</strong>
@@ -84,7 +93,18 @@ export default function ChatInputUsage({
                     </button>
                   )}
                 </span>
-                <span>{t('chatInput.quotaPrimary', {
+                {quota.groups?.length ? quota.groups.map(group => <span className="chat-input-quota-group" key={group.name}>
+                  <strong>{group.name}</strong>
+                  {group.windows.map((window, index) => <span key={`${window.kind}-${index}`}>
+                    <span>{t('chatInput.quotaWindow', {
+                      window: window.label || (window.kind === 'weekly' ? t('chatInput.quotaWeekly') : window.kind === 'five-hour' ? t('chatInput.quotaFiveHour') : window.kind || t('chatInput.quotaTitle')),
+                      remaining: window.remaining_percent,
+                    })}</span>
+                    <span>{t('chatInput.quotaReset', { reset: window.resets_at
+                      ? new Date(window.resets_at * 1000).toLocaleString(locale)
+                      : t('chatInput.quotaResetUnknown') })}</span>
+                  </span>)}
+                </span>) : <>{quota.primary && <><span>{t('chatInput.quotaPrimary', {
                   remaining: quota.primary.remaining_percent,
                 })}</span>
                 <span>{t('chatInput.quotaReset', {
@@ -92,15 +112,17 @@ export default function ChatInputUsage({
                     ? new Date(quota.primary.resets_at * 1000).toLocaleString(locale)
                     : t('chatInput.quotaResetUnknown'),
                 })}</span>
+                </>}
                 {quota.secondary && (
                   <span>{t('chatInput.quotaSecondary', {
                     remaining: quota.secondary.remaining_percent,
                   })}</span>
                 )}
-                {quota.credits && (
-                  <span>{quota.credits.unlimited
+                </>}
+                {hasCredits && (
+                  <span>{credits?.unlimited
                     ? t('chatInput.quotaCreditsUnlimited')
-                    : t('chatInput.quotaCredits', { balance: quota.credits.balance ?? '0' })}</span>
+                    : t('chatInput.quotaCredits', { balance: creditBalance ?? '' })}</span>
                 )}
                 {quota.individual_limit && (
                   <span>{t('chatInput.quotaIndividual', {

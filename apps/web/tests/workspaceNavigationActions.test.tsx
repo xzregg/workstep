@@ -29,8 +29,10 @@ test('desktop companion action sits directly below collapse and opens its defaul
     const toggle = container.querySelector('.layout-sidebar-toggle')!
     const chat = container.querySelector<HTMLButtonElement>('[aria-label="与小研对话"]')!
     assert.ok(chat)
-    assert.equal(toggle.nextElementSibling, chat)
-    assert.ok(chat.querySelector('.lucide-message-circle-heart'))
+    assert.ok(toggle.nextElementSibling === chat)
+    assert.ok(chat.querySelector('.lucide-bot'))
+    const configIcon = container.querySelector('.layout-sidebar-digital-person svg')!
+    assert.equal(configIcon.getAttribute('data-icon'), 'bot-settings')
     await act(async () => chat.click())
     assert.equal(container.querySelector('output')!.textContent, '/companion')
     assert.equal(useProjectStore.getState().activeProject?.id, workspace.id)
@@ -48,7 +50,7 @@ test('desktop companion action sits directly below collapse and opens its defaul
     assert.equal(container.querySelector('output')!.textContent, `/chat?project=${encodeURIComponent(workspace.name)}`)
     assert.equal(useProjectStore.getState().activeProject?.id, workspace.id)
     await act(async () => window.happyDOM.setWindowSize({ width: 390, height: 844 }))
-    assert.equal(container.querySelector('[aria-label="与小研对话"]'), null)
+    assert.ok(container.querySelector('[aria-label="与小研对话"]') === null)
   } finally {
     await act(async () => root.unmount())
     useProjectStore.setState(previous, true)
@@ -67,9 +69,9 @@ test('project gateway keeps personal appearance and hides host role/settings ent
   function Surface() { const location = useLocation(); return <><WorkspaceNavigationActions onOpenSettings={section => opened.push(section)} /><output>{location.pathname}</output></> }
   try {
     await act(async () => root.render(<I18nProvider><MemoryRouter><Surface /></MemoryRouter></I18nProvider>))
-    assert.equal(container.querySelector('[aria-label="角色中心"]'), null)
-    assert.equal(container.querySelector('[aria-label="设置"]'), null)
-    assert.equal(container.querySelector('[aria-label="数据统计"]'), null)
+    assert.ok(container.querySelector('[aria-label="角色中心"]') === null)
+    assert.ok(container.querySelector('[aria-label="设置"]') === null)
+    assert.ok(container.querySelector('[aria-label="数据统计"]') === null)
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="外观"]')!.click())
     assert.deepEqual(opened, [])
     assert.equal(container.querySelector('output')!.textContent, '/appearance')

@@ -31,7 +31,7 @@ test('hook dialog separates simulation, saves multiple hooks and protects unsave
   try {
     await act(async () => root.render(<I18nProvider><WorkflowHooksDialog projectId="p" workflowId="w" workflowName="研发" onClose={() => {}} /></I18nProvider>))
     const click = async (text: string) => { const button = [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text)!; assert.ok(button, text); await act(async () => button.click()) }
-    assert.equal(document.querySelector('[data-testid="hook-title-override"]'), null)
+    assert.ok(document.querySelector('[data-testid="hook-title-override"]') === null)
     assert.equal(document.querySelectorAll('[data-testid="hook-address"]').length, 1)
     await click('模拟调用')
     assert.ok(document.querySelector('[data-testid="hook-title-override"]'))

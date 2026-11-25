@@ -36,7 +36,7 @@ test('recovered badge shows the shared compact state and recovery details', asyn
         </I18nProvider>,
       )
     })
-    assert.equal(container.querySelector('.task-recovered-badge'), null)
+    assert.ok(container.querySelector('.task-recovered-badge') === null)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

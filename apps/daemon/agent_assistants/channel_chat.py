@@ -21,6 +21,10 @@ assistant_registry.register(AssistantConfig(
     name="digital_person", channel="digital_person", scope=SCOPE_CHAT,
     engine_label="Digital person engine",
 ))
+assistant_registry.register(AssistantConfig(
+    name="digital_person_reflection", channel="digital_person_reflection", scope=SCOPE_CHAT,
+    engine_label="Digital person reflection engine",
+))
 
 
 class ChannelChatModule(ChatSessionModule):
@@ -91,10 +95,13 @@ def build_channel_background(session) -> str:
     # The runtime calls this in a worker thread. Credentials are never
     # included: only the allowlisted session identity reaches the model.
     config = config_store.get("channel_bots", {})
-    source = dict(config.get("session_sources", {}).get(session.session_id, {}))
+    messages = ChatSessionModule._messages_through_current_input(session)
+    current_user = next((item for item in reversed(messages) if item.get("role") == "user"), {})
+    explicit = current_user.get('context', {}).get('channel_source')
+    source = dict(explicit or config.get("session_sources", {}).get(session.session_id, {}))
     key = next((key for key, value in config.get("sessions", {}).items()
-                if value == session.session_id), "")
-    bot_id = ""
+                if value == session.session_id), "") if not explicit else ''
+    bot_id = source.get('bot_id', '')
     if key:
         bot_id, conversation_type, conversation_id = key.split(":", 2)
         source.setdefault("conversation_type", conversation_type)
@@ -114,8 +121,6 @@ def build_channel_background(session) -> str:
         "initiator_id": source.get("initiator_id") or "",
         "initiator_name": source.get("initiator_name") or "",
     }
-    messages = ChatSessionModule._messages_through_current_input(session)
-    current_user = next((item for item in reversed(messages) if item.get("role") == "user"), {})
     author_id = str(current_user.get("author_id") or "")
     if not author_id.startswith(f"channel:{context['platform']}:"):
         # A browser user can also speak in a channel-backed session.

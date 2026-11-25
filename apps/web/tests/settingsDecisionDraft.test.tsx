@@ -32,7 +32,7 @@ for (const exit of ['close', 'section']) test(`decision configuration protects u
     await act(async () => leave())
     await act(async () => dialog().querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
     assert.equal(closed, exit === 'close' ? 1 : 0)
-    if (exit === 'section') assert.equal(document.querySelector('.decision-settings'), null)
+    if (exit === 'section') assert.ok(document.querySelector('.decision-settings') === null)
   } finally {
     await act(async () => root.unmount()); globalThis.fetch = old.fetch; decisionModelsApi.status = old.status; engineApi.list = old.engines; await window.happyDOM.close()
   }

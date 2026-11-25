@@ -36,7 +36,7 @@ for (const scenario of [
     try {
       await act(async () => { root.render(<I18nProvider><ArtifactPreview path={scenario.path} projectId="project" /></I18nProvider>) })
       const button = [...document.querySelectorAll('button')].find(item => /打开目录|Open location|Open directory/i.test(item.getAttribute('aria-label') || ''))
-      if (scenario.hidden) assert.equal(button, undefined)
+      if (scenario.hidden) assert.ok(button === undefined)
       else {
         assert.ok(button)
         await act(async () => button.click())

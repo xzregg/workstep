@@ -36,7 +36,7 @@ export function nativePermissionMenu(
   // Older running services may still advertise the retired compatibility choice.
   if (engine === 'pydantic_ai') fields = fields.map(field => field.id === 'permission_mode'
     ? { ...field, options: field.options?.filter(option => ['full', 'auto', 'read-only'].includes(option.value)) } : field)
-  if (['claude', 'claude_agent_sdk', 'qoder_sdk'].includes(engine)) fields = fields.map(field => field.id === 'permission_mode'
+  if (['claude', 'claude_agent_sdk', 'qoder_sdk', 'antigravity'].includes(engine)) fields = fields.map(field => field.id === 'permission_mode'
     ? { ...field, options: field.options?.filter(option => option.value !== 'plan') } : field)
   const codex = engine === 'codex' || engine === 'codex_sdk'
   if (codex) fields = fields.filter(field => field.id === (engine === 'codex' ? 'sandbox_mode' : 'sandbox'))

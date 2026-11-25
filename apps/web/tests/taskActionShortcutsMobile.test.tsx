@@ -26,7 +26,7 @@ test('task shortcuts use a lightning sheet on compact layouts', async () => {
     await act(async () => root.render(<I18nProvider>
       <TaskActionButtons state={state} compact onFillPrompt={(value) => selected.push(value)} />
     </I18nProvider>))
-    assert.equal(container.querySelector('.chat-quick-prompts'), null)
+    assert.ok(container.querySelector('.chat-quick-prompts') === null)
     const bolt = container.querySelector<HTMLButtonElement>('.chat-quick-bolt')
     assert.ok(bolt)
     await act(async () => bolt.click())
@@ -38,12 +38,12 @@ test('task shortcuts use a lightning sheet on compact layouts', async () => {
     const prompt = [...sheet.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.includes('解释代码'))!
     await act(async () => prompt.click())
     assert.deepEqual(selected, ['请解释代码'])
-    assert.equal(document.querySelector('.mobile-sheet'), null)
+    assert.ok(document.querySelector('.mobile-sheet') === null)
     await act(async () => bolt.click())
     const action = [...document.querySelectorAll<HTMLButtonElement>('.mobile-sheet button')].find((button) => button.textContent?.includes('重启服务'))!
     await act(async () => action.click())
     assert.deepEqual(selected, ['请解释代码', 'restart'])
-    assert.equal(document.querySelector('.mobile-sheet'), null)
+    assert.ok(document.querySelector('.mobile-sheet') === null)
   } finally {
     await act(async () => root.unmount())
     container.remove()

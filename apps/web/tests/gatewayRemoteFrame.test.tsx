@@ -31,7 +31,7 @@ test('failed gateway session polls stop after three retries and expose a dismiss
     assert.equal(useGatewayRecoveryStore.getState().paused, true)
     assert.ok(document.querySelector('.confirm-dialog-backdrop'), 'exhaustion must display the problem')
     await act(async () => (document.querySelector('.confirm-dialog-footer button') as HTMLButtonElement).click())
-    assert.equal(document.querySelector('.confirm-dialog-backdrop'), null)
+    assert.ok(document.querySelector('.confirm-dialog-backdrop') === null)
     assert.ok(document.querySelector('.gateway-connection-paused button'), 'manual retry remains after dismissal')
     await act(async () => {
       window.dispatchEvent(new window.Event('online'))
@@ -67,7 +67,7 @@ for (const status of [401, 403]) test(`authorization failure ${status} still req
     await act(async () => context.mock.timers.tick(120000))
     assert.equal(requests, 1)
     assert.equal(useGatewayRecoveryStore.getState().paused, false)
-    assert.equal(document.querySelector('.confirm-dialog-backdrop'), null)
+    assert.ok(document.querySelector('.confirm-dialog-backdrop') === null)
     assert.ok(document.querySelector('.gateway-recovery-actions a'), 'gateway entry remains available')
   } finally {
     await act(async () => root.unmount())

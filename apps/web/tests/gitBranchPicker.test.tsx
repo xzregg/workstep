@@ -208,6 +208,6 @@ test('deletes an unoccupied local branch after confirmation', async () => {
     assert.deepEqual(deleted, [])
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Delete local branch')!.click())
     assert.deepEqual(deleted, ['repo', 'merged', merged.head, 'review'])
-    assert.equal(container.querySelector<HTMLButtonElement>('[aria-label="Delete branch merged"]'), null)
+    assert.ok(container.querySelector<HTMLButtonElement>('[aria-label="Delete branch merged"]') === null)
   } finally { await act(async () => root.unmount()); Object.assign(gitApi, original); container.remove(); await window.happyDOM.close() }
 })

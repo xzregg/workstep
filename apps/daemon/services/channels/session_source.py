@@ -8,7 +8,8 @@ from services.config import config_store
 
 
 def channel_session_source(session_id: str, title: str = "") -> dict:
-    message = ChatMessage.select(ChatMessage.author_id, ChatMessage.author_device_id, ChatMessage.author_name).where(
+    message = ChatMessage.select(ChatMessage.author_id, ChatMessage.author_device_id, ChatMessage.author_name,
+                                 ChatMessage.context_json).where(
         (ChatMessage.session == session_id)
         & (ChatMessage.role == "user")
         & ChatMessage.author_id.startswith("channel:")
@@ -16,6 +17,9 @@ def channel_session_source(session_id: str, title: str = "") -> dict:
     ).order_by(ChatMessage.created_at).first()
     if message is None:
         return {"source": "chat"}
+    import json
+    if json.loads(message.context_json or '{}').get('channel_source', {}).get('use_main_session'):
+        return {'source': 'chat'}
     platform = message.author_id.split(":", 2)[1]
     bot_id = message.author_device_id.removeprefix("channel:")
     config = config_store.get("channel_bots", {})

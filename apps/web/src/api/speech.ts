@@ -2,6 +2,7 @@ import { ApiError, request } from './transport'
 import { workspaceCatalogPath } from './workspaceScope'
 import type { SpeechSecrets } from './speechCredentials'
 import type { VoiceModelInstall } from './speechModelInstall'
+import type { VoiceprintStatus, SpeakerStatus } from './voiceprint'
 
 export interface SpeechConnection extends SpeechSecrets {
   mode: 'local' | 'cloud' | 'remote'; provider: 'tencent' | 'volcengine' | 'openai'
@@ -26,6 +27,7 @@ export function speechConnectionReady(value: SpeechConnection) {
 
 export type SpeechStreaming = 'native' | 'segment' | 'final'
 export interface SpeechStatus {
+  voiceprint?: VoiceprintStatus
   connection?: SpeechConnection; connections?: SpeechConnection[]; ready?: boolean; streaming?: SpeechStreaming
   enabled: boolean
   language: string
@@ -35,7 +37,7 @@ export interface SpeechStatus {
   models: { id: string; name: string; license: string; license_url: string; model_bytes: number; installed: boolean; punctuation?: boolean; streaming: string;
     install: VoiceModelInstall }[]
 }
-export interface SpeechResult { id: string; sequence: number; text: string; final: boolean; processing_ms?: number }
+export interface SpeechResult { id: string; sequence: number; text: string; final: boolean; processing_ms?: number; speaker_status?: SpeakerStatus }
 const options = (method: string, body?: unknown): RequestInit => ({ method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
 function checkCancelled(signal?: AbortSignal) {
   if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
@@ -55,9 +57,10 @@ export const speechApi = {
     const query = new URLSearchParams({ ...(modelId && { model_id: modelId }), ...(partialOnly && { partial_only: 'true' }) })
     return request<SpeechStatus>(`/speech/models/current${query.size ? '?' + query : ''}`, options('DELETE'))
   },
-  start: async (projectId: string, signal?: AbortSignal) => {
+  start: async (projectId: string, signal?: AbortSignal, phoneCall = false) => {
     checkCancelled(signal)
-    const path = await workspaceCatalogPath('/speech/sessions', projectId)
+    let path = await workspaceCatalogPath('/speech/sessions', projectId)
+    if (phoneCall) path += (path.includes('?') ? '&' : '?') + 'phone_call=true'
     checkCancelled(signal)
     // Aborting a creation request can lose its ID after the server commits it.
     // Always collect that response, then remove a session whose gesture ended.

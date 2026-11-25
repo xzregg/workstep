@@ -1,3 +1,4 @@
+import { useFlowProposalConfirmation } from '../hooks/useFlowProposalConfirmation'
 import { visibleTemplates } from '../utils/contentLocale'
 import ResizablePanel from './ResizablePanel'
 import { useEffect, useRef, useState } from 'react'
@@ -36,7 +37,7 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
   const [error, setError] = useState('')
   const [nameAttempted, setNameAttempted] = useState(false)
   const [confirmClose, setConfirmClose] = useState(false)
-  const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
+  const proposalConfirmation = useFlowProposalConfirmation(projectId || '')
   const [chatWidth, setChatWidth] = useState<number | null>(null)
   const [aiOpen, setAiOpen] = useState(true)
   const [aiMessage, setAiMessage] = useState('')
@@ -56,7 +57,7 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
     setError('')
     setNameAttempted(false)
     setConfirmClose(false)
-    setPendingAiSteps(null)
+    proposalConfirmation.cancel()
     setChatWidth(null)
     setAiOpen(true)
     setAiMessage('')
@@ -94,12 +95,12 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
   }
 
   const handleProposal = (nextSteps: any, proposal?: GenProposalCard) => {
-    setName((current) => backfillEmptyTitle(current, proposal?.workflowName))
-    if (previewDirty) {
-      setPendingAiSteps(nextSteps)
-      return
+    const apply = () => {
+      setName((current) => backfillEmptyTitle(current, proposal?.workflowName))
+      canvasRef.current?.loadSteps(nextSteps)
     }
-    setSteps(nextSteps)
+    if (previewDirty) return proposalConfirmation.request(nextSteps, apply)
+    apply()
   }
 
   const handleTemplateChange = async (nextTemplateId: string) => {
@@ -319,8 +320,10 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
                   display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)',
                 }}>
                   <AiFlowChat
+                    key={projectId}
                     projectId={projectId}
                     getCanvasSteps={() => canvasRef.current?.getSteps()}
+                    onPreview={(nextSteps) => canvasRef.current?.previewSteps(nextSteps)}
                     onProposal={handleProposal}
                     onRestore={(nextSteps) => canvasRef.current?.loadSteps(nextSteps)}
                     onBusyChange={setGenerationBusy}
@@ -363,16 +366,13 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
       />
 
       <ConfirmDialog
-        open={pendingAiSteps !== null}
+        open={proposalConfirmation.steps !== null}
         title={t('layout.aiOverwritePreviewTitle')}
         message={t('layout.aiOverwritePreviewMessage')}
         confirmText={t('canvas.applyProposal')}
         danger
-        onConfirm={() => {
-          if (pendingAiSteps !== null) setSteps(pendingAiSteps)
-          setPendingAiSteps(null)
-        }}
-        onCancel={() => setPendingAiSteps(null)}
+        onConfirm={() => void proposalConfirmation.confirm()}
+        onCancel={proposalConfirmation.cancel}
       />
     </>
   )

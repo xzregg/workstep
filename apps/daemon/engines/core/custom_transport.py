@@ -127,6 +127,9 @@ class CustomWorkerClient:
                 if "error" in message:
                     # Return type and method only, never arbitrary adapter text.
                     kind = str(message["error"]).split(":", 1)[0]
+                    if kind == "QuotaAuthenticationRequired" and method == "get_quota":
+                        from engines.core.quota import QuotaAuthenticationRequired
+                        raise QuotaAuthenticationRequired()
                     if kind not in {"ValueError", "TypeError", "RuntimeError", "ImportError", "ModuleNotFoundError", "AssertionError", "TimeoutError", "OSError"}:
                         kind = "worker error"
                     if len(kind) > 80 or any(c in kind for c in "\n\r"):

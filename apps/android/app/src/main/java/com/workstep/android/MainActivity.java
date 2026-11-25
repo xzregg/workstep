@@ -457,7 +457,7 @@ public final class MainActivity extends Activity {
                     });
             WebViewCompat.addWebMessageListener(view, "WorkStepAndroid",
                     Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
-                        if (!isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
+                        if (source != webView || !isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
                         handleNotificationMessage(message.getData());
                     });
         }
@@ -467,6 +467,7 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView source, String url, android.graphics.Bitmap icon) {
                 if (source != webView) return;
+                setThoughtHistoryOpen(false);
                 // The configured WorkStep page can start its capture graph on standby.
                 source.getSettings().setMediaPlaybackRequiresUserGesture(server == null || !server.contains(url));
                 runtimeDiagnostics.navigation();
@@ -718,6 +719,10 @@ public final class MainActivity extends Activity {
                     && server.contains(server.origin() + workspaceUrl))
                 message.put("url", workspaceUrl);
             String type = message.optString("type");
+            if ("thought-history".equals(type)) {
+                setThoughtHistoryOpen(message.optBoolean("open", false));
+                return;
+            }
             if ("project".equals(type)) {
                 String projectId = message.optString("projectId");
                 notificationProjectId = projectId;
@@ -829,6 +834,7 @@ public final class MainActivity extends Activity {
     @SuppressLint("ClickableViewAccessibility") // Tap path calls performClick; dragging consumes moves.
     private void addConnectionMenu() {
         ImageButton button = new ImageButton(this);
+        button.setTag("connection_menu");
         button.setImageResource(R.drawable.connection_menu_icon);
         button.setBackgroundResource(R.drawable.connection_menu_background);
         button.setPadding(0, 0, 0, 0);
@@ -959,6 +965,12 @@ public final class MainActivity extends Activity {
         return Math.max(0, Math.min(coordinate, Math.max(0, maximum)));
     }
 
+    private void setThoughtHistoryOpen(boolean open) {
+        View menu = root.findViewWithTag("connection_menu");
+        // Keep the user's saved coordinates and all gesture handlers intact.
+        if (menu != null) menu.setVisibility(open ? View.INVISIBLE : View.VISIBLE);
+    }
+
     private void openNewWindowUrl(String url) {
         String localReturn = gatewayLoginNavigation.rewrittenLocalReturn(server, url);
         if (localReturn != null && webView != null) {
@@ -1056,6 +1068,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showWebError(String message) {
+        setThoughtHistoryOpen(false);
         pageLoading = false;
         pageHadError = true;
         if (root.findViewWithTag("connection_error") != null) return;

@@ -27,7 +27,7 @@ LIST_FIELDS = {
     "project": ("projects", ("id", "name", "path", "type", "connection_status")),
     "workflow": ("workflows", ("id", "name", "is_default", "deleted", "running", "failed", "nodeCount")),
     "task": ("tasks", ("id", "title", "status", "archived", "workflow_id", "created_at", "updated_at")),
-    "engine": ("engines", ("id", "enabled", "custom", "installed", "configured", "verified", "built_in", "version", "mode", "default_model")),
+    "engine": ("engines", ("id", "enabled", "custom", "installed", "configured", "verified", "built_in", "version", "mode", "default_model", "supports_coordinator")),
     "schedule": ("schedules", ("id", "name", "target_type", "target_task_id", "workflow_id", "status", "summary", "next_run_at", "last_run_at")),
     "skin": (None, ("manifest", "revision")),
     "language": (None, ("manifest", "revision")),
@@ -201,8 +201,40 @@ def build_parser() -> argparse.ArgumentParser:
         reader.add_argument('--verbose', action='store_true', help='include full memory response and internal metadata')
         add_json(reader)
 
-    person = subparsers.add_parser('digital-person', help='manage standing memory, trigger reflection, or delegate work through the device companion')
+    person = subparsers.add_parser('digital-hub', aliases=['digital-person'], help='query digital hub identity, manage standing memory, trigger reflection, or delegate work')
     person_sub = person.add_subparsers(dest='subcommand', required=True)
+    add_json(person_sub.add_parser('info', help='read digital hub name, role, level, experience, statistics and available skills'))
+    identity = person_sub.add_parser('identity', help='resume identity setup or explicitly reset it for later edits')
+    identity_sub = identity.add_subparsers(dest='identity_action', required=True)
+    add_json(identity_sub.add_parser('status'))
+    add_json(identity_sub.add_parser('reset', help='start a draft, preserving the effective identity until confirmation'))
+    answer = identity_sub.add_parser('answer')
+    answer.add_argument('--revision', required=True)
+    answer.add_argument('--field', required=True, choices=('name', 'role', 'personality', 'duties'))
+    answer_value = answer.add_mutually_exclusive_group(required=True)
+    answer_value.add_argument('--value')
+    answer_value.add_argument('--skip', action='store_true')
+    add_json(answer)
+    collect = identity_sub.add_parser('collect', help='record all identity fields explicitly expressed in one reply')
+    collect.add_argument('--revision', required=True)
+    for field in ('name', 'role', 'personality', 'duties'):
+        collect.add_argument('--'+field)
+    add_json(collect)
+    for action in ('pause', 'resume'):
+        transition = identity_sub.add_parser(action)
+        transition.add_argument('--revision', required=True)
+        add_json(transition)
+    confirm_identity = identity_sub.add_parser('confirm', help='save only after the user approves the displayed summary')
+    confirm_identity.add_argument('--revision', required=True)
+    add_json(confirm_identity)
+    voice = person_sub.add_parser('voice', help='list available local voices and save the host playback voice')
+    voice_sub = voice.add_subparsers(dest='voice_action', required=True)
+    add_json(voice_sub.add_parser('list', help='read current voice and local model availability'))
+    voice_set = voice_sub.add_parser('set', help='save a listed voice for subsequent playback')
+    voice_set.add_argument('--voice', required=True, help='voice ID from voice list')
+    voice_set.add_argument('--model', dest='model_id', help='available local model ID; explicitly switches to local output')
+    add_json(voice_set)
+
     remember = person_sub.add_parser('remember', help='append an explicitly requested standing agreement')
     remember.add_argument('--rule', required=True, help='one enduring rule on a single line')
     add_json(remember)
@@ -214,15 +246,25 @@ def build_parser() -> argparse.ArgumentParser:
     delegation_filter.add_argument('--id', dest='delegation_id')
     delegations.add_argument('--session', dest='origin_session_id', help='limit results to the originating conversation')
     add_json(delegations)
+    for action in ('delegate-options', 'delegate-verify'):
+        capability = person_sub.add_parser(action, help='list verified delegation combinations' if action == 'delegate-options' else 'verify a project engine/model with two real toolless turns')
+        capability.add_argument('--project', dest='project_id', required=True)
+        capability.add_argument('--target-session', dest='target_session_id', default='')
+        if action == 'delegate-verify':
+            capability.add_argument('--engine', required=True)
+            capability.add_argument('--model', required=True)
+        add_json(capability)
     delegate = person_sub.add_parser('delegate', help='start or continue a tracked project execution session')
     delegate.add_argument('--project', dest='project_id', required=True)
     delegate.add_argument('--title', help='short task title (one line, up to 60 characters)')
+    delegate.add_argument('--engine', help='engine ID from digital-hub delegate-options; omitted: inherit')
+    delegate.add_argument('--model', help='verified model ID from digital-hub delegate-options; omitted: inherit')
     delegate.add_argument('--instruction', required=True)
     delegate.add_argument('--session', dest='origin_session_id', required=True)
     delegate.add_argument('--idempotency-key', dest='request_id', required=True)
     delegate_target = delegate.add_mutually_exclusive_group()
-    delegate_target.add_argument('--continue-from', dest='continuation_of', help='prior delegation ID from digital-person delegations')
-    delegate_target.add_argument('--target-session', dest='target_session_id', help='existing project conversation to track as a delegation')
+    delegate_target.add_argument('--continue-from', dest='continuation_of', help='update an existing task by its stable delegation ID')
+    delegate_target.add_argument('--target-session', dest='target_session_id', help='append a round; update the chat\'s task or create one if untracked')
     add_json(delegate)
 
     context = subparsers.add_parser("context", help="read current execution context")
@@ -429,6 +471,12 @@ def build_parser() -> argparse.ArgumentParser:
     engine = subparsers.add_parser("engine", help="manage engines")
     engine_sub = engine.add_subparsers(dest="subcommand", required=True)
     add_json(engine_sub.add_parser("list", help="list installed LLM engines"), list_output=True)
+    models = engine_sub.add_parser('models', help='discover native or saved provider model IDs')
+    models.add_argument('--engine', dest='engine_id', required=True)
+    models.add_argument('--project', dest='project_id', default='')
+    models.add_argument('--provider', dest='provider_id', default='')
+    models.add_argument('--refresh', action='store_true')
+    add_json(models)
 
     for action in ("inspect", "install", "validate", "register", "configure"):
         command = engine_sub.add_parser(action, help=f"{action} a custom engine Python file or package directory")
@@ -615,19 +663,46 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
         operation = 'search' if args.subcommand == 'history' else args.subcommand
         return await client.call('workstep_memory_' + operation, {
             key: getattr(args, key) for key in fields if getattr(args, key, None) is not None})
-    if command == 'digital-person':
+    if command in ('digital-hub', 'digital-person'):
+        if args.subcommand == 'identity':
+            if args.identity_action == 'status':
+                return await client.call('workstep_get_digital_hub_identity_setup', {})
+            if args.identity_action == 'collect':
+                return await client.call('workstep_set_digital_hub_identity', {
+                    'action':'answer', 'revision':args.revision, 'confirm':'yes',
+                    'answers':{key:getattr(args,key) for key in ('name','role','personality','duties') if getattr(args,key) is not None},
+                })
+            return await client.call('workstep_set_digital_hub_identity', {
+                'action': args.identity_action, 'confirm': 'yes',
+                **{key: getattr(args, key) for key in ('revision', 'field', 'value', 'skip')
+                   if getattr(args, key, None) is not None},
+            })
+        if args.subcommand == 'voice':
+            if args.voice_action == 'list':
+                return await client.call('workstep_list_digital_hub_voices', {})
+            return await client.call('workstep_select_digital_hub_voice', {
+                'voice': args.voice, **({'model_id': args.model_id} if args.model_id else {}), 'confirm': 'yes',
+            })
+        if args.subcommand == 'info':
+            return await client.call('workstep_get_digital_hub_info', {})
         if args.subcommand == 'remember':
             return await client.call('workstep_remember_digital_person_rule', {'rule': args.rule, 'confirm': 'yes'})
         if args.subcommand == 'check':
             return await client.call('workstep_check_digital_person', {'background': True, 'confirm': 'yes'})
         if args.subcommand == 'stop':
             return await client.call('workstep_stop_digital_person_check', {'confirm':'yes'})
+        if args.subcommand in ('delegate-options', 'delegate-verify'):
+            arguments = {key: getattr(args, key) for key in ('project_id', 'target_session_id')}
+            if args.subcommand == 'delegate-verify':
+                return await client.call('workstep_verify_delegation_combination', {
+                    **arguments, 'engine': args.engine, 'model': args.model, 'confirm': 'yes'})
+            return await client.call('workstep_list_delegation_combinations', arguments)
         if args.subcommand == 'delegations':
             return await client.call('workstep_list_digital_person_delegations', {
                 key: getattr(args, key) for key in ('project_id', 'origin_session_id', 'delegation_id')
                 if getattr(args, key, None) is not None})
         return await client.call('workstep_delegate_digital_person', {
-            **{key: getattr(args, key) for key in ('project_id', 'title', 'instruction', 'origin_session_id', 'request_id', 'continuation_of', 'target_session_id')
+            **{key: getattr(args, key) for key in ('project_id', 'title', 'instruction', 'origin_session_id', 'request_id', 'continuation_of', 'target_session_id', 'engine', 'model')
                if getattr(args, key) is not None}, 'confirm': 'yes'})
     if command == "context":
         from services.conversation_context import active_conversation_sender, current_conversation
@@ -895,6 +970,9 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
         action = args.subcommand
         if action == "list":
             return await client.call("workstep_list_engines", {})
+        if action == 'models':
+            return await client.call('workstep_list_engine_models', {
+                key: getattr(args, key) for key in ('engine_id', 'project_id', 'provider_id', 'refresh')})
         arguments = {"confirm": "yes"}
         if hasattr(args, "path"):
             arguments["path"] = str(await asyncio.to_thread(Path(args.path).expanduser().resolve))

@@ -66,7 +66,7 @@ test('authorized projects expand their workflows and conversations and switch wi
     const shell = element.querySelector('.app-shell')
     const rows = () => [...element.querySelectorAll<HTMLElement>('.layout-project-row')]
     assert.deepEqual(rows().map(row => row.querySelector('.layout-project-name')?.textContent?.trim()), ['项目1', '项目2'])
-    assert.equal(element.querySelector('.gateway-project-tabs'), null)
+    assert.ok(element.querySelector('.gateway-project-tabs') === null)
     await act(async () => rows()[1].querySelector<HTMLButtonElement>('.layout-project-expand-button')!.click())
     const second = element.querySelector<HTMLElement>('#sidebar-project-host-2')!
     assert.ok(second, 'another authorized project uses the ordinary expandable tree')
@@ -78,7 +78,7 @@ test('authorized projects expand their workflows and conversations and switch wi
     await act(async () => second.querySelector<HTMLElement>('.layout-workflow-row')!.click())
     assert.equal(useProjectStore.getState().activeProject?.id, 'host-2')
     assert.equal(useGatewaySessionStore.getState().session?.host_project_id, 'host-2')
-    assert.equal(element.querySelector('.app-shell'), shell)
+    assert.ok(element.querySelector('.app-shell') === shell)
     assert.equal(submitted, false)
     assert.equal(calls.some(path => path.endsWith('/access') || path.includes('/redeem')), false)
     assert.equal(sockets.length, initialSocketCount, 'switching project keeps both scoped streams alive')
@@ -168,24 +168,24 @@ for (const customSkin of [false, true]) for (const creator of [false, true]) tes
     assert.equal(calls.includes('/api/project/list'), false)
     assert.equal(calls.filter(path => path === '/api/project/host-1/summary').length, 1)
     assert.ok(subscriptions.some(subscription => subscription.project_id === 'host-1'))
-    assert.equal(element.querySelector('.mobile-task-new-button'), null)
-    if (!creator) assert.equal(element.querySelector('.task-board-lane-add'), null)
+    assert.ok(element.querySelector('.mobile-task-new-button') === null)
+    if (!creator) assert.ok(element.querySelector('.task-board-lane-add') === null)
     assert.equal([...element.querySelectorAll('button')].some(button => button.textContent?.trim() === '新建任务'), false)
     if (creator) {
       const buttons = [...element.querySelectorAll('button')]
       for (const label of ['步骤编辑', '新建对话', '添加流程', '流程钩子', 'Git', '设置']) {
         assert.equal(buttons.some(button => button.textContent?.trim() === label), false, label)
       }
-      assert.equal(element.querySelector('.layout-sidebar-session-label'), null)
+      assert.ok(element.querySelector('.layout-sidebar-session-label') === null)
       const create = buttons.find(button => button.textContent?.trim() === '新建')
       assert.ok(create)
       await act(async () => create.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
       assert.ok(element.querySelector('.task-create-panel'))
-      assert.equal(element.querySelector('.task-create-ai-button'), null)
-      assert.equal(element.querySelector('.task-create-review'), null)
-      assert.equal(element.querySelector('input[value="immediate"]'), null)
-      assert.equal(element.querySelector('input[value="scheduled"]'), null)
-      assert.equal(element.querySelector('.markdown-editor-action[aria-label="上传附件"]'), null)
+      assert.ok(element.querySelector('.task-create-ai-button') === null)
+      assert.ok(element.querySelector('.task-create-review') === null)
+      assert.ok(element.querySelector('input[value="immediate"]') === null)
+      assert.ok(element.querySelector('input[value="scheduled"]') === null)
+      assert.ok(element.querySelector('.markdown-editor-action[aria-label="上传附件"]') === null)
       const title = element.querySelector<HTMLInputElement>('#new-task-title')!
       await act(async () => {
         Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(title, '权限验证任务')
@@ -199,7 +199,7 @@ for (const customSkin of [false, true]) for (const creator of [false, true]) tes
       assert.equal(creates[0].auto_start, false)
       assert.equal(creates[0].scheduled_start_at, null)
       assert.equal(creates[0].review_overrides, null)
-      assert.equal(element.querySelector('.task-create-panel'), null)
+      assert.ok(element.querySelector('.task-create-panel') === null)
       assert.ok(useTaskStore.getState().tasks.some(task => task.id === 'created-task'))
       // Manually entered URLs cannot mount denied features or request their data.
       for (const path of ['/chat?project=Visible', '/git?project_id=host-1', '/schedules?project=Visible',
@@ -210,7 +210,7 @@ for (const customSkin of [false, true]) for (const creator of [false, true]) tes
           window.dispatchEvent(new window.PopStateEvent('popstate'))
         })
         assert.ok(element.querySelector('.project-permission-unavailable'), path)
-        assert.equal(element.querySelector('.assistant-chat-panel'), null)
+        assert.ok(element.querySelector('.assistant-chat-panel') === null)
         assert.equal(calls.length, requestCount, `unavailable route must not load data: ${path}`)
       }
     }

@@ -22,7 +22,7 @@ test('home face panel protects an unfinished enrollment and returns focus on clo
   assert.equal(closed,0);assert.ok(document.querySelector('.confirm-dialog-panel'))
   await act(async()=>document.querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
   assert.equal(closed,1)
-  await act(async()=>root.unmount());assert.equal(document.activeElement,trigger)
+  await act(async()=>root.unmount());assert.ok(document.activeElement === trigger)
  }finally{await act(async()=>root.unmount());Object.assign(faceApi,old);await window.happyDOM.close()}
 })
 
@@ -39,7 +39,7 @@ test('home face panel cannot close during an in-flight settings save',async()=>{
   assert.ok(toggle)
   const tabs=document.querySelector('.face-panel-tabs')
   assert.ok(tabs)
-  assert.equal(tabs.nextElementSibling,toggle.parentElement)
+  assert.ok(tabs.nextElementSibling === toggle.parentElement)
   assert.equal(toggle.getAttribute('aria-checked'),'false')
   await act(async()=>toggle.click())
   assert.equal(toggle.disabled,true)
@@ -70,6 +70,7 @@ test('the home face entry saves welcome settings shared with Vision',async()=>{
  })
  try{
   await act(async()=>root.render(<I18nProvider><FaceHomePanel onClose={()=>{}}/></I18nProvider>))
+  assert.deepEqual([...document.querySelectorAll('.face-vision-tabs [role="tab"]')].map(tab=>tab.textContent),['人脸识别','人脸唤醒'])
   await click('人脸唤醒')
   const form=document.querySelector('.face-welcome-settings')!
   assert.equal(form.querySelector('textarea')?.value,welcome.phrases[0])
@@ -77,6 +78,7 @@ test('the home face entry saves welcome settings shared with Vision',async()=>{
   await click('保存')
   assert.equal(welcome.enabled,true)
   await act(async()=>root.render(<I18nProvider><DigitalPersonVisionSettings/></I18nProvider>))
+  assert.deepEqual([...host.querySelectorAll('.face-vision-tabs [role="tab"]')].map(tab=>tab.textContent),['人脸识别','人脸唤醒'])
   await click('人脸唤醒')
   assert.equal(document.querySelector<HTMLInputElement>('.face-welcome-settings input[type="checkbox"]')?.checked,true)
  }finally{await act(async()=>root.unmount());useLocaleStore.setState({locale});Object.assign(faceApi,old);await window.happyDOM.close()}

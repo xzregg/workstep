@@ -16,7 +16,7 @@ for (const width of [390, 1280]) {
     assert.ok(session)
     // 默认折叠：data-open 未设置，body 完全不渲染（巨型 trace 不占 DOM）
     assert.equal(session.dataset.open, undefined)
-    assert.equal(document.querySelector('.process-trace-body'), null)
+    assert.ok(document.querySelector('.process-trace-body') === null)
     const summary = document.querySelector<HTMLDivElement>('.process-trace-session-summary')!
     await act(async () => { summary.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
     assert.equal(session.dataset.open, 'true')

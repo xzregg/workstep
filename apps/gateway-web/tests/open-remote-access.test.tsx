@@ -21,7 +21,7 @@ for (const [origin, url, expected] of [
     assert.equal(action, expected)
     assert.equal(ticket, 'one-time-ticket')
     assert.equal(next, 'chat?session=keep')
-    assert.equal(dom.window.document.querySelector('form'), null)
+    assert.ok(dom.window.document.querySelector('form') === null)
     dom.window.close()
   })
 }

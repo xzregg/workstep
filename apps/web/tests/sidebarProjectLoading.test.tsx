@@ -119,7 +119,7 @@ test('list status distinguishes loading from failure and offers retry', async ()
   try {
     await act(async () => root.render(<I18nProvider><SidebarLoadStatus loading label="对话列表加载失败" onRetry={() => retries++} /></I18nProvider>))
     assert.ok(container.querySelector('[role="status"]'))
-    assert.equal(container.querySelector('button'), null)
+    assert.ok(container.querySelector('button') === null)
     await act(async () => root.render(<I18nProvider><SidebarLoadStatus error="offline" label="对话列表加载失败" onRetry={() => retries++} /></I18nProvider>))
     assert.match(container.querySelector('[role="alert"]')!.textContent!, /对话列表加载失败/)
     await act(async () => (container.querySelector('button') as HTMLButtonElement).click())

@@ -28,3 +28,25 @@ test('unmatched and mixed faces cannot fake a return',()=>{
  for(let at=125000;at<129000;at+=500)assert.equal(observe(['a',null],at),null)
  for(let at=129000;at<134000;at+=500)assert.equal(observe(['a'],at),null)
 })
+
+test('explicit camera downtime qualifies once after reopening and only at the configured threshold',()=>{
+ const observeReturn=(offMs:number)=>{
+  const presence=new FaceWelcomePresence()
+  return [0,500,1000,1500,2000,2500].map((at,index)=>
+   presence.observe(index===0?[null]:['a'],at,2,index===0?offMs:0)).filter(Boolean)
+ }
+ assert.deepEqual(observeReturn(119_999),[])
+ assert.deepEqual(observeReturn(120_000),['a'])
+})
+
+test('a reopened camera does not carry a welcome through a mixed group or a broken stream',()=>{
+ const presence=new FaceWelcomePresence()
+ const frames=(ids:(string|null)[],start:number,end:number,offMs=0)=>{
+  for(let at=start;at<=end;at+=500)assert.equal(presence.observe(ids,at,2,at===start?offMs:0),null)
+ }
+ frames(['a',null],0,2000,120_000)
+ frames(['a'],2500,5000)
+ presence.reset()
+ frames([],0,1000,120_000)
+ frames(['a'],4000,6500)
+})

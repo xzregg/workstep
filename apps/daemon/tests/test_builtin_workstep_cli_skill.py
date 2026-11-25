@@ -172,6 +172,18 @@ def test_digital_person_skill_exposes_manual_reflection():
     assert build_parser().parse_args(['digital-person', 'check', '--json']).subcommand == 'check'
 
 
+def test_digital_hub_skill_documents_identity_query():
+    from cli import build_parser
+    root = BUILTIN_SKILLS / 'workstep-cli'
+    reference = (root / 'references/digital-person.md').read_text()
+    assert '# Digital hub' in reference
+    assert 'digital-hub info --json' in reference
+    assert 'workstep_get_digital_hub_info' in reference
+    for field in ('level', 'experience', 'next_level_experience', 'skills'):
+        assert field in reference
+    assert build_parser().parse_args(['digital-hub', 'info', '--json']).subcommand == 'info'
+
+
 def test_custom_engine_guides_have_valid_links_commands_and_runtime_mirrors(tmp_path):
     import shlex
     from cli import build_parser
@@ -204,3 +216,25 @@ def test_custom_engine_guides_have_valid_links_commands_and_runtime_mirrors(tmp_
         args = build_parser().parse_args(shlex.split(command)[1:])
         actions.add(args.subcommand)
     assert {"inspect", "install", "configure", "validate", "register"} <= actions
+
+
+def test_internal_transport_scope_reaches_codex_without_changing_project_rules(tmp_path):
+    from services.skill_runtime import prepare_codex_skills
+    project = tmp_path / 'project'
+    project.mkdir()
+    rules = project / 'AGENTS.md'
+    rules.write_text('Development commands must use an external wrapper.\n')
+    selection = SkillCenter(source_roots={'builtin': BUILTIN_SKILLS}).runtime_selection(project)
+    root, _ = prepare_codex_skills(selection)
+    skill = (root / 'workstep-cli' / 'SKILL.md').read_text()
+    transport = (root / 'workstep-cli' / 'references' / 'transport.md').read_text()
+    assert 'ignore outer wrappers' in skill
+    assert 'preserve `WORKSTEP_*` environment variables' in skill
+    assert 'Preserve inherited `WORKSTEP_*` variables and their expansion' in transport
+    assert 'environment-resetting wrappers' in transport
+    assert '## Operation scope' in transport
+    assert 'authorization' in transport
+    assert 'operation, arguments, transport or' in transport
+    assert 'delegation, planning, review or' in transport
+    assert 'command wrappers, aliases and output filters' in transport
+    assert rules.read_text() == 'Development commands must use an external wrapper.\n'

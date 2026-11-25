@@ -35,7 +35,7 @@ test('desktop collapse retains rail, list state and width; restores after remoun
   try {
     await act(async () => render())
     assert.equal(toggle().getAttribute('aria-label'), '收起对话列表')
-    assert.equal(container.querySelector('nav > button'), toggle())
+    assert.ok(container.querySelector('nav > button') === toggle())
     assert.ok(toggle().querySelector('.lucide-panel-left-close'))
     await act(async () => container.querySelector<HTMLButtonElement>('aside > button')!.click())
     const width = container.querySelector('output')!.textContent
@@ -49,7 +49,7 @@ test('desktop collapse retains rail, list state and width; restores after remoun
     assert.equal(getComputedStyle(container.querySelector('aside')!).minWidth, '48px')
     assert.equal(getComputedStyle(toggle()).display, 'flex')
     await act(async () => toggle().click())
-    assert.equal(container.querySelector('input'), input)
+    assert.ok(container.querySelector('input') === input)
     assert.equal(input.value, '输入未丢失')
     assert.equal(container.querySelector('output')!.textContent, width)
     await act(async () => toggle().click())
@@ -107,7 +107,7 @@ test('Layout expands the workspace and removes only the sidebar resize handle', 
     const settingsAction = [...container.querySelectorAll<HTMLButtonElement>('.sidebar-action-item')].find(button => button.textContent === '项目配置')
     assert.ok(settingsAction)
     await act(async () => settingsAction.click())
-    assert.equal(container.querySelector('.sidebar-action-menu'), null)
+    assert.ok(container.querySelector('.sidebar-action-menu') === null)
     assert.ok(document.body.textContent?.includes('项目名称'))
     const sidebar = container.querySelector<HTMLElement>('.layout-sidebar')!
     const originalWidth = sidebar.style.width
@@ -118,9 +118,9 @@ test('Layout expands the workspace and removes only the sidebar resize handle', 
     await act(async () => toggle.click())
     assert.equal(sidebar.style.width, '48px')
     assert.ok(sidebar.classList.contains('layout-sidebar--collapsed'))
-    assert.equal(container.querySelector('.app-shell > .task-detail-split-handle'), null)
-    assert.equal(sidebar.querySelector('.layout-sidebar-body'), list)
-    assert.equal(container.querySelector('[data-test="conversation"]'), conversation)
+    assert.ok(container.querySelector('.app-shell > .task-detail-split-handle') === null)
+    assert.ok(sidebar.querySelector('.layout-sidebar-body') === list)
+    assert.ok(container.querySelector('[data-test="conversation"]') === conversation)
     await act(async () => toggle.click())
     assert.equal(sidebar.style.width, originalWidth)
     assert.ok(container.querySelector('.app-shell > .task-detail-split-handle'))

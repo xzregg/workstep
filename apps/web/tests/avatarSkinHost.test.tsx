@@ -30,7 +30,7 @@ test('skin can replace the avatar, follow host speech and restore the robot with
   await act(async()=>render('thinking'))
   const input=host.querySelector('input')!
   assert.equal(host.querySelector('[data-custom-avatar]')?.getAttribute('data-hands'),'raised')
-  assert.equal(host.querySelector('[data-default-avatar]'),null)
+  assert.ok(host.querySelector('[data-default-avatar]') === null)
   await act(async()=>render('speaking'))
   assert.equal(host.querySelector('[data-custom-avatar]')?.getAttribute('data-hands'),'lowered')
   assert.equal(host.querySelector('[data-custom-avatar]')?.getAttribute('data-level'),'0.6')
@@ -43,12 +43,12 @@ test('skin can replace the avatar, follow host speech and restore the robot with
    broken=true
    await act(async()=>render('speaking','b'))
    assert.ok(host.querySelector('[data-default-avatar]'),'a broken custom character falls back without rebuilding the workspace')
-   assert.equal(host.querySelector('input'),input)
+   assert.ok(host.querySelector('input') === input)
   }finally{console.error=originalError}
   await act(async()=>setSkinScriptsEnabled(skin,false))
   assert.ok(host.querySelector('[data-default-avatar]'))
-  assert.equal(host.querySelector('[data-custom-avatar]'),null)
-  assert.equal(host.querySelector('input'),input);assert.equal(input.value,'保留草稿')
+  assert.ok(host.querySelector('[data-custom-avatar]') === null)
+  assert.ok(host.querySelector('input') === input);assert.equal(input.value,'保留草稿')
  }finally{
   await act(async()=>root.unmount());restoreDefaultSkin();setAppearanceScope(null);await window.happyDOM.close()
  }

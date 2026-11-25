@@ -1,4 +1,4 @@
-"""Event-loop-local Codex workers with five independently owned session slots."""
+"""Dedicated retained Codex workers and ordinary five-slot shared workers."""
 import asyncio
 import hashlib
 import json
@@ -13,7 +13,7 @@ from contextlib import suppress
 import uuid
 
 from engines.core.session_pool import SessionClientLease, SessionClientPool
-from engines.core.session_retention import claim_session_retention
+from engines.core.session_retention import claim_session_retention, current_session_retention_owner
 from engines.codex_sdk_approvals import CodexApprovalRouter, deny_request
 from engines.core.process_cleanup import finish_cleanup
 
@@ -67,6 +67,7 @@ class CodexWorker:
     accepting: bool = True
     closing: Any = None
     failure_task: Any = None
+    retention_owner: str | None = None
 
 
 @dataclass(eq=False)
@@ -103,6 +104,7 @@ class CodexClientPool(SessionClientPool):
 
     async def acquire(self, cwd, session_id, fingerprint, factory):
         key = (cwd, session_id or uuid.uuid4().hex)
+        owner = current_session_retention_owner()
         if self._closed:
             raise RuntimeError('Engine client pool is closed')
         if key in self._reservations or key in self._detaching or (key in self._entries and self._entries[key].busy):
@@ -125,25 +127,38 @@ class CodexClientPool(SessionClientPool):
                 alive = await self._alive(old.worker)
                 if self._closed or self._entries.get(key) is not old:
                     raise RuntimeError('Engine client has been closed')
-                if alive and old.fingerprint == fingerprint and old.worker.accepting:
+                if (alive and old.fingerprint == fingerprint and old.worker.accepting
+                        and old.worker.retention_owner == owner):
                     return claim_session_retention(self, old)
                 if not alive:
                     await self._retire_worker(old.worker)
                 else:
                     await self.discard(old)
-            worker = next((w for w in self._workers if w.accepting and w.cwd == cwd
-                           and w.fingerprint == fingerprint
-                           and sum(bool(e.busy or e.retention_owner) for e in w.entries) < self.sessions_per_process), None)
+            if owner and any(w.accepting and w.cwd == cwd and w.retention_owner == owner
+                             and any(e.busy for e in w.entries) for w in self._workers):
+                raise RuntimeError('Engine session is executing, please wait for the current reply to complete')
+            slots = 1 if owner else self.sessions_per_process
+            candidates = [w for w in self._workers if w.accepting and w.cwd == cwd
+                          and w.fingerprint == fingerprint]
+            worker = next((w for w in candidates if w.retention_owner == owner
+                           and sum(e.busy for e in w.entries) < slots), None)
+            if worker is None and owner:
+                # A reset/replaced main conversation may claim a previously
+                # released private worker, never an ordinary shared worker.
+                worker = next((w for w in candidates if w.retention_owner is not None
+                               and all(not e.busy and not e.retention_owner for e in w.entries)), None)
             if worker is None:
-                worker = CodexWorker(cwd, fingerprint, factory())
+                worker = CodexWorker(cwd, fingerprint, factory(), retention_owner=owner)
                 self._workers.append(worker)
+            worker.retention_owner = owner
             entry = CodexClientLease(key, fingerprint, worker.client, worker=worker)
             self._entries[key] = entry
             owned = entry
             worker.entries.add(entry)
             # Reserve the active slot before awaiting stale-session cleanup.
-            idle = [e for e in self._entries.values() if e.worker is worker and not e.busy and not e.retention_owner]
-            for stale in idle[:max(0, len(worker.entries)-self.sessions_per_process)]:
+            idle = [e for e in self._entries.values() if e.worker is worker and not e.busy
+                    and (owner or not e.retention_owner)]
+            for stale in idle[:max(0, len(worker.entries)-slots)]:
                 await self.discard(stale)
             if self._closed or self._entries.get(key) is not entry:
                 raise RuntimeError('Engine client has been closed')
@@ -193,9 +208,8 @@ class CodexClientPool(SessionClientPool):
             entry.worker for entry in reversed(self._entries.values())
             if not entry.busy and all(not lease.busy for lease in entry.worker.entries)
         )
-        protected = [w for w in idle_workers if any(e.retention_owner for e in w.entries)]
-        ordinary = [w for w in idle_workers if w not in protected]
-        for worker in ordinary[max(0, self.max_idle_workers-len(protected)):]:
+        ordinary = [w for w in idle_workers if w.retention_owner is None]
+        for worker in ordinary[self.max_idle_workers:]:
             self._reclaim_idle_worker(worker)
 
     def _reclaim_idle_worker(self, worker):
@@ -220,7 +234,8 @@ class CodexClientPool(SessionClientPool):
                 and len(entry.worker.entries) == 1):
             # Keep the last loaded context so the retained transport stays
             # reusable after the idle window. Explicit stop/close still reaps it.
-            if self.keep_warm and entry.worker.accepting and not self._closed:
+            if (self.keep_warm and entry.worker.retention_owner is None
+                    and entry.worker.accepting and not self._closed):
                 entry.timer = None
                 return
             self._reclaim_idle_worker(entry.worker)

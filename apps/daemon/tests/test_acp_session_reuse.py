@@ -7,11 +7,12 @@ import pytest
 
 from engines.hermes import HermesEngine
 from engines.opencode import OpencodeEngine
+from engines.antigravity import AntigravityEngine
 from engines.core.base import ProviderRuntimeConfig
 from engines.core.session_pool import close_session_pools, get_session_pool
 
 
-@pytest.fixture(params=[HermesEngine, OpencodeEngine], ids=['hermes', 'opencode'])
+@pytest.fixture(params=[HermesEngine, OpencodeEngine, AntigravityEngine], ids=['hermes', 'opencode', 'antigravity'])
 async def engine_config(request, monkeypatch, tmp_path):
     cls = request.param
     peer = Path(__file__).parent / 'fixtures/acp_session_stub.py'
@@ -35,6 +36,51 @@ async def engine_config(request, monkeypatch, tmp_path):
 async def collect(config, prompt, sid=None, **kwargs):
     cls, root = config
     return [e async for e in cls().spawn(prompt, str(root), session_id=sid, **kwargs)]
+
+
+@pytest.mark.anyio
+async def test_native_restore_drops_history_but_preserves_new_identical_text(engine_config):
+    cls, root = engine_config
+    if cls is OpencodeEngine:
+        pytest.skip('This adapter owns a separate restore implementation')
+    first = await collect(engine_config, 'hello')
+    session = sid(first)
+    pool = get_session_pool(cls.ENGINE_ID)
+    await pool.discard(pool._entries[(str(root), session)])
+    (root / 'replay-history').touch()
+    restored = await collect(engine_config, 'hello', session)
+    assert text(restored) == 'hello'
+    assert not any(e.type in {'user_message_chunk', 'agent_thought_chunk', 'tool_call'} for e in restored)
+    assert any(e.type == 'config_option_update' for e in restored)
+    assert text(await collect(engine_config, 'hello', session)) == 'hello'
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('native_mode', ['default', 'auto', 'accept-edits', 'plan'])
+async def test_antigravity_full_access_approves_native_request_and_downgrades(engine_config, native_mode):
+    cls, root = engine_config
+    if cls is not AntigravityEngine:
+        pytest.skip('Antigravity-specific native permission contract')
+    from engines.core.permissions import encode_permission_selection
+    engine = cls()
+    await engine.set_permission_mode(encode_permission_selection('antigravity', {'permission_mode':'bypassPermissions'}))
+    events = [e async for e in engine.spawn('approve', str(root))]
+    assert text(events) == 'accepted'
+    assert not any(e.type == 'interaction_request' for e in events)
+    session = sid(events)
+    pending = asyncio.Queue()
+    async def downgraded():
+        async for event in engine.spawn('approve', str(root), session_id=session, config_overrides={'permission_mode':native_mode}):
+            if event.type == 'interaction_request':
+                await pending.put(event)
+    task = asyncio.create_task(downgraded())
+    try:
+        event = await asyncio.wait_for(pending.get(), 5)
+        await engine.approve_tool_option(event.data['tool_call']['tool_call_id'], 'deny')
+        await asyncio.wait_for(task, 5)
+    finally:
+        await engine.stop()
+        await asyncio.gather(task, return_exceptions=True)
 
 
 def sid(events):
@@ -135,3 +181,38 @@ async def test_acp_cancel_and_early_close_release_prompt_tasks(engine_config):
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)
     assert not pool._entries
+
+
+@pytest.mark.anyio
+async def test_antigravity_plan_toggle_resets_native_mode_on_reused_and_restored_session(engine_config):
+    cls, root = engine_config
+    if cls is not AntigravityEngine:
+        pytest.skip('Antigravity native modes')
+    config = {'permission_mode': 'accept-edits'}
+    first = await collect(engine_config, 'first', config_overrides=config, plan_mode=False)
+    session = sid(first)
+    await collect(engine_config, 'planning', session, config_overrides=config, plan_mode=True)
+    await collect(engine_config, 'execute', session, config_overrides=config, plan_mode=False)
+    pool = get_session_pool(cls.ENGINE_ID)
+    await pool.discard(pool._entries[(str(root), session)])
+    await collect(engine_config, 'restored', session, config_overrides={'permission_mode':'auto'}, plan_mode=False)
+    rows = [json.loads(line) for line in (root / 'wire.jsonl').read_text().splitlines()]
+    assert [r['params']['value'] for r in rows if r.get('method') == 'session/set_config_option' and r['params']['configId']=='mode'] == ['accept-edits','plan','accept-edits','auto']
+    assert sum(r.get('method') == 'initialize' for r in rows) == 2
+    methods = [r.get('method') for r in rows]
+    assert methods.count('session/load') == 1
+    for index, row in enumerate(rows):
+        if row.get('method') == 'session/prompt':
+            assert rows[index-1].get('method') == 'session/set_config_option'
+
+
+@pytest.mark.anyio
+async def test_antigravity_rejected_mode_never_sends_prompt(engine_config):
+    cls, root = engine_config
+    if cls is not AntigravityEngine:
+        pytest.skip('Antigravity native modes')
+    (root / 'reject-mode').touch()
+    events = await collect(engine_config, 'must not run', config_overrides={'permission_mode':'auto'})
+    assert any(e.type == 'error' for e in events)
+    rows = [json.loads(line) for line in (root / 'wire.jsonl').read_text().splitlines()]
+    assert not any(r.get('method') == 'session/prompt' for r in rows)

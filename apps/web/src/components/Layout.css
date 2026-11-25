@@ -146,6 +146,7 @@
 .layout-session-bulk-delete.btn { color: var(--danger); }
 .layout-session-row { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; cursor: pointer; font-size: calc(12.8px * var(--font-scale)); color: var(--meta); background: transparent; overflow: hidden; }
 .layout-session-row[data-selected="true"], .layout-session-row[data-active="true"], .layout-session-row[data-drop-target="true"] { color: var(--accent); background: var(--accent-light); }
+.layout-session-row[data-hub-session="true"] > .ws-marquee { color: var(--text-primary); }
 .layout-session-row[data-dragging="true"] { opacity: 0.4; }
 .layout-session-row[data-selected="true"], .layout-session-row[data-drop-target="true"] { outline: 1px solid var(--accent); }
 .layout-session-checkbox { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; border: 1px solid var(--border); background: transparent; display: flex; align-items: center; justify-content: center; }

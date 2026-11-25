@@ -100,10 +100,10 @@ test('remote access keeps gateway and LAN project settings available together on
   assert.equal(tabs.length,2)
   await act(async()=>tabs[1].click())
   assert.ok(calls.some(url=>url.includes('/remote-project/settings')))
-  assert.equal(container.querySelector('.gateway-platform-settings'),null)
+  assert.ok(container.querySelector('.gateway-platform-settings') === null)
   await act(async()=>useManagedModeStore.setState({managed:true}))
   assert.equal(container.querySelectorAll('.remote-access-tabs button').length,2)
-  assert.equal(container.querySelector('.gateway-platform-settings'),null)
+  assert.ok(container.querySelector('.gateway-platform-settings') === null)
  } finally {
   await act(async()=>root.unmount()); globalThis.fetch=original;useManagedModeStore.setState({managed:null,loading:false});container.remove();await window.happyDOM.close()
  }

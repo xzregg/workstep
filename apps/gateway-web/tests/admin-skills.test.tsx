@@ -131,5 +131,5 @@ test('edited Skill action asks before discarding the form', async () => {
   fireEvent.click(getByRole(dialog, 'button', { name: '取消' }))
   fireEvent.click(getByRole(await screen.findByRole('dialog', { name: '放弃 Skill 操作' }),
     'button', { name: '放弃并关闭' }))
-  assert.equal(screen.queryByRole('dialog', { name: '创建 Skill' }), null)
+  assert.ok(screen.queryByRole('dialog', { name: '创建 Skill' }) === null)
 })

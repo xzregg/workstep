@@ -1,5 +1,11 @@
 """Admission rules shared by extraction, validation feedback and evaluation."""
 
+NOTIFICATION_RULES = ("Write notification summaries (top-level and delegation actions) in the companion's configured identity, personality and tone, speaking directly to the user in first person. "
+                      "Follow existing reply agreements, including length and format; avoid repetition and unnecessary detail. "
+                      "Otherwise, in 1-2 short sentences, name the user's concrete request, its new status and any needed decision. "
+                      "Keep paths, logs and rule citations internal unless essential. Distinguish reported progress from verified results; "
+                      "do not claim personal execution of delegated work.")
+
 COMPACT_RULES = '''Store durable knowledge, not an activity log. Ask what future question or decision each item will help answer; omit routine acknowledgements, repeated completion reports, test counts, build logs, temporary paths and intermediate UI edits unless essential to a reusable lesson or an explicit user request to remember them. Consolidate repeated discussion of the same change into one current, source-backed conclusion; do not merge independent facts, distinct dated events or preferences with progress. Write 1-2 short sentences per summary (aim for 120 Chinese characters or 60 words); preserve subject, important dates, conditions, limitations and reported-versus-verified status. Longer text is justified only by necessary evidence-backed details. Preserve complete facts rather than truncating to meet a length target. Sources retain the full detail. Keep experience situation/action/result brief and complementary rather than repeating the summary. Omit optional empty/default fields and entities/relations that add no retrieval value. Candidate count is a ceiling, not a target; zero is valid.'''
 
 KIND_RULES = '''Classify the meaning and subject, not wording such as want, must, always or default. Separate personal information from decisions about a product.
@@ -57,6 +63,9 @@ def repair_instruction(error, context):
             'Wrap the complete result in exactly one <json>...</json> pair. '
             'Finish the response with the literal closing tag </json> after the JSON object. '
             'Required top-level fields: decision (silent or notify), summary (string), source_ids (array of strings, [] is valid). '
+            'Top-level summary must be empty when silent; use nonempty notification text when notify. '
+            'When silent, omit notification_reason. '
+            + NOTIFICATION_RULES + ' '
             'These fields remain required for historical or memory-only batches; memories is an optional separate array. '
             'Allowed current-batch source_ids: '+json.dumps(allowed)+'. '
             'Earlier evidence is inherited automatically from fully read supersedes knowledge IDs. '

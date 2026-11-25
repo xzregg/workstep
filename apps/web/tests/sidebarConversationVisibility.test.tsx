@@ -36,7 +36,7 @@ test('conversation switch disappears when the last channel session is removed', 
     assert.match(container.querySelector('[role="tabpanel"]')!.textContent!, /渠道对话/)
 
     await render([ordinary], null)
-    assert.equal(container.querySelector('[role="tablist"]'), null)
+    assert.ok(container.querySelector('[role="tablist"]') === null)
     assert.match(container.textContent!, /普通对话/)
     assert.doesNotMatch(container.textContent!, /渠道对话/)
 

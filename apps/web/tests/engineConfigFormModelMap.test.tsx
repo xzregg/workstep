@@ -286,7 +286,7 @@ test('engine config form flags invalid JSON fields and blocks saving them', asyn
     try {
       const textarea = valid.container.querySelector('textarea') as HTMLTextAreaElement
       assert.equal(textarea.getAttribute('aria-invalid'), 'false')
-      assert.equal(valid.container.querySelector('[role="alert"]'), null)
+      assert.ok(valid.container.querySelector('[role="alert"]') === null)
       await act(async () => { valid.ref.current?.save(); await Promise.resolve() })
       assert.equal(saveCalls, 1)
     } finally {

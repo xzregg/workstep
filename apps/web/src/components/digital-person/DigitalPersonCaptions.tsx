@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react'
+import {memo,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react'
 import type {AssistantChatMessage} from '../../stores/assistantStore'
 import {useI18n} from '../../i18n'
 import type {VoicePhase} from '../../hooks/useVoiceInput'
@@ -65,6 +65,32 @@ function EditableVoiceCaption({text,value,compact,voicePhase,onStart,onChange}:{
   <LiveCaptionText text={text} compact={compact} voicePhase={voicePhase} editLabel={label} onEdit={()=>{onStart?.();setEditing(true)}}/>
 }
 
+
+// Message objects are immutable store snapshots. Reuse each projection while tokens
+// arrive for another message instead of cleaning and scanning the whole history.
+const captionSnapshots=new WeakMap<AssistantChatMessage,AssistantChatMessage|null>()
+function captionSnapshot(message:AssistantChatMessage){
+ if(captionSnapshots.has(message))return captionSnapshots.get(message)
+ const content=captionContent(message.content)
+ const visible=content||message.status==='running'||recordedCommentary(message).length
+ const snapshot=visible?(content===message.content?message:{...message,content}):null
+ captionSnapshots.set(message,snapshot)
+ return snapshot
+}
+
+const CaptionMessage=memo(function CaptionMessage({message,projectId,feedback,reading,onToggleSpeech}:{message:AssistantChatMessage;projectId:string;feedback:number;reading:boolean;onToggleSpeech?:(id:string)=>void}){
+ const {t}=useI18n()
+ return <div className={message.role==='user'?'digital-home-user-caption':'digital-home-reply chat-message-row'}>
+   {message.role==='user'&&<span className="digital-home-caption-label">{t('digitalPerson.homeYouSaid')}</span>}
+   {message.role==='assistant'&&<DigitalPersonProgress message={message}/>}
+   {!message.content&&message.role==='assistant'&&message.status==='running'?<ThinkingCaption key={message.id} createdAt={message.created_at}/>:<MarkdownMessage content={message.content} projectId={projectId} streaming={message.status==='running'} plainText={message.role==='user'} reveal="off"/>}
+   {message.role==='assistant'&&message.status!=='running'&&message.content.trim()&&<div className="digital-home-reply-actions">
+    <DigitalPersonFeedback messageId={message.id} initialValue={feedback}/>
+    {onToggleSpeech&&speechText(message.content).trim()&&<Button variant="ghost" className="chat-message-action digital-person-feedback-button" aria-label={t(reading?'tts.stop':'tts.play')} title={t(reading?'tts.stop':'tts.play')} onClick={()=>onToggleSpeech(message.id)}><Icon name={reading?'square':'volume'} size={14}/></Button>}
+   </div>}
+  </div>
+})
+
 /** Scrollable transcript with feedback and explicit playback for completed replies. */
 export default function DigitalPersonCaptions({messages,projectId,sessionId,greeting,liveText,voicePhase,feedback,readingId,onToggleSpeech,onClearVoice,voiceDraft,onStartVoiceEdit,onChangeVoiceDraft,frameRef}:{projectId:string;messages:AssistantChatMessage[];sessionId:string;greeting:string;liveText:string;voicePhase?:VoicePhase;feedback?:Record<string,number>;readingId?:string;onToggleSpeech?:(id:string)=>void;onClearVoice?:()=>void;voiceDraft?:string|null;onStartVoiceEdit?:()=>void;onChangeVoiceDraft?:(value:string)=>void;frameRef?:(frame:HTMLDivElement|null)=>void}){
  const {t}=useI18n(),viewport=useRef<HTMLElement>(null),following=useRef(true)
@@ -97,16 +123,8 @@ export default function DigitalPersonCaptions({messages,projectId,sessionId,gree
   if(node.scrollHeight>node.clientHeight)following.current=false
  }
  const history=useMemo(()=>{
-  const captions=messages.filter(message=>message.role==='user'||message.role==='assistant').map(message=>({...message,content:captionContent(message.content)})).filter(message=>message.content||message.status==='running'||recordedCommentary(message).length)
-  return captions.length?captions.map(message=><div key={message.id} className={message.role==='user'?'digital-home-user-caption':'digital-home-reply chat-message-row'}>
-   {message.role==='user'&&<span className="digital-home-caption-label">{t('digitalPerson.homeYouSaid')}</span>}
-   {message.role==='assistant'&&<DigitalPersonProgress message={message}/>}
-   {!message.content&&message.role==='assistant'&&message.status==='running'?<ThinkingCaption key={sessionId} createdAt={message.created_at}/>:<MarkdownMessage content={message.content} projectId={projectId} streaming={message.status==='running'} plainText={message.role==='user'} reveal="off"/>}
-   {message.role==='assistant'&&message.status!=='running'&&message.content.trim()&&<div className="digital-home-reply-actions">
-    <DigitalPersonFeedback messageId={message.id} initialValue={feedback?.[message.id]??0}/>
-    {onToggleSpeech&&speechText(message.content).trim()&&<Button variant="ghost" className="chat-message-action digital-person-feedback-button" aria-label={t(readingId===message.id?'tts.stop':'tts.play')} title={t(readingId===message.id?'tts.stop':'tts.play')} onClick={()=>onToggleSpeech(message.id)}><Icon name={readingId===message.id?'square':'volume'} size={14}/></Button>}
-   </div>}
-  </div>):<p className="digital-home-reply">{greeting}</p>
+  const captions=messages.filter(message=>message.role==='user'||message.role==='assistant').map(captionSnapshot).filter((message):message is AssistantChatMessage=>Boolean(message))
+  return captions.length?captions.map(message=><CaptionMessage key={message.id} message={message} projectId={projectId} feedback={feedback?.[message.id]??0} reading={readingId===message.id} onToggleSpeech={onToggleSpeech}/>):<p className="digital-home-reply">{greeting}</p>
  },[messages,projectId,sessionId,greeting,feedback,readingId,onToggleSpeech,t])
  return <div className="digital-home-caption-frame" ref={frameRef}><section ref={viewport} className="digital-home-subtitles" aria-label={t('digitalPerson.homeTranscript')} tabIndex={0}
   onWheelCapture={event=>{if(shouldPauseConversationFollow({type:'wheel',deltaY:event.deltaY}))pauseFollowing(event.currentTarget)}}

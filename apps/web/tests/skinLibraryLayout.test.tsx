@@ -23,7 +23,7 @@ for (const width of [320, 390, 1023, 1280]) test(`appearance cards and device pr
     const card = host.querySelector<HTMLElement>('.skin-settings-card')!
     assert.notEqual(window.getComputedStyle(card).height, '32px', 'skin rows must leave room for name and metadata')
     assert.equal(host.querySelectorAll('.skin-settings-card').length, 21)
-    assert.equal(host.querySelector('.skin-thumbnail'), null, 'library uses compact rows without repeated mock previews')
+    assert.ok(host.querySelector('.skin-thumbnail') === null, 'library uses compact rows without repeated mock previews')
     const customMeta = host.querySelector('[data-skin-id="skin-0"] .skin-settings-card-meta')!
     assert.doesNotMatch(customMeta.textContent!, /自定义皮肤包/)
     assert.ok(customMeta.querySelector('[role="img"][aria-label="自定义皮肤包"][title="自定义皮肤包"] svg'))
@@ -41,6 +41,6 @@ for (const width of [320, 390, 1023, 1280]) test(`appearance cards and device pr
     const frame = host.querySelector<HTMLElement>('.skin-studio-preview-frame')!
     assert.equal(parseFloat(frame.style.width), 280, 'phone preview uses the available panel width')
     await act(async () => host.querySelector<HTMLButtonElement>('.skin-settings-device-tabs button:first-child')!.click())
-    assert.equal(host.querySelector('.skin-studio-preview-frame.is-phone'), null, 'desktop preview remains selectable')
+    assert.ok(host.querySelector('.skin-studio-preview-frame.is-phone') === null, 'desktop preview remains selectable')
   } finally { await act(async () => root.unmount()); host.remove(); await window.happyDOM.close() }
 })

@@ -32,14 +32,14 @@ test('completed text-only replies show an empty state after event details load',
       container.querySelector<HTMLElement>('.process-trace-session-summary')!.click()
     })
     assert.equal(loadCount, 1)
-    assert.equal(container.querySelector('.process-trace-empty'), null)
+    assert.ok(container.querySelector('.process-trace-empty') === null)
     await act(async () => render(true))
     assert.equal(container.querySelector('.process-trace-empty')?.textContent, '暂无详情')
     assert.doesNotMatch(container.querySelector('.process-trace-body')?.textContent ?? '', /回复正文/)
     await act(async () => {
       container.querySelector<HTMLElement>('.process-trace-session-summary')!.click()
     })
-    assert.equal(container.querySelector('.process-trace-body'), null)
+    assert.ok(container.querySelector('.process-trace-body') === null)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

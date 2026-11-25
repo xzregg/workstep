@@ -38,7 +38,7 @@ test('reset-step toggle sits after the plus button and exposes its selected stat
     const toggle = container.querySelector('[data-reset-step]') as HTMLButtonElement
     assert.ok(attach)
     assert.ok(toggle)
-    assert.equal(attach.parentElement?.nextElementSibling, toggle)
+    assert.ok(attach.parentElement?.nextElementSibling === toggle)
     assert.equal(toggle.getAttribute('aria-pressed'), 'false')
     assert.equal(toggle.getAttribute('data-active'), 'false')
     assert.equal(toggle.textContent?.trim(), 'Reset step')

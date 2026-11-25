@@ -1,172 +1,91 @@
-/**
- * FlowStepApplyPanel — apply only some of an AI flow patch's steps.
- *
- * The AI flow assistant returns incremental patches when editing an existing
- * workflow. Rather than overwriting the whole canvas, this panel lists the
- * steps a proposal touched and lets the user apply just the ones they want,
- * merging them onto the current canvas via `applyWorkflowPatch`.
- */
-import { useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Button from './Button'
-import ConfirmDialog from './ConfirmDialog'
-import { useI18n } from '../i18n'
+import { useI18n, type TKey } from '../i18n'
 import { applyWorkflowPatch, changedStepIds } from '../utils/workflowPatch'
 import type { GenProposalCard } from '../stores/workflowGenStore'
+import './FlowProposalPreview.css'
 
 export interface FlowStepApplyPanelProps {
-  /** Proposals that came from an incremental patch (have stepChanges). */
   cards: GenProposalCard[]
-  /** Snapshot of the current canvas to merge the selected steps onto. */
   currentSteps: () => any
-  /** Apply the merged canvas (parent decides how to handle unsaved edits). */
-  onApply: (steps: any, card: GenProposalCard) => void
-  /** Currently applied proposal id, for the applied highlight. */
+  onApply: (steps: any, card: GenProposalCard) => unknown
+  onPreview?: (steps: any | null, card?: GenProposalCard) => void
   appliedCardId?: string | null
   disabled?: boolean
 }
 
-import type { TKey } from '../i18n'
-
 const CHANGE_LABEL: Record<string, TKey> = {
-  added: 'aiFlow.stepChangeAdded',
-  updated: 'aiFlow.stepChangeUpdated',
-  removed: 'aiFlow.stepChangeRemoved',
+  added: 'aiFlow.stepChangeAdded', updated: 'aiFlow.stepChangeUpdated', removed: 'aiFlow.stepChangeRemoved',
 }
 
-export default function FlowStepApplyPanel({
-  cards,
-  currentSteps,
-  onApply,
-  appliedCardId,
-  disabled,
-}: FlowStepApplyPanelProps) {
+/** Inline selection lets the user see the canvas while deciding what to apply. */
+export default function FlowStepApplyPanel({ cards, currentSteps, onApply, onPreview, appliedCardId, disabled }: FlowStepApplyPanelProps) {
   const { t } = useI18n()
-  // Per-card selection of step ids; unknown ⇒ default to every changed step.
-  const [selection, setSelection] = useState<Record<string, Set<number>>>({})
-  const [activeCardId, setActiveCardId] = useState<string | null>(null)
+  const [selection, setSelection] = useState<Map<GenProposalCard, Set<number>>>(new Map())
+  const [previewCard, setPreviewCard] = useState<GenProposalCard | null>(null)
+  const [applying, setApplying] = useState(false)
+  const callbacks = useRef({ currentSteps, onPreview })
+  useEffect(() => { callbacks.current = { currentSteps, onPreview } })
+  const active = cards.find(card => card === previewCard) ?? cards[0]
+  const selectedFor = (card: GenProposalCard) => selection.get(card) ?? changedStepIds(card.stepChanges)
+  const resolve = (card: GenProposalCard) => card.patch
+    ? applyWorkflowPatch(callbacks.current.currentSteps(), card.patch, selectedFor(card))
+    : card.steps
 
-  const defaults = useMemo(() => {
-    const map: Record<string, Set<number>> = {}
-    for (const card of cards) map[card.id] = changedStepIds(card.stepChanges)
-    return map
-  }, [cards])
+  useEffect(() => {
+    if (!active) { callbacks.current.onPreview?.(null); return }
+    // loadSteps owns the applied animation. Do not clear it when the card settles.
+    if (active.id === appliedCardId) return
+    const steps = active.patch
+      ? applyWorkflowPatch(callbacks.current.currentSteps(), active.patch, selection.get(active) ?? changedStepIds(active.stepChanges))
+      : active.steps
+    callbacks.current.onPreview?.(steps, active)
+  }, [active, selection, appliedCardId])
+  useEffect(() => () => callbacks.current.onPreview?.(null), [])
 
-  const selectedFor = (card: GenProposalCard) =>
-    selection[card.id] ?? defaults[card.id] ?? new Set<number>()
-  const activeCard = cards.find((card) => card.id === activeCardId)
-
-  const toggleStep = (card: GenProposalCard, stepId: number) => {
+  const toggle = (card: GenProposalCard, id: number) => {
     const next = new Set(selectedFor(card))
-    if (next.has(stepId)) next.delete(stepId)
-    else next.add(stepId)
-    setSelection((current) => ({ ...current, [card.id]: next }))
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSelection(current => new Map([...current].filter(([item]) => cards.includes(item))).set(card, next))
+  }
+  const apply = async (card: GenProposalCard) => {
+    if (applying || disabled) return
+    setApplying(true)
+    try { await onApply(resolve(card), card) } finally { setApplying(false) }
   }
 
-  const applyCard = (card: GenProposalCard) => {
-    const selected = selectedFor(card)
-    if (selected.size === 0) return
-    const merged = applyWorkflowPatch(currentSteps(), card.patch ?? {}, selected)
-    onApply(merged, card)
-    setActiveCardId(null)
-  }
-
-  const requestApply = (card: GenProposalCard) => {
-    const changes = card.stepChanges ?? []
-    if (changes.length === 1) {
-      applyCard(card)
-      return
-    }
-    setActiveCardId(card.id)
-  }
-
-  if (cards.length === 0) return null
-
-  return (
-    <div className="flow-step-apply-panel">
-      {cards.map((card) => {
-        const changes = card.stepChanges ?? []
-        return <div key={card.id} className="flow-step-apply-card">
-          <div className="flow-step-apply-card-copy">
-            <strong>{card.title}</strong>
-            {card.summary && <span>{card.summary}</span>}
-          </div>
-          <span className="flow-step-apply-card-count">
-            {changes.length === 1
-              ? `${t(CHANGE_LABEL[changes[0].change] ?? 'aiFlow.stepChangeUpdated')}：${changes[0].title || changes[0].key || `#${changes[0].id}`}`
-              : t('aiFlow.stepChangeCount', { count: changes.length })}
-          </span>
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={disabled}
-            onClick={() => requestApply(card)}
-          >
-            {appliedCardId === card.id ? t('aiFlow.applied') : t('aiFlow.stepApplyOpen')}
-          </Button>
+  if (!active) return null
+  return <div className="flow-step-apply-panel flow-proposal-panel">
+    {cards.map(card => {
+      const isActive = card === active
+      const done = card.id === appliedCardId
+      const changes = card.stepChanges ?? []
+      return <section className="flow-proposal-card" key={card.id} aria-label={card.title}>
+        <div className="flow-proposal-card-heading">
+          <strong>{card.title}</strong>
+          <span>{done ? t('aiFlow.applied') : isActive ? t('aiFlow.previewPending') : t('aiFlow.previewAlternative')}</span>
         </div>
-      })}
-
-      <ConfirmDialog
-        open={Boolean(activeCard)}
-        title={t('aiFlow.stepApplyTitle')}
-        message={t('aiFlow.stepApplyHint')}
-        confirmText={t('aiFlow.stepApplyButton')}
-        confirmDisabled={!activeCard || selectedFor(activeCard).size === 0}
-        width={440}
-        onConfirm={() => { if (activeCard) applyCard(activeCard) }}
-        onCancel={() => setActiveCardId(null)}
-      >
-        {activeCard && (
-          <div className="flow-step-apply-dialog">
-            <div className="flow-step-apply-dialog-toolbar">
-              <span>
-                {t('aiFlow.stepApplyCount', {
-                  count: selectedFor(activeCard).size,
-                  total: activeCard.stepChanges?.length ?? 0,
-                })}
-              </span>
-              <div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setSelection((current) => ({
-                    ...current,
-                    [activeCard.id]: changedStepIds(activeCard.stepChanges),
-                  }))}
-                >
-                  {t('aiFlow.stepSelectAll')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setSelection((current) => ({
-                    ...current,
-                    [activeCard.id]: new Set(),
-                  }))}
-                >
-                  {t('aiFlow.stepSelectNone')}
-                </Button>
-              </div>
-            </div>
-            {activeCard?.stepChanges?.map((change) => (
-              <label key={`${activeCard.id}-${change.id}`} className="flow-step-apply-option">
-                <input
-                  className="flow-step-apply-checkbox"
-                  type="checkbox"
-                  checked={selectedFor(activeCard).has(change.id)}
-                  onChange={() => toggleStep(activeCard, change.id)}
-                />
-                <span className="flow-step-apply-option-title">
-                  {change.title || change.key || `#${change.id}`}
-                </span>
-                <span className={`flow-step-apply-change flow-step-apply-change--${change.change}`}>
-                  {t(CHANGE_LABEL[change.change] ?? 'aiFlow.stepChangeUpdated')}
-                </span>
-              </label>
-            ))}
-          </div>
-        )}
-      </ConfirmDialog>
-    </div>
-  )
+        {card.summary && <p>{card.summary}</p>}
+        {isActive && changes.map(change => <label className="flow-step-apply-option" key={change.id}>
+          <input className="flow-step-apply-checkbox" type="checkbox"
+            checked={selectedFor(card).has(change.id)} disabled={disabled || applying || done}
+            onChange={() => toggle(card, change.id)} />
+          <span className="flow-step-apply-option-title" title={change.title || change.key}>{change.title || change.key || `#${change.id}`}</span>
+          <span className={`flow-step-apply-change flow-step-apply-change--${change.change}`}>
+            {t(CHANGE_LABEL[change.change] ?? 'aiFlow.stepChangeUpdated')}
+          </span>
+        </label>)}
+        <div className="flow-proposal-card-footer">
+          <span>{changes.length ? t('aiFlow.stepApplyCount', { count: selectedFor(card).size, total: changes.length }) : t('flow.nodeCount', { count: card.nodeCount })}</span>
+          {isActive ? <Button size="sm" variant="primary" data-apply-proposal={card.id}
+            disabled={disabled || applying || done || (!!card.patch && selectedFor(card).size === 0)}
+            loading={applying} onClick={() => void apply(card)}>
+            {done ? t('aiFlow.applied') : t('aiFlow.stepApplyButton')}
+          </Button> : <Button size="sm" variant="ghost" disabled={disabled || applying} onClick={() => setPreviewCard(card)}>{t('aiFlow.previewProposal')}</Button>}
+        </div>
+      </section>
+    })}
+    {onPreview && <p className="flow-proposal-hint">{t('aiFlow.previewHint')}</p>}
+  </div>
 }

@@ -26,8 +26,8 @@ for (const count of [undefined, 0, 100]) test(`task binding dialog handles ${cou
     if (count === undefined) assert.match(dialog.textContent!, /重启后端/)
     if (count === 0) assert.match(dialog.textContent!, /暂无绑定任务/)
     await act(async () => dialog.querySelector<HTMLButtonElement>('.bot-task-bindings-close')!.click())
-    assert.equal(document.querySelector('[role="dialog"]'), null)
-    assert.equal(document.activeElement, trigger)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
+    assert.ok(document.activeElement === trigger)
   } finally {
     await act(async () => root.unmount()); node.remove(); await window.happyDOM.close()
   }
@@ -52,7 +52,7 @@ test('bound tasks show project and group; cross removes only the selected bindin
     const trigger = rootNode.querySelector<HTMLButtonElement>('.bot-task-bindings-trigger')!
     assert.match(trigger.textContent!, /1/)
     assert.doesNotMatch(rootNode.textContent!, /修复登录/)
-    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
     await act(async () => trigger.click())
     const dialog = document.querySelector('[role="dialog"]')!
     assert.match(dialog.textContent!, /修复登录/)
@@ -68,15 +68,15 @@ test('bound tasks show project and group; cross removes only the selected bindin
     await act(async () => close.click())
     assert.deepEqual(calls, [['t1', 'p1', 'b1', 'g1'], ['t1', 'p1', 'b1', 'g1']])
     assert.equal(refreshed, 1)
-    assert.equal(dialog.querySelector('.bot-task-binding-remove'), null)
+    assert.ok(dialog.querySelector('.bot-task-binding-remove') === null)
     assert.match(dialog.textContent!, /暂无绑定任务/)
     assert.match(trigger.textContent!, /0/)
     await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
-    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
     await act(async () => trigger.click())
-    assert.equal(document.querySelector('[role="alert"]'), null)
+    assert.ok(document.querySelector('[role="alert"]') === null)
     await act(async () => (document.querySelector('.bot-task-bindings-backdrop') as HTMLElement).click())
-    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
   } finally {
     channelBotApi.unbindGroup = original
     await act(async () => root.unmount())

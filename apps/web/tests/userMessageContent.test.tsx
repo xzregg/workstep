@@ -34,12 +34,12 @@ test('user messages collapse overflow, expand and collapse again, and remeasure 
     await act(async () => toggle()!.click())
     assert.equal(toggle()?.textContent, '收起')
     assert.equal(toggle()?.getAttribute('aria-expanded'), 'true')
-    assert.equal(container.querySelector('.user-message-content-body--collapsed'), null)
+    assert.ok(container.querySelector('.user-message-content-body--collapsed') === null)
     await act(async () => toggle()!.click())
     assert.equal(toggle()?.getAttribute('aria-expanded'), 'false')
     height = 100
     await act(async () => window.dispatchEvent(new window.Event('resize')))
-    assert.equal(toggle(), null, 'exactly five lines need no toggle')
+    assert.ok(toggle() === null, 'exactly five lines need no toggle')
     height = 120
     await act(async () => window.dispatchEvent(new window.Event('resize')))
     assert.equal(toggle()?.textContent, '更多', 'wrapped overflow is remeasured')
@@ -47,7 +47,7 @@ test('user messages collapse overflow, expand and collapse again, and remeasure 
     await render('user', '另一条长消息')
     assert.equal(toggle()?.getAttribute('aria-expanded'), 'false', 'new content defaults to collapsed')
     await render('assistant')
-    assert.equal(toggle(), null, 'assistant messages remain fully visible')
+    assert.ok(toggle() === null, 'assistant messages remain fully visible')
   } finally {
     await act(async () => root.unmount())
     useLocaleStore.getState().setLocale(previousLocale)

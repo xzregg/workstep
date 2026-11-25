@@ -2,6 +2,7 @@ import SettingsHelpButton from '../SettingsHelpButton'
 import { useNavigate } from 'react-router-dom'
 import DigitalPersonRelationship from './DigitalPersonRelationship'
 import DigitalPersonOperations from './DigitalPersonOperations'
+import DigitalPersonProactiveSettings from './DigitalPersonProactiveSettings'
 import DigitalPersonVisionSettings from '../face-recognition/DigitalPersonVisionSettings'
 import DigitalPersonGrowth from './DigitalPersonGrowth'
 import DigitalPersonMemory from './DigitalPersonMemory'
@@ -108,7 +109,6 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
   const toggleEnabled = async (discard = false) => {
     if (!saved || blocked) return
     if (!discard && dirty) { setPendingToggle(true); return }
-    if (!saved.enabled && !saved.onboarding_completed) { beginGuide(); return }
     setBusy(true); setError('')
     try {
       const result = await digitalPersonApi.save({ ...saved, enabled: !saved.enabled })
@@ -160,7 +160,7 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
     </DigitalPersonBodyNavigation>
     <section ref={panelRef} id="digital-person-panel" aria-labelledby={tab==='memory'?undefined:'digital-person-panel-title'} aria-label={tab==='memory'?t('digitalPerson.memory'):undefined}>
     {tab !== 'memory' && tab !== 'channels' && tab !== 'activity' && <h2 id="digital-person-panel-title">{t(tab === 'identity' ? 'digitalPerson.identityPersonality' : tab === 'assistant' ? 'digitalPerson.bodybrain' : tab === 'appearance' ? 'digitalPerson.bodymouth' : tab === 'input' ? 'digitalPerson.bodyears' : tab === 'vision' ? 'digitalPerson.bodyeyes' : tab === 'tools' ? 'digitalPerson.bodyhands' : `digitalPerson.${tab}`)}</h2>}
-    {(tab === 'identity' || tab === 'proactive') && <div className="digital-person-form-actions"><Button variant="primary" disabled={!valid || !profileDirty || childDirty || childBusy} loading={busy}
+    {tab === 'identity' && <div className="digital-person-form-actions"><Button variant="primary" disabled={!valid || !profileDirty || childDirty || childBusy} loading={busy}
       onClick={() => void save()}>{t('common.save')}</Button></div>}
     {tab === 'card' && <article className="digital-person-card">
       <div className="digital-person-card-main"><DigitalPersonAvatar avatar={saved.avatar} /><div><h2>{saved.name}</h2><p className="digital-person-role">{saved.role}</p><p>{[saved.personality,saved.tone].filter(Boolean).join('，')}</p><span className="digital-person-status">{t(saved.enabled ? 'digitalPerson.enabled' : 'digitalPerson.disabled')}</span></div></div>
@@ -173,7 +173,9 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
     {tab === 'identity' && <DigitalPersonDocuments value={draft} onChange={setDraft} disabled={blocked} onChooseRole={()=>setChooseRole(true)} />}
     {tab === 'appearance' && <VoiceOutputSettings initialProfile={saved} onDirtyChange={childChanged} onBusyChange={childBusyChanged} onSaved={voiceSaved} disabled={busy} />}
     {tab === 'activity' && <DigitalPersonActivity titleId="digital-person-panel-title" checking={busy} />}
-    {tab === 'proactive' && <div className="digital-person-form">
+    {tab === 'proactive' && <DigitalPersonProactiveSettings dirty={dirty} busy={blocked} onDiscard={()=>{setDraft(saved);setChildDirty(false)}} onDirtyChange={childChanged} onBusyChange={childBusyChanged}
+      actions={<div className="digital-person-form-actions"><Button variant="primary" disabled={!valid || !profileDirty || childDirty || childBusy} loading={busy} onClick={()=>void save()}>{t('common.save')}</Button></div>}>
+    <div className="digital-person-form">
       <div className="digital-person-context-setting"><label className="digital-person-channel-check"><input name="reflection_enabled" disabled={blocked} type="checkbox" checked={draft.reflection_enabled ?? true} onChange={e=>update('reflection_enabled',e.target.checked)}/>{t('digitalPerson.enableReflection')}</label>
       <p>{t('digitalPerson.enableReflectionHint')}</p></div>
       <label className="digital-person-channel-check"><input name="proactive_enabled" disabled={blocked} type="checkbox" checked={draft.proactive_enabled ?? false} onChange={e=>update('proactive_enabled',e.target.checked)}/>{t('digitalPerson.enableProactive')}</label>
@@ -189,7 +191,7 @@ export default function DigitalPersonSettings({ onClose, onDirtyChange, onBusyCh
         {Array.from({length: 24}, (_, hour) => <option key={hour} value={hour}>{String(hour).padStart(2, '0')}:00</option>)}
       </Select></label>)}</div>
       <Button disabled={blocked || dirty} onClick={()=>void checkNow()}>{t('digitalPerson.thinkNow')}</Button>
-    </div>}
+    </div></DigitalPersonProactiveSettings>}
     {tab === 'channels' && <DigitalPersonChannels workspaceId={workspace?.id} name={saved.name} onDirtyChange={childChanged} onBusyChange={childBusyChanged} />}
     {(tab === 'assistant' || tab === 'memory') && <div id="digital-person-brain-panel" role="region" aria-labelledby={`digital-person-tab-${tab}`}>
       {tab === 'assistant' ? <AssistantEngineSettings assistantName="digital_person" onDirtyChange={childChanged} onBusyChange={childBusyChanged} /> :

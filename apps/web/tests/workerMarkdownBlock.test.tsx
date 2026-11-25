@@ -5,6 +5,8 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { defaultUrlTransform } from 'react-markdown'
 import WorkerMarkdownBlock from '../src/components/WorkerMarkdownBlock'
+import MarkdownContent from '../src/components/MarkdownContent'
+import { I18nProvider } from '../src/i18n'
 import { parseMarkdownTree } from '../src/markdown/parseMarkdownTree'
 
 class FakeWorker {
@@ -32,7 +34,7 @@ test('worker results progress during streaming, preserve selection freeze and re
   ))
   try {
     await render('**第一版**')
-    assert.equal(host.querySelector('strong'), null, 'parsing waits for worker')
+    assert.ok(host.querySelector('strong') === null, 'parsing waits for worker')
     await render('**第一版**后续')
     await act(async () => FakeWorker.instance.deliver())
     assert.equal(host.querySelector('strong')?.textContent, '第一版', 'show progress even with a newer version waiting')
@@ -65,5 +67,21 @@ test('synthetic closing fences do not reject in-flight code-block progress', asy
     assert.equal(host.querySelector('code')?.textContent, 'const a\n')
     await act(async () => FakeWorker.instance.deliver())
     assert.equal(host.querySelector('code')?.textContent, 'const abc\n')
+  } finally { await act(async () => root.unmount()); host.remove() }
+})
+
+
+test('many short paragraphs in a long history message use one Worker parse', async () => {
+  const host = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(host)
+  const content = ('历史段落 **重点**，每段短但整篇很长。\n\n').repeat(120)
+  try {
+    await act(async () => root.render(<I18nProvider><MarkdownContent content={content}/></I18nProvider>))
+    assert.equal(FakeWorker.instance.jobs.length, 1)
+    assert.equal(FakeWorker.instance.jobs[0].content, content)
+    assert.equal(host.querySelectorAll('strong').length, 0)
+    await act(async () => FakeWorker.instance.deliver())
+    assert.equal(host.querySelectorAll('strong').length, 120)
+    assert.ok(host.querySelector('.markdown-worker-fallback') === null)
   } finally { await act(async () => root.unmount()); host.remove() }
 })

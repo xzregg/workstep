@@ -24,17 +24,17 @@ test('mobile task long press opens actions without navigating; movement cancels 
     const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('.mobile-task-menu button')]
     await act(async () => buttons().find(button => button.textContent?.includes('Archive'))!.click())
     assert.equal(archived, 1)
-    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
     await act(async () => row.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
     await act(async () => buttons().find(button => button.textContent?.includes('Delete'))!.click())
     assert.equal(deleted, 1)
     await act(async () => { row.dispatchEvent(pointer('pointerdown')); row.dispatchEvent(pointer('pointermove', 30)); await new Promise(resolve => setTimeout(resolve, 550)) })
-    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
     await act(async () => { row.dispatchEvent(pointer('pointerdown')); row.dispatchEvent(pointer('pointerup')); row.click() })
     assert.equal(opened, 1)
     for (const cancel of ['pointerup', 'pointercancel', 'pointerout']) {
       await act(async () => { row.dispatchEvent(pointer('pointerdown')); row.dispatchEvent(pointer(cancel)); await new Promise(resolve => setTimeout(resolve, 550)) })
-      assert.equal(document.querySelector('[role="dialog"]'), null)
+      assert.ok(document.querySelector('[role="dialog"]') === null)
     }
   } finally {
     await act(async () => root.unmount())
@@ -91,7 +91,7 @@ test('mobile start action respects task state and closes the menu before request
         assert.equal(start.disabled, scenario.starting)
         if (!scenario.starting) {
           await act(async () => start.click())
-          assert.equal(document.querySelector('[role="dialog"]'), null)
+          assert.ok(document.querySelector('[role="dialog"]') === null)
         }
       }
     }

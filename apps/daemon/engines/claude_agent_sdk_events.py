@@ -280,11 +280,14 @@ class ClaudeAgentSDKEventMapper:
             if usage is not None:
                 raw_usage = self._as_dict(usage)
                 context_used, context_size = claude_context_snapshot(raw_usage)
-                events.append(usage_update_event(
-                    normalize_claude_usage(raw_usage),
-                    used=context_used,
-                    size=context_size,
-                ))
+                usage_event = usage_update_event(
+                    normalize_claude_usage(raw_usage), used=context_used, size=context_size,
+                )
+                actual_model = getattr(msg, 'model', None) or getattr(message, 'model', None)
+                if isinstance(actual_model, str) and actual_model.strip():
+                    # Native AssistantMessage.model, never the requested config.
+                    usage_event.data['model'] = actual_model
+                events.append(usage_event)
             return events
 
         if mtype == "user":

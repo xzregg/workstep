@@ -37,7 +37,7 @@ test('close dismisses the detail while the list route is still rendering', async
       <I18nProvider><Suspense fallback={<p>加载列表</p>}><Surface /></Suspense></I18nProvider>
     </MemoryRouter>))
     await act(async () => container.querySelector<HTMLButtonElement>('.task-detail-header-close')!.click())
-    assert.equal(container.querySelector('.task-detail-header-close'), null, 'close does not wait for the route transition')
+    assert.ok(container.querySelector('.task-detail-header-close') === null, 'close does not wait for the route transition')
     listReady = true
     await act(async () => resolveList())
     assert.equal(container.querySelector('output')!.textContent, '?project=demo')
@@ -123,13 +123,13 @@ test('the close button exits detail after opening another task and receiving upd
     const close = container.querySelector<HTMLButtonElement>('.task-detail-header-close')!
     await act(async () => close.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })))
     for (let revision = 1; revision <= 10; revision++) await act(async () => render(revision))
-    assert.equal(container.querySelector('.task-detail-header-close'), close, 'updates preserve the tapped button')
+    assert.ok(container.querySelector('.task-detail-header-close') === close, 'updates preserve the tapped button')
     await act(async () => {
       close.dispatchEvent(new window.PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' }))
       close.click()
     })
     assert.equal(container.querySelector('output')!.textContent, '/tasks?project=demo&workflow=flow')
-    assert.equal(container.querySelector('.task-detail-header-close'), null)
+    assert.ok(container.querySelector('.task-detail-header-close') === null)
   } finally {
     await act(async () => root.unmount())
     container.remove()

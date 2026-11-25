@@ -55,12 +55,12 @@ test('debug details identify the task and put actions beside the primary tabs', 
     await act(async () => render(true))
     assert.equal(host.querySelector('.task-detail-header-primary')?.firstElementChild?.textContent, '调试')
     assert.ok(host.querySelector('.task-detail-primary-tabs-actions [data-debug-tools]'))
-    assert.equal(host.querySelector('.task-detail-step-panel [data-debug-tools]'), null)
+    assert.ok(host.querySelector('.task-detail-step-panel [data-debug-tools]') === null)
     assert.deepEqual(Array.from(host.querySelectorAll('.task-detail-primary-tabs [role=tab]'), tab => tab.textContent).slice(0, 2),
       ['任务详情', 'Git工作区'])
     await act(async () => render(false))
-    assert.equal(host.querySelector('.task-detail-debug-badge'), null)
-    assert.equal(host.querySelector('[data-debug-tools]'), null)
+    assert.ok(host.querySelector('.task-detail-debug-badge') === null)
+    assert.ok(host.querySelector('[data-debug-tools]') === null)
     assert.ok(host.querySelector('.task-detail-step-panel [data-workflow-tools]'))
   } finally {
     await act(async () => root.unmount())

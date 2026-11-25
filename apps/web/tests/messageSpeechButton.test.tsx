@@ -18,7 +18,7 @@ test('all completed replies expose shared speech actions, deduplicate settings a
   speechOutputApi.status=async()=>{reads++;return structuredClone(outputStatus)}
   try{
     await act(async()=>root.render(<I18nProvider>
-      <MessageResponseFooter projectId="speech-test" content="历史回复。" />
+      <MessageResponseFooter projectId="speech-test" content={'历史回复。第二句话。\n还有第三句。'} />
       <MessageResponseFooter projectId="speech-test" content="最新回复。" />
       <MessageResponseFooter projectId="speech-test" content="运行中" running />
     </I18nProvider>))
@@ -27,7 +27,7 @@ test('all completed replies expose shared speech actions, deduplicate settings a
     assert.equal(reads,1)
     assert.ok(buttons[0].closest('.message-response-footer'))
     await act(async()=>buttons[0].click())
-    assert.equal(sent[0].text,'历史回复。')
+    assert.equal(sent[0].text,'历史回复。第二句话。\n还有第三句。')
     await act(async()=>buttons[1].click())
     assert.deepEqual(sent[1],{type:'stop',id:sent[0].id})
     assert.equal(sent[2].text,'最新回复。')

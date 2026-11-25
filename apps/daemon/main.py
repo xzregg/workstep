@@ -283,7 +283,10 @@ async def _application_lifespan(app: FastAPI):
         workflow_runtime=workflow_runtime,
     )
     from services.digital_person_runtime import DigitalPersonRuntime
-    digital_person_runtime = DigitalPersonRuntime(project_manager, chat_session_module, channel_bot_manager, event_bus)
+    digital_person_runtime = DigitalPersonRuntime(
+        project_manager, chat_session_module, channel_bot_manager, event_bus, channel_chats=channel_chat_module,
+    )
+    channel_bot_manager.set_digital_person(digital_person_runtime)
     await digital_person_runtime.start()
     schedule_module._notification_sender = channel_bot_manager
     schedule_module._chat_sessions = chat_session_module

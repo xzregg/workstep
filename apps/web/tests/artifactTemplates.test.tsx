@@ -25,7 +25,7 @@ test('template editor is a dialog before suffix; save and clear do not rename a 
     const button = container.querySelector<HTMLButtonElement>('.artifact-template-button')!
     assert.ok(button)
     assert.equal(button.disabled, false)
-    assert.equal(container.querySelector('[role="dialog"]'), null)
+    assert.ok(container.querySelector('[role="dialog"]') === null)
     await act(async () => button.click())
     const editor = document.querySelector<HTMLTextAreaElement>('.artifact-template-dialog textarea')!
     assert.ok(editor)
@@ -35,7 +35,7 @@ test('template editor is a dialog before suffix; save and clear do not rename a 
     })
     await act(async () => document.querySelector<HTMLButtonElement>('.artifact-template-dialog .dialog-footer button:last-child')!.click())
     assert.deepEqual(updates[0], [{ name: 'report', type: 'md', template: '# Simple' }])
-    assert.equal(document.querySelector('.artifact-template-dialog'), null)
+    assert.ok(document.querySelector('.artifact-template-dialog') === null)
   } finally { await act(async () => root.unmount()); container.remove(); await window.happyDOM.close() }
 })
 

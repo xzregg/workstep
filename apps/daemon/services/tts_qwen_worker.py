@@ -19,9 +19,13 @@ def load(bundle):
 
 
 def synthesize(model, request):
+    import torch
     import numpy as np
     import librosa
-    args = dict(text=request['text'], language='Auto', max_new_tokens=2048)
+    # Repeatable sampling reduces voice variation in this private worker.
+    torch.manual_seed(1)
+    args = dict(text=request['text'], language='Auto',
+                max_new_tokens=max(2048, min(8192, len(request['text']) * 8)))
     kind = model.model.tts_model_type
     if kind == 'voice_design':
         wavs, sr = model.generate_voice_design(**args, instruct=request['instructions'])

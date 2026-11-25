@@ -24,7 +24,7 @@ test('step prompt displays markdown and opens editing only when enabled', async 
     await act(async () => root.render(<I18nProvider><TaskStepPrompt
       label="Build" color="#123456" prompt="" projectId="project-1"
     /></I18nProvider>))
-    assert.equal(container.querySelector('.task-step-prompt-edit'), null)
+    assert.ok(container.querySelector('.task-step-prompt-edit') === null)
     assert.ok(container.querySelector('.task-step-prompt-empty'))
   } finally {
     await act(async () => root.unmount())

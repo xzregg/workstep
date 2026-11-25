@@ -6,6 +6,7 @@ import ChatWorkspace from '../../../src/pages/ChatWorkspace'
 import {useChatSessionStore} from '../../../src/stores/chatSessionStore'
 import {I18nProvider,useLocaleStore} from '../../../src/i18n'
 import DigitalPersonHome from '../../../src/components/digital-person/DigitalPersonHome'
+import type {DigitalPersonProfile} from '../../../src/api/digitalPerson'
 import {speechOutputApi} from '../../../src/api/speechOutput'
 import {speechApi} from '../../../src/api/speech'
 import {pendingMessageInsertApi,type PendingMessageInsertItem} from '../../../src/api/conversations'
@@ -75,6 +76,7 @@ function feedAudio(count:number, level:number, probability:(index:number)=>numbe
 }
 const initial:AssistantChatMessage[]=[{id:'user',role:'user',content:'帮我检查一下构建结果，并验证移动端的界面布局和按钮对齐。',status:'succeeded'},{id:'answer',role:'assistant',content:'已交给 WorkStep 项目新执行会话处理，后台处理中。重点检查移动端按钮、图标和文字的对齐，并验证不同屏幕下的显示。结果核验后会回到这里通知你。',status:'succeeded'}]
 function App(){
+ const [identitySetup,setIdentitySetup]=useState<DigitalPersonProfile['identity_setup']>()
  const [messages,setMessages]=useState(initial),[running,setRunning]=useState(false),[draft,setDraft]=useState('')
  const [uiReply,setUiReply]=useState<AssistantChatMessage>()
  const timers=useRef<ReturnType<typeof setTimeout>[]>([])
@@ -86,9 +88,9 @@ function App(){
   setMessages([...initial,{id:'motion-reply',role:'assistant',status:kind==='idle'?'succeeded':'running',content:kind==='reply'?'我正在整理回复。':'',events:kind==='think'?[{type:'REASONING_MESSAGE_CHUNK',delta:'核对当前上下文'}]:kind==='work'?[{type:'TOOL_CALL_START',toolCallId:`fixture-tool-${sequence}`,toolCallName:'read_file'}]:kind==='reply'?[{type:'TEXT_MESSAGE_CONTENT',content:'我正在整理回复。'}]:[]}])
  }
 
- Object.assign((window as any).homeFixture,{isRunning:()=>running,setHistory:setMessages,resetHistory:()=>setMessages(initial),
+ Object.assign((window as any).homeFixture,{setIdentitySetup,isRunning:()=>running,setHistory:setMessages,resetHistory:()=>setMessages(initial),
   uiAction:(id:string,action:object)=>setUiReply({id,role:'assistant',status:'succeeded',content:['```workstep-ui',JSON.stringify(action),'```'].join('\n')})})
- return <DigitalPersonHome profile={{enabled:true,name:'小研',role:'研发伙伴',personality:'温和',duties:'跟进工作',greeting:'我在，今天想先做什么？',avatar:'robot'}} activity={{level:3,experience:120,next_level_experience:200,checking:false,feedback:{},delegations:[{id:'work',project_id:'demo',session_id:'worker',instruction:'构建检查',status:'running'}]} as any}
+ return <DigitalPersonHome profile={{enabled:true,name:'小研',role:'研发伙伴',personality:'温和',duties:'跟进工作',greeting:'我在，今天想先做什么？',avatar:'robot',identity_setup:identitySetup}} activity={{level:3,experience:120,next_level_experience:200,checking:false,feedback:{},delegations:[{id:'work',project_id:'demo',session_id:'worker',instruction:'构建检查',status:'running'}]} as any}
   projectId="demo" projectName="操作手册演示" sessionId="main" active messages={messages} uiReply={uiReply} running={running}
   onSendPending={async value=>{log.inserted.push(value);return true}}
   onSend={async value=>{log.sent.push(value);cancelTurn();setDraft('');const begin=()=>{setRunning(true);setMessages(rows=>[...rows,{id:'user-'+rows.length,role:'user',content:value,status:'succeeded'},{id:'reply-'+rows.length,role:'assistant',content:'',status:'running'}]);timers.current.push(setTimeout(()=>{setMessages(rows=>rows.map((row,i)=>i===rows.length-1?{...row,content:'好，我来帮你整理今天的安排。',status:'running'}:row));timers.current.push(setTimeout(()=>{setRunning(false);setMessages(rows=>rows.map((row,i)=>i===rows.length-1?{...row,status:'succeeded'}:row))},500))},100))};if(runStartDelay)timers.current.push(setTimeout(begin,runStartDelay));else begin();return true}}

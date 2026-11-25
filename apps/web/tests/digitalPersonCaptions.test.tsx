@@ -40,7 +40,7 @@ test('thinking shows elapsed time from the current reply and only finished repli
  try{
   await render(reply)
   assert.match(host.textContent!,/正在思考\s*3秒/)
-  assert.equal(host.querySelector('[aria-label="朗读回复"]'),null)
+  assert.ok(host.querySelector('[aria-label="朗读回复"]') === null)
   elapsed=4000
   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,1050))})
   assert.match(host.textContent!,/正在思考\s*4秒/)
@@ -135,7 +135,7 @@ test('live recognition stays outside scrolling history and revises the same prev
   Object.defineProperties(history,{scrollHeight:{value:1800,configurable:true},clientHeight:{value:300,configurable:true}})
   history.scrollTop=100;await act(async()=>history.dispatchEvent(new window.Event('scroll')))
   await render('帮我检查','recording')
-  assert.equal(host.querySelector('.digital-home-live-caption'),live)
+  assert.ok(host.querySelector('.digital-home-live-caption') === live)
   assert.match(live.textContent!,/帮我检查/)
   await render('帮我检查今天的安排','recording')
   assert.match(live.textContent!,/帮我检查今天的安排/)
@@ -144,7 +144,7 @@ test('live recognition stays outside scrolling history and revises the same prev
   await render('帮我检查今天的安排','finishing')
   assert.equal(live.getAttribute('data-phase'),'finishing')
   await render('')
-  assert.equal(host.querySelector('.digital-home-live-caption'),null,'cancelled or accepted preview is removed')
+  assert.ok(host.querySelector('.digital-home-live-caption') === null, 'cancelled or accepted preview is removed')
  }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
 })
 
@@ -159,20 +159,38 @@ test('mobile recognition keeps one text-only preview across voice phases',async(
   assert.equal(live.textContent,'')
   assert.equal(live.children.length,1)
   await render('帮我检查','recording')
-  assert.equal(live.firstElementChild,text)
+  assert.ok(live.firstElementChild === text)
   assert.equal(live.textContent,'帮我检查')
   const firstReveal=text.querySelector('.digital-home-live-caption-reveal')!
   assert.equal(firstReveal.textContent,'帮我检查')
   await render('帮我检查','finishing')
-  assert.equal(text.querySelector('.digital-home-live-caption-reveal'),firstReveal,'phase changes do not replay the text')
+  assert.ok(text.querySelector('.digital-home-live-caption-reveal') === firstReveal, 'phase changes do not replay the text')
   await render('帮我检查今天的安排','finishing')
-  assert.equal(host.querySelector('.digital-home-live-caption'),live)
-  assert.equal(live.firstElementChild,text)
+  assert.ok(host.querySelector('.digital-home-live-caption') === live)
+  assert.ok(live.firstElementChild === text)
   assert.equal(live.textContent,'帮我检查今天的安排')
   assert.equal(text.querySelector('.digital-home-live-caption-reveal')?.textContent,'今天的安排')
   await render('帮我检查明天的安排','finishing')
   assert.equal(text.querySelector('.digital-home-live-caption-reveal')?.textContent,'明天的安排')
   await render('')
-  assert.equal(host.querySelector('.digital-home-live-caption'),null)
+  assert.ok(host.querySelector('.digital-home-live-caption') === null)
+ }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
+})
+
+
+test('streaming and playback updates do not reprocess unchanged caption history',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ let reads=0
+ const old:AssistantChatMessage={id:'old-stable',role:'assistant',status:'succeeded',get content(){reads++;return '**已完成**\n\n历史回复。'}}
+ const playing=(id:string)=>{}
+ const render=(content:string,readingId?:string)=>act(async()=>root.render(<I18nProvider><DigitalPersonCaptions projectId="p" sessionId="main" messages={[old,{id:'live',role:'assistant',status:'running',content}]} greeting="你好" liveText="" readingId={readingId} onToggleSpeech={playing}/></I18nProvider>))
+ try{
+  await render('正在')
+  reads=0
+  await render('正在回复')
+  assert.equal(reads,0,'a new token must not clean, scan commentary or prepare speech for old messages')
+  await render('正在回复下一句','live')
+  assert.equal(reads,0,'playing another message must not revisit history')
+  assert.match(host.textContent!,/已完成.*历史回复/s)
  }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
 })

@@ -1,3 +1,5 @@
+import './CanvasEditor.css'
+import { useFlowProposalConfirmation } from '../hooks/useFlowProposalConfirmation'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useEffect, useRef, useState } from 'react'
@@ -41,7 +43,7 @@ function CanvasEditorInner() {
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [pendingWfId, setPendingWfId] = useState<string | null>(null)
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
-  const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
+  const proposalConfirmation = useFlowProposalConfirmation(`${activeProject?.id}:${activeWorkflowId}`)
   const [aiGenBusy, setAiGenBusy] = useState(false)
   const [aiConfirmClose, setAiConfirmClose] = useState(false)
   const [aiApplyError, setAiApplyError] = useState('')
@@ -124,6 +126,7 @@ function CanvasEditorInner() {
       setAiApplyError(t('flow.saveFailed', {
         error: reason instanceof Error ? reason.message : t('flow.networkError'),
       }))
+      return false
     }
   }
 
@@ -132,8 +135,8 @@ function CanvasEditorInner() {
   }
 
   return (
-    <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row', alignItems: 'stretch' }}>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+    <div className={`canvas-editor-shell${aiPanelOpen ? ' canvas-editor-shell--assistant' : ''}`} style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row', alignItems: 'stretch' }}>
+      <div className="canvas-editor-content" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       <FlowCanvas
         readOnly={!canEdit}
         initialSteps={activeProject?.steps}
@@ -217,10 +220,10 @@ function CanvasEditorInner() {
           workflowId={activeWorkflowId || undefined}
           workflowName={activeWorkflow?.name || ''}
           getCanvasSteps={() => canvasRef.current?.getSteps()}
+          onPreview={(steps) => canvasRef.current?.previewSteps(steps)}
           onProposal={(steps) => {
-            if (compact) { void applyAiSteps(steps); return }
-            if (dirty) { setPendingAiSteps(steps); return }
-            void applyAiSteps(steps)
+            if (dirty && !compact) return proposalConfirmation.request(steps, () => applyAiSteps(steps))
+            return applyAiSteps(steps)
           }}
           onRestore={(steps) => { void applyAiSteps(steps) }}
           onBusyChange={setAiGenBusy}
@@ -242,16 +245,13 @@ function CanvasEditorInner() {
 
       {/* AI proposal overwrites manual canvas edits */}
       <ConfirmDialog
-        open={pendingAiSteps !== null}
+        open={proposalConfirmation.steps !== null}
         title={t('canvas.proposalOverwriteTitle')}
         message={t('canvas.proposalOverwriteMessage')}
         confirmText={t('canvas.applyProposal')}
         danger
-        onConfirm={() => {
-          if (pendingAiSteps !== null) canvasRef.current?.loadSteps(pendingAiSteps)
-          setPendingAiSteps(null)
-        }}
-        onCancel={() => setPendingAiSteps(null)}
+        onConfirm={() => void proposalConfirmation.confirm()}
+        onCancel={proposalConfirmation.cancel}
       />
 
       {/* Unsaved changes confirm dialogs */}

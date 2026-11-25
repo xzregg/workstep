@@ -169,8 +169,20 @@ def test_person_prompt_only_in_fixed_workspace_and_when_enabled(setup, monkeypat
     assert "\n\n## Project delegation\nHARD BOUNDARY: Never modify code" in prompt
     assert "workstep-cli skill" in prompt
     assert 'historical recall or stored knowledge missing from context' in prompt
-    assert 'workstep-cli memory' in prompt and 'references/memory.md' in prompt
-    assert 'digital-person remember' in prompt and 'schedule create' in prompt
+    assert 'references/memory.md' in prompt and 'references/transport.md' in prompt
+    assert "read the workstep-cli skill's SKILL.md" in prompt
+    assert 'documented invocation for this runtime' in prompt
+    assert prompt.count('All CLI operations below use this invocation.') == 1
+    assert 'through the same documented invocation' not in prompt
+    assert 'through that invocation' not in prompt
+    assert 'through the documented CLI invocation' not in prompt
+    assert 'skill name, not an executable' in prompt
+    assert 'workstep-cli memory' not in prompt
+    assert 'workstep-cli digital-person' not in prompt
+    assert 'workstep-cli schedule' not in prompt
+    assert 'digital-hub info' in prompt
+    assert '[WorkStep digital hub]' in prompt
+    assert 'digital-hub remember' in prompt and 'schedule create' in prompt
     assert 'For overviews, omit --with-sources' in prompt
     assert "first list the current message sender's saved preferences" in prompt
     assert "The response owner identifies the sender for every entry" in prompt
@@ -211,6 +223,7 @@ async def test_identity_reaches_engine_changes_on_resume_and_does_not_pollute_se
     monkeypatch.setattr(customization_workspace, "is_default_workspace", lambda p: p.id == project.id)
     save_profile(DigitalPersonProfile(enabled=True, name="小研", duties="IDENTITY ORIGINAL"))
     sid = module.create_session(project.id)['id']
+    monkeypatch.setattr(module, '_digital_person_session_kind', lambda *_: 'main')
     calls, _ = install_engine(module, monkeypatch)
     assert await send(module, project, sid, 'first') == 'completed'
     assert 'IDENTITY ORIGINAL' in calls[-1]
@@ -222,7 +235,7 @@ async def test_identity_reaches_engine_changes_on_resume_and_does_not_pollute_se
     assert 'RULE UPDATED' in calls[-1]
     save_profile(DigitalPersonProfile(enabled=False))
     assert await send(module, project, sid, 'off') == 'completed'
-    assert 'Digital person mode is disabled' in calls[-1] and 'IDENTITY UPDATED' not in calls[-1]
+    assert 'Digital hub mode is disabled' in calls[-1] and 'IDENTITY UPDATED' not in calls[-1]
 
 
 async def test_host_config_is_independent_of_retired_install_capability(setup, monkeypatch):
@@ -386,7 +399,7 @@ async def test_failed_disk_write_preserves_active_config_and_allows_retry(setup,
         assert (await client.put(endpoint, json=payload)).status_code == 200
         service.config_store._cache = None
         after = (await client.get(endpoint)).json()
-        assert all(after[k] == v for k, v in payload.items())
+        assert all(after[k] == v for k, v in payload.items() if k != 'identity_setup')
 
 
 @pytest.mark.parametrize("channel", [False, True])
@@ -403,9 +416,9 @@ def test_digital_person_engine_defaults_are_independent(chat_module, monkeypatch
         module._config.name: {"engine": "fake-chat", "model": "ordinary-model"},
     })
     session = module.create_session(project.id)
-    assert session["model"] == "digital-model"
-    assert session["fast_model"] == "digital-fast"
-    assert session["vision_model"] == "digital-vision"
+    assert session["model"] == ("digital-model" if channel else "ordinary-model")
+    assert session["fast_model"] == ("digital-fast" if channel else "ordinary-model")
+    assert session["vision_model"] == ("digital-vision" if channel else None)
     store.set("digital_person", {"enabled": False})
     assert module.create_session(project.id)["model"] == "ordinary-model"
 
@@ -432,7 +445,7 @@ async def test_digital_engine_parameters_reach_runtime(chat_module, monkeypatch,
     monkeypatch.setattr('agent_assistants.base.invoke_engine', invoke)
     row = await projects.run_db(project.id, lambda _: module.create_session(project.id))
     assert await send(module, project, row['id'], 'engine-check') == 'completed'
-    assert calls == [('claude', 'digital', 'high', True)]
+    assert calls == ([('claude', 'digital', 'high', True)] if channel else [('codex', 'ordinary', 'low', True)])
 
 async def test_live_role_reference_updates_without_copying_profile(chat_module,monkeypatch):
     from services import digital_person,customization_workspace
@@ -455,6 +468,7 @@ def test_channel_digital_identity_replaces_legacy_assistant_prompt(chat_module, 
     monkeypatch.setattr(digital_person, "config_store", store)
     monkeypatch.setattr(customization_workspace, "is_default_workspace", lambda p: home)
     store.set("digital_person", {"enabled":enabled,"name":"小研"})
+    store.set('channel_bots', {'sessions': {'bot:single:peer': 'source-session'}})
     module=ChannelChatModule(bus, projects, register=False)
     monkeypatch.setattr(module, "get_system_prompt", lambda _: "项目自定义规则")
     monkeypatch.setattr(ordinary, "get_system_prompt", lambda _: "项目自定义规则")

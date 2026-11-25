@@ -12,10 +12,11 @@ function subscribeReduced(listener:()=>void){
 const getReduced=()=>window.matchMedia(reducedQuery).matches
 
 /** Public presentation boundary shared by the built-in rig and skin-provided characters. */
-export default function AvatarPresentation({projectId,sessionId,name,active=true,phase,callState,inputLevel,metered,activityId,speaking,level,emotion,intensity,affinity,fallback}:AvatarInput&{
- projectId:string;sessionId:string;name:string;active?:boolean;fallback:(state:AvatarSnapshot)=>ReactNode
+export default function AvatarPresentation({projectId,sessionId,name,active=true,paused=false,phase,callState,inputLevel,metered,activityId,speaking,level,emotion,intensity,affinity,fallback}:AvatarInput&{
+ projectId:string;sessionId:string;name:string;active?:boolean;paused?:boolean;fallback:(state:AvatarSnapshot)=>ReactNode
 }){
- const reducedMotion=useSyncExternalStore(subscribeReduced,getReduced,getReduced)
+ const prefersReducedMotion=useSyncExternalStore(subscribeReduced,getReduced,getReduced)
+ const reducedMotion=prefersReducedMotion||paused
  const input=useMemo<AvatarInput>(()=>({phase:active?phase:'idle',callState:active?callState:'idle',inputLevel:active?inputLevel:0,metered,activityId,speaking:active&&speaking,level,emotion,intensity,affinity,reducedMotion}),[active,phase,callState,inputLevel,metered,activityId,speaking,level,emotion,intensity,affinity,reducedMotion])
  const latest=useRef(input);latest.current=input
  const source=useRef<ReturnType<typeof createAvatarSource>|null>(null)

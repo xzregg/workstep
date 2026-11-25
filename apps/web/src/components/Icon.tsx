@@ -99,6 +99,13 @@ const glyphs = {
 
 /** 自定义字形（viewBox 0 0 24 24），fill 字形用 `fill` prop 开启 */
 const customGlyphs = {
+  'bot-settings': {
+    viewBox: '0 0 28 28',
+    node: <>
+      <path d="M12 8V4H8M14 20H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3M2 14h2M8 12v4M16 12v2" />
+      <Settings x={14} y={14} width={14} height={14} />
+    </>,
+  },
   send: {viewBox:'0 0 24 24', node: composerSendGlyphs.send.map(path=><path key={path} d={path}/>)},
   'arrow-up': {viewBox:'0 0 24 24', node: composerSendGlyphs['arrow-up'].map(path=><path key={path} d={path}/>)},
   'arrow-right': {viewBox:'0 0 24 24', node: composerSendGlyphs['arrow-right'].map(path=><path key={path} d={path}/>)},
@@ -147,6 +154,7 @@ export default function Icon({
         strokeLinejoin="round"
         aria-hidden="true"
         focusable="false"
+        data-icon={name}
         className={className}
         style={style}
       >

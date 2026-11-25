@@ -43,7 +43,7 @@ for (const hostname of ['192.168.1.20', '127.0.0.1']) {
 
       if (hostname === '127.0.0.1') {
         assert.equal(nativeOpenCount, 1)
-        assert.equal(document.querySelector('.project-directory-dialog'), null)
+        assert.ok(document.querySelector('.project-directory-dialog') === null)
       } else {
         assert.equal(nativeOpenCount, 0)
         assert.equal(

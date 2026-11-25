@@ -78,6 +78,7 @@ export interface EmbeddedProjectChat {
   emptyContent?: (insert: (text: string) => void) => ReactNode
   afterContent?: (insert: (text: string) => void) => ReactNode
   placeholder?: string
+  quickButtons?: boolean
   hideHeader?: boolean
   readTarget?: ChatReadTarget
   initialHistory?: InitialSessionHistory
@@ -89,6 +90,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
   const controlled = embedded || pane
   const isControlled = Boolean(controlled)
   const isEmbedded = Boolean(embedded)
+  const shortcutsEnabled = !isEmbedded || embedded?.quickButtons === true
   const beforeSend = embedded?.beforeSend
   const { t, locale } = useI18n()
   const routeNavigate = useNavigate()
@@ -261,6 +263,8 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     onHandoffSettled: () => { setConfigReopenSignal((n) => n + 1) },
   })
   const scopedQuickButtons = useChatListStore((s) => s.quickButtonsByProject[routeProjectId])
+  const quickButtonsLoading = useChatListStore(s => s.quickButtonsLoadingByProject[routeProjectId])
+  const quickButtonsError = useChatListStore(s => s.quickButtonsErrorByProject[routeProjectId])
   const quickButtons = useMemo(() => scopedQuickButtons || [], [scopedQuickButtons])
   const projectActions = useProjectActions(activeProject?.id, sessionId)
   // AssistantChatPanel 的消息行是 memo 化的：copy/quickPrompts/回调必须引用稳定，
@@ -277,17 +281,6 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     fullPrompt: t('aiFlow.fullPrompt'),
     closePrompt: t('aiFlow.closePrompt'),
   }), [t, compact, hasEmbeddedIntro, embedded?.placeholder, isEmbedded, activeProject?.name, digitalPerson])
-  const quickPromptItems = useMemo(
-    () => quickButtons.filter((button) => !isEmbedded && button.enabled !== false && (button.kind !== 'action' || can('action.run'))).map((button) => ({
-      id: button.id,
-      label: button.label,
-      prompt: button.prompt,
-      content: button.content,
-      kind: button.kind || 'prompt',
-      disabled: button.kind === 'action' && projectActions.activeActionIds.includes(button.action_id || button.id),
-    })),
-    [isEmbedded, quickButtons, projectActions.activeActionIds, can],
-  )
 
   // Resolve project/workflow from the URL (mirrors CanvasEditor's loader).
   useEffect(() => {
@@ -319,7 +312,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     assistantApi.list()
       .then(({ assistants }) => {
         if (!active) return
-        const config = assistants.find((item) => item.name === (digitalPerson ? 'digital_person' : 'chat_session'))
+        const config = assistants.find((item) => item.name === (companionProfile ? 'digital_person' : 'chat_session'))
         if (!config) throw new Error(t('chatSession.configLoadFailed'))
         setAssistantConfig(config)
         publishEngineCatalog(config.available_engines)
@@ -333,13 +326,12 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
         setCoordinatorConfigError(reason instanceof Error ? reason.message : t('chatSession.configLoadFailed'))
       })
     return () => { active = false }
-  }, [activeProject?.id, Boolean(digitalPerson), t, setDefaults]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeProject?.id, Boolean(companionProfile), t, setDefaults]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (isEmbedded) return
-    if (!activeProject?.id) return
-    void useChatListStore.getState().fetchQuickButtons(activeProject.id)
-  }, [isEmbedded, activeProject?.id])
+    if (!shortcutsEnabled || !routeProjectId) return
+    void useChatListStore.getState().fetchQuickButtons(routeProjectId)
+  }, [shortcutsEnabled, routeProjectId])
 
   // URL selection owns the page state; history loading owns the request and store.
   useEffect(() => {
@@ -493,6 +485,18 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     openFork(selectedEngine, messageId, preferSmart)
   }, [openFork, selectedEngine])
 
+  const quickPromptItems = useMemo(
+    () => quickButtons.filter((button) => shortcutsEnabled && button.enabled !== false && (button.kind === 'display' || can(button.kind === 'action' ? 'action.run' : 'session.chat'))).map((button) => ({
+      id: button.id,
+      label: button.label,
+      prompt: button.prompt,
+      content: button.content,
+      kind: button.kind || 'prompt',
+      disabled: Boolean(quickButtonsLoading || quickButtonsError || !sessionId || sessionId !== sessionParam || !historyReady || handingOff || engineConfigSaving || (button.kind === 'action' ? projectActions.busy || projectActions.activeActionIds.includes(button.action_id || button.id) : running)),
+    })),
+    [shortcutsEnabled, quickButtons, quickButtonsLoading, quickButtonsError, projectActions.activeActionIds, projectActions.busy, can, sessionId, sessionParam, historyReady, handingOff, engineConfigSaving, running],
+  )
+
   if (!activeProject) {
     return (
       <div className="chat-session-empty">
@@ -573,12 +577,15 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
         afterMessages={<>
           {messages.length === 0 && embedded?.emptyContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}
           {embedded?.afterContent?.(text => { setInput(applyAssistantQuickPrompt(input, text)); setSendError('') })}
-          <ProjectActionMessages state={projectActions} />
+          {can('action.run') && <ProjectActionMessages state={projectActions} />}
           {actionSourceEnabled && loadedDigitalPerson &&
             <DigitalPersonWorkbenchActions mainSessionId={digitalActivity?.main_session_id} sessionId={sessionId} reply={uiReply} />}
         </>}
         availableCommands={session?.availableCommands}
-        composerStatus={<>{effectiveEngine === 'codex_sdk' ? <ChatSessionGoalBar
+        composerStatus={<>
+          {shortcutsEnabled && quickButtonsLoading && <div className="chat-shortcuts-status" role="status"><Spinner size={14}/>{t('common.loading')}</div>}
+          {shortcutsEnabled && quickButtonsError && <div className="chat-shortcuts-status chat-shortcuts-error" role="alert">{localizeErrorDisplay(quickButtonsError)}<Button size="sm" onClick={() => void useChatListStore.getState().fetchQuickButtons(routeProjectId)}>{t('common.retry')}</Button></div>}
+          {effectiveEngine === 'codex_sdk' ? <ChatSessionGoalBar
           key={sessionId} projectId={routeProjectId} goal={latestGoalFromMessages(messages)} running={running} stopping={stopping}
           onResume={continueGoal} onEnd={endGoal}
         /> : null}</>}
@@ -602,7 +609,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
         quickPrompts={quickPromptItems}
         onQuickPromptItemSelect={(item) => {
           const button = quickButtons.find((candidate) => candidate.id === item.id)
-          if (!button || button.kind === 'display') return
+          if (!button || button.kind === 'display' || !quickPromptItems.some(candidate => candidate.id === item.id && !candidate.disabled)) return
           if (button.kind === 'action') { if (can('action.run')) void projectActions.run(button); return }
           if (button.immediate_send) { void send(button.prompt); return }
           const next = applyAssistantQuickPrompt(input, button.prompt)

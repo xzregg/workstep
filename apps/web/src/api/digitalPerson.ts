@@ -15,6 +15,7 @@ export interface DigitalPersonProfile {
   proactive_shared_context?: boolean
   proactive_enabled?: boolean; reflection_enabled?: boolean; proactive_instruction?: string; quiet_start?: number; quiet_end?: number
   onboarding_completed?: boolean; show_panel?: boolean; floating?: boolean; auto_speak?: boolean
+  identity_setup?: {status:'pending'|'completed'; paused?:boolean; answers:Partial<Record<'name'|'role'|'personality'|'duties',string>>} | null
   voice_name?: string; voice_rate?: number; expression?: 'neutral' | 'happy' | 'concern'
 }
 export const digitalPersonApi = {
@@ -41,7 +42,7 @@ export const voiceWakeApi = {
   }>('/digital-person/voice-wake/audio', { signal }),
 }
 
-export interface DigitalPeer { id: string; conversation_type: 'single' | 'group'; conversation_id: string; bot_id: string; bot_name: string; title: string; platform: string; notify?: boolean }
+export interface DigitalPeer { id: string; conversation_type: 'single' | 'group'; conversation_id: string; bot_id: string; bot_name: string; title: string; platform: string; notify?: boolean; use_main_session?: boolean }
 export interface DigitalActivity {
   main_session_id?: string
   session_count?: number; reply_count?: number; task_count?: number; completed_task_count?: number
@@ -49,10 +50,11 @@ export interface DigitalActivity {
   feedback: Record<string,number>; suggestions: Array<{id:string;label:string;prompt:string;count:number}>
   experience: number; level: number; next_level_experience: number; checking: boolean
   runs: Array<{ id: string; status: string; summary?: string; error?: string; created_at: string; sources: unknown; deliveries: unknown }>
-  delegations: Array<{ id: string; project_id: string; session_id: string; title?: string | null; instruction: string; status: string; created_at?:string; message_id?:string|null }>
+  delegations: Array<{ id: string; project_id: string; session_id: string; title?: string | null; instruction: string; status: string; archived?: boolean; created_at?:string; message_id?:string|null }>
   answers: Array<{ id: string; content: string; feedback: number }>
 }
 export interface DigitalRunOutcome {delivery_failure_reasons?:string[];sent:number;failed:number;affinity_increased:number;affinity_decreased:number}
+export interface DigitalRunNotification {state:string;reason:string;model_reason?:string}
 export type DigitalMemoryChanges = Record<'added'|'updated',Partial<Record<MemoryKind,number>>>
 export interface DigitalRunProcessing {messages:number;sessions:number;memories:number;changes?:DigitalMemoryChanges}
 export interface DigitalActivityRecords {
@@ -63,7 +65,7 @@ export interface DigitalActivityRecords {
   delegation_total: number
   delegation_pending?: boolean
   delegations: Array<DigitalActivity['delegations'][number] & {notification_state?: string; notification_run_id?: string | null; result_viewed?: boolean | null}>
-  runs: Array<Pick<DigitalActivity['runs'][number], 'id' | 'status' | 'summary' | 'created_at'> & {outcome?:DigitalRunOutcome|null;processing?:DigitalRunProcessing}>
+  runs: Array<Pick<DigitalActivity['runs'][number], 'id' | 'status' | 'summary' | 'created_at'> & {outcome?:DigitalRunOutcome|null;processing?:DigitalRunProcessing;notification?:DigitalRunNotification;delegation_notifications?:DigitalRunNotification[]}>
 }
 export type DigitalRunDetail = DigitalActivityRecords['runs'][number] & {error?:string;draft_summary?:string|null;failure_reason?:string|null;notification_message?:string|null}
 export interface DigitalRunKnowledge {
@@ -100,7 +102,7 @@ export const digitalRuntimeApi = {
   feedback: (message_id: string, value: number) => request<DigitalActivity>('/digital-person/feedback', json({message_id,value}, 'PUT')),
   delegate: (project_id: string, instruction: string, request_id: string) => request('/digital-person/delegate', json({project_id,instruction,request_id})),
   channels: () => request<{available: DigitalPeer[];bindings: DigitalPeer[]}>('/digital-person/channels'),
-  bind: (peer: DigitalPeer, notify: boolean) => request('/digital-person/channels',json({bot_id:peer.bot_id,conversation_type:peer.conversation_type,conversation_id:peer.conversation_id,notify}, 'PUT')),
+  bind: (peer: DigitalPeer, notify: boolean, useMainSession = false) => request('/digital-person/channels',json({bot_id:peer.bot_id,conversation_type:peer.conversation_type,conversation_id:peer.conversation_id,notify,use_main_session:useMainSession}, 'PUT')),
   unbind: (id: string) => request(`/digital-person/channels/${encodeURIComponent(id)}`,{method:'DELETE'}),
   test: (id: string) => request(`/digital-person/channels/${encodeURIComponent(id)}/test`,{method:'POST'}),
 }

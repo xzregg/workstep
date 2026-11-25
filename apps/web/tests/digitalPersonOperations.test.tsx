@@ -18,7 +18,7 @@ test('operations scans on entry and installs missing component before allowing e
   await act(async()=>root.render(<I18nProvider><DigitalPersonOperations/></I18nProvider>))
   assert.equal(scans,1)
   assert.ok(host.querySelector('[data-install-browser]'))
-  assert.equal(host.querySelector('[role=switch]'),null)
+  assert.ok(host.querySelector('[role=switch]') === null)
   await act(async()=>host.querySelector<HTMLButtonElement>('[data-install-browser]')!.click())
   assert.equal(downloads,1)
   assert.ok(host.querySelector('[role=switch]'))
@@ -36,7 +36,7 @@ test('installed operations has no download button and failed scan has retry',asy
   assert.match(host.textContent!,/scan failed/)
   fail=false
   await act(async()=>host.querySelector<HTMLButtonElement>('[data-scan-browser]')!.click())
-  assert.equal(host.querySelector('[data-install-browser]'),null)
+  assert.ok(host.querySelector('[data-install-browser]') === null)
   assert.ok(host.querySelector('[role=switch]'))
  }finally{await act(async()=>root.unmount());await window.happyDOM.close();Object.assign(digitalBrowserApi,old)}
 })

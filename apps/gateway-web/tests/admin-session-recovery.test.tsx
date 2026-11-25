@@ -47,6 +47,6 @@ for (const [name, Page] of [
   await screen.findByText('登录状态加载失败，请重试。')
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await waitFor(() => assert.equal(sessions, 2))
-  await waitFor(() => assert.equal(screen.queryByText('登录状态加载失败，请重试。'), null))
+  await waitFor(() => assert.ok(screen.queryByText('登录状态加载失败，请重试。') === null))
  })
 }

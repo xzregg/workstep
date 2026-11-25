@@ -63,8 +63,8 @@ test('local screenshot paths remain readable without image or resolver requests 
         await act(async()=>root.render(<I18nProvider><MarkdownAssetUrlProvider resolver={src=>{resolved++;return '/workspace/device'+src}}>
           <MarkdownMessage content={`![连接截图](${path})`} plainText={plainText}/>
         </MarkdownAssetUrlProvider></I18nProvider>))
-        assert.equal(container.querySelector('img'),null,path)
-        assert.equal(container.querySelector('.markdown-image-click'),null,path)
+        assert.ok(container.querySelector('img') === null, path)
+        assert.ok(container.querySelector('.markdown-image-click') === null, path)
         assert.match(container.textContent??'',/本机文件.*上传/)
         assert.ok(container.textContent?.includes(path))
       }
@@ -107,10 +107,10 @@ test('shared Markdown images open and close the image preview by default', async
     await act(async () => thumbnail.click())
     const preview = document.querySelector<HTMLElement>('.image-preview')
     assert.ok(preview)
-    assert.equal(preview.querySelector('.image-preview-navigation'), null)
+    assert.ok(preview.querySelector('.image-preview-navigation') === null)
     assert.equal(preview.querySelector('img')?.getAttribute('src'), thumbnail.querySelector('img')?.getAttribute('src'))
     await act(async () => window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' })))
-    assert.equal(document.querySelector('.image-preview'), null)
+    assert.ok(document.querySelector('.image-preview') === null)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

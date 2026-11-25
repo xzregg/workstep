@@ -204,7 +204,7 @@ test('process trace previews file rows inertly and enables links after expanding
       <I18nProvider><ProcessTrace events={events as never} projectId="project-1" running /></I18nProvider>,
     ))
     assert.ok(container.querySelector('.process-trace-preview-item[inert] .markdown-file-link'))
-    assert.equal(container.querySelector('.process-trace-body'), null)
+    assert.ok(container.querySelector('.process-trace-body') === null)
     assert.equal(container.querySelector('.process-trace-session-summary')?.getAttribute('aria-expanded'), 'false')
 
     await act(async () => {

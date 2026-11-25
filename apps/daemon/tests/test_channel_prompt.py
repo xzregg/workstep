@@ -11,6 +11,21 @@ from engines.core.acp_base import AcpEngineBase
 from streaming.bus import EventBus
 
 
+@pytest.mark.parametrize('peer', [
+    ('bot', 'group', 'room'), ('other', 'group', 'room'),
+    ('bot', 'single', 'room'), ('bot', 'group', 'other'),
+])
+def test_bound_session_matches_full_channel_route(monkeypatch, peer):
+    from services.digital_person_channels import is_bound_session
+
+    monkeypatch.setattr('services.digital_person_channels.config_store', {
+        'channel_bots': {'sessions': {'bot:group:room': 'channel'}},
+        'digital_person_channels': [dict(zip(('bot_id', 'conversation_type', 'conversation_id'), peer))],
+    })
+    assert is_bound_session('channel') == (peer == ('bot', 'group', 'room'))
+    assert not is_bound_session('unrelated')
+
+
 def test_channel_migrates_unchanged_legacy_identity_fingerprint():
     module = ChannelChatModule(EventBus(), None, register=False)
     parts = {"identity": "Identity", "project_delegation": "Delegation", "channel_source": "Source"}

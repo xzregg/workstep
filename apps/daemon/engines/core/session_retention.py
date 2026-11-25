@@ -8,6 +8,10 @@ from weakref import WeakSet
 _owner = ContextVar('engine_session_retention', default=None)
 
 
+def current_session_retention_owner() -> str | None:
+    return _owner.get()
+
+
 @contextmanager
 def session_retention(owner: str | None):
     token = _owner.set(owner or None)

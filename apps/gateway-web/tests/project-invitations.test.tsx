@@ -31,7 +31,7 @@ test('owner creates a gateway project invitation and sees its link', async () =>
   }
   render(<MemoryRouter initialEntries={['/project-invitations?project_id=p1']}><ProjectInvitationsPage /></MemoryRouter>)
   assert.equal(screen.getAllByRole('tab').length, 3)
-  assert.equal(screen.queryByText('添加别人分享的项目'), null)
+  assert.ok(screen.queryByText('添加别人分享的项目') === null)
   await screen.findByRole('button', { name: '生成项目邀请' })
   fireEvent.change(screen.getByLabelText('访问级别'), { target: { value: 'edit' } })
   fireEvent.click(screen.getByRole('button', { name: '生成项目邀请' }))
@@ -42,10 +42,10 @@ test('owner creates a gateway project invitation and sees its link', async () =>
   assert.equal((create.init?.headers as Record<string, string>)['X-CSRF-Token'], 'csrf')
   fireEvent.click(screen.getByRole('tab', { name: '我的邀请' }))
   await screen.findByText('我创建的项目邀请')
-  assert.equal(screen.queryByRole('button', { name: '生成项目邀请' }), null)
+  assert.ok(screen.queryByRole('button', { name: '生成项目邀请' }) === null)
   fireEvent.click(screen.getByRole('tab', { name: '添加项目' }))
   assert.ok(screen.getByText('添加别人分享的项目'))
-  assert.equal(screen.queryByText('我创建的项目邀请'), null)
+  assert.ok(screen.queryByText('我创建的项目邀请') === null)
   fireEvent.keyDown(screen.getByRole('tab', { name: '添加项目' }), { key: 'ArrowRight' })
   assert.equal(screen.getByRole('tab', { name: '分享项目' }).getAttribute('aria-selected'), 'true')
   assert.equal((screen.getByLabelText('项目邀请链接') as HTMLInputElement).value,
@@ -59,7 +59,7 @@ test('project invitation page starts with adding a project when no project was s
   render(<MemoryRouter initialEntries={['/project-invitations']}><ProjectInvitationsPage /></MemoryRouter>)
   assert.equal(screen.getByRole('tab', { name: '添加项目' }).getAttribute('aria-selected'), 'true')
   assert.ok(screen.getByText('添加别人分享的项目'))
-  assert.equal(screen.queryByRole('button', { name: '生成项目邀请' }), null)
+  assert.ok(screen.queryByRole('button', { name: '生成项目邀请' }) === null)
 })
 
 test('guest with no devices previews then explicitly adds a project, failures can retry', async () => {
@@ -98,7 +98,7 @@ test('signed-out invite preserves token in login return path', async () => {
   </Routes></MemoryRouter>)
   const link = await screen.findByRole('link', { name: '登录 / 注册' })
   assert.equal(link.getAttribute('href'), `/auth?next=${encodeURIComponent('/project-invitations/' + token)}`)
-  assert.equal(screen.queryByRole('button', { name: '添加项目' }), null)
+  assert.ok(screen.queryByRole('button', { name: '添加项目' }) === null)
 })
 
 test('admin sees join records and can prohibit additions with password confirmation', async () => {

@@ -9,6 +9,92 @@ import EngineSettingsPanel from '../src/components/EngineSettingsPanel'
 import EngineSelect from '../src/components/EngineSelect'
 import { resetEngineAvailabilityStoreForTests, useCoordinatorEngines } from '../src/stores/engineAvailabilityStore'
 
+test('Antigravity uses the shared runtime version installer instead of a shell installer', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originals = { list: engineApi.list, executionConfig: engineApi.executionConfig,
+    runtime: engineApi.runtime, runtimeOperation: engineApi.runtimeOperation,
+    startRuntimeOperation: engineApi.startRuntimeOperation }
+  const submitted: unknown[] = []
+  engineApi.list = async () => ({ engines: [{ id:'antigravity', installed:false,
+    runtime_manageable:true, installable:false, config:null } as EngineInfo] })
+  engineApi.executionConfig = async () => ({ engine: '' })
+  engineApi.runtimeOperation = async () => null
+  engineApi.runtime = async () => ({ engine_id:'antigravity', current_version:null, default_version:'1.2.0',
+    versions:[{version:'1.2.0',size_bytes:1024,prerelease:false}], history:[], requires_terms:false,
+    requires_restart:false, configured_path:null, rollback_version:null, minimum_version:'0', size_scope:'primary_package',
+    terms_url:null, error:null })
+  engineApi.startRuntimeOperation = async (id, input) => {
+    submitted.push([id, input])
+    return {id:'op',engine_id:id,status:'failed',stage:'failed',message:'fixture',target_version:'1.2.0'} as import('../src/api/client').EngineRuntimeOperation
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><EngineSettingsPanel hidden={false} refreshRevision={0} preferredProviderProtocol="" /></I18nProvider>))
+    const card = container.querySelector('[data-engine-id="antigravity"]')!
+    assert.equal(card.getAttribute('data-available'), 'true')
+    await act(async () => card.querySelector<HTMLButtonElement>('.engine-runtime-control > button')!.click())
+    assert.equal(card.querySelector<HTMLSelectElement>('select')!.value, '1.2.0')
+    await act(async () => card.querySelector<HTMLButtonElement>('.engine-runtime-actions > .btn-primary')!.click())
+    assert.ok(container.querySelector('[role="dialog"]'))
+    assert.ok(!container.querySelector('[role="dialog"]')!.textContent!.includes('SDK'))
+    await act(async () => container.querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
+    assert.deepEqual(submitted, [['antigravity', {version:'1.2.0',rollback:false,accept_third_party_terms:false}]])
+  } finally {
+    Object.assign(engineApi, originals)
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
+test('Antigravity ACP refreshes models and persist a selected model', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originals = { list: engineApi.list, executionConfig: engineApi.executionConfig,
+    models: engineApi.models, setDefaultModel: engineApi.setDefaultModel }
+  const calls: unknown[] = []
+  const saved: unknown[] = []
+  engineApi.list = async () => ({ engines: ['antigravity'].map(id => ({
+    id, installed: true, configured: true, enabled: true, verified: true,
+    config: null,
+  } as EngineInfo)) })
+  engineApi.executionConfig = async () => ({ engine: '' })
+  engineApi.models = async (engine, provider = '', refresh = false) => {
+    calls.push([engine, refresh])
+    return {engine_id:engine, models: refresh ? [{id:'gemini-fixture',label:'Gemini Fixture'}] : [], default_model:'',error:null}
+  }
+  engineApi.setDefaultModel = async (engine, model) => {
+    saved.push([engine,model])
+    return {engine_id:engine,default_model:model,saved:true}
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><EngineSettingsPanel hidden={false} refreshRevision={0} preferredProviderProtocol="" /></I18nProvider>))
+    assert.deepEqual(calls, [])
+    for (const engine of ['antigravity']) {
+      const card = container.querySelector<HTMLElement>(`[data-engine-id="${engine}"]`)!
+      await act(async () => card.querySelector<HTMLButtonElement>('.engine-settings-expand-button')!.click())
+      const refresh = [...card.querySelectorAll<HTMLButtonElement>('button')].find(button => /刷新|Refresh/.test(button.textContent || ''))!
+      assert.ok(refresh, card.outerHTML)
+      await act(async () => refresh.click())
+      const select = card.querySelector<HTMLSelectElement>(`#default-model-${engine}`)!
+      assert.equal(select.querySelector('option[value="gemini-fixture"]')?.textContent, 'Gemini Fixture')
+      await act(async () => {
+        select.value = 'gemini-fixture'
+        select.dispatchEvent(new window.Event('change', {bubbles:true}))
+      })
+      assert.equal(card.querySelector<HTMLSelectElement>(`#default-model-${engine}`)!.value, 'gemini-fixture')
+    }
+    assert.deepEqual(saved, [['antigravity','gemini-fixture']])
+    assert.equal(calls.length, 2)
+  } finally {
+    Object.assign(engineApi, originals)
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('Pydantic AI keeps engine controls without a separate skills and MCP viewer', async () => {
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))
@@ -23,8 +109,8 @@ test('Pydantic AI keeps engine controls without a separate skills and MCP viewer
     const buttons = [...document.querySelectorAll('button')].map(button => button.textContent?.trim())
     assert.equal(document.querySelectorAll('.engine-settings-test-button').length, 1, 'retain only the engine connection test')
     assert.ok(!buttons.includes('查看技能与 MCP'))
-    assert.equal(document.querySelector('.engine-capabilities-overlay'), null)
-    assert.equal(document.querySelector('.engine-settings-card-actions .engine-settings-save-button'), null)
+    assert.ok(document.querySelector('.engine-capabilities-overlay') === null)
+    assert.ok(document.querySelector('.engine-settings-card-actions .engine-settings-save-button') === null)
     const save = document.querySelector('.engine-settings-card-details .engine-settings-save-button')
     assert.ok(save, 'save belongs to the expanded configuration area')
     assert.equal(save.closest<HTMLElement>('.engine-settings-card-details')!.hidden, true)

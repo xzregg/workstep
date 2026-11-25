@@ -53,7 +53,7 @@ test('first enable guides configuration and only activates after finishing',asyn
   assert.ok(element.querySelector('.digital-person-guide'));assert.equal(saved.enabled,false)
   for(let i=0;i<6;i++)await act(async()=>{const buttons=element.querySelectorAll<HTMLButtonElement>('.digital-person-guide button');buttons[buttons.length-1].click()})
   assert.equal(saved.enabled,true);assert.equal(saved.onboarding_completed,true)
-  assert.equal(element.querySelector('.digital-person-guide'),null)
+  assert.ok(element.querySelector('.digital-person-guide') === null)
  }finally{
   await act(async()=>root.unmount());element.remove()
   ;[digitalPersonApi.get,digitalPersonApi.save,assistantApi.list,providerApi.list,digitalRuntimeApi.channels,digitalRuntimeApi.activity]=originals as any
@@ -77,7 +77,7 @@ test('activity loads small pages, opens details on demand, and retries failed de
  try{
   await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonActivity/></I18nProvider></MemoryRouter>))
   assert.equal(heavyLoads,0);assert.equal(details,0);assert.equal(element.querySelectorAll('[data-run-id]').length,5)
-  assert.equal(element.querySelector('pre'),null)
+  assert.ok(element.querySelector('pre') === null)
   assert.doesNotMatch(element.textContent!,/完整结果/)
   await act(async()=>element.querySelector<HTMLButtonElement>('[data-run-id="run-0"] button[aria-expanded]')!.click())
   assert.equal(details,1);assert.match(element.textContent!,/完整结果仅在展开后读取/)
@@ -88,7 +88,7 @@ test('activity loads small pages, opens details on demand, and retries failed de
   assert.match(element.querySelector('[role=alert]')!.textContent!,/通知发送失败.*原因未记录/)
   await act(async()=>element.querySelector<HTMLButtonElement>('[data-kind=runs] [data-next-page]')!.click())
   assert.equal(pages.at(-1),5);assert.equal(element.querySelectorAll('[data-run-id]').length,2)
-  assert.equal(element.querySelector('[data-run-id="run-0"]'),null)
+  assert.ok(element.querySelector('[data-run-id="run-0"]') === null)
  }finally{await act(async()=>root.unmount());element.remove();useLocaleStore.setState({locale});Object.assign(digitalRuntimeApi,originals);await window.happyDOM.close()}
 })
 
@@ -117,8 +117,8 @@ test('activity shows proactive thought records above delegation notifications',a
   assert.equal(dialog?.getAttribute('aria-label'),'核对执行结果')
   assert.ok(element.contains(openExecution),'the activity list stays mounted')
   await act(async()=>document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
-  assert.equal(document.querySelector('.digital-person-delegation-dialog'),null)
-  assert.equal(document.activeElement,openExecution)
+  assert.ok(document.querySelector('.digital-person-delegation-dialog') === null)
+  assert.ok(document.activeElement === openExecution)
  }finally{await act(async()=>root.unmount());element.remove();digitalRuntimeApi.records=original;useLocaleStore.setState({locale});await window.happyDOM.close()}
 })
 

@@ -66,7 +66,7 @@ test('editing Slack keeps both stored tokens without resending empty values', as
   const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><BotSettingsEditor platform="slack" bot={{ id: 'b', platform: 'slack', enabled: false, name: '助手', app_id: 'A1', has_secret: true, has_app_token: true, default_project_id: 'p' } as any} onSaved={() => {}} onCancel={() => {}} onDirtyChange={() => {}} onBusyChange={() => {}} /></I18nProvider>))
-    assert.equal(container.querySelector('select:not([required])'), null)
+    assert.ok(container.querySelector('select:not([required])') === null)
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '保存')!.click())
     assert.equal(payload.enabled, false)
     assert.equal(payload.default_project_id, 'p')
@@ -99,7 +99,7 @@ test('bot settings requires credentials and sends the selected platform fields',
   })
   try {
     await act(async () => root.render(<I18nProvider><BotSettingsEditor platform="wecom" onSaved={() => {}} onCancel={() => {}} onDirtyChange={() => {}} onBusyChange={() => {}} /></I18nProvider>))
-    assert.equal(container.querySelector('option[value="task"]'), null, 'task binding belongs to task details')
+    assert.ok(container.querySelector('option[value="task"]') === null, 'task binding belongs to task details')
     const fields = container.querySelectorAll<HTMLInputElement>('.bot-settings-form input:not([type="checkbox"])')
     const save = [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '保存')!
     assert.equal(save.disabled, true)
@@ -107,7 +107,7 @@ test('bot settings requires credentials and sends the selected platform fields',
     await enter(fields[1], 'bot-id')
     await enter(fields[2], 'secret-value')
     assert.equal(save.disabled, true, 'default project is required after credentials are filled')
-    assert.equal(container.querySelector('option[value="remote"]'), null)
+    assert.ok(container.querySelector('option[value="remote"]') === null)
     const project = container.querySelector<HTMLSelectElement>('select[required]')!
     await act(async () => { project.value = 'p1'; project.dispatchEvent(new window.Event('change', { bubbles: true })) })
     assert.equal(save.disabled, false)

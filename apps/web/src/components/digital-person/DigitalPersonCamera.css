@@ -29,7 +29,7 @@
 .digital-person-camera--menu { display: contents; }
 
 .digital-person-camera.digital-person-camera--panel {
- display:flex; position:absolute; z-index:30; right:max(var(--space-6),calc((100% - var(--home-content-width,1440px)) / 2 + var(--home-content-inset,var(--space-6)))); top:calc(var(--home-camera-top,320px) + var(--space-4));
+ display:flex; position:absolute; z-index:30; right:max(var(--space-6),calc((100% - var(--home-content-width,1440px)) / 2 + var(--home-content-inset,var(--space-6)))); top:calc(var(--home-camera-top,320px) - var(--home-camera-container-top,0px) + var(--space-4));
  bottom:auto;
  width:var(--home-camera-width,clamp(320px,28vw,400px)); max-width:calc(100% - var(--space-6) * 2);
  max-height:max(120px,calc(100dvh - var(--home-camera-top,320px) - var(--home-footer-height,160px) - var(--space-6)));
@@ -38,9 +38,6 @@
  overflow:auto; overscroll-behavior:contain;
 }
 .digital-person-camera--panel[hidden] { display:none; }
-.digital-home-camera-perception { padding-top:var(--space-1); margin-top:var(--space-1); border-top:.5px solid var(--border-soft); font-size:var(--text-body); color:var(--text-muted); }
-.digital-home-camera-perception>.btn { display:flex; align-items:center; gap:var(--space-2); width:100%; padding:0 var(--space-1); border:0; background:transparent; justify-content:flex-start; color:inherit; }
-.digital-home-camera-perception>.btn>svg:last-child { margin-left:auto; }
 @media(max-width:1023px) {
  .digital-person-camera.digital-person-camera--panel { position:fixed; top:auto; bottom:calc(160px + env(safe-area-inset-bottom)); left:var(--space-4); right:var(--space-4); width:auto; max-width:none; max-height:min(70dvh,calc(100dvh - 200px - env(safe-area-inset-bottom))); }
  .digital-person-camera--panel .video-preview-window--docked { align-self:center; width:min(100%,calc(40dvh * var(--video-preview-ratio,1))); max-width:100%; }
@@ -56,7 +53,23 @@
  .digital-home:has(.digital-person-camera--panel:not([hidden]) .video-preview-window--docked) .digital-home-chat{right:calc(var(--home-camera-width) + var(--home-content-inset,var(--space-6)) + var(--space-4))}
 }
 
+.camera-panel-resize{display:none}
 @media(min-width:1024px){
  .digital-person-camera--panel .video-preview-window--docked .video-preview-header{cursor:move;touch-action:none;user-select:none}
- .digital-person-camera.digital-person-camera--panel[data-camera-moved=true]{position:fixed;left:var(--camera-panel-left);top:var(--camera-panel-top);right:auto;bottom:auto;max-height:calc(100dvh - var(--camera-panel-top) - var(--space-2))}
+ .digital-person-camera.digital-person-camera--panel{overflow:visible;max-height:none}
+ .digital-person-camera.digital-person-camera--panel[data-camera-moved=true]{position:fixed;left:var(--camera-panel-left);top:var(--camera-panel-top);right:auto;bottom:auto;width:var(--camera-panel-width,var(--home-camera-width));max-width:calc(100vw - var(--space-4))}
+ .digital-person-camera--panel .video-preview-header:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+ .camera-panel-resize{display:block;position:absolute;z-index:3;touch-action:none;user-select:none}
+ .camera-panel-resize:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+ .camera-panel-resize--n,.camera-panel-resize--s{left:var(--space-4);right:var(--space-4);height:var(--space-3);cursor:ns-resize}
+ .camera-panel-resize--n{top:calc(var(--space-3) / -2)}.camera-panel-resize--s{bottom:calc(var(--space-3) / -2)}
+ .camera-panel-resize--e,.camera-panel-resize--w{top:var(--space-4);bottom:var(--space-4);width:var(--space-3);cursor:ew-resize}
+ .camera-panel-resize--e{right:calc(var(--space-3) / -2)}.camera-panel-resize--w{left:calc(var(--space-3) / -2)}
+ .camera-panel-resize--ne,.camera-panel-resize--nw,.camera-panel-resize--se,.camera-panel-resize--sw{width:var(--space-6);height:var(--space-6)}
+ .camera-panel-resize--ne,.camera-panel-resize--nw{width:var(--space-4);height:var(--space-4)}
+ .camera-panel-resize--ne{top:calc(-1 * var(--space-2));right:calc(-1 * var(--space-2));cursor:nesw-resize}
+ .camera-panel-resize--nw{top:calc(-1 * var(--space-2));left:calc(-1 * var(--space-2));cursor:nwse-resize}
+ .camera-panel-resize--se{bottom:calc(-1 * var(--space-2));right:calc(-1 * var(--space-2));cursor:nwse-resize}
+ .camera-panel-resize--sw{bottom:calc(-1 * var(--space-2));left:calc(-1 * var(--space-2));cursor:nesw-resize}
+ .camera-panel-resize--se::after{content:'';position:absolute;right:var(--space-3);bottom:var(--space-3);width:var(--space-2);height:var(--space-2);border-right:2px solid var(--text-tertiary);border-bottom:2px solid var(--text-tertiary);pointer-events:none}
 }

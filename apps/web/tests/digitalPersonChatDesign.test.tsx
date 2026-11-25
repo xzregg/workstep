@@ -29,8 +29,8 @@ test('unsupported voice shows compact identity without a dead action or explanat
  Object.defineProperty(window,'speechSynthesis',{configurable:true,value:undefined})
  try{
   await act(async()=>root.render(<I18nProvider><DigitalPersonCompanion profile={profile} replyId="m" reply="你好"/></I18nProvider>))
-  assert.equal(el.querySelector('button'),null)
-  assert.equal(el.querySelector('[role="alert"]'),null)
+  assert.ok(el.querySelector('button') === null)
+  assert.ok(el.querySelector('[role="alert"]') === null)
   assert.match(el.textContent!,/小研/)
   assert.doesNotMatch(el.textContent!,/不支持|试听|朗读/)
  }finally{await act(async()=>root.unmount());await window.happyDOM.close()}

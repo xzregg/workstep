@@ -109,7 +109,7 @@ test('engine selection remains available when engine declares no permission cont
       config={{ engines: [{ id: 'hermes', installed: true, configured: true, permission_config_options: [] } as unknown as CoordinatorEngineSummary],
         engine: 'hermes', defaultEngine: '', model: '', fastModel: '', onEngineChange: () => {}, onModelChange: () => {}, onFastModelChange: () => {} }}
       permission={{ value: '', onChange: () => {} }} /></I18nProvider>))
-    assert.equal(container.querySelector('[data-kind="permission"]'), null)
+    assert.ok(container.querySelector('[data-kind="permission"]') === null)
     assert.ok(container.textContent?.includes('Hermes'))
   } finally {
     await act(async () => root.unmount())
@@ -118,7 +118,7 @@ test('engine selection remains available when engine declares no permission cont
 })
 
 
-for (const engineId of ['claude', 'claude_agent_sdk']) test(`${engineId} full access can be selected in composer and saved in engine settings`, async () => {
+for (const engineId of ['claude', 'claude_agent_sdk', 'antigravity']) test(`${engineId} full access can be selected in composer and saved in engine settings`, async () => {
   const { window } = installDomEnvironment()
   const { useLocaleStore } = await import('../src/i18n')
   useLocaleStore.getState().setLocale('zh-CN')
@@ -127,9 +127,10 @@ for (const engineId of ['claude', 'claude_agent_sdk']) test(`${engineId} full ac
   const originalSave = engineApi.saveConfig
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   const selected: string[] = []
-  const modes = ['manual', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions']
+  const planChanges: boolean[] = []
+  const modes = engineId === 'antigravity' ? ['default', 'auto', 'accept-edits', 'plan', 'bypassPermissions'] : ['manual', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions']
   const field = { id: 'permission_mode', name: '权限模式', type: 'select' as const,
-    currentValue: 'manual', options: modes.map(value => ({value, name: value})) }
+    currentValue: modes[0], options: modes.map(value => ({value, name: value})) }
   const engine = { id: engineId, installed: true, configured: true, permission_config_options: [field] } as CoordinatorEngineSummary
   let saved: unknown
   const form = createRef<import('../src/components/EngineConfigForm').EngineConfigFormHandle>()
@@ -138,20 +139,25 @@ for (const engineId of ['claude', 'claude_agent_sdk']) test(`${engineId} full ac
       config={{ engines: [engine], engine: engineId, defaultEngine: '', model: '', fastModel: '',
         onEngineChange: () => {}, onModelChange: () => {}, onFastModelChange: () => {} }}
       permission={{ value: '', onChange: value => selected.push(value) }}
-      plan={{active: false, onChange: () => {}}} /></I18nProvider>))
+      plan={{active: false, onChange: value => planChanges.push(value)}} /></I18nProvider>))
+    const planButton = document.querySelector<HTMLButtonElement>('[data-kind="plan"]')!
+    assert.ok(planButton)
+    await act(async () => planButton.click())
+    assert.deepEqual(planChanges, [true])
+    assert.deepEqual(selected, [])
     await act(async () => (document.querySelector('[data-kind="permission"]') as HTMLButtonElement).click())
     const choices = [...document.querySelectorAll<HTMLButtonElement>('.chat-input-menu-item')]
-    assert.equal(choices.length, 6) // inherit + five permission modes; plan has its own composer control
+    assert.equal(choices.length, engineId === 'antigravity' ? 5 : 6) // plan has its own composer control
     const full = choices.find(choice => choice.textContent?.includes('全权限（免审批）'))
     assert.ok(full)
-    assert.ok(full.textContent?.includes('bypassPermissions'))
+    if (engineId !== 'antigravity') assert.ok(full.textContent?.includes('bypassPermissions'))
     await act(async () => full.click())
     const { permissionSelection } = await import('../src/utils/enginePermissions')
     assert.deepEqual(permissionSelection(engineId, selected[0]), {permission_mode: 'bypassPermissions'})
     const config = { fields: [{ key: field.id, label: field.name, type: 'select' as const, category: 'mode',
       options: modes.map(value => ({value, label: value})), required: true, placeholder: '', help: '',
       default: '', sensitive: false, confirm_values: ['bypassPermissions'] }],
-      step_fields: [], values: {permission_mode: 'manual'}, secrets: {} }
+      step_fields: [], values: {permission_mode: modes[0]}, secrets: {} }
     engineApi.saveConfig = async (id, input) => {
       assert.equal(id, engineId)
       saved = input
@@ -193,7 +199,7 @@ for (const engineId of ['claude', 'claude_agent_sdk']) test(`${engineId} step pe
     await act(async () => root.render(<I18nProvider><StepConfigFields engineId={engineId} fields={[field]} values={{}}
       onChange={(_key, value) => changes.push(value)} /></I18nProvider>))
     await act(async () => (document.querySelector('.skin-select-trigger') as HTMLButtonElement).click())
-    assert.equal(document.querySelector('[role="option"][data-value="plan"]'), null)
+    assert.ok(document.querySelector('[role="option"][data-value="plan"]') === null)
     for (const mode of modes.filter(mode => mode !== 'plan')) {
       const option = document.querySelector(`[role="option"][data-value="${mode}"]`)!
       assert.ok(option.querySelector('.skin-select-option-description')?.textContent?.includes(mode))

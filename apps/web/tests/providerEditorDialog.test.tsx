@@ -144,7 +144,7 @@ test('protocol checkboxes keep independent selections in the draft until Save', 
     const responses = checkboxes.find((checkbox) => checkbox.labels?.[0]?.textContent?.includes('OpenAI Responses'))
     assert.ok(anthropic && responses?.checked)
     assert.equal(anthropic.checked, false)
-    assert.equal(container.querySelector('#provider-base-url-anthropic_messages'), null)
+    assert.ok(container.querySelector('#provider-base-url-anthropic_messages') === null)
     await act(async () => anthropic.click())
     assert.equal(anthropic.checked, true)
     assert.equal(responses.checked, true)

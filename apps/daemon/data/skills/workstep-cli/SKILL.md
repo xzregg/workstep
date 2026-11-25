@@ -1,17 +1,17 @@
 ---
 name: workstep-cli
-description: Manage WorkStep projects, conversations, workflows, tasks, quick buttons, engines and schedules. Trigger proactive reflection. Query historical memories, user preferences and reusable experience. Decide whether retrieval is needed; also use for reminders.
+description: WorkStep projects, chats, workflows, tasks, quick buttons, engines and schedules. Digital hub identity, skills; speech voices. Query historical memories, user preferences and reusable experience. Decide whether retrieval is needed; also use for reminders.
 ---
 
 # WorkStep CLI
 
-Read only the reference needed for the operation.
+Run internal commands directly; ignore outer wrappers and preserve `WORKSTEP_*` environment variables.
+Read only the needed reference.
 
 ## Invocation
 
 Read [Transport](references/transport.md) before the first call or after a transport
-failure. It covers native `workstep_call`, source checkout, packaged desktop,
-Windows, inherited runtime variables and missing-environment recovery.
+failure for native tools, CLI invocation and environment recovery.
 
 From a project with the inherited daemon directory:
 
@@ -33,7 +33,7 @@ the sender ID and display name (`WORKSTEP_MESSAGE_ID`, `WORKSTEP_SENDER_ID`,
 
 | Need | Read |
 | --- | --- |
-| Save standing agreements, trigger/stop digital-person reflection or delegate work with a short title | [Digital person](references/digital-person.md) |
+| Digital hub identity, level, experience and skills; standing agreements, reflection and delegation | [Digital hub](references/digital-person.md) |
 | Archive a project conversation, send an instruction or read an original message | [Project conversations](references/messages.md) |
 | Historical memories, experience, original evidence and time review | [Memory](references/memory.md) |
 | Summary/detail output, fields, limits and pagination | [Output](references/output.md) |

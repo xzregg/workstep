@@ -59,7 +59,7 @@ test('pane separators resize adjacent panes on both axes, clamp sizes and releas
     assert.equal(grid().style.gridTemplateColumns, resized, 'orientation changes retain the corresponding sizes')
     await pointer(separator(), 'pointerdown', 500, 0)
     await act(async () => root.render(<Harness compact />))
-    assert.equal(document.querySelector('[role=separator]'), null)
+    assert.ok(document.querySelector('[role=separator]') === null)
     assert.equal(document.body.classList.contains('chat-panes-resizing-horizontal'), false)
     await act(async () => root.render(<Harness ids={['a', 'b']} />))
     assert.doesNotMatch(grid().style.gridTemplateColumns, /640fr/)

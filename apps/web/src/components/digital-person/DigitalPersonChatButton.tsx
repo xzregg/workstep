@@ -40,7 +40,7 @@ export default function DigitalPersonChatButton({ workspace, onClose, label, sid
   if (rail) return <Button variant="ghost" className="layout-sidebar-nav-button layout-sidebar-external-only"
     aria-label={railLabel} aria-current={companionOpen ? 'page' : undefined}
     disabled={!workspace} loading={opening} onClick={() => void open()}>
-    <Icon name="message-circle-heart" size={17} strokeWidth={2} />
+    <Icon name="bot" size={17} strokeWidth={2} />
     <span className="layout-sidebar-action-label">{railLabel}</span>
   </Button>
   return <div className={`digital-person-chat-action${sidebar ? ' digital-person-sidebar-entry' : ''}`}>

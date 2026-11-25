@@ -407,29 +407,39 @@ async def inspect_engine(
 
 @router.get("/{engine_id}/quota")
 async def get_engine_quota(engine_id: str, project_id: str = ""):
-    """Fetch account quota for engines that expose a native quota API."""
+    """Read the engine-owned account quota through the shared contract."""
+    from engines.core.quota import query_quota
+    from services.engine_quota import quota_requests, QuotaBusyError
+
     require_catalog_project(project_id)
-    engine = await asyncio.to_thread(
-        lambda: (refresh_registry(invalidate_scan=False), create_engine(engine_id))[1]
-    )
-    get_quota = getattr(engine, "get_quota", None) if engine is not None else None
-    if not callable(get_quota):
-        return {"engine_id": engine_id, "supported": False, "quota": None}
     project = (
         project_manager.get_project_by_id(project_id.strip())
-        if project_id.strip()
-        else None
+        if project_id.strip() else None
     )
-    quota = await get_quota(
-        cwd=str(project.path) if project else str(Path.cwd())
-    )
-    if quota is None:
-        return {"engine_id": engine_id, "supported": False, "quota": None}
-    return {
-        "engine_id": engine_id,
-        "supported": True,
-        "quota": quota,
-    }
+    async def collect():
+        preparing = asyncio.create_task(asyncio.to_thread(
+            lambda: (refresh_registry(invalidate_scan=False), create_engine(engine_id))[1]
+        ))
+        try:
+            engine = await asyncio.shield(preparing)
+        except asyncio.CancelledError:
+            from contextlib import suppress
+            from engines.core.process_cleanup import finish_cleanup
+            # Keep the quota slot until the synchronous disk scan has finished;
+            # cancelled refreshes must not accumulate default-executor workers.
+            with suppress(Exception):
+                await finish_cleanup(preparing)
+            raise
+        if engine is None:
+            raise HTTPException(status_code=404, detail="Unknown engine")
+        cwd = str(project.path) if project else await asyncio.to_thread(lambda: str(Path.cwd()))
+        return await query_quota(engine, cwd)
+
+    try:
+        # Authorization precedes joining a shared query; project scopes stay separate.
+        return await quota_requests.run((engine_id, project_id.strip()), collect)
+    except (QuotaBusyError, TimeoutError):
+        raise HTTPException(status_code=503, detail="Engine quota temporarily unavailable")
 
 
 @router.get("/{engine_id}/models")

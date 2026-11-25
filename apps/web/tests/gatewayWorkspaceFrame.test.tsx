@@ -45,11 +45,11 @@ test('workspace waits for its session and project, then removes content after se
     assert.ok(calls.includes('/api/project/host-1/summary'))
     assert.equal(useProjectStore.getState().activeProject?.id, 'host-1')
     assert.ok(element.querySelector('button.gateway-header-control'))
-    assert.equal(element.querySelector('.gateway-mobile-picker-header a'), null)
+    assert.ok(element.querySelector('.gateway-mobile-picker-header a') === null)
     fail = true
     await act(async () => { await assert.rejects(useGatewaySessionStore.getState().load(true)) })
     // The shared session state must revoke content immediately, before the next poll.
-    assert.equal(element.querySelector('[data-workspace]'), null)
+    assert.ok(element.querySelector('[data-workspace]') === null)
     assert.match(element.querySelector('.gateway-remote-loading')!.textContent!, /登录|授权/)
     assert.ok(element.querySelector('.gateway-recovery-actions button'))
     assert.equal(element.querySelector<HTMLAnchorElement>('.gateway-recovery-actions a')?.href, 'http://localhost:8700/devices')
@@ -68,8 +68,8 @@ test('workspace waits for its session and project, then removes content after se
       await new Promise(resolve => setTimeout(resolve, 0))
     })
     assert.ok(element.querySelector('[data-workspace]'), 'a transient failure must preserve the mounted conversation')
-    assert.equal(element.querySelector('.gateway-remote-loading'), null)
-    assert.equal(element.querySelector('input'), draft, 'the conversation must not unmount')
+    assert.ok(element.querySelector('.gateway-remote-loading') === null)
+    assert.ok(element.querySelector('input') === draft, 'the conversation must not unmount')
     assert.equal(draft.value, 'still typing')
   } finally {
     await act(async () => root.unmount())
@@ -92,7 +92,7 @@ test('ordinary mobile Web has no gateway device entry or gateway requests', asyn
   try {
     await act(async () => root.render(<I18nProvider><GatewayRemoteFrame><div data-workspace>Local Web</div></GatewayRemoteFrame></I18nProvider>))
     assert.ok(element.querySelector('[data-workspace]'))
-    assert.equal(element.querySelector('.gateway-mobile-device-trigger'), null)
+    assert.ok(element.querySelector('.gateway-mobile-device-trigger') === null)
     assert.deepEqual(calls, [])
   } finally {
     await act(async () => root.unmount())
@@ -133,8 +133,8 @@ test('gateway restart retries automatically, recovers, and stops polling an expi
     assert.equal(retries.at(-1)?.delay, 20000)
     status = 401
     await act(async () => { retries.pop()!.run(); await new Promise(resolve => setTimeout(resolve, 0)) })
-    assert.equal(element.querySelector('[data-workspace]'), null)
-    assert.equal(element.querySelector('.gateway-remote-loading .spinner'), null)
+    assert.ok(element.querySelector('[data-workspace]') === null)
+    assert.ok(element.querySelector('.gateway-remote-loading .spinner') === null)
     assert.equal(retries.length, 0, 'expired authorization must not be retried on a timer')
     assert.equal(checks, 3)
     status = 200

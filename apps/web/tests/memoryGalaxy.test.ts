@@ -51,8 +51,8 @@ test('underrepresented kinds place a recent representative near the core and get
     assert.ok(orbit.representative)
     assert.ok(radiusOf(orbit)>.24&&radiusOf(orbit)<.34,'the representative keeps some clearance from the core')
   }
-  assert.ok(orbits.get('knowledge:80')!.sizeScale>1.1,'outer stars of rare kinds also get a size boost')
-  assert.ok([...orbits.values()].every(orbit=>orbit.sizeScale<=1.5))
+  assert.equal(orbits.get('knowledge:80')!.sizeScale,.65,'outer stars of rare kinds also get a size boost')
+  assert.ok([...orbits.values()].every(orbit=>orbit.sizeScale<=2))
 })
 
 test('even a single batch spreads along stable, open spiral arms',()=>{
@@ -114,8 +114,9 @@ test('latest knowledge starts at the core and older knowledge extends outward',(
   const orbits=knowledgeSpiral(stars)
   const earlier=knowledgeSpiral(starsAt(latest-300*day))
   const sizes=stars.map(({id})=>orbits.get(id)!.sizeScale)
-  assert.equal(sizes[0],1.5)
-  assert.equal(sizes.at(-1),1)
+  assert.equal(sizes[0],2)
+  assert.equal(sizes.at(-1),.5)
+  assert.equal(sizes[0]/sizes.at(-1)!,4)
   assert.ok(sizes.every((size,index)=>index===0||size<sizes[index-1]))
   const distances=stars.map(({id})=>{
     const orbit=orbits.get(id)!

@@ -55,3 +55,9 @@ test('changedStepIds defaults to every reported step', () => {
   ])
   assert.deepEqual([...ids].sort((a, b) => a - b), [2, 3])
 })
+
+
+test('deselecting every change preserves the original connections as well as steps', () => {
+  const merged = applyWorkflowPatch(base, { ...patch, connections: [{ from: 1, to: 3 }] }, new Set())
+  assert.deepEqual(merged, base)
+})

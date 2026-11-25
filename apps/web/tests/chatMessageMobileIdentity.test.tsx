@@ -23,7 +23,7 @@ test('task replies keep the stage avatar without a stage name beside it', async 
       locale="zh-CN" canChat={false} onOpenArtifact={() => {}}
       sessionIdForStep={() => null} stepLastRef={{ current: {} }}
     /></I18nProvider>))
-    assert.equal(container.querySelector('.chat-message-sender-mobile'), null)
+    assert.ok(container.querySelector('.chat-message-sender-mobile') === null)
     assert.equal(container.querySelector('.chat-message-avatar-anchor [aria-label]')?.getAttribute('aria-label'), '交付')
     assert.match(container.textContent || '', /阶段回复/)
   } finally {
@@ -40,7 +40,7 @@ test('ordinary chat replies do not show an assistant name above the content', as
     await act(async () => root.render(<I18nProvider><ChatMessageBubble
       role="assistant" sender="对话助手" initials="AI" color="#123456" content="正常回复"
     /></I18nProvider>))
-    assert.equal(container.querySelector('.chat-message-sender-mobile'), null)
+    assert.ok(container.querySelector('.chat-message-sender-mobile') === null)
     assert.match(container.textContent || '', /正常回复/)
   } finally {
     await act(async () => root.unmount())

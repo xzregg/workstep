@@ -22,6 +22,7 @@ export const ENGINE_LABELS: Record<string, TKey> = {
   claude_agent_sdk: 'engine.label.claude_agent_sdk',
   codex_sdk: 'engine.label.codex_sdk',
   deepseek_harness: 'engine.label.deepseek_harness',
+  antigravity: 'engine.label.antigravity',
 }
 
 export const ENGINE_DESCRIPTIONS: Record<string, TKey> = {
@@ -36,6 +37,7 @@ export const ENGINE_DESCRIPTIONS: Record<string, TKey> = {
   claude_agent_sdk: 'engine.description.claude_agent_sdk',
   codex_sdk: 'engine.description.codex_sdk',
   deepseek_harness: 'engine.description.deepseek_harness',
+  antigravity: 'engine.description.antigravity',
 }
 
 export const ENGINE_COLORS: Record<string, string> = {
@@ -50,6 +52,7 @@ export const ENGINE_COLORS: Record<string, string> = {
   claude_agent_sdk: '#ea580c',
   codex_sdk: '#2563eb',
   deepseek_harness: '#4d6bfe',
+  antigravity: '#4285f4',
 }
 
 const customMetadata = new Map<string, { name?: string; description?: string }>()

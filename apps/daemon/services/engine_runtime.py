@@ -31,6 +31,9 @@ from engines.core.base import _has_pip, install_python_package, install_with_com
 from engines.core.registry import list_all_engines
 from services.config import CONFIG_DIR, config_store
 from services.engine_packages import managed_package_version
+from services import antigravity_runtime
+from services.resource_download import ResourceDownload
+from engines.core.process_cleanup import finish_cleanup
 
 
 @asynccontextmanager
@@ -59,6 +62,8 @@ class EngineRuntimeManager:
         return engine.RUNTIME_PACKAGE
 
     def installed_version(self, spec: RuntimePackage) -> str | None:
+        if spec.kind == "native":
+            return antigravity_runtime.binary_version(antigravity_runtime.managed_binary())
         if spec.kind == "pypi":
             try:
                 return managed_package_version(spec.name)
@@ -70,6 +75,17 @@ class EngineRuntimeManager:
         return match.group() if match else None
 
     async def releases(self, spec: RuntimePackage) -> tuple[list[dict], str | None]:
+        if spec.kind == "native":
+            if spec.name != "antigravity-cli":
+                raise ValueError("Unknown native runtime")
+            latest = await antigravity_runtime.latest_release(transport=self.transport)
+            record = await asyncio.to_thread(self._read, "antigravity")
+            saved = record.get("native_releases", {})
+            entries = {version: antigravity_runtime.validate_release(entry)
+                       for version, entry in saved.items() if entry.get("platform") == latest["platform"]}
+            entries[latest["version"]] = latest
+            return sorted((entry for entry in entries.values() if Version(entry["version"]) >= Version(spec.minimum)),
+                          key=lambda entry: Version(entry["version"]), reverse=True), latest["version"]
         url = (f"https://pypi.org/pypi/{quote(spec.name, safe='')}/json" if spec.kind == "pypi"
                else f"https://registry.npmjs.org/{quote(spec.name, safe='')}")
         async with httpx.AsyncClient(transport=self.transport, timeout=30) as client:
@@ -140,6 +156,7 @@ class EngineRuntimeManager:
                 "requires_terms": cls.requires_third_party_terms_acceptance(),
                 "terms_url": cls.third_party_terms_url(), "configured_path": override,
                 "default_version": default, "minimum_version": spec.minimum,
+                "requires_restart": spec.kind == "pypi",
                 "size_scope": "primary_package", "versions": [
                     {k: e[k] for k in ("version", "prerelease", "size_bytes")} for e in entries
                 ], "error": error}
@@ -246,7 +263,8 @@ class EngineRuntimeManager:
             # Save the recovery target BEFORE changing anything in the environment.
             # A retry must not overwrite recovery with a partially installed version.
             failed = record.get("operation", {}).get("status") in ("failed", "running", "queued")
-            if previous and previous != version and not (failed and record.get("rollback_version")):
+            can_restore = spec.kind != "native" or previous in record.get("native_releases", {})
+            if previous and previous != version and can_restore and not (failed and record.get("rollback_version")):
                 record["rollback_version"] = previous
             record["operation"] = state
             await asyncio.to_thread(self._save, engine_id, record)
@@ -258,6 +276,13 @@ class EngineRuntimeManager:
             raise
 
     async def _download(self, entry: dict, destination: Path, state: dict):
+        if entry.get("sha512"):
+            antigravity_runtime.validate_release(entry)
+            cache = ResourceDownload(self.directory, "antigravity")
+            state.update(stage="downloading", total_bytes=entry["size_bytes"])
+            async with httpx.AsyncClient(transport=self.transport, timeout=60) as client:
+                await cache.fetch(client, entry["url"], destination, entry["size_bytes"], entry["sha512"], state, kind="sha512")
+            return
         url = httpx.URL(entry["url"])
         if url.scheme != "https" or url.host not in {"files.pythonhosted.org", "registry.npmjs.org"}:
             raise ValueError("The installation package address does not belong to the official package repository")
@@ -362,6 +387,9 @@ class EngineRuntimeManager:
                 entry = next((e for e in entries if e["version"] == state["target_version"]), None)
                 if entry is None:
                     raise ValueError("This version is unavailable or does not meet the current platform and minimum version requirements. Please refresh the version list:")
+                if spec.kind == "native":
+                    record.setdefault("native_releases", {})[entry["version"]] = entry
+                    await asyncio.to_thread(self._save, engine_id, record)
                 async with _temporary_directory(prefix="workstep-engine-") as directory:
                     destination = directory / entry["filename"]
                     if destination.parent != directory:
@@ -371,9 +399,12 @@ class EngineRuntimeManager:
                     await asyncio.to_thread(self._save, engine_id, record)
                     if spec.kind == "pypi":
                         result = await self._install_python_archive(spec, destination, state["target_version"])
-                    else:
+                    elif spec.kind == "npm":
                         result = await install_with_command(["npm", "install", "-g", str(destination)], display=spec.name)
-                    if not result.success:
+                    else:
+                        await finish_cleanup(asyncio.to_thread(antigravity_runtime.install_archive, destination, state["target_version"]))
+                        result = None
+                    if result is not None and not result.success:
                         raise ValueError(result.message)
                     state["stage"] = "verifying"
                     current = await asyncio.to_thread(self.installed_version, spec)

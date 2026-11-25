@@ -96,7 +96,7 @@ test('settings load once, validate HTTP URLs, protect edits and retain a failed 
  await screen.findByRole('alert')
  assert.equal((input as HTMLTextAreaElement).value,callback)
  fireEvent.click(screen.getByRole('button',{name:'保存白名单'}))
- await waitFor(()=>assert.equal(screen.queryByRole('dialog'),null))
+ await waitFor(()=>assert.ok(screen.queryByRole('dialog') === null))
  assert.ok(screen.getByText(callback));assert.equal(reads,1);assert.equal(writes,2)
 })
 

@@ -130,7 +130,7 @@ export default function RecentConversations({ now = Date.now(), heading, collaps
           />
         </button>
         {entry.kind === 'session' && canManage ? <RecentConversationActions entry={entry}
-          session={{ id: entry.id, title: cached?.title || entry.title, updated_at: timestamp }} now={now} hovered={hoveredId === rowKey} />
+          session={{ id: entry.id, title: cached?.title || entry.title, updated_at: timestamp, lifecycle_protected: cached?.lifecycle_protected }} now={now} hovered={hoveredId === rowKey} />
           : entry.kind === 'task' && canManage ? <RecentTaskActions entry={entry} timestamp={timestamp} now={now} hovered={hoveredId === rowKey} />
           : <time className="layout-recent-time" dateTime={timestamp} title={formatConversationDateTime(timestamp, now, locale)}>{formatRelativeTime(timestamp, now, t)}</time>}
         </div>

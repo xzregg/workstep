@@ -37,7 +37,7 @@ test('numeric property slider and text stay synchronized and save once per gestu
     await act(async()=>text.dispatchEvent(new window.FocusEvent('focusout',{bubbles:true})))
     assert.deepEqual(commits,['24px','40px'])
     await act(async()=>root.render(<I18nProvider><PrototypeStyleField key="spacing" property="padding" value="8px 16px" disabled={false} onPreview={()=>{}} onCommit={()=>{}} onResetPreview={()=>{}}/></I18nProvider>))
-    assert.equal(document.querySelector('input[type="range"]'),null,'multi-value spacing remains a text field')
+    assert.ok(document.querySelector('input[type="range"]') === null, 'multi-value spacing remains a text field')
     await act(async()=>root.render(<I18nProvider><PrototypeStyleField key="percent" property="width" value="50%" disabled={false} onPreview={()=>{}} onCommit={()=>{}} onResetPreview={()=>{}}/></I18nProvider>))
     await input(document.querySelector<HTMLInputElement>('input[type="range"]')!,'75')
     assert.equal(document.querySelector<HTMLInputElement>('input[aria-label="width"]')!.value,'75%')

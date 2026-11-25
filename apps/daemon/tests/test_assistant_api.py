@@ -352,7 +352,9 @@ async def test_assistant_config_validates_unknown_name(assistant_client):
     assert response.status_code == 404
 
 
-@pytest.mark.parametrize("name", ["task_create", "digital_person", "task_coordinator"])
+# Digital-person inheritance and live-session synchronization are covered in
+# test_digital_person_brain_config.py with a real bound runtime.
+@pytest.mark.parametrize("name", ["task_create", "task_coordinator"])
 async def test_assistant_config_follows_default_engine_with_model(assistant_client, name):
     client, store = assistant_client
     store.set_execution_default_engine("pydantic_ai")

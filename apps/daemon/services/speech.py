@@ -17,6 +17,7 @@ from packaging.utils import parse_wheel_filename
 
 from services.config import CONFIG_DIR
 from services.speech_runtime import SpeechRuntime
+from services.voiceprint import VoiceprintService, MAX_AUDIO as MAX_VOICEPRINT_AUDIO, MIN_VERIFY_SAMPLES
 from services.voice_model_source import HUGGING_FACE, model_origin
 from services.resource_download import ResourceDownload
 from services.speech_remote import RemoteSpeechRuntime
@@ -100,6 +101,15 @@ class SpeechService:
         self.session_lock = asyncio.Lock()
         self.last_used = time.monotonic()
         self.reaper: asyncio.Task | None = None
+        self.voiceprint = VoiceprintService(self.root, self.voiceprint_runtime)
+
+    def voiceprint_runtime(self):
+        # Reuse an installed isolated CPU runtime; never import it in daemon.
+        for mid in MODELS:
+            runtime = self.root / mid / 'runtime'
+            if (runtime / 'sherpa_onnx').is_dir():
+                return runtime
+        return self.bundle / 'runtime'
 
     def _use_model(self, model_id):
         self.model = model_spec(model_id)
@@ -149,6 +159,8 @@ class SpeechService:
         current = await self.get_settings()
         profiles = current['connections']
         connection = speech_connection.validate(connection, profiles) if connection is not None else current['connection']
+        if connection['mode'] != 'local' and (await self.voiceprint.profile()).get('enabled'):
+            raise ValueError('voiceprint.localOnly')
         target = model_id or self.model_id
         model_spec(target)
         if self.download_task and not self.download_task.done():
@@ -217,6 +229,7 @@ class SpeechService:
                 'model_id': self.model_id, 'languages': list(LANGUAGES),
                 'service': 'busy' if self.sessions else 'ready' if any(w.process and w.process.returncode is None for w in self.workers) else 'stopped',
                 'active_sessions': len(self.sessions), 'max_sessions': MAX_SESSIONS,
+                'voiceprint': await self.voiceprint.snapshot(),
                 'models': await asyncio.to_thread(models)}
 
     async def download(self, model_id: str | None = None, mirror: str | None = None):
@@ -389,6 +402,7 @@ class SpeechService:
             return
         self.sessions.pop(sid)
         session['advanced'].set()
+        session['speaker_pcm'].clear()
         worker = session['worker']
         if getattr(worker, 'remote', False):
             if worker in self.workers:
@@ -421,7 +435,7 @@ class SpeechService:
             if not self.sessions and not self.workers:
                 return
 
-    async def start(self, project_id: str, owner: str):
+    async def start(self, project_id: str, owner: str, phone_call=False):
         async with self.session_lock:
             if self.download_task and not self.download_task.done():
                 raise ValueError('Installing voice resources, please retry later')
@@ -431,6 +445,10 @@ class SpeechService:
                 raise ValueError('Please download the model and enable voice input in Settings first')
             if not local:
                 speech_connection.validate(settings['connection'])
+            profile = await self.voiceprint.profile()
+            use_voiceprint = profile.get('enabled') and (phone_call or profile.get('scope') == 'all')
+            if use_voiceprint and (not local or not await asyncio.to_thread(self.voiceprint.available)):
+                raise ValueError('voiceprint.downloadFirst')
             worker = next((w for w in self.workers if w.session_id is None), None)
             if worker is None:
                 if len(self.workers) >= MAX_SESSIONS:
@@ -448,6 +466,7 @@ class SpeechService:
                     raise
             self.sessions[sid] = {'id': sid, 'project_id': project_id, 'owner': owner,
                                  'sequence': 0, 'bytes': 0, 'worker': worker,
+                                 'voiceprint': profile if use_voiceprint else None, 'speaker_pcm': bytearray(),
                                  'touched': time.monotonic(), 'started': time.monotonic(),
                                  'lock': asyncio.Lock(), 'advanced': asyncio.Event()}
             self._maintain()
@@ -505,8 +524,18 @@ class SpeechService:
                 # Only new samples enter the persistent decoder. The worker owns
                 # encoder/decoder caches and returns the complete hypothesis.
                 inference_started = time.monotonic()
-                result = await self.infer(pcm, sid, final) if preview else await self.infer(pcm, sid, final, False)
-                text = result.strip()
+                speaker_status = None
+                if s['voiceprint']:
+                    s['speaker_pcm'].extend(pcm)
+                    del s['speaker_pcm'][:-MAX_VOICEPRINT_AUDIO]
+                    speaker_status = 'insufficient'
+                    if (final or preview) and len(s['speaker_pcm']) >= MIN_VERIFY_SAMPLES * 2:
+                        speaker_status = await self.voiceprint.verify(bytes(s['speaker_pcm']), s['voiceprint'])
+                    self._session(sid, project, owner)
+                allowed = speaker_status is None or speaker_status == 'matched'
+                decode_preview = preview and allowed
+                result = await self.infer(pcm, sid, final) if decode_preview else await self.infer(pcm, sid, final, False)
+                text = result.strip() if allowed else ''
                 processing_ms = round((time.monotonic() - inference_started) * 1000, 1)
                 self._session(sid, project, owner)
             except BaseException:
@@ -515,7 +544,8 @@ class SpeechService:
             self.last_used = s['touched'] = time.monotonic()
             if final:
                 await self._release(s)
-            return {'id': sid, 'sequence': sequence, 'text': text, 'final': final, 'processing_ms': processing_ms}
+            return {'id': sid, 'sequence': sequence, 'text': text, 'final': final, 'processing_ms': processing_ms,
+                    **({'speaker_status': speaker_status} if speaker_status else {})}
 
     async def cancel(self, sid, project, owner):
         session = self._session(sid, project, owner)
@@ -538,6 +568,7 @@ class SpeechService:
             await self.cancel_download()
         finally:
             await self.stop_worker()
+            await self.voiceprint.close()
 
 
 service = SpeechService()

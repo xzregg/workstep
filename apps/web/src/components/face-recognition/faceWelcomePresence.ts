@@ -9,19 +9,22 @@ interface Track {
  matches:number
 }
 
-/** Samples only accepted, fresh frames from one continuous camera stream. */
+/** Samples fresh frames and accepts a timed gap only from a deliberate camera close. */
 export class FaceWelcomePresence {
  private tracks=new Map<string,Track>()
  private lastFrame?:number
+ private reopenPending=false
 
  reset(){
   this.tracks.clear()
   this.lastFrame=undefined
+  this.reopenPending=false
  }
 
- observe(ids:readonly (string|null)[],at:number,awayMinutes:number){
+ observe(ids:readonly (string|null)[],at:number,awayMinutes:number,cameraOffMs=0){
   if(this.lastFrame!==undefined&&at<=this.lastFrame)return null
   if(this.lastFrame!==undefined&&at-this.lastFrame>maxFrameGap)this.reset()
+  if(cameraOffMs>=awayMinutes*60_000)this.reopenPending=true
   const elapsed=this.lastFrame===undefined?0:at-this.lastFrame
   this.lastFrame=at
   const known=new Set(ids.filter((id):id is string=>id!==null))
@@ -33,7 +36,8 @@ export class FaceWelcomePresence {
    if(known.has(id)){
     if(track.matches++===0)track.matchSince=at
     if(track.matches<3||at-track.matchSince<stableFor)continue
-    if(track.left&&ids.length===1)candidate=id
+    if((track.left||this.reopenPending)&&ids.length===1)candidate=id
+    this.reopenPending=false
     track.present=true
     track.left=false
     track.absentMs=0

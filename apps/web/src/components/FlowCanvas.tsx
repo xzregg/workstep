@@ -29,6 +29,11 @@ import FlowNodeCopyDialog from './FlowNodeCopyDialog'
 import FlowTemplateDialog from './FlowTemplateDialog'
 import FlowCanvasJsonDialogs from './FlowCanvasJsonDialogs'
 import './FlowCanvas.css'
+import './FlowProposalPreview.css'
+import FlowProposalBadge from './FlowProposalBadge'
+import Spinner from './Spinner'
+import { useFlowProposalPreview } from '../hooks/useFlowProposalPreview'
+import { layoutProposalNodes } from '../utils/flowProposalPreview'
 
 /* ══════════════════════════════════════════
    Reusable flow canvas editor — shared by the
@@ -148,6 +153,7 @@ function StepNode({ data }: { data: StepNodeData }) {
       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
       fontFamily: 'var(--font-body)', position: 'relative',
     }}>
+      <FlowProposalBadge data={data} />
       {/* Input handles — one per input */}
       {inputYs.length > 0
         ? inputYs.map((y, i) => (
@@ -251,6 +257,8 @@ export interface FlowCanvasProps {
 }
 
 export interface FlowCanvasHandle {
+  /** Display-only assistant proposal; null restores the authoritative canvas. */
+  previewSteps: (steps: any | null) => void
   /** Current canvas steps JSON ({ nodes, connections }). */
   getSteps: () => any
   getDraft: () => { workflow: any; error: string | null }
@@ -290,6 +298,8 @@ function FlowCanvasInner({
   }))
   const [nodes, setNodes, onNodesChange] = useNodesState([...protectNodes(canvasToFlowNodes(initial.nodes)), ...loadBookmarks(initialSteps)])
   const [edges, setEdges, onEdgesChange] = useEdgesState(canvasToFlowEdges(initial.connections, initial.nodes))
+  const proposalPreview = useFlowProposalPreview(nodes, edges)
+  const interactionLocked = readOnly || proposalPreview.previewing || proposalPreview.applying
   const [previewNode, setPreviewNode] = useState<StepNodeData | null>(null)
   const [selectedNode, setSelectedNode] = useState<StepNodeData | null>(null)
   const [nodeConfigDraft, setNodeConfigDraft] = useState<StepNodeData | null>(null)
@@ -346,9 +356,11 @@ function FlowCanvasInner({
     loadedKey.current = stepsKey
     if (savedStepsKey.current === stepsKey) {
       savedStepsKey.current = null
+      setDirty(false)
       return
     }
     savedStepsKey.current = null
+    proposalPreview.clear()
     const { nodes: nn, connections: nc } = loadCanvasData(initialSteps)
     setNodes([...protectNodes(canvasToFlowNodes(nn)), ...loadBookmarks(initialSteps)])
     setEdges(canvasToFlowEdges(nc, nn))
@@ -357,6 +369,8 @@ function FlowCanvasInner({
     setDirty(false)
     setTimeout(() => fitView({ padding: 0.2 }), 100)
   }, [stepsKey]) // eslint-disable-line
+
+  useEffect(() => proposalPreview.clear(), [projectId, workflowId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Warn on page leave when there are unsaved changes
   useEffect(() => {
@@ -368,7 +382,7 @@ function FlowCanvasInner({
 
   // Keyboard: Delete selected
   useEffect(() => {
-    if (readOnly) return
+    if (interactionLocked) return
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const tag = (e.target as HTMLElement)?.tagName
@@ -389,7 +403,7 @@ function FlowCanvasInner({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [setNodes, setEdges, readOnly, nodes, edges, selectedNode, setDirty])
+  }, [setNodes, setEdges, interactionLocked, nodes, edges, selectedNode, setDirty])
 
   const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
     setEdges((eds) => eds.filter((e) => e.id !== edge.id))
@@ -592,6 +606,7 @@ function FlowCanvasInner({
   }
 
   useImperativeHandle(ref, () => ({
+    previewSteps: (steps) => { if (!readOnly || steps === null) proposalPreview.previewSteps(steps) },
     getSteps: () => buildCanvasJson(),
     getDraft: () => {
       const { nodesToSave } = collectDraftNodes()
@@ -601,14 +616,19 @@ function FlowCanvasInner({
     getExecutionWarnings: () => findWorkflowExecutionWarnings(buildCanvasJson()),
     loadSteps: (steps: any) => {
       const { nodes: nn, connections: nc } = loadCanvasData(steps)
-      setNodes([...canvasToFlowNodes(nn), ...loadBookmarks(steps)])
-      setEdges(canvasToFlowEdges(nc, nn))
+      const nextNodes = [...protectNodes(layoutProposalNodes(nodes, canvasToFlowNodes(nn))), ...loadBookmarks(steps)]
+      const nextEdges = canvasToFlowEdges(nc, nn)
+      // A saved source echo must not replace transient nodes halfway through the animation.
+      savedStepsKey.current = JSON.stringify(steps ?? null)
+      proposalPreview.animateApply({ nodes: nextNodes, edges: nextEdges })
+      setNodes(nextNodes)
+      setEdges(nextEdges)
       setSelectedNode(null)
       setNodeConfigError('')
       setDirty(true)
       setTimeout(() => fitView({ padding: 0.2 }), 100)
     },
-  }), [nodes, edges, nodeConfigError, nodeConfigDraft, selectedNode, ref, readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
+  }), [nodes, edges, nodeConfigError, nodeConfigDraft, selectedNode, ref, readOnly, proposalPreview]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyTemplateSteps = (steps: unknown) => {
     const { nodes: templateNodes, connections } = loadCanvasData(steps)
@@ -790,15 +810,20 @@ function FlowCanvasInner({
         <Button variant="primary" onClick={() => void handleSave()} style={dirty ? { background: 'var(--danger)', borderColor: 'var(--danger)' } : undefined}>{saveLabel ?? t('common.save')}</Button>
         </>}
       </div>
+      {(proposalPreview.previewing || proposalPreview.applying) && <div className="flow-proposal-status" role="status" aria-live="polite">
+        {proposalPreview.applying && <Spinner />}
+        <span>{t(proposalPreview.previewing ? 'aiFlow.canvasPreview' : 'aiFlow.canvasApplied')}</span>
+        {proposalPreview.previewing && <Button variant="ghost" size="sm" onClick={proposalPreview.clear}>{t('aiFlow.dismissPreview')}</Button>}
+      </div>}
       {readOnly && <p className="mobile-canvas-notice" role="status">{t('mobile.canvasReadOnly')}</p>}
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1 }} onClick={() => { if (selectedNode && !nodeConfigDirty) { setNodeConfigError(""); setSelectedNode(null); setNodeConfigDirty(false); } } }>
           <BookmarkContext.Provider value={{ readOnly, onChange: () => setDirty(true) }}>
-          <ReactFlow className="flow-canvas-workspace" nodes={nodes} edges={edges}
-            onNodesChange={readOnly ? changes => onNodesChange(changes.filter(change => change.type === 'dimensions' || change.type === 'select')) : changes => { onNodesChange(changes); if (changes.some(change => change.type === 'position' || change.type === 'remove' || (change.type === 'dimensions' && Boolean(change.resizing)))) setDirty(true) }} onEdgesChange={readOnly ? undefined : onEdgesChange}
-            nodesDraggable={!readOnly} nodesConnectable={!readOnly} edgesReconnectable={!readOnly}
-            onNodeClick={compactLayout && !readOnly
+          <ReactFlow className="flow-canvas-workspace" nodes={proposalPreview.nodes} edges={proposalPreview.edges}
+            onNodesChange={interactionLocked ? changes => { proposalPreview.onDisplayNodesChange(changes); onNodesChange(changes.filter(change => (change.type === 'dimensions' || change.type === 'select') && nodes.some(node => node.id === change.id))) } : changes => { onNodesChange(changes); if (changes.some(change => change.type === 'position' || change.type === 'remove' || (change.type === 'dimensions' && Boolean(change.resizing)))) setDirty(true) }} onEdgesChange={interactionLocked ? undefined : onEdgesChange}
+            nodesDraggable={!interactionLocked} nodesConnectable={!interactionLocked} edgesReconnectable={!interactionLocked}
+            onNodeClick={proposalPreview.previewing || proposalPreview.applying ? undefined : compactLayout && !readOnly
               ? (event, node) => {
                   event.stopPropagation()
                   if (node.type === 'bookmark') return
@@ -808,8 +833,8 @@ function FlowCanvasInner({
               : readOnly
                 ? (event, node) => { event.stopPropagation(); if (node.type !== 'bookmark') setPreviewNode(node.data as StepNodeData) }
                 : undefined}
-            onConnect={readOnly ? undefined : onConnect} onNodeDoubleClick={readOnly ? undefined : onNodeDoubleClick}
-            onNodeContextMenu={readOnly ? undefined : onNodeContextMenu} onEdgeDoubleClick={readOnly ? undefined : onEdgeDoubleClick}
+            onConnect={interactionLocked ? undefined : onConnect} onNodeDoubleClick={interactionLocked ? undefined : onNodeDoubleClick}
+            onNodeContextMenu={interactionLocked ? undefined : onNodeContextMenu} onEdgeDoubleClick={interactionLocked ? undefined : onEdgeDoubleClick}
             nodeTypes={nodeTypes} fitView minZoom={0.1} deleteKeyCode={null}
             connectionLineStyle={{ stroke: 'var(--meta)', strokeWidth: 2, strokeDasharray: '5 5' }}
             style={{ background: 'var(--surface)' }}>

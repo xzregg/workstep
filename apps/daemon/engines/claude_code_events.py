@@ -183,11 +183,13 @@ class ClaudeCodeEventMapper:
             usage = message.get("usage")
             if isinstance(usage, dict):
                 context_used, context_size = claude_context_snapshot(usage)
-                events.append(usage_update_event(
-                    normalize_claude_usage(usage),
-                    used=context_used,
-                    size=context_size,
-                ))
+                usage_event = usage_update_event(
+                    normalize_claude_usage(usage), used=context_used, size=context_size,
+                )
+                actual_model = message.get('model')
+                if isinstance(actual_model, str) and actual_model.strip():
+                    usage_event.data['model'] = actual_model
+                events.append(usage_event)
             return events
 
         if event_type == "result":

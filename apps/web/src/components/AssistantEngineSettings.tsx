@@ -18,6 +18,7 @@ const ASSISTANT_NAME_KEYS: Record<string, TKey> = {
   chat_session: 'settings.assistantNames.chatSession',
   channel_chat: 'settings.assistantNames.channelChat',
   digital_person: 'digitalPerson.title',
+  digital_person_reflection: 'digitalPerson.proactive',
 }
 
 export function getAssistantLabel(name: string, t: TFunction): string {
@@ -84,7 +85,7 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange, 
       .then(({ assistants: items }) => {
         const visible = assistantName
           ? items.filter(item => item.name === assistantName)
-          : items.filter(item => item.name !== 'digital_person')
+          : items.filter(item => !['digital_person','digital_person_reflection'].includes(item.name))
         setAssistants(visible)
         if (visible.length > 0) applyAssistant(visible[0])
         else throw new Error(t('settings.readAssistantFailed'))
@@ -235,9 +236,10 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange, 
         }
       )
       setSavedSnapshot(snapshot)
-      setNotice(t('settings.saveAssistantSuccess'))
+      setNotice(t(assistantName==='digital_person_reflection'?'digitalPerson.thinkingModelSaved':'settings.saveAssistantSuccess'))
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('settings.saveFailed'))
+      const message=reason instanceof Error?reason.message:t('settings.saveFailed')
+      setError(assistantName==='digital_person_reflection'&&message==='Chat session is running'?t('digitalPerson.thinkingModelBusy'):message)
     } finally {
       setSaving(false)
     }
@@ -251,7 +253,7 @@ export default function AssistantEngineSettings({ assistantName, onDirtyChange, 
           {t('settings.assistantIntro')}
         </p>
       </div>}
-      {assistantName && <p className="assistant-engine-intro">{t(section === 'vision' ? 'digitalPerson.visionModelHint' : 'digitalPerson.engineHint')}</p>}
+      {assistantName && <p className="assistant-engine-intro">{t(assistantName==='digital_person_reflection'?'digitalPerson.thinkingModelHint':section === 'vision' ? 'digitalPerson.visionModelHint' : 'digitalPerson.engineHint')}</p>}
       <div className="assistant-engine-panel">
         {!assistantName && <div
           role="group"

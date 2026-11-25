@@ -90,6 +90,6 @@ test('failed preference save keeps the previous switch value and allows retry', 
     fail = false
     await act(async () => toggle.click())
     assert.equal(toggle.getAttribute('aria-checked'), 'false')
-    assert.equal(node.querySelector('.settings-system-feedback--error'), null)
+    assert.ok(node.querySelector('.settings-system-feedback--error') === null)
   } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })

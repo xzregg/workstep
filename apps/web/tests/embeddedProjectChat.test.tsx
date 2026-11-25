@@ -27,6 +27,6 @@ test('embedded skin chat loads the ordinary session without changing the selecte
     assert.ok(calls.some(url => url.includes('/chat-sessions/skin-session') && url.includes('project_id=skin-project')))
     assert.equal(useProjectStore.getState().activeProject?.id, original.id)
     assert.ok(document.querySelector('.assistant-chat-panel'))
-    assert.equal(document.querySelector('.mobile-session-kebab'), null)
+    assert.ok(document.querySelector('.mobile-session-kebab') === null)
   } finally { await act(async () => root.unmount()); globalThis.fetch = previousFetch; useProjectStore.setState(previousProject); await window.happyDOM.close() }
 })

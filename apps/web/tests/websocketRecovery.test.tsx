@@ -11,6 +11,9 @@ import { useTaskStore } from '../src/stores/taskStore'
 import { useChatListStore, useChatSessionStore } from '../src/stores/chatSessionStore'
 import { useWebSocketConnectionStore } from '../src/stores/webSocketConnectionStore'
 import { useGatewayRecoveryStore } from '../src/stores/gatewayRecoveryStore'
+import { speechOutputApi } from '../src/api/speechOutput'
+import { loadSpeechOutputSettings, invalidateSpeechOutputSettings } from '../src/utils/speechOutputSettings'
+import { outputStatus } from './fixtures/speechOutput'
 
 class Socket {
   static OPEN = 1
@@ -28,6 +31,49 @@ class Socket {
   open() { this.readyState = 1; this.onopen?.() }
   receive(value: object) { this.onmessage?.({ data: JSON.stringify(value) }) }
 }
+
+test('identity mutations notify the mounted digital hub profile consumers', async()=>{
+ const {window}=installDomEnvironment(),originalSocket=globalThis.WebSocket
+ globalThis.WebSocket=Socket as never;Socket.instances=[]
+ let changes=0
+ window.addEventListener('workstep:digital-person-changed',()=>{changes++})
+ const root=createRoot(document.body.appendChild(document.createElement('div')))
+ function Harness(){useWebSocket();return null}
+ try{
+  await act(async()=>root.render(<Harness/>))
+  await act(async()=>Socket.instances[0].open())
+  await act(async()=>Socket.instances[0].receive({type:'CUSTOM',name:'workstep.digital_person_changed',value:{}}))
+  assert.equal(changes,1)
+ }finally{await act(async()=>root.unmount());globalThis.WebSocket=originalSocket;await window.happyDOM.close()}
+})
+
+test('agent voice changes notify existing speech consumers on connected clients', async (context) => {
+  const { window } = installDomEnvironment()
+  const originalSocket = globalThis.WebSocket
+  globalThis.WebSocket = Socket as never
+  Socket.instances = []
+  let changes = 0
+  let settings = outputStatus.settings
+  context.mock.method(speechOutputApi, 'status', async () => ({ ...outputStatus, settings }))
+  invalidateSpeechOutputSettings(new Event('reset'))
+  assert.equal((await loadSpeechOutputSettings('voice-test')).mode, 'system')
+  window.addEventListener('workstep:speech-output-settings-changed', () => { changes++ })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  function Harness() { useWebSocket(); return null }
+  try {
+    await act(async () => root.render(<Harness />))
+    await act(async () => Socket.instances[0].open())
+    const before = changes
+    settings = { ...settings, mode: 'local', model_id: 'moss-nano', voice: 'Junhao' }
+    await act(async () => Socket.instances[0].receive({ type: 'CUSTOM', name: 'workstep.speech_output_changed', value: {} }))
+    assert.equal(changes, before + 1)
+    assert.equal((await loadSpeechOutputSettings('voice-test')).voice, 'Junhao')
+  } finally {
+    await act(async () => root.unmount())
+    globalThis.WebSocket = originalSocket
+    await window.happyDOM.close()
+  }
+})
 
 test('gateway flapping exhausts three retries, stays paused on resume, and only retries manually', async (context) => {
   const { window } = installDomEnvironment()

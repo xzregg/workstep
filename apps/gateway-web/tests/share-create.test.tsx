@@ -37,13 +37,13 @@ for (const interactive of [false, true]) test(`login verification replaces keys,
   const toggle = screen.getByLabelText('验证网关登录') as HTMLInputElement
   assert.equal(toggle.checked, true)
   assert.equal(toggle.disabled, interactive)
-  assert.equal(screen.queryByLabelText('访问密钥'), null)
+  assert.ok(screen.queryByLabelText('访问密钥') === null)
   fireEvent.click(screen.getByRole('button', { name: '创建分享' }))
   const link = await screen.findByRole('link', { name: '打开分享链接' })
   assert.equal(body.require_login, true)
   assert.equal(body.password, null)
   assert.equal(link.getAttribute('href'), 'https://gateway.test/share/login')
-  assert.equal(screen.queryByLabelText('访问密钥'), null)
+  assert.ok(screen.queryByLabelText('访问密钥') === null)
   assert.ok(screen.getByText('请先登录网关后访问此分享。'))
 })
 

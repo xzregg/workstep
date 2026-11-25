@@ -153,14 +153,14 @@ for (const { interactive, standalone } of [
       assert.ok(element.querySelector('.standalone-preview-page'))
       assert.ok(element.querySelector('.artifact-markdown-preview'))
       assert.match(element.textContent!, /New shared document/)
-      assert.equal(element.querySelector('.task-detail-header'), null)
+      assert.ok(element.querySelector('.task-detail-header') === null)
     assert.ok(calls.every(path => path.startsWith('/api/public/shares/handle/')), JSON.stringify(calls.filter(path => !path.startsWith('/api/public/shares/handle/'))))
       assert.equal(calls.filter(path => path.endsWith(`/artifacts/${artifactId}/preview`)).length, 1)
       return
     }
     assert.ok(element.querySelector('.task-detail-header'))
     assert.equal(element.querySelector('.task-schedules-count')?.textContent,'1')
-    assert.equal(element.querySelector('.chat-input .task-schedules-trigger'),null)
+    assert.ok(element.querySelector('.chat-input .task-schedules-trigger') === null)
     assert.ok(element.querySelector('.task-detail-header .task-schedules-trigger'))
     await act(async()=>element.querySelector<HTMLButtonElement>('.task-schedules-trigger')!.click())
     const scheduleDialog=document.querySelector('.task-schedules-dialog')!
@@ -173,7 +173,7 @@ for (const { interactive, standalone } of [
     assert.equal(poll, undefined, 'a connected share must not schedule snapshot polling')
     assert.ok(element.textContent?.includes('Gateway task'))
     assert.ok(element.textContent?.includes('Visible execution'))
-    assert.equal(element.querySelector('.app-shell'), null)
+    assert.ok(element.querySelector('.app-shell') === null)
     await act(async () => (element.querySelector('.chat-message-action--prompt') as HTMLElement).click())
     const promptDialog = document.querySelector('[role="dialog"][aria-label="完整提示词"]')!
     assert.ok(promptDialog)
@@ -206,7 +206,7 @@ for (const { interactive, standalone } of [
     const directory = document.querySelector('.project-directory-dialog')!
     assert.ok(directory)
     assert.match(directory.textContent!, /new\.md/)
-    assert.equal(directory.querySelector('button[aria-label="编辑"]'), null)
+    assert.ok(directory.querySelector('button[aria-label="编辑"]') === null)
     const sharedFile = directory.querySelector('[role="treeitem"][title$="/new.md"]') as HTMLElement
     assert.ok(sharedFile)
     await act(async () => sharedFile.click())
@@ -232,7 +232,7 @@ for (const { interactive, standalone } of [
     await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     const detailTab = element.querySelector<HTMLButtonElement>('.task-detail-primary-tabs [role="tab"]')!
     await act(async () => detailTab.click())
-    if (!interactive) assert.equal(element.querySelector('.chat-input'), null)
+    if (!interactive) assert.ok(element.querySelector('.chat-input') === null)
     else {
       await act(async () => element.querySelector<HTMLButtonElement>('.task-description-edit')!.click())
       const description = element.querySelector<HTMLTextAreaElement>('.task-detail-description textarea')!

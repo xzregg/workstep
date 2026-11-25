@@ -30,7 +30,7 @@ for (const schemaVersion of [1, 2]) test(`v${schemaVersion} preview is cancellab
     assert.ok(actionBar, 'skin actions are available above the preview')
     assert.equal(actionBar.previousElementSibling?.tagName, 'HEADER')
     assert.ok(actionBar.nextElementSibling?.classList.contains('skin-settings-preview-toolbar'))
-    assert.equal(document.querySelector('.skin-settings-detail footer'), null)
+    assert.ok(document.querySelector('.skin-settings-detail footer') === null)
     await click('预览')
     assert.equal(currentSkin().manifest.id, 'ocean')
     assert.ok(document.querySelector('[data-skin-recovery]'))
@@ -38,13 +38,13 @@ for (const schemaVersion of [1, 2]) test(`v${schemaVersion} preview is cancellab
     assert.equal(currentSkin().manifest.id, 'default')
     await click('应用')
     assert.equal(currentSkin().manifest.id, 'ocean')
-    assert.equal(document.querySelector('[data-skin-recovery]'), null)
+    assert.ok(document.querySelector('[data-skin-recovery]') === null)
     assert.equal(document.documentElement.style.getPropertyValue('--skin-recovery-height'), '0px')
     const restore = document.querySelector<HTMLButtonElement>('.skin-settings-detail button[aria-label="恢复默认皮肤"]')!
     assert.ok(restore, 'restoration remains available in appearance settings')
     await act(async () => restore.click())
     assert.equal(currentSkin().manifest.id, 'default')
-    assert.equal(document.querySelector('.skin-settings-footer-note button'), null)
+    assert.ok(document.querySelector('.skin-settings-footer-note button') === null)
   } finally { skinsApi.list = oldList; skinsApi.get = oldGet; await act(async () => root.unmount()); restoreDefaultSkin(); await window.happyDOM.close() }
 })
 
@@ -60,7 +60,7 @@ test('skin library filters and searches packages while leaving the active appear
     assert.equal(document.querySelectorAll('.skin-settings-card').length, 2)
     assert.equal(document.querySelectorAll('.skin-settings-tabs [role=tab]').length, 2)
     assert.doesNotMatch(document.querySelector('.skin-settings-tabs')!.textContent!, /当前使用/)
-    assert.equal(document.querySelector('.skin-settings-create-card'), null)
+    assert.ok(document.querySelector('.skin-settings-create-card') === null)
     assert.match(document.querySelector('.skin-settings-library-toolbar')?.textContent ?? '', /导入 ZIP/)
     assert.ok(document.querySelector('.skin-settings-library-toolbar .lucide-download'))
     assert.ok(document.querySelector('.skin-settings-detail-action-bar .lucide-upload'))

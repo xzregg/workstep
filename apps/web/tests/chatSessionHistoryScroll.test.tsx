@@ -107,9 +107,9 @@ test('welcome hides while running or after the first message', async () => {
     await render()
     assert.match(document.querySelector('.chat-session-welcome')?.textContent || '', /minidoc/)
     await render(false, true)
-    assert.equal(document.querySelector('.chat-session-welcome'), null)
+    assert.ok(document.querySelector('.chat-session-welcome') === null)
     await render(true)
-    assert.equal(document.querySelector('.chat-session-welcome'), null)
+    assert.ok(document.querySelector('.chat-session-welcome') === null)
     await render()
     assert.ok(document.querySelector('.chat-session-welcome'))
   } finally {

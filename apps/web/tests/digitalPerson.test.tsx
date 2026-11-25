@@ -78,7 +78,7 @@ test('digital person persists its profile, guards drafts, and shows native memor
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(intervalInput, '15')
       intervalInput.dispatchEvent(new window.Event('input', { bubbles: true }))
     })
-    assert.equal(rootElement.querySelector('input[name="delegation_interval_seconds"]'),null)
+    assert.ok(rootElement.querySelector('input[name="delegation_interval_seconds"]') === null)
     const shared=rootElement.querySelector<HTMLInputElement>('input[name="proactive_shared_context"]')!
     assert.ok(shared)
     assert.equal(shared.checked,true)

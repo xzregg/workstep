@@ -367,6 +367,9 @@ async def test_engine_quota_uses_optional_backend_capability(engine_client, monk
     captured = {}
 
     class QuotaEngine:
+        ENGINE_ID = "codex_sdk"
+        supports_quota = True
+
         async def get_quota(self, cwd=""):
             captured["cwd"] = cwd
             return {"engine_id": "codex_sdk", "primary": {"remaining_percent": 81}}
@@ -383,15 +386,59 @@ async def test_engine_quota_uses_optional_backend_capability(engine_client, monk
 @pytest.mark.anyio
 async def test_engine_quota_is_hidden_for_unsupported_engine(engine_client, monkeypatch):
     client, _ = engine_client
-    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: object())
+    from engines.claude_code import ClaudeCodeEngine
+    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: ClaudeCodeEngine())
 
     response = await client.get("/api/engine/claude/quota")
 
     assert response.json() == {
         "engine_id": "claude",
         "supported": False,
+        "status": "unsupported",
         "quota": None,
     }
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('authenticated', [True, False])
+async def test_engine_quota_unavailable_keeps_supported_and_redacts_errors(engine_client, monkeypatch, authenticated):
+    from engines.core.quota import QuotaAuthenticationRequired
+    client, _ = engine_client
+    class QuotaEngine:
+        ENGINE_ID = 'example'
+        supports_quota = True
+        async def get_quota(self, cwd=''):
+            if not authenticated:
+                raise QuotaAuthenticationRequired('secret token')
+            raise RuntimeError('secret token')
+    monkeypatch.setattr(engine_api, 'create_engine', lambda _: QuotaEngine())
+    result = (await client.get('/api/engine/example/quota')).json()
+    assert result['supported'] is True
+    assert result['status'] == ('unavailable' if authenticated else 'unauthenticated')
+    assert result['quota'] is None
+    assert 'secret' not in str(result)
+
+
+@pytest.mark.anyio
+async def test_slow_engine_quota_does_not_block_health(engine_client, monkeypatch):
+    client, _ = engine_client
+    entered, finish = asyncio.Event(), asyncio.Event()
+    class QuotaEngine:
+        ENGINE_ID = 'example'
+        supports_quota = True
+        async def get_quota(self, cwd=''):
+            entered.set()
+            await finish.wait()
+            return {'primary': {'remaining_percent': 81.5}}
+    monkeypatch.setattr(engine_api, 'create_engine', lambda _: QuotaEngine())
+    pending = asyncio.create_task(client.get('/api/engine/example/quota'))
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        assert (await asyncio.wait_for(client.get('/api/health'), .5)).status_code == 200
+    finally:
+        finish.set()
+        response = await pending
+    assert response.json()['quota']['primary']['remaining_percent'] == 81.5
 
 
 def _write_cc_switch_db(path, providers):
@@ -984,6 +1031,30 @@ async def test_native_engine_models_are_persisted_and_reused(engine_client, monk
     assert store.get_engine_models("native")["fetched_at"]
     assert refreshed.json()["fetched_at"]
     assert calls["count"] == 2
+
+
+@pytest.mark.anyio
+async def test_antigravity_models_can_refresh_cache_and_select_default(engine_client, monkeypatch):
+    from engines.antigravity import AntigravityEngine
+    client, store = engine_client
+    engine_id = "antigravity"
+    instance = AntigravityEngine()
+    calls = []
+    async def models(cwd):
+        calls.append(cwd)
+        return [EngineModel(id="gemini-fixture", label="Gemini Fixture")]
+    monkeypatch.setattr(instance, "list_models", models)
+    monkeypatch.setattr(engine_api, "create_engine", lambda _: instance)
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
+    refreshed = await client.get(f"/api/engine/{engine_id}/models?refresh=1")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["error"] is None
+    assert refreshed.json()["models"][0]["id"] == "gemini-fixture"
+    saved = await client.put(f"/api/engine/{engine_id}/default-model", json={"model":"gemini-fixture"})
+    assert saved.json()["saved"]
+    cached = await client.get(f"/api/engine/{engine_id}/models")
+    assert cached.json()["default_model"] == "gemini-fixture"
+    assert len(calls) == 1
 
 
 @pytest.mark.anyio

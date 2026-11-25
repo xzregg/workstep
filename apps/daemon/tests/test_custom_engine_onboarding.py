@@ -1,7 +1,13 @@
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 import pytest
+
+@pytest.fixture(autouse=True)
+def daemon_cli_url(monkeypatch):
+    monkeypatch.setenv('WORKSTEP_DAEMON_URL', 'http://127.0.0.1:8765')
+
 
 @pytest.mark.asyncio
 async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch):
@@ -14,8 +20,23 @@ async def test_onboarding_creates_normal_chat_in_workspace(tmp_path, monkeypatch
     monkeypatch.setattr(onboarding.project_manager, "init_project", lambda *a, **kw: project)
     async def run_db(project_id, operation): return operation(project)
     monkeypatch.setattr(onboarding.project_manager, "run_db", run_db)
-    monkeypatch.setattr(onboarding.skill_center, "runtime_selection", lambda root: None)
+    skill_dir = tmp_path / 'project skill'
+    (skill_dir / 'references').mkdir(parents=True)
+    (skill_dir / 'SKILL.md').write_text('CLI entry')
+    for name in ('custom-engine.md', 'custom-engine-contract.md', 'custom-engine-testing.md'):
+        (skill_dir / 'references' / name).write_text('guide')
+    monkeypatch.setattr(onboarding.skill_center, "runtime_selection", lambda root: SimpleNamespace(
+        enabled=(SimpleNamespace(name='workstep-cli', runtime_path=skill_dir),)))
     result = await onboarding.create_onboarding()
+    skill_path = Path(result['skill_path'])
+    assert skill_path == skill_dir / 'SKILL.md'
+    assert skill_path.name == 'SKILL.md'
+    assert skill_path.is_absolute() and skill_path.is_file()
+    assert (skill_path.parent / 'references/custom-engine-contract.md').is_file()
+    assert str(skill_path) in result['prompt']
+    assert result['cli_command'] in result['prompt']
+    assert 'WORKSTEP_CONFIG_DIR' in result['cli_command']
+    assert '--url' in result['cli_command']
     assert result["session_id"] == "session"
     assert result["project_id"] == "project"
     assert "$custom-engine" not in result["prompt"]
@@ -102,3 +123,30 @@ def test_workspace_parent_uses_current_runtime_boundary(tmp_path, monkeypatch, s
     else:
         monkeypatch.delenv("WORKSTEP_PROJECTS_ROOT", raising=False)
         assert workspace_parent() == tmp_path / "config" / "runtime" / "workspace"
+
+
+def test_cli_command_quotes_runtime_paths_without_embedding_credentials(tmp_path, monkeypatch):
+    import os
+    import shlex
+    import sys
+    from services import config
+    from services.custom_engine_onboarding import cli_invocation
+    directory = tmp_path / "config with 'quotes' and $dollars"
+    monkeypatch.setattr(config, 'CONFIG_DIR', directory)
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'private-runtime-token')
+    command = cli_invocation()
+    assert 'private-runtime-token' not in command
+    if os.name != 'nt':
+        args = shlex.split(command)
+        assert args[:3] == ['env', f'WORKSTEP_CONFIG_DIR={directory}', sys.executable]
+        assert args[-2:] == ['--url', 'http://127.0.0.1:8765']
+    else:
+        assert command.startswith('$env:WORKSTEP_CONFIG_DIR=')
+        assert "''quotes''" in command
+
+
+def test_cli_command_rejects_missing_live_runtime_url(monkeypatch):
+    from services.custom_engine_onboarding import cli_invocation
+    monkeypatch.delenv('WORKSTEP_DAEMON_URL')
+    with pytest.raises(ValueError, match='runtime is unavailable'):
+        cli_invocation()

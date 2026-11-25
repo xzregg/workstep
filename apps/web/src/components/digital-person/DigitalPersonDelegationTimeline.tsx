@@ -1,3 +1,5 @@
+import {useEffect,useRef} from 'react'
+import {useCompactLayout} from '../../hooks/useCompactLayout'
 import type {DigitalActivityRecords} from '../../api/digitalPerson'
 import {useI18n} from '../../i18n'
 import Button from '../Button'
@@ -7,6 +9,7 @@ import Spinner from '../Spinner'
 type Delegation = DigitalActivityRecords['delegations'][number]
 const activeStatuses = ['queued', 'running', 'stopping']
 const statusKeys = {
+ archived: 'digitalPerson.statusArchived',
  queued: 'digitalPerson.statusQueued',
  running: 'digitalPerson.homeTaskRunning',
  stopping: 'digitalPerson.homeTaskRunning',
@@ -47,15 +50,29 @@ export default function DigitalPersonDelegationTimeline({items, viewedResults, l
  onOpen: (item: Delegation) => void
 }) {
  const {t, locale} = useI18n()
+ const compact = useCompactLayout()
+ const scroll = useRef<HTMLDivElement>(null)
+ useEffect(()=>{
+  if(compact || loading || pageError || !canLoadMore)return
+  const list=scroll.current
+  if(!list)return
+  const fill=()=>{
+   if(list.clientHeight>0 && list.scrollHeight-list.scrollTop-list.clientHeight<64)onLoadMore()
+  }
+  fill()
+  const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(fill)
+  observer?.observe(list)
+  return()=>observer?.disconnect()
+ },[compact,items,loading,pageError,canLoadMore,onLoadMore])
  const days = groupByDay(items)
  const years = new Set(Array.from(days.values(), rows=>rows[0].date?.getFullYear()).filter(year=>year!=null))
  const caption = t('digitalPerson.homeDelegatedTasks')
 
  return <section className="digital-home-work">
   <h3><Icon name="workflow"/>{caption}</h3>
-  <div className="digital-home-activity-scroll" data-activity-scroll="delegations" role="region" aria-label={caption}
+  <div ref={scroll} className="digital-home-activity-scroll" data-activity-scroll="delegations" role="region" aria-label={caption}
    tabIndex={0} onScroll={({currentTarget: list})=>{
-    if(!pageError && list.scrollHeight-list.scrollTop-list.clientHeight<64)onLoadMore()
+    if(!loading && canLoadMore && !pageError && list.scrollHeight-list.scrollTop-list.clientHeight<64)onLoadMore()
    }}>
    {Array.from(days, ([key, rows])=>{
     const date = rows[0].date
@@ -66,7 +83,7 @@ export default function DigitalPersonDelegationTimeline({items, viewedResults, l
      <h4>{heading}</h4>
      <ol>{rows.map(({item, date})=>{
       const title = item.title || item.instruction
-      const status = viewedResults[item.id] ?? item.status
+      const status = item.archived ? 'archived' : viewedResults[item.id] ?? item.status
       const viewed = viewedResults[item.id] ? true : item.result_viewed
       const pending = activeStatuses.includes(status)
       const label = Object.hasOwn(statusKeys, status)
@@ -97,8 +114,9 @@ export default function DigitalPersonDelegationTimeline({items, viewedResults, l
     </div>
    })}
    {items.length===0&&<p>{t('digitalPerson.homeNoDelegatedTasks')}</p>}
-   {loading&&<Spinner size={14}/>}
-   {!loading&&canLoadMore&&<Button variant="ghost" className="digital-home-work-next" onClick={onLoadMore}>
+   {loading&&<p role="status"><Spinner size={14}/>{t('common.loading')}</p>}
+   {pageError&&!compact&&<p role="alert">{t('taskList.loadFailed')}</p>}
+   {!loading&&canLoadMore&&(compact||pageError)&&<Button variant="ghost" className="digital-home-work-next" onClick={onLoadMore}>
     {t(pageError?'common.retry':'digitalPerson.homeLoadOlderTasks')}<Icon name="chevron-down" size={14}/>
    </Button>}
   </div>

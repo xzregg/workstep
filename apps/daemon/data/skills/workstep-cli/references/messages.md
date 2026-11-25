@@ -26,7 +26,7 @@ cannot accept a delegation continuation. Workflow tasks use their own
 
 ## Send an instruction
 
-For the digital person, use [tracked delegation](digital-person.md)
+For the digital hub, use [tracked delegation](digital-person.md)
 with `--target-session` to send and follow up.
 
 With explicit user authorization and both WorkStep IDs, submit a new turn to an

@@ -120,7 +120,7 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
     assert.ok(assistantNav)
     await act(async () => assistantNav.click())
 
-    assert.equal(container.querySelector('[role="tablist"]'), null)
+    assert.ok(container.querySelector('[role="tablist"]') === null)
     assert.ok([...container.querySelectorAll('label')]
       .some((label) => label.textContent?.includes('全局提示词')))
 
@@ -174,7 +174,7 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
     const typeSelect = container.querySelector<HTMLSelectElement>('[data-testid="quick-button-type"]')
     assert.ok(typeSelect)
     assert.equal(typeSelect.value, '')
-    assert.equal(container.querySelector('[data-testid="quick-button-prompt"]'), null)
+    assert.ok(container.querySelector('[data-testid="quick-button-prompt"]') === null)
 
     const concurrencyNav = [...container.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.trim() === '并发限制')
@@ -186,7 +186,7 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
     assert.equal(taskLimit?.value, '不限制')
     assert.equal(chatLimit?.value, '不限制')
     assert.equal(taskLimit?.type, 'text')
-    assert.equal(taskLimit?.list, null)
+    assert.ok(taskLimit?.list === null)
 
     await act(async () => {
       setNativeValue(window, taskLimit!, '0')

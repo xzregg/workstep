@@ -20,7 +20,7 @@ test('message avatars match the approved preview and contain only two facial fea
     for (const state of Object.keys(robotFaces) as (keyof typeof robotFaces)[]) {
       await act(async () => root.render(<RobotAvatar state={state} />))
       assert.equal(document.querySelectorAll('[data-feature]').length, 2)
-      assert.equal(document.querySelector('[data-brows]'), null)
+      assert.ok(document.querySelector('[data-brows]') === null)
     }
   } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })
@@ -60,7 +60,7 @@ test('avatar morphs in place, retargets continuously, stops after completion and
     const eye = svg.querySelector('[data-feature="leftEye"]')!
     const original = eye.getAttribute('d')
     await act(async () => root.render(<RobotAvatar state="done" />))
-    assert.equal(document.querySelector('svg'), svg)
+    assert.ok(document.querySelector('svg') === svg)
     assert.equal(eye.getAttribute('d'), original)
     advance(140)
     const middle = eye.getAttribute('d')
@@ -141,7 +141,7 @@ test('shared bubble keeps human identity and displays waiting even for read-only
   )
   try {
     await act(async () => render('user', false))
-    assert.equal(document.querySelector('.robot-avatar'), null)
+    assert.ok(document.querySelector('.robot-avatar') === null)
     assert.ok(document.querySelector('.chat-message-avatar-anchor')?.textContent?.includes('明'))
     await act(async () => render('assistant', true))
     assert.equal(document.querySelector('.robot-avatar')?.getAttribute('data-state'), 'waiting')

@@ -395,6 +395,7 @@ class ConfigStore:
 
         Every assistant follows the global execution engine by default;
         per-assistant overrides (``assistant_defaults.<name>``) win when set.
+        Reflection reuses the brain configuration until its first independent save.
         The task coordinator keeps its legacy explicit coordinator settings,
         but an empty coordinator engine follows the same global default.
         """
@@ -422,6 +423,8 @@ class ConfigStore:
         if not isinstance(overrides, dict):
             return merged
         overlay = overrides.get(name)
+        if name == 'digital_person_reflection' and not isinstance(overlay, dict):
+            return self.get_assistant_defaults('digital_person')
         if not isinstance(overlay, dict):
             return merged
         for key in (
@@ -442,6 +445,7 @@ class ConfigStore:
 
         Empty values mean "follow the engine/default", so callers that need
         to render saved settings must not substitute the resolved defaults.
+        Unsaved reflection settings expose the existing brain overrides for compatibility.
         """
         values = {
             "engine": "",
@@ -463,6 +467,8 @@ class ConfigStore:
         if not isinstance(overrides, dict):
             return values
         overlay = overrides.get(name)
+        if name == 'digital_person_reflection' and not isinstance(overlay, dict):
+            return self.get_assistant_config('digital_person')
         if not isinstance(overlay, dict):
             return values
         for key in values:
@@ -548,7 +554,8 @@ class ConfigStore:
                 current[key] = value
             else:
                 current.pop(key, None)
-        if current:
+        # An explicitly cleared reflection config must not resume inheriting the brain.
+        if current or name == 'digital_person_reflection':
             overrides[name] = current
         else:
             overrides.pop(name, None)

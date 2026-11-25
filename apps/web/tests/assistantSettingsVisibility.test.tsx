@@ -22,7 +22,7 @@ test('general assistant settings excludes digital person while its dedicated set
     await act(async () => host.querySelector<HTMLButtonElement>('.assistant-engine-footer button')!.click())
     assert.deepEqual(calls, ['chat_session'])
     await act(async () => root.render(<I18nProvider><AssistantEngineSettings key="digital" assistantName="digital_person" /></I18nProvider>))
-    assert.equal(host.querySelector('.assistant-engine-tabs'), null)
+    assert.ok(host.querySelector('.assistant-engine-tabs') === null)
     await act(async () => host.querySelector<HTMLButtonElement>('.assistant-engine-footer button')!.click())
     assert.deepEqual(calls, ['chat_session','digital_person'])
   } finally {

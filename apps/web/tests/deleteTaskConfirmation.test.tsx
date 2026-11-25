@@ -19,7 +19,7 @@ test('task deletion includes the full task workspace and artifacts', async () =>
   ))
   try {
     await render(true)
-    assert.equal(document.querySelector('[role="dialog"] input[type="checkbox"]'), null)
+    assert.ok(document.querySelector('[role="dialog"] input[type="checkbox"]') === null)
     assert.match(document.querySelector('[role="dialog"]')?.textContent || '', /workspace|工作区/i)
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].at(-1)!.click())
     assert.deepEqual(choices, [true])

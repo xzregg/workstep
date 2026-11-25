@@ -1,12 +1,68 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { takeSpeechSentences, speechText, streamingSpeechLimit } from '../src/utils/speechOutput'
+import { completedSpeechBatches, takeSpeechSentences, speechText, streamingSpeechLimit } from '../src/utils/speechOutput'
 import { SpeechOutputPlayer } from '../src/utils/speechOutput'
 import { speechOutputApi } from '../src/api/speechOutput'
 import { ApiError } from '../src/api/transport'
 import { outputStatus } from './fixtures/speechOutput'
 import { voiceWakeApi } from '../src/api/digitalPerson'
 import { loadSavedWakeGreeting, playWakeGreeting } from '../src/audio/wakeGreeting'
+
+test('completed reading keeps sentences together and bounds long Unicode text without loss', () => {
+  const text = '第一句话。第二句话！\n第三句还有补充。'
+  assert.deepEqual(completedSpeechBatches(text), [text])
+  const long = '很长的正文🙂，'.repeat(400)
+  const batches = completedSpeechBatches(long)
+  assert.equal(batches.join(''), long)
+  assert.ok(batches.every(batch => batch.length <= 1200 && batch.isWellFormed()))
+})
+
+test('long complete reading waits for playback before creating another server session', async () => {
+  const original = { ...speechOutputApi }, previous = globalThis.AudioContext
+  const started: string[] = []
+  let clock = 0
+  class Context {
+    state = 'running'; destination = {}
+    get currentTime() { return clock }
+    resume() { return Promise.resolve() }
+    createBuffer() { return { duration: 90, sampleRate: 24000, getChannelData: () => new Float32Array(1) } }
+    createBufferSource() { return { onended: null, playbackRate: { value: 1 }, connect() {}, disconnect() {}, start() {}, stop() {} } }
+    createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} } }
+  }
+  globalThis.AudioContext = Context as unknown as typeof AudioContext
+  const reads = new Set<string>()
+  speechOutputApi.start = async text => { started.push(text); return { id: String(started.length) } }
+  speechOutputApi.next = async id => {
+    if (reads.has(id)) return { done: true }
+    reads.add(id)
+    return { done: false, audio: 'AAA=', format: 'pcm', sample_rate: 24000 }
+  }
+  speechOutputApi.cancel = async () => {}
+  const player = new SpeechOutputPlayer({ settings: { ...outputStatus.settings, mode: 'remote' }, completeReply: true })
+  try {
+    player.enqueue(['完整第一批。', '超长正文的下一批。'], { final: true })
+    await new Promise(resolve => setTimeout(resolve, 40))
+    assert.deepEqual(started, ['完整第一批。'], 'no unread prefetched session expires during the long first batch')
+    clock = 90
+    await new Promise(resolve => setTimeout(resolve, 40))
+    assert.deepEqual(started, ['完整第一批。', '超长正文的下一批。'])
+  } finally { player.stop(); globalThis.AudioContext = previous; Object.assign(speechOutputApi, original) }
+})
+
+test('native complete reading can exceed one minute without being stopped', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  const previous = globalThis.window, sent: Array<{ type: string; id: string }> = []
+  const bridge = { postMessage: (raw: string) => sent.push(JSON.parse(raw)), onmessage: null as null | ((event: {data: string}) => void) }
+  globalThis.window = { WorkStepSpeech: bridge } as unknown as Window & typeof globalThis
+  const player = new SpeechOutputPlayer({ settings: outputStatus.settings, completeReply: true })
+  try {
+    player.enqueue(['完整正文。'.repeat(60)], { final: true })
+    context.mock.timers.tick(60001)
+    assert.deepEqual(sent.map(item => item.type), ['speak'])
+    bridge.onmessage?.({ data: JSON.stringify({ id: sent[0].id, status: 'done' }) })
+    await Promise.resolve()
+  } finally { player.stop(); globalThis.window = previous }
+})
 
 test('a host wake greeting replays twice without browser synthesis', async () => {
   const original = { ...speechOutputApi }, previous = globalThis.AudioContext

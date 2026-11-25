@@ -3,11 +3,12 @@ import asyncio
 from datetime import datetime
 from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
-from pydantic import ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 from api.project_scope import require_catalog_project
 from services import digital_person as service
 from services.digital_person import DigitalPersonProfile
 from services.wake_audio import wake_audio
+from services.speech_output import service as speech_service
 
 
 def authorize():
@@ -43,6 +44,47 @@ async def remember(draft: service.StandingMemoryDraft):
     except OSError as exc:
         raise HTTPException(503, "Unable to save standing memory. Please retry.") from exc
     return {"saved": True, "added": added}
+
+
+@router.get('/identity')
+async def identity_setup(response: Response):
+    response.headers['Cache-Control'] = 'no-store'
+    return await asyncio.to_thread(service.identity_setup_status)
+
+
+@router.post('/identity')
+async def update_identity_setup(command: service.IdentitySetupCommand):
+    try:
+        result = await asyncio.to_thread(service.update_identity_setup, command)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(503, 'Unable to save identity setup. Please retry.') from exc
+    from main import event_bus
+    await event_bus.publish({'type':'CUSTOM', 'name':'workstep.digital_person_changed', 'value':{}})
+    return result
+
+
+class VoiceSelection(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    voice: str = Field(min_length=1, max_length=200)
+    model_id: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+@router.get('/voice')
+async def voice_options():
+    return await speech_service.voice_options()
+
+
+@router.put('/voice')
+async def select_voice(body: VoiceSelection):
+    try:
+        result = await speech_service.select_voice(body.voice, body.model_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    from main import event_bus
+    await event_bus.publish({'type': 'CUSTOM', 'name': 'workstep.speech_output_changed', 'value': {}})
+    return result
 
 
 @router.get("/voice-wake")
@@ -89,6 +131,11 @@ async def main_session():
 @router.get("/activity")
 async def activity():
     return await runtime().overview()
+
+
+@router.get("/info")
+async def identity_info():
+    return await runtime().identity_info()
 
 
 @router.get('/activity/records')
@@ -199,6 +246,8 @@ class DelegateRequest(service.BaseModel):
 
     project_id: str
     title: str | None = None
+    engine: str | None = Field(default=None, min_length=1, max_length=100)
+    model: str | None = Field(default=None, min_length=1, max_length=200)
     instruction: str = service.Field(min_length=1, max_length=12000)
     origin_session_id: str = ""
     request_id: str = service.Field(min_length=1, max_length=200)
@@ -207,6 +256,54 @@ class DelegateRequest(service.BaseModel):
 
 class ExistingDelegateRequest(DelegateRequest):
     target_session_id: str = service.Field(pattern=r'^[A-Za-z0-9_-]{1,128}$')
+
+
+class DelegationVerifyRequest(service.BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    project_id: str
+    engine: str = Field(min_length=1, max_length=100)
+    model: str = Field(min_length=1, max_length=200)
+    target_session_id: str = ''
+
+
+async def delegation_context(project_id, target_session_id):
+    current = runtime()
+    project = current.projects.get_project_by_id(project_id)
+    if project is None:
+        raise ValueError('Target project does not exist')
+    config = await current.projects.run_db(project_id, lambda _: current.chats.get_execution_config(
+        project_id, target_session_id)) if target_session_id else None
+    return current, project, config
+
+
+@router.get('/delegation-options')
+async def delegation_options(project_id: str, target_session_id: str = ''):
+    from services.delegation_capabilities import options
+    try:
+        current, project, config = await delegation_context(project_id, target_session_id)
+        items = await current.projects.run_db(project_id, lambda _: options(
+            project, current_engine=config['engine'] if config else '',
+            current_provider_id=(config.get('provider_id') or '') if config else ''))
+        return {'items': items, 'note': '仅列出当前项目、配置与版本下通过创建及跟进验证的组合；空列表表示暂无已验证可选项。'}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post('/delegation-options/verify')
+async def verify_delegation_option(request: DelegationVerifyRequest):
+    from services.delegation_execution import validate_selection, create_engine
+    from services.delegation_capabilities import verify
+    try:
+        current, project, config = await delegation_context(request.project_id, request.target_session_id)
+        def prepare(_):
+            selection = validate_selection(current.chats, project.id, request.engine, request.model,
+                                           config, require_verified=False)
+            return selection, create_engine(selection['engine'])
+        selection, adapter = await current.projects.run_db(project.id, prepare)
+        result = await verify(project, adapter, selection['model'], selection['provider_id'])
+        return {'verified': True, **result}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.get('/delegations')
@@ -257,6 +354,7 @@ class ChannelBindingRequest(service.BaseModel):
     conversation_type: Literal['single', 'group']
     conversation_id: str
     notify: bool = False
+    use_main_session: bool = False
 
 
 @router.put("/channels")

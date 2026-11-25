@@ -27,7 +27,7 @@ test('role and connector chips live inside the editor without changing sent text
     await act(async () => render())
     const editor = document.querySelector('.chat-input-editor')!
     assert.equal(editor.querySelectorAll('.composer-context-chip').length, 2)
-    assert.equal(document.querySelector('.chat-input-toolbar .chat-role-binding-name'), null)
+    assert.ok(document.querySelector('.chat-input-toolbar .chat-role-binding-name') === null)
     assert.equal(editor.querySelector('textarea')!.value, '只发送用户正文')
     assert.ok(editor.querySelector('.composer-context-chip svg'))
     await act(async () => document.querySelector<HTMLButtonElement>('.chat-role-binding-name')!.click())
@@ -36,7 +36,7 @@ test('role and connector chips live inside the editor without changing sent text
     assert.equal(sent, '只发送用户正文', 'visual labels never enter the message body')
     await act(async () => document.querySelector<HTMLButtonElement>('.connector-tag .composer-context-chip-remove')!.click())
     assert.deepEqual(selected, [])
-    assert.equal(editor.querySelector('.connector-tag'), null)
+    assert.ok(editor.querySelector('.connector-tag') === null)
     await act(async () => document.querySelector<HTMLButtonElement>('.chat-role-binding-remove')!.click())
     assert.equal(removed, 1)
     await act(async () => render(true))

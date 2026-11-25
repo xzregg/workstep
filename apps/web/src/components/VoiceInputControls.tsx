@@ -23,8 +23,9 @@ export default function VoiceInputControls({ voice, variant = 'composer', compac
     const transcript = transcriptRef.current
     if (compact && transcript) transcript.scrollTop = transcript.scrollHeight
   }, [compact, voice.text])
-  if (!voice.mode && !voice.active && !voice.error) return null
-  const error = voice.error.startsWith('speech.') ? t(voice.error as Parameters<typeof t>[0]) : voice.error
+  if (!voice.mode && !voice.active && !voice.error) return voice.notice
+    ? <p className="voice-input-notice" role="status">{t(voice.notice as Parameters<typeof t>[0])}</p> : null
+  const error = /^(speech|voiceprint)\./.test(voice.error) ? t(voice.error as Parameters<typeof t>[0]) : voice.error
   const recording = voice.phase === 'recording'
   const elapsed = `${String(Math.floor(voice.seconds / 60)).padStart(2, '0')}:${String(voice.seconds % 60).padStart(2, '0')}`
   return <section className="voice-input" data-compact={compact || undefined} aria-label={t('speech.title')}>

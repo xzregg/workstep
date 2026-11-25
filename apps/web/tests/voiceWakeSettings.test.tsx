@@ -191,7 +191,7 @@ test('wake settings applies the master switch and tests the unsaved phrase on de
     const input=element.querySelector<HTMLInputElement>('[name=wake_keyword]')!
     await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(input,'');input.dispatchEvent(new window.Event('input',{bubbles:true}))})
     const sound=element.querySelector<HTMLInputElement>('input[name=wake_sound][type=checkbox]')!
-    assert.equal(element.querySelector('[data-preview-wake]'),null)
+    assert.ok(element.querySelector('[data-preview-wake]') === null)
     assert.ok(sound, 'wake sound is configurable with an empty wake word')
     const greeting=element.querySelector<HTMLInputElement>('[name=wake_greeting]')!
     assert.equal(sound.checked,true)

@@ -19,6 +19,6 @@ test('namecard shows growth and counts without skill configuration from one requ
   assert.deepEqual(values,['12','44','8','5'])
   assert.match(el.textContent!,/Lv.3/)
   assert.doesNotMatch(el.textContent!,/启用技能|代码评审/)
-  assert.equal(el.querySelector('details'),null)
+  assert.ok(el.querySelector('details') === null)
  }finally{await act(async()=>root.unmount());digitalRuntimeApi.activity=old;await window.happyDOM.close()}
 })

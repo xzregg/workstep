@@ -24,16 +24,16 @@ for (const compact of [false, true]) test(`${compact ? 'mobile' : 'desktop'} sid
     projectInput.value = '保持输入和原项目树状态'
     const title = host.querySelector<HTMLButtonElement>('button[aria-controls="workspace-projects-content"]')
     if (compact) {
-      assert.equal(title, null)
-      assert.equal(host.querySelector('[data-reorderable="true"]'), null)
-      assert.equal(host.querySelector('[role="separator"]'), null)
+      assert.ok(title === null)
+      assert.ok(host.querySelector('[data-reorderable="true"]') === null)
+      assert.ok(host.querySelector('[role="separator"]') === null)
       return
     }
     assert.ok(title)
     await act(async () => title.click())
     assert.equal(title.getAttribute('aria-expanded'), 'false')
     assert.equal(host.querySelector<HTMLElement>('#workspace-projects-content')?.hidden, true)
-    assert.equal(host.querySelector('[role="separator"]'), null)
+    assert.ok(host.querySelector('[role="separator"]') === null)
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-controls="workspace-recent-content"]')!.click())
     assert.equal(host.querySelector<HTMLElement>('#workspace-recent-content')?.hidden, true)
     await act(async () => title.click())
@@ -45,15 +45,15 @@ for (const compact of [false, true]) test(`${compact ? 'mobile' : 'desktop'} sid
     assert.equal(document.querySelector('.layout-sidebar-drag-preview')?.textContent, '最近聊天')
     assert.equal(headings[0].getAttribute('data-drop-position'), 'before')
     await act(async () => headings[0].dispatchEvent(pointer('pointerup', 70)))
-    assert.equal(document.querySelector('.layout-sidebar-drag-preview'), null)
-    assert.equal(host.querySelector('[data-drop-position]'), null)
+    assert.ok(document.querySelector('.layout-sidebar-drag-preview') === null)
+    assert.ok(host.querySelector('[data-drop-position]') === null)
     assert.deepEqual(order(), ['最近聊天', '项目'])
-    assert.equal(host.querySelector('input'), projectInput, 'reordering must keep original project tree mounted')
+    assert.ok(host.querySelector('input') === projectInput, 'reordering must keep original project tree mounted')
     await act(async () => headings[0].dispatchEvent(pointer('pointerdown', 70)))
     await act(async () => headings[1].dispatchEvent(pointer('pointermove', 400)))
     assert.ok(document.querySelector('.layout-sidebar-drag-preview'))
     await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
-    assert.equal(document.querySelector('.layout-sidebar-drag-preview'), null)
+    assert.ok(document.querySelector('.layout-sidebar-drag-preview') === null)
     await act(async () => headings[1].dispatchEvent(pointer('pointerup', 400)))
     assert.deepEqual(order(), ['最近聊天', '项目'], 'Escape cancels the move')
     await act(async () => root.unmount())
@@ -87,7 +87,7 @@ for (const width of [390, 1280]) test(`recent chats can be closed and restored f
   const recent = () => host.querySelector<HTMLElement>('.layout-sidebar-recent')!
   try {
     await render()
-    assert.equal(restore(), null)
+    assert.ok(restore() === null)
     const original = recent()
     const search = host.querySelector('input')!
     search.value = '已有的搜索词'
@@ -99,12 +99,12 @@ for (const width of [390, 1280]) test(`recent chats can be closed and restored f
     assert.ok(close())
     close()!.focus()
     await act(async () => close()!.click())
-    assert.equal(recent(), original)
+    assert.ok(recent() === original)
     assert.equal(recent().hidden, true)
-    assert.equal(host.querySelector('[role="separator"]'), null)
-    assert.equal(host.querySelector('input'), search)
+    assert.ok(host.querySelector('[role="separator"]') === null)
+    assert.ok(host.querySelector('input') === search)
     assert.equal(search.value, '已有的搜索词')
-    assert.equal(document.activeElement, restore())
+    assert.ok(document.activeElement === restore())
     const actions = Array.from(restore()!.parentElement!.children).slice(1)
     assert.deepEqual(actions.map(action => action.getAttribute('aria-label') ?? action.textContent), ['最近聊天', '展开项目', '搜索项目', '添加项目'])
     assert.ok(restore()!.querySelector('.lucide-messages-square'))
@@ -115,10 +115,10 @@ for (const width of [390, 1280]) test(`recent chats can be closed and restored f
     await act(async () => restore()!.click())
     assert.equal(recent().hidden, false)
     assert.equal(host.querySelector<HTMLElement>('#workspace-recent-content')?.hidden, false)
-    assert.equal(restore(), null)
-    assert.equal(document.activeElement, close())
+    assert.ok(restore() === null)
+    assert.ok(document.activeElement === close())
     if (width > 1023) {
-      assert.equal(host.querySelector('.layout-sidebar-body > section'), recent())
+      assert.ok(host.querySelector('.layout-sidebar-body > section') === recent())
       assert.ok(host.querySelector('[role="separator"]'))
     }
   } finally {

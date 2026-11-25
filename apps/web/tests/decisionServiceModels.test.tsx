@@ -27,7 +27,7 @@ test('model discovery is explicit, searchable and does not choose or save automa
   await act(async()=>options[0].click())
   assert.equal(selected,'kev-4B')
   await act(async()=>root.render(<I18nProvider><DecisionServiceModels source={{mode:'remote',base_url:'https://other.example',api_key:null}} value="manual-model" disabled={false} onSelect={()=>{}} /></I18nProvider>))
-  assert.equal(document.querySelector('button[role="combobox"]'),null)
+  assert.ok(document.querySelector('button[role="combobox"]') === null)
   assert.equal(reads,1);assert.equal(signal?.aborted,true)
  } finally {Object.assign(decisionModelsApi,original);await act(async()=>root.unmount());await window.happyDOM.close()}
 })
@@ -57,7 +57,7 @@ test('a pending response from old credentials cannot repopulate the changed sour
   await act(async()=>render('http://127.0.0.1:6001'))
   assert.equal(signal?.aborted,true)
   await act(async()=>resolve({models:['stale-model']}))
-  assert.equal(document.querySelector('button[role="combobox"]'),null)
+  assert.ok(document.querySelector('button[role="combobox"]') === null)
   assert.doesNotMatch(document.body.textContent!,/stale-model/)
   assert.equal(button('读取模型列表').disabled,false)
  } finally {Object.assign(decisionModelsApi,original);await act(async()=>root.unmount());await window.happyDOM.close()}

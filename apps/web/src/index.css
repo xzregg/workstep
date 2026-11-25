@@ -3751,61 +3751,13 @@ input[type="checkbox"] {
 textarea { height: auto; padding: 8px 10px; resize: vertical; }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
-/* Flow assistant: keep the proposal compact; step selection lives in a dialog. */
+/* Flow assistant: shared compact inline step choices. */
 .flow-step-apply-panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 6px;
 }
-
-.flow-step-apply-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-soft);
-  border-radius: 10px;
-  background: var(--surface);
-}
-
-.flow-step-apply-card-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.flow-step-apply-card-copy strong,
-.flow-step-apply-card-copy span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.flow-step-apply-card-copy strong { font-size: calc(13px * var(--font-scale)); }
-.flow-step-apply-card-copy span,
-.flow-step-apply-card-count { color: var(--meta); font-size: calc(11px * var(--font-scale)); }
-.flow-step-apply-card-count { white-space: nowrap; }
-
-.flow-step-apply-dialog {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 14px;
-}
-
-.flow-step-apply-dialog-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--meta);
-  font-size: calc(12px * var(--font-scale));
-}
-
-.flow-step-apply-dialog-toolbar > div { display: flex; gap: 4px; }
 
 .flow-step-apply-option {
   display: flex;
@@ -4924,6 +4876,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   gap: 10px;
   align-items: center;
   justify-content: space-between;
+}
+.chat-input-quota-group,
+.chat-input-quota-group > span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-input-quota-group + .chat-input-quota-group {
+  margin-top: var(--space-2);
 }
 .chat-input-quota-refresh {
   display: inline-flex;
@@ -6379,3 +6340,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .smooth-message-height-content { display: flow-root; min-width: 0; }
 
 .markdown-worker-fallback { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.chat-shortcuts-status{display:flex;align-items:center;gap:var(--space-2);color:var(--text-muted);font-size:var(--text-body)}
+.chat-shortcuts-error{color:var(--danger)}

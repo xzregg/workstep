@@ -44,19 +44,18 @@ async def test_retained_session_survives_ttl_and_idle_lru_but_explicit_close_wor
         await pool.close()
 
 
-async def test_codex_keeps_protected_worker_over_more_recent_incompatible_worker():
+async def test_codex_private_worker_preserves_shared_idle_budget_and_capacity():
     pool = CodexClientPool(idle_seconds=.01)
     try:
         main = await acquire(pool, 'main', 'host-main')
         await pool.release(main, reusable=True)
         other = await acquire(pool, 'other', cwd='/different')
         await pool.release(other, reusable=True)
-        await asyncio.shield(other.worker.closing)
-        assert other.client.closed and not main.client.closed
-        # The protected slot reserves capacity even when it is idle.
+        assert not other.client.closed and not main.client.closed
+        # The private worker leaves all five shared slots available.
         others = [await acquire(pool, str(i)) for i in range(5)]
-        assert all(e.client is main.client for e in others[:4])
-        assert others[4].client is not main.client
+        assert len({id(e.client) for e in others}) == 1
+        assert all(e.client is not main.client for e in others)
         assert await acquire(pool, 'main', 'host-main') is main
     finally:
         await pool.close()

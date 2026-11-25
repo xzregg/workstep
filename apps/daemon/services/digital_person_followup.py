@@ -33,6 +33,8 @@ class DelegationFollower:
 
     async def _follow(self,item,profile):
         runtime=self.runtime
+        if await runtime.delegation_management._execution_archived(item):
+            return
         def read(_):
             message=ChatMessage.get_or_none(ChatMessage.id==item['message_id'],ChatMessage.session==item['session_id'])
             if message is None:
@@ -47,7 +49,7 @@ class DelegationFollower:
         if status == 'running' and item.get('continuation_of') and runtime.chats.is_turn_queued(item['turn_id']):
             status = 'queued'
         terminal=status in TERMINAL or status=='missing'
-        run_id=str(uuid.uuid5(uuid.NAMESPACE_URL,'workstep-delegation:'+item['id']))
+        run_id=str(uuid.uuid5(uuid.NAMESPACE_URL,'workstep-delegation:'+item.get('execution_id',item['id'])))
         def update(state):
             current=next((d for d in state['delegations'] if d['id']==item['id']),None)
             if current is None or current.get('notified'):

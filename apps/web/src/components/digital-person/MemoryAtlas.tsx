@@ -8,6 +8,7 @@ import {toMilliseconds} from '../../utils/datetime'
 import {knowledgeSpiral,perimeterOrder,starVariation} from './memoryGalaxy'
 import {atlasLinkKey,focusedChainDepth} from './memoryConstellation'
 import {useMemoryAtlasMotion} from './useMemoryAtlasMotion'
+import {createCanvasLoop} from './avatar/canvasLoop'
 import Button from '../Button'
 import Icon from '../Icon'
 import Spinner from '../Spinner'
@@ -43,10 +44,27 @@ export function AtlasBackdrop() {
   },[])
   return <canvas className="atlas-backdrop" ref={canvas} aria-hidden="true"/>
 }
+// Sample audio inside the visual boundary; amplitude is not page state.
+function AtlasVoice({level,readLevel,paused}:{level:number;readLevel?:()=>number;paused:boolean}){
+  const meter=useRef<HTMLDivElement>(null)
+  useEffect(()=>{
+    const element=meter.current
+    if(!element||!readLevel||paused||typeof ResizeObserver!=='function'||typeof IntersectionObserver!=='function')return
+    const loop=createCanvasLoop(element,(_now,_delta,reduced)=>{
+      element.style.opacity=String(Math.min(.6,Math.max(0,readLevel())))
+      return !reduced
+    })
+    return ()=>loop.dispose()
+  },[readLevel,paused])
+  return <div ref={meter} className="atlas-voice" aria-hidden="true" style={{opacity:Math.min(.6,level)}}>
+    {Array.from({length:12},(_,i)=><i key={i} style={{transform:'rotate('+i*137.5+'deg)',animationDelay:(-i*.17)+'s'}}/>)}
+  </div>
+}
+
 const day=86_400_000
 type AtlasCatalog={items:AtlasStar[];links:AtlasLink[]}
 
-export default memo(function MemoryAtlas({projectId,sessionId,voiceLevel,paused=false,previewTarget}:{projectId:string;sessionId:string;voiceLevel:number;paused?:boolean;previewTarget?:HTMLElement|null}) {
+export default memo(function MemoryAtlas({projectId,sessionId,voiceLevel,readVoiceLevel,paused=false,previewTarget}:{projectId:string;sessionId:string;voiceLevel:number;readVoiceLevel?:()=>number;paused?:boolean;previewTarget?:HTMLElement|null}) {
   const {t}=useI18n()
   const canvas=useRef<HTMLCanvasElement>(null)
   const particles=useRef<HTMLCanvasElement>(null)
@@ -177,7 +195,7 @@ export default memo(function MemoryAtlas({projectId,sessionId,voiceLevel,paused=
       const rank=ranks.get(id)
       const isSelected=selection?.id===id
       const hasFlare=flares.has(id)
-      const coreWidth=(1.7+6*weight)*shimmer*orbits.get(id)!.sizeScale*(isSelected?1:markerScale)
+      const coreWidth=Math.max(.75,(1.7+6*weight)*shimmer*orbits.get(id)!.sizeScale*(isSelected?1:markerScale))
       return <button key={id} type="button" ref={isSelected?selectedButton:undefined} className="atlas-star" data-orbit={id} data-kind={star.kind}
         aria-label={[t('digitalMemoryView.atlas'),star.time.slice(0,10),id.slice('knowledge:'.length)].filter(Boolean).join(' · ')}
         aria-pressed={isSelected} data-hit={rank!==undefined} data-flare={hasFlare||undefined}
@@ -218,9 +236,7 @@ export default memo(function MemoryAtlas({projectId,sessionId,voiceLevel,paused=
           <use className="atlas-link-core" href={'#'+linkId+'-'+i}/>
         </g>)}
       </svg>
-      {voiceLevel>0&&<div className="atlas-voice" aria-hidden="true" style={{opacity:Math.min(.6,voiceLevel)}}>
-        {Array.from({length:12},(_,i)=><i key={i} style={{transform:'rotate('+i*137.5+'deg)',animationDelay:(-i*.17)+'s'}}/>)}
-      </div>}
+      {voiceLevel>0&&<AtlasVoice level={voiceLevel} readLevel={readVoiceLevel} paused={paused}/>}
       {scene.buttons}
     </div>
     <div className="atlas-camera" data-adjusted={camera.adjusted}>

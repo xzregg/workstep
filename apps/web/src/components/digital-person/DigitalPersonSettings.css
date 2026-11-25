@@ -95,6 +95,9 @@
 @media(max-width:1023px) { #digital-person-panel { scroll-margin-top: var(--space-4); } }
 
 .digital-person-context-setting { display: grid; gap: 8px; }
+.digital-person-proactive-settings,.digital-person-proactive-settings > [role=tabpanel] { display:flex; flex:1; flex-direction:column; gap:var(--space-5); }
+.digital-person-proactive-settings .digital-person-form-actions { margin:auto 0 0; padding-top:var(--space-4); border-top:.5px solid var(--border-soft); }
+@media(min-width:1024px) { .digital-person-proactive-settings .digital-person-form-actions { position:sticky; bottom:0; z-index:1; padding:var(--space-3) 0; background:var(--bg); } }
 .digital-person-context-setting p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 
 .digital-person-field-pair > label { grid-template-rows: 1fr auto; align-items: start; }

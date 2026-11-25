@@ -103,7 +103,7 @@ test('task Git tab opens its directory and shows only attached worktrees', async
     await act(async () => create.click())
     assert.deepEqual(createdArgs, ['p', 't', 'root', 'manual-directory', 'release', 'feature-four'])
     const deleteButton = container.querySelector<HTMLButtonElement>('.task-git-delete-workspace')!
-    assert.equal(deleteButton, container.querySelector('.git-page-header > button:last-child'))
+    assert.ok(deleteButton === container.querySelector('.git-page-header > button:last-child'))
     await act(async () => deleteButton.click())
     assert.equal(deletions.length, 0)
     assert.match(document.querySelector('[role="dialog"]')?.textContent || '', /uncommitted|未提交/)
@@ -239,7 +239,7 @@ test('removing a task worktree confirms its feature branch and forces dirty clea
   const root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><TaskGitWorkspace projectId="p" taskId="t" /></I18nProvider>))
-    assert.equal(container.querySelector('.task-git-tree .task-git-remove'), null)
+    assert.ok(container.querySelector('.task-git-tree .task-git-remove') === null)
     const tabs = container.querySelectorAll<HTMLButtonElement>('.task-git-tree-row button')
     await act(async () => tabs[1].click())
     assert.equal(tabs[1].getAttribute('aria-pressed'), 'true')
@@ -314,7 +314,7 @@ test('project with no Git repository offers root initialization only after confi
   try {
     await act(async () => root.render(<I18nProvider><TaskGitWorkspace projectId="task" taskId="t" /></I18nProvider>))
     const add = [...container.querySelectorAll<HTMLButtonElement>('.git-page-header button')].find(button => button.textContent === '添加仓库')
-    assert.equal(add, undefined)
+    assert.ok(add === undefined)
     assert.match(container.querySelector('.task-git-initialize')?.textContent || '', /project root|项目根目录/)
     const initialize = container.querySelector<HTMLButtonElement>('.task-git-initialize button')!
     await act(async () => initialize.click())
@@ -326,9 +326,9 @@ test('project with no Git repository offers root initialization only after confi
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].at(-1)!.click())
     assert.deepEqual(initialized, ['task'])
     assert.equal(scans, 2)
-    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
     assert.ok([...container.querySelectorAll<HTMLButtonElement>('.git-page-header button')].some(button => button.textContent === '添加仓库'))
-    assert.equal(container.querySelector('.task-git-initialize'), null)
+    assert.ok(container.querySelector('.task-git-initialize') === null)
   } finally {
     await act(async () => root.unmount())
     Object.assign(gitApi, originalApi)
@@ -368,7 +368,7 @@ test('remote task workspace loads its own discovery, refreshes initialization an
     assert.equal(initialized, true)
     assert.equal(reads, 2)
     assert.equal(localScans, 0)
-    assert.equal(container.querySelector('.task-git-initialize'), null)
+    assert.ok(container.querySelector('.task-git-initialize') === null)
     await act(async () => container.querySelector<HTMLButtonElement>('.git-page-header .git-open-location button')!.click())
     assert.equal(localOpens, 0)
     assert.deepEqual(browsed, ['/remote/.workstep/worktrees/t'])

@@ -107,14 +107,14 @@ test('right-click debugging opens the chosen step with its upstream sample field
     await render(false)
     await rightClick()
     const menuButton = () => [...container.querySelectorAll('button')].find(button => button.textContent === '从此步骤调试')
-    assert.equal(menuButton(), undefined)
+    assert.ok(menuButton() === undefined)
     await render(true)
     await rightClick()
     assert.ok(menuButton())
     await act(async () => menuButton()!.click())
     assert.equal(container.querySelector<HTMLInputElement>('.radio-card-group input:checked')?.value, 'b')
     assert.ok(container.querySelector('[id="debug-sample-a:0"]'))
-    assert.equal(menuButton(), undefined)
+    assert.ok(menuButton() === undefined)
     const cancel = [...container.querySelectorAll<HTMLButtonElement>('[role=dialog] button')]
       .find(button => button.textContent === '取消')!
     await act(async () => cancel.click())

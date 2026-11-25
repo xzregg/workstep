@@ -94,3 +94,23 @@ async def configure_mcp_servers(self, servers, config_overrides=None):
 数字中枢当前主会话可由宿主设置常驻保护：声明复用的 worker 及其已保留的内层上下文不因空闲 TTL／普通 LRU 退出。该策略由宿主公共池执行，不是新 capability，也不新增必须传给自定义 `spawn` 的参数。重置、`/new`、切换引擎或主会话替换后旧保护释放，原生上下文仍须按各自 session ID 隔离；停止、异常、配置变化和宿主退出照常清理。一次性引擎保持其原有执行方式。
 
 可复用 `session_pool.ManagedConnection/get_session_pool/startup_fingerprint`，使原生上下文在同一所有者协程中创建和关闭。每轮绑定新的消费者、回调和队列，不保留旧审批授权；停止只影响对应会话。更深入的[复用与共享验证](custom-engine-testing.md#复用与共享验证)按实现能力执行。
+
+## 账户额度（可选）
+
+默认 `SUPPORTS_QUOTA=False`，无额度接口时保持默认，前端隐藏。支持时声明 `SUPPORTS_QUOTA=True` 并实现 `async get_quota(cwd="") -> dict | None`；worker 校验异步方法与签名，describe 导出能力，宿主代理自动转发。声明改变须重新 inspect/validate/register，旧元数据不自动开启能力。
+
+结果字段遵循 `engines/core/quota.py::EngineQuota`，例如：
+
+```python
+SUPPORTS_QUOTA = True
+
+async def get_quota(self, cwd=""):
+    # 在引擎内调用真实接口或采集脚本，并转换原生结果。
+    usage = await self.read_native_usage(cwd)
+    return {"primary": {"used_percent": usage.percent,
+                        "resets_at": usage.reset_epoch_seconds}}
+```
+
+`primary/secondary`、`groups: [{name, windows}]` 可返回多窗口；百分比允许小数，used_percent／remaining_percent 提供其一即可。仅余额可返回 `credits: {balance: "12.50", unit: "USD"}`；未知值不补 0。可返回 EngineQuota 模型或字典。缓存快照必须保留真实 collected_at（Unix 秒）。接口、鉴权、脚本命令及解析均放在引擎代码或包内资源中，不交给前端或宿主按 ID 特判。
+
+查询不可用返回 None；未登录抛 `engines.core.quota.QuotaAuthenticationRequired`，其他错误统一脱敏为 unavailable。不得发模型请求查询额度。使用异步网络／子进程，隔离同步 I/O；超时、取消必须回收自有进程树。查询使用独立 worker，不借用正在聊天的实例。采集脚本资源加入 manifest.files，凭据与采集快照不打包。

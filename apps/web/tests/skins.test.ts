@@ -56,7 +56,7 @@ test('preview cancellation and refresh restore without replacing business DOM', 
   assert.equal(document.documentElement.dataset.skinId, 'ocean')
   restoreDefaultSkin()
   assert.equal(document.documentElement.dataset.skinId, 'default')
-  assert.equal(document.getElementById('workstep-skin-style'), null)
+  assert.ok(document.getElementById('workstep-skin-style') === null)
   input.remove()
 })
 

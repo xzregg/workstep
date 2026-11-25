@@ -290,19 +290,24 @@ async def test_message_lookup_slow_sql_keeps_health_responsive(chat_module, monk
             await pending
 
 
-def test_session_id_contains_project_and_preserves_uniqueness():
+@pytest.mark.parametrize("project", ["164938b7", "5739c385-0f1b-4292-bd18-5beeb30f71fa"])
+def test_session_id_contains_project_and_preserves_uniqueness(project):
     from services.chat_identity import new_session_id, session_project_id
-    project = "5739c385-0f1b-4292-bd18-5beeb30f71fa"
     first, second = new_session_id(project), new_session_id(project)
     assert first != second
-    assert first.rsplit("-", 4)[0] == project
+    prefix, suffix = first.rsplit("-", 1)
+    assert prefix == project
+    assert len(suffix) == 32 and all(char in "0123456789abcdef" for char in suffix)
     assert session_project_id(first) == project
+    assert session_project_id(project + "-b447-4076-a9c0-cc3c25510c9c") == (
+        project if len(project) == 36 else None
+    )
     assert session_project_id("a16b95dd-0804-4f58-8b3a-d896f7fe2724") is None
 
 
-def test_message_cli_derives_project_from_session(capsys):
+@pytest.mark.parametrize("project", ["164938b7", "5739c385-0f1b-4292-bd18-5beeb30f71fa"])
+def test_message_cli_derives_project_from_session(capsys, project):
     from services.chat_identity import new_session_id
-    project = "5739c385-0f1b-4292-bd18-5beeb30f71fa"
     session = new_session_id(project)
 
     async def handler(request):

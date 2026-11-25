@@ -272,7 +272,7 @@ test('caret navigation crosses an inline image without a visual line break', asy
         key: 'ArrowRight',
       }))
     })
-    assert.equal(window.document.activeElement, imageButton)
+    assert.ok(window.document.activeElement === imageButton)
 
     await act(async () => {
       imageButton.dispatchEvent(new window.KeyboardEvent('keydown', {
@@ -281,7 +281,7 @@ test('caret navigation crosses an inline image without a visual line break', asy
         key: 'ArrowRight',
       }))
     })
-    assert.equal(window.document.activeElement, textareas[1])
+    assert.ok(window.document.activeElement === textareas[1])
     assert.equal(textareas[1].selectionStart, 0)
 
     await act(async () => { root.unmount() })

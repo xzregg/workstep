@@ -7,6 +7,19 @@ class TemporarySpeechError extends Error {}
 
 const BATCH_WAIT_MS = 350
 
+/** Completed replies keep their prosody context; split only at the API size bound. */
+export function completedSpeechBatches(text: string) {
+  const batches: string[] = []
+  let rest = text.trim()
+  while (rest.length > 1200) {
+    const end = speechCut(rest, 1200)
+    batches.push(rest.slice(0, end))
+    rest = rest.slice(end)
+  }
+  if (rest) batches.push(rest)
+  return batches
+}
+
 export function streamingSpeechLimit(settings: OutputSettings) {
   if (settings.mode === 'local' && settings.model_id === 'moss-nano') return 60
   if (settings.mode === 'local' && settings.model_id === 'omnivoice') return 80
@@ -171,7 +184,7 @@ export class SpeechOutputPlayer {
   private levelTimer:ReturnType<typeof setInterval>|undefined
   private audioFrames=new Map<AudioBufferSourceNode,{start:number;rate:number;data:Float32Array}>()
 
-  private options: { settings: OutputSettings; projectId?: string; systemVoice?: string; preview?: boolean; previewPrompt?: string; digitalSessionId?: string; coalesce?: boolean; batchStreaming?: boolean;
+  private options: { settings: OutputSettings; projectId?: string; systemVoice?: string; preview?: boolean; previewPrompt?: string; digitalSessionId?: string; coalesce?: boolean; batchStreaming?: boolean; completeReply?: boolean;
     cachedAudio?: { text: string; chunks: readonly SpeechAudioChunk[] }; audioGain?: number; leadingSilence?: number; wakeGreeting?: boolean;
     onInterrupt?: () => void; onState?: (active: boolean) => void; onError?: (error: Error) => void;
     onRecovery?: (error: Error, remaining: string[], submitted: number) => void;
@@ -398,7 +411,7 @@ export class SpeechOutputPlayer {
   }
 
   private prepareNext(){
-    if (!this.pumping || this.options.settings.mode === 'system' || this.prepared || this.controller.signal.aborted) return
+    if (!this.pumping || this.options.completeReply || this.options.settings.mode === 'system' || this.prepared || this.controller.signal.aborted) return
     if (this.options.cachedAudio && this.options.cachedAudio.text === this.queue[0]?.text) return
     const batch = this.takeBatch(true)
     if (!batch) return
@@ -479,6 +492,11 @@ export class SpeechOutputPlayer {
     const markCommitted = () => { committed = true }
     try {
       while (!this.controller.signal.aborted) {
+        // A long complete reply can play for minutes. Do not create its successor
+        // while it would sit unread past the server session's idle timeout.
+        while (this.options.completeReply && !this.controller.signal.aborted && this.context && this.until - this.context.currentTime > 5) {
+          await new Promise(resolve => setTimeout(resolve, 30))
+        }
         const prepared = this.prepared
         this.prepared = null
         const covered = !!this.context && this.sources.size > 0 && this.until - this.context.currentTime > BATCH_WAIT_MS / 1000
@@ -566,7 +584,8 @@ function nativeSpeech(text: string, settings: OutputSettings, signal: AbortSigna
       if (error) reject(new Error(error)); else resolve()
     }
     const abort = () => { bridge.postMessage(JSON.stringify({ type: 'stop', id })); finish() }
-    const timer = setTimeout(() => { bridge.postMessage(JSON.stringify({ type: 'stop', id })); finish('System speech timed out. Check the device text-to-speech settings.') }, 60000)
+    const timeout = Math.max(60000, Math.min(600000, text.length * 500))
+    const timer = setTimeout(() => { bridge.postMessage(JSON.stringify({ type: 'stop', id })); finish('System speech timed out. Check the device text-to-speech settings.') }, timeout)
     bridge.onmessage = event => {
       try {
         const result = JSON.parse(event.data)

@@ -66,7 +66,7 @@ test('engine import selects a ZIP, prefills acceptance draft and opens ordinary 
   let closed = 0
   engineApi.customImport = async (selected) => {
     assert.equal(selected, file)
-    return { project_id: 'runtime', project_name: '默认工作区', session_id: 'imported', workspace_path: '/runtime', package_path: '/runtime/imported', prompt: '请验收 /runtime/imported 后注册' }
+    return { project_id: 'runtime', project_name: '默认工作区', session_id: 'imported', workspace_path: '/runtime', package_path: '/runtime/imported', prompt: '请验收 /runtime/imported 后注册', skill_path: '/runtime/.workstep/skills/workstep-cli/SKILL.md', cli_command: 'env WORKSTEP_CONFIG_DIR=/config /runtime/python /daemon/cli.py --url http://127.0.0.1:1234' }
   }
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><CustomEngineOnboardingButton onStarted={() => { closed += 1 }} /><Location /></I18nProvider></MemoryRouter>))
@@ -75,6 +75,8 @@ test('engine import selects a ZIP, prefills acceptance draft and opens ordinary 
     Object.defineProperty(input, 'files', { configurable: true, value: [file] })
     await act(async () => input.dispatchEvent(new window.Event('change', { bubbles: true })))
     assert.match(loadDraft('imported')!, /\/runtime\/imported/)
+    assert.match(loadDraft('imported')!, /\/runtime\/\.workstep\/skills\/workstep-cli\/SKILL\.md/)
+    assert.match(loadDraft('imported')!, /CLI: env WORKSTEP_CONFIG_DIR=.*engine list --json/)
     assert.match(loadDraft('imported')!, /engine validate/)
     assert.match(loadDraft('imported')!, /references\/custom-engine\.md/)
     assert.match(document.querySelector('output')!.textContent!, /session=imported/)

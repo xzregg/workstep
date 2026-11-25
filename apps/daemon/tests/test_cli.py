@@ -917,6 +917,19 @@ async def test_digital_person_cli_queries_delegations(selector, session_args, qu
     assert result['items'][0]['result'] == '核对通过'
 
 
+@pytest.mark.parametrize('resource', ['digital-hub', 'digital-person'])
+def test_digital_hub_info_returns_identity_and_statistics(resource, capsys):
+    identity = {'name': '小研', 'level': 3, 'experience': 40,
+                'next_level_experience': 90, 'skills': [{'id': 'workstep-cli', 'name': 'workstep-cli'}]}
+    def handler(request):
+        assert request.method == 'GET'
+        assert request.url.path == '/api/digital-person/info'
+        assert not request.content
+        return httpx.Response(200, json=identity)
+    assert main([resource, 'info', '--json'], client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert json.loads(capsys.readouterr().out) == identity
+
+
 def test_digital_person_stop_uses_existing_host_endpoint(capsys):
     async def handler(request):
         assert request.method=='POST' and request.url.path=='/api/digital-person/check/stop'

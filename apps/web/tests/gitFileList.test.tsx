@@ -50,7 +50,7 @@ test('file rows show status colors and expose discard and ignore actions', async
     await act(async () => ignore.click())
     assert.deepEqual(discarded, ['src/changed.ts'])
     assert.deepEqual(ignored, ['src/added.ts'])
-    assert.equal(container.querySelector('button[aria-label="加入 Git 忽略 src/changed.ts"]'), null)
+    assert.ok(container.querySelector('button[aria-label="加入 Git 忽略 src/changed.ts"]') === null)
   } finally { await act(async () => root.unmount()); container.remove(); await window.happyDOM.close() }
 })
 

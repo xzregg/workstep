@@ -166,7 +166,7 @@ export default function Layout({ onSelectProject, children }: Props) {
     timer: number
   } | null>(null)
   const suppressSidebarClickUntilRef = useRef(0)
-  const [sessionMenu, setSessionMenu] = useState<{ x: number; y: number; sessionId: string; projectId: string; title: string; createGroup?: () => void } | null>(null)
+  const [sessionMenu, setSessionMenu] = useState<{ x: number; y: number; sessionId: string; projectId: string; title: string; lifecycleProtected?: boolean; createGroup?: () => void } | null>(null)
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null)
   const [renameSessionProjectId, setRenameSessionProjectId] = useState<string | null>(null)
   const [renameSessionValue, setRenameSessionValue] = useState('')
@@ -199,7 +199,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   useSidebarConversationLoading(sidebarVisible && !sidebarCollapsed && projectSectionVisible, !sidebarSearchActive
     ? projects.filter((p) => expandedProjectIds.includes(p.id)
       && projectCan(p.id)('session.read')
-      && (sessionSectionOpen[p.id] ?? (location.pathname === '/chat' && !!activeSessionId))
+      && (sessionSectionOpen[p.id] ?? (p.id === activeProject?.id && location.pathname === '/chat' && !!activeSessionId))
       && !['revoked', 'expired', 'invalid'].includes(p.access_status ?? '')).map((p) => p.id)
     : [])
   const visibleProjects = sidebarSearchActive
@@ -441,6 +441,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       sessionId,
       projectId,
       title,
+      lifecycleProtected: sessionsByProject[projectId]?.find(item => item.id === sessionId)?.lifecycle_protected,
       createGroup,
     })
   }
@@ -874,7 +875,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 const open = sidebarSearchActive
                   ? searchResult.sessions.length > 0
                   : sessionSectionOpen[p.id]
-                    ?? (location.pathname === '/chat' && !!activeSessionId)
+                    ?? (p.id === activeProject?.id && location.pathname === '/chat' && !!activeSessionId)
                 return can('session.read') && (
                   <SessionGroupCreationArea canManage={can('session.manage')} onOpen={() => setSessionSectionOpen(prev => ({ ...prev, [p.id]: true }))}>
                   <SidebarConversationTabs sessions={searchResult.sessions} activeSessionId={activeSessionId} onSwitch={clearSelection} open={open} header={(tabs, tab) => (
@@ -975,6 +976,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           onContextMenu={(e) => openSessionMenu(e, p.id, session.id, session.title, createGroup)}
                           onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHoveredSessionId(session.id) }}
                           className="layout-session-row ws-row"
+                          data-hub-session={session.lifecycle_protected || undefined}
                           data-selected={isSelected}
                           data-active={location.pathname === '/chat' && activeSessionId === session.id}
                           data-dragging={isDragSource}
@@ -1190,12 +1192,12 @@ export default function Layout({ onSelectProject, children }: Props) {
             sessionMenu.createGroup?.()
             setSessionMenu(null)
           }}>{t('sessionGroups.create')}</SidebarActionItem>}
-          <SidebarActionItem
+          {!sessionMenu.lifecycleProtected && <SidebarActionItem
             icon="archive"
             onClick={() => { void handleArchiveSession(sessionMenu.sessionId, sessionMenu.projectId) }}
           >
             {t('chatSession.archive')}
-          </SidebarActionItem>
+          </SidebarActionItem>}
           <SidebarActionItem
             icon="pencil"
             onClick={() => {
@@ -1207,7 +1209,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           >
             {t('common.rename')}
           </SidebarActionItem>
-          <SidebarActionItem
+          {!sessionMenu.lifecycleProtected && <SidebarActionItem
             icon="trash"
             danger
             onClick={() => {
@@ -1217,7 +1219,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             }}
           >
             {t('common.delete')}
-          </SidebarActionItem>
+          </SidebarActionItem>}
         </SidebarActionMenu>
       )}
 

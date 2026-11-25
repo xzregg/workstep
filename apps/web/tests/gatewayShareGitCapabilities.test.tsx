@@ -18,7 +18,7 @@ test('limited share Git controls retain commit and hide unsupported file mutatio
         onRefresh={async () => {}} onDiff={() => {}} />
     </GitApiContext.Provider></I18nProvider>))
     assert.ok(container.querySelector('[data-commit]'))
-    assert.equal(container.querySelector('.git-file-action'), null)
+    assert.ok(container.querySelector('.git-file-action') === null)
     assert.equal(Array.from(container.querySelectorAll('button')).some(button => button.textContent?.includes('AI')), false)
   } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })

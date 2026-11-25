@@ -84,7 +84,7 @@ test('markdown preview renders markdown by default and can switch to source', as
       await new Promise((resolve) => window.setTimeout(resolve, 0))
     })
 
-    assert.equal(document.querySelector('.markdown-message'), null)
+    assert.ok(document.querySelector('.markdown-message') === null)
     assert.match(document.querySelector('.code-preview')?.textContent ?? '', /# Guide/)
     assert.ok(findButtonByText(document, /查看渲染|View rendered/))
   } finally {
@@ -123,7 +123,7 @@ test('markdown file preview renders Mermaid diagrams like chat messages', async 
       document.querySelector('.artifact-markdown-preview svg')?.getAttribute('data-diagram'),
       'flowchart TD',
     )
-    assert.equal(document.querySelector('.artifact-markdown-preview .mermaid-block__source'), null)
+    assert.ok(document.querySelector('.artifact-markdown-preview .mermaid-block__source') === null)
   } finally {
     await act(async () => root.unmount())
     resetMermaidForTests()

@@ -66,8 +66,8 @@ test('Codex child activity and late results render as three separate completed a
       assert.equal(child.querySelector('.subagent-identity code')!.textContent, `/root/test_${index + 1}`)
       assert.equal(child.querySelector('.subagent-prompt pre')!.textContent, `回复 ${index + 1}`)
       assert.equal(child.querySelector('.subagent-result pre')!.textContent, String(index + 1))
-      assert.equal(child.querySelector('.subagent-event-markdown'), null)
-      assert.equal(child.querySelector('.task-status-spinner'), null)
+      assert.ok(child.querySelector('.subagent-event-markdown') === null)
+      assert.ok(child.querySelector('.task-status-spinner') === null)
     }
   } finally {
     await act(async () => root.unmount())
@@ -94,9 +94,9 @@ for (const width of [390, 1280]) {
       assert.equal(child.querySelector('strong')?.textContent, 'files')
       const thinking = child.querySelector('.process-trace-thinking')
       assert.ok(thinking)
-      assert.equal(thinking.querySelector('p'), null)
+      assert.ok(thinking.querySelector('p') === null)
       assert.equal(thinking.textContent, 'Considering paths')
-      assert.equal(child.querySelector('.subagent-event-markdown p'), null)
+      assert.ok(child.querySelector('.subagent-event-markdown p') === null)
       assert.ok(child.querySelector('.subagent-event-markdown .markdown-compact-paragraph'))
       assert.match(child.textContent ?? '', /Considering paths/)
       assert.match(child.textContent ?? '', /Found answer/)

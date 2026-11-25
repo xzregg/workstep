@@ -34,8 +34,8 @@ test('lazy recorded patches show loading, retry failures, and load only the sele
     await act(async () => (document.querySelector('[title="b.ts"]') as HTMLElement).click())
     assert.deepEqual(requests, ['a.ts', 'a.ts', 'b.ts'])
     assert.match(document.querySelector('.git-diff-content')!.textContent!, /b.ts/)
-    assert.equal(document.querySelector('.git-error'), null)
-    assert.equal(document.querySelector('.git-copy-block'), null)
+    assert.ok(document.querySelector('.git-error') === null)
+    assert.ok(document.querySelector('.git-copy-block') === null)
     assert.doesNotMatch(document.querySelector('.git-diff-toolbar')!.textContent!, /编辑文件|上次修改人/)
   } finally {
     gitApi.diff = original
@@ -60,7 +60,7 @@ for (const width of [320, 390, 1023]) {
         const event = new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 80 })
         await act(async () => { cell.dispatchEvent(event) })
         assert.equal(event.defaultPrevented, false)
-        assert.equal(document.querySelector('.git-diff-context-menu'), null)
+        assert.ok(document.querySelector('.git-diff-context-menu') === null)
       }
       assert.deepEqual(refs, [])
       const blame = [...document.querySelectorAll<HTMLButtonElement>('.git-diff-toolbar button')].find(button => button.textContent === '上次修改人')!
@@ -100,7 +100,7 @@ test('split diff resizes and annotates both versions with their own line attribu
     const blame = contextMenu.querySelector<HTMLButtonElement>('[role="menuitem"]')!
     await act(async () => blame.click())
     assert.deepEqual(refs.sort(), ['after', 'before'])
-    assert.equal(document.querySelector('[role="menu"]'), null)
+    assert.ok(document.querySelector('[role="menu"]') === null)
     assert.match(document.querySelector('[data-diff-side="before"]')!.textContent!, /Alice/)
     assert.match(document.querySelector('[data-diff-side="after"]')!.textContent!, /Bob/)
     assert.equal(document.querySelector('[data-diff-side="before"] .git-blame .ws-marquee')?.textContent, 'Alice')
@@ -212,7 +212,7 @@ test('a block copied with the arrow can be undone after the file becomes clean',
       ['repo', 'x.ts', 'old\n', 's'.repeat(64)],
       ['repo', 'x.ts', 'new\n', 'a'.repeat(64), 'old\n'],
     ])
-    assert.equal(document.querySelector('button[aria-label="撤销上次应用"]'), null)
+    assert.ok(document.querySelector('button[aria-label="撤销上次应用"]') === null)
   } finally { await act(async () => root.unmount()); Object.assign(gitApi, original); await window.happyDOM.close() }
 })
 
@@ -232,7 +232,7 @@ test('recorded diff tree switches snapshots without requesting current workspace
   try {
     await act(async () => render(files[0]))
     assert.ok(document.querySelector('.git-diff-dialog.unified'))
-    assert.equal(document.querySelector('.git-diff-divider'), null)
+    assert.ok(document.querySelector('.git-diff-divider') === null)
     const viewToggle = document.querySelector<HTMLButtonElement>('.git-diff-toolbar button')!
     await act(async () => viewToggle.click())
     assert.ok(document.querySelector('.git-diff-dialog.split'))
@@ -242,7 +242,7 @@ test('recorded diff tree switches snapshots without requesting current workspace
     await act(async () => (document.querySelector('[title="docs/b.md"]') as HTMLElement).click())
     assert.equal(document.querySelector('.git-diff-dialog header strong')!.textContent, files[1])
     assert.match(document.querySelector('.git-diff-content')!.textContent!, /second snapshot/)
-    assert.equal(document.querySelector('.git-error'), null)
+    assert.ok(document.querySelector('.git-error') === null)
     assert.equal(document.querySelector('[aria-selected="true"]')!.getAttribute('title'), 'docs/b.md')
   } finally {
     gitApi.diff = originalDiff

@@ -331,7 +331,7 @@ test('step provider returns to its original selection without another handoff be
       await act(async () => { (container.querySelector('.btn-primary') as HTMLButtonElement).click() })
     }
     await act(async () => { (container.querySelector('[data-provider="provider-a"]') as HTMLButtonElement).click() })
-    assert.equal(container.querySelector('[role="dialog"]'), null)
+    assert.ok(container.querySelector('[role="dialog"]') === null)
     assert.deepEqual(saved, [
       { provider: 'provider-b', mode: 'smart' },
       { provider: 'provider-c', mode: 'smart' },

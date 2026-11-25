@@ -38,7 +38,7 @@ test('token trend renders separated, proportional bars and retains accessible da
     assert.match(container.querySelector('[role="status"]')?.textContent || '', /1,000/)
     assert.equal(bars[2].getAttribute('data-active'), 'true')
     await act(async () => targets[2].blur())
-    assert.equal(container.querySelector('[role="status"]'), null)
+    assert.ok(container.querySelector('[role="status"]') === null)
     await render([data[2]])
     const single = container.querySelector('.statistics-chart-bar')!
     assert.equal(Number(single.getAttribute('x')) + Number(single.getAttribute('width')) / 2, 300)

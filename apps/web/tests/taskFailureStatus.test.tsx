@@ -52,7 +52,7 @@ test('failure reasons change labels consistently without changing task state or 
       assert.equal(container.querySelector('#board .task-board-card')?.getAttribute('data-task-status'), 'failed')
       assert.ok(container.querySelector('#board [data-task-action="archive"]'))
       assert.ok(container.querySelector('#board [data-task-action="delete"]'))
-      assert.equal(container.querySelector('.task-status-spinner'), null)
+      assert.ok(container.querySelector('.task-status-spinner') === null)
       assert.equal(JSON.stringify(task), before)
     }
   } finally {

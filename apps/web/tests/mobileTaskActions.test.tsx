@@ -33,7 +33,7 @@ test('mobile board confirms start, uses the selected project, and exposes failur
     await act(async () => root.render(<MemoryRouter><I18nProvider><TaskList /></I18nProvider></MemoryRouter>))
     await openMenu()
     await act(async () => document.querySelector<HTMLButtonElement>('.mobile-task-menu [data-task-action="start"]')!.click())
-    assert.equal(document.querySelector('.mobile-task-menu'), null)
+    assert.ok(document.querySelector('.mobile-task-menu') === null)
     assert.ok(document.querySelector('.confirm-dialog-panel'))
     assert.deepEqual(calls, [])
     await act(async () => document.querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
@@ -48,7 +48,7 @@ test('mobile board confirms start, uses the selected project, and exposes failur
     assert.match(document.querySelector('.mobile-task-menu [role="alert"]')!.textContent || '', /copy failed demo/)
     failCopy = false
     await act(async () => document.querySelector<HTMLButtonElement>('.mobile-task-menu [data-task-action="copy"]')!.click())
-    assert.equal(document.querySelector('.mobile-task-menu'), null)
+    assert.ok(document.querySelector('.mobile-task-menu') === null)
     assert.equal(calls[2][0], 'task')
     assert.equal(calls[2][2], 'demo')
     await act(async () => useTaskStore.setState({ tasks: [{ ...task, status: 'waiting', status_reason: 'tool_approval',

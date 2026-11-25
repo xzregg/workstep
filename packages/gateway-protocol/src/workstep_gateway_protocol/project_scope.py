@@ -86,7 +86,7 @@ _PROJECT_SERVICES = [
     (r"/api/prototype/[a-f0-9]{32}/stop", {'POST'}, {'path'}),
     (r"/api/prototype/[a-f0-9]{32}/action/(?:undo|publish|discard|clean_history)", {'POST'}, set()),
     (r"/api/speech", {'GET'}, set()),
-    (r"/api/speech/sessions", {'POST'}, set()),
+    (r"/api/speech/sessions", {'POST'}, {'phone_call'}),
     (r"/api/speech/sessions/[a-f0-9]{32}/audio", {'POST'}, set()),
     (r"/api/speech/sessions/[a-f0-9]{32}", {'DELETE'}, set()),
     (r"/api/speech-output", {'GET'}, set()),

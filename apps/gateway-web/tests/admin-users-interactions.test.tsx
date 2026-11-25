@@ -80,7 +80,7 @@ test('creating a user requires matching passwords and rechecks after editing eit
   assert.equal(requests, 0)
   fireEvent.change(confirmation, { target: { value: 'strong-password-123' } })
   assert.equal(submit.disabled, false)
-  assert.equal(screen.queryByRole('alert'), null)
+  assert.ok(screen.queryByRole('alert') === null)
   fireEvent.change(password, { target: { value: 'updated-password-456' } })
   assert.equal(submit.disabled, true)
   fireEvent.change(confirmation, { target: { value: 'updated-password-456' } })
@@ -391,8 +391,8 @@ test('normal users cannot see or directly enter management routes', async () => 
   }
   render(<MemoryRouter initialEntries={['/admin/users']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
-  assert.equal(screen.queryByRole('link', { name: '管理后台' }), null)
-  assert.equal(screen.queryByRole('heading', { name: '用户管理' }), null)
+  assert.ok(screen.queryByRole('link', { name: '管理后台' }) === null)
+  assert.ok(screen.queryByRole('heading', { name: '用户管理' }) === null)
 })
 
 test('management navigation and module routes respect current roles', async () => {
@@ -410,23 +410,23 @@ test('management navigation and module routes respect current roles', async () =
   cleanup()
   render(<MemoryRouter initialEntries={['/admin/admins']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
-  assert.equal(screen.queryByRole('heading', { name: '管理员权限' }), null)
+  assert.ok(screen.queryByRole('heading', { name: '管理员权限' }) === null)
   cleanup()
   render(<MemoryRouter initialEntries={['/admin/device-operations']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
-  assert.equal(screen.queryByRole('heading', { name: '设备批量作业' }), null)
+  assert.ok(screen.queryByRole('heading', { name: '设备批量作业' }) === null)
   cleanup()
   render(<MemoryRouter initialEntries={['/admin/projects']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
-  assert.equal(screen.queryByRole('heading', { name: '项目管理' }), null)
+  assert.ok(screen.queryByRole('heading', { name: '项目管理' }) === null)
   cleanup()
   render(<MemoryRouter initialEntries={['/admin/audit']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
-  assert.equal(screen.queryByRole('heading', { name: '审计记录' }), null)
+  assert.ok(screen.queryByRole('heading', { name: '审计记录' }) === null)
   cleanup()
   render(<MemoryRouter initialEntries={['/admin/settings']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
-  assert.equal(screen.queryByRole('heading', { name: '平台设置' }), null)
+  assert.ok(screen.queryByRole('heading', { name: '平台设置' }) === null)
 })
 
 test('audit administrator can enter scoped ledger workbenches without broader admin modules', async () => {
@@ -446,7 +446,7 @@ test('audit administrator can enter scoped ledger workbenches without broader ad
   within(screen.getByRole('navigation', { name: '管理菜单' })).getByText('统计与审计').closest('details')!.open = true
   assert.ok(screen.getByRole('link', { name: '审计记录' }))
   assert.ok(screen.getByRole('link', { name: '用量与对账' }))
-  assert.equal(screen.queryByRole('link', { name: '平台设置' }), null)
+  assert.ok(screen.queryByRole('link', { name: '平台设置' }) === null)
 })
 
 test('Skill administrator enters only the Skill management module', async () => {
@@ -471,7 +471,7 @@ test('Skill administrator enters only the Skill management module', async () => 
   await screen.findByRole('heading', { name: '管理概览' })
   within(screen.getByRole('navigation', { name: '管理菜单' })).getByText('资源管理').closest('details')!.open = true
   assert.ok(screen.getByRole('link', { name: 'Skills 管理' }))
-  assert.equal(screen.queryByRole('link', { name: '用户管理' }), null)
+  assert.ok(screen.queryByRole('link', { name: '用户管理' }) === null)
   cleanup()
   render(<MemoryRouter initialEntries={['/admin/users']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
@@ -498,7 +498,7 @@ test('management tab appears after signing in on the workbench', async () => {
   }
   render(<MemoryRouter initialEntries={['/']}><App /></MemoryRouter>)
   await screen.findByRole('button', { name: '登录' })
-  assert.equal(screen.queryByRole('link', { name: '管理后台' }), null)
+  assert.ok(screen.queryByRole('link', { name: '管理后台' }) === null)
   fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'owner' } })
   fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'password' } })
   fireEvent.click(screen.getByRole('button', { name: '登录' }))
@@ -805,7 +805,7 @@ test('user group picker searches the shared hierarchy without changing parent or
  branch.open = false
  fireEvent.change(search,{target:{value:'研发'}})
  assert.equal(tree.querySelector('details')!.open,true)
- assert.equal(screen.queryByRole('checkbox',{name:'选择用户组销售组'}),null)
+ assert.ok(screen.queryByRole('checkbox', { name: '选择用户组销售组' }) === null)
  assert.ok(screen.getByRole('checkbox',{name:'选择用户组总部'}))
  fireEvent.click(screen.getByRole('button',{name:'勾选搜索结果'}))
  assert.equal((screen.getByRole('checkbox',{name:'选择用户组总部'}) as HTMLInputElement).checked,false)
@@ -847,7 +847,7 @@ test('device session network failure can retry without asking for credentials', 
   }
   render(<MemoryRouter><DeviceAdminPage /></MemoryRouter>)
   await screen.findByText('登录状态加载失败，请重试。')
-  assert.equal(screen.queryByLabelText('密码'), null)
+  assert.ok(screen.queryByLabelText('密码') === null)
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await screen.findByText('当前筛选下没有设备。')
   assert.equal(sessions, 2)
@@ -864,7 +864,7 @@ test('device permissions failure clears stale device records', async () => {
   await screen.findByRole('button', { name: '旧设备 · 设备详情' })
   fireEvent.click(screen.getByRole('button', { name: '刷新设备' }))
   await screen.findByText('当前账号没有设备管理权限。')
-  assert.equal(screen.queryByRole('button', { name: '旧设备 · 设备详情' }), null)
+  assert.ok(screen.queryByRole('button', { name: '旧设备 · 设备详情' }) === null)
 })
 
 for (const [name, Page, endpoint] of [
@@ -884,7 +884,7 @@ for (const [name, Page, endpoint] of [
     }
     render(<MemoryRouter><Page /></MemoryRouter>)
     await screen.findByRole('alert')
-    assert.equal(screen.queryByText('正在检查登录状态…'), null)
+    assert.ok(screen.queryByText('正在检查登录状态…') === null)
     fireEvent.click(screen.getByRole('button', { name: '重试' }))
     await screen.findByText(name === 'users' ? '当前条件下没有用户。' : '当前条件下没有管理员。')
     assert.equal(sessions, 2)
@@ -972,8 +972,8 @@ test('overview refreshes its snapshot and preserves permission-scoped sections',
   }
   render(<MemoryRouter><AdminOverviewPage /></MemoryRouter>)
   await screen.findByRole('heading', { name: '待处理事项' })
-  assert.equal(screen.queryByRole('heading', { name: '设备运行状况' }), null)
-  assert.equal(screen.queryByRole('link', { name: '查看全部审计记录' }), null)
+  assert.ok(screen.queryByRole('heading', { name: '设备运行状况' }) === null)
+  assert.ok(screen.queryByRole('link', { name: '查看全部审计记录' }) === null)
   fireEvent.click(screen.getByRole('button', { name: '刷新概览' }))
   await waitFor(() => assert.equal(calls, 2))
   await waitFor(() => assert.equal(screen.getByRole('button', { name: '刷新概览' }).hasAttribute('disabled'), false))

@@ -108,7 +108,8 @@ export function knowledgeSpiral(stars:Iterable<Pick<AtlasStar,'id'|'time'|'kind'
     const spread=2*((.5+armRanks[arm]++*.61803398875)%1)-1
     const orbit=starOrbit(id,radius,arm,spread)
     const rarityBoost=kind&&rareKinds.has(kind)?.15:0
-    return [id,{...orbit,representative,sizeScale:Math.min(1.5,1+.5*(1-progress)+rarityBoost)}]
+    const sizeScale=Math.min(2,.5+1.5*(1-progress)**2+rarityBoost)
+    return [id,{...orbit,representative,sizeScale}]
   }))
 }
 
@@ -251,12 +252,16 @@ export function galaxyPainter(canvas:HTMLCanvasElement,particleCanvas:HTMLCanvas
       ctx.globalAlpha=glow.alpha
       ctx.drawImage(glow.sprite,point.x*w/100-size/2,point.y*h/100-size/2,size,size)
     }
+    // WebView without WebGL2 must not project the entire decorative disc on
+    // the UI thread. Keep a stable sample from every color/brightness group.
+    const particleStride=particleCanvas?Math.ceil(5/resolution):1
     if(!gpu)for(let color=0;color<colors.length;color++){
       ctx.fillStyle=colors[color]
       for(const [level,group] of particles[color].entries()){
         const alpha=(level+.5)/8
         ctx.globalAlpha=alpha
-        for(const p of group){
+        for(let index=0;index<group.length;index+=particleStride){
+          const p=group[index]
           frame.project(p.x,p.z,p.height,p.belt,point)
           if(point.x<0||point.x>100||point.y<0||point.y>100)continue
           const size=p.size*unit*point.perspective*zoomScale

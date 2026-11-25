@@ -89,6 +89,6 @@ test('floating menu hides the search box for short option lists', async () => {
     { value: 'a', label: '允许一次' },
     { value: 'b', label: '拒绝' },
   ])
-  assert.equal(document.querySelector('.chat-input-menu-search'), null)
+  assert.ok(document.querySelector('.chat-input-menu-search') === null)
   assert.equal(document.querySelectorAll('.chat-input-menu-item').length, 2)
 })

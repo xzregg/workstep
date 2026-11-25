@@ -63,7 +63,7 @@ test('gateway desktop opens platform authentication without requiring a local na
   const container = document.body.appendChild(document.createElement('div')); const root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><FirstUseDialog /></I18nProvider>))
-    assert.equal(container.querySelector('#first-use-name'), null)
+    assert.ok(container.querySelector('#first-use-name') === null)
     assert.equal(calls.filter(call => call === 'POST /api/gateway-platform/login').length, 1)
     assert.equal(window.location.pathname, '/desktop/login')
     assert.equal(calls.some(call => call.startsWith('PUT ')), false)
@@ -84,7 +84,7 @@ test('gateway restart waits for reconnect and falls back locally when login fail
   try {
     await act(async () => root.render(<I18nProvider><FirstUseDialog /></I18nProvider>))
     assert.equal(logins, 0)
-    assert.equal(container.querySelector('#first-use-name'), null)
+    assert.ok(container.querySelector('#first-use-name') === null)
     reconnecting = false
     await act(async () => useGatewayConnectionStore.getState().refresh())
     assert.equal(logins, 1)
@@ -112,6 +112,6 @@ test('local mode still saves a name and enters the workspace', async () => {
     await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, '123'); input.dispatchEvent(new window.Event('input', { bubbles:true })) })
     await act(async () => container.querySelector<HTMLButtonElement>('.modal-footer button')!.click())
     assert.equal(saves, 1)
-    assert.equal(container.querySelector('#first-use-name'), null)
+    assert.ok(container.querySelector('#first-use-name') === null)
   } finally { await act(async () => root.unmount()); globalThis.fetch=original; container.remove(); await window.happyDOM.close() }
 })

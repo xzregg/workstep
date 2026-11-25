@@ -63,7 +63,7 @@ if(new URLSearchParams(location.search).get('voice')==='qwen')outputSettings={..
 ;(window as any).workspaceFixture.getOutputSettings=()=>outputSettings
 speechOutputApi.status=async()=>structuredClone({...outputStatus,settings:outputSettings,models:[...outputStatus.models,...qwenOutputModels]})
 speechOutputApi.save=async value=>{outputSettings={...value};return value}
-assistantApi.list=async()=>({assistants:[{name:'digital_person',fields:['engine','provider_id','model','vision_model','thinking_effort'],configured:{},resolved:{engine:'pydantic_ai',provider_id:'demo'},available_engines:[{id:'pydantic_ai',installed:true,built_in:true,supports_coordinator:true,supports_provider:true,provider_protocols:['openai']}]}]}) as any
+assistantApi.list=async()=>({assistants:['digital_person','digital_person_reflection'].map(name=>({name,fields:['engine','provider_id','model','vision_model','thinking_effort'],configured:{},resolved:{engine:'pydantic_ai',provider_id:'demo'},available_engines:[{id:'pydantic_ai',installed:true,built_in:true,supports_coordinator:true,supports_provider:true,provider_protocols:['openai']}]}))}) as any
 engineApi.list=async()=>({engines:[]}) as any
 engineApi.refresh=async()=>({engines:[]}) as any
 engineApi.models=async()=>({engine_id:'pydantic_ai',models:[{id:'demo-vl',label:'演示多模态模型',description:null}],default_model:'demo-vl',error:null})

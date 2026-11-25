@@ -73,7 +73,7 @@ test('scheduled message stop is message-scoped and readonly history exposes no s
     await act(async () => document.querySelector<HTMLButtonElement>('.chat-message-action')!.click())
     assert.deepEqual(calls,[['t','p','reply']])
     await app.render(<ScheduledMessageStatus projectId="p" taskId="t" message={message} canStop={false} />)
-    assert.equal(document.querySelector('.chat-message-action'),null)
+    assert.ok(document.querySelector('.chat-message-action') === null)
     assert.match(document.body.textContent!, /定时执行/)
   } finally { await app.cleanup() }
 })
@@ -123,7 +123,7 @@ test('task search and dropdown are one control showing name, creator and time wi
   ] }) as any
   try {
     await app.render(<TaskScheduleEditor projectId="p" schedule={null} onSaved={() => {}} />)
-    assert.equal(document.querySelector('[aria-label="搜索任务名或创建者"]'),null)
+    assert.ok(document.querySelector('[aria-label="搜索任务名或创建者"]') === null)
     assert.equal(document.querySelector('[aria-label="关联任务"]')?.getAttribute('role'),'combobox')
     await app.openTasks()
     const list = document.querySelector('[role="listbox"]')!
@@ -135,7 +135,7 @@ test('task search and dropdown are one control showing name, creator and time wi
     assert.equal(document.querySelectorAll('[role="option"]').length,1)
     await app.chooseTask('需求梳理')
     assert.equal(document.querySelector<HTMLInputElement>('[aria-label="关联任务"]')!.value,'需求梳理')
-    assert.equal(document.querySelector('[role="listbox"]'),null)
+    assert.ok(document.querySelector('[role="listbox"]') === null)
   } finally { await app.cleanup() }
 })
 
@@ -153,7 +153,7 @@ test('task dropdown supports keyboard selection and refuses arbitrary search tex
     await app.key('Enter')
     assert.ok(document.querySelector('[role="listbox"]'))
     await app.key('Escape')
-    assert.equal(document.querySelector('[role="listbox"]'),null)
+    assert.ok(document.querySelector('[role="listbox"]') === null)
     assert.equal(document.querySelector<HTMLInputElement>('[aria-label="关联任务"]')!.value,'')
   } finally { await app.cleanup() }
 })

@@ -36,7 +36,7 @@ test('running shortcuts does not require permission to send project chat message
     const run = [...element.querySelectorAll('button')].find(button => button.textContent === '运行脚本')
     assert.ok(run)
     assert.doesNotMatch(element.textContent ?? '', /发送提示/)
-    assert.equal(element.querySelector('.chat-input'), null)
+    assert.ok(element.querySelector('.chat-input') === null)
     await act(async () => run.click()); assert.equal(selected, 1)
     await act(async () => session(['session.read']))
     assert.doesNotMatch(element.textContent ?? '', /运行脚本/)
@@ -61,7 +61,7 @@ test('project settings expose Skills independently and hide operations after per
     assert.ok(tab, 'Skills-only users need a settings entrance and tab')
     await act(async () => tab.click())
     assert.match(element.textContent ?? '', /Demo skill/)
-    assert.equal(element.querySelector('[role="switch"]'), null)
+    assert.ok(element.querySelector('[role="switch"]') === null)
     assert.equal([...element.querySelectorAll('button')].some(button => button.textContent?.includes('重新扫描')), false)
     await act(async () => session(['skill.read', 'skill.manage']))
     assert.ok(element.querySelector('[role="switch"]'))
@@ -94,7 +94,7 @@ test('share managers can revoke existing links without exposing share creation',
     const confirm = [...element.querySelectorAll('button')].filter(button => button.textContent?.includes('撤销分享')).at(-1)!
     await act(async () => confirm.click())
     assert.equal(revoked, 1)
-    assert.equal(element.querySelector('input[type="password"]'), null)
+    assert.ok(element.querySelector('input[type="password"]') === null)
     assert.equal(created, 0)
   } finally { await act(async () => root.unmount()); useGatewaySessionStore.setState({ session: null }); await window.happyDOM.close() }
 })
@@ -130,7 +130,7 @@ for (const [permission, label] of [['session.config', '对话助手'], ['action.
       }
       await act(async () => session([]))
       assert.equal([...element.querySelectorAll('nav button')].some(tab => tab.textContent === label), false)
-      assert.equal(element.querySelector('textarea'), null)
+      assert.ok(element.querySelector('textarea') === null)
     } finally { await act(async () => root.unmount()); projectApi.settings = oldSettings; useGatewaySessionStore.setState({ session: null }); await window.happyDOM.close() }
   })
 }

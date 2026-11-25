@@ -28,6 +28,15 @@ const locales = {
   ar,
 }
 
+test('uses digital hub terminology in identity and activation labels', () => {
+  assert.equal(createT(zhCN)('digitalPerson.enable'), '开启数字中枢')
+  for (const [locale, dict] of Object.entries(locales)) {
+    for (const [key, value] of Object.entries(flatten(dict))) {
+      assert.doesNotMatch(value, /数字人|數字人|digital person/i, `${locale}: ${key}`)
+    }
+  }
+})
+
 test('detects regional browser variants of the new builtin languages', () => {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
   try {

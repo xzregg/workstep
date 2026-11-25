@@ -30,7 +30,7 @@ test('manual group creation trims pasted field edges and explains invalid identi
   fireEvent.change(screen.getByLabelText('名称'), { target: { value: '开发组11' } })
   fireEvent.change(screen.getByLabelText('标识'), { target: { value: 'dev' } })
   fireEvent.change(screen.getByLabelText('说明'), { target: { value: '23' } })
-  assert.equal(screen.queryByLabelText('管理员密码'), null)
+  assert.ok(screen.queryByLabelText('管理员密码') === null)
   const submit = screen.getByRole('button', { name: '确认创建' }) as HTMLButtonElement
   assert.equal(submit.disabled, false, 'the values shown in the screenshot should enable creation')
   fireEvent.change(screen.getByLabelText('名称'), { target: { value: ' 开发组11　' } })

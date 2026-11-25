@@ -296,7 +296,10 @@ async def test_main_chat_injects_pending_reflections_and_only_changed_rules(runt
             release.set()
         assert await _wait_turn(module, turn) == 'completed'
         instruction = calls[-1][1]
-        assert '"主动消息 0", "主动消息 1", "主动消息 2"' in instruction
+        history = instruction.split('[WorkStep conversation history]',1)[1]
+        assert history.index('主动消息 2') < history.index('主动消息 1') < history.index('主动消息 0')
+        assert 'project_id=' not in history and 'session_id=' not in history and 'message_id=' not in history
+        assert '"role":' not in history
         assert '普通通知' not in instruction
         assert 'Name: 测试数字人' not in instruction
 
@@ -336,7 +339,8 @@ async def test_main_chat_injects_pending_reflections_and_only_changed_rules(runt
         await current.projects.run_db(project.id, seed_legacy_receipt)
         module._sessions.clear()
         assert await _wait_turn(module, await send(7)) == 'completed'
-        assert calls[-1][1] == '[WorkStep context update] Previous values for these fields no longer apply: affect, statistics.'
+        assert '[WorkStep context update]' not in calls[-1][1]
+        assert 'Name: 更新后身份' in calls[-1][1]
         assert await _wait_turn(module, await send(8)) == 'completed'
         assert calls[-1][1] == ''
 
@@ -470,6 +474,7 @@ async def test_runtime_api_host_scope_rejects_project_identity(runtime,monkeypat
     actor=ActorSnapshot(actor_id='u',user_name='u',device_id='d',device_name='d',source='remote_project',project_id='other',access_level='edit')
     with actor_context(actor):
         async with AsyncClient(transport=ASGITransport(app),base_url='http://test') as client:
+            assert (await client.get('/api/digital-person/info')).status_code==403
             assert (await client.get('/api/digital-person/activity')).status_code==403
             assert (await client.get('/api/digital-person/activity/records')).status_code==403
             assert (await client.get('/api/digital-person/delegations', params={'project_id': 'other', 'origin_session_id': 'source'})).status_code==403
@@ -648,7 +653,9 @@ async def test_delegate_continuation_reuses_session_and_queues_in_order(runtime,
             await current.delegate(target.id, '追加验证码', origin, 'second')
         assert not inputs
         await current.follow_delegations()
-        assert (await current.state())['delegations'][1]['status'] == 'queued'
+        state = await current.state()
+        assert state['delegations'][0]['status'] == 'queued'
+        assert len(state['delegation_executions']) == 2
     finally:
         release.set()
     for item in (first, second, third):
@@ -670,7 +677,7 @@ async def test_delegate_continuation_reuses_session_and_queues_in_order(runtime,
     other = await current.delegate(other_target.id, '另一会话的任务', other_origin['id'], 'other')
     await current.chats.await_turn(other['turn_id'], timeout=2)
     assert [item['id'] for item in (await current.list_delegations())['items']] == [
-        item['id'] for item in (other, fourth, third, second, first)
+        item['id'] for item in (other, fourth)
     ]
     assert (await current.list_delegations(origin_session_id=other_origin['id']))['items'][0]['id'] == other['id']
     assert (await current.list_delegations(target.id, other_origin['id']))['items'] == []
@@ -772,7 +779,8 @@ async def test_delegate_existing_conversation_registers_and_follows_it(runtime, 
     assert second['session_id'] == sid
     await current.chats.await_turn(second['turn_id'], timeout=2)
     assert await current.projects.run_db(target.id, lambda _: ChatSession.select().count()) == 1
-    assert (await current.state())['delegations'][0]['followup_state'] == 'continued'
+    assert (await current.state())['delegations'][0]['followup_state'] == 'pending'
+    assert (await current.state())['delegation_executions'][0]['followup_state'] == 'continued'
     with pytest.raises(ValueError, match='identifier'):
         await current.delegate(target.id, '接着执行', origin, 'adopt', target_session_id='missing')
     with pytest.raises(ValueError, match='deleted|not found'):
@@ -787,7 +795,7 @@ async def test_delegate_existing_conversation_registers_and_follows_it(runtime, 
         await current.delegate(target.id, '不能发送', origin, 'archived', target_session_id=sid)
     with pytest.raises(ValueError, match='archived'):
         await current.delegate(target.id, '不能续办', origin, 'archived-continuation', second['id'])
-    assert len((await current.state())['delegations']) == 2
+    assert len((await current.state())['delegations']) == 1
 
 
 async def test_delegate_continuation_api_does_not_block_health(runtime, monkeypatch, tmp_path):
@@ -879,7 +887,9 @@ async def test_failed_local_delivery_does_not_block_channels_and_retry_skips_suc
     from models.chat_session import ChatSession
     await runtime.projects.run_db(project.id,lambda _:ChatSession.update(archived=True).where(ChatSession.id==main['id']).execute())
     await runtime.mutate(lambda s:s['delegations'].append({'id':'work','origin_session_id':main['id']}))
-    monkeypatch.setattr('services.digital_person_channels.get_bindings',lambda:[{'id':'peer','notify':True}])
+    monkeypatch.setattr('services.digital_person_channels.get_bindings',lambda:[{
+        'id':'peer','notify':True,'use_main_session':True,
+        'bot_id':'bot','conversation_type':'single','conversation_id':'owner'}])
     sent=[]
     async def send(*args):sent.append(args);return {'message_id':'remote'}
     monkeypatch.setattr('services.digital_person_channels.send_binding',send)
@@ -994,7 +1004,7 @@ async def test_overview_statistics_exclude_check_sessions(runtime, monkeypatch):
             ChatMessage.create(id=mid,session=sid,role=role,status="completed",content="测试",created_at=utc_now())
         return checker['id']
     checker=await runtime.projects.run_db(project.id,seed)
-    await runtime.mutate(lambda state:state.update(check_sessions=[checker],feedback={"a-voted":-1},delegations=[{"status":"completed"},{"status":"running"}]))
+    await runtime.mutate(lambda state:state.update(check_sessions=[checker],feedback={"a-voted":-1},delegations=[{"id":"done","status":"completed"},{"id":"busy","status":"running"}]))
     monkeypatch.setattr("services.digital_person_statistics.skill_center.runtime_selection",lambda _:SimpleNamespace(enabled=[SimpleNamespace(skill_id="skill-a",name="代码评审",valid=True,conflict=False,sync_error=None)]))
     snapshot=await runtime.overview()
     assert snapshot['session_count']==2
@@ -1257,14 +1267,15 @@ async def test_checker_recovers_empty_final_once_in_same_context(runtime, monkey
         calls.append((prompt, session_id))
         if len(calls) == 1:
             return '', [], 'retained-engine'
-        return '{"decision":"silent","summary":"无变化","source_ids":[]}', [], 'retained-engine'
+        return '{"decision":"silent","summary":"","source_ids":[]}', [], 'retained-engine'
     monkeypatch.setattr('agent_assistants.base.invoke_engine', invoke)
     result = await runtime._decide({})
     assert result['decision'] == 'silent'
     assert len(calls) == 2
     assert calls[1][1] == 'retained-engine'
     assert 'JSON' in calls[1][0]
-    assert '<json>{"decision":"silent","summary":"No changes","source_ids":[]}</json>' in calls[1][0]
+    assert '<json>{"decision":"silent","summary":"","source_ids":[]}</json>' in calls[1][0]
+    assert result['summary'] == ''
 
 
 async def test_checker_shares_one_conversation_without_cross_contact_engine_history(runtime, monkeypatch):
@@ -1305,10 +1316,12 @@ async def test_checker_recreates_unavailable_conversation(runtime, monkeypatch, 
     await runtime._decide({})
     previous = (await runtime.state())['check_session_id']
     def change(_):
+        # Simulate historical/external data damage; normal lifecycle APIs reject this now.
+        from models.chat_session import ChatSession
         if action == 'archive':
-            runtime.chats.set_archived(project.id, previous, True)
+            ChatSession.update(archived=True).where(ChatSession.id == previous).execute()
         else:
-            runtime.chats.delete_session(project.id, previous)
+            ChatSession.get_by_id(previous).delete_instance(recursive=True)
     await runtime.projects.run_db(project.id, change)
     await runtime._decide({})
     current = (await runtime.state())['check_session_id']
@@ -1424,9 +1437,9 @@ async def test_activity_separates_thoughts_from_delegation_notifications(runtime
         state['runs'] += [{'id':f'delivery-{i}','status':'notified','trigger':'delegation','summary':'委派结果','created_at':'2026-11-14'} for i in range(6)]
         state['runs'].append({'id':'failed-delivery','trigger':'delegation','status':'delivery_failed'})
         state['delegations']=[
-            {'id':'sent','project_id':'p','session_id':'s','status':'completed','instruction':'已经通知','notified':True,'notification_state':'notified'},
-            {'id':'seen','project_id':'p','session_id':'s','status':'completed','instruction':'已经查看','notified':True,'notification_state':'read'},
-            {'id':'failed','project_id':'p','session_id':'s','status':'completed','instruction':'投递失败','notified':True,'notification_run_id':'failed-delivery'},
+            {'id':'sent','project_id':'p','session_id':'sent','status':'completed','instruction':'已经通知','notified':True,'notification_state':'notified'},
+            {'id':'seen','project_id':'p','session_id':'seen','status':'completed','instruction':'已经查看','notified':True,'notification_state':'read'},
+            {'id':'failed','project_id':'p','session_id':'failed','status':'completed','instruction':'投递失败','notified':True,'notification_run_id':'failed-delivery'},
             {'id':'pending','project_id':'p','session_id':'s','status':'running','instruction':'还未通知','notified':False},
         ]
     await runtime.mutate(seed)
@@ -1498,7 +1511,7 @@ async def test_reflection_prompt_centers_companion_life_and_keeps_preferences_ad
     system=calls[0][1]['system_prompt']
     assert 'background assessment' in system
     assert 'Step 2: Extract useful durable memories' in system
-    assert 'brief internal outcome when silent' in system
+    assert 'summary must be empty when silent' in system
     assert 'Additional preferences' in prompt and '多关注我最近的学习感受' in prompt
     assert 'Start this background assessment' in prompt
     assert 'Begin with CLI' not in prompt
@@ -1625,6 +1638,28 @@ def test_reflection_source_references_resolve_only_unique_current_batch_aliases(
     with pytest.raises(ValueError,match='multiple sessions'):
         resolve_check_sources({'_groups':[context,other]},['msg1'])
     assert resolve_check_sources({'_groups':[context,other]},['memory:2']) == ['msg1']
+
+
+def test_reflection_sources_include_root_delegation_results_with_conversation_groups():
+    from services.digital_person_runtime import resolve_check_sources
+    group={'origin_project_id':'p','origin_session_id':'s','conversation':[{'id':'chat'}]}
+    context={'origin_project_id':'home','origin_session_id':'origin','_groups':[group],
+             'delegations':[{'id':'work','project_id':'execution','session_id':'target','message_id':'result'}],
+             'delegation_messages':[{'id':'result','project_id':'execution','session_id':'target'}]}
+    assert resolve_check_sources(context,['result','work','chat'])==['result','work','chat']
+    with pytest.raises(ValueError,match='could not be matched'):
+        resolve_check_sources(context,['unrelated-result'])
+    context['delegation_messages'].append({'id':'chat','project_id':'other','session_id':'elsewhere'})
+    with pytest.raises(ValueError,match='multiple sessions'):
+        resolve_check_sources(context,['chat'])
+
+
+def test_reflection_delegation_message_already_in_conversation_is_not_ambiguous():
+    from services.digital_person_runtime import resolve_check_sources
+    row={'id':'result','project_id':'execution','session_id':'target'}
+    group={'origin_project_id':'execution','origin_session_id':'target','conversation':[row]}
+    context={'_groups':[group],'delegation_messages':[row]}
+    assert resolve_check_sources(context,['result'])==['result']
 
 
 @pytest.mark.parametrize('terminal,expected', [('completed','completed'), ('failed','failed'), ('stopped','stopped')])

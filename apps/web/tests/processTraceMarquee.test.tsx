@@ -43,9 +43,9 @@ for (const { width, overflow, reduced } of [
         assert.ok(marquee, 'mobile status uses the shared marquee')
         assert.match(marquee.textContent ?? '', /停止|Stopped/)
         assert.equal(marquee.classList.contains('is-marquee'), overflow && !reduced)
-        assert.equal(marquee.querySelector('[data-meta]'), null, 'right metadata stays outside the scroll area')
+        assert.ok(marquee.querySelector('[data-meta]') === null, 'right metadata stays outside the scroll area')
       } else {
-        assert.equal(marquee, null, 'desktop status keeps its existing presentation')
+        assert.ok(marquee === null, 'desktop status keeps its existing presentation')
       }
       const summary = container.querySelector<HTMLElement>('.process-trace-session-summary')!
       assert.match(summary.textContent ?? '', /会话 ID/)

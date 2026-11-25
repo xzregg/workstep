@@ -65,7 +65,8 @@ async def run_engine_turn(
     ``config_overrides`` merges into the engine's dynamic config (e.g. the
     built-in Pydantic AI engine's per-assistant provider).
     """
-    if internal_event:
+    # Reflection already identifies its purpose in the system instructions and trigger text.
+    if internal_event and internal_event != 'digital_person.reflection':
         prompt=('WorkStep internal event '+json.dumps(internal_event)+
                 ' (not a user message or new user authorization).\n\n'+prompt)
     engine = await asyncio.to_thread(engine_factory, engine_id)

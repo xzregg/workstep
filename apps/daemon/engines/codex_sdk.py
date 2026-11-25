@@ -87,6 +87,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     """
 
     ENGINE_ID = "codex_sdk"
+    SUPPORTS_QUOTA = True
     SUPPORTS_SERVICE_TIER = True
     SKILL_POLICY = EngineSkillPolicy.CODEX_CONFIG
     PERMISSION_POLICY = EnginePermissionPolicy(
@@ -326,10 +327,13 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     def _quota_window(value: Any) -> dict[str, Any] | None:
         if value is None:
             return None
-        used = int(getattr(value, "used_percent", 0) or 0)
+        native_used = getattr(value, "used_percent", None)
+        if native_used is None:
+            return None
+        used = float(native_used)
         return {
             "used_percent": used,
-            "remaining_percent": max(0, 100 - used),
+            "remaining_percent": round(max(0, 100 - used), 10),
             "resets_at": getattr(value, "resets_at", None),
             "window_duration_mins": getattr(value, "window_duration_mins", None),
         }
@@ -376,22 +380,46 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
 
     async def get_quota(self, cwd: str = "") -> dict[str, Any] | None:
         """Fetch account quota through a short-lived Codex SDK connection."""
-        from openai_codex import AsyncCodex, CodexConfig
+        from engines.core.process_cleanup import finish_cleanup
+        from engines.codex_sdk_clients import CodexClientPool, CodexWorker
 
-        client = AsyncCodex(config=CodexConfig(
-            codex_bin=self.get_binary_override() or None,
-            cwd=cwd or None,
-        ))
+        def construct():
+            from openai_codex import AsyncCodex, CodexConfig
+            return AsyncCodex(config=CodexConfig(
+                codex_bin=self.get_binary_override() or None, cwd=cwd or None,
+            ))
 
-        async def fetch() -> dict[str, Any]:
-            async with client:
-                return await self._read_account_quota(client)
+        creating = asyncio.create_task(asyncio.to_thread(construct))
+        starting = None
+
+        async def fetch():
+            nonlocal starting
+            client = await asyncio.shield(creating)
+            # Wait for the SDK's blocking Popen worker before reclaiming its handle.
+            starting = asyncio.create_task(client._client.start())
+            await asyncio.shield(starting)
+            await client.__aenter__()
+            return await self._read_account_quota(client)
 
         try:
             return await asyncio.wait_for(fetch(), timeout=self.QUOTA_TIMEOUT_SECONDS)
         except Exception:
-            logger.info("Codex SDK account quota unavailable", exc_info=True)
             return None
+        finally:
+            async def cleanup():
+                try:
+                    client = await creating
+                except Exception:
+                    return
+                if starting is not None:
+                    try:
+                        await starting
+                    except Exception:
+                        pass
+                # Reuse proven process-tree and reader-thread cleanup, without
+                # registering this short-lived client in any conversation pool.
+                await CodexClientPool(keep_warm=False)._close_worker(CodexWorker(cwd, 'quota', client))
+            await finish_cleanup(cleanup())
 
     # --- Execution ---
 

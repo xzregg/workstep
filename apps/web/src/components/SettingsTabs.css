@@ -1,0 +1,4 @@
+.settings-tabs { display:flex; gap:var(--space-5); border-bottom:.5px solid var(--border-soft); padding-bottom:var(--space-2); }
+.settings-tabs > .btn { border:0; border-radius:0; background:transparent; white-space:nowrap; }
+.settings-tabs > .btn[aria-selected=true] { color:var(--accent); box-shadow:0 2px 0 var(--accent); }
+@media(max-width:1023px) { .settings-tabs { gap:var(--space-1); flex-wrap:wrap; } }

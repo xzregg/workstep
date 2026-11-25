@@ -32,11 +32,11 @@ test('file index and individual patches load without requesting or hydrating pro
     await act(async () => (document.querySelector('.message-file-changes-toggle') as HTMLElement).click())
     assert.deepEqual(requests, [{ fileChanges: true }])
     assert.match(document.querySelector('.message-file-change-stats')!.textContent!, /\+2-1/)
-    assert.equal(document.querySelector('.git-diff-dialog'), null)
+    assert.ok(document.querySelector('.git-diff-dialog') === null)
     await act(async () => (document.querySelector('button.message-file-change-path') as HTMLElement).click())
     assert.deepEqual(requests, [{ fileChanges: true }, { fileChanges: true, path: 'src/a.ts' }])
     assert.match(document.querySelector('.git-diff-dialog')!.textContent!, /old.*new.*extra/s)
-    assert.equal(document.querySelector('.file-preview-dialog'), null)
+    assert.ok(document.querySelector('.file-preview-dialog') === null)
     await act(async () => (document.querySelector('.message-file-changes-view') as HTMLElement).click())
     assert.equal(requests.length, 2, 'patch reads reuse the cached response')
   } finally {
@@ -119,14 +119,14 @@ test('edited file rows expose a context menu, copy the project path, and dismiss
     const open = () => row.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 50, clientY: 50 }))
     await act(async () => { open() })
     assert.ok(document.querySelector('[role="menu"]'))
-    assert.equal(document.querySelector('.git-diff-dialog'), null)
+    assert.ok(document.querySelector('.git-diff-dialog') === null)
     const item = [...document.querySelectorAll('[role="menuitem"]')].find(node => node.textContent === '复制路径') as HTMLElement
     assert.ok(item)
     await act(async () => item.click())
     assert.deepEqual(copied, ['/project/src/main.ts'])
     await act(async () => { open() })
     await act(async () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
-    assert.equal(document.querySelector('[role="menu"]'), null)
+    assert.ok(document.querySelector('[role="menu"]') === null)
   } finally {
     await act(async () => root.unmount())
     useProjectStore.setState({ projects: previous.projects })
@@ -247,10 +247,10 @@ test('completed messages place a collapsed file summary below the body and previ
   try {
     await act(async () => render(true))
     await act(async () => expand())
-    assert.equal(container.querySelector('.message-file-changes'), null)
+    assert.ok(container.querySelector('.message-file-changes') === null)
     await act(async () => render(false, true, false))
     await act(async () => expand())
-    assert.equal(container.querySelector('.process-trace-body .message-file-changes'), null)
+    assert.ok(container.querySelector('.process-trace-body .message-file-changes') === null)
     assert.equal(container.querySelectorAll('.message-file-change-row').length, 0)
     await act(async () => (container.querySelector('.message-file-changes-toggle') as HTMLElement).click())
     assert.equal(loads, 1)
@@ -259,7 +259,7 @@ test('completed messages place a collapsed file summary below the body and previ
     assert.ok(container.querySelector('.message-file-changes-header .message-file-changes-toggle'))
     const body = container.querySelector('.chat-bubble')!
     const card = container.querySelector('.message-file-changes')!
-    assert.equal(body.parentElement, card.parentElement)
+    assert.ok(body.parentElement === card.parentElement)
     assert.ok(body.compareDocumentPosition(card) & window.Node.DOCUMENT_POSITION_FOLLOWING)
     assert.equal(container.querySelectorAll('.message-file-change-row').length, 2)
     assert.match(container.querySelector('.message-file-changes')!.textContent!, /\+3.*-2/)
@@ -273,8 +273,8 @@ test('completed messages place a collapsed file summary below the body and previ
       const dialog = document.querySelector('.git-diff-dialog')!
       assert.ok(dialog)
       assert.match(dialog.textContent!, /old.*new.*before.*after/s)
-      assert.equal(dialog.querySelector('.git-error'), null)
-      assert.equal(dialog.querySelector('.git-copy-block'), null)
+      assert.ok(dialog.querySelector('.git-error') === null)
+      assert.ok(dialog.querySelector('.git-copy-block') === null)
       assert.doesNotMatch(dialog.textContent!, /撤销|重新应用|编辑文件/)
     } finally { globalThis.fetch = originalFetch }
   } finally {
@@ -312,7 +312,7 @@ test('messages without confirmed edits have no file card and never load details 
         sender="助手" initials="AI" color="var(--accent)" content="只读检查已完成" events={[]}
         eventDetail={{ available: true, loaded: false, edited_files }}
         onLoadEventDetails={() => { loads++ }} /></I18nProvider>))
-      assert.equal(container.querySelector('.message-file-changes'), null)
+      assert.ok(container.querySelector('.message-file-changes') === null)
     }
     assert.equal(loads, 0)
   } finally {
@@ -339,7 +339,7 @@ test('historical file summaries load patches independently and reuse loaded deta
     assert.equal(container.querySelectorAll('.message-file-change-row').length, 2)
     assert.equal((container.querySelector('button.message-file-change-path') as HTMLButtonElement).disabled, true)
     await act(async () => (container.querySelector('button.message-file-change-path') as HTMLElement).click())
-    assert.equal(document.querySelector('.file-preview-dialog'), null)
+    assert.ok(document.querySelector('.file-preview-dialog') === null)
     await act(async () => root.render(<I18nProvider><ChatMessageBubble role="assistant"
       sender="助手" initials="AI" color="var(--accent)" content="已修改" projectId="p"
       events={edit('a', { path: 'src/a.ts', diff: patch })}
@@ -352,7 +352,7 @@ test('historical file summaries load patches independently and reuse loaded deta
     await act(async () => (container.querySelector('button.message-file-change-path') as HTMLElement).click())
     assert.ok(document.querySelector('.git-diff-dialog'))
     assert.match(document.querySelector('.git-diff-dialog')!.textContent!, /old.*new.*extra/s)
-    assert.equal(document.querySelector('.file-preview-dialog'), null)
+    assert.ok(document.querySelector('.file-preview-dialog') === null)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

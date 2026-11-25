@@ -39,7 +39,7 @@ test('an editable description saves its draft through the task store', async () 
     })
     await act(async () => container.querySelector<HTMLButtonElement>('.task-description-actions button:last-child')!.click())
     assert.deepEqual(calls, [['task-1', 'Updated description', 'project-1']])
-    assert.equal(container.querySelector('.markdown-editor-input'), null)
+    assert.ok(container.querySelector('.markdown-editor-input') === null)
   } finally {
     await act(async () => useTaskStore.setState({ updateTaskDescription: originalUpdate }))
     await act(async () => root.unmount())
@@ -121,7 +121,7 @@ test('a read-only task description has no edit control', async () => {
       task={task} projectId="project-1"
     /></I18nProvider>))
     assert.match(container.textContent || '', /Original description/)
-    assert.equal(container.querySelector('.task-description-edit'), null)
+    assert.ok(container.querySelector('.task-description-edit') === null)
   } finally {
     await act(async () => root.unmount())
     container.remove()

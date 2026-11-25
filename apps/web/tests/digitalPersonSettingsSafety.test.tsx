@@ -8,6 +8,7 @@ import {I18nProvider,useLocaleStore} from '../src/i18n'
 import {digitalPersonApi,digitalRuntimeApi,voiceWakeApi} from '../src/api/digitalPerson'
 import Settings from '../src/components/digital-person/DigitalPersonSettings'
 import SettingsPage from '../src/pages/SettingsPage'
+import {assistantApi,engineApi,providerApi} from '../src/api/client'
 
 const profile={enabled:true,onboarding_completed:true,name:'原姓名',role:'伙伴',personality:'严谨',duties:'跟进工作',avatar:'robot' as const,greeting:'你好'}
 test('memory batch size defaults to 100 and validates and saves the edited limit',async()=>{
@@ -16,7 +17,7 @@ test('memory batch size defaults to 100 and validates and saves the edited limit
   await ui.click('[data-body-part=brain]')
   await ui.click('[data-body-part=memory]')
   const selector='[name=memory_batch_size]'
-  assert.equal(ui.host.querySelector(selector),null,'memory page only displays memory content')
+  assert.ok(ui.host.querySelector(selector) === null, 'memory page only displays memory content')
   await ui.click('[data-body-part=heart]')
   assert.equal(ui.host.querySelector<HTMLInputElement>(selector)!.value,'100')
   for(const invalid of ['', '0', '1001', '1.5']){
@@ -29,11 +30,11 @@ test('memory batch size defaults to 100 and validates and saves the edited limit
   assert.equal(ui.host.querySelector<HTMLInputElement>(selector)!.value,'60')
  }finally{await ui.close()}
 })
-async function setup(enabled=true, outer=false){
+async function setup(enabled=true, outer=false, onboardingCompleted=true){
  const {window}=installDomEnvironment();useLocaleStore.setState({locale:'zh-CN'})
  const host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
  const originals=[{...digitalPersonApi},{...digitalRuntimeApi},{...voiceWakeApi}]
- let saved={...profile,enabled},closes=0,externalBusy=false
+ let saved={...profile,enabled,onboarding_completed:onboardingCompleted},closes=0,externalBusy=false
  digitalPersonApi.get=async()=>({...saved})
  digitalPersonApi.save=async value=>(saved={...value} as typeof saved)
  digitalRuntimeApi.activity=async()=>({feedback:{},suggestions:[],runs:[],answers:[],delegations:[],checking:false}) as any
@@ -44,6 +45,17 @@ async function setup(enabled=true, outer=false){
  await act(async()=>root.render(<MemoryRouter><I18nProvider>{outer ? <SettingsPage initialSection="digital-person" onClose={()=>closes++}/> : <Settings onClose={()=>closes++} onBusyChange={value=>{externalBusy=value}}/>}</I18nProvider></MemoryRouter>))
  return {host,click,input,getSaved:()=>saved,closes:()=>closes,busy:()=>externalBusy,close:async()=>{await act(async()=>root.unmount());await window.happyDOM.close();Object.assign(digitalPersonApi,originals[0]);Object.assign(digitalRuntimeApi,originals[1]);Object.assign(voiceWakeApi,originals[2])}}
 }
+
+test('first enable enters the hub without opening the settings questionnaire',async()=>{
+ const ui=await setup(false,false,false)
+ try{
+  await ui.click('.digital-person-header [role=switch]')
+  assert.equal(ui.getSaved().enabled,true)
+  assert.equal(ui.getSaved().onboarding_completed,false)
+  assert.equal(ui.closes(),1)
+  assert.ok(ui.host.querySelector('.digital-person-guide') === null)
+ }finally{await ui.close()}
+})
 
 test('enabling with unsaved profile requires confirmation and cancellation retains edits',async()=>{
  const ui=await setup(false)
@@ -67,7 +79,7 @@ test('pending child save locks navigation and the outer dialog until it settles'
   await ui.click('[data-body-part=ears]');await ui.click('#speech-tab-wake');await ui.input('.voice-wake-settings input[name=wake_keyword]','新唤醒词');await ui.click('[data-save-wake]')
   assert.equal(ui.busy(),true)
   await ui.click('[data-body-part=feet]')
-  assert.ok(ui.host.querySelector('.voice-wake-settings'));assert.equal(document.querySelector('.confirm-dialog-confirm'),null)
+  assert.ok(ui.host.querySelector('.voice-wake-settings'));assert.ok(document.querySelector('.confirm-dialog-confirm') === null)
   assert.equal(ui.host.querySelector<HTMLButtonElement>('.digital-person-header [role=switch]')!.disabled,true)
   await act(async()=>release());assert.equal(ui.busy(),false)
   await ui.click('[data-body-part=feet]');assert.ok(ui.host.querySelector('.digital-person-activity'));assert.equal(keyword,'新唤醒词')
@@ -117,7 +129,7 @@ test('automatic thinking can be disabled without disabling the persona or manual
  try{
   await ui.click('[data-body-part=heart]')
   assert.equal(ui.host.querySelector<HTMLInputElement>('[name=reflection_enabled]')!.checked,true)
-  assert.equal(ui.host.querySelector('[name=delegation_interval_seconds]'),null)
+  assert.ok(ui.host.querySelector('[name=delegation_interval_seconds]') === null)
   await ui.click('[name=reflection_enabled]')
   await ui.click('.digital-person-form-actions button')
   assert.equal((ui.getSaved() as any).reflection_enabled,false)
@@ -176,7 +188,7 @@ test('outer settings cannot close, escape or change sections while a child save 
   await ui.click('.settings-dialog-header .btn-icon')
   await ui.click('.settings-nav button:not([aria-current=page])')
   await act(async()=>document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
-  assert.equal(ui.closes(),0);assert.equal(document.querySelector('.confirm-dialog-confirm'),null);assert.ok(ui.host.querySelector('.voice-wake-settings'))
+  assert.equal(ui.closes(),0);assert.ok(document.querySelector('.confirm-dialog-confirm') === null);assert.ok(ui.host.querySelector('.voice-wake-settings'))
   await act(async()=>release())
   await ui.click('.settings-dialog-header .btn-icon');assert.equal(ui.closes(),1)
  }finally{await ui.close()}
@@ -206,12 +218,12 @@ test('digital-person settings keeps one dialog and navigation while content chan
   assert.ok(ui.host.querySelector('.settings-layout--digital-person'))
   for(const part of ['brain','memory','ears','feet']){
    await ui.click(`[data-body-part=${part}]`)
-   assert.equal(ui.host.querySelector('.settings-dialog-panel'),dialog)
+   assert.ok(ui.host.querySelector('.settings-dialog-panel') === dialog)
    assert.ok(ui.host.querySelector('.settings-layout--digital-person'))
    assert.equal(ui.host.querySelectorAll('.digital-person-body-image').length,1)
   }
   await ui.click('[data-settings-navigation-toggle]')
-  assert.equal(ui.host.querySelector('.settings-layout--digital-person'),null)
+  assert.ok(ui.host.querySelector('.settings-layout--digital-person') === null)
   await ui.click('[data-settings-navigation-toggle]')
   assert.ok(ui.host.querySelector('.settings-layout--digital-person'))
   await ui.click('.digital-person-secondary-nav [data-settings-tab=identity]')
@@ -237,4 +249,50 @@ test('quiet hours offer labelled times and save numeric hours including midnight
   assert.equal(ui.getSaved().quiet_end,23)
   assert.equal(ui.host.querySelector<HTMLSelectElement>('[name=quiet_start]')!.value,'0')
  }finally{await ui.close()}
+})
+
+test('thinking model tab guards drafts, saves its own config and blocks navigation while saving',async()=>{
+ const originals=[{...assistantApi},{...engineApi},{...providerApi}]
+ const configured={engine:'reflection-test',model:'old-model',fast_model:'',vision_model:'',thinking_effort:'',provider_id:''}
+ assistantApi.list=async()=>({assistants:[{name:'digital_person_reflection',fields:['engine','model','vision_model'],configured,resolved:configured,
+  available_engines:[{id:'reflection-test',installed:true,supports_coordinator:true}]}]}) as any
+ engineApi.models=async()=>({engine_id:'reflection-test',models:[{id:'old-model'},{id:'new-model'}],default_model:'old-model',error:null}) as any
+ providerApi.list=async()=>({providers:[],types:[]})
+ let release!:(value:any)=>void, request:any, attempts=0
+ assistantApi.setConfig=async(name,value)=>{request={name,...value};if(attempts++===0)throw Error('Chat session is running');return new Promise(resolve=>{release=resolve})}
+ const ui=await setup()
+ try{
+  await ui.click('[data-body-part=heart]')
+  const tabs=()=>[...ui.host.querySelectorAll<HTMLButtonElement>('.digital-person-proactive-tabs [role=tab]')]
+  assert.deepEqual(tabs().map(tab=>tab.textContent),['思考设置','模型设置'])
+  await ui.input('.digital-person-form textarea','未保存的思考偏好')
+  await act(async()=>tabs()[1].click())
+  assert.ok(document.querySelector('.confirm-dialog-confirm'))
+  await ui.click('.confirm-dialog-footer .btn-ghost')
+  assert.equal(ui.host.querySelector<HTMLTextAreaElement>('.digital-person-form textarea')!.value,'未保存的思考偏好')
+  await act(async()=>tabs()[1].click())
+  await ui.click('.confirm-dialog-confirm')
+  assert.ok(ui.host.querySelector('.digital-person-form') === null)
+  const select=[...ui.host.querySelectorAll<HTMLSelectElement>('.assistant-engine-row select')].find(select=>select.value==='old-model')!
+  assert.ok(select)
+  await act(async()=>{select.value='new-model';select.dispatchEvent(new window.Event('change',{bubbles:true}))})
+  await act(async()=>tabs()[0].click())
+  assert.ok(document.querySelector('.confirm-dialog-confirm'))
+  await ui.click('.confirm-dialog-footer .btn-ghost')
+  await ui.click('.assistant-engine-footer .btn-primary')
+  assert.match(ui.host.querySelector('.assistant-engine-notice')!.textContent!,/主动思考正在执行，请结束后再保存/)
+  assert.equal(select.value,'new-model')
+  await ui.click('.assistant-engine-footer .btn-primary')
+  assert.equal(request.name,'digital_person_reflection')
+  assert.equal(request.model,'new-model')
+  assert.equal(ui.busy(),true)
+  assert.ok(tabs().every(tab=>tab.disabled))
+  await ui.click('[data-body-part=brain]')
+  assert.ok(ui.host.querySelector('.digital-person-proactive-settings'))
+  await act(async()=>release({saved:true,configured:{...configured,model:'new-model'},resolved:{...configured,model:'new-model'}}))
+  assert.equal(ui.busy(),false)
+  await act(async()=>tabs()[0].click())
+  assert.ok(document.querySelector('.confirm-dialog-confirm') === null)
+  assert.equal(ui.host.querySelector<HTMLTextAreaElement>('.digital-person-form textarea')!.value,'')
+ }finally{await ui.close();Object.assign(assistantApi,originals[0]);Object.assign(engineApi,originals[1]);Object.assign(providerApi,originals[2])}
 })

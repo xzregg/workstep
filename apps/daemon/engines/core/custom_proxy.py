@@ -283,6 +283,25 @@ class CustomEngineProxy(AcpEngineBase):
             self._worker = None
         self._running = False
 
+    async def get_quota(self, cwd=""):
+        if not self.supports_quota:
+            return None
+        # A quota request owns a short-lived worker and never borrows chat state.
+        from engines.core.process_cleanup import finish_cleanup
+        reader = type(self)()
+        client = await reader._client()
+        launching = asyncio.create_task(client.start())
+        try:
+            await asyncio.shield(launching)
+            return await client.call("get_quota", kwargs={"cwd": cwd})
+        finally:
+            async def cleanup():
+                with suppress(Exception):
+                    await launching
+                await client.close()
+                reader._worker = None
+            await finish_cleanup(cleanup())
+
     async def list_models(self, cwd):
         values = await self._call("list_models", kwargs={"cwd": cwd})
         await self.stop()

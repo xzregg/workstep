@@ -104,10 +104,10 @@ async def delete(model_id: str | None = None, partial_only: bool = False):
 
 
 @router.post('/sessions')
-async def start(project_id: str = ''):
+async def start(project_id: str = '', phone_call: bool = False):
     authorize(project_id)
     try:
-        return await service.start(project_id, owner())
+        return await service.start(project_id, owner(), True) if phone_call else await service.start(project_id, owner())
     except ValueError as exc:
         raise translate(exc) from exc
 
@@ -133,3 +133,93 @@ async def cancel(sid: str, project_id: str = ''):
     except (ValueError, LookupError) as exc:
         raise translate(exc) from exc
     return {'cancelled': True}
+
+
+class VoiceprintAudio(BaseModel):
+    audio: str = Field(min_length=1, max_length=853336)
+
+
+class VoiceprintSettings(BaseModel):
+    enabled: bool
+    scope: str = Field(default='calls', pattern='^(calls|all)$')
+
+
+async def voiceprint_operation(operation):
+    # Serialize host mutations with session creation. Profiles cannot change
+    # under a live recording, including while enrollment awaits inference.
+    async with service.session_lock:
+        if service.sessions:
+            raise HTTPException(409, 'Voice settings cannot be modified during recording')
+        try:
+            await operation()
+            return await service.voiceprint.snapshot()
+        except ValueError as exc:
+            raise translate(exc) from exc
+
+
+def voiceprint_pcm(body):
+    try:
+        pcm = base64.b64decode(body.audio, validate=True)
+        service.voiceprint.validate_audio(pcm)
+        return pcm
+    except (ValueError, binascii.Error) as exc:
+        raise HTTPException(422, 'voiceprint.invalidAudio') from exc
+
+
+@router.put('/voiceprint/settings')
+async def voiceprint_settings(body: VoiceprintSettings):
+    authorize('', manage=True)
+    async def save():
+        settings = await service.get_settings()
+        if body.enabled and settings['connection']['mode'] != 'local':
+            raise ValueError('voiceprint.localOnly')
+        await service.voiceprint.configure(body.enabled, body.scope)
+    return await voiceprint_operation(save)
+
+
+@router.post('/voiceprint/enroll')
+async def voiceprint_enroll(body: VoiceprintAudio):
+    authorize('', manage=True)
+    pcm = voiceprint_pcm(body)
+    return await voiceprint_operation(lambda: service.voiceprint.enroll(pcm))
+
+
+@router.post('/voiceprint/test')
+async def voiceprint_test(body: VoiceprintAudio):
+    authorize('', manage=True)
+    pcm = voiceprint_pcm(body)
+    async with service.session_lock:
+        if service.sessions:
+            raise HTTPException(409, 'Voice settings cannot be modified during recording')
+        try:
+            return {'speaker_status': await service.voiceprint.verify(pcm)}
+        except ValueError as exc:
+            raise translate(exc) from exc
+
+
+@router.delete('/voiceprint')
+async def voiceprint_delete():
+    authorize('', manage=True)
+    return await voiceprint_operation(service.voiceprint.delete)
+
+
+@router.post('/voiceprint/download')
+async def voiceprint_download(mirror: str | None = Query(default=None, max_length=2000)):
+    authorize('', manage=True)
+    return await voiceprint_operation(lambda: service.voiceprint.download(mirror))
+
+
+@router.post('/voiceprint/cancel')
+async def voiceprint_cancel():
+    authorize('', manage=True)
+    return await voiceprint_operation(service.voiceprint.cancel_download)
+
+
+@router.delete('/voiceprint/download')
+async def voiceprint_discard():
+    authorize('', manage=True)
+    async def discard():
+        import asyncio
+        await service.voiceprint.cancel_download()
+        await asyncio.to_thread(service.voiceprint.resources.discard)
+    return await voiceprint_operation(discard)

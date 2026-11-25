@@ -96,8 +96,8 @@ test('group leader assigns approved version and revokes only own project source'
   await waitFor(() => assert.equal(assigned, false))
   assert.deepEqual(writes.at(-1), { url: '/api/groups/group-1/projects/project-1/skills/skill-1',
     method: 'DELETE', csrf: 'csrf-leader' })
-  assert.equal(screen.queryByRole('button', { name: '移除 leader' }), null)
-  assert.equal(screen.queryByRole('button', { name: '移除 directory' }), null)
+  assert.ok(screen.queryByRole('button', { name: '移除 leader' }) === null)
+  assert.ok(screen.queryByRole('button', { name: '移除 directory' }) === null)
   fireEvent.change(screen.getByLabelText('成员用户名'), { target: { value: 'alice' } })
   fireEvent.click(screen.getByRole('button', { name: '添加普通成员' }))
   await screen.findByText(/alice · 普通成员/)

@@ -45,14 +45,14 @@ test('starting at B accepts the contents of the connected A output without a pat
     await change('#debug-sample-a\\:0', '# A sample')
     const sampleEditor = host.querySelector('.workflow-debug-samples .markdown-editor-root')!
     const preview = sampleEditor.querySelector<HTMLButtonElement>('.markdown-editor-action[data-active]')!
-    assert.equal(sampleEditor.querySelector('input[type=file]'), null)
+    assert.ok(sampleEditor.querySelector('input[type=file]') === null)
     assert.equal(sampleEditor.querySelector('textarea')?.placeholder, '')
     await act(async () => preview.click())
     assert.equal(sampleEditor.querySelector('.markdown-editor-preview h1')?.textContent, 'A sample')
     assert.equal(submissions.length, 0)
     await act(async () => preview.click())
     await act(async () => tile('c').click())
-    assert.equal(host.querySelector('textarea[id^=debug-sample]'), null)
+    assert.ok(host.querySelector('textarea[id^=debug-sample]') === null)
     await act(async () => tile('b').click())
     assert.equal(host.querySelector<HTMLTextAreaElement>('textarea[id^=debug-sample]')?.value, '# A sample')
     assert.equal(submit.disabled, false)

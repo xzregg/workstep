@@ -52,7 +52,7 @@ test('Action message shows final duration first on the left for terminal statuse
       /></I18nProvider>))
       const duration = container.querySelector('.action-conversation-duration')
       assert.equal(duration?.textContent, 'Duration 1m7s')
-      assert.equal(duration?.parentElement?.firstElementChild, duration)
+      assert.ok(duration?.parentElement?.firstElementChild === duration)
     }
   } finally {
     await act(async () => root.unmount())

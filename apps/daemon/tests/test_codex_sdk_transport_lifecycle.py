@@ -470,6 +470,7 @@ async def test_real_sdk_retained_thread_survives_expiry_and_other_projects_then_
     other = transport.root / 'ordinary-project'
     other.mkdir()
     await collect(transport, 'ordinary', cwd=other)
+    await asyncio.sleep(.1)
     assert len(pool._workers) == 1
     with session_retention('data-center'):
         resumed = await collect(transport, 'same', sid=sid)

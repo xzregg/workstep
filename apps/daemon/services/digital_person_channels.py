@@ -15,6 +15,28 @@ def get_bindings():
     return [{**{k:v for k,v in row.items() if k not in {'session_id','project_id'}},
              'id': peer_id(row)} for row in config_store.get(KEY, [])]
 
+
+def is_bound_session(session_id):
+    return session_id in bound_session_ids()
+
+
+def binding_ids_for_session(session_id):
+    sessions = config_store.get('channel_bots', {}).get('sessions', {})
+    return {peer['id'] for peer in get_bindings()
+            if sessions.get(f"{peer['bot_id']}:{peer['conversation_type']}:{peer['conversation_id']}") == session_id}
+
+
+def bound_session_ids():
+    sessions = config_store.get('channel_bots', {}).get('sessions', {})
+    return {sid for peer in get_bindings()
+            if (sid := sessions.get(f"{peer['bot_id']}:{peer['conversation_type']}:{peer['conversation_id']}"))}
+
+
+def shared_origins(session_id, main_session_id):
+    # Shared peers enter the canonical main session before delegating. A
+    # binding alone never grants access to another conversation's tasks.
+    return {session_id}
+
 async def available(manager, projects):
     catalog = await asyncio.to_thread(projects.list_project_catalog)
     rows = []
@@ -37,14 +59,17 @@ async def available(manager, projects):
     return list({peer_id(row): {**{k:v for k,v in row.items() if k not in {'session_id','project_id'}},
                               'id':peer_id(row)} for row in rows}.values())
 
-async def bind(manager, projects, bot_id, conversation_type, conversation_id, notify=False):
+async def bind(manager, projects, bot_id, conversation_type, conversation_id, notify=False, use_main_session=False):
+    if use_main_session and conversation_type != 'single':
+        raise ValueError('Only private conversations can use the main session')
     rows = await available(manager, projects)
+    rows.extend(await asyncio.to_thread(get_bindings))
     peer = next((r for r in rows if (r['bot_id'],r['conversation_type'],r['conversation_id']) ==
                  (bot_id,conversation_type,conversation_id)), None)
     if peer is None:
         raise ValueError('Please select an identified channel group chat or contact')
     value = {key:peer[key] for key in ('id','bot_id','conversation_type','conversation_id','title','bot_name','platform')}
-    value.update(notify=notify)
+    value.update(notify=notify, use_main_session=use_main_session)
     async with _lock:
         current = await asyncio.to_thread(get_bindings)
         current = [r for r in current if not (r['bot_id']==value['bot_id'] and r['conversation_id']==value['conversation_id'] and r['conversation_type']==value['conversation_type'])]

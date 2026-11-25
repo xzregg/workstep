@@ -22,7 +22,7 @@ test('explicit reading replaces auto speech, blocks capture during preparation a
   SpeechOutputPlayer.prototype.stop=function(){stops++;stop.call(this)}
   window.addEventListener(DIGITAL_OUTPUT_FRAME,(event:Event)=>frames.push((event as CustomEvent).detail))
   const profile={enabled:true,name:'助手',role:'',personality:'',duties:'',avatar:'robot' as const,greeting:'',auto_speak:true}
-  const old:AssistantChatMessage={id:'old',role:'assistant',content:'历史回复。',status:'succeeded'}
+  const old:AssistantChatMessage={id:'old',role:'assistant',content:'历史回复。第二句话。\n还有第三句。',status:'succeeded'}
   const running:AssistantChatMessage={id:'new',role:'assistant',content:'新回复。',status:'running'}
   const render=(messages:AssistantChatMessage[],active=true,blockNew=false)=>act(async()=>root.render(<I18nProvider><DigitalPersonSpeech ref={controls} profile={profile} projectId="manual-reply" sessionId="s" messages={messages} active={active} blockNew={blockNew} manualEnabled={!blockNew}/></I18nProvider>))
   try{
@@ -33,7 +33,7 @@ test('explicit reading replaces auto speech, blocks capture during preparation a
     assert.equal(frames.at(-1)?.busy,true)
     assert.equal(frames.at(-1)?.readingId,'old')
     await act(async()=>finishUnlock())
-    assert.deepEqual(spoken,['新回复。','历史回复。'])
+    assert.deepEqual(spoken,['新回复。',old.content])
     const beforeBlocking=stops
     await render([old,running],true,true)
     await render([old,running],false)
@@ -44,7 +44,7 @@ test('explicit reading replaces auto speech, blocks capture during preparation a
     assert.equal(frames.at(-1)?.busy,false)
     assert.equal(frames.at(-1)?.readingId,undefined)
     await render([old,{...running,content:'新回复。后续文字。',status:'succeeded'}])
-    assert.deepEqual(spoken,['新回复。','历史回复。'],'interrupted auto speech never resumes')
+    assert.deepEqual(spoken,['新回复。',old.content],'interrupted auto speech never resumes')
   }finally{
     await act(async()=>root.unmount());await window.happyDOM.close()
     speechOutputApi.status=status;Object.assign(SpeechOutputPlayer.prototype,{unlock,enqueue,stop})
@@ -296,7 +296,7 @@ test('retry keeps streaming text after a failure and stop clears the retry actio
     await act(async()=>retry.click())
     assert.deepEqual(started,['第一句话。','第一句话。','后来还有一句。'])
     await act(async()=>stopDigitalSpeech('retry-reply','s'))
-    assert.equal(document.querySelector('button'),null)
-    assert.equal(document.querySelector('[role=alert]'),null)
+    assert.ok(document.querySelector('button') === null)
+    assert.ok(document.querySelector('[role=alert]') === null)
   } finally { await act(async()=>root.unmount()); Object.assign(speechOutputApi,original); await window.happyDOM.close() }
 })

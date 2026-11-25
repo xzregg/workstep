@@ -35,7 +35,7 @@ test('mobile actions open project memory and dismiss the menu', async () => {
       .find(button => /^(记忆|Memory)$/.test(button.textContent?.trim() || ''))
     assert.ok(entry, 'mobile menu must offer project memory')
     await act(async () => entry.click())
-    assert.equal(document.querySelector('.mobile-task-menu'), null)
+    assert.ok(document.querySelector('.mobile-task-menu') === null)
     assert.ok(document.querySelector('.project-memory-panel'))
     assert.deepEqual(reads, ['demo'])
     assert.match(document.body.textContent || '', /Demo memory/)

@@ -49,7 +49,7 @@ for (const canInvite of [false, true]) test(`remote settings expose sharing with
     await act(async () => useGatewaySessionStore.setState(state => ({
       session: { ...state.session!, share_create: false, can_manage_project_access: true },
     })))
-    assert.equal(element.querySelector('.task-detail-share-button'), null)
+    assert.ok(element.querySelector('.task-detail-share-button') === null)
   } finally {
     await act(async () => root.unmount())
     element.remove()

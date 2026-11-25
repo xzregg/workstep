@@ -67,6 +67,6 @@ test('notification retry uses only the occurrence endpoint and is hidden for rea
     await act(async () => document.querySelector<HTMLButtonElement>('button')!.click())
     assert.equal(retries,1);assert.equal(refreshed,1)
     await act(async () => app.root.render(<I18nProvider><ScheduleRunNotification canRetry={false} projectId="p" scheduleId="s" run={run} onRetried={()=>{}} /></I18nProvider>))
-    assert.equal(document.querySelector('button'),null)
+    assert.ok(document.querySelector('button') === null)
   } finally {await app.cleanup()}
 })

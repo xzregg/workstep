@@ -16,10 +16,15 @@ from services.tool_registry import (
 def test_registry_defines_expected_tool_set():
     names = {tool.name for tool in WORKSTEP_TOOLS}
     assert names == {
+        'workstep_get_digital_hub_identity_setup',
+        'workstep_set_digital_hub_identity',
+        "workstep_list_digital_hub_voices",
+        "workstep_select_digital_hub_voice",
         "workstep_get_message",
         "workstep_send_message",
         "workstep_archive_chat_session",
         "workstep_check_digital_person",
+        "workstep_get_digital_hub_info",
         "workstep_stop_digital_person_check",
         "workstep_remember_digital_person_rule",
         "workstep_delegate_digital_person",
@@ -62,6 +67,9 @@ def test_registry_defines_expected_tool_set():
         "workstep_get_task_workspace",
         "workstep_add_task_worktree",
         "workstep_list_engines",
+        "workstep_list_engine_models",
+        "workstep_list_delegation_combinations",
+        "workstep_verify_delegation_combination",
         "workstep_skin_list",
         "workstep_language_list",
         "workstep_language_contract",

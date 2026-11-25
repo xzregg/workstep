@@ -24,6 +24,15 @@ test('engines without native declarations offer inheritance only', () => {
   assert.equal(nativePermissionMenu('custom', [], '', '跟随引擎设置').options.length, 1)
 })
 
+test('Antigravity exposes native permissions and keeps plan in its existing control', async () => {
+  const { zhCNT } = await import('../src/i18n')
+  const menu = nativePermissionMenu('antigravity', [{id:'permission_mode',name:'权限模式',type:'select',
+    currentValue:'default', options:['default','auto','accept-edits','plan','bypassPermissions'].map(value => ({value,name:value}))}], '', '跟随引擎', null, zhCNT)
+  assert.deepEqual(menu.options.slice(1).map(option => permissionSelection('antigravity', option.value)?.permission_mode), ['default','auto','accept-edits','bypassPermissions'])
+  assert.equal(menu.options.at(-1)?.label, '全权限（免审批）')
+  assert.deepEqual(permissionSelection('antigravity', menu.options.at(-1)!.value), {permission_mode:'bypassPermissions'})
+})
+
 
 test('localized native choices have concise, distinct descriptions', async () => {
   const { createT, zhCNT } = await import('../src/i18n')

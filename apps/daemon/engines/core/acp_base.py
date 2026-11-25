@@ -390,9 +390,9 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
 
         commands: list[dict[str, str]] = []
         session_id: str | None = None
-        handler = _StreamingClient(self.get_permission_mode(), permission_decision=self.runtime_permission_decision)
+        handler = _StreamingClient(await asyncio.to_thread(self.get_permission_mode), permission_decision=self.runtime_permission_decision)
         skill_env = await asyncio.to_thread(self.project_skill_env, cwd)
-        cmd = self.get_command()
+        cmd = await asyncio.to_thread(self.get_command)
         try:
             process_env = dict(os.environ)
             process_env.update(skill_env)
@@ -581,7 +581,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
     async def list_models(self, cwd: str) -> list[EngineModel]:
         """Read the ACP session's model configuration options."""
         skill_env = await asyncio.to_thread(self.project_skill_env, cwd)
-        cmd = self.get_command()
+        cmd = await asyncio.to_thread(self.get_command)
         if not cmd:
             return []
 
@@ -636,10 +636,10 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
 
     async def _with_agent(self, cwd: str, action):
         """Open a short-lived ACP connection, run ``action(client)``, close it."""
-        cmd = self.get_command()
+        cmd = await asyncio.to_thread(self.get_command)
         if not cmd:
             raise RuntimeError(f"{self.ENGINE_ID}: no command configured")
-        handler = _StreamingClient(self.get_permission_mode(), permission_decision=self.runtime_permission_decision)
+        handler = _StreamingClient(await asyncio.to_thread(self.get_permission_mode), permission_decision=self.runtime_permission_decision)
         async with acp.spawn_agent_process(
             handler,
             cmd[0],
@@ -780,6 +780,17 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             )
             return True
         return False
+
+    async def _configure_session_mode(self, client, session_id, plan_mode):
+        """Configure the adapter's native mode before every prompt, including reuse."""
+        if plan_mode is not None and self.supports_plan_mode:
+            try:
+                await client.set_config_option(
+                    config_id="mode", session_id=session_id,
+                    value="plan" if plan_mode else "build",
+                )
+            except Exception:
+                logger.warning("Failed to set plan_mode %s", plan_mode)
 
     @exclusive_engine_run
     async def spawn(
@@ -943,17 +954,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                     except Exception:
                         logger.warning("Failed to set model %s", model)
 
-                if plan_mode is not None and self.supports_plan_mode:
-                    # 原生计划模式：经 session config `mode` 切换
-                    #（如 OpenCode 的 build/plan）；不支持的 agent 忽略。
-                    try:
-                        await client.set_config_option(
-                            config_id="mode",
-                            session_id=active_session_id,
-                            value="plan" if plan_mode else "build",
-                        )
-                    except Exception:
-                        logger.warning("Failed to set plan_mode %s", plan_mode)
+                await self._configure_session_mode(client, active_session_id, plan_mode)
 
                 effort = resolve_thinking_effort(thinking_effort)
                 if effort:

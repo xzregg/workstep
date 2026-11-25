@@ -26,7 +26,7 @@ test('scoped provider page loads safe catalog and reuses scoped assignments with
   try {
     render(<AdminScopedProviderAssignmentsPage />)
     await screen.findByText('Department User')
-    assert.equal(screen.queryByLabelText('API Key'), null)
+    assert.ok(screen.queryByLabelText('API Key') === null)
     fireEvent.change(screen.getByLabelText('供应商'), { target: { value: 'p2' } })
     await waitFor(() => assert.ok(paths.some(path => path.includes('/p2/assignments?'))))
     assert.equal(paths.includes('/api/admin/providers'), false)

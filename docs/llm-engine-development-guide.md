@@ -28,7 +28,7 @@
 
 `engines/core/session_pool.py` 提供共享缓存和 `ManagedConnection` 常驻所有者协程。默认成功完整收流后空闲 600 秒、每个引擎最多缓存 8 个空闲客户端；正在执行、等待审批不计空闲。启动参数、供应商、认证、权限、连接器、技能或来源身份变化时重建；取消、错误、提前关闭不得返回可用缓存。新请求必须绑定自己的回调和队列，空闲客户端不得保留上一轮的审批授权。进程树回收走 `core/process_cleanup.py`，daemon 在消息生产者／任务停止后关闭全部池。
 
-Codex SDK 的 `codex_sdk_clients.py` 在同项目目录及兼容启动指纹内共享 app-server，每个进程最多承载 5 个活动会话，第 6 个另开进程；审批／提问等待仍占活动名额。每会话保留独立 `AsyncThread`、轮次消费者、审批和授权缓存；空闲槽可释放给新会话，被淘汰的会话稍后通过原生 ID 恢复。默认最多保留 8 个普通空闲会话槽（受保护主会话另计），普通空闲槽在 600 秒（10 分钟）后卸载。使用后最多保留 1 个完全空闲的 app-server 长期常驻，其最后一个已加载会话槽不因空闲超时退出；不预启动，也不在异常后自动拉起。出现新的完全空闲进程时，优先回收最久未归还成功轮次的旧进程及其子进程。显式关闭会话、错误、停止及 daemon 退出仍执行回收；测试可通过 keep_warm=False 验证普通 TTL 策略。活动槽（含等待审批）所在的进程不参与淘汰。回收期间重新打开同一会话时，等待旧进程退出后按原生会话 ID 恢复。供应商、来源身份、凭据、权限或其他启动指纹不兼容时不共享；普通停止和错误只中断、卸载本会话，整个进程崩溃会影响同进程活动会话，其历史仍可按原生 ID 恢复。`codex_sdk_approvals.py` 按原生 thread ID 路由服务器请求，异步完成后写回对应 RPC ID；等待用户不能阻塞 SDK 唯一 stdout 读取线程。取消旧轮次后的迟到审批不得进入新轮次；无法路由的请求默认拒绝。辅助工具子进程仍可能按会话独立创建。验收入口为 `tests/test_codex_sdk_multiplex.py`、`tests/test_codex_sdk_transport_lifecycle.py`。
+Codex SDK 的 `codex_sdk_clients.py` 将普通会话在同项目目录及兼容启动指纹内共享 app-server，每个共享进程最多承载 5 个活动会话，第 6 个另开进程；审批／提问等待仍占活动名额。每会话保留独立 `AsyncThread`、轮次消费者、审批和授权缓存；空闲槽可释放给新会话，被淘汰的会话稍后通过原生 ID 恢复。默认最多保留 8 个普通空闲会话槽（受保护主会话另计），普通空闲槽在 600 秒（10 分钟）后卸载。普通共享池使用后最多保留 1 个完全空闲的 app-server，其最后一个已加载会话槽不因空闲超时退出；数字中枢主会话另用独占常驻进程，不占普通池的空闲进程名额（两侧都空闲时可各保留一个）。不预启动，也不在异常后自动拉起。出现新的完全空闲进程时，优先回收最久未归还成功轮次的旧进程及其子进程。显式关闭会话、错误、停止及 daemon 退出仍执行回收；测试可通过 keep_warm=False 验证普通 TTL 策略。活动槽（含等待审批）所在的进程不参与淘汰。回收期间重新打开同一会话时，等待旧进程退出后按原生会话 ID 恢复。供应商、来源身份、凭据、权限或其他启动指纹不兼容时不共享；普通停止和错误只中断、卸载本会话，整个进程崩溃会影响同进程活动会话，其历史仍可按原生 ID 恢复。`codex_sdk_approvals.py` 按原生 thread ID 路由服务器请求，异步完成后写回对应 RPC ID；等待用户不能阻塞 SDK 唯一 stdout 读取线程。取消旧轮次后的迟到审批不得进入新轮次；无法路由的请求默认拒绝。辅助工具子进程仍可能按会话独立创建。验收入口为 `tests/test_codex_sdk_multiplex.py`、`tests/test_codex_sdk_transport_lifecycle.py`。
 
 Codex SDK 读取线程报告传输失败时，池立即撤销该进程所有会话租约及待回答请求，不能依赖上层继续消费事件才发现断连。助手和任务的审批等待通过 `services/intervention.py::wait_for_interaction_response` 同时观察引擎侧请求结束，记录取消终态并移除待办；迟到确认返回失效，恢复会话产生新的审批 ID，不能继承旧 RPC 的确认。测试：`test_codex_sdk_transport_lifecycle.py::test_process_death_invalidates_visible_approval_and_old_click_cannot_authorize_restart`、`test_intervention_lifecycle.py`。
 
@@ -46,17 +46,17 @@ Claude Agent SDK／Qoder SDK／Claude CLI 若本轮有运行中插入消息，�
 
 主会话身份由业务层读取 `digital_person_runtime` 的当前 `main_session_id` 确认，不以助手名称、默认工作区或某个固定 UUID 代替。`ChatSessionModule._prepare_turn_context` 将宿主所有者键交给统一 `invoke_engine/run_engine_turn(session_retention_key=...)`。`engines/core/session_retention.py` 在本轮任务上下文中传递策略，公共 `session_pool.py` 与 Codex 池领取租约时应用；不把它发给模型、第三方 SDK 或自定义 worker 的原生请求。
 
-受保护租约不计普通空闲 LRU、不受 600 秒 TTL 淘汰。Codex 保护其已加载 thread 及所在进程，并为该 thread 保留一个五槽名额；其他会话超过剩余容量另开进程，不能挤掉主会话。完全空闲的受保护进程优先于最近使用的普通进程保留。普通会话继续原来的回收策略，停止、错误、配置不兼容和 daemon 退出仍执行清理。保护不会自动重启进程，也不会保证远端首 T。
+受保护租约不计普通空闲 LRU、不受 600 秒 TTL 淘汰。Codex 为主会话创建独占的 app-server，保留已加载 thread；普通会话仅进入另一个共享分区，每个共享进程仍有完整的五个活动槽位。进程记录所属宿主所有者，缓存命中与新分配都检查分区；解除保护后也不能把原专属进程分给普通会话。专属进程不参与普通池的空闲进程淘汰。同一宿主所有者已有在途轮次时，即使请求另一个原生 ID 也拒绝重叠执行，不另开第二个专属进程；普通共享池继续独立执行。普通会话继续原来的回收策略，停止、错误、配置不兼容和 daemon 退出仍执行清理。保护不会自动重启进程，也不会保证远端首 T。
 
-`/new`、`/clear`、内部重置、引擎交接、归档／删除及归档后主会话替换会撤销旧保护；旧租约恢复普通空闲回收，不主动中断仍在执行的旧轮次。下一次调用给当前主会话的新原生上下文重新加保护；不同引擎池中同一宿主所有者最多保护一个最新租约。兼容时仍可复用原进程，新 thread 不继承旧 thread 的对话历史。数字中枢人设及长期记忆仍走原有新会话注入规则。
+`/new`、`/clear`、内部重置、引擎交接、归档／删除及归档后主会话替换会撤销旧保护；旧租约恢复普通空闲回收，不主动中断仍在执行的旧轮次。下一次调用给当前主会话的新原生上下文重新加保护；不同引擎池中同一宿主所有者最多保护一个最新租约。原专属进程存活且配置兼容时，重置或更换主会话可继续使用它；新建 thread 前卸载旧空闲槽，专属进程仅保留一个会话槽，新 thread 不继承旧 thread 的对话历史。解除保护后未重新使用的旧专属上下文按普通 TTL 回收，不能由共享池续用；显式停止、错误和关闭照常回收进程。数字中枢人设及长期记忆仍走原有新会话注入规则。
 
-Claude/Qoder SDK、Claude 双向 CLI、Hermes/OpenCode ACP、Cursor 和支持复用的自定义 worker 由公共池执行保护；DeepSeek 已保留运行时，Pydantic AI 沿用进程内会话状态。一遍即退的引擎接受统一宿主调用策略但不伪造常驻能力，仍按原生 ID 恢复。测试：`test_session_retention.py`、`test_data_center_session_retention.py`、`test_native_session_retention.py` 和 Codex 生命周期测试中的 retained thread 用例。
+Claude/Qoder SDK、Claude 双向 CLI、Hermes/OpenCode ACP、Cursor 和支持复用的自定义 worker 由公共池执行保护；DeepSeek 已保留运行时，Pydantic AI 沿用进程内会话状态。一遍即退的引擎接受统一宿主调用策略但不伪造常驻能力，仍按原生 ID 恢复。测试：`test_codex_dedicated_worker.py`、`test_codex_dedicated_transport.py`、`test_session_retention.py`、`test_data_center_session_retention.py`、`test_native_session_retention.py` 和 Codex 生命周期测试中的 retained thread 用例。
 
-以下为 2026-11-17 按本仓库接入、已安装原生 SDK 源码及官方协议核对的边界。连续复用连接和同进程并发托管会话分别判断；不能因为输出含 `session_id` 就共用客户端。
+以下原生能力边界基于 2026-11-17 对已安装 SDK 源码及官方协议的核对，WorkStep 接入状态随当前实现更新。连续复用连接和同进程并发托管会话分别判断；不能因为输出含 `session_id` 就共用客户端。
 
 | 引擎 | 原生接口／限制 | WorkStep 当前状态 |
 | --- | --- | --- |
-| Codex SDK | app-server 按 thread/turn 分流，支持定向 steer、interrupt 和取消订阅 | 同项目、兼容指纹内五个活动会话一个进程；已做真实模型与离线故障验收 |
+| Codex SDK | app-server 按 thread/turn 分流，支持定向 steer、interrupt 和取消订阅 | 主会话独占常驻进程；普通会话同项目、兼容指纹内五个活动会话一个进程；已做真实模型与离线故障验收 |
 | DeepSeek Harness | `run(session_id, on_notification)` 及会话树通知过滤可共享 server；当前接入未提供单会话原生取消 | 已按项目和配置共享运行时；停止时有其他在途调用就只摘除本轮结果，不能宣称原生计算立即停止，也不是 Codex 五槽池 |
 | Hermes／OpenCode ACP | ACP 为 session/new、prompt、update、cancel 提供会话 ID；具体发行版是否真正并发、独立停止仍须验证 | `core/acp_reuse.py` 仍独占会话连接；handler 的队列、权限和生命周期尚未改成共享路由，不自动启用多会话共享 |
 | Cursor SDK | 当前 SDK 的同一 AsyncClient 提供多个 agent，发送／停止和关闭均有 agent/run ID | 接口有共享 bridge 的基础，当前仍一会话一租约；未做共享 bridge 的真实隔离、审批和回收验收 |
@@ -1095,6 +1095,20 @@ Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多�
 
 设置 → 执行引擎的「在选择列表中显示」开关仅影响选择列表。Codex CLI 与 Claude Code CLI 默认关闭，其他引擎默认开启；显式设置保存在 `engine_visibility`。关闭不会删除适配器、清除配置或禁止已有任务步骤和会话继续执行。引擎目录返回 `enabled`，所有选择入口应过滤 `enabled: false`，同时保留既有选择值及其配置元数据。
 
+## 账户额度统一接口
+
+账户额度是 `BaseLLMEngine` 的可选能力，与 ACP 会话用量分开。默认 `SUPPORTS_QUOTA=False`；有可靠数据源的引擎声明 `True` 并实现 `async get_quota(cwd="") -> dict | None`。HTTP、原生 SDK/CLI、脚本调用、认证和原生数据转换均归该引擎；公共层及前端不按引擎 ID 分支，不发送模型提示词猜测额度。
+
+`engines/core/quota.py` 定义 `EngineQuota`、窗口／分组／余额模型与 `query_quota`。快照支持 primary/secondary、多个 groups.windows、credits、individual_limit 和 collected_at（Unix 秒）。百分比保留小数，提供 used_percent 或 remaining_percent 即可补齐另一项；缺少 primary 时从分组／secondary 取最低剩余额度。credits.balance 保留原始十进制字符串，可带 unit；未知余额不补 0。原生缓存／脚本快照需携带其真实 collected_at，不能把读取时间冒充采集时间。完整字段以模型为准。
+
+`GET /api/engine/{id}/quota` 保留宿主／项目范围授权，通过统一查询返回 `supported/status/quota`：unsupported、ok、unauthenticated、unavailable。支持的引擎返回 None、超时、错误或畸形数据均为 unavailable；需登录时抛 `QuotaAuthenticationRequired`。公共查询默认限时 20 秒，传播调用方取消，不返回原始异常及未知字段。引擎使用异步 I/O，负责在取消／超时时回收自有客户端和进程。
+
+现有 Codex SDK 和 Antigravity 分别在其引擎内调用原生额度接口／命令。其余引擎未实现可靠采集时保持不支持。Web 复用按宿主／项目／引擎隔离的短时缓存和请求合并；手动刷新绕过缓存，不缓存临时失败；不支持或无有效数据时隐藏额度入口。余额单独存在也可展示。
+
+额度性能保护由 `services/engine_quota.py::QuotaRequests` 管理：授权后按项目／引擎合并并发查询，全宿主同时最多 2 项采集、最多 32 个不同查询键，排队与查询总预算 25 秒（超时后的自有资源清理仍须完成）。额度失败不阻塞聊天；前端沿用短时缓存，无固定轮询。注册扫描、SDK import／初始化及报告解析在线程运行；取消扫描时等其退出后再释放额度并发槽，避免反复刷新堆积线程。Codex 独立额度客户端等待原生启动线程后复用现有进程树／读取线程回收；Antigravity stdout 最多 256 KiB，stderr 丢弃，超限终止自有子进程。慢初始化、并发合并／上限、取消清理及超长报告回归见 `test_engine_quota_io.py`。
+
+自定义引擎 `describe` 导出 supports_quota，代理通过独立短生命周期 worker 调用 get_quota，包含脚本采集，无需在宿主导入用户代码。旧包缺少声明保持不支持；新增声明后重新 inspect/validate/register。接口与测试要求见自定义引擎契约。
+
 ## 用户自定义引擎（接口 v1）
 
 设置 → 执行引擎 → 自定义接入会创建一个普通项目对话，预填接入提示词，由 `workstep-cli` 引导按需阅读规范，不加载独立技能。草稿默认在 `$WORKSTEP_CONFIG_DIR/runtime/engine-workspaces/<id>`；有容器项目根目录限制时草稿在允许的项目根目录 `workstep-engine-workspaces/<id>`。正式注册目录统一是 `$WORKSTEP_CONFIG_DIR/runtime/engines/<engine-id>`，不写应用安装目录，因此桌面应用升级与只读源码打包不影响用户引擎。
@@ -1159,3 +1173,14 @@ ACP 原生引擎（如 Hermes）声明 `COMMAND` 即可复用基类协议实现�
 Pydantic AI 的关键不变量：固定挂载 harness `Coder` 与项目 Skills 白名单镜像；项目记忆仅使用 `.workstep/MEMORY.md`；思考强度通过 `Thinking(effort=...)` 传递；上下文压缩、会话恢复与同会话检索统一使用 `TieredCompaction`、`WarnNearLimits`、`StepPersistence`、`ConversationSearch`，持久化到 `.workstep/harness_runs.db`。单次 run 的 `request_limit` 固定为 100，工具参数重试为 3；Coder shell 只能从项目根执行白名单命令，不允许用 `cd/bash/sh` 绕过。Planning 工具写入固定 `InMemoryPlanStore`，引擎发布去重后的标准 ACP `plan` 快照，并通过 `engines/core/plans.py` 归一状态。更具体的 Harness 行为以 `engines/pydantic_ai/` 及 `tests/test_pydantic_ai_harness.py` 为准。
 
 事件边界的权威来源为 `apps/daemon/engines/core/events.py`、`engines/core/agui.py` 和前端 `src/utils/agui.ts`：引擎内部使用 ACP 对齐内容事件并保留必要的编排事件；未知 ACP update 通过 `acp_raw` 透传，旧 `events_json` 经 `map_legacy_event` 兼容。WebSocket 实时推送与历史回放必须共用 AG-UI 翻译层；前端所有 store 只消费 AG-UI，A2UI 使用 `CUSTOM{name:"a2ui.surface"}`，Markdown fence 仅作为旧消息回退。
+
+### Antigravity 本机认证与模型目录
+
+官方 [`agy acp`](https://antigravity.google/docs/cli/acp) 复用 CLI 缓存的认证与用户设置；按[认证文档](https://antigravity.google/docs/install/)由 CLI 自行访问系统钥匙串，WorkStep 不读取 IDE 数据库或复制 token。`AntigravityEngine` 继承公共 ACP 事件、连接池、模型选项读取与审批。版本探测有超时，`RuntimePackage("antigravity-cli", "native")` 接入统一 runtime 任务，按官方平台清单下载、SHA-512 校验与暂存验证后原子安装到 WorkStep 的 `runtime/native/antigravity/`；不运行全局安装器或改 PATH，不预装 CLI、不声明原生分叉。账号未登录时通过连接测试或模型刷新呈现原生认证错误，需要在托管目录的完整 `agy` 路径完成一次登录。继承公共池的同会话复用、停止和过期恢复通过受控 ACP 子进程验证；未冒充真实 CLI 登录验收。
+
+Antigravity 权限由适配器的原生 `permission_mode` 控制：`default` 沿用 CLI 规则，`auto` 由原生引擎判断安全编辑和命令，`accept-edits` 自动批准工作区编辑；三者仍把需要审批的操作交给用户。`plan` 接入既有聊天计划开关，不在权限菜单或设置页重复提供；打开时覆盖本轮权限并移除免审批标志，关闭后恢复选定权限（显式旧 plan 配置回到 default）。计划模式是先规划再执行的原生行为，不承诺强制只读。每轮新建、复用、恢复会话后，`_configure_session_mode` 通过 `session/set_config_option(mode)` 设置真实模式，失败时不发送提示词；CLI 全局 `--mode` 在实测 ACP 会话中不会生效。`bypassPermissions` 传递官方 `--dangerously-skip-permissions`，设置页保存需确认，并自动通过对应 ACP 工具请求。步骤覆盖优先于会话覆盖和引擎默认，运行后清理临时覆盖；仅全权限自动批准审批桥请求。公共 ACP 模型／命令发现和短连接在执行器内读取本机配置。官方 CLI 1.5.16 已验证同一会话内 auto→accept-edits→plan→default→accept-edits 的配置回执，无模型请求；受控子进程验证续轮、恢复和模式拒绝时停止。
+
+
+Antigravity 账户额度通过独立 `agy -p /usage` 原生命令查询（非模型请求，非当前轮 token 用量），保留每个模型分组的周／5小时限额及重置时间。CLI 报告结构变化、未登录或超时返回不可用，不猜测余额；额度子进程无绕过审批参数，继承本机官方登录，取消和超时只回收自有进程。`groups` 扩展已有 quota 响应，旧引擎 primary／secondary 展示保持原逻辑。
+
+恢复 ACP 会话时 `session/load` 可能重放完整历史。声明 `DROP_REPLAYED_HISTORY_ON_RESUME` 的引擎由公共池在恢复开始至新 prompt 发出前屏蔽历史内容型通知，状态通知照常保留；RPC 分发的异步通知任务在新 prompt 前完成一次就绪回调调度，避免恢复响应先返回造成旧正文漏出。真正新轮中的相同文本必须保留；既存消息不自动改写。

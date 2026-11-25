@@ -32,7 +32,7 @@ test('worktree delete button confirms, recovers from errors and refreshes after 
     assert.match(dialog.textContent!, /未提交内容/)
     gitApi.deleteWorktree = async id => ({ deleted: id })
     await act(async () => dialog.querySelector<HTMLButtonElement>('.btn-danger')!.click())
-    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
     assert.deepEqual(selections, ['deleted'])
     assert.equal(scans, 1)
   } finally {
@@ -69,7 +69,7 @@ test('missing worktree cleanup uses its recorded head without querying the missi
     await act(async () => container.querySelector<HTMLButtonElement>('.git-tree-delete')!.click())
     await act(async () => document.querySelector<HTMLButtonElement>('[role="dialog"] .btn-danger')!.click())
     assert.equal(deleted, true)
-    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
   } finally {
     await act(async () => root.unmount())
     gitApi.status = originalStatus

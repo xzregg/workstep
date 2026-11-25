@@ -71,3 +71,14 @@ test('slow requests identify the endpoint, method, response and duration', () =>
   diagnostics.recordSlowRequest('/engine/execution/config?token=private', 3302, 'GET', 200)
   assert.equal(diagnostics.snapshot()[0].detail, '慢请求 GET /engine/execution/config HTTP 200 3302ms')
 })
+
+
+test('digital person and speech request paths stay identifiable in log snapshots', () => {
+  const diagnostics = createBrowserDiagnostics()
+  diagnostics.recordSlowRequest('/digital-person/activity/records?run_offset=0', 9803, 'GET', 200)
+  diagnostics.recordRequestFailure('/speech-output/sessions/private-session/next?token=private', 'POST', 500)
+  assert.deepEqual(diagnostics.snapshot().map(log => log.detail), [
+    '慢请求 GET /digital-person/activity/records HTTP 200 9803ms',
+    'POST /speech-output/sessions/:id/next HTTP 500',
+  ])
+})

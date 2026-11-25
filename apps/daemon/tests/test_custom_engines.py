@@ -105,6 +105,90 @@ async def test_worker_stream_config_and_stop(custom_environment):
 
 
 @pytest.mark.asyncio
+async def test_custom_quota_script_runs_in_worker_and_returns_common_snapshot(custom_environment):
+    from services.custom_engines import custom_engine_manager as manager
+    from engines.core.custom_proxy import make_custom_engine
+    from engines.core.quota import query_quota
+    path = custom_environment / 'engine.py'
+    path.write_text(path.read_text() + '''
+    SUPPORTS_QUOTA = True
+    async def get_quota(self, cwd=""):
+        import asyncio, sys, json
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, '-c', 'import json; print(json.dumps({"credits": {"balance": "12.5", "unit": "USD"}}))',
+            cwd=cwd, stdout=asyncio.subprocess.PIPE)
+        output, _ = await process.communicate()
+        return json.loads(output)
+''')
+    info = (await manager.inspect(str(custom_environment)))['engine']
+    assert info['properties']['supports_quota'] is True
+    engine = make_custom_engine(custom_environment, info)()
+    chat_worker = object()
+    engine._worker = chat_worker
+    result = await query_quota(engine, str(custom_environment))
+    assert result['status'] == 'ok', result
+    assert result['quota']['credits']['balance'] == '12.5'
+    assert result['quota']['credits']['unit'] == 'USD'
+    assert engine._worker is chat_worker
+    engine._worker = None
+
+
+@pytest.mark.asyncio
+async def test_custom_quota_authentication_error_is_redacted(custom_environment):
+    from services.custom_engines import custom_engine_manager as manager
+    from engines.core.custom_proxy import make_custom_engine
+    from engines.core.quota import query_quota
+    path = custom_environment / 'engine.py'
+    path.write_text(path.read_text() + '''
+    SUPPORTS_QUOTA = True
+    async def get_quota(self, cwd=""):
+        from engines.core.quota import QuotaAuthenticationRequired
+        raise QuotaAuthenticationRequired("secret token")
+''')
+    info = (await manager.inspect(str(custom_environment)))['engine']
+    engine = make_custom_engine(custom_environment, info)()
+    result = await query_quota(engine, str(custom_environment))
+    assert result['status'] == 'unauthenticated'
+    assert 'secret' not in str(result)
+    assert engine._worker is None
+
+
+@pytest.mark.asyncio
+async def test_custom_quota_cancellation_during_worker_launch_reaps_process(custom_environment, monkeypatch):
+    from services.custom_engines import custom_engine_manager as manager
+    from engines.core.custom_proxy import make_custom_engine
+    from engines.core.custom_transport import CustomWorkerClient
+    from engines.core.quota import query_quota
+    path = custom_environment / 'engine.py'
+    path.write_text(path.read_text() + '''
+    SUPPORTS_QUOTA = True
+    async def get_quota(self, cwd=""):
+        return {"primary": {"remaining_percent": 75}}
+''')
+    info = (await manager.inspect(str(custom_environment)))['engine']
+    engine = make_custom_engine(custom_environment, info)()
+    original = CustomWorkerClient.start
+    created, finish = asyncio.Event(), asyncio.Event()
+    processes = []
+    async def start(client):
+        await original(client)
+        processes.append(client.process)
+        created.set()
+        await finish.wait()
+    monkeypatch.setattr(CustomWorkerClient, 'start', start)
+    task = asyncio.create_task(query_quota(engine, str(custom_environment)))
+    await asyncio.wait_for(created.wait(), 5)
+    task.cancel()
+    await asyncio.sleep(0)
+    task.cancel()
+    finish.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert processes[0].returncode is not None
+    assert engine._worker is None
+
+
+@pytest.mark.asyncio
 async def test_custom_config_schema_and_saved_values_reach_worker(custom_environment):
     from services.custom_engines import custom_engine_manager as manager
     from engines.core.custom_proxy import make_custom_engine

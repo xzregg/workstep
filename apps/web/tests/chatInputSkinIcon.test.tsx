@@ -21,7 +21,7 @@ test('icon preview changes the real shared input while send and stop retain thei
   await act(async()=>previewSkin({...defaultSkin(),manifest:{...defaultSkin().manifest,id:'send-test'},layout:{composerSendIcon:rocket},mobile:{layout:{composerSendIcon:'arrow-right'}}}))
   assert.ok(document.querySelector(`.chat-input-send path[d="${rocket.paths[0]}"]`))
   await act(async()=>document.querySelector<HTMLButtonElement>('.chat-input-send')!.click()); assert.equal(sent,1)
-  await act(async()=>render(true)); assert.ok(document.querySelector('.chat-input-stop-glyph')); assert.equal(document.querySelector('.chat-input-send svg'),null)
+  await act(async()=>render(true)); assert.ok(document.querySelector('.chat-input-stop-glyph')); assert.ok(document.querySelector('.chat-input-send svg') === null)
   await act(async()=>document.querySelector<HTMLButtonElement>('.chat-input-send')!.click()); assert.equal(stopped,1)
   await act(async()=>render(true,true)); assert.ok(document.querySelector('.chat-input-send .task-status-spinner'))
   await act(async()=>{cancelSkinPreview(); render()}); assert.ok(document.querySelector('.chat-input-send svg path[d="M22 2 11 13"]'))

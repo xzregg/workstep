@@ -5,6 +5,7 @@ import {build} from 'vite'
 import {chromium} from '../../desktop/node_modules/playwright-core/index.mjs'
 const byId=process.argv.includes('--conversation-by-id')
 const workbench=process.argv.includes('--workbench-ui-actions')
+const avatarMotionOnly=process.argv.includes('--avatar-motion-only')
 const root=path.resolve(import.meta.dirname,'..'),artifacts=path.resolve(root,workbench?'../../tmp/digital-person-workbench-ui':byId?'../../tmp/digital-person-conversation-by-id':'../../tmp/digital-person-home'),out=path.join(artifacts,'browser')
 await fs.mkdir(artifacts,{recursive:true})
 await build({root,logLevel:'error',publicDir:false,build:{outDir:out,emptyOutDir:true,rolldownOptions:{input:path.join(root,'tests/fixtures/digital-person-home/index.html')}}})
@@ -13,7 +14,7 @@ const browser=await chromium.launch({executablePath:'/Applications/Google Chrome
 const results=[]
 const conversationOnly=byId||process.argv.includes('--conversation-only')
 try{
- for(const [width,height]of [[320,568],[320,700],[390,844],[1023,900],[1024,900],[1440,1024]]){
+ for(const [width,height]of [[320,568],[320,700],[388,510],[390,844],[1023,900],[1024,900],[1440,1024]]){
   const page=await browser.newPage({viewport:{width,height}}),errors=[]
   if(workbench)page.setDefaultTimeout(8000)
   const conversationRequests=[]
@@ -26,6 +27,7 @@ try{
    if(url.pathname==='/api/digital-person/affect')return route.fulfill({status:503,json:{detail:'Simulated unavailable relationship'}})
    if(workbench&&url.pathname==='/api/digital-person')return route.fulfill({json:{enabled:true,name:'小研'}})
    if(workbench&&url.pathname==='/api/digital-person/activity')return route.fulfill({json:{main_session_id:'main',delegations:[],runs:[],feedback:{}}})
+   if(avatarMotionOnly&&url.pathname==='/api/chat-sessions/worker')return route.fulfill({json:{id:'worker',project_id:'demo',title:'构建检查',engine:'pydantic_ai',messages:[{id:'worker-message',role:'assistant',status:'succeeded',content:'模拟委派执行记录。'}]}})
    if(workbench&&url.pathname==='/api/chat-sessions/main')return route.fulfill({json:{id:'main',project_id:'demo',title:'数字中枢对话',engine:'pydantic_ai',message_count:1,messages:[{id:'old',role:'assistant',status:'succeeded',content:['```workstep-ui','{"action":"conversation.open","project_id":"p","session_id":"preview"}','```'].join('\n')}]}})
    if(workbench&&url.pathname==='/api/chat-sessions/main/chat'){
     turns++
@@ -99,7 +101,77 @@ try{
    if(errors.length)throw new Error(errors.join('\n'))
    throw error
   })
+  if(avatarMotionOnly){
+   const presence=page.locator('.digital-presence-particles')
+   await presence.locator('xpath=self::*[@data-frame]').waitFor()
+   const checkMotion=async(label)=>{
+    await page.waitForTimeout(200)
+    const frame=await presence.getAttribute('data-frame')
+    if(width>1023)await page.waitForFunction(frame=>document.querySelector('.digital-presence-particles')?.dataset.frame!==frame,frame,{timeout:5000})
+    else{await page.waitForTimeout(180);assert.equal(await presence.getAttribute('data-frame'),frame,label)}
+   }
+   await page.locator('.digital-home-dock-transcript').click()
+   await page.locator('.home-fixture-transcript').waitFor()
+   await checkMotion('mobile transcript keeps the hidden avatar paused')
+   await page.screenshot({path:path.join(artifacts,`avatar-transcript-${width}-${height}.png`)})
+   await page.locator('.digital-home-chat header').getByRole('button',{name:'关闭',exact:true}).click()
+   if(width>1023){
+    await page.locator('.digital-home-work-summary').first().click()
+    const delegation=page.getByRole('dialog',{name:'构建检查'})
+    await delegation.getByText('模拟委派执行记录。',{exact:true}).waitFor()
+    await checkMotion('visible desktop avatar keeps animating in delegated history')
+    await page.screenshot({path:path.join(artifacts,`avatar-delegation-${width}-${height}.png`)})
+    await delegation.locator('header').getByRole('button',{name:'关闭',exact:true}).click()
+   }
+   await page.evaluate(()=>window.homeFixture.uiAction('motion-open',{action:'conversation.open',project_id:'p',session_id:'preview'}))
+   const conversation=page.getByRole('dialog',{name:'发布复盘'})
+   await conversation.getByText('这是一段用于验收的模拟对话。').waitFor()
+   await checkMotion('mobile conversation keeps the covered avatar paused')
+   await page.screenshot({path:path.join(artifacts,`avatar-conversation-${width}-${height}.png`)})
+   assert.deepEqual(errors,[])
+   results.push({width,height,desktopAvatarAnimated:width>1023,mobileAvatarPaused:width<=1023});await page.close();continue
+  }
   const dock=await page.locator('.digital-home-voice-dock').boundingBox()
+  const dockButtons=page.locator('.digital-home-voice-dock > button, .digital-home-voice-dock [data-camera-toggle]')
+  const buttonBoxes=await dockButtons.evaluateAll(buttons=>buttons.map(button=>{
+   const box=button.getBoundingClientRect(),icon=button.querySelector('svg').getBoundingClientRect()
+   return {x:box.x,y:box.y,width:box.width,height:box.height,iconWidth:icon.width,iconHeight:icon.height,
+    reachable:button.contains(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2))}
+  }))
+  assert.equal(buttonBoxes.length,5)
+  assert.equal(await page.locator('.digital-home-keyboard').count(),1)
+  for(const [index,box]of buttonBoxes.entries()){
+   assert.ok(box.width>=44&&box.height>=44&&box.iconWidth===24&&box.iconHeight===24,`${width}: touch target and icon keep their sizes`)
+   assert.ok(box.reachable,`${width}: button ${index} is reachable`)
+   assert.ok(box.x>=dock.x&&box.x+box.width<=dock.x+dock.width&&box.y>=0&&box.y+box.height<=height,`${width}: button ${index} fits`)
+   if(index){
+    const gap=box.x-buttonBoxes[index-1].x-buttonBoxes[index-1].width
+    assert.ok(width<=1023?gap>=8:Math.abs(gap-24)<1,`${width}: original button spacing is restored`)
+    if(index>1)assert.ok(Math.abs(gap-(buttonBoxes[1].x-buttonBoxes[0].x-buttonBoxes[0].width))<1,`${width}: buttons remain evenly distributed`)
+   }
+  }
+  if(width<=1023){
+   const footerWidth=await page.locator('.digital-home-footer').evaluate(el=>el.clientWidth-parseFloat(getComputedStyle(el).paddingLeft)-parseFloat(getComputedStyle(el).paddingRight))
+   assert.ok(Math.abs(dock.width-Math.min(footerWidth,360))<1,`${width}: mobile dock spans the original available width`)
+  }
+  assert.ok(Math.abs(height-dock.y-dock.height-(width<=1023?28:32))<1,`${width}: dock bottom distance is halved`)
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false)
+  const clipAudit=await fs.readFile(path.resolve(root,'../../.agents/skills/desktop-agent-ui/scripts/clip-audit.js'),'utf8')
+  const footerClip=await page.evaluate(`(${clipAudit})({root:'.digital-home-footer',viewport:true})`)
+  assert.equal(footerClip.cut,0,`${width}: footer shadows remain inside the viewport`)
+  await page.screenshot({path:path.join(artifacts,`home-five-buttons-${width}-${height}.png`)})
+  if(width===390){
+   const cdp=await page.context().newCDPSession(page)
+   await cdp.send('Emulation.setSafeAreaInsetsOverride',{insets:{bottom:34}})
+   const safeDock=await page.locator('.digital-home-voice-dock').boundingBox()
+   assert.ok(Math.abs(height-safeDock.y-safeDock.height-41)<1,'82px baseline with a 34px safe area is halved to 41px')
+   await page.screenshot({path:path.join(artifacts,'home-five-buttons-safe-area-390.png')})
+   await cdp.send('Emulation.setSafeAreaInsetsOverride',{insets:{bottom:80}})
+   const largeSafeDock=await page.locator('.digital-home-voice-dock').boundingBox()
+   assert.ok(height-largeSafeDock.y-largeSafeDock.height>=80,'large system gesture areas remain fully protected')
+   await cdp.send('Emulation.setSafeAreaInsetsOverride',{insets:{bottom:0}})
+   await cdp.detach()
+  }
   const target=byId?{project_id:'p',session_id:'preview'}:{project:'视频功能项目',title:'发布复盘'}
   await page.evaluate(target=>window.homeFixture.uiAction('fixture-open',{action:'conversation.open',...target}),target)
   const conversation=page.getByRole('dialog',{name:'发布复盘'})
@@ -107,6 +179,13 @@ try{
    throw new Error(`${error.message}\n${errors.join('\n')}\n${await page.locator('body').innerText()}`)
   })
   await conversation.evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished))})
+  assert.equal(await page.locator('.digital-home-caption-frame').count(),0,'covered transcript must not keep a second message tree mounted')
+  const presence=page.locator('.digital-presence-particles')
+  await page.waitForTimeout(100)
+  const pausedFrame=await presence.getAttribute('data-frame')
+  await page.waitForTimeout(150)
+  if(width<=1023)assert.equal(await presence.getAttribute('data-frame'),pausedFrame,'mobile conversation pauses the covered background canvas')
+  else await page.waitForFunction(previous=>document.querySelector('.digital-presence-particles')?.dataset.frame!==previous,pausedFrame)
   if(byId)assert.deepEqual(conversationRequests,['p'],'opening by ID uses only the authorized first page')
   const panelBox=await conversation.boundingBox()
   assert.ok(panelBox.x>=0&&panelBox.y>=0&&panelBox.x+panelBox.width<=width&&panelBox.y+panelBox.height<=dock.y+1)
@@ -117,6 +196,8 @@ try{
   await page.screenshot({path:path.join(artifacts,`home-conversation-${width}-${height}.png`)})
   await page.evaluate(()=>window.homeFixture.uiAction('fixture-close',{action:'window.close'}))
   await page.locator('.digital-person-conversation-layer').waitFor({state:'detached'})
+  await page.locator('.digital-home-caption-frame').waitFor()
+  await page.waitForFunction(previous=>document.querySelector('.digital-presence-particles')?.dataset.frame!==previous,pausedFrame)
   const animations=await page.evaluate(()=>window.conversationAnimations)
   assert.equal(animations.length,2)
   assert.match(animations[0][0].transform,/translate\(.+\) scale\(\.18\)/)
@@ -140,6 +221,25 @@ try{
     assert.equal(await page.locator('.digital-person-conversation-layer').count(),0)
    }
    await page.screenshot({path:path.join(artifacts,'home-conversation-missing-'+width+'.png')})
+  }
+  if(conversationOnly){
+   await page.locator('.digital-home-keyboard').click()
+   const composer=page.locator('.digital-home-composer-dialog')
+   await composer.locator('textarea').fill('检查数字中枢输入是否顺畅')
+   assert.equal(await page.locator('.digital-home-keyboard').getAttribute('aria-expanded'),'true')
+   const inputBox=await composer.boundingBox()
+   assert.ok(inputBox.x>=0&&inputBox.y>=0&&inputBox.x+inputBox.width<=width&&inputBox.y+inputBox.height<=height)
+   await page.waitForTimeout(100)
+   const frame=await presence.getAttribute('data-frame')
+   await page.evaluate(()=>window.homeFixture.speaking(true,.7))
+   await page.waitForTimeout(150)
+   if(width<=1023)assert.equal(await presence.getAttribute('data-frame'),frame,'typing pauses the background canvas')
+   await page.screenshot({path:path.join(artifacts,`home-keyboard-${width}-${height}.png`)})
+   await page.evaluate(()=>window.homeFixture.speaking(false))
+   await composer.getByRole('button',{name:'关闭',exact:true}).click()
+   assert.equal(await page.locator('.digital-home-keyboard').getAttribute('aria-expanded'),'false')
+   assert.equal(await page.locator('.digital-home-keyboard').evaluate(el=>el===document.activeElement),true)
+   await page.waitForFunction(()=>document.querySelector('.digital-presence-particles')?.dataset.motion==='animated')
   }
   if(conversationOnly){
    assert.deepEqual(errors,[])
@@ -166,8 +266,8 @@ try{
    const style=getComputedStyle(button)
    return {width:box.width,height:box.height,iconWidth:icon.width,iconHeight:icon.height,radius:style.borderRadius,border:style.borderWidth}
   }))
-  assert.equal(sizes.length,4)
-  for(const size of sizes)assert.deepEqual(size,sizes[0],`${width}: four media buttons and icons have equal sizes`)
+  assert.equal(sizes.length,5)
+  for(const size of sizes)assert.deepEqual(size,sizes[0],`${width}: five dock buttons and icons have equal sizes`)
   if(width<=1023){
    assert.equal(await page.locator('[data-camera-toggle]').evaluate(el=>getComputedStyle(el).backgroundColor),await page.locator('.digital-home-speaker').evaluate(el=>getComputedStyle(el).backgroundColor))
    const back=await page.locator('.digital-home-back').boundingBox(),settings=await page.locator('.digital-home-settings').boundingBox()
@@ -175,10 +275,10 @@ try{
    const buttons=await page.locator('.digital-home-voice-dock > button:visible, .digital-home-voice-dock [data-camera-toggle]').all()
    const boxes=await Promise.all(buttons.map(button=>button.boundingBox()))
    const ordered=boxes.sort((a,b)=>a.x-b.x)
-   assert.equal(ordered.length,4)
+   assert.equal(ordered.length,5)
    for(let i=0;i<ordered.length;i++){
     assert.ok(ordered[i].x>=dock.x&&ordered[i].x+ordered[i].width<=dock.x+dock.width,`${width}: controls fit dock`)
-    if(i)assert.ok(ordered[i].x>=ordered[i-1].x+ordered[i-1].width+7,`${width}: controls do not overlap`)
+    if(i)assert.ok(ordered[i].x>=ordered[i-1].x+ordered[i-1].width+3,`${width}: controls do not overlap`)
    }
    const stage=await page.locator('.digital-home-stage').boundingBox(),subtitles=await page.locator('.digital-home-subtitles').boundingBox(),footer=await page.locator('.digital-home-footer').boundingBox()
    assert.ok(stage.y+stage.height<=subtitles.y+1&&subtitles.y+subtitles.height<=footer.y+1,`${width}x${height}: avatar, long reply and footer do not overlap`)
@@ -204,7 +304,7 @@ try{
    const contentLeft=await page.locator('.digital-home-main').evaluate(element=>element.getBoundingClientRect().x+parseFloat(getComputedStyle(element).paddingLeft))
    const messageLeft=await page.locator('.digital-home-subtitles').evaluate(element=>element.getBoundingClientRect().x+parseFloat(getComputedStyle(element).paddingLeft))
    assert.ok(Math.abs(messageLeft-contentLeft)<=1,`${width}: captions align with content`)
-   if(width<=400)assert.ok(Math.abs(messageLeft-dock.x)<=1,`${width}: phone captions and dock share a left edge`)
+   if(width<=400)assert.ok(Math.abs(dock.x+dock.width/2-width/2)<=1,`${width}: compact phone dock stays centered`)
 
    assert.ok(identity.x>width/2&&identity.y>=header.y&&identity.y+identity.height<=header.y+header.height,`${width}: compact identity at top right`)
    const stageBox=await page.locator('.digital-home-stage').boundingBox(),historyBox=await page.locator('.digital-home-subtitles').boundingBox()
@@ -307,4 +407,4 @@ try{
   await page.close()
  }
 }finally{await browser.close()}
-await fs.writeFile(path.join(artifacts,conversationOnly?'conversation-results.json':'results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results))
+await fs.writeFile(path.join(artifacts,avatarMotionOnly?'avatar-motion-results.json':conversationOnly?'conversation-results.json':'results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results))

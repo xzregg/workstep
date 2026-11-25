@@ -22,7 +22,7 @@ test('old APK root task URL rechecks its source and redeems into that device',as
  render(<MemoryRouter initialEntries={['/tasks?project=gateway%2Fdevice%2Fhost-project&task=task']}><LegacyCompletionDestinationPage/></MemoryRouter>)
  await waitFor(()=>assert.equal(action,'https://gateway.test/workspace/device/api/remote/redeem'))
  assert.equal(next,'tasks?project=Demo&task=task')
- assert.equal(document.querySelector('iframe'),null)
+ assert.ok(document.querySelector('iframe') === null)
 })
 test('offline Android notification target remains retryable',async()=>{
  globalThis.fetch=async()=>new Response(null,{status:409})

@@ -49,3 +49,35 @@ test('engine diagnostics keep fixed endpoint names and built-in engine names', (
   assert.equal(diagnosticRoute('/engine/codex_sdk/quota'), '/engine/codex_sdk/quota')
   assert.equal(diagnosticRoute('/engine/private-engine/runtime/operation'), '/engine/:id/runtime/operation')
 })
+
+
+test('non-engine request paths retain feature and operation names', () => {
+  for (const path of ['/digital-person/activity/records', '/digital-person/voice-wake/audio', '/speech-output/sessions/private-session/next', '/api/digital-person/memory/atlas/private-knowledge']) {
+    const expected = path.replace(/private-[^/]+/g, ':id')
+    assert.equal(diagnosticRoute(path + '?token=private'), expected)
+  }
+})
+
+
+test('every declared API route retains its fixed segments through report export', () => {
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const { buildReport } = require('../src/runtime-diagnostics.js')
+  const apiRoot = path.resolve(__dirname, '../../daemon/api')
+  let checked = 0
+  for (const entry of fs.readdirSync(apiRoot, { recursive: true })) {
+    if (!entry.endsWith('.py')) continue
+    const source = fs.readFileSync(path.join(apiRoot, entry), 'utf8')
+    const declarations = /(?:prefix\s*=\s*|@\w+\.(?:get|post|put|patch|delete|head|options|websocket)\(\s*)["']([^"']*)["']/g
+    for (const [, route] of source.matchAll(declarations)) {
+      for (const segment of route.split('/').filter(segment => /^[a-zA-Z0-9_-]+$/.test(segment))) {
+        assert.equal(diagnosticRoute('/' + segment), '/' + segment, `${entry}: fixed route segment ${segment}`)
+        const summary = `GET /${segment} HTTP 200`
+        const report = JSON.parse(buildReport({}, null, [{ at: 0, source: 'request', level: 'info', summary }]))
+        assert.equal(report.logs[0].summary, summary, `${entry}: exported route segment ${segment}`)
+        checked++
+      }
+    }
+  }
+  assert.ok(checked > 500, 'must inspect the real API declarations')
+})

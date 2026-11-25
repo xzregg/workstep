@@ -14,10 +14,10 @@ test('relationship shows metrics and latest change without folding or technical 
  try{
   await act(async()=>root.render(<MemoryRouter><I18nProvider><RelationshipReadout state={state}/></I18nProvider></MemoryRouter>))
   assert.match(host.textContent!,/63/);assert.match(host.textContent!,/开心/)
-  assert.equal(host.querySelector('details,summary,input,textarea,select'),null)
+  assert.ok(host.querySelector('details,summary,input,textarea,select') === null)
   assert.doesNotMatch(host.textContent!,/只读|随相处积累/)
   assert.match(host.querySelector('.digital-affect-recent')!.textContent!,/一起解决了问题/)
-  assert.equal(host.querySelector('.digital-affect-detail'),null)
+  assert.ok(host.querySelector('.digital-affect-detail') === null)
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-affect-recent button')!.click())
   assert.ok(host.querySelector('.digital-affect-detail time'))
   assert.match(host.textContent!,/62 → 63/)

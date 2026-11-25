@@ -29,9 +29,9 @@ test('scan-only login hides password and registration and never displays tenant 
  mount()
  await screen.findByRole('button',{name:'钉钉扫码登录'})
  assert.ok(screen.getByRole('button',{name:'企业微信扫码登录'}))
- assert.equal(screen.queryByLabelText('用户名'),null)
- assert.equal(screen.queryByLabelText('密码'),null)
- assert.equal(screen.queryByRole('button',{name:'注册账号'}),null)
+ assert.ok(screen.queryByLabelText('用户名') === null)
+ assert.ok(screen.queryByLabelText('密码') === null)
+ assert.ok(screen.queryByRole('button', { name: '注册账号' }) === null)
  assert.equal(document.body.textContent?.includes('5055796336'),false)
  assert.equal(document.body.textContent?.includes('private-corp'),false)
  assert.equal(document.querySelectorAll('.gateway-identity-icon').length,2)
@@ -49,12 +49,12 @@ test('desktop authentication and centralized workbench login respect scan-only p
  const query='gateway_id=gateway-test&app_instance_id=app-test&state='+'s'.repeat(32)+'&nonce='+'n'.repeat(32)+'&code_challenge='+'A'.repeat(43)
  render(<MemoryRouter initialEntries={['/desktop/login?'+query]}><DesktopLoginPage/></MemoryRouter>)
  await screen.findByRole('button',{name:'钉钉扫码登录'})
- assert.equal(screen.queryByLabelText('用户名'),null)
+ assert.ok(screen.queryByLabelText('用户名') === null)
  assert.equal(document.body.textContent?.includes('private-123'),false)
  cleanup()
  render(<MemoryRouter><Routes><Route path="/" element={<ProjectsPage/>}/><Route path="/auth" element={<PortalAuthPage/>}/></Routes></MemoryRouter>)
  await screen.findByRole('button',{name:'钉钉扫码登录'})
- assert.equal(screen.queryByLabelText('用户名'),null)
+ assert.ok(screen.queryByLabelText('用户名') === null)
 })
 
 function mockPortal(mode = 'open', register: (init?: RequestInit) => Promise<Response> = async () => Response.json({}, { status: 201 })) {
@@ -120,14 +120,14 @@ test('approval registration explains the pending state and does not enter the wo
   assert.ok(screen.getByText('提交后需等待管理员审核。'))
   fireEvent.click(screen.getByRole('button', { name: '注册' }))
   await screen.findByText('账号等待审核')
-  assert.equal(screen.queryByText('已进入我的电脑'), null)
+  assert.ok(screen.queryByText('已进入我的电脑') === null)
   assert.equal(screen.getByRole('link', { name: '返回登录' }).getAttribute('href'), '/auth?next=%2Fdevices')
 })
 
 test('closed registration exposes only the login entry', async () => {
   mockPortal('closed'); mount()
   await screen.findByRole('button', { name: '登录' })
-  assert.equal(screen.queryByRole('button', { name: '注册账号' }), null)
+  assert.ok(screen.queryByRole('button', { name: '注册账号' }) === null)
 })
 
 test('duplicate username has an actionable error and preserves input for retry', async () => {
@@ -179,7 +179,7 @@ test('registration closed after the form opened informs the user and returns to 
   assert.match((await screen.findByRole('alert')).textContent ?? '', /已关闭注册/)
   fireEvent.click(screen.getByRole('button', { name: '返回登录' }))
   await screen.findByRole('button', { name: '登录' })
-  assert.equal(screen.queryByRole('button', { name: '注册账号' }), null)
+  assert.ok(screen.queryByRole('button', { name: '注册账号' }) === null)
 })
 
 test('network errors and rate limits allow retry without clearing the account', async () => {
@@ -211,7 +211,7 @@ test('empty platform shows administrator setup using normal registration', async
  }
  render(<MemoryRouter initialEntries={['/auth']}><Routes><Route path="/auth" element={<PortalAuthPage />} /><Route path="/admin" element={<p>进入管理后台</p>} /></Routes></MemoryRouter>)
  await screen.findByRole('heading', { name: '设置超级管理员' })
- assert.equal(screen.queryByLabelText('恢复账号用户名'), null)
+ assert.ok(screen.queryByLabelText('恢复账号用户名') === null)
  fill(); fireEvent.click(screen.getByRole('button', { name: '注册' }))
  await screen.findByText('进入管理后台')
  assert.equal((submitted as { username: string }).username, 'alice')
@@ -238,5 +238,5 @@ for (const name of ['示例公司', '']) test(`login company subtitle: ${name ||
  await screen.findByRole('button', { name: '登录' })
  assert.equal(document.querySelector('.gateway-auth-company')?.textContent ?? '', name)
  if (name) assert.equal(screen.getByRole('heading', { name: '登录工作台' }).nextElementSibling?.textContent, name)
- else assert.equal(document.querySelector('.gateway-auth-company'), null)
+ else assert.ok(document.querySelector('.gateway-auth-company') === null)
 })

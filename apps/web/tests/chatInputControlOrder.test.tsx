@@ -31,7 +31,7 @@ test('shared composer places model selection immediately before permission selec
     const permission = container.querySelector('[data-kind="permission"]')
     assert.ok(model)
     assert.ok(permission)
-    assert.equal(model.nextElementSibling, permission)
+    assert.ok(model.nextElementSibling === permission)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

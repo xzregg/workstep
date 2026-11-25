@@ -11,11 +11,13 @@ interface Track {
 
 export class PreviewFaceTracking {
  private tracks:Track[]=[]
+ private frameAt=-Infinity
  private similarity:(a:number[],b:number[])=>number
 
  constructor(similarity:(a:number[],b:number[])=>number){this.similarity=similarity}
 
  update(faces:FaceObservation[],at:number,threshold:number){
+  this.frameAt=at
   // Require a unique association in both directions. Faces that cross or
   // leave the picture cannot pass their label or first hit to another box.
   const links=faces.map(face=>this.tracks.filter(track=>faceBoxOverlap(track.face.box,face.box)>=.4))
@@ -35,10 +37,12 @@ export class PreviewFaceTracking {
  }
 
  visible(at:number){
+  if(at-this.frameAt>=holdMs)return []
   return this.tracks.map(({face,accepted,hitAt})=>({...face,person:at-hitAt<holdMs?accepted?.person??null:null}))
  }
 
  nextExpiry(at:number){
-  return Math.min(...this.tracks.flatMap(track=>track.accepted&&track.hitAt+holdMs>at?[track.hitAt+holdMs]:[]))
+  const frameExpiry=this.frameAt+holdMs
+  return Math.min(this.tracks.length&&frameExpiry>at?frameExpiry:Infinity,...this.tracks.flatMap(track=>track.accepted&&track.hitAt+holdMs>at?[track.hitAt+holdMs]:[]))
  }
 }

@@ -373,6 +373,7 @@ class BaseLLMEngine(ABC):
     PERMISSION_POLICY: ClassVar[EnginePermissionPolicy] = EnginePermissionPolicy()
     SKILL_POLICY: ClassVar[EngineSkillPolicy] = EngineSkillPolicy.UNSUPPORTED
     SUPPORTS_MANUAL_COMPACTION: ClassVar[bool] = True
+    SUPPORTS_QUOTA: ClassVar[bool] = False
     SUPPORTS_SERVICE_TIER: ClassVar[bool] = False
     SUPPORTS_HOST_SESSION_IDS: ClassVar[bool] = False
 
@@ -892,6 +893,20 @@ class BaseLLMEngine(ABC):
     @property
     def supports_manual_compaction(self) -> bool:
         return self.SUPPORTS_MANUAL_COMPACTION
+
+    @property
+    def supports_quota(self) -> bool:
+        """Whether this adapter can collect account quota (not context usage)."""
+        return self.SUPPORTS_QUOTA
+
+    async def get_quota(self, cwd: str = "") -> dict | None:
+        """Collect an EngineQuota-shaped snapshot; None means unavailable.
+
+        Override alongside SUPPORTS_QUOTA=True. HTTP, SDK, CLI or script I/O,
+        authentication and subprocess cleanup remain owned by the adapter.
+        Raise QuotaAuthenticationRequired when sign-in is required.
+        """
+        return None
 
     @property
     def supports_service_tier(self) -> bool:

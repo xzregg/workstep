@@ -22,6 +22,73 @@ import {DIGITAL_OUTPUT_FRAME,STOP_DIGITAL_SPEECH} from '../src/components/digita
 import {clearDraft,saveDraft} from '../src/utils/chatDraft'
 const profile={enabled:true,name:'小研',role:'研发伙伴',personality:'直接',duties:'跟进工作',avatar:'robot' as const,greeting:'今天想做什么？'}
 
+test('conversation entry precedes face settings at every width and keeps the existing transcript action',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ useLocaleStore.setState({locale:'zh-CN'})
+ const render=()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonHome profile={profile} activity={null} projectId="p" projectName="p" sessionId="main" messages={[]} inputValue="" onDraft={()=>{}} running={false} active onSend={async()=>true} onStop={async()=>true}><div data-transcript>历史对话</div></DigitalPersonHome></I18nProvider></MemoryRouter>)
+ try{
+  for(const width of [320,390,1023,1024,1440]){
+   window.happyDOM.setWindowSize({width,height:900})
+   await act(async()=>render())
+   const button=host.querySelector<HTMLButtonElement>('.digital-home-dock-transcript')!
+   assert.equal(host.querySelectorAll('.digital-home-dock-transcript').length,1)
+   assert.equal(button.getAttribute('aria-label'),'展开对话')
+   assert.ok(button.closest('.digital-home-header'))
+   assert.ok(button.nextElementSibling?.matches('.digital-home-face-entry'))
+   assert.ok(host.querySelector('.digital-home-input-actions') === null)
+  }
+  window.happyDOM.setWindowSize({width:320,height:900})
+  await act(async()=>render())
+  await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-header .digital-home-dock-transcript')!.click())
+  assert.ok(host.querySelector('[data-transcript]'))
+  await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-chat header button')!.click())
+  assert.ok(host.querySelector('[data-transcript]') === null)
+  assert.ok(host.querySelector('.digital-home-header .digital-home-dock-transcript'))
+ }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
+})
+
+test('pending engine interactions reveal the existing conversation once and ignore answered history',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const request=(id:string)=>({type:'interaction_request',data:{interaction_id:id,method:'session/request_permission',tool_call:{tool_call_id:id,name:'workstep_call'},options:[]}})
+ const render=(events:any[],active=true,running=true)=>root.render(<MemoryRouter><I18nProvider><DigitalPersonHome
+  profile={profile} activity={null} projectId="p" projectName="默认工作区" sessionId="main"
+  messages={[{id:'a',role:'assistant',content:'',status:running?'running':'succeeded',events}]} inputValue="" onDraft={()=>{}}
+  running={running} active={active} onSend={async()=>true} onStop={async()=>true}><div data-transcript>审批对话</div></DigitalPersonHome></I18nProvider></MemoryRouter>)
+ try{
+  const answered=[request('old'),{type:'interaction_response',data:{interaction_id:'old',response:{action:'accept',content:{}}}}]
+  await act(async()=>render(answered))
+  assert.ok(host.querySelector('[data-transcript]') === null)
+  await act(async()=>render([request('pending')],false))
+  assert.ok(host.querySelector('[data-transcript]') === null)
+  await act(async()=>render([request('pending')]))
+  assert.ok(host.querySelector('[data-transcript]'),'authorization is visible without manually expanding chat')
+  await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-chat header button')!.click())
+  await act(async()=>render([request('pending')]))
+  assert.ok(host.querySelector('[data-transcript]') === null, 'a dismissed request does not repeatedly force open')
+  await act(async()=>render([request('next')]))
+  assert.ok(host.querySelector('[data-transcript]'),'a new request becomes visible')
+ }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
+})
+
+test('identity setup greets one current question and preserves legacy greetings',async()=>{
+ const {window}=installDomEnvironment(),root=createRoot(document.body.appendChild(document.createElement('div')))
+ useLocaleStore.setState({locale:'zh-CN'})
+ const render=(identity_setup:any)=>root.render(<MemoryRouter><I18nProvider><DigitalPersonHome
+  profile={{...profile,identity_setup}} activity={null} projectId="p" projectName="默认工作区" sessionId="main" messages={[]}
+  inputValue="" onDraft={()=>{}} running={false} active={false} onSend={async()=>true} onStop={async()=>true}
+ /></I18nProvider></MemoryRouter>)
+ try{
+  for(const [answers,question] of [[{},'取什么名字'],[{name:'星河'},'什么角色'],[{name:'星河',role:'助手'},'说话语气'],[{name:'星河',role:'助手',personality:'直接'},'主要帮你做什么'],[{name:'星河',role:'助手',personality:'直接',duties:'研究'},'确认后再保存']] as const){
+   await act(async()=>render({status:'pending',answers}))
+   assert.ok(document.querySelector('.digital-home-reply')!.textContent!.includes(question))
+  }
+  for(const state of [undefined,{status:'completed',answers:{}},{status:'pending',paused:true,answers:{}}]){
+   await act(async()=>render(state))
+   assert.equal(document.querySelector('.digital-home-reply')!.textContent,profile.greeting)
+  }
+ }finally{await act(async()=>root.unmount());await window.happyDOM.close()}
+})
+
 test('only an active local digital person page requests wake assets', async()=>{
  const {window}=installDomEnvironment(),root=createRoot(document.body.appendChild(document.createElement('div')))
  const oldLoad=wakeWordRuntime.load
@@ -89,7 +156,7 @@ test('gateway wake listening works with the speaker muted and rearms after a sil
    return document.querySelector<HTMLButtonElement>('.digital-home-detail-panel .wake-enabled-switch [role="switch"]')!
   }
   const closeIdentity=()=>act(async()=>document.querySelector<HTMLButtonElement>('.digital-home-detail-close')!.click())
-  assert.equal(document.querySelector('.digital-person-listening'),null)
+  assert.ok(document.querySelector('.digital-person-listening') === null)
   const speaker=document.querySelector<HTMLButtonElement>('.digital-home-speaker')!
   await act(async()=>speaker.click())
   const wake=await openWakeSwitch()
@@ -98,7 +165,7 @@ test('gateway wake listening works with the speaker muted and rearms after a sil
   assert.equal(loads,0)
   await act(async()=>wake.click())
   assert.equal(loads,1)
-  assert.equal(document.querySelector('.digital-person-listening'),null)
+  assert.ok(document.querySelector('.digital-person-listening') === null)
   assert.doesNotMatch(identity.textContent!,/等待唤醒|Wake standby/)
   assert.doesNotMatch(document.querySelector('.digital-home-detail-state')!.textContent!,/等待唤醒|Wake standby/)
   await act(async()=>frame(Int16Array.of(1),0))
@@ -149,27 +216,37 @@ test('avatar home uses real conversation and delegated state, text view and retu
  function Location(){path=useLocation().pathname;return null}
  try{
   await act(async()=>root.render(<MemoryRouter initialEntries={['/companion']}><I18nProvider><DigitalPersonHome profile={profile} activity={{delegations:[{id:'work',project_id:'p',session_id:'exec',instruction:'核验构建',status:'running'}]} as any} projectId="p" projectName="默认工作区" sessionId="main" messages={[{id:'u',role:'user',content:'帮我检查构建'},{id:'a',role:'assistant',content:'正在处理',status:'running'}]} inputValue="" onDraft={()=>{}} running active onSend={async()=>true} onStop={async()=>true}><div data-transcript>原有对话组件</div></DigitalPersonHome><Location/></I18nProvider></MemoryRouter>))
-  assert.equal(host.querySelector('[data-affect-readonly],.digital-affect'),null)
+  assert.ok(host.querySelector('[data-affect-readonly],.digital-affect') === null)
   assert.equal(host.querySelector('.digital-home')?.getAttribute('data-state'),'thinking')
   assert.match(host.querySelector('.digital-home-work')!.textContent!,/核验构建/)
-  assert.equal(host.querySelector('[data-transcript]'),null)
+  assert.ok(host.querySelector('[data-transcript]') === null)
   await act(async()=>window.dispatchEvent(new window.CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{projectId:'other',sessionId:'main',playing:true,level:1}})))
   assert.equal(host.querySelector('.digital-home')?.getAttribute('data-state'),'thinking')
   await act(async()=>window.dispatchEvent(new window.CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{projectId:'p',sessionId:'main',playing:true,level:.6}})))
   assert.equal(host.querySelector('.digital-home')?.getAttribute('data-state'),'speaking')
-  await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-keyboard')!.click())
-  assert.equal(host.querySelector('[data-transcript]'),null)
+  const dock=host.querySelector('.digital-home-voice-dock')!
+  assert.deepEqual(Array.from(dock.querySelectorAll('button')).map(button=>button.hasAttribute('data-camera-toggle')?'camera':button.className.match(/digital-home-(speaker|microphone|end|keyboard)/)?.[1]),['camera','speaker','keyboard','microphone','end'])
+  const keyboard=host.querySelector<HTMLButtonElement>('.digital-home-keyboard')!
+  assert.equal(host.querySelectorAll('.digital-home-keyboard').length,1)
+  assert.ok(keyboard.parentElement === dock)
+  assert.ok(keyboard.getAttribute('aria-label'))
+  assert.equal(keyboard.getAttribute('aria-haspopup'),'dialog')
+  assert.equal(keyboard.getAttribute('aria-expanded'),'false')
+  await act(async()=>keyboard.click())
+  assert.equal(keyboard.getAttribute('aria-expanded'),'true')
+  assert.ok(host.querySelector('[data-transcript]') === null)
   const dialog=document.querySelector('.digital-home-composer-dialog[role=dialog][aria-modal=true]')
   assert.ok(dialog?.querySelector('.digital-home-composer textarea'))
   assert.ok(!host.contains(dialog),'composer lives outside the presence layout')
   await act(async()=>window.document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
-  assert.equal(document.querySelector('.digital-home-composer-dialog'),null)
-  assert.equal(document.activeElement,host.querySelector('.digital-home-keyboard'))
+  assert.ok(document.querySelector('.digital-home-composer-dialog') === null)
+  assert.ok(document.activeElement === host.querySelector('.digital-home-keyboard'))
+  assert.equal(keyboard.getAttribute('aria-expanded'),'false')
   assert.ok(host.querySelector('.digital-home-stage'))
-  assert.equal(host.querySelector('.digital-home-voice-hint'),null)
+  assert.ok(host.querySelector('.digital-home-voice-hint') === null)
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-dock-transcript')!.click())
   assert.ok(host.querySelector('[data-transcript]'))
-  assert.equal(document.querySelector('.digital-home-composer'),null)
+  assert.ok(document.querySelector('.digital-home-composer') === null)
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-back')!.click())
   assert.equal(path,'/chat')
  }finally{await act(async()=>root.unmount());await window.happyDOM.close();speechOutputApi.status=oldStatus}
@@ -198,11 +275,11 @@ test('voice starts only by gesture, mute releases capture and hiding never resta
   assert.equal(microphone.getAttribute('aria-description'),'开始语音输入')
   const micIcon=microphone.querySelector('.digital-home-mic-off')?.outerHTML
   assert.ok(micIcon)
-  assert.equal(microphone.querySelector('.digital-home-mic-on'),null)
+  assert.ok(microphone.querySelector('.digital-home-mic-on') === null)
   const speaker=host.querySelector<HTMLButtonElement>('.digital-home-speaker')
   assert.ok(speaker, 'speaker control is available independently of capture')
   assert.equal(speaker.getAttribute('aria-pressed'),'true')
-  assert.equal(speaker.querySelector('path[d="m2 2 20 20"]'),null)
+  assert.ok(speaker.querySelector('path[d="m2 2 20 20"]') === null)
   await act(async()=>speaker.click())
   assert.equal(speaker.getAttribute('aria-pressed'),'false')
   assert.ok(speaker.querySelector('path[d="m2 2 20 20"]'))
@@ -210,16 +287,17 @@ test('voice starts only by gesture, mute releases capture and hiding never resta
   assert.equal(speaker.title,'开启声音')
   assert.equal(captures,0)
   const controls=Array.from(host.querySelector('.digital-home-voice-dock')!.children)
-  assert.equal(controls.length,4)
+  assert.equal(controls.length,5)
   assert.ok(controls[0].querySelector('[data-camera-toggle]'))
   assert.ok(controls[1].classList.contains('digital-home-speaker'))
-  assert.ok(controls[2].classList.contains('digital-home-microphone'))
-  assert.equal(controls[3],call)
+  assert.ok(controls[2].classList.contains('digital-home-keyboard'))
+  assert.ok(controls[3].classList.contains('digital-home-microphone'))
+  assert.ok(controls[4] === call)
   await act(async()=>microphone.click())
   assert.equal(microphone.getAttribute('aria-busy'),'true')
   assert.equal(microphone.getAttribute('aria-pressed'),'false')
   assert.equal(microphone.querySelector('.digital-home-mic-off')?.outerHTML,micIcon)
-  assert.equal(microphone.querySelector('.digital-home-mic-on'),null)
+  assert.ok(microphone.querySelector('.digital-home-mic-on') === null)
   await act(async()=>microphone.click())
   await act(async()=>context.mock.timers.tick(300))
   assert.ok(microphone.querySelector('.spinner'))
@@ -231,14 +309,14 @@ test('voice starts only by gesture, mute releases capture and hiding never resta
   assert.equal(microphone.getAttribute('aria-label'),'麦克风')
   assert.equal(microphone.getAttribute('aria-description'),'取消语音输入')
   assert.ok(microphone.querySelector('.digital-home-mic-on'))
-  assert.equal(microphone.querySelector('.digital-home-mic-off'),null)
+  assert.ok(microphone.querySelector('.digital-home-mic-off') === null)
   const meter=host.querySelector('.digital-home-mic-fill')
   assert.equal(meter?.querySelector('svg')?.getAttribute('fill'),'currentColor','active capture shows the mic fill layer')
   assert.equal(meter?.getAttribute('aria-hidden'),'true')
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-microphone')!.click())
   assert.equal(captures,1);assert.ok(stops>0)
   assert.equal(microphone.querySelector('.digital-home-mic-off')?.outerHTML,micIcon)
-  assert.equal(host.querySelector('.digital-home-mic-fill'),null)
+  assert.ok(host.querySelector('.digital-home-mic-fill') === null)
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-microphone')!.click())
   assert.equal(captures,2)
   Object.defineProperty(document,'hidden',{configurable:true,value:true})
@@ -315,7 +393,7 @@ test('keyboard sends into same session and speaker enables sentence playback wit
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-keyboard')!.click())
   const input=document.querySelector<HTMLTextAreaElement>('.digital-home-composer textarea')!
   assert.ok(input)
-  assert.equal(document.activeElement,input)
+  assert.ok(document.activeElement === input)
   await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value')!.set!.call(input,'帮我看看');input.dispatchEvent(new window.Event('input',{bubbles:true}))})
   await act(async()=>document.querySelector<HTMLButtonElement>('.chat-input-send')!.click())
   assert.deepEqual(sent,['帮我看看'])
@@ -365,10 +443,10 @@ test('keyboard sends during audio-only playback and retains the draft until acce
   await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value')!.set!.call(input,'帮我整理安排');input.dispatchEvent(new window.Event('input',{bubbles:true}))})
   const blur=input.blur.bind(input);input.blur=()=>{blurs++;blur()}
   await act(async()=>document.querySelector<HTMLButtonElement>('.chat-input-send')!.click())
-  assert.equal(document.querySelector('.digital-home-composer textarea'),input,'pending send keeps input mounted')
+  assert.ok(document.querySelector('.digital-home-composer textarea') === input, 'pending send keeps input mounted')
   assert.equal(blurs,0)
   await act(async()=>finish(false))
-  assert.equal(document.querySelector('.digital-home-composer textarea'),input)
+  assert.ok(document.querySelector('.digital-home-composer textarea') === input)
   assert.equal(input.value,'帮我整理安排','failed send retains draft for retry')
   assert.equal(keyboard.getAttribute('aria-expanded'),'true')
   assert.equal(blurs,0,'failed send does not dismiss keyboard')
@@ -376,16 +454,16 @@ test('keyboard sends during audio-only playback and retains the draft until acce
   await act(async()=>finish(true))
   await act(async()=>window.dispatchEvent(new window.CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{projectId:'p',sessionId:'main',playing:false,level:0}})))
   assert.equal(blurs,1,'accepted send explicitly blurs before removing the textarea')
-  assert.equal(document.querySelector('.digital-home-composer'),null)
+  assert.ok(document.querySelector('.digital-home-composer') === null)
   assert.equal(keyboard.getAttribute('aria-expanded'),'false')
-  assert.notEqual(document.activeElement,input)
+  assert.ok(document.activeElement !== input)
   assert.equal(host.querySelector('.digital-home-microphone')?.getAttribute('aria-pressed'),'false')
   const stop=host.querySelector<HTMLButtonElement>('.digital-home-end')!
   assert.equal(stop.disabled,false)
   await act(async()=>stop.click());assert.equal(stops,1)
   await act(async()=>keyboard.click())
   const reopened=document.querySelector<HTMLTextAreaElement>('.digital-home-composer textarea')!
-  assert.ok(reopened);assert.equal(reopened.value,'');assert.equal(document.activeElement,reopened)
+  assert.ok(reopened);assert.equal(reopened.value,'');assert.ok(document.activeElement === reopened)
  }finally{await act(async()=>root.unmount());speechOutputApi.status=oldStatus;await window.happyDOM.close()}
 })
 
@@ -421,8 +499,10 @@ test('opening and closing transcript preserves the same live camera stream',asyn
   await act(async()=>host.querySelector<HTMLButtonElement>('[data-camera-toggle]')!.click())
   const video=host.querySelector('video')!
   assert.equal(video.srcObject,stream)
+  assert.ok(host.querySelector('.digital-home-camera-perception') === null, 'preview has no face management footer')
+  assert.ok(host.querySelector('.digital-home-face-entry'),'face management remains available in home controls')
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-dock-transcript')!.click())
-  assert.ok(host.querySelector('[data-transcript]'));assert.equal(stops,0);assert.equal(host.querySelector('video'),video);assert.equal(video.srcObject,stream)
+  assert.ok(host.querySelector('[data-transcript]'));assert.equal(stops,0);assert.ok(host.querySelector('video') === video);assert.equal(video.srcObject,stream)
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-chat header button')!.click())
   assert.equal(starts,1);assert.equal(stops,0);assert.equal(video.srcObject,stream)
   await act(async()=>root.unmount());assert.equal(stops,1)
@@ -519,7 +599,7 @@ test('presence corner shows identity, affinity and the reflection count',async()
   assert.match(corner.textContent!,/71/);assert.match(corner.querySelector('[aria-label="主动思考"]')?.textContent??'',/237/)
   assert.doesNotMatch(corner.textContent!,/真实会话作者|示例|执行次数/)
   assert.ok(host.querySelector('.digital-presence-orb'))
-  assert.equal(host.querySelector('.digital-home-avatar img'),null)
+  assert.ok(host.querySelector('.digital-home-avatar img') === null)
   await act(async()=>window.dispatchEvent(new window.CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{projectId:'p',sessionId:'main',playing:true,level:.7}})))
   assert.match(corner.textContent!,/正在回应/)
  }finally{await act(async()=>root.unmount());digitalRuntimeApi.records=oldRecords;digitalAffectApi.read=oldAffect;speechOutputApi.status=oldStatus;await window.happyDOM.close()}
@@ -537,7 +617,7 @@ function mockVoice(callback:Parameters<typeof voiceCapture.start>[0], options?:P
  return {emit,capture:{stop(){},flush:async()=>turn.snapshot()}}
 }
 
-test('manual microphone leaves final text in the caption and sends only through the fourth button',async()=>{
+test('manual microphone leaves final text in the caption and sends only through the call action button',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
  const oldStatus=speechOutputApi.status,oldSpeech={...speechApi},oldStart=voiceCapture.start
  let text='帮我检查',sent=0,frame!:ReturnType<typeof mockVoice>['emit']
@@ -562,7 +642,7 @@ test('manual microphone leaves final text in the caption and sends only through 
   assert.equal(sent,0,'partial recognition never submits a message')
   await act(async()=>frame(.02,19))
   assert.equal(host.querySelector('.digital-home-live-caption p')?.textContent,'帮我检查一下今天的安排')
-  assert.equal(host.querySelector('textarea'),null)
+  assert.ok(host.querySelector('textarea') === null)
   const action=host.querySelector<HTMLButtonElement>('.digital-home-end')!
   assert.equal(action.dataset.action,'send')
   assert.equal(sent,0,'final recognition stays in the caption')
@@ -601,7 +681,7 @@ test('manual microphone leaves final text in the caption and sends only through 
   assert.equal(sent,2)
   assert.equal(submissions[1],'确认，请继续。')
   assert.equal(mic.getAttribute('aria-pressed'),'false','sending after turning the mic off keeps it off')
-  assert.equal(host.querySelector('.digital-home-live-caption'),null)
+  assert.ok(host.querySelector('.digital-home-live-caption') === null)
   await act(async()=>mic.click())
   text='要清除的草稿'
   await act(async()=>frame(.8))
@@ -621,7 +701,7 @@ test('manual microphone leaves final text in the caption and sends only through 
   await act(async()=>frame(.02,19))
   await act(async()=>mic.click())
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-live-caption-clear')!.click())
-  assert.equal(host.querySelector('.digital-home-live-caption'),null)
+  assert.ok(host.querySelector('.digital-home-live-caption') === null)
   assert.equal(mic.getAttribute('aria-pressed'),'false')
   assert.equal(action.dataset.action,'phone')
  }finally{await act(async()=>root.unmount());speechOutputApi.status=oldStatus;Object.assign(speechApi,oldSpeech);voiceCapture.start=oldStart;await window.happyDOM.close()}
@@ -708,4 +788,26 @@ test('continuous voice queues recognized turns during execution and sends direct
   assert.equal(call.dataset.action,'hangup')
   assert.equal(call.getAttribute('aria-pressed'),null)
  }finally{await act(async()=>root.unmount());speechOutputApi.status=oldStatus;Object.assign(speechApi,oldSpeech);Object.assign(pendingMessageInsertApi,oldPending);voiceCapture.start=oldStart;await window.happyDOM.close()}
+})
+
+
+test('atlas playback meters do not rerender the page for every volume sample',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const oldObserver=globalThis.ResizeObserver
+ globalThis.ResizeObserver=class {observe(){}unobserve(){}disconnect(){}}
+ let reads=0
+ const meteredProfile={...profile,get name(){reads++;return '小研'}}
+ const publish=(playing:boolean,level:number)=>act(async()=>window.dispatchEvent(new window.CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{projectId:'meter-project',sessionId:'main',playing,level,metered:true}})))
+ try{
+  await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonHome profile={meteredProfile} activity={null} projectId="meter-project" projectName="默认工作区" sessionId="main" messages={[]} inputValue="" onDraft={()=>{}} running={false} active onSend={async()=>true} onStop={async()=>true}/></I18nProvider></MemoryRouter>))
+  await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-atlas-toggle')!.click())
+  assert.ok(host.querySelector('.memory-atlas'))
+  await publish(true,.2)
+  reads=0
+  for(let i=1;i<=10;i++)await publish(true,i/10)
+  assert.equal(reads,0,'amplitude changes must not rerender identity, history, camera and input')
+  assert.equal(host.querySelector('.digital-home')?.getAttribute('data-state'),'speaking')
+  await publish(false,0)
+  assert.equal(host.querySelector('.digital-home')?.getAttribute('data-state'),'idle','playback transitions must still reach the page')
+ }finally{await act(async()=>root.unmount());globalThis.ResizeObserver=oldObserver;await window.happyDOM.close()}
 })

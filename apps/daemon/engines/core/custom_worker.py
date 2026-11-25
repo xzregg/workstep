@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 import sys
 
+from pydantic import BaseModel
+
 # Executed as a script so the bundled daemon sources are always importable.
 DAEMON_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(DAEMON_ROOT))
@@ -28,15 +30,17 @@ ALLOWED_METHODS = frozenset({
     "respond_interaction", "create_session", "load_session", "list_sessions", "resume_session",
     "fork_session", "close_session", "cancel_session", "set_config_option", "set_session_mode",
     "reset_options", "send_live_stage_message", "send_live_step_message", "list_models",
-    "inspect_capabilities", "set_permission_mode", "test_connection", "install", "configure_mcp_servers",
+    "get_quota", "inspect_capabilities", "set_permission_mode", "test_connection", "install", "configure_mcp_servers",
 })
 EXTRA_PROPERTIES = ("supports_message_history", "supports_interactive", "supports_resume",
                     "supports_sessions", "supports_tool_approval", "supports_live_stage_message",
-                    "supports_process_reuse", "supports_manual_compaction",
+                    "supports_process_reuse", "supports_manual_compaction", "supports_quota",
                     "supports_service_tier", "supports_host_session_ids")
 
 
 def plain(value):
+    if isinstance(value, BaseModel):
+        return plain(value.model_dump(mode='json', exclude_none=True))
     if is_dataclass(value):
         return plain(asdict(value))
     if isinstance(value, dict):
@@ -123,6 +127,11 @@ def describe(engine, manifest):
         raise ValueError("Approval capability must declare interaction_request")
     if engine.supports_process_reuse and not engine.supports_resume:
         raise ValueError("Process reuse must support native session recovery")
+    if engine.supports_quota:
+        from engines.core.base import BaseLLMEngine
+        if type(engine).get_quota is BaseLLMEngine.get_quota or not inspect.iscoroutinefunction(engine.get_quota):
+            raise ValueError('Quota support requires an async get_quota implementation')
+        inspect.signature(engine.get_quota).bind(cwd='')
     return {
         "id": manifest["id"], "name": manifest["name"], "description": manifest.get("description", ""),
         "mode": manifest["mode"], "custom": True, "installed": bool(engine.is_installed()),

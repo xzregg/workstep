@@ -208,8 +208,8 @@ test('read-only usage page exposes scoped reports without global bill controls',
   }
   render(<MemoryRouter><AdminUsagePage readOnly /></MemoryRouter>)
   await screen.findByText('当前条件下没有计量事件。')
-  assert.equal(screen.queryByRole('button', { name: '导入供应商账单' }), null)
-  assert.equal(screen.queryByLabelText('对账供应商 ID'), null)
+  assert.ok(screen.queryByRole('button', { name: '导入供应商账单' }) === null)
+  assert.ok(screen.queryByLabelText('对账供应商 ID') === null)
   assert.ok(paths.every(path => !path.includes('/reconciliation')))
 })
 
@@ -280,8 +280,8 @@ test('statistics tabs share the applied time filters and load only the active re
  assert.match(screen.getByRole('status').textContent ?? '',/2026-10-02.*未上报/)
  assert.equal(new Set(paths).size,paths.length)
  assert.ok(paths.some(path=>new URLSearchParams(path.split('?')[1]).get('group_by')==='day'))
- assert.equal(screen.queryByRole('tab',{name:'供应商对账'}),null)
- assert.equal(screen.queryByRole('tab',{name:'模型价格'}),null)
+ assert.ok(screen.queryByRole('tab', { name: '供应商对账' }) === null)
+ assert.ok(screen.queryByRole('tab', { name: '模型价格' }) === null)
  fireEvent.change(screen.getByLabelText('模型'),{target:{value:'model-a'}})
  fireEvent.click(screen.getByRole('button',{name:'查询用量'}))
  await waitFor(()=>assert.ok(paths.at(-1)?.includes('model=model-a')))
@@ -381,5 +381,5 @@ test('failed history leaves the current compact report available and retries onl
  fireEvent.click(screen.getByRole('button',{name:'重试对比'}))
  await screen.findByText('同比 持平')
  assert.equal(paths.filter(path=>new URLSearchParams(path.split('?')[1]).has('group_by')).length,currentRequests)
- assert.equal(screen.queryByText('部分对比用量加载失败。'),null)
+ assert.ok(screen.queryByText('部分对比用量加载失败。') === null)
 })

@@ -66,7 +66,7 @@ test('review settings expose save failures and allow retry', async () => {
     assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /offline/)
     await act(async () => save.click())
     assert.equal(calls, 2)
-    assert.equal(container.querySelector('[role="alert"]'), null)
+    assert.ok(container.querySelector('[role="alert"]') === null)
   } finally {
     await act(async () => root.unmount())
     useTaskStore.setState({ updateTaskDescription: original })

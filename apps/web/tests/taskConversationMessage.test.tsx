@@ -23,7 +23,7 @@ test('a task user message keeps its content and last-message step anchor', async
       sessionIdForStep={() => null} stepLastRef={{ current: lastMessages }}
     /></I18nProvider>))
     assert.match(container.textContent || '', /Please build this/)
-    assert.equal(container.querySelector('[data-step-last-message="build"]'), lastMessages.build)
+    assert.ok(container.querySelector('[data-step-last-message="build"]') === lastMessages.build)
   } finally {
     await act(async () => root.unmount())
     container.remove()
@@ -51,7 +51,7 @@ test('a coordinator step instruction uses the coordinator identity and assistant
     assert.equal(row.style.alignSelf, 'flex-start')
     assert.match(container.textContent || '', /按要求执行构建/)
     assert.match(container.querySelector('.chat-message-avatar-anchor [aria-label]')?.getAttribute('aria-label') || '', /协调|Coordinator/)
-    assert.equal(container.querySelector('.robot-avatar'), null, 'task coordinator identity stays unchanged')
+    assert.ok(container.querySelector('.robot-avatar') === null, 'task coordinator identity stays unchanged')
   } finally {
     await act(async () => root.unmount())
     container.remove()
@@ -74,7 +74,7 @@ test('task assistant replies retain the stage avatar while running and after com
         locale="en-US" canChat={false} onOpenArtifact={() => {}}
         sessionIdForStep={() => null} stepLastRef={{ current: {} }}
       /></I18nProvider>))
-      assert.equal(container.querySelector('.robot-avatar'), null)
+      assert.ok(container.querySelector('.robot-avatar') === null)
       assert.ok(container.querySelector('.chat-message-avatar')?.textContent?.trim())
     }
   } finally {
@@ -102,7 +102,7 @@ test('review-channel instructions preserve their text and do not impersonate rev
         /></I18nProvider>))
         assert.match(container.textContent || '', /评审结束后合并并推送/)
         assert.doesNotMatch(container.textContent || '', /人工审核|Manual review|审核结果原文/i)
-        assert.equal(container.querySelector('[title="Review"]'), null)
+        assert.ok(container.querySelector('[title="Review"]') === null)
       }
     }
     await act(async () => root.render(<I18nProvider><TaskConversationMessage

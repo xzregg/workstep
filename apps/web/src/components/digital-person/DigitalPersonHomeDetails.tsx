@@ -13,7 +13,7 @@ import Spinner from '../Spinner'
 import {RelationshipReadout} from './DigitalPersonRelationship'
 import DigitalPersonRunDetail from './DigitalPersonRunDetail'
 import {DigitalPersonRunHeader} from './DigitalPersonRunKnowledge'
-import DigitalPersonRunOutcome from './DigitalPersonRunOutcome'
+import DigitalPersonRunOutcome, {DigitalPersonRunNotificationStatus,DigitalPersonRunNotificationReasons} from './DigitalPersonRunOutcome'
 import WakePreferenceSwitch from './WakePreferenceSwitch'
 import './DigitalPersonHomeDetails.css'
 
@@ -26,6 +26,14 @@ export default function DigitalPersonHomeDetails({kind,canControlWake,name,role,
  const [page,setPage]=useState(0),[data,setData]=useState<DigitalActivityRecords|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState(''),[revision,setRevision]=useState(0),[openRun,setOpenRun]=useState('')
  useOverlay(true,onClose,panel,compact)
  useEffect(()=>{
+  if(kind!=='reflection')return
+  const bridge=window.WorkStepAndroid
+  // Old APKs ignore this message; native views cannot be covered by CSS z-index.
+  const notify=(open:boolean)=>{try{bridge?.postMessage(JSON.stringify({type:'thought-history',open}))}catch{/* The host may be navigating away. */}}
+  notify(true)
+  return()=>notify(false)
+ },[kind])
+ useEffect(()=>{
   if(kind!=='reflection'||page===0)return
   let alive=true;setLoading(true);setError('');setData(null)
   void digitalRuntimeApi.records(page*5).then(value=>{if(alive)setData(value)},reason=>{if(alive)setError(String(reason))}).finally(()=>{if(alive)setLoading(false)})
@@ -33,7 +41,7 @@ export default function DigitalPersonHomeDetails({kind,canControlWake,name,role,
  },[kind,page,revision])
  const current=page===0?records:data,total=current?.run_total??records?.run_total??0,pages=Math.max(1,Math.ceil(total/5))
  const title=t(kind==='profile'?'digitalPerson.title':kind==='affinity'?'digitalPerson.affinity':'digitalPerson.thoughtHistory')
- return createPortal(<div className="digital-home-detail-backdrop" onClick={onClose}>
+ return createPortal(<div className={`digital-home-detail-backdrop${kind==='reflection'?' digital-home-detail-backdrop--reflection':''}`} onClick={onClose}>
   <ResizablePanel ref={panel} className={`digital-home-detail-panel${kind==='reflection'?' digital-home-detail-panel--reflection':''}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onClick={event=>event.stopPropagation()}>
    <header><h2>{kind==='reflection'&&<Icon name="lightbulb"/>}{title}</h2><Button variant="icon" className="digital-home-detail-close" aria-label={t('common.close')} onClick={onClose}><Icon name="x"/></Button></header>
    <div className="digital-home-detail-content">
@@ -49,10 +57,11 @@ export default function DigitalPersonHomeDetails({kind,canControlWake,name,role,
       <DigitalPersonRunHeader runId={run.id} className="digital-home-detail-run-header" processing={run.processing} fallback={fallback}
        expanded={expanded} onToggle={()=>setOpenRun(expanded?'':run.id)}
        leadingIcon={<Icon name={busy?'loader-circle':'lightbulb'} className={busy?'digital-home-detail-run-icon task-status-spinner':'digital-home-detail-run-icon'}/>}>
-         {showStatus&&<span>{label}</span>}
+         {showStatus&&<span>{run.status==='silent'?<DigitalPersonRunNotificationStatus run={run}/>:label}</span>}
          <DigitalPersonRunOutcome outcome={run.outcome}/>
          <time dateTime={run.created_at} title={new Date(run.created_at).toLocaleString(locale)}>{new Date(run.created_at).toLocaleString(locale,{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})}</time>
       </DigitalPersonRunHeader>
+      {!expanded&&!busy&&<DigitalPersonRunNotificationReasons run={run}/>}
       {expanded&&<DigitalPersonRunDetail id={run.id} busy={false} processingInList={run.processing} affinityInList={!!run.outcome}
        summaryInList={run.processing ? undefined : run.summary}/>}
      </div>

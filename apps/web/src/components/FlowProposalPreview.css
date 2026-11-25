@@ -1,0 +1,42 @@
+/* Transient preview styles never become part of the saved graph. */
+.flow-proposal-card { padding: var(--space-3); background: var(--bg); border: 1px solid var(--border-soft); border-radius: var(--radius-md); }
+.flow-proposal-card-heading, .flow-proposal-card-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.flow-proposal-card-heading strong { font-size: var(--text-title-3); min-width: 0; overflow-wrap: anywhere; }
+.flow-proposal-card-heading > span, .flow-proposal-card-footer > span, .flow-proposal-hint { font-size: var(--text-caption); color: var(--text-muted); }
+.flow-proposal-card-heading > span { flex-shrink: 0; }
+.flow-proposal-card > p { color: var(--text-secondary); margin: var(--space-2) 0; overflow-wrap: anywhere; font-size: var(--text-body); }
+.flow-proposal-card .flow-step-apply-option { gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-2); min-height: 44px; }
+.flow-proposal-card .flow-step-apply-checkbox { width: 16px !important; height: 16px !important; min-width: 16px; min-height: 16px; flex-basis: 16px; }
+.flow-proposal-card .flow-step-apply-change--updated { color: var(--accent); }
+.flow-proposal-card-footer { margin-top: var(--space-3); }
+.flow-proposal-card-footer .btn { flex-shrink: 0; }
+.flow-proposal-hint { margin: 0; }
+.flow-proposal-status { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border-soft); font-size: var(--text-caption); color: var(--text-accent); background: var(--bg); flex-shrink: 0; }
+.flow-proposal-status > span:not(.spinner) { flex: 1; }
+.flow-proposal-status .btn { flex-shrink: 0; }
+.react-flow__node.flow-proposal-node { --proposal-color: var(--accent); }
+.react-flow__node.flow-proposal-node--added { --proposal-color: var(--success); }
+.react-flow__node.flow-proposal-node--removed { --proposal-color: var(--danger); }
+.react-flow__node.flow-proposal-node > div { border-color: var(--proposal-color) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--proposal-color) 12%, transparent) !important; }
+.flow-proposal-node-badge { position: absolute; bottom: calc(100% + 8px); left: 0; max-width: 100%; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-xs); background: var(--proposal-color); color: var(--text-on-accent); font-size: var(--text-caption); white-space: nowrap; }
+.flow-proposal-previous-title { max-width: 160px; overflow: hidden; text-overflow: ellipsis; opacity: .85; }
+.flow-proposal-node--added.flow-proposal-node--preview > div { opacity: .68; border-style: dashed !important; animation: flow-proposal-enter 450ms var(--ease) both; }
+.flow-proposal-node--updated > div { animation: flow-proposal-highlight 600ms var(--ease) both; }
+.flow-proposal-node--removed.flow-proposal-node--preview > div { opacity: .6; }
+.flow-proposal-node--removed.flow-proposal-node--preview .flow-proposal-node-badge { text-decoration: line-through; }
+.flow-proposal-node--added.flow-proposal-node--applied > div { animation: flow-proposal-enter 500ms var(--ease) both; }
+.flow-proposal-node--removed.flow-proposal-node--applied { pointer-events: none; }
+.flow-proposal-node--removed.flow-proposal-node--applied > div { animation: flow-proposal-exit 450ms var(--ease) both; }
+.flow-proposal-edge--added .react-flow__edge-path { stroke: var(--success) !important; }
+.flow-proposal-edge--added.flow-proposal-edge--preview .react-flow__edge-path { stroke-dasharray: 6 5; opacity: .65; }
+.flow-proposal-edge--added.flow-proposal-edge--applied .react-flow__edge-path { stroke-dasharray: 2000; animation: flow-proposal-draw 650ms var(--ease) both; }
+.flow-proposal-edge--removed .react-flow__edge-path { stroke: var(--danger) !important; stroke-dasharray: 4 4; opacity: .3; }
+.flow-proposal-edge--removed.flow-proposal-edge--applied { animation: flow-proposal-exit 300ms var(--ease) both; }
+@keyframes flow-proposal-enter { from { opacity: 0; transform: translateY(16px) scale(.96); } }
+@keyframes flow-proposal-exit { to { opacity: 0; transform: translateY(-12px) scale(.96); } }
+@keyframes flow-proposal-highlight { from { filter: brightness(.94); } to { filter: brightness(1); } }
+@keyframes flow-proposal-draw { from { stroke-dashoffset: 2000; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .flow-proposal-node > div, .flow-proposal-edge--added .react-flow__edge-path, .flow-proposal-edge--removed { animation: none !important; }
+  .flow-proposal-node--removed.flow-proposal-node--applied, .flow-proposal-edge--removed.flow-proposal-edge--applied { visibility: hidden !important; }
+}

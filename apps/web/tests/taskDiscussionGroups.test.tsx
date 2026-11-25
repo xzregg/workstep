@@ -60,7 +60,7 @@ test('task discussion panel binds a received group ID to the current task', asyn
     const trigger = container.querySelector<HTMLButtonElement>('.task-detail-discussion-button')!
     assert.equal(trigger.textContent, '绑定BOT')
     await act(async () => trigger.click())
-    assert.equal(document.querySelector('option[value="clawbot"]'), null, 'ClawBot cannot bind groups')
+    assert.ok(document.querySelector('option[value="clawbot"]') === null, 'ClawBot cannot bind groups')
     const input = document.querySelector<HTMLInputElement>('[role="dialog"] .task-discussion-groups input')!
     const select = document.querySelector<HTMLSelectElement>('[role="dialog"] select[aria-label="最近收到的群"]')!
     assert.ok(select, 'received groups must have an explicit selector')

@@ -32,7 +32,7 @@ test('connector overview separates added cards, browse templates and local disco
     assert.match(document.querySelector('.connector-discovery-card')!.textContent!, /本机 MCP/)
     assert.equal(document.querySelectorAll('.connector-card').length, 1)
     await act(async () => tabs[0].click())
-    assert.equal(document.querySelector('.connector-discovery-card'), null)
+    assert.ok(document.querySelector('.connector-discovery-card') === null)
     assert.match(document.querySelector('.connector-card')!.textContent!, /GitHub CLI/)
   } finally {
     Object.assign(connectorApi, original)

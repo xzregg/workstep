@@ -1,7 +1,40 @@
-import type {DigitalRunDetail, DigitalRunOutcome} from '../../api/digitalPerson'
+import type {DigitalRunDetail, DigitalRunOutcome,DigitalRunNotification} from '../../api/digitalPerson'
 import {useI18n} from '../../i18n'
 import Icon from '../Icon'
 import './DigitalPersonRunOutcome.css'
+
+const reasonKeys:Record<string,string>={
+ model_silent:'ModelSilent',no_work:'NoWork',internal_only:'InternalOnly',proactive_disabled:'ProactiveDisabled',
+ archived_source:'ArchivedSource',contact_policy:'ContactPolicy',source_busy:'SourceBusy',duplicate:'Duplicate',
+ disabled:'Disabled',quiet_hours:'QuietHours',face_welcome:'FaceWelcome',target_missing:'TargetMissing',
+ stale_result:'StaleResult',invalid_evidence:'InvalidEvidence',action_not_applicable:'ActionNotApplicable',
+ delivered:'Delivered',delivery_failed:'DeliveryFailed',no_targets:'NoTargets',assessment_failed:'AssessmentFailed',receipt_unavailable:'ReceiptUnavailable',unknown:'Unknown',
+}
+
+export function DigitalPersonRunNotificationStatus({run}:{run:DigitalRunDetail}){
+ const {t}=useI18n()
+ const notices=run.delegation_notifications ?? []
+ const state=notices.find(item=>['deferred','delivery_failed','suppressed'].includes(item.state))?.state ?? notices[0]?.state ?? run.notification?.state ?? 'unknown'
+ const key=state==='notified'?'statusNotified':state==='deferred'?'statusDeferred':state==='notifying'?'statusNotifying':state==='delivery_failed'?'runNotificationFailed':'statusSilent'
+ return <>{t(`digitalPerson.${key}` as never)}</>
+}
+
+export function DigitalPersonRunNotificationReasons({run}:{run:DigitalRunDetail}){
+ const {t}=useI18n()
+ const explain=(item:DigitalRunNotification)=>{
+  const reason=Object.hasOwn(reasonKeys,item.reason)?item.reason:'unknown'
+  const category=reason==='model_silent'?'Llm':reason==='quiet_hours'?'Quiet':reason==='delivery_failed'?'Error'
+   : reason==='target_missing'?'Target':reason==='no_targets'?'Receipt': ['unknown','receipt_unavailable'].includes(reason)?'Unknown'
+   : reason==='delivered'?'Delivered':reason==='assessment_failed'?'Assessment':['no_work','internal_only'].includes(reason)?'Internal': 'Policy'
+  const description=reason==='model_silent'?(item.model_reason?t('digitalPerson.notificationModelReason',{reason:item.model_reason}):t('digitalPerson.notificationModelReasonMissing'))
+   :t(`digitalPerson.notificationReason${reasonKeys[reason]??'Unknown'}` as never)
+  return <>{t(`digitalPerson.notificationCategory${category}` as never)} · {description}{reason!=='model_silent'&&item.model_reason&&<> · {t('digitalPerson.notificationModelReason',{reason:item.model_reason})}</>}</>
+ }
+ return <div className="digital-run-outcome digital-run-notification-reasons">
+  <span className="digital-run-notification-audit">{explain(run.notification??(run.status==='delivery_failed'||!!run.outcome?.failed?{state:'delivery_failed',reason:'delivery_failed'}:{state:'unknown',reason:'unknown'}))}</span>
+  {(run.delegation_notifications??[]).map((notice,index)=><span className="digital-run-notification-audit" key={index}>{t('digitalPerson.notificationDelegation')} · {explain(notice)}</span>)}
+ </div>
+}
 
 export function DigitalPersonRunDelivery({run, summaryInList}: {run: DigitalRunDetail; summaryInList?: string}) {
  const {t,errorText}=useI18n()
@@ -17,12 +50,15 @@ export function DigitalPersonRunDelivery({run, summaryInList}: {run: DigitalRunD
   : status==='deferred' ? t('digitalPerson.statusDeferred')
   : sent ? t('digitalPerson.runMessagesSent',{count:sent})
   : status==='notified' ? t('digitalPerson.statusNotified') : ''
- if (!label && !failed) return null
+ const audit=run.notification
+ const explain=(reason:string)=>t(`digitalPerson.notificationReason${reasonKeys[reason]??'Unknown'}` as never)
  return <div className="digital-run-outcome digital-run-notification">
   {label&&<span><Icon name={status==='notifying'?'loader-circle':status==='silent'?'lightbulb':'send'} size={14} className={status==='notifying'?'task-status-spinner':undefined}/><span>{label}</span></span>}
+  {status!=='running'&&<DigitalPersonRunNotificationReasons run={run}/>}
   {failed&&!pending&&<span className="digital-run-outcome-failed" role="alert">
    <Icon name="circle-alert" size={14}/><span>{t('digitalPerson.runNotificationFailed')} · {
-    reasons.length ? reasons.map(reason=>errorText(reason)).join(' · ') : t('digitalPerson.runNotificationReasonMissing')
+    reasons.length ? reasons.map(reason=>errorText(reason)).join(' · ')
+     : audit?.reason==='no_targets' ? explain(audit.reason) : t('digitalPerson.runNotificationReasonMissing')
    }</span>
   </span>}
  </div>

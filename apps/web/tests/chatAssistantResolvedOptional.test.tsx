@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import ChatPage from '../src/pages/ChatPage'
 import { I18nProvider } from '../src/i18n'
+import { digitalPersonApi, digitalRuntimeApi } from '../src/api/digitalPerson'
 import { assistantApi, chatSessionApi, engineApi, providerApi } from '../src/api/client'
 import { useChatListStore, useChatSessionStore } from '../src/stores/chatSessionStore'
 import { useProjectStore } from '../src/stores/projectStore'
@@ -17,8 +18,10 @@ const project = {
   workflows: [],
 }
 
-test('chat page falls back to configured effort without resolved defaults', async () => {
+for (const isDefaultWorkspace of [false, true]) test(`chat page uses ordinary defaults with default workspace=${isDefaultWorkspace}`, async () => {
+  const currentProject = { ...project, is_default_workspace: isDefaultWorkspace }
   const window = new Window({ url: 'http://localhost/' })
+  window.innerWidth = 1440
   Object.assign(globalThis, {
     window,
     document: window.document,
@@ -35,12 +38,17 @@ test('chat page falls back to configured effort without resolved defaults', asyn
   })
   const originals = {
     assistantList: assistantApi.list,
+    digitalGet: digitalPersonApi.get,
+    digitalActivity: digitalRuntimeApi.activity,
     chatGet: chatSessionApi.get,
     chatList: chatSessionApi.list,
     quickButtons: chatSessionApi.quickButtons,
     quota: engineApi.quota,
     providerList: providerApi.list,
+    markRead: chatSessionApi.markRead,
   }
+  digitalPersonApi.get = async () => ({ enabled: true, name: '数字中枢', greeting: '你好' }) as never
+  digitalRuntimeApi.activity = async () => ({ main_session_id: 'main', runs: [], delegations: [] }) as never
   assistantApi.list = async () => ({
     assistants: [{
       name: 'chat_session',
@@ -70,19 +78,24 @@ test('chat page falls back to configured effort without resolved defaults', asyn
     fast_model: '',
     vision_model: '',
     permission_mode: '',
-    message_count: 0,
-    messages: [],
+    message_count: 1,
+    messages: [{
+      id: 'answer', role: 'assistant', content: '这是普通对话回复', status: 'succeeded',
+      engine: 'codex_sdk', model: 'gpt-6-luna', created_at: '2026-11-25T00:00:00Z',
+      events: [{ type: 'usage_update', data: { input_tokens: 29245, output_tokens: 58 } }],
+    }],
     running: false,
     created_at: '',
     updated_at: '',
   }) as never
+  chatSessionApi.markRead = async () => ({}) as never
   chatSessionApi.list = async () => ({ sessions: [] })
   chatSessionApi.quickButtons = async () => ({ buttons: [] })
   engineApi.quota = async () => ({ engine_id: 'codex_sdk', supported: false, quota: null })
   providerApi.list = async () => ({ providers: [] })
   useProjectStore.setState({
-    projects: [project] as never,
-    activeProject: project as never,
+    projects: [currentProject] as never,
+    activeProject: currentProject as never,
     loading: false,
   })
   useChatListStore.setState({ sessionsByProject: {}, quickButtons: [], listLoadingByProject: {} })
@@ -100,14 +113,22 @@ test('chat page falls back to configured effort without resolved defaults', asyn
     })
     await act(async () => { await Promise.resolve() })
     assert.match(container.textContent || '', /默认（极简）/)
+    const footer = container.querySelector('.message-response-footer')
+    assert.ok(Boolean(footer))
+    assert.equal(Boolean(footer?.querySelector('details')), false, 'desktop conversations show usage inline even with feedback actions')
+    assert.match(footer?.querySelector('.footer-usage-summary')?.textContent || '', /29,245/)
+    assert.match(footer?.textContent || '', /gpt-6-luna/)
   } finally {
     await act(async () => root.unmount())
+    digitalPersonApi.get = originals.digitalGet
+    digitalRuntimeApi.activity = originals.digitalActivity
     assistantApi.list = originals.assistantList
     chatSessionApi.get = originals.chatGet
     chatSessionApi.list = originals.chatList
     chatSessionApi.quickButtons = originals.quickButtons
     engineApi.quota = originals.quota
     providerApi.list = originals.providerList
+    chatSessionApi.markRead = originals.markRead
     await window.happyDOM.close()
   }
 })

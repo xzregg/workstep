@@ -17,8 +17,9 @@ const merge = (first: Delegation[], rest: Delegation[]) =>
  [...first, ...rest.filter(row => !first.some(head => head.id === row.id))]
 
 /** Refresh the latest activity together; older pages load when the user scrolls. */
-export default function DigitalPersonHomeInsights({active,canControlWake,name,role,state,activity,affect,chatShown,onInspect,atlasAction}:{
+export default function DigitalPersonHomeInsights({active,canControlWake,name,role,state,activity,affect,chatShown,onInspect,atlasAction,onConversationChange}:{
  active:boolean;name:string;role?:string;state:string;activity:DigitalActivity|null;affect:DigitalAffectState|null;chatShown:boolean
+ onConversationChange?:(open:boolean)=>void
  atlasAction?:ReactNode
  canControlWake?:boolean
  onInspect:()=>void
@@ -58,6 +59,7 @@ export default function DigitalPersonHomeInsights({active,canControlWake,name,ro
   return()=>{alive=false;cycle.epoch++;window.clearInterval(timer);window.removeEventListener(DIGITAL_ACTIVITY_CHANGED,load);document.removeEventListener('visibilitychange',load)}
  },[active])
  const [delegation,setDelegation]=useState<DigitalActivity['delegations'][number]|null>(null)
+ useEffect(()=>{onConversationChange?.(Boolean(delegation));return()=>onConversationChange?.(false)},[Boolean(delegation),onConversationChange])
  const [detail,setDetail]=useState<HomeDetailKind|null>(null)
  const inspect=(kind:HomeDetailKind)=>{onInspect();setDetail(kind)}
  const work=merge(records?.delegations??activity?.delegations?.slice(0,pageSize)??[],extra)
@@ -81,13 +83,13 @@ export default function DigitalPersonHomeInsights({active,canControlWake,name,ro
    <Button variant="ghost" className="digital-home-metric" onClick={()=>inspect('reflection')} aria-label={t('digitalPerson.homeReflection')}><strong><Icon name="lightbulb" size={16}/>{records?.reflection_count??'—'}{records?.reflection_count_lower_bound?'+':''}</strong><span>{t('digitalPerson.homeReflection')}</span></Button>
    {atlasAction}
   </aside>
-  <DigitalPersonActivityDrawer available={active&&!chatShown} onOpen={onInspect}><aside className="digital-home-context" hidden={!active}>
+  <DigitalPersonActivityDrawer covered={Boolean(delegation)} available={active&&!chatShown} onOpen={onInspect}><aside className="digital-home-context" hidden={!active}>
    <header className="digital-home-activity-header"><h2>{t('digitalPerson.homeProactiveActivity')}</h2></header>
    <DigitalPersonDelegationTimeline items={work} viewedResults={viewedResults}
     loading={loading} pageError={pageError} canLoadMore={canLoadMore} onLoadMore={loadMore}
     onOpen={item=>{onInspect();setDelegation(item)}}/>
   </aside></DigitalPersonActivityDrawer>
-  {active&&delegation&&<DigitalPersonDelegationDialog key={delegation.id} delegation={work.find(item=>item.id===delegation.id)??delegation} onClose={()=>setDelegation(null)} onResultVisible={status=>setViewedResults(previous=>previous[delegation.id]===status?previous:{...previous,[delegation.id]:status})}/>}
+  {active&&delegation&&<DigitalPersonDelegationDialog inline key={delegation.id} delegation={work.find(item=>item.id===delegation.id)??delegation} onClose={()=>setDelegation(null)} onResultVisible={status=>setViewedResults(previous=>previous[delegation.id]===status?previous:{...previous,[delegation.id]:status})}/>}
   {active&&detail&&<DigitalPersonHomeDetails key={detail} kind={detail} canControlWake={canControlWake} name={name} role={role} state={state} activity={activity} affect={affect} records={records} onClose={()=>setDetail(null)}/>}
  </>
 }

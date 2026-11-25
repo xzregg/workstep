@@ -78,7 +78,7 @@ test('global schedules reuse the project editor and switch scope without changin
     assert.equal(useProjectStore.getState().activeWorkflowId, 'flow-a')
     assert.equal(document.querySelector('#route')?.textContent, '/tasks?project=项目A&workflow=flow-a')
     await app.click('关闭')
-    assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
   } finally { await app.cleanup() }
 })
 
@@ -87,8 +87,8 @@ test('a new untouched schedule can close directly from the header', async () => 
   try {
     await app.render(); await app.click('定时任务'); await app.click('新建定时任务')
     await app.click('关闭')
-    assert.equal(document.querySelector('.confirm-dialog-panel'), null)
-    assert.equal(document.querySelector('.schedule-center-dialog'), null)
+    assert.ok(document.querySelector('.confirm-dialog-panel') === null)
+    assert.ok(document.querySelector('.schedule-center-dialog') === null)
   } finally { await app.cleanup() }
 })
 
@@ -103,9 +103,9 @@ test('discard confirmation escapes the navigation container and closes the sched
     })
     await app.click('关闭')
     const backdrop = document.querySelector('.confirm-dialog-backdrop')!
-    assert.equal(backdrop.parentElement, document.body, 'confirmation must not be clipped or hidden by the navigation container')
+    assert.ok(backdrop.parentElement === document.body, 'confirmation must not be clipped or hidden by the navigation container')
     await app.click('放弃')
-    assert.equal(document.querySelector('.schedule-center-dialog'), null)
+    assert.ok(document.querySelector('.schedule-center-dialog') === null)
   } finally { await app.cleanup() }
 })
 
@@ -131,7 +131,7 @@ test('unsaved changes guard project switching and close; saving writes only to t
     await app.click('保存')
     assert.deepEqual(writes, [{ projectId: 'b', workflowId: 'flow-b' }])
     await app.click('项目A')
-    assert.equal(document.querySelector('.confirm-dialog-panel'), null)
+    assert.ok(document.querySelector('.confirm-dialog-panel') === null)
     assert.equal(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent, '项目A')
   } finally { await app.cleanup() }
 })
@@ -182,7 +182,7 @@ test('bound read-only sessions see only their permitted project and cannot creat
     await app.render(); await app.click('定时任务')
     assert.deepEqual([...document.querySelectorAll('.schedule-center-tabs [role="tab"]')].map(t => t.textContent), ['项目B'])
     assert.deepEqual(app.reads, ['b'])
-    assert.equal(document.querySelector('.schedule-new-button'), null)
+    assert.ok(document.querySelector('.schedule-new-button') === null)
   } finally { await app.cleanup() }
 })
 
@@ -204,7 +204,7 @@ test('loading workflow review defaults does not make an untouched schedule dirty
     await app.render(); await app.click('定时任务')
     await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
     await app.click('项目B')
-    assert.equal(document.querySelector('.confirm-dialog-panel'), null)
+    assert.ok(document.querySelector('.confirm-dialog-panel') === null)
     assert.equal(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent, '项目B')
   } finally { await app.cleanup() }
 })
@@ -222,7 +222,7 @@ test('mobile entry dismisses the navigation drawer while keeping the schedules w
     await act(async () => container.querySelector<HTMLButtonElement>('.mobile-header button')!.click())
     assert.ok(container.querySelector('.responsive-navigation.is-open'))
     await act(async () => container.querySelector<HTMLButtonElement>('.layout-sidebar-nav-button')!.click())
-    assert.equal(container.querySelector('.responsive-navigation.is-open'), null)
+    assert.ok(container.querySelector('.responsive-navigation.is-open') === null)
     assert.ok(document.querySelector('.schedule-center-dialog'))
     await app.click('新建定时任务')
     await act(async () => {
@@ -233,9 +233,9 @@ test('mobile entry dismisses the navigation drawer while keeping the schedules w
     await act(async () => document.querySelector<HTMLButtonElement>('.schedule-close-button')!.click())
     const confirmation = document.querySelector('.confirm-dialog-panel')!
     assert.ok(confirmation)
-    assert.equal(confirmation.closest('[inert], .responsive-navigation'), null)
+    assert.ok(confirmation.closest('[inert], .responsive-navigation') === null)
     await app.click('放弃')
-    assert.equal(document.querySelector('.schedule-center-dialog'), null)
+    assert.ok(document.querySelector('.schedule-center-dialog') === null)
   } finally { await act(async () => root.unmount()); container.remove(); await app.cleanup(); Object.assign(globalThis, { history: oldHistory }) }
 })
 
@@ -347,7 +347,7 @@ test('an empty schedule category shows an empty state even when the other catego
     const tab = app.button('一次性')
     await act(async () => tab.dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
     assert.equal(document.querySelector('.schedule-list [aria-selected="true"]')?.textContent, '周期性')
-    assert.equal(document.activeElement, app.button('周期性'))
+    assert.ok(document.activeElement === app.button('周期性'))
   } finally { await app.cleanup() }
 })
 
@@ -464,7 +464,7 @@ test('schedule logs show generated task JSON, empty batches and unavailable lega
     assert.equal(details[0].querySelector('summary')?.textContent, '生成的任务 JSON')
     assert.deepEqual(JSON.parse(details[0].querySelector('pre')!.textContent!), drafts)
     assert.equal(details[1].querySelector('pre')?.textContent, '[]')
-    assert.equal(details[2].querySelector('pre'), null)
+    assert.ok(details[2].querySelector('pre') === null)
     assert.match(details[2].textContent!, /未记录生成结果/)
   } finally { await app.cleanup() }
 })
@@ -478,7 +478,7 @@ test('fixed schedule logs do not show generated JSON or its unavailable placehol
   try {
     await app.render(); await app.click('定时任务')
     await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
-    assert.equal(document.querySelector('.schedule-run-json'), null)
+    assert.ok(document.querySelector('.schedule-run-json') === null)
     assert.doesNotMatch(document.querySelector('.schedule-runs')!.textContent!, /生成的任务 JSON|未记录生成结果/)
   } finally { await app.cleanup() }
 })

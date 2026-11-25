@@ -52,6 +52,7 @@ class BotManager:
         self._event_bus = event_bus
         self._coordinator = coordinator
         self._responder = responder
+        self._digital_person = None
         self._factories = adapter_factories
         self._registered_channels = None
         self._adapters: dict[str, object] = {}
@@ -77,6 +78,11 @@ class BotManager:
         self._private_users: dict[str, dict[str, dict]] = {}
         from services.channels.weixin_login import WeixinLogin
         self.weixin_login = WeixinLogin()
+
+    def set_digital_person(self, runtime):
+        self._digital_person = runtime
+        if isinstance(self._responder, ChatSessionResponder):
+            self._responder.set_main_chat(runtime.chats)
 
     async def _ensure_factories(self) -> None:
         if self._registered_channels is None:
@@ -632,10 +638,12 @@ class BotManager:
             from services.digital_person_channels import get_bindings
             from services.digital_person import get_profile
             profile, peers = await asyncio.gather(asyncio.to_thread(get_profile), asyncio.to_thread(get_bindings))
-            if kind != 'task' and profile.enabled and any(
+            digital_peer = next((peer for peer in peers if
                 peer['bot_id'] == message.bot_id and peer['conversation_type'] == message.conversation_type
-                and peer['conversation_id'] == message.conversation_id for peer in peers
-            ):
+                and peer['conversation_id'] == message.conversation_id), None)
+            use_main_session = bool(kind != 'task' and profile.enabled and digital_peer
+                                    and digital_peer.get('use_main_session') and message.conversation_type == 'single')
+            if kind != 'task' and profile.enabled and digital_peer:
                 from services.customization_workspace import ensure_default_workspace
                 home = await ensure_default_workspace(self._project_manager)
                 kind, project_id, task_id = 'project', home.id, ''
@@ -694,6 +702,10 @@ class BotManager:
                         async with self._config_lock:
                             latest = await self._load()
                         session_id = latest["sessions"].get(session_key)
+                        if use_main_session:
+                            if self._digital_person is None:
+                                raise ValueError('Digital hub main session is unavailable')
+                            session_id = (await self._digital_person.main_session())['id']
                         source_project = latest["session_sources"].get(session_id, {}).get("project_id")
                         if source_project and source_project != project_id:
                             session_id = None
@@ -706,6 +718,10 @@ class BotManager:
                         async def on_accepted(accepted_session_id: str) -> None:
                             nonlocal session_id, previous_failure
                             session_id = accepted_session_id
+                            if use_main_session:
+                                # Preserve the independent route for switching back. Do not
+                                # make the main chat a channel route or overwrite its source.
+                                return
                             async with self._config_lock:
                                 current = await self._load()
                                 current["sessions"][session_key] = accepted_session_id
@@ -740,16 +756,22 @@ class BotManager:
                         with actor_context(_sender_actor(message, bot["platform"])):
                             if isinstance(self._responder, ChatSessionResponder):
                                 session_id, reply = await self._responder(
-                                    project_id, session_id, message.text, "channel_chat", "",
+                                    project_id, session_id, message.text, "chat_session" if use_main_session else "channel_chat", "",
                                     on_accepted=on_accepted,
                                     on_progress=stream.update if stream else None,
                                     on_started=on_started, on_event=on_event,
                                     title=(message.conversation_name if message.conversation_type == "group"
                                            else message.sender_name or message.sender_id),
+                                    **({'message_context': {'channel_source': {
+                                        'platform': bot['platform'], 'bot_id': bot['id'], 'bot_name': bot['name'],
+                                        'conversation_type': message.conversation_type, 'conversation_id': message.conversation_id,
+                                        'sender_id': message.sender_id, 'sender_name': message.sender_name or message.sender_id,
+                                        'use_main_session': True,
+                                    }}} if use_main_session else {}),
                                 )
                             else:
                                 session_id, reply = await self._responder(
-                                    project_id, session_id, message.text, "channel_chat", "",
+                                    project_id, session_id, message.text, "chat_session" if use_main_session else "channel_chat", "",
                                 )
                                 await on_accepted(session_id)
                     if stream:

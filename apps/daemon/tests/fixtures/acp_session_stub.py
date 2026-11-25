@@ -43,7 +43,18 @@ for line in sys.stdin:
             'agentInfo': {'name': 'offline-peer', 'version': '1.0'}})
     elif method == 'session/new':
         result(message, {'sessionId': str(uuid.uuid4())})
+    elif method == 'session/set_config_option' and (root / 'reject-mode').exists():
+        send({'id':message['id'],'error':{'code':-32602,'message':'mode unavailable'}})
     elif method in {'session/load', 'session/resume', 'session/set_config_option'}:
+        if method != 'session/set_config_option' and (root / 'replay-history').exists():
+            for update in [
+                {'sessionUpdate':'user_message_chunk','content':{'type':'text','text':'old user'}},
+                {'sessionUpdate':'agent_thought_chunk','content':{'type':'text','text':'old thought'}},
+                {'sessionUpdate':'tool_call','toolCallId':'old-tool','title':'old command','kind':'execute','status':'completed'},
+                {'sessionUpdate':'agent_message_chunk','content':{'type':'text','text':'hello'}},
+                {'sessionUpdate':'config_option_update','configOptions':[]},
+            ]:
+                send({'method':'session/update','params':{'sessionId':params['sessionId'],'update':update}})
         result(message, {'configOptions': []})
     elif method == 'session/prompt':
         sid = params['sessionId']

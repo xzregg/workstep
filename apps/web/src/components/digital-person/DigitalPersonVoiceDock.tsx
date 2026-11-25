@@ -1,4 +1,4 @@
-import {useEffect,useLayoutEffect,useRef,type PointerEvent} from 'react'
+import {useEffect,useLayoutEffect,useRef,type PointerEvent,type ReactNode} from 'react'
 import {useI18n} from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
@@ -11,6 +11,7 @@ import {advanceMicLevel} from './avatar/visualState'
 import {useDelayedPending} from './useDelayedPending'
 
 interface Props {
+ keyboardControl?:ReactNode
  canCompose:boolean; speakerMuted:boolean; onToggleSound:()=>void
  microphoneOn:boolean; microphoneAction:string; microphoneDisabled:boolean; microphonePending?:Extract<VoicePhase,'requesting'|'preparing'|'finishing'>
  readSpeechLevel?:()=>number; onMicrophone:()=>void; onHoldMicrophone:()=>void
@@ -73,6 +74,7 @@ export default function DigitalPersonVoiceDock(props:Props){
   <DigitalPersonCameraToggle/>
   <Button variant="ghost" className="digital-home-speaker" onClick={props.onToggleSound} aria-label={t('digitalPerson.homeSound')}
    aria-description={soundAction} title={soundAction} aria-pressed={!props.speakerMuted}><Icon name={props.speakerMuted?'volume-off':'volume'} size={24}/></Button>
+  {props.keyboardControl}
   <Button variant="ghost" className="digital-home-microphone" aria-label={t('digitalPerson.homeMicrophone')}
    aria-description={microphoneStarting?micPendingLabel:props.microphoneAction}
    title={microphoneStarting?micPendingLabel:`${props.microphoneAction} · ${t('digitalPerson.homeHoldToCall')}`}

@@ -128,8 +128,8 @@ test('a running card hides destructive actions and shows an active status', asyn
       onRestore={() => {}} onDelete={() => {}}
       onDragStart={() => {}} onDragEnd={() => {}}
     /></I18nProvider>))
-    assert.equal(container.querySelector('[data-task-action="start"]'), null)
-    assert.equal(container.querySelector('[data-task-action="delete"]'), null)
+    assert.ok(container.querySelector('[data-task-action="start"]') === null)
+    assert.ok(container.querySelector('[data-task-action="delete"]') === null)
     assert.ok(container.querySelector('.task-status-spinner'))
     const recovered = container.querySelector('.task-card-recovered-badge')
     const status = container.querySelector('.task-card-status-badge')
@@ -155,9 +155,9 @@ test('tool approval waits hide destructive card actions without a spinner', asyn
       onRestore={() => {}} onDelete={() => assert.fail('delete')}
       onDragStart={() => {}} onDragEnd={() => {}}
     /></I18nProvider>))
-    assert.equal(container.querySelector('[data-task-action="archive"]'), null)
-    assert.equal(container.querySelector('[data-task-action="delete"]'), null)
-    assert.equal(container.querySelector('.task-status-spinner'), null)
+    assert.ok(container.querySelector('[data-task-action="archive"]') === null)
+    assert.ok(container.querySelector('[data-task-action="delete"]') === null)
+    assert.ok(container.querySelector('.task-status-spinner') === null)
     assert.ok(container.querySelector('[data-s="tool_approval"]'))
   } finally {
     await act(async () => root.unmount())
@@ -205,7 +205,7 @@ test('a readonly card retains viewing and metadata while hiding mutations and dr
       onDelete={() => assert.fail('delete')} onDragStart={() => {}} onDragEnd={() => {}}
     /></I18nProvider>))
     assert.match(container.textContent || '', /Alice/)
-    assert.equal(container.querySelector('[data-task-action]'), null)
+    assert.ok(container.querySelector('[data-task-action]') === null)
     const card = container.querySelector<HTMLElement>('.task-board-card')!
     assert.equal(card.getAttribute('draggable'), 'false')
     await act(async () => card.click())

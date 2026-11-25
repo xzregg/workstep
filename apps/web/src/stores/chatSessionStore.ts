@@ -52,6 +52,8 @@ interface ChatListState {
   /** Sessions grouped by project so multiple expanded projects cannot share rows. */
   sessionsByProject: Record<string, ChatSessionSummary[]>
   quickButtons: ChatQuickButton[]
+  quickButtonsLoadingByProject: Record<string, boolean>
+  quickButtonsErrorByProject: Record<string, string | undefined>
   quickButtonsByProject: Record<string, ChatQuickButton[]>
   listLoadingByProject: Record<string, boolean>
   listErrorByProject: Record<string, string | undefined>
@@ -90,6 +92,8 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
   sessionsByProject: {},
   quickButtons: [],
   quickButtonsByProject: {},
+  quickButtonsLoadingByProject: {},
+  quickButtonsErrorByProject: {},
   listLoadingByProject: {},
   listErrorByProject: {},
 
@@ -306,12 +310,15 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
   },
 
   fetchQuickButtons: async (projectId) => {
-    if (!projectId) return
+    if (!projectId || get().quickButtonsLoadingByProject[projectId]) return
+    set(state => ({ quickButtonsLoadingByProject: { ...state.quickButtonsLoadingByProject, [projectId]: true }, quickButtonsErrorByProject: { ...state.quickButtonsErrorByProject, [projectId]: undefined } }))
     try {
       const { buttons } = await chatSessionApi.quickButtons(projectId)
       set(state => ({ quickButtons: buttons, quickButtonsByProject: { ...state.quickButtonsByProject, [projectId]: buttons } }))
-    } catch {
-      // Defaults come from the backend; keep the last known state.
+    } catch (reason) {
+      set(state => ({ quickButtonsErrorByProject: { ...state.quickButtonsErrorByProject, [projectId]: reason instanceof Error ? reason.message : zhCNT('actionShortcuts.projectButtonLoadFailed') } }))
+    } finally {
+      set(state => ({ quickButtonsLoadingByProject: { ...state.quickButtonsLoadingByProject, [projectId]: false } }))
     }
   },
 

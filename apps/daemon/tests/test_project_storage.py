@@ -9,6 +9,36 @@ from tests.test_api_contracts import api_context
 
 
 @pytest.mark.anyio
+async def test_short_project_id_disk_check_does_not_block_health(api_context, monkeypatch):
+    import services.project as project_module
+
+    client, tmp_path = api_context
+    root = tmp_path / "short-id"
+    root.mkdir()
+    entered, release = threading.Event(), threading.Event()
+    original_directory = project_module.external_directory
+
+    def slow_directory(project_id):
+        entered.set()
+        assert release.wait(3)
+        return original_directory(project_id)
+
+    monkeypatch.setattr(project_module, "external_directory", slow_directory)
+    pending = asyncio.create_task(client.post("/api/project/init", json={"path": str(root)}))
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        assert (await asyncio.wait_for(client.get("/api/health"), 0.5)).status_code == 200
+        assert not pending.done()
+    finally:
+        release.set()
+        created = await pending
+    assert created.status_code == 200, created.text
+    project_id = created.json()["id"]
+    assert len(project_id) == 8
+    assert all(char in "0123456789abcdef" for char in project_id)
+
+
+@pytest.mark.anyio
 async def test_storage_api_migrates_without_blocking_health(api_context, monkeypatch):
     import main
     import services.project as project_module

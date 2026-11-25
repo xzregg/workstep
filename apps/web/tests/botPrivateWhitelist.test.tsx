@@ -41,7 +41,7 @@ for (const scope of ['private', 'group'] as const) test(`${scope}: restore, mult
     assert.match(document.querySelector('[role="alert"]')!.textContent!, /保存失败/)
     fail = false
     await act(async () => button('Save').click())
-    assert.deepEqual(state.users, [a, b]); assert.equal(document.querySelector('[role="dialog"]'), null)
+    assert.deepEqual(state.users, [a, b]); assert.ok(document.querySelector('[role="dialog"]') === null)
     await act(async () => button(title).click())
     assert.deepEqual(checks().map(c => c.checked), [true, true, true])
     await act(async () => checks()[1].click())

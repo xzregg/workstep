@@ -60,7 +60,7 @@ test('running mobile dictation stays in the draft until submitted to the convers
   await act(async()=>root.render(<Harness shown={false}/>))
   assert.ok(document.querySelector('.pending-insert-panel'))
   await act(async()=>root.render(<Harness running={false} shown={false}/>))
-  assert.equal(document.querySelector('.pending-insert-panel'),null)
+  assert.ok(document.querySelector('.pending-insert-panel') === null)
   assert.equal(sends,0,'the frontend does not dispatch a duplicate turn on completion')
  }finally{await act(async()=>root.unmount());Object.assign(speechApi,original);Object.assign(pendingMessageInsertApi,pending);voiceCapture.start=start;await window.happyDOM.close()}
 })

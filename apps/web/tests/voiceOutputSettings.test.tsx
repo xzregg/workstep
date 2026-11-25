@@ -272,7 +272,7 @@ test('local catalog selects Qwen voices and prefills an editable VoiceDesign des
     }
     await selectModel('Qwen3-TTS 0.6B')
     assert.ok([...document.querySelectorAll('option')].some(o => o.value === 'Vivian' && o.selected))
-    assert.equal(document.querySelector('[data-local-instructions]'), null)
+    assert.ok(document.querySelector('[data-local-instructions]') === null)
     await selectModel('Qwen3-TTS VoiceDesign')
     assert.match(document.querySelector<HTMLTextAreaElement>('[data-local-instructions] textarea')!.value, /温柔、沉稳|gently and calmly/)
     assert.equal(document.querySelector<HTMLButtonElement>('[data-save-output]')!.disabled, false)
@@ -310,7 +310,7 @@ test('voice prompts support tone presets and custom text, persist to synthesis c
     assert.match(saved!.instructions, /傲娇/)
     const model = document.querySelector<HTMLSelectElement>('[data-output-model]')!
     await act(async () => { model.value = 'kokoro-v1'; model.dispatchEvent(new window.Event('change', { bubbles: true })) })
-    assert.equal(document.querySelector('[data-voice-instructions] textarea'), null)
+    assert.ok(document.querySelector('[data-voice-instructions] textarea') === null)
     assert.match(document.querySelector('[data-voice-instructions]')!.textContent!, /不支持声音提示词|does not support voice prompts/)
     const manager = document.querySelector<HTMLDetailsElement>('.speech-output-model-manager')!
     assert.equal(manager.open, false)
@@ -335,7 +335,7 @@ for (const mode of ['local', 'cloud', 'remote'] as const) test(`personalization 
   digitalPersonApi.get = async () => ({ enabled: true, name: '测试助手', role: '', personality: '', duties: '', avatar: 'robot', greeting: '' })
   try {
     await act(async () => root.render(<I18nProvider><VoiceOutputSettings parametersOnly onDirtyChange={() => {}} /></I18nProvider>))
-    assert.equal(host.querySelector('input[type=radio], input[type=password], [data-output-model], .speech-output-model-manager'), null)
+    assert.ok(host.querySelector('input[type=radio], input[type=password], [data-output-model], .speech-output-model-manager') === null)
     assert.ok(host.querySelector('[data-voice-instructions] textarea'))
     assert.match(host.querySelector('.speech-voice-presets')!.textContent!, /清亮高声线.*低沉声线/)
     if (mode === 'remote') {
@@ -461,7 +461,7 @@ test('local playback shows presets, free-form style, or tone controls for the se
     const model = host.querySelector<HTMLSelectElement>('[data-output-model]')!
     assert.deepEqual([...model.options].map(option => option.value), ['moss-nano', 'cosyvoice3', 'omnivoice'])
     assert.ok(host.querySelector('option[value="Xiaoyu"]'))
-    assert.equal(host.querySelector('[data-voice-instructions] textarea'), null)
+    assert.ok(host.querySelector('[data-voice-instructions] textarea') === null)
     const select = async (name: string) => {
       await act(async () => { model.value = name; model.dispatchEvent(new window.Event('change', { bubbles: true })) })
     }
@@ -485,7 +485,7 @@ test('local playback shows presets, free-form style, or tone controls for the se
     await act(async () => preview.click())
     assert.equal(previewPrompts.at(-1), prompt.value)
     await select('omnivoice')
-    assert.equal(host.querySelector('[data-voice-instructions] textarea'), null)
+    assert.ok(host.querySelector('[data-voice-instructions] textarea') === null)
     assert.equal(host.querySelectorAll('[data-voice-instructions] .speech-voice-presets button').length, 4)
     assert.equal(save.disabled, false)
     const input = host.querySelector<HTMLInputElement>('input[type=file]')!
@@ -510,7 +510,7 @@ test('local playback shows presets, free-form style, or tone controls for the se
     assert.equal(preview.disabled, true)
     await enter(volume, '1')
     assert.equal(preview.disabled, false)
-    assert.equal(host.querySelector('[data-voice-instructions] textarea'), null)
+    assert.ok(host.querySelector('[data-voice-instructions] textarea') === null)
     assert.equal(save.disabled, false)
   } finally {
     await act(async () => root.unmount())

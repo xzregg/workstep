@@ -38,7 +38,7 @@ test('session rename owns validation, retry and list update', async () => {
     assert.ok(input)
     assert.ok(save)
     assert.equal(input.value, '旧标题')
-    assert.equal(document.activeElement, input)
+    assert.ok(document.activeElement === input)
     assert.equal(input.selectionStart, 0)
     assert.equal(input.selectionEnd, input.value.length)
 
