@@ -6849,3 +6849,66 @@ async def test_cli_task_lifecycle_uses_real_api_and_archive_memory(api_context, 
     assert (await call("get"))["archived"] is True
     assert (await call("unarchive"))["unarchived"] is True
     assert (await call("archive"))["archived"] is True
+
+
+@pytest.mark.anyio
+async def test_completed_task_api_refresh_and_slow_completion_history(api_context, monkeypatch):
+    import asyncio
+    import threading
+    import main
+    from datetime import datetime, timedelta, timezone
+    from models import Task, TaskStep, WorkflowRun
+    from services.workflow_runtime import WorkflowRuntime
+
+    client, tmp_path = api_context
+    directory = tmp_path / "completion-history"
+    directory.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(directory)})).json()["id"]
+    workflow = (await client.post(f"/api/workflow/create?project_id={pid}", json={
+        "name": "CompletionFlow", "steps": {"steps": [{"key": "do"}]},
+    })).json()
+    tid = (await client.post(f"/api/task/create?project_id={pid}", json={
+        "title": "Completion history", "workflow_id": workflow["id"], "auto_start": False,
+    })).json()["id"]
+    finish = datetime(2026, 11, 12, 15, tzinfo=timezone.utc)
+
+    def prepare(_project):
+        Task.update(status="completed", active_workflow_run_id="completion-run").where(Task.id == tid).execute()
+        TaskStep.update(status="passed", ended_at=finish - timedelta(hours=1)).where(TaskStep.task == tid).execute()
+        WorkflowRun.create(id="completion-run", task=tid, status="succeeded", workflow_schema_version=1,
+                           started_at=finish - timedelta(hours=1), ended_at=finish)
+
+    await main.project_manager.run_db(pid, prepare)
+    payload = (await client.get(f"/api/task/{tid}?project_id={pid}")).json()
+    assert datetime.fromisoformat(payload["completed_at"]) == finish
+    queue = main.event_bus.subscribe()
+    runtime = WorkflowRuntime(main.event_bus, main.project_manager)
+    try:
+        await runtime._publish_task_lifecycle(pid, tid, "completion-run", "completed")
+        update = await asyncio.wait_for(queue.get(), 1)
+        assert update["name"] == "workstep.task_updated"
+        assert update["task_id"] == tid and update["project_id"] == pid
+        await runtime._publish_persisted_task_status(pid, tid)
+        updates = []
+        while not queue.empty():
+            updates.append(queue.get_nowait())
+        assert any(event.get("name") == "workstep.task_updated" for event in updates)
+    finally:
+        main.event_bus.unsubscribe(queue)
+
+    project = main.project_manager.get_project_by_id(pid)
+    entered, release = threading.Event(), threading.Event()
+    original = project.db.execute_sql
+    def slow(sql, params=None, commit=None):
+        if sql.startswith('SELECT') and 'workflow_runs' in sql:
+            entered.set()
+            release.wait(2)
+        return original(sql, params)
+    monkeypatch.setattr(project.db, "execute_sql", slow)
+    pending = asyncio.create_task(client.get(f"/api/task/{tid}?project_id={pid}"))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert (await asyncio.wait_for(client.get("/api/health"), .3)).status_code == 200
+    finally:
+        release.set()
+    assert (await pending).json()["completed_at"] == payload["completed_at"]

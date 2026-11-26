@@ -1020,6 +1020,12 @@ class WorkflowRuntime:
                     await asyncio.gather(runner._completion, return_exceptions=True)
             await self._publish_persisted_task_status(project_id, task_id, include_steps=True)
         for notification in notifications:
+            if notification["type"] == "task_lifecycle":
+                data = notification["data"]
+                await self._publish_task_lifecycle(
+                    project_id, task_id, data["run_id"], data["event"],
+                )
+                continue
             event = {**notification, "project_id": project_id, "task_id": task_id}
             ctx = AGUIContext.from_event(event)
             for agui_event in to_agui_events(event, ctx):
@@ -1090,6 +1096,8 @@ class WorkflowRuntime:
                      for row in TaskStep.select().where(TaskStep.task == task)] if include_steps else []
             return state, steps
         state, steps = await self._run_db(project_id, read)
+        if state['status'] == 'completed':
+            await self._publish_completion_update(project_id, task_id)
         for step in steps:
             event = {'project_id': project_id, 'task_id': task_id, 'step_key': step['step_key'],
                      'type': 'status', 'data': {'task_id': task_id, **step}}
@@ -1793,7 +1801,16 @@ class WorkflowRuntime:
                 await self._consume_task_pending_inserts(project_id, task.id)
         return workflow_run.id
 
+    async def _publish_completion_update(self, project_id, task_id):
+        # The board reads the same persisted timestamp as a later page refresh.
+        await self._event_bus.publish({
+            'type': 'CUSTOM', 'name': 'workstep.task_updated',
+            'project_id': project_id, 'task_id': task_id, 'value': {},
+        })
+
     async def _publish_task_lifecycle(self, project_id, task_id, run_id, kind, occurrence=''):
+        if kind == 'completed':
+            await self._publish_completion_update(project_id, task_id)
         payload = {'project_id': project_id, 'task_id': task_id, 'type': 'task_lifecycle',
                    'data': {'event': kind, 'event_id': f'{run_id}:{kind}' + (f':{occurrence}' if kind in {'paused', 'waiting'} else ''), 'run_id': run_id}}
         for event in to_agui_events(payload, AGUIContext.from_event(payload)):

@@ -81,6 +81,31 @@ def latest_previous_step_statuses(task: Task) -> dict[str, str]:
 
 
 
+def task_completion_time(task: Task, active_run: WorkflowRun | None, steps: list[TaskStep]):
+    """Recover completion from execution evidence, never from ordinary edits.
+
+    A current run bounds legacy evidence so a previous successful round cannot
+    masquerade as completion of a rerun whose timestamps are missing.
+    """
+    run = active_run or (WorkflowRun.select().where(WorkflowRun.task == task)
+                        .order_by(WorkflowRun.started_at.desc(), WorkflowRun.id.desc()).first())
+    if run is not None and run.status == "succeeded" and run.ended_at is not None:
+        return run.ended_at
+    times = [step.ended_at for step in steps
+             if step.status in {"passed", "skipped"} and step.ended_at is not None
+             and (run is None or run.started_at is None or step.ended_at >= run.started_at)]
+    attempts = (StepRun.select(StepRun.ended_at).join(WorkflowRun)
+                .where((WorkflowRun.task == task) & StepRun.status.in_(["succeeded", "reused"])))
+    reviews = ReviewRun.select().where((ReviewRun.task == task) & ReviewRun.status.in_(["passed", "skipped"]))
+    if run is not None:
+        attempts = attempts.where(StepRun.run == run.id)
+        reviews = reviews.where(ReviewRun.workflow_run == run.id)
+    times.extend(row.ended_at for row in attempts if row.ended_at is not None)
+    for review in reviews:
+        times.extend(value for value in (review.ended_at, review.decided_at) if value is not None)
+    return max(times, default=None)
+
+
 def task_to_dict(task: Task) -> dict:
     """Build the task/list/share projection inside the caller's DB work unit."""
     active_run = None
@@ -251,7 +276,7 @@ def task_to_dict(task: Task) -> dict:
         "state_version": task.state_version,
         "workflow_id": task.workflow_id,
         "first_message_at": first_message,
-        "completed_at": last_step_end,
+        "completed_at": task_completion_time(task, active_run, state_steps) if state["status"] == "completed" else last_step_end,
         "duration_ms": duration_ms,
         "total_tokens": total_tokens if total_tokens > 0 else None,
         "created_at": task.created_at,

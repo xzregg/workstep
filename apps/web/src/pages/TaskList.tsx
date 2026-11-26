@@ -38,7 +38,7 @@ import TaskTableView from '../components/TaskTableView'
 import TaskBoardCard from '../components/TaskBoardCard'
 import TaskBoardMotion from '../components/TaskBoardMotion'
 import TaskBoardViewToggle, { type TaskBoardView } from '../components/TaskBoardViewToggle'
-import { getTaskStatusLanes, taskStatusLane } from './taskStatusLanes'
+import { compareCompletedTasks, getTaskStatusLanes, taskStatusLane } from './taskStatusLanes'
 import { useI18n, type TFunction } from '../i18n'
 import SchedulePage from './SchedulePage'
 import { deriveTaskLane, orderTaskLanes, type TaskLane } from './taskListLane'
@@ -246,6 +246,7 @@ export default function TaskList() {
     if (boardView !== 'status') return tasksByLane
     const grouped: Record<string, typeof visibleTasks> = Object.fromEntries(boardLanes.map(lane => [lane.key, []]))
     for (const task of visibleTasks) grouped[taskStatusLane(task.status)].push(task)
+    grouped.completed.sort(compareCompletedTasks)
     return grouped
   }, [boardView, boardLanes, tasksByLane, visibleTasks])
   const motionScope = !loading && activeProject?.id && listQuery?.projectId === activeProject.id
