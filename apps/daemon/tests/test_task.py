@@ -912,3 +912,42 @@ def test_get_task_exposes_total_tokens(db_and_service):
 
     found = service.get_task(created["id"])
     assert found["total_tokens"] == 1234 + 150
+
+
+def test_completed_time_uses_latest_run_and_legacy_execution_records(db_and_service):
+    from models import Task, TaskStep, WorkflowRun, StepRun, ReviewRun
+
+    service, _ = db_and_service
+    tid = service.create_task(title="Completion", cwd="/tmp")["id"]
+    start = datetime(2026, 11, 12, tzinfo=timezone.utc)
+    finish = start + timedelta(hours=2)
+    Task.update(status="completed").where(Task.id == tid).execute()
+    TaskStep.update(status="passed", ended_at=start).where(TaskStep.task == tid).execute()
+    old = WorkflowRun.create(id="old", task=tid, status="succeeded", workflow_schema_version=1,
+                             started_at=start, ended_at=start + timedelta(hours=1))
+    run = WorkflowRun.create(id="latest", task=tid, status="succeeded", workflow_schema_version=1,
+                             started_at=finish, ended_at=finish + timedelta(hours=1))
+    Task.update(active_workflow_run_id=run.id).where(Task.id == tid).execute()
+    assert service.get_task(tid)["completed_at"] == run.ended_at
+    Task.update(title="Edited", description="Edited", updated_at=finish + timedelta(days=1)).where(Task.id == tid).execute()
+    assert service.get_task(tid)["completed_at"] == run.ended_at
+    # A missing run end must recover from this run, never from an older round.
+    run.ended_at = None
+    run.save()
+    step = StepRun.create(id="step", run=run, step_key="do", attempt=1, status="succeeded", ended_at=finish)
+    review = ReviewRun.create(id="review", workflow_run=run, step_run=step, task=tid,
+                             step_key="do", mode="manual", status="passed", ended_at=finish,
+                             decided_at=finish + timedelta(minutes=30))
+    assert service.get_task(tid)["completed_at"] == review.decided_at
+    ReviewRun.delete().execute()
+    assert service.get_task(tid)["completed_at"] == finish
+    StepRun.delete().execute()
+    TaskStep.update(ended_at=None).where(TaskStep.task == tid).execute()
+    assert service.get_task(tid)["completed_at"] is None
+    # Old databases without an active run can still use their latest successful run.
+    Task.update(active_workflow_run_id=None).where(Task.id == tid).execute()
+    run.delete_instance()
+    assert service.get_task(tid)["completed_at"] == old.ended_at
+    old.delete_instance()
+    TaskStep.update(ended_at=finish).where(TaskStep.task == tid).execute()
+    assert service.get_task(tid)["completed_at"] == finish

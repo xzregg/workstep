@@ -57,7 +57,11 @@ test('status view groups real task states, retains card details, updates live an
     makeTask('running', 'running', { pending_confirmations: [{ step_key: 'do', reason: 'manual_review' }], steps: [{ step_key: 'do', status: 'running', engine: null, started_at: null, ended_at: null, error: null }] }),
     makeTask('waiting', 'waiting', { status_reason: 'tool_approval' }),
     makeTask('stopped', 'stopped'), makeTask('failed', 'failed', { status_reason: 'engine_error' }),
-    makeTask('completed', 'completed'),
+    makeTask('completed', 'completed', { completed_at: '2026-11-12T12:00:00Z' }),
+    makeTask('older-created', 'completed', { created_at: '2025-01-01T00:00:00Z', completed_at: '2026-11-12T15:00:00Z' }),
+    makeTask('same-time', 'completed', { completed_at: '2026-11-12T15:00:00Z' }),
+    makeTask('unknown-z', 'completed', { updated_at: '2027-01-01T00:00:00Z' }),
+    makeTask('unknown-a', 'completed'),
     makeTask('other-flow', 'ready', { workflow_id: 'other' }), makeTask('archived', 'failed', { archived: true }),
   ]
   useProjectStore.setState({ activeProject: { id: 'demo', name: 'Demo', path: '/demo', steps: {}, workflows: [{ id: 'flow', name: 'Flow' }] } as unknown as Project, activeWorkflowId: 'flow' })
@@ -76,8 +80,8 @@ test('status view groups real task states, retains card details, updates live an
     await act(async () => statusButton.click())
     assert.equal(statusButton.getAttribute('aria-pressed'), 'true')
     assert.ok(container.querySelector('.desktop-task-toolbar .btn-primary'), 'global task creation remains available in status view')
-    assert.deepEqual(lanes().map(lane => lane.querySelector('.task-board-lane-heading')!.textContent), ['预备中(2)', '运行中(1)', '等待确认(1)', '已中断(2)', '已完成(1)'])
-    assert.deepEqual(laneIds(), [['ready', 'queued'], ['running'], ['waiting'], ['stopped', 'failed'], ['completed']])
+    assert.deepEqual(lanes().map(lane => lane.querySelector('.task-board-lane-heading')!.textContent), ['预备中(2)', '运行中(1)', '等待确认(1)', '已中断(2)', '已完成(5)'])
+    assert.deepEqual(laneIds(), [['ready', 'queued'], ['running'], ['waiting'], ['stopped', 'failed'], ['older-created', 'same-time', 'completed', 'unknown-a', 'unknown-z']])
     assert.ok(container.querySelector('[data-s="queued"]'))
     assert.ok(container.querySelector('[data-s="tool_approval"]'))
     assert.match(lanes()[3].textContent!, /引擎调用失败/)
@@ -99,11 +103,42 @@ test('status view groups real task states, retains card details, updates live an
     assert.deepEqual(laneIds()[0], ['cli', 'ready', 'queued'])
     assert.equal(fetches, 1, 'creation events insert one card without another list request')
     await act(async () => useTaskStore.setState({ tasks: tasks.map(task => task.id === 'ready' ? { ...task, status: 'waiting', status_reason: 'manual_review' } : task) }))
-    assert.deepEqual(laneIds(), [['queued'], ['running'], ['ready', 'waiting'], ['stopped', 'failed'], ['completed']])
+    assert.deepEqual(laneIds(), [['queued'], ['running'], ['ready', 'waiting'], ['stopped', 'failed'], ['older-created', 'same-time', 'completed', 'unknown-a', 'unknown-z']])
+    const completedIds = () => laneIds()[4]
+    await act(async () => useTaskStore.setState({ tasks: useTaskStore.getState().tasks.map(task => ({ ...task,
+      title: task.id, description: 'Edited', updated_at: '2028-01-01T00:00:00Z',
+    })).reverse() }))
+    assert.deepEqual(completedIds(), ['older-created', 'same-time', 'completed', 'unknown-a', 'unknown-z'], 'edits and list order cannot affect completed order')
+    const originalGet = taskApi.get
+    taskApi.get = async () => makeTask('ready', 'completed', { completed_at: '2026-11-12T16:00:00Z' })
+    try {
+      await act(async () => {
+        useTaskStore.getState().handleWsEvent({ type: 'CUSTOM', name: 'workstep.task_updated', project_id: 'demo', task_id: 'ready', value: {} })
+        await useTaskStore.getState().refreshTask('ready', 'demo')
+      })
+      assert.equal(completedIds()[0], 'ready', 'persisted completion refresh puts a new completion first')
+      await act(async () => useTaskStore.getState().handleWsEvent({ type: 'RUN_STARTED', project_id: 'demo', task_id: 'completed', status: 'running' }))
+      assert.equal(completedIds().includes('completed'), false)
+      taskApi.get = async () => makeTask('completed', 'completed', { completed_at: '2026-11-12T17:00:00Z' })
+      await act(async () => {
+        useTaskStore.getState().handleWsEvent({ type: 'CUSTOM', name: 'workstep.task_updated', project_id: 'demo', task_id: 'completed', value: {} })
+        await useTaskStore.getState().refreshTask('completed', 'demo')
+      })
+      assert.equal(completedIds()[0], 'completed', 'rerun uses the latest completion')
+    } finally { taskApi.get = originalGet }
+    const beforeRemount = completedIds()
+    const originalList = taskApi.list
+    const persisted = [...useTaskStore.getState().tasks].reverse()
+    taskApi.list = async () => ({ tasks: persisted })
+    try {
+      await act(async () => taskState.fetchTasks('demo', 'flow'))
+      assert.deepEqual(completedIds(), beforeRemount, 'reloading the persisted list retains completion order')
+    } finally { taskApi.list = originalList }
     await act(async () => root.unmount())
     root = createRoot(container)
     await render()
     assert.equal(container.querySelector('[aria-label="状态泳道"]')!.getAttribute('aria-pressed'), 'true')
+    assert.deepEqual(completedIds(), beforeRemount)
     await act(async () => useTaskStore.setState({ tasks: [] }))
     assert.equal(lanes().length, 5, 'empty status lanes stay visible')
     assert.ok(lanes().every(lane => lane.querySelector('.task-board-lane-count')!.textContent === '(0)'))

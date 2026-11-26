@@ -1,3 +1,5 @@
+import type { Task } from '../api/task'
+import { toMilliseconds } from '../utils/datetime'
 import type { TFunction } from '../i18n'
 import type { TaskLane } from './taskListLane'
 
@@ -23,4 +25,16 @@ export function taskStatusLane(status: string): string {
     case 'failed': return 'interrupted'
     default: return 'ready'
   }
+}
+
+/** Completion is server-owned; IDs keep ties and unknown dates stable across refreshes. */
+export function compareCompletedTasks(a: Task, b: Task): number {
+  const left = toMilliseconds(a.completed_at)
+  const right = toMilliseconds(b.completed_at)
+  if (left !== right) {
+    if (left === null) return 1
+    if (right === null) return -1
+    return right - left
+  }
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
