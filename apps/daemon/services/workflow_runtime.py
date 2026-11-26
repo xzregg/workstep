@@ -937,6 +937,12 @@ class WorkflowRuntime:
                     await asyncio.gather(runner._completion, return_exceptions=True)
             await self._publish_persisted_task_status(project_id, task_id, include_steps=True)
         for notification in notifications:
+            if notification["type"] == "task_lifecycle":
+                data = notification["data"]
+                await self._publish_task_lifecycle(
+                    project_id, task_id, data["run_id"], data["event"],
+                )
+                continue
             event = {**notification, "project_id": project_id, "task_id": task_id}
             ctx = AGUIContext.from_event(event)
             for agui_event in to_agui_events(event, ctx):
