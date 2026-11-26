@@ -65,6 +65,62 @@ class RuntimeFakeEngine(AcpEngineBase):
         return {}
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("selected_engine", [None, "", "claude", "codex"])
+async def test_generated_default_step_uses_current_execution_engine(tmp_path, monkeypatch, selected_engine):
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.config import config_store
+    from services.workflow_runtime import WorkflowRuntime
+
+    calls = []
+
+    def engine_class(engine_id):
+        class RecordingEngine(RuntimeFakeEngine):
+            async def spawn(self, prompt, cwd, **kwargs):
+                calls.append(engine_id)
+                async for event in super().spawn(prompt, cwd, **kwargs):
+                    yield event
+        return RecordingEngine
+
+    for engine_id in ("claude", "codex", "pydantic_ai"):
+        monkeypatch.setitem(ENGINE_REGISTRY, engine_id, engine_class(engine_id))
+    db = init_db(str(tmp_path / "default-engine.db"))
+    node = {"id": 1, "type": "build", "title": "Build"}
+    if selected_engine is not None:
+        node["engine"] = selected_engine
+    project = SimpleNamespace(
+        id="default-engine-project", path=tmp_path, workstep_dir=tmp_path / ".workstep",
+        steps={"nodes": [node], "connections": []},
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        for index, default in enumerate(("codex", "pydantic_ai")):
+            monkeypatch.setattr(config_store, "get_execution_default_engine", lambda: default)
+            task = Task.create(
+                id=f"task-{index}", title="Default engine", cwd=str(tmp_path),
+                engine="claude", created_at=utc_now(), updated_at=utc_now(),
+            )
+            TaskStep.create(task=task, step_key="build", status="pending")
+            handle = await runtime.start(project.id, task.id, "")
+            await runtime.wait(handle)
+            step_run = StepRun.get((StepRun.run == handle.id) & (StepRun.step_key == "build"))
+            assert step_run.status == "succeeded"
+            assert step_run.engine == (selected_engine or default)
+        assert calls == [selected_engine or "codex", selected_engine or "pydantic_ai"]
+        assert project.steps["nodes"][0].get("engine", "") == (selected_engine or "")
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        db.close()
+
+
 @pytest.mark.parametrize(
     ("statuses", "expected"),
     [

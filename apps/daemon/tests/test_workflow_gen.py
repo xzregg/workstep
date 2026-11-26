@@ -98,6 +98,93 @@ class FakeEngine:
     supports_resume = False
 
 
+def test_generation_instructions_keep_unspecified_step_engines_default():
+    assert 'engine defaults to "claude"' not in SYSTEM_PROMPT
+    assert 'engine: ""' in SYSTEM_PROMPT
+    assert "explicitly requests" in SYSTEM_PROMPT
+    assert "existing" in SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize("existing_engine", ["", "claude", "codex"])
+@pytest.mark.parametrize("requested_engine", [None, "", "claude"])
+def test_patch_preserves_engine_unless_explicitly_changed(existing_engine, requested_engine):
+    base = {"nodes": [
+        {"id": 1, "type": "build", "title": "Build", "engine": existing_engine},
+        {"id": 2, "type": "test", "title": "Test", "engine": "codex"},
+    ], "connections": []}
+    updated = {"id": "1", "type": "build", "title": "Updated"}
+    if requested_engine is not None:
+        updated["engine"] = requested_engine
+    patch = {"upsertNodes": [updated, {"type": "publish", "title": "Publish"}]}
+    merged, _, resolved = apply_patch(base, patch)
+    expected = existing_engine if requested_engine is None else requested_engine
+    assert merged["nodes"][0]["engine"] == expected
+    assert resolved["upsertNodes"][0]["engine"] == expected
+    assert merged["nodes"][1] == base["nodes"][1]
+    assert "engine" not in merged["nodes"][2]
+    assert base["nodes"][0]["engine"] == existing_engine
+    assert ("engine" in updated) == (requested_engine is not None)
+
+
+@pytest.mark.anyio
+async def test_resumed_generation_receives_current_engine_instructions(gen_module, monkeypatch):
+    module, _, _, project, _ = gen_module
+    calls = []
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs):
+        calls.append((session_id, kwargs))
+        return json.dumps({"reply": "ok", "flow_proposals": []}), [], "native-session"
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    first = module.submit_message(project.id, None, "创建流程", "engine-rule-first")
+    assert await _wait_turn(module, first.turn_id) == "completed"
+    second = module.submit_message(project.id, first.session_id, "新增步骤", "engine-rule-next")
+    assert await _wait_turn(module, second.turn_id) == "completed"
+    assert calls[-1][0] == "native-session"
+    for _, kwargs in calls:
+        assert kwargs["system_prompt"] == SYSTEM_PROMPT
+        assert kwargs.get("system_prompt_each_turn") is True
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine", [None, "", "claude", "codex"])
+async def test_proposal_engine_survives_save_reopen_and_runtime_resolution(
+    gen_module, monkeypatch, engine, daemon_app,
+):
+    import api.workflow as workflow_api
+    from httpx import ASGITransport, AsyncClient
+
+    module, _, manager, project, store = gen_module
+    monkeypatch.setattr(workflow_api, "project_manager", manager)
+    node = {"id": 1, "type": "build", "title": "Build"}
+    if engine is not None:
+        node["engine"] = engine
+    raw = json.dumps({"reply": "ok", "flow_proposals": [{"steps": {
+        "nodes": [node], "connections": [],
+    }}]})
+    _, proposals, _ = await module._resolve_proposal(
+        SimpleNamespace(steps=None), raw,
+    )
+    steps = proposals[0]["steps"]
+    assert steps["nodes"][0].get("engine", "") == (engine or "")
+
+    async with AsyncClient(transport=ASGITransport(app=daemon_app), base_url="http://test") as client:
+        created = await client.post(
+            f"/api/workflow/create?project_id={project.id}",
+            json={"name": "EngineDefaults", "steps": steps},
+        )
+        assert created.status_code == 200, created.text
+        workflow_id = created.json()["id"]
+        for default in ("codex", "pydantic_ai"):
+            store.values["execution_default_engine"] = default
+            reopened = await client.get(f"/api/workflow/{workflow_id}?project_id={project.id}")
+            assert reopened.status_code == 200
+            saved = reopened.json()["steps"]
+            assert saved == steps
+            compiled = WorkflowDefinition.load(saved).compile().to_steps_config()
+            assert compiled["steps"][0]["engine"] == (engine or default)
+
+
 def test_assistant_model_switch_preserves_engine_session_id():
     runtime = AssistantRuntime(
         AssistantConfig(
@@ -259,7 +346,16 @@ async def test_shutdown_marks_running_generation_stopped(gen_module, monkeypatch
 
 
 @pytest.fixture
-async def gen_module(tmp_path, monkeypatch):
+def daemon_app():
+    # Initialize global runtime modules against the real config store before
+    # gen_module replaces it. Turn usage reporting also lazily imports main.
+    import main
+
+    return main.app
+
+
+@pytest.fixture
+async def gen_module(tmp_path, monkeypatch, daemon_app):
     import agent_assistants.base as assistant_base
     import services.config as config_service
     import services.project as project_service
@@ -290,7 +386,7 @@ async def gen_module(tmp_path, monkeypatch):
 async def test_submit_creates_session_and_is_idempotent(gen_module, monkeypatch):
     module, bus, manager, project, _ = gen_module
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         return json.dumps({"reply": "先澄清一下", "flow_proposals": []}), [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -371,7 +467,7 @@ async def test_template_mode_runs_without_project(gen_module, tmp_path, monkeypa
     module, bus, manager, project, _ = gen_module
 
     async def fake_invoke(
-        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None
+        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False
     ):
         assert cwd == str(tmp_path / "config" / "data" / "templates")
         return json.dumps({"reply": "模板方案", "flow_proposals": []}), [], None
@@ -506,7 +602,7 @@ async def test_flow_proposal_event_is_validated_and_taskless(gen_module, monkeyp
         }
     )
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         if on_event is not None:
             # Simulate a streamed JSON reply with an escaped reply field
             from engines.core.events import InternalEvent
@@ -587,7 +683,7 @@ async def test_flow_proposals_persist_and_survive_history(gen_module, monkeypatc
         }
     )
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         return raw, [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -627,7 +723,7 @@ async def test_invalid_proposal_is_repaired(gen_module, monkeypatch):
     module, bus, manager, project, _ = gen_module
     calls: list[str] = []
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         calls.append(prompt)
         if len(calls) == 1:
             return (
@@ -788,7 +884,7 @@ async def test_multiple_proposals_filter_invalid(gen_module, monkeypatch):
         }
     )
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         return raw, [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -812,7 +908,7 @@ async def test_multiple_proposals_filter_invalid(gen_module, monkeypatch):
 async def test_unrepairable_proposal_drops_proposal(gen_module, monkeypatch):
     module, bus, manager, project, _ = gen_module
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         return (
             json.dumps(
                 {
@@ -979,7 +1075,7 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
     bus = EventBus()
     module = WorkflowGenModule(bus, manager)
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -1096,7 +1192,7 @@ async def test_all_invalid_proposals_repaired_by_fast_model(gen_module, monkeypa
     }
     calls = {"count": 0}
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         calls["count"] += 1
         return (json.dumps(fixed if calls["count"] > 1 else invalid), [], None)
 
@@ -1163,7 +1259,7 @@ async def test_unrepairable_multi_proposals_emit_rejected_event(gen_module, monk
         ],
     }
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         return json.dumps(invalid), [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -1200,7 +1296,7 @@ async def test_engine_model_overrides_are_session_scoped(gen_module, monkeypatch
 
     seen: list[tuple] = []
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         seen.append((engine_id, model, session_id))
         return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
 
@@ -1266,7 +1362,7 @@ async def test_session_cwd_is_project_directory(gen_module, monkeypatch):
     module, bus, manager, project, _ = gen_module
     seen: list[tuple[str, str]] = []  # (cwd, prompt)
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         seen.append((cwd, prompt))
         return json.dumps({"reply": "好的", "flow_proposals": []}), [], None
 
@@ -1302,7 +1398,7 @@ async def test_sessions_use_their_own_project_directory(gen_module, monkeypatch)
     other = manager.init_project(project.path.parent / "other-proj")
     seen: list[tuple[str, str]] = []
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         seen.append((cwd, prompt))
         return json.dumps({"reply": "好的", "flow_proposals": []}), [], None
 
@@ -1325,7 +1421,7 @@ async def test_current_canvas_json_is_injected_into_prompt(gen_module, monkeypat
     module, bus, manager, project, _ = gen_module
     seen: list[tuple[str, str]] = []
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         seen.append((cwd, prompt))
         return json.dumps({"reply": "好的", "flow_proposals": []}), [], None
 
@@ -1407,7 +1503,7 @@ async def test_thinking_and_usage_events_are_streamed(gen_module, monkeypatch):
 
     from engines.core.events import InternalEvent
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         assert on_event is not None
         await on_event(
             InternalEvent(
@@ -1495,7 +1591,7 @@ async def test_workflow_scoped_session_is_stable_and_persisted(
     module, bus, manager, project, _ = gen_module
     seen: list[tuple[str, str]] = []
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         seen.append((cwd, prompt))
         return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
 
@@ -1539,7 +1635,7 @@ async def test_reset_workflow_session_clears_memory_and_persistence(
     module, bus, manager, project, _ = gen_module
     seen_prompts: list[str] = []
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         seen_prompts.append(prompt)
         return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
 
@@ -1572,7 +1668,7 @@ async def test_reset_workflow_session_clears_memory_and_persistence(
 async def test_resumed_workflow_prompt_view_shows_only_this_call(
     gen_module, monkeypatch
 ):
-    """正文降级续轮没有新系统注入，查看中也不补造旧指令。"""
+    """Prompt inspection includes the rules actually refreshed on resumed turns."""
     import agent_assistants.workflow_gen as wfgen_service
 
     module, _bus, _manager, project, _ = gen_module
@@ -1585,10 +1681,11 @@ async def test_resumed_workflow_prompt_view_shows_only_this_call(
 
     async def fake_invoke(
         engine_id, model, cwd, prompt, session_id, on_event=None,
-        message_history=None, system_prompt=None,
+        message_history=None, system_prompt=None, system_prompt_each_turn=False,
     ):
         sent_prompts.append(prompt)
-        data = {"prompt": (system_prompt + "\n\n" + prompt) if not session_id else prompt, "instruction_transport":"body", "system_prompt_in_body":not session_id}
+        inject = not session_id or system_prompt_each_turn
+        data = {"prompt": (system_prompt + "\n\n" + prompt) if inject else prompt, "instruction_transport":"body", "system_prompt_in_body":inject}
         from engines.core.events import InternalEvent
         await on_event(InternalEvent("prompt_input", data))
         return json.dumps({"reply": "ok", "flow_proposals": []}), [], "engine-session"
@@ -1609,7 +1706,7 @@ async def test_resumed_workflow_prompt_view_shows_only_this_call(
 
     assert SYSTEM_PROMPT not in sent_prompts[1]
     visible_prompt = module.history(project.id, "wf-display")["messages"][-1]["prompt"]
-    assert SYSTEM_PROMPT not in visible_prompt
+    assert SYSTEM_PROMPT in visible_prompt
     assert "补充审核阶段" in visible_prompt
 
 
@@ -1619,7 +1716,7 @@ async def test_different_workflows_have_independent_sessions(
 ):
     module, bus, manager, project, _ = gen_module
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -1645,7 +1742,7 @@ async def test_ephemeral_chat_never_writes_gen_sessions(gen_module, monkeypatch)
     """Create-mode chats (no workflow) stay memory-only."""
     module, bus, manager, project, _ = gen_module
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -1679,7 +1776,7 @@ async def test_workflow_session_history_survives_module_restart(
         for name in ("base", "workflow_gen"):
             monkeypatch.setattr(f"agent_assistants.{name}.create_engine", lambda _: ResumeEngine())
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         seen.append((session_id, prompt))
         return json.dumps({"reply": "ok", "flow_proposals": []}), [], f"{selected}-thread" if switch_provider else None
 
@@ -1765,7 +1862,7 @@ async def test_workflow_history_persists_prompt_events_and_session_id(
     """Captured actual inputs, events and engine session id survive restart."""
     module, bus, manager, project, _ = gen_module
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         events = [{"type":"prompt_input", "data":{"prompt":prompt, "system_prompt":system_prompt, "instruction_transport":"system"}},
             {
                 "type": "session_started",
@@ -1885,7 +1982,7 @@ async def test_history_is_fresh_when_turn_completes_under_slow_save(
 
     monkeypatch.setattr(assistant_base.JsonRowPersistence, "save", slow_save)
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         events = [
             {
                 "type": "session_started",
@@ -1923,7 +2020,7 @@ async def test_workflow_history_persists_error_message_prompt(
     """A failure before dispatch must not fabricate an actual input record."""
     module, bus, manager, project, _ = gen_module
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -1948,7 +2045,7 @@ async def test_proposals_reply_gets_a2ui_choice_ui(gen_module, monkeypatch):
     queue = bus.subscribe()
     collected: list[dict] = []
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False):
         return json.dumps({
             "reply": "我准备了两个方案，请选择",
             "flow_proposals": [
@@ -2158,7 +2255,7 @@ async def test_build_prompt_omits_history_for_resume_engines(gen_module, monkeyp
     seen: list[str] = []
 
     async def fake_invoke(
-        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None
+        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False
     ):
         seen.append(prompt)
         return json.dumps({"reply": "好的", "flow_proposals": []}), [], "engine-sid-1"
@@ -2204,7 +2301,7 @@ async def test_engine_state_flows_through_session_and_survives_restart(
     seen: list[tuple[object, str]] = []
 
     async def fake_invoke(
-        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None
+        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None, system_prompt=None, system_prompt_each_turn=False
     ):
         seen.append((message_history, prompt))
         return (
@@ -2664,7 +2761,7 @@ async def test_workflow_actual_input_native_and_fallback(gen_module, monkeypatch
         assert f"问题{index}" in reply["prompt"]
         assert "Current canvas updated" in calls[index]["prompt"]
         if transport == "body":
-            assert (SYSTEM_PROMPT in calls[index]["prompt"]) == (index == 0)
+            assert SYSTEM_PROMPT in calls[index]["prompt"]
             assert "独立指令" not in reply["prompt"]
         else:
             assert calls[index]["system_prompt"] == SYSTEM_PROMPT
