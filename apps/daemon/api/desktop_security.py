@@ -390,6 +390,12 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 {"detail": "legacy sharing is unavailable in managed mode"}, status_code=403,
             )
         else:
+            # Native loopback access can outlive the browser login session after
+            # a Gateway reconnect. Resolve its authenticated host identity only
+            # after the existing access checks, never for a LAN visitor or RPC.
+            if (actor is None and managed and protected and remote_access
+                    and not native_dispatch and local_gateway_fallback_allowed(request)):
+                actor = getattr(gateway_client, 'current_actor', None)
             if actor is not None:
                 request.state.managed_actor = actor
             context = actor_context(ActorSnapshot(
