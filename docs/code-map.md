@@ -90,7 +90,7 @@ Claude 全权限入口：输入框 `ChatInput` 与设置 `EngineConfigForm` 共�
 
 移动端流式交互性能：`utils/markdownBlocks.ts` 将已结束的简单顶层列表与前后独立段落分开缓存，避免一处列表导致整篇长正文随每批吐字重解析；松散列表的各项保留同一解析上下文，嵌套／缩进列表、引用定义、HTML 等复杂结构继续保留全文语义。`markdownBlocks.test.ts` 逐前缀对比拆分与整文的实际 Markdown 输出，`streamRevealText.test.tsx` 验证列表存在时旧图片和表格仍复用。390px／4倍CPU的修复前后剖析、真实 `ResponsiveNavigation` 与 `ChatInput` 连续交互记录在 `tmp/android-stream-performance/`；发送回调与待插入队列分别验证，未覆盖安卓真机及真实后端端到端提交。
 
-长回复持续输出时的菜单响应：`MessageTimeline.tsx` 将只有一段连续文字的时间线始终交给同一个正文渲染器，避免滚动裁剪事件后因前缀偶然匹配而重建 Markdown 子树；有工具等过程分段时沿用时间线。`utils/datetime.ts` 有界复用显式带时区的时间戳解析结果，供正文、过程与统计共享。回归：`streamRevealText.test.tsx`；`scripts/check-streaming-responsiveness.cjs live` 模拟 2.4 万字符正文、每 12ms 持续分包、滚动跟随及菜单与发送操作。
+任务对话正文稳定性：`TaskConversationMessage.tsx` → `ChatMessageBubble.tsx` → `MessageTimeline.tsx` 始终以消息 `content` 更新同一个 `ProposedPlanMessage`／`MarkdownMessage`，不再从过程事件拆分或补齐正文；2000 条实时事件窗口裁剪、思考／工具边界和历史快照均不改变正文实例。`ProcessTrace.tsx` 继续独立显示思考、进度和工具记录，原有空正文历史兜底仍由 `chatMessageDisplay.ts::assistantBodyFallback` 负责。回归：`messageBodyStability.test.tsx`（多段正文、思考隔离、工具切换、窗口裁剪、快照超前、完成／刷新一致性）、`streamRevealText.test.tsx`、`streamingSelection.test.tsx`。长回复菜单响应继续由 `utils/datetime.ts` 有界复用显式带时区的时间戳解析，`scripts/check-streaming-responsiveness.cjs live` 保留 2.4 万字符持续分包、滚动跟随及菜单与发送检查。
 
 吐字分包抖动：`useStreamReveal.ts` 对小首包做有界缓冲，以收到正文的增量／间隔平滑估计到达速率；有连续到达样本时允许追赶速度回落，单次大批量及结束态仍保留快速收尾。叶节点、Markdown解析频率与选区保护不变。回归：`useStreamReveal.test.tsx`、`streamRevealText.test.tsx`、`streamingSelection.test.tsx`；390／1440px 真实组件模拟分包渲染记录在 `tmp/stream-pacing/`，未覆盖真实引擎与网络链路。
 
@@ -102,7 +102,7 @@ Claude 全权限入口：输入框 `ChatInput` 与设置 `EngineConfigForm` 共�
 
 知识摘要与分类：主动思考使用 `digital_person_assessment.MEMORY_GUIDANCE`，四类边界与完整 `RULES` 共用 `memory_policy.KIND_RULES`，纠错反馈复用 `COMPACT_RULES`。旧独立提炼器及其提示词已删除。保留事实／事件及条件，合并重复讨论，省略低价值操作日志，不硬截断摘要。回归 `test_memory_maintenance.py::test_compact_memory_policy_reaches_assessment_and_repair` 及统一评估、知识校验回归。
 
-实时正文与刷新历史分离：`ChatMessageBubble.tsx` 在运行态空气泡就挂载正文，`MessageTimeline.tsx` 在空态／首条事件／历史回退间保留同一外壳与首块key，避免首批实时整段被当成历史直接显示；新增实时块显式传 `revealInitial`，初始历史不重播。`useStreamReveal.ts` 普通实时按所选A慢速起步，积压时每次最多32字加速，超大批量及引擎结束后按约450ms快速追平；刷新首屏正文仍直接显示。回归 `streamRevealText.test.tsx` 的真实气泡首批有／无事件、刷新运行／完成历史，`useStreamReveal.test.tsx` 的千字小步及大批预算。
+实时正文与刷新历史分离：`ChatMessageBubble.tsx` 在运行态空气泡就挂载正文，`MessageTimeline.tsx` 在空态／首条事件／历史回退间保留同一个正文实例，避免首批实时整段被当成历史直接显示；后续正文沿原实例追加，初始历史不重播。`useStreamReveal.ts` 普通实时按所选A慢速起步，积压时每次最多32字加速，超大批量及引擎结束后按约450ms快速追平；刷新首屏正文仍直接显示。回归 `streamRevealText.test.tsx` 的真实气泡首批有／无事件、刷新运行／完成历史，`useStreamReveal.test.tsx` 的千字小步及大批预算。
 
 消息流式展示：`MarkdownMessage.tsx` 接入 `useStreamReveal` 的90ms解析节流与实时小步／批量追平策略，`MarkdownContent.tsx` 在可见正文及参数不变时跳过重解析。`rehypeStreamReveal.ts` 只允许正文最后32个源码字符中的真实新字启动动画，并传递源码末端位置；`MarkdownContent` 保存已提交正文边界，Markdown格式补齐导致节点重建时不重播旧文。首段非空挂载保留静态基线，后续追加仍可动画；恢复历史、字素完整性与选区冻结保持。测试 `streamRevealText.test.tsx`、`useStreamReveal.test.tsx`、`streamingSelection.test.tsx`。
 
