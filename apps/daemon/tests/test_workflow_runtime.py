@@ -248,7 +248,8 @@ async def test_retry_failed_message_targets_only_the_latest_failed_execution(tmp
 
 
 @pytest.mark.anyio
-async def test_retry_failed_message_reuses_original_message_and_replaces_its_trace(tmp_path):
+@pytest.mark.parametrize("smart", [False, True])
+async def test_retry_failed_message_reuses_original_message_and_replaces_its_trace(tmp_path, smart):
     from engines.core.registry import ENGINE_REGISTRY
     from models import Message
     from services.workflow_runtime import WorkflowRuntime
@@ -275,13 +276,18 @@ async def test_retry_failed_message_reuses_original_message_and_replaces_its_tra
 
     calls = 0
     should_fail = True
+    provider = "provider-a"
+    retry_prompts = []
 
     class FlakyEngine(RuntimeFakeEngine):
+        def resolve_provider_id(self, provider_id=None):
+            return provider_id or provider
         async def spawn(self, prompt, cwd, **kwargs):
             nonlocal calls
             calls += 1
             if should_fail:
                 raise RuntimeError("temporary network error")
+            retry_prompts.append(prompt)
             yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "recovered"}})
 
     original = ENGINE_REGISTRY.copy()
@@ -302,7 +308,11 @@ async def test_retry_failed_message_reuses_original_message_and_replaces_its_tra
         old_log_path = failed.event_log_path
 
         should_fail = False
-        accepted = await runtime.retry_failed_message(project.id, task.id, original_id)
+        if smart:
+            provider = "provider-b"
+        accepted = await runtime.retry_failed_message(
+            project.id, task.id, original_id, **({"handoff": "smart"} if smart else {}),
+        )
         for _ in range(200):
             if WorkflowRun.get_by_id(accepted["run_id"]).status != "running":
                 break
@@ -322,6 +332,12 @@ async def test_retry_failed_message_reuses_original_message_and_replaces_its_tra
         assert retried.event_log_path != old_log_path
         assert retried.step_run_id != failed.step_run_id
         assert "temporary network error" not in (retried.events_json or "")
+        if smart:
+            assert accepted["handoff"]["status"] == "prepared"
+            assert "workstep_context_handoff" in retry_prompts[0]
+            assert TaskStep.get(TaskStep.step_key == "do").session_provider == "provider-b"
+            with pytest.raises(ValueError):
+                await runtime.retry_failed_message(project.id, task.id, original_id, handoff="smart")
     finally:
         await runtime.shutdown()
         await bus.close()
@@ -2068,14 +2084,10 @@ async def test_task_step_provider_override_hands_off_history_without_session(tmp
     ENGINE_REGISTRY["provider-engine"] = ProviderEngine
     runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
     try:
-        await runtime.resume_step_with_message(project.id, task.id, "do", "继续")
-        for _ in range(500):
-            if task.id not in runtime._runners:
-                break
-            await asyncio.sleep(0.01)
+        with pytest.raises(ValueError, match="智能交接"):
+            await runtime.resume_step_with_message(project.id, task.id, "do", "继续")
         blocked = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
-        assert blocked.status == "failed"
-        assert "智能交接" in blocked.error
+        assert blocked.status == "passed"
         assert blocked.session_provider == "provider-a"
         assert not blocked.pending_handoff_json
         await runtime.update_step_execution_config(
@@ -3065,8 +3077,8 @@ async def test_resume_step_after_cancel_persists_message_and_reruns(tmp_path):
         step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
         assert step.status == "passed"
         assert Task.get_by_id(task.id).status == "completed"
-        assert "触发者：阶段触发人；任务创建者：任务创建者" in instances[1].prompts[0]
-        assert "请改用中文输出" in instances[1].prompts[0]
+        assert "触发者：阶段触发人；任务创建者：任务创建者" in [engine for engine in instances if engine.prompts][-1].prompts[0]
+        assert "请改用中文输出" in [engine for engine in instances if engine.prompts][-1].prompts[0]
     finally:
         await runtime.shutdown()
         await bus.close()

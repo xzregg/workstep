@@ -101,8 +101,14 @@ class CoordinatorConfigRequest(BaseSchema):
     provider_id: str | None = None
 
 
+class StepRetryRequest(BaseSchema):
+    handoff: Literal["smart"] | None = None
+
+
 class StepResumeRequest(BaseSchema):
     content: str
+    handoff: Literal["smart"] | None = None
+    request_id: str | None = Field(None, min_length=1, max_length=128)
     reset_step: bool = False
     allow_pending: bool = Field(False, description="Allow first execution of an existing pending step; does not bypass input rules")
 

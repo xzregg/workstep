@@ -16,6 +16,7 @@ from schemas.task import (
     StepMessageRequest,
     StepExecutionConfigRequest,
     StepResumeRequest,
+    StepRetryRequest,
     UpdateTaskRequest,
 )
 from services import config as config_service
@@ -435,6 +436,23 @@ async def cancel_step(
     return {"cancelled": cancelled}
 
 
+@router.post("/{task_id}/step/{step_key}/handoff")
+async def handoff_step(task_id: str, step_key: str, pid: str = Query(..., alias="project_id")):
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    from services.remote_access import has_project_edit_scope
+    if not has_project_edit_scope(pid):
+        raise HTTPException(status_code=403, detail="Project scope denied")
+    await _require_scoped_task(pid, task_id)
+    _project(pid)
+    try:
+        return await workflow_runtime.handoff_step(pid, task_id, step_key)
+    except (ValueError, RuntimeError, OSError) as exc:
+        return {"ok": False, "status": "failed" if isinstance(exc, OSError) else "blocked", "error": str(exc),
+                "next_actions": ["task get", "task history"]}
+
+
 @router.post("/{task_id}/step/{step_key}/resume")
 async def resume_step(
     task_id: str,
@@ -456,11 +474,20 @@ async def resume_step(
             step_key,
             req.content,
             reset_session=req.reset_step,
+            **({"handoff": req.handoff} if req.handoff else {}),
+            **({"request_id": req.request_id} if req.request_id else {}),
             **({"allow_pending": True} if req.allow_pending else {}),
             **({"coordinator_turn_id": coordinator_turn_id} if coordinator_turn_id else {}),
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (ValueError, RuntimeError, OSError) as exc:
+        from services.task_step_start import StepProviderHandoffRequired
+        if isinstance(exc, StepProviderHandoffRequired):
+            return {"ok": False, "status": "needs_confirmation", "handoff": "required", "error": str(exc),
+                    "next_actions": ["task step-handoff", "task step-start --handoff smart --request-id <key>"]}
+        if not req.handoff and not req.request_id and not isinstance(exc, OSError):
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"ok": False, "status": "failed" if isinstance(exc, OSError) else "blocked", "error": str(exc),
+                "next_actions": ["task get", "task step-handoff", "task step-start --handoff smart --request-id <key>"]}
     return accepted
 
 
@@ -491,6 +518,7 @@ async def restart_step_with_fresh_session(
 async def retry_failed_message(
     task_id: str,
     message_id: str,
+    req: StepRetryRequest | None = Body(None),
     pid: str = Query(..., alias="project_id"),
 ):
     """Restart the failed execution represented by this message."""
@@ -500,8 +528,13 @@ async def retry_failed_message(
     await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
-        return await workflow_runtime.retry_failed_message(pid, task_id, message_id)
-    except (ValueError, RuntimeError) as exc:
+        return await workflow_runtime.retry_failed_message(
+            pid, task_id, message_id, **({"handoff": req.handoff} if req and req.handoff else {}),
+        )
+    except (ValueError, RuntimeError, OSError) as exc:
+        if req and req.handoff:
+            return {"ok": False, "status": "failed" if isinstance(exc, OSError) else "blocked", "error": str(exc),
+                    "next_actions": ["task get", "task history"]}
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 

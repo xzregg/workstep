@@ -974,3 +974,29 @@ async def test_digital_person_check_tool_requires_explicit_confirmation():
     result = await WorkstepClient(transport=httpx.MockTransport(handler)).call('workstep_check_digital_person')
     assert result['ok'] is False
     assert "confirm='yes'" in result['error']
+
+
+@pytest.mark.parametrize("operation", ["step-handoff", "step-start"])
+def test_cli_smart_step_handoff_transport(operation, capsys):
+    async def handler(request):
+        body = json.loads(request.content or "{}")
+        assert request.url.path == "/api/task/t/step/merge/" + ("handoff" if operation == "step-handoff" else "resume")
+        if operation == "step-start":
+            assert body["handoff"] == "smart"
+            assert body["request_id"] == "same-request"
+            assert body["allow_pending"] is True
+        return httpx.Response(200, json={"status": "prepared"})
+    args = ["task", operation, "--project", "p", "--task", "t", "--step", "merge", "--json"]
+    if operation == "step-start":
+        args += ["--content", "继续合并", "--handoff", "smart", "--request-id", "same-request"]
+    assert main(args, client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "prepared"
+
+
+def test_cli_retry_with_smart_handoff(capsys):
+    async def handler(request):
+        assert request.url.path == "/api/task/t/messages/failed/retry"
+        assert json.loads(request.content) == {"handoff": "smart"}
+        return httpx.Response(200, json={"status": "queued"})
+    assert main(["task", "retry", "--project", "p", "--task", "t", "--message", "failed",
+                 "--handoff", "smart", "--json"], client=WorkstepClient(transport=httpx.MockTransport(handler))) == 0

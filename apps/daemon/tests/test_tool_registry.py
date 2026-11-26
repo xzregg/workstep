@@ -69,6 +69,7 @@ def test_registry_defines_expected_tool_set():
         "workstep_send_step_message",
         "workstep_stop_step",
         "workstep_start_step",
+        "workstep_handoff_step",
         "workstep_list_git_repositories",
         "workstep_get_task_workspace",
         "workstep_add_task_worktree",
