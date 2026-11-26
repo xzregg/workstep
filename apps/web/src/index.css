@@ -3866,6 +3866,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 /* ── Compact Markdown editor ── */
 
 .markdown-editor-root {
+  container-type: inline-size;
   position: relative;
   width: 100%;
 }
@@ -3918,6 +3919,26 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 .markdown-editor-shell textarea.markdown-editor-input:focus {
   border-color: transparent;
+}
+
+.markdown-editor-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.markdown-editor-content[data-preview="true"] .markdown-editor-preview {
+  border-top: 1px solid var(--border-soft);
+}
+
+@container (min-width: 600px) {
+  .markdown-editor-content[data-preview="true"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .markdown-editor-content[data-preview="true"] .markdown-editor-preview {
+    border-top: 0;
+    border-left: 1px solid var(--border-soft);
+  }
 }
 
 .markdown-editor-preview {
