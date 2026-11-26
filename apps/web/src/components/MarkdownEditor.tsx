@@ -4,7 +4,7 @@ import { fsApi } from '../api/client'
 import { useI18n, localizeErrorDisplay } from '../i18n'
 import { formatMarkdownAttachment } from '../utils/markdownAttachment'
 import Icon from './Icon'
-import MarkdownMessage from './MarkdownMessage'
+import MarkdownPreviewEditor from './MarkdownPreviewEditor'
 import Textarea from './Textarea'
 
 interface MarkdownEditorProps {
@@ -141,7 +141,7 @@ export default function MarkdownEditor({
     }
   }
 
-  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = (event: React.ClipboardEvent<HTMLElement>) => {
     const fileItem = Array.from(event.clipboardData?.items || [])
       .find((item) => item.kind === 'file')
     const file = fileItem?.getAsFile()
@@ -192,7 +192,7 @@ export default function MarkdownEditor({
         }}
         onDrop={handleDrop}
       >
-        <div className="markdown-editor-content" data-preview={mode === 'preview'}>
+        {mode === 'edit' ? (
           <Textarea
             id={id}
             ref={textareaRef}
@@ -211,14 +211,13 @@ export default function MarkdownEditor({
             autoFocus={autoFocus}
             style={{ minHeight, maxHeight, height: expanded ? maxHeight : undefined }}
           />
-          {mode === 'preview' && (
-            <div className="markdown-editor-preview" style={{ minHeight, maxHeight, height: expanded ? maxHeight : undefined }}>
-              {value.trim()
-                ? <MarkdownMessage content={value} projectId={projectId} />
-                : <span className="markdown-editor-empty">{t('md.empty')}</span>}
-            </div>
-          )}
-        </div>
+        ) : (
+          <div className="markdown-editor-preview" style={{ minHeight, maxHeight, height: expanded ? maxHeight : undefined }}>
+            <MarkdownPreviewEditor id={id} value={value} onChange={next => replaceValue(next)}
+              projectId={projectId} readOnly={readOnly || disabled} maxLength={maxLength}
+              label={ariaLabel ?? t('md.ariaLabel')} onPaste={handlePaste} />
+          </div>
+        )}
 
         <div className="markdown-editor-actions">
           {canUpload && <input

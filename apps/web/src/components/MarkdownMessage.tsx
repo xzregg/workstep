@@ -11,6 +11,8 @@ import { useActiveSkin } from '../skins/runtime'
 
 interface MarkdownMessageProps {
   content: string
+  /** Enable source-positioned prose editing inside the existing preview. */
+  editableText?: boolean
   streaming?: boolean
   /** A new live timeline block, rather than a restored nonempty message. */
   revealInitial?: boolean
@@ -54,6 +56,7 @@ function MarkdownMessage({
   plainText = false,
   mermaidRenderDelayMs,
   reveal = 'a',
+  editableText = false,
 }: MarkdownMessageProps) {
   const content = rawContent ?? ''
   const [previewFile, setPreviewFile] = useState<ProjectFileLink | null>(null)
@@ -134,6 +137,7 @@ function MarkdownMessage({
     <>
       <SmoothMessageHeight active={revealing || settling}>
       <MarkdownContent
+        editableText={editableText}
         content={revealedContent}
         animateReveal={reveal === 'a' && !plainText && effects?.reveal !== false && (revealing || settling) && selectionResumeContent.current !== renderedContent}
         animateInitialReveal={animateInitialReveal.current}
