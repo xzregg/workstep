@@ -321,6 +321,64 @@ test('an executable step with an empty engine follows the default and new steps 
 })
 
 
+test('AI step engines survive apply, save and reopen; explicit engines can return to default', async () => {
+  const window = installDom()
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    engines: ['claude', 'codex'].map(id => ({
+      id, installed: true, configured: true, verified: true, built_in: false, mode: 'cli',
+    })),
+    resolved_engine: 'codex', models: [], templates: [],
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const canvasRef = createRef<FlowCanvasHandle>()
+  let saved: any
+  const openStep = async () => {
+    await act(async () => canvasRef.current!.previewSteps(null))
+    const node = container.querySelector<HTMLElement>('.react-flow__node')!
+    await act(async () => node.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true })))
+    const select = document.querySelector<HTMLSelectElement>('select[aria-label="步骤引擎"]')
+    assert.equal(Boolean(select), true)
+    return select!
+  }
+  const save = async () => {
+    const button = [...container.querySelectorAll('button')].find(button => button.textContent === '保存')!
+    await act(async () => button.click())
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><FlowCanvas ref={canvasRef}
+      initialSteps={{ nodes: [], connections: [] }} onSave={steps => { saved = steps }} /></I18nProvider>))
+    for (const engine of [undefined, '', 'claude', 'codex']) {
+      await act(async () => canvasRef.current!.loadSteps({
+        nodes: [{ id: 1, type: 'build', title: '构建', ...(engine === undefined ? {} : { engine }) }], connections: [],
+      }))
+      let select = await openStep()
+      assert.equal(select.value, engine || '')
+      assert.equal(select.disabled, false)
+      const defaultOption = [...select.options].find(option => option.value === '')!
+      assert.match(defaultOption.textContent || '', /默认执行引擎.*Codex/)
+      assert.equal(defaultOption.disabled, false)
+      await save()
+      assert.equal(saved.nodes[0].engine, engine || '')
+      await act(async () => canvasRef.current!.loadSteps(JSON.parse(JSON.stringify(saved))))
+      select = await openStep()
+      assert.equal(select.value, engine || '')
+      await act(async () => {
+        select.value = ''
+        select.dispatchEvent(new window.Event('change', { bubbles: true }))
+      })
+      await save()
+      assert.equal(saved.nodes[0].engine, '')
+      await act(async () => canvasRef.current!.loadSteps(saved))
+      assert.equal((await openStep()).value, '')
+    }
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+
 test('step return rounds default to three and remain editable independently of review retries', async () => {
   const window = installDom()
   const container = document.body.appendChild(document.createElement('div'))

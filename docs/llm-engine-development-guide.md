@@ -76,6 +76,8 @@ ACP 多会话上下文的依据是[官方 v1 Session Setup](https://agentclientp
 
 原生适配器声明 `SYSTEM_PROMPT_MODE`：Codex SDK 使用 `developer`，映射为线程的 `developer_instructions`，保留 `base_instructions`；Claude/Qoder SDK 使用 `system`，分别通过 `claude_code` / `qodercli` 预设的 `append` 追加；Pydantic AI 使用 `system`，通过持久化的 `SystemPromptPart` 与现有 harness 能力指令共同生效，固定规则随会话历史恢复；相同规则不重新注入，变更／清空只替换 WorkStep 自己的系统消息，历史缺失时重新初始化。未声明的引擎默认为 `body`，基类只在新会话或无恢复能力时前置正文，恢复与恢复重试不重复前置。
 
+流程设计助手 `WorkflowGenModule` 通过共享的 `system_prompt_each_turn` 入口每轮刷新生成规则，使恢复的原生会话也收到最新的步骤默认引擎约定。正文仍只包含当前画布和用户消息；正文降级适配器每轮前置规则，提示词查看按实传内容展示。步骤未指定引擎时生成空字符串，不把流程助手自身的引擎或当前默认引擎固化进画布；显式选择保持不变。默认引擎仅在既有工作流编译入口解析。回归见 `tests/test_workflow_gen.py`、`tests/test_workflow_definition.py`。
+
 任务协调助手的固定规则由 `coordinator_context.py` 构建，当前任务与用户消息属于每轮正文上下文。渠道来源通过 `request_source_prompt` 追加到独立 `system_prompt`，沿用协调器既有的每轮规则刷新策略。Codex SDK 按会话恢复能力决定注入：有 session ID 且支持恢复时复用原会话指令，不扫描原生 rollout、不比较当前规则；首次、无恢复能力或显式 `system_prompt_each_turn=True` 时传入指令。已有会话沿用原指令，规则修改在新会话生效。内部空指令标记不表示新指令，提示词查看页不显示空的独立指令区块。渠道普通助手仍按自身传输约定提供每轮来源背景。
 
 `agent_assistants/chat_session.py` 将项目设置中的「全局提示词」（`project_settings.chat_system_prompt`，不是跨项目的系统设置）作为独立 `system_prompt` 提供；正文仅保留用户输入及必要交接/重建背景，空配置不补默认角色。普通对话使用默认首次正文降级策略，固定规则不在恢复轮次重复插入；原生适配器按自身 system/developer 配置追加。
