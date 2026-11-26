@@ -75,7 +75,7 @@ test('recovering an in-progress login can cancel it and handles network errors w
   try {
     await act(async () => root.render(<I18nProvider><EngineLoginControl engineId="test" active onAuthenticated={() => {}} /></I18nProvider>))
     assert.match(document.body.textContent || '', /offline/)
-    assert.equal([...document.querySelectorAll('button')].find(b => b.textContent === '登录账号'), undefined)
+    assert.equal([...document.querySelectorAll('button')].some(b => b.textContent === '登录账号'), false)
     fail = false
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '重试')!.click())
     assert.equal(document.querySelectorAll('input').length, 1)
