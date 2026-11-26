@@ -555,7 +555,8 @@ export default function TaskDetailView({
     scrolledToBottom, unreadMessages, registerOverlay, overlayPaddingBottom,
     onWheelCapture, onKeyDownCapture, onScroll, jumpToLatest, jumpToStep,
   } = useTaskConversationScroll({
-    active: detailMode === 'detail' && (!compact || mobileTab === 'conversation'),
+    active: !!task && detailMode === 'detail' && (!compact || mobileTab === 'conversation'),
+    conversationKey: task?.id,
     historyMessages, liveMessages, events, content,
     actionRuns: taskActions.runs,
     chatScrollRef, chatEndRef, shouldFollowMessagesRef, lastProgrammaticScrollTopRef,

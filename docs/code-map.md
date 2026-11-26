@@ -98,6 +98,8 @@ Claude 全权限入口：输入框 `ChatInput` 与设置 `EngineConfigForm` 共�
 
 吐字分包抖动：`useStreamReveal.ts` 对小首包做有界缓冲，以收到正文的增量／间隔平滑估计到达速率；有连续到达样本时允许追赶速度回落，单次大批量及结束态仍保留快速收尾。叶节点、Markdown解析频率与选区保护不变。回归：`useStreamReveal.test.tsx`、`streamRevealText.test.tsx`、`streamingSelection.test.tsx`；390／1440px 真实组件模拟分包渲染记录在 `tmp/stream-pacing/`，未覆盖真实引擎与网络链路。
 
+任务详情初始滚动：`TaskDetailView.tsx` 在任务记录就绪且对话可见后启用 `useTaskConversationScroll.ts`；该 Hook 依据 `conversationKey` 在任务切换时恢复底部跟随，复用媒体加载、内容 ResizeObserver 与共享跟随机制，普通重渲染保留用户主动上滚的位置。首次打开、历史先于任务记录返回、异步布局、重新打开、切换、短／空内容的行为回归：`tests/taskDetailInitialScroll.test.tsx`，既有步骤定位与跟随回归：`tests/useTaskConversationScroll.test.tsx`（上述源码和测试相对 `apps/web/`）。
+
 已选定 A 紧贴跟随／慢速：`useStreamReveal.ts` 默认90字/秒、积压时自适应提速，普通实时每次最多32字（90ms解析节流）；不足一批的首包最多缓冲180ms，后续按实际分包速率平滑调速并复用90ms解析时钟，避免每次读空后额外等待；引擎结束后按450ms预算追平，`StreamRevealText.tsx` 在同一原生文本节点末尾按帧追加新字，叶节点更新不重解析Markdown，也不创建／清理逐字动画或临时英文不换行节点，避免旧字字距和抗锯齿闪变。`SmoothMessageHeight.tsx` 仅在运行／收尾时观察正文实际高度，以45ms指数缓冲平滑撑高，历史初始高度直接显示；`smoothConversationFollow.ts` 用共享的单条65ms轨迹衔接数据、媒体和ResizeObserver触发，收敛停止帧循环，触摸上滑、滚轮、选区与键盘可暂停。`AssistantChatPanel.tsx` 和 `useTaskConversationScroll.ts` 共用跟随，任务切回会话直接定位、历史前插与步骤定位保持原路径。测试 `smoothConversationFollow.test.ts`、`useTaskConversationScroll.test.tsx`、`streamRevealText.test.tsx`；真实共享正文／高度／跟随渲染产物 `tmp/tight-follow-implementation/`，选型原型 `tmp/chat-scroll-prototypes/`。
 
 事件日志内存：`agent_assistants/event_journal.py::TurnEventJournal` 逐行恢复写入序号、收尾交互、生成快照和分页，常规分页只保留当前页，仍扫描并返回完整事件计数。快照的文件路径汇总由 `engines/core/tool_inputs.py::EditedFilePaths` 生成；`agent_assistants/file_change_index.py::IndexBuilder` 在写入时只保留生成侧索引所需的工具字段。聊天、工作流及任务历史沿用各自事件 API 和现有 JSONL 格式。回归见 `tests/test_event_journal.py`（旧序号、交互兼容、慢 I/O canary、大日志读写峰值）、`tests/test_file_change_index.py`（补丁复原和旧索引）。
