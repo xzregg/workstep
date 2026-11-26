@@ -192,7 +192,7 @@ export default function MarkdownEditor({
         }}
         onDrop={handleDrop}
       >
-        {mode === 'edit' ? (
+        <div className="markdown-editor-content" data-preview={mode === 'preview'}>
           <Textarea
             id={id}
             ref={textareaRef}
@@ -211,13 +211,14 @@ export default function MarkdownEditor({
             autoFocus={autoFocus}
             style={{ minHeight, maxHeight, height: expanded ? maxHeight : undefined }}
           />
-        ) : (
-          <div className="markdown-editor-preview" style={{ minHeight, maxHeight, height: expanded ? maxHeight : undefined }}>
-            {value.trim()
-              ? <MarkdownMessage content={value} projectId={projectId} />
-              : <span className="markdown-editor-empty">{t('md.empty')}</span>}
-          </div>
-        )}
+          {mode === 'preview' && (
+            <div className="markdown-editor-preview" style={{ minHeight, maxHeight, height: expanded ? maxHeight : undefined }}>
+              {value.trim()
+                ? <MarkdownMessage content={value} projectId={projectId} />
+                : <span className="markdown-editor-empty">{t('md.empty')}</span>}
+            </div>
+          )}
+        </div>
 
         <div className="markdown-editor-actions">
           {canUpload && <input
