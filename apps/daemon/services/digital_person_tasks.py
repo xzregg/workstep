@@ -9,7 +9,8 @@ def normalize_tasks(state):
     groups = {}
     history = state.setdefault('delegation_executions', [])
     for row in state.get('delegations', []):
-        key = (row.get('project_id'), row.get('session_id') or row['id'])
+        key = (row.get('project_id'), 'task' if row.get('task_id') else 'chat',
+               row.get('task_id') or row.get('session_id') or row['id'])
         groups.setdefault(key, []).append(row)
     tasks = []
     known = {row.get('execution_id', row['id']) for row in history}

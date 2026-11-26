@@ -323,6 +323,8 @@ def build_parser() -> argparse.ArgumentParser:
     delegate_target = delegate.add_mutually_exclusive_group()
     delegate_target.add_argument('--continue-from', dest='continuation_of', help='update an existing task by its stable delegation ID')
     delegate_target.add_argument('--target-session', dest='target_session_id', help='append a round; update the chat\'s task or create one if untracked')
+    delegate_target.add_argument('--workflow', dest='workflow_id', help='create and start a tracked task in this workflow')
+    delegate.add_argument('--target-task', dest='target_task_id', help='track an existing workflow task; combine with --continue-from to hand off an execution conversation to this task')
     add_json(delegate)
 
     context = subparsers.add_parser("context", help="read current execution context")
@@ -792,7 +794,7 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 key: getattr(args, key) for key in ('project_id', 'origin_session_id', 'delegation_id')
                 if getattr(args, key, None) is not None})
         return await client.call('workstep_delegate_digital_person', {
-            **{key: getattr(args, key) for key in ('project_id', 'title', 'instruction', 'origin_session_id', 'request_id', 'continuation_of', 'target_session_id', 'engine', 'model')
+            **{key: getattr(args, key) for key in ('project_id', 'title', 'instruction', 'origin_session_id', 'request_id', 'continuation_of', 'target_session_id', 'engine', 'model', 'workflow_id', 'target_task_id')
                if getattr(args, key) is not None}, 'confirm': 'yes'})
     if command == "context":
         from services.conversation_context import active_conversation_sender, current_conversation

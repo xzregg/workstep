@@ -81,6 +81,7 @@ class TaskService:
         dispatch_lineage: list[str] | None = None,
         creator_fields: dict[str, str] | None = None,
         project_id: str | None = None,
+        task_id: str | None = None,
     ) -> dict:
         """Create a task, optionally skipping steps before its start step."""
         steps = (
@@ -110,7 +111,7 @@ class TaskService:
                         execution_keys.add(step["key"])
                         changed = True
         now = utc_now()
-        task_id = str(uuid.uuid4())
+        task_id = task_id or str(uuid.uuid4())
 
         with Task._meta.database.atomic():
             task = Task.create(

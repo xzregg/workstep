@@ -136,6 +136,54 @@ target project and origin conversation IDs first. Summarize the work in the
 user's language as a short, specific, single-line `--title` (up to 60 characters).
 Keep the full execution requirements in `--instruction`. Native tools use `title`.
 
+Choose the execution target first. “任务/task” alone means work, not necessarily
+a workflow task. Resolve references to existing work and reuse its delegation.
+Honor an explicit conversation/workflow; otherwise list the project's workflows
+and read candidate definitions. Match the goal, step responsibilities, inputs
+and deliverables, not names alone. Do not ask users to choose internal object
+types; clarify only ambiguous business scope or equally suitable workflows.
+Use a suitable existing workflow for standardized work. One-off exploration
+without a suitable workflow uses a conversation; complexity alone is not a reason
+to create a workflow. New workflows require an explicit request or confirmation
+of their proposed steps; delegate their design/creation using workstep-exec.
+
+Create and start a tracked task in an existing workflow:
+
+```bash
+workstep digital-hub delegate --project <project_id> --workflow <workflow_id> --session <origin_session_id> --title "实现登录" --instruction "实现登录并验证错误场景" --idempotency-key <request_key> --json
+```
+
+The native tool `workstep_delegate_digital_person` accepts `workflow_id`.
+Workflow tasks use the workflow's step engine/model configuration; do not pass
+chat `engine`/`model` overrides. The response includes the actual `task_id`,
+`workflow_id` and `task_detail_url`; return `[打开任务详情](<task_detail_url>)`.
+A successful creation is not completed work. If `startup_error` is returned,
+the task remains created: inspect/start that task, never create a replacement.
+Retries must retain the same request key and arguments.
+
+Track an already-created workflow task without starting it or sending a message:
+
+```bash
+workstep digital-hub delegate --project <project_id> --target-task <task_id> --session <origin_session_id> --instruction "跟踪任务进度与结果" --idempotency-key <request_key> --json
+```
+
+To hand off a workflow-creation conversation to the task it created, add
+`--continue-from <delegation_id>` to that registration. The stable delegation
+ID and original goal are retained, with the creation conversation in execution
+history. The worker needs the original source conversation and delegation IDs;
+resolve its own delegation by exact project/execution session when necessary.
+If execution was requested, register the task before reporting creation done.
+Creating only a workflow finishes a workflow-design request, but does not finish
+a request to execute work through it.
+
+Use `digital-hub delegations --id <delegation_id>` to inspect actual task status,
+step states and pending confirmations. The background service follows task
+completion, failure, stops and review/input waits; it does not treat a step
+reply or a coordinator reply as completion. Your next instruction uses the same
+delegation ID with `--continue-from` (without `--target-task`); it goes to the
+original task coordinator. Do not create a replacement chat/task or automatically
+approve reviews or tools. Archived tasks do not generate follow-up notices.
+
 ```bash
 uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-hub delegate --project <project_id> --title "Verify login flow" --instruction "Run the login tests and report failing cases and reproduction steps." --session <session_id> --idempotency-key <request_key> --json
 ```

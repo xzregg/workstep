@@ -50,7 +50,7 @@ export interface DigitalActivity {
   feedback: Record<string,number>; suggestions: Array<{id:string;label:string;prompt:string;count:number}>
   experience: number; level: number; next_level_experience: number; checking: boolean
   runs: Array<{ id: string; status: string; summary?: string; error?: string; created_at: string; sources: unknown; deliveries: unknown }>
-  delegations: Array<{ id: string; project_id: string; session_id: string; title?: string | null; instruction: string; status: string; archived?: boolean; created_at?:string; message_id?:string|null }>
+  delegations: Array<{ id: string; project_id: string; session_id: string; title?: string | null; instruction: string; status: string; archived?: boolean; created_at?:string; message_id?:string|null; kind?:string|null; task_id?:string|null; workflow_id?:string|null; task_detail_url?:string|null; status_reason?:string|null; pending_confirmations?:Array<{step_key:string;reason:string}> }>
   answers: Array<{ id: string; content: string; feedback: number }>
 }
 export interface DigitalRunOutcome {delivery_failure_reasons?:string[];sent:number;failed:number;affinity_increased:number;affinity_decreased:number}

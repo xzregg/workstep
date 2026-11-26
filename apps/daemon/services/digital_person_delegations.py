@@ -17,6 +17,7 @@ ACTIVE_TURNS = ('queued', 'running', 'stopping')
 FOLLOWUP_LIMIT = 12
 CHAT_DELEGATION_LIMIT = 5
 EXECUTION_LABELS = {
+    'ready': 'Ready', 'waiting': 'Waiting for input or review',
     'queued': 'Queued', 'running': 'Running', 'stopping': 'Stopping',
     'completed': 'Turn ended', 'failed': 'Failed', 'error': 'Failed',
     'stopped': 'Stopped', 'missing': 'Unavailable',
@@ -64,7 +65,8 @@ def render_delegation_list(items):
         lines.append(f"- `{item['id']}` · {goal} · **{label}**")
         if question and question['title']:
             lines.append('  ' + _inline_text(question['title'], 120))
-        lines.append(f"  project_id={item['project_id']} session_id={item['session_id']} origin_session_id={item['origin_session_id']}")
+        target = f"task_id={item['task_id']} workflow_id={item.get('workflow_id', '')}" if item.get('task_id') else f"session_id={item['session_id']}"
+        lines.append(f"  project_id={item['project_id']} {target} origin_session_id={item['origin_session_id']}")
     return '\n'.join(lines)
 
 
@@ -85,7 +87,8 @@ def latest_per_session(items):
     """Project one task per execution chat; retain individual turns in storage."""
     selected = {}
     for item in sorted(reversed(list(items)), key=lambda row: str(row.get('updated_at') or row.get('created_at', '')), reverse=True):
-        key = (item.get('project_id'), item.get('session_id') or item['id'])
+        key = (item.get('project_id'), 'task' if item.get('task_id') else 'chat',
+               item.get('task_id') or item.get('session_id') or item['id'])
         selected.setdefault(key, item)
     return list(selected.values())
 
@@ -151,9 +154,11 @@ class DelegationManagement:
             self.questions.pop(key, None)
 
     async def refresh(self, profile=None):
+        if profile is not None and profile.enabled:
+            await self.runtime.workflow_delegations.poll(profile)
         state = await self.runtime.state()
         items = [item for item in outstanding(state['delegations'])
-                 if item['status'] not in TERMINAL and item['status'] != 'missing']
+                 if not item.get('task_id') and item['status'] not in TERMINAL and item['status'] != 'missing']
         snapshots = await self.read(items)
         previous = {item['id']: item['status'] for item in items}
         changes = {(item['id'], item['message_id']): item['status'] for item in snapshots
@@ -174,6 +179,8 @@ class DelegationManagement:
                             (item for item in all_executions(state) if item.get('notification_run_id') == run['id']), None)
                             or items.get(run.get('delegation_id')))
                         gate = dict(item,question=None) if item else None
+                        if gate and gate.get('task_id'):
+                            continue  # Workflow polling revalidates the current task snapshot.
                         if gate and await self._still_current(gate):
                             await self._report(dict(item,question=None),run['model_delegation_notice'],
                                                progress=True,profile=profile)
@@ -212,15 +219,20 @@ class DelegationManagement:
                     fields.extend((ChatMessage.content, ChatMessage.created_at))
                 rows = ChatMessage.select(*fields).join(ChatSession).where(
                     ChatSession.project_id == project_id, ChatMessage.id.in_([d['message_id'] for d in batch]))
-                return {(row.session_id, row.id): (
+                chats = {(row.session_id, row.id): (
                     row.status, row.content if include_content else '',
                     row.created_at.isoformat() if include_content and row.created_at else None, row.session.archived,
                 ) for row in rows}
+                from services.workflow_delegations import read_task
+                tasks = {item['task_id']: read_task(item, include_content) for item in batch if item.get('task_id')}
+                return chats, tasks
 
             if self.runtime.projects.get_project_by_id(project_id) is None:
                 return [(item, 'missing', '', None, False) for item in batch]
-            rows = await self.runtime.projects.run_db(project_id, select)
-            return [(item, *rows.get((item['session_id'], item['message_id']), ('missing', '', None, False)))
+            rows, tasks = await self.runtime.projects.run_db(project_id, select)
+            return [(tasks[item['task_id']], tasks[item['task_id']]['status'], tasks[item['task_id']]['content'], None, tasks[item['task_id']]['archived'])
+                    if item.get('task_id') else
+                    (item, *rows.get((item['session_id'], item['message_id']), ('missing', '', None, False)))
                     for item in batch]
 
         groups = await asyncio.gather(*(from_project(pid, batch) for pid, batch in projects.items()))
@@ -243,7 +255,7 @@ class DelegationManagement:
         from services.digital_person_memory import allowed_projects
         allowed = set(allowed_projects(self.runtime.projects))
         active = [item for item in outstanding(state['delegations'])
-                  if item['project_id'] in allowed or self.runtime.projects.get_project_by_id(item['project_id']) is None]
+                  if not item.get('task_id') and (item['project_id'] in allowed or self.runtime.projects.get_project_by_id(item['project_id']) is None)]
         if not active:
             return []
         home = await self.runtime.home()
@@ -421,6 +433,10 @@ class DelegationManagement:
     async def _execution_archived(self, item):
         if self.runtime.projects.get_project_by_id(item['project_id']) is None:
             return False
+        if item.get('task_id'):
+            from models import Task
+            return bool(await self.runtime.projects.run_db(item['project_id'], lambda _: Task.select(
+                Task.archived).where(Task.id == item['task_id']).scalar()))
         return bool(await self.runtime.projects.run_db(item['project_id'], lambda _: (
             ChatSession.select(ChatSession.archived).where(
                 ChatSession.id == item['session_id'], ChatSession.project_id == item['project_id'],

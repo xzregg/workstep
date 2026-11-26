@@ -53,6 +53,30 @@ test('created-task links open the real task in-app, including historical replies
   }
 })
 
+test('digital hub task receipts open the target project task through its scoped API', async () => {
+  const { window } = installDomEnvironment()
+  const original = taskApi.get, projects = useProjectStore.getState()
+  const home = { id: 'hub', name: '默认工作区', is_default_workspace: true } as Project
+  const target = { id: 'target', name: '开发项目', workflows: [{ id: 'flow', name: '开发流程' }] } as Project
+  useProjectStore.setState({ projects: [home, target], activeProject: home })
+  let calls=0,location=''
+  taskApi.get = async (id, pid) => { calls++; assert.equal(pid,'target'); return {id,workflow_id:'flow'} as any }
+  const host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+  function Location(){const value=useLocation();location=value.pathname+value.search;return null}
+  try {
+    await act(async()=>root.render(<MemoryRouter initialEntries={['/companion']}><I18nProvider><Location/>
+      <MarkdownContent projectId="hub" content="[打开任务详情](workstep-task://open?project_id=target&task_id=work)"/>
+    </I18nProvider></MemoryRouter>))
+    const button=host.querySelector<HTMLButtonElement>('.markdown-task-link')
+    assert.equal(Boolean(button),true)
+    await act(async()=>button!.click())
+    assert.equal(calls,1)
+    assert.equal(new URL(location,'http://test').searchParams.get('task'),'work')
+  } finally {
+    await act(async()=>root.unmount()); taskApi.get=original;useProjectStore.setState(projects);await window.happyDOM.close()
+  }
+})
+
 test('task links reject cross-project targets and report deleted tasks without navigation', async () => {
   const { window } = installDomEnvironment()
   const original = taskApi.get

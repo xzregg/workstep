@@ -895,6 +895,25 @@ async def test_existing_delegation_on_old_daemon_does_not_create_a_new_conversat
     assert await dispatch(args, client) == {'ok': False, 'error': 'Not Found'}
 
 
+@pytest.mark.parametrize(('flags', 'expected'), [
+    (['--workflow', 'flow'], {'workflow_id': 'flow'}),
+    (['--target-task', 'task'], {'target_task_id': 'task'}),
+    (['--target-task', 'task', '--continue-from', 'prior'], {'target_task_id': 'task', 'continuation_of': 'prior'}),
+])
+async def test_workflow_delegation_cli_preserves_target(flags, expected):
+    def handler(request):
+        assert request.url.path == '/api/digital-person/delegate'
+        body = json.loads(request.content)
+        assert all(body[key] == value for key, value in expected.items())
+        return httpx.Response(200, json={'id': 'delegation', 'task_id': 'task', 'status': 'running'})
+    args = build_parser().parse_args([
+        'digital-hub', 'delegate', '--project', 'p', '--session', 'origin', '--instruction', '开发',
+        '--idempotency-key', 'workflow-work', *flags,
+    ])
+    result = await dispatch(args, WorkstepClient(transport=httpx.MockTransport(handler)))
+    assert result['task_id'] == 'task'
+
+
 @pytest.mark.parametrize(('selector', 'session_args', 'query'), [
     ([], [], {}),
     ([], ['--session', 'current'], {'origin_session_id': 'current'}),

@@ -5,10 +5,14 @@ import {useI18n} from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
 import Spinner from '../Spinner'
+import MarkdownTaskLink from '../MarkdownTaskLink'
 
 type Delegation = DigitalActivityRecords['delegations'][number]
 const activeStatuses = ['queued', 'running', 'stopping']
 const statusKeys = {
+ ready: 'status.ready',
+ waiting: 'status.waiting',
+ missing: 'digitalPerson.homeTaskUnavailable',
  archived: 'digitalPerson.statusArchived',
  queued: 'digitalPerson.statusQueued',
  running: 'digitalPerson.homeTaskRunning',
@@ -86,12 +90,11 @@ export default function DigitalPersonDelegationTimeline({items, viewedResults, l
       const status = item.archived ? 'archived' : viewedResults[item.id] ?? item.status
       const viewed = viewedResults[item.id] ? true : item.result_viewed
       const pending = activeStatuses.includes(status)
-      const label = Object.hasOwn(statusKeys, status)
+      const waitingKey = status==='waiting' ? ({manual_review:'status.awaiting_review',tool_approval:'status.tool_approval',user_input:'status.user_input'} as const)[item.status_reason as 'manual_review'|'tool_approval'|'user_input'] : undefined
+      const label = waitingKey ? t(waitingKey) : Object.hasOwn(statusKeys, status)
        ? t(statusKeys[status as keyof typeof statusKeys])
        : t('digitalPerson.homeTaskUnavailable')
-      return <li key={item.id}>
-       <Button variant="ghost" className="digital-home-work-summary" data-status={status}
-        aria-haspopup="dialog" title={title} onClick={()=>onOpen(item)}>
+      const content = <>
         <Icon name="workflow" size={14}/>
         <span>
          <span className="digital-home-event-heading">
@@ -108,7 +111,13 @@ export default function DigitalPersonDelegationTimeline({items, viewedResults, l
           </span>}
          </small>
         </span>
-       </Button>
+       </>
+      return <li key={item.id}>
+       {item.task_id?<MarkdownTaskLink target={{projectId:item.project_id,taskId:item.task_id}}
+        containerClassName="digital-home-work-task" className="digital-home-work-summary" variant="ghost" title={title} status={status}>
+        {content}
+       </MarkdownTaskLink>:<Button variant="ghost" className="digital-home-work-summary" data-status={status}
+        aria-haspopup="dialog" title={title} onClick={()=>onOpen(item)}>{content}</Button>}
       </li>
      })}</ol>
     </div>

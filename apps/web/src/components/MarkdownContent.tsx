@@ -17,6 +17,7 @@ import { parseTaskDetailLink } from '../utils/taskDetailLink'
 import MarkdownTaskLink from './MarkdownTaskLink'
 import EditableMarkdownText from './EditableMarkdownText'
 import { rehypeEditableText } from '../utils/rehypeEditableText'
+import { useProjectStore } from '../stores/projectStore'
 
 interface MarkdownContentProps {
   content: string
@@ -143,6 +144,9 @@ function MarkdownContent({
   editableText = false,
 }: MarkdownContentProps) {
   const { t } = useI18n()
+  const hubWorkspace = useProjectStore(state => Boolean(projectId && state.projects.some(
+    project => project.id === projectId && project.is_default_workspace,
+  )))
   const markdownUrlResolver = useMarkdownUrlResolver()
   const taskFilePreview = useTaskFilePreview()
   // Structured results are literal data. Parsing their source-id arrays and
@@ -187,7 +191,8 @@ function MarkdownContent({
   const renderLink = useCallback((href: string | undefined, label: React.ReactNode, title?: string) => {
     const task = parseTaskDetailLink(href)
     if (task) {
-      return task.projectId === projectId
+      // Hub receipts refer to project tasks; the button still validates target permissions and identity.
+      return task.projectId === projectId || hubWorkspace
         ? <MarkdownTaskLink key={href} target={task}>{label}</MarkdownTaskLink>
         : <span>{label}</span>
     }
@@ -211,7 +216,7 @@ function MarkdownContent({
         {label}
       </a>
     )
-  }, [markdownUrlResolver, onFileClick, projectId, taskFilePreview, t])
+  }, [markdownUrlResolver, onFileClick, projectId, taskFilePreview, t, hubWorkspace])
 
   const components = useMemo(() => ({
     'stream-reveal-text': RevealText,

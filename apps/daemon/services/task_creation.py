@@ -103,6 +103,7 @@ async def create_project_task(
     source: str = "manual",
     creator_fields: dict | None = None,
     creator_source: str | None = None,
+    task_id: str | None = None,
     on_persisted: Callable[[dict], None] | None = None,
 ) -> TaskCreationResult:
     """Create one task and optionally start it using a single policy interface."""
@@ -118,6 +119,10 @@ async def create_project_task(
         cwd = None
 
     def persist_task(project):
+        if task_id:
+            existing = task_service.get_task(task_id)
+            if existing is not None:
+                return existing, False
         if workflow_id and hasattr(project, "workflow_by_id"):
             workflow = project.workflow_by_id(workflow_id)
         elif not workflow_id and hasattr(project, "default_workflow"):
@@ -147,6 +152,7 @@ async def create_project_task(
             input_manifest=input_manifest,
             dispatch_lineage=dispatch_lineage,
             creator_fields=creator_fields,
+            **({'task_id': task_id} if task_id else {}),
         )
         should_start = (
             execution_mode == "immediate"

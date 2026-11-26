@@ -405,8 +405,12 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 provider_grant_expires_at=actor.provider_grant_expires_at,
                 access_source=("gateway_share" if share_scope else "gateway") if remote_bridge else None,
             )) if actor is not None else nullcontext()
+            # Native browser access has already passed the host/key boundary.
+            # Connecting a Gateway must not make that workspace depend on its
+            # user policy. Browser identity headers alone never grant this context.
             with context, native_workspace_context(
-                local_workspace and actor is None and not remote_bridge and not native_dispatch
+                (local_workspace or (remote_access and browser_origin_allowed(request)))
+                and actor is None and not remote_bridge and not native_dispatch
             ):
                 try:
                     response = await call_next(request)

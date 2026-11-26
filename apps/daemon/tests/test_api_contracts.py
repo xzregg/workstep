@@ -1249,6 +1249,71 @@ async def test_local_device_owner_can_create_and_copy_tasks(api_context, monkeyp
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("access", ["loopback", "native-key"])
+@pytest.mark.parametrize("policy_state", ["missing", "denied", "expired"])
+async def test_native_browser_task_creation_without_gateway_session(api_context, monkeypatch, access, policy_state):
+    """The normal browser workspace keeps native authority after Gateway connects."""
+    from types import SimpleNamespace
+    from services.gateway_client.identity import ManagedActor
+    from services.gateway_client.policy import ManagedPolicy
+    import main
+
+    client, directory = api_context
+    project_dir = directory / "native-browser"
+    project_dir.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(project_dir)})).json()["id"]
+    workflow_id = (await _create_test_workflow(client, pid))["id"]
+    monkeypatch.delenv("WORKSTEP_DESKTOP_RUNTIME", raising=False)
+    monkeypatch.delenv("WORKSTEP_MANAGED_BUNDLE_DIR", raising=False)
+    gateway = main.gateway_client
+    monkeypatch.setattr(gateway, "managed_config", object())
+    monkeypatch.setattr(gateway, "current_actor", None)
+    gateway.policy_cache.clear()
+    if policy_state != "missing":
+        now = int(time.time())
+        gateway.policy_cache.apply(ManagedPolicy("gateway", "device", "owner", 0, now,
+            0 if policy_state == "expired" else now + 600,
+            frozenset(), frozenset(), False, False, False, False, False))
+    native = SimpleNamespace(settings=lambda: {"enabled": True},
+                             access_password_required=lambda: True,
+                             verify_access_token=lambda token: token == "native-key")
+    monkeypatch.setattr(main.app.state, "remote_access_service", native)
+    origin = "http://localhost:5173"
+    transport = ASGITransport(app=main.app, client=("127.0.0.1" if access == "loopback" else "192.168.1.20", 12345))
+    headers = {**TEST_ACTOR_HEADERS, "Origin": origin}
+    if access == "native-key":
+        headers["X-WorkStep-Access"] = "native-key"
+    body = {"title": "Native browser task", "workflow_id": workflow_id, "auto_start": False}
+    async with AsyncClient(transport=transport, base_url=origin) as browser:
+        created = await browser.post(f"/api/task/create?project_id={pid}", json=body, headers=headers)
+        assert created.status_code == 200, created.text
+        assert created.json()["creator_id"] == TEST_ACTOR_HEADERS["X-WorkStep-Actor-Id"]
+        copied = await browser.post(f"/api/task/copy?project_id={pid}", headers=headers,
+            json={"task_id": created.json()["id"], "newTitle": "Native browser copy"})
+        assert copied.status_code == 200, copied.text
+        for origin_header in (None, "https://evil.test"):
+            untrusted = {**headers}
+            if origin_header is None:
+                untrusted.pop("Origin")
+            else:
+                untrusted["Origin"] = origin_header
+            denied = await browser.post(f"/api/task/create?project_id={pid}", json=body, headers=untrusted)
+            assert denied.status_code == 403, denied.text
+        session = gateway.local_sessions.create(ManagedActor("guest", "Guest", "device", "app", 0))
+        denied = await browser.post(f"/api/task/create?project_id={pid}", json=body,
+            headers={**headers, "X-WorkStep-Local-Session": session})
+        assert denied.status_code == 403, denied.text
+        if access == "native-key":
+            denied = await browser.post(f"/api/task/create?project_id={pid}", json=body,
+                headers={**headers, "X-WorkStep-Access": "wrong"})
+            assert denied.status_code == 401, denied.text
+        monkeypatch.setenv("WORKSTEP_MANAGED_BUNDLE_DIR", "/managed")
+        denied = await browser.post(f"/api/task/create?project_id={pid}", json=body, headers=headers)
+        assert denied.status_code == 401, denied.text
+    gateway.policy_cache.clear()
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("copy", [False, True])
 async def test_native_remote_task_creation_on_managed_host(api_context, monkeypatch, copy):
     import main

@@ -86,6 +86,7 @@
 .digital-home-work-day+.digital-home-work-day{margin-top:var(--space-4)}
 .digital-home-work-day ol{list-style:none;margin:0;padding:0}
 .digital-home-work-day li{position:relative}
+.digital-home-work-task{display:block;width:100%;min-width:0}
 .digital-home-work-day li:not(:last-child)::before{
  content:"";position:absolute;inset:31px auto -7px 6.5px;border-left:.5px solid var(--home-muted);opacity:.38;pointer-events:none
 }
@@ -228,18 +229,45 @@
  @keyframes presence-wake-breath{0%,35%,70%,100%{transform:translate(-50%,-50%) scale(1)}17.5%{transform:translate(-50%,-50%) scale(1.08)}52.5%{transform:translate(-50%,-50%) scale(1.04)}}
 }
 
+/* Reserve the subtitle area even while the greeting is absent. */
+.digital-home-main {
+ --welcome-size:calc(var(--text-title-1) * 1.6);
+ --welcome-height:calc(var(--welcome-size) * 1.25 * 3 + var(--space-3) * 2);
+}
+.digital-home-stage {
+ box-sizing:border-box;
+ padding-bottom:calc(var(--welcome-height) + var(--space-2));
+}
+.digital-home--chat .digital-home-stage{padding-bottom:0}
 .digital-home-welcome {
  position:absolute;
  z-index:1;
  inset-inline:var(--space-3);
- inset-block-end:14%;
- margin:0;
+ inset-block-end:0;
+ box-sizing:border-box;
+ width:fit-content;
+ max-width:calc(100% - var(--space-3) * 2);
+ padding:var(--space-3) var(--space-4);
+ border:.5px solid color-mix(in srgb,var(--text-primary) 18%,var(--bg));
+ border-radius:var(--radius-md);
+ margin:0 auto;
  pointer-events:none;
  text-align:center;
- text-shadow:0 0 4px var(--home-canvas),0 1px 6px var(--home-canvas);
- color:var(--home-ink);
- font-size:var(--text-title-1);
- font-weight:400;
- line-height:1.6;
+ color:var(--text-primary);
+ background:color-mix(in srgb,var(--bg) 96%,transparent);
+ font-family:var(--font-display);
+ font-size:var(--welcome-size);
+ font-weight:600;
+ line-height:1.25;
  overflow-wrap:anywhere;
+}
+@media(max-width:1023px){
+ .digital-home-main{--welcome-size:calc(var(--text-title-1) * 1.4)}
+}
+@media(max-height:680px) and (max-width:599px){
+ .digital-home-presence-info{display:grid;width:148px;grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-height:500px) and (max-width:599px){
+ .digital-home-main{--presence-height:max(45dvh,calc(var(--welcome-height) + var(--space-7) * 2 + var(--space-5)))}
+ .digital-home-stage{left:50%;width:calc(100% - var(--space-5) * 2)}
 }

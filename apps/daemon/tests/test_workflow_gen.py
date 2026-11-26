@@ -98,6 +98,13 @@ class FakeEngine:
     supports_resume = False
 
 
+def test_generation_instructions_use_bullets_for_step_and_review_prompts():
+    assert "prompt and review.prompt" in SYSTEM_PROMPT
+    assert "Markdown bullet lists (-)" in SYSTEM_PROMPT
+    assert "one requirement per item on its own line" in SYSTEM_PROMPT
+    assert "Do not use numbered lists" in SYSTEM_PROMPT
+
+
 def test_generation_instructions_keep_unspecified_step_engines_default():
     assert 'engine defaults to "claude"' not in SYSTEM_PROMPT
     assert 'engine: ""' in SYSTEM_PROMPT

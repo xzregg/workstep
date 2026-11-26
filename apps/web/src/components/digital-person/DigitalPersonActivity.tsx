@@ -10,6 +10,7 @@ import DigitalPersonRunDetail from './DigitalPersonRunDetail'
 import {DigitalPersonRunHeader} from './DigitalPersonRunKnowledge'
 import DigitalPersonRunOutcome, {DigitalPersonRunNotificationReasons} from './DigitalPersonRunOutcome'
 import DigitalPersonDelegationDialog from './DigitalPersonDelegationDialog'
+import MarkdownTaskLink from '../MarkdownTaskLink'
 import './DigitalPersonActivity.css'
 
 const PAGE_SIZE = 5
@@ -104,7 +105,9 @@ export default function DigitalPersonActivity({checking = false, titleId}: {chec
       <ActivitySection kind="delegations" title={t('digitalPerson.delegationNotifications')} total={data.delegation_total} page={delegationPage} loading={loading || !!busy} onPage={setDelegationPage}>
         {!data.delegations.length && <p className="digital-person-activity-empty">{t('digitalPerson.noDelegationNotifications')}</p>}
         {data.delegations.map(item=><div className="digital-person-delegation-row" key={item.id}>
-          <Button data-open-execution variant="ghost" className="digital-person-activity-open" aria-haspopup="dialog" title={t('digitalPerson.viewExecution')} onClick={()=>setDelegation(item)}><span className="digital-person-activity-title">{item.title || item.instruction}</span><Icon name="panel-top" size={14}/></Button>
+          {item.task_id?<MarkdownTaskLink target={{projectId:item.project_id,taskId:item.task_id}} className="digital-person-activity-open" variant="ghost">
+            <span className="digital-person-activity-title">{item.title || item.instruction}</span><Icon name="panel-top" size={14}/>
+          </MarkdownTaskLink>:<Button data-open-execution variant="ghost" className="digital-person-activity-open" aria-haspopup="dialog" title={t('digitalPerson.viewExecution')} onClick={()=>setDelegation(item)}><span className="digital-person-activity-title">{item.title || item.instruction}</span><Icon name="panel-top" size={14}/></Button>}
           <div className="digital-person-activity-row-actions">
             <span title={item.notification_state==='read'?t('digitalPerson.notificationRead'):item.notification_state==='deferred'?t('digitalPerson.notificationDeferred'):['delivery_failed','failed','interrupted'].includes(item.notification_state || '')?t('digitalPerson.notificationFailed'):undefined}>
               <StatusBadge status={item.notification_state==='notified'?'succeeded':['delivery_failed','failed','interrupted'].includes(item.notification_state || '')?'failed':'queued'}

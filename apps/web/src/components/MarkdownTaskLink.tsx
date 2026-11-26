@@ -9,9 +9,12 @@ import Button from './Button'
 import { MarkdownStreamingContext } from './MermaidBlock'
 import './MarkdownTaskLink.css'
 
-interface Props { target: TaskDetailLink; children: ReactNode; disabled?: boolean }
+interface Props {
+  target: TaskDetailLink; children: ReactNode; disabled?: boolean
+  className?: string; containerClassName?: string; title?: string; status?: string; variant?: 'ghost'
+}
 
-function TaskButton({ target, children, disabled }: Props) {
+function TaskButton({ target, children, disabled, className, containerClassName, title, status, variant }: Props) {
   const navigate = useNavigate()
   const { t } = useI18n()
   const { can } = useGatewayProjectPermissions(target.projectId)
@@ -39,8 +42,8 @@ function TaskButton({ target, children, disabled }: Props) {
       setError(reason instanceof Error ? reason.message : t('chatInput.taskLinkUnavailable'))
     } finally { pending.current = false; setLoading(false) }
   }
-  return <span className="markdown-task-link-container">
-    <Button className="markdown-task-link chat-message-action" size="sm" loading={loading}
+  return <span className={containerClassName || 'markdown-task-link-container'}>
+    <Button className={className || 'markdown-task-link chat-message-action'} title={title} data-status={status} variant={variant} size="sm" loading={loading}
       disabled={disabled || !can('task.read')} onClick={() => void open()}>{children}</Button>
     {error && <span className="markdown-task-link-error" role="alert">{localizeErrorDisplay(error)}</span>}
   </span>

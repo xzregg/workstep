@@ -215,6 +215,8 @@ class DigitalPersonRuntime:
         from services.digital_person_delegations import DelegationManagement
         self._follower = DelegationFollower(self)
         self.delegation_management = DelegationManagement(self)
+        from services.workflow_delegations import WorkflowDelegations
+        self.workflow_delegations = WorkflowDelegations(self)
         self.chats.digital_person_delegations = self.delegation_management
         if channel_chats is not None:
             channel_chats.digital_person_delegations = self.delegation_management
@@ -328,7 +330,7 @@ class DigitalPersonRuntime:
                 'delegation_pending': any((d.get('followup_state') == 'pending' if d.get('followup_state')
                                            else not d.get('notified'))
                                           or notification(d)['notification_state'] == 'notifying' for d in delegations),
-                'delegations': [{**{key: row.get(key) for key in ('id', 'execution_id', 'project_id', 'session_id', 'message_id', 'turn_id', 'title', 'status', 'followup_state', 'created_at', 'updated_at')},
+                'delegations': [{**{key: row.get(key) for key in ('id', 'execution_id', 'project_id', 'session_id', 'message_id', 'turn_id', 'title', 'status', 'followup_state', 'created_at', 'updated_at', 'kind', 'task_id', 'workflow_id', 'task_detail_url')},
                                  'instruction': str(row.get('instruction') or '')[:120], **notification(row)}
                                 for row in delegations[delegation_offset:delegation_offset + limit]],
                 'runs': [{**{key: row.get(key) for key in ('id', 'status', 'created_at')},
@@ -375,6 +377,12 @@ class DigitalPersonRuntime:
                 row['result_viewed'] = viewed
 
         await asyncio.gather(*(hydrate(project_id, rows) for project_id, rows in groups.items()))
+        task_rows = [row for row in result['delegations'] if row.get('task_id')]
+        if task_rows:
+            snapshots = await self.delegation_management.read(task_rows)
+            for row, snapshot in zip(task_rows, snapshots):
+                row.update({key: snapshot.get(key) for key in ('status', 'archived', 'steps', 'status_reason', 'pending_confirmations')})
+                row['result_viewed'] = None
         for row in result['delegations']:
             row.pop('turn_id')
         return result
@@ -436,6 +444,7 @@ class DigitalPersonRuntime:
             return {'items': [redact({key: snapshot.get(key) for key in (
                 'id', 'execution_id', 'project_id', 'session_id', 'message_id', 'engine', 'model', 'title', 'instruction', 'status',
                 'followup_state', 'question', 'archived', 'created_at', 'updated_at',
+                'kind', 'task_id', 'workflow_id', 'task_detail_url', 'steps', 'status_reason', 'pending_confirmations',
             )} | {'goal': snapshot.get('root_instruction') or snapshot['instruction'],
                   'result': snapshot['content'], 'executions': [
                       {key: row.get(key) for key in ('execution_id', 'message_id', 'engine', 'model', 'instruction', 'status', 'created_at')}
@@ -443,11 +452,20 @@ class DigitalPersonRuntime:
         from services.digital_person_delegations import latest_per_session
         items = latest_per_session(reversed(items))
         snapshots = await self.delegation_management.read(items[:20])
-        return {'items': [{key: item.get(key) for key in ('id', 'execution_id', 'project_id', 'session_id', 'engine', 'model', 'title', 'instruction', 'status', 'followup_state', 'archived', 'created_at', 'updated_at')}
+        return {'items': [{key: item.get(key) for key in ('id', 'execution_id', 'project_id', 'session_id', 'engine', 'model', 'title', 'instruction', 'status', 'followup_state', 'archived', 'created_at', 'updated_at', 'kind', 'task_id', 'workflow_id', 'task_detail_url', 'steps', 'status_reason', 'pending_confirmations')}
                           for item in snapshots]}
 
     async def delegate(self, project_id, instruction, origin_session_id='', request_id='', continuation_of='',
-                       *, automatic_result_id=None, target_session_id='', title=None, engine=None, model=None):
+                       *, automatic_result_id=None, target_session_id='', title=None, engine=None, model=None,
+                       workflow_id='', target_task_id=''):
+        from services.digital_person_tasks import resolve_task
+        previous = resolve_task(await self.state(), continuation_of) if continuation_of else None
+        if workflow_id or target_task_id or (previous and previous.get('task_id')):
+            if target_session_id or engine is not None or model is not None:
+                raise ValueError('Workflow tasks use their workflow configuration; do not select a chat or chat engine/model')
+            return await self.workflow_delegations.delegate(
+                project_id, instruction, origin_session_id, request_id, workflow_id=workflow_id,
+                target_task_id=target_task_id, continuation_of=continuation_of, title=title)
         if not (await asyncio.to_thread(digital_person.get_profile)).enabled:
             raise ValueError('Please enable the digital human first')
         if not instruction.strip() or len(instruction) > 12000:
@@ -1415,5 +1433,11 @@ class DigitalPersonRuntime:
             return item
         async with self._delegate_lock:
             item = await self.mutate(stop)
+        if item.get('task_id'):
+            from main import workflow_runtime
+            if workflow_runtime is None:
+                raise ValueError('Workflow runtime not initialized')
+            await workflow_runtime.cancel(item['task_id'])
+            return {'stopped': True}
         await self.chats.stop_current(item['session_id'],item['project_id'],expected_message_id=item['message_id'])
         return {'stopped':True}

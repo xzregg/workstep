@@ -1345,7 +1345,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             if context.get('delegation_list'):
                 parts['delegation_rules'] = (
                     'Act on tasks only when the user asks. '
-                    'Background reflection handles task review and notifications.'
+                    'The background service handles delegation review and notifications; workflow task progress comes from its actual task state.'
                 )
                 parts['delegations'] = context['delegation_list']
             parts.update(self._turn_source_prompt_parts(session))

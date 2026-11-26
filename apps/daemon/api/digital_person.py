@@ -256,6 +256,8 @@ class DelegateRequest(service.BaseModel):
     origin_session_id: str = ""
     request_id: str = service.Field(min_length=1, max_length=200)
     continuation_of: str = service.Field(default='', max_length=200)
+    workflow_id: str = service.Field(default='', max_length=128)
+    target_task_id: str = service.Field(default='', max_length=128)
 
 
 class ExistingDelegateRequest(DelegateRequest):
@@ -321,6 +323,8 @@ async def list_delegations(origin_session_id: str | None = Query(default=None, m
 async def delegate(request: DelegateRequest):
     try:
         return await runtime().delegate(**request.model_dump())
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 

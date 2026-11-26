@@ -11,6 +11,34 @@ import {DIGITAL_ACTIVITY_CHANGED} from '../src/components/digital-person/useDigi
 import {useProjectStore} from '../src/stores/projectStore'
 import {useChatSessionStore} from '../src/stores/chatSessionStore'
 import {useLocation} from 'react-router-dom'
+import {taskApi} from '../src/api/client'
+
+test('workflow delegation opens its actual task instead of an execution chat',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const original=digitalRuntimeApi.records,originalGet=taskApi.get,originalProjects=useProjectStore.getState()
+ const project={id:'target',name:'开发项目',path:'/target',workflows:[{id:'flow',name:'开发流程'}]}
+ useProjectStore.setState({projects:[project] as any})
+ let route='',calls=0
+ function Location(){const location=useLocation();route=location.pathname+location.search;return null}
+ digitalRuntimeApi.records=async()=>({checking:false,run_total:0,delegation_total:1,runs:[],delegations:[{
+  id:'d',kind:'workflow_task',project_id:'target',session_id:'',task_id:'real-task',workflow_id:'flow',
+  instruction:'开发登录',title:'实现登录',status:'waiting',status_reason:'manual_review',
+ }]})
+ taskApi.get=async(id,pid)=>{calls++;assert.equal(id,'real-task');assert.equal(pid,'target');return {id,workflow_id:'flow'} as any}
+ try{
+  await act(async()=>root.render(<MemoryRouter initialEntries={['/companion']}><I18nProvider><Location/><DigitalPersonHomeInsights active name="小研" state="idle" activity={null} affect={null} chatShown={false} onInspect={()=>{}}/></I18nProvider></MemoryRouter>))
+  const row=host.querySelector<HTMLButtonElement>('.digital-home-work-summary')!
+  assert.equal(row.dataset.status,'waiting')
+  assert.equal(Boolean(row.querySelector('.task-status-spinner')),false)
+  assert.equal(calls,0)
+  await act(async()=>row.click())
+  const url=new URL(route,'http://test')
+  assert.equal(url.pathname,'/tasks');assert.equal(url.searchParams.get('task'),'real-task')
+  assert.equal(url.searchParams.get('workflow'),'flow');assert.equal(url.searchParams.get('project'),'开发项目')
+  assert.equal(Boolean(document.querySelector('.digital-person-conversation-frame')),false)
+  assert.equal(calls,1)
+ }finally{await act(async()=>root.unmount());digitalRuntimeApi.records=original;taskApi.get=originalGet;useProjectStore.setState(originalProjects);await window.happyDOM.close()}
+})
 
 test('delegation opens its execution conversation in a dialog without changing the current project or route',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
