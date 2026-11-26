@@ -94,8 +94,11 @@ export interface ReviewRun {
     issues: Array<{
       severity: 'error' | 'warning'
       category: string
-      description: string
-      suggestion: string
+      description?: string | null
+      suggestion?: string | null
+      /** Historical engine reports used these field names. */
+      message?: string | null
+      recommendation?: string | null
     }>
   } | null
   decision: string | null

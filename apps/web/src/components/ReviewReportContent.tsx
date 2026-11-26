@@ -58,17 +58,17 @@ export default function ReviewReportContent({
           }}
         >
           <MarkdownMessage
-            content={issue.description}
+            content={issue.description ?? issue.message ?? ''}
             projectId={projectId}
             className="review-report-markdown review-report-issue-description"
           />
-          {issue.suggestion && (
+          {(issue.suggestion ?? issue.recommendation) && (
             <div
               className="review-report-issue-suggestion"
               style={{ color: 'var(--muted)' }}
             >
               <MarkdownMessage
-                content={issue.suggestion}
+                content={issue.suggestion ?? issue.recommendation ?? ''}
                 projectId={projectId}
                 className="review-report-markdown"
               />
