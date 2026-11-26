@@ -197,7 +197,7 @@ def test_person_prompt_only_in_fixed_workspace_and_when_enabled(setup, monkeypat
     assert "MUST run in a separate execution session" in prompt
     assert "For one-off project work without a suitable existing workflow, delegate directly to an execution conversation" in prompt
     assert 'tracked delegation with --workflow' in prompt
-    assert 'The word task/任务 alone does not select a workflow task' in prompt
+    assert 'The word task alone, in any language, does not select a workflow task' in prompt
     assert 'workflow list --project' in prompt and 'workflow get --project' in prompt
     assert 'Match the goal, step responsibilities, inputs and deliverables' in prompt
     assert 'Do not ask the user to choose between a conversation and a task' in prompt

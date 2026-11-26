@@ -16,6 +16,8 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 - Support coordinator CLI step handoff and retain the runtime environment required by delegated shell execution.
 - Improve task-detail scrolling, description editing, digital-hub layout and homepage guidance.
 - Strengthen DOM assertions and regression coverage across the workbench and Gateway interface.
+- Order completed tasks by their latest execution completion, including subsequent manual review decisions.
+- Preserve lifecycle protection for main and active reflection conversations during bulk deletion.
 
 ## 1.0.25
 

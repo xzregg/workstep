@@ -121,6 +121,17 @@
           "alt": "Test, controleer en bewaar de configuratie op een Codex SDK-kaart",
           "caption": "Op de Codex SDK-kaart wordt Geverifieerd weergegeven, wat aangeeft dat deze engine de test heeft doorstaan."
         }
+      },
+      {
+        "title": "Configureer providers, authenticatie en verbindingstesten · Antigravity / Tau",
+        "steps": [
+          "Antigravity en Tau zijn optionele engines. Kaarten met interactieve aanmelding bieden een officiële autorisatielink en tijdelijk code-/callbackveld. Autoriseer, vernieuw modellen, sla de standaard op en test; annuleer of probeer opnieuw na verloop. Alleen geldige quota van ondersteunde engines verschijnen; dit is geen factuur."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Configureer providers, authenticatie en verbindingstesten · Antigravity / Tau",
+          "caption": "Configureer providers, authenticatie en verbindingstesten · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "Inspecteer stapwijzigingen voor bestaande workflows. Selecteer onder Wijzigingen toepassen de gewenste toevoegingen, updates of verwijderingen, pas deze vervolgens toe en sla deze op."
         ],
         "tips": [
-          "AI-voorstellen vereisen uw bevestiging. Generatiesucces alleen is geen reden om ze uit te voeren: inspecteer verbindingen, motoren en beoordelingscriteria."
+          "AI-voorstellen vereisen uw bevestiging. Generatiesucces alleen is geen reden om ze uit te voeren: inspecteer verbindingen, motoren en beoordelingscriteria.",
+          "Bekijk de workflow via de voorstelkaart en keer terug om toe te passen. De preview slaat niets op en voert niets uit; knooppunten zijn tijdens toepassen vergrendeld. Bevestig vervanging van niet-opgeslagen wijzigingen en sla op. Delegaties openen echte uitvoeringsgesprekken met projectsnelknoppen. Hoofdgesprek en huidige reflectie kunnen niet worden gearchiveerd of in bulk verwijderd."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Persoonlijkheid, verantwoordelijkheden en hoofdgesprek instellen",
         "steps": [
-          "Open «Instellingen → Digitale persoon → Eerste begeleiding», vul de naam in en bewerk persoonlijkheid, verantwoordelijkheden en vast geheugen onder «Persoonlijkheid en verantwoordelijkheden». Gebruik voorinstellingen of importeer uit het rollencentrum, configureer een beschikbare engine en kies «Voltooien en inschakelen».",
+          "Schakel Instellingen → Digitale hub in om zonder verplichte vragenlijst te beginnen. Het eerste hoofdgesprek verzamelt naam, persoonlijkheid, toon en taken stapsgewijs; overslaan, pauzeren en hervatten zijn mogelijk. Bevestig het volledige overzicht vóór opslaan. Een bestaande identiteit wordt niet automatisch gereset en blijft bewerkbaar bij Persoonlijkheid en taken.",
           "Sla het profiel op en open de startpagina via «Praat met de digitale persoon» in de zijbalk. Gebruik de toetsenbordknop voor tekst; «Gesprek bekijken» opent hetzelfde hoofdgesprek. Je kunt terug naar de gewone werkruimte.",
           "Persoonlijkheid, verantwoordelijkheden en vast geheugen gebruiken Markdown; voorinstellingen wijzigen alleen het betreffende deel. Een opslagfout bewaart het concept; probeer opnieuw zoals aangegeven. Handel niet-opgeslagen wijzigingen af voordat je sluit of van pagina wisselt."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Toestemming voor bekende personen, opname in drie stappen en herkenningsinstellingen",
           "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
+        }
+      },
+      {
+        "title": "Stem, activering en microfoon instellen · CAMPPlus",
+        "steps": [
+          "Download bij Gehoor → Invoer een lokaal spraakmodel en CAMPPlus. Registreer minimaal 6 seconden en test voordat u Alleen mijn stem voor doorlopende gesprekken of alle invoer inschakelt. Kenmerken worden versleuteld op de verbonden host; registratie-/testaudio wordt niet bewaard. Verwijderen schakelt het filter uit. Dit is geen aanmeldverificatie."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Stem, activering en microfoon instellen · CAMPPlus",
+          "caption": "Stem, activering en microfoon instellen · CAMPPlus"
         }
       }
     ]

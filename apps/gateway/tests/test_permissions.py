@@ -8,7 +8,25 @@ from gateway.config import GatewaySettings
 from test_control_connection import _active_device, _handshake, _ordinary_device_owner
 
 
-def test_group_permissions_reach_signed_policy_and_follow_membership(tmp_path):
+def _business_rules(client, device_id, user_id):
+    """Inspect assignment semantics separately from the owner's host-access grant."""
+    from gateway.services.capabilities import capability_rules, compiled_project_scopes, rules_allow
+
+    async def read():
+        async with client.app.state.database.session() as session:
+            rules = await capability_rules(session, user_id)
+            values = {field: rules_allow(rules, capability, device_id) for field, capability in (
+                ("task_create", "task.create"), ("project_publish", "project.publish"),
+                ("task_share", "share.create"), ("engine_install", "engine.install"),
+                ("allow_local_providers", "provider.local"),
+            )}
+            values["share_scopes"] = await compiled_project_scopes(
+                session, device_id, user_id, "share.create", rules)
+            return values
+    return client.portal.call(read)
+
+
+def test_group_rules_follow_membership_without_revoking_device_owner_access(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, key, csrf = _active_device(client)
@@ -35,6 +53,7 @@ def test_group_permissions_reach_signed_policy_and_follow_membership(tmp_path):
                 ws.receive_json()["policy_snapshot"].split(".")[1] + "=="))
             for field in ("task_create", "engine_install", "allow_local_providers", "task_share"):
                 assert policy[field] is True, field
+                assert _business_rules(client, device_id, user_id)[field] is True
             assert client.delete(f"/api/groups/{group_id}/members/{user_id}",
                                  headers=headers).status_code == 204
             ws.send_json({"kind": "heartbeat"})
@@ -42,7 +61,8 @@ def test_group_permissions_reach_signed_policy_and_follow_membership(tmp_path):
                 ws.receive_json()["policy_snapshot"].split(".")[1] + "=="))
             assert removed["policy_revision"] > policy["policy_revision"]
             for field in ("task_create", "engine_install", "allow_local_providers", "task_share"):
-                assert removed[field] is False, field
+                assert removed[field] is True, field
+                assert _business_rules(client, device_id, user_id)[field] is False
 
 
 def test_group_administrator_role_applies_to_current_members_only(tmp_path):
@@ -86,7 +106,7 @@ def test_group_administrator_role_applies_to_current_members_only(tmp_path):
             ws.send_json({"kind": "heartbeat"})
             revoked = json.loads(base64.urlsafe_b64decode(
                 ws.receive_json()["policy_snapshot"].split(".")[1] + "=="))
-            assert revoked["task_create"] is False
+            assert revoked["task_create"] is True  # Ownership is independent of the revoked admin role.
             assert revoked["policy_revision"] > policy["policy_revision"]
         client.cookies.clear()
         client.post("/api/auth/login", json={"username": "owner", "password": "OwnerPassphrase-2026!"})
@@ -128,9 +148,10 @@ def test_existing_and_new_project_permissions_share_one_assignment_entry(tmp_pat
             ws.send_json({"kind": "heartbeat"})
             snapshot = json.loads(base64.urlsafe_b64decode(
                 ws.receive_json()["policy_snapshot"].split(".")[1] + "=="))
-            assert snapshot["task_share"] is False
-            assert snapshot["task_share_project_ids"] == ["host-1"]
+            assert snapshot["task_share"] is True
+            assert snapshot["task_share_project_ids"] == []
             assert snapshot["task_share_denied_project_ids"] == []
+            assert _business_rules(client, device_id, user_id)["share_scopes"] == (["host-1"], [])
             client.cookies.clear()
             client.post("/api/auth/login", json={"username": "owner", "password": "OwnerPassphrase-2026!"})
             assert client.get("/api/projects").json()["projects"][0]["access_level"] == "edit"
@@ -168,7 +189,8 @@ def test_existing_and_new_project_permissions_share_one_assignment_entry(tmp_pat
                 ws.receive_json()["policy_snapshot"].split(".")[1] + "=="))
             assert denied["task_share"] is True
             assert denied["task_share_project_ids"] == []
-            assert denied["task_share_denied_project_ids"] == ["host-1"]
+            assert denied["task_share_denied_project_ids"] == []
+            assert _business_rules(client, device_id, user_id)["share_scopes"] == ([], ["host-1"])
 
 
 def test_provider_use_permission_is_inherited_and_revoked_with_group_membership(tmp_path):
@@ -213,7 +235,7 @@ def test_provider_use_permission_is_inherited_and_revoked_with_group_membership(
             assert new_bundle["revision"] > bundle["revision"]
 
 
-def test_personal_and_group_denials_override_all_business_grants(tmp_path):
+def test_personal_denials_override_group_rules_but_not_device_ownership(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, key, csrf = _active_device(client)
@@ -238,12 +260,14 @@ def test_personal_and_group_denials_override_all_business_grants(tmp_path):
             _handshake(ws, token, key)
             denied = json.loads(base64.urlsafe_b64decode(ws.receive_json()["policy_snapshot"].split(".")[1] + "=="))
             fields = ("task_create", "project_publish", "task_share", "engine_install", "allow_local_providers")
-            assert all(denied[field] is False for field in fields)
+            assert all(denied[field] is True for field in fields)
+            assert all(_business_rules(client, device_id, user_id)[field] is False for field in fields)
             for assignment in denials:
                 assert client.delete(f"/api/admin/permissions/{assignment}", headers=headers).status_code == 204
             ws.send_json({"kind": "heartbeat"})
             restored = json.loads(base64.urlsafe_b64decode(ws.receive_json()["policy_snapshot"].split(".")[1] + "=="))
             assert all(restored[field] is True for field in fields)
+            assert all(_business_rules(client, device_id, user_id)[field] is True for field in fields)
             assert restored["policy_revision"] > denied["policy_revision"]
 
 

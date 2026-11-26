@@ -121,6 +121,17 @@
           "alt": "Testen, Verifiziert und Konfiguration speichern auf der Codex-SDK-Karte",
           "caption": "Die sdk-Karte von Codex zeigt Verifiziert: Die Engine hat den Test bestanden."
         }
+      },
+      {
+        "title": "Anbieter, Anmeldung und Verbindungstest · Antigravity / Tau",
+        "steps": [
+          "Antigravity und Tau sind optionale Ausführungsengines. Karten mit interaktiver Anmeldung bieten einen offiziellen Autorisierungslink und ein temporäres Code-/Callback-Feld. Danach Modelle aktualisieren, Standard speichern und testen. Abbrechen oder nach Ablauf erneut versuchen. Kontingente erscheinen nur bei gültigen Ergebnissen unterstützter Engines, nicht als Rechnung."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Anbieter, Anmeldung und Verbindungstest · Antigravity / Tau",
+          "caption": "Anbieter, Anmeldung und Verbindungstest · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "Bei Änderungen prüfen Sie die betroffenen Schritte und markieren unter Änderungen anwenden die gewünschten Ergänzungen, Änderungen oder Löschungen; anschließend anwenden und speichern."
         ],
         "tips": [
-          "KI-Vorschläge müssen bestätigt werden. Erfolgreiche Erzeugung allein genügt nicht: Prüfen Sie Verbindungen, Engines und Review-Bedingungen."
+          "KI-Vorschläge müssen bestätigt werden. Erfolgreiche Erzeugung allein genügt nicht: Prüfen Sie Verbindungen, Engines und Review-Bedingungen.",
+          "Vorschläge zuerst über ihre Karte ansehen, dann zurückkehren und anwenden. Die Vorschau speichert und startet nichts; während der Anwendung sind Knoten gesperrt. Das Ersetzen ungespeicherter Änderungen bestätigen, dann speichern. Delegierungen öffnen echte Ausführungschats mit Projekt-Schnellaktionen. Hauptchat und aktuelle Reflexion lassen sich weder archivieren noch gesammelt löschen."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Persönlichkeit, Aufgaben und Hauptgespräch einrichten",
         "steps": [
-          "Öffnen Sie „Einstellungen → Digitale Figur → Ersteinrichtung“, geben den Namen ein und bearbeiten Persönlichkeit, Aufgaben und dauerhafte Erinnerungen unter „Persönlichkeit und Aufgaben“. Nutzen Sie Vorgaben oder das Rollenzentrum, konfigurieren eine verfügbare Engine und wählen „Abschließen und aktivieren“.",
+          "Aktivieren Sie Einstellungen → Digital Hub, um ohne Pflichtfragebogen zur Startseite zu gelangen. Im ersten Hauptchat lassen sich Name, Persönlichkeit, Ton und Aufgaben schrittweise erfassen, überspringen, pausieren und fortsetzen. Erst nach Bestätigung der vollständigen Zusammenfassung wird gespeichert. Bestehende Identitäten bleiben erhalten und sind unter Persönlichkeit und Aufgaben bearbeitbar.",
           "Öffnen Sie nach Profilspeicherung „Mit digitaler Person sprechen“ in der Seitenleiste. Die Tastaturtaste erlaubt Texteingabe; „Unterhaltung ansehen“ zeigt den Verlauf derselben Hauptsitzung. Rückkehr zum normalen Arbeitsbereich ist möglich.",
           "Persönlichkeit, Aufgaben und dauerhafte Erinnerungen verwenden Markdown. Vorgaben ändern nur ihren Abschnitt. Speicherfehler bewahren den Entwurf zum Wiederholen. Bearbeiten Sie ungespeicherte Änderungen vor Wechsel oder Schließen."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Einwilligung, dreistufige Aufnahme und Personenerkennungseinstellungen",
           "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
+        }
+      },
+      {
+        "title": "Sprache, Aktivierung und Mikrofon konfigurieren · CAMPPlus",
+        "steps": [
+          "Laden Sie unter Hören → Eingabe ein lokales Sprachmodell und CAMPPlus. Registrieren und testen Sie mindestens 6 Sekunden Sprache, bevor Sie Nur meine Stimme für Dauergespräche oder alle Eingaben aktivieren. Merkmale werden auf dem verbundenen Host verschlüsselt; Aufnahme- und Testaudio wird nicht aufbewahrt. Löschen deaktiviert den Filter. Kein Anmeldeverfahren."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Sprache, Aktivierung und Mikrofon konfigurieren · CAMPPlus",
+          "caption": "Sprache, Aktivierung und Mikrofon konfigurieren · CAMPPlus"
         }
       }
     ]

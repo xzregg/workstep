@@ -260,7 +260,7 @@ async def test_resumed_codex_delegation_status_update_sends_only_list(runtime, m
     session = SimpleNamespace(extra={'digital_person_context': context}, project_id=home.id,
                               session_id='origin', engine='codex_sdk')
     first = chat._chat_system_prompt(session)
-    assert 'background' in first
+    assert 'background' in first.lower()
     assert '<delegation_actions>' not in first
     context['previous'] = context['fingerprints']
     context['delegation_list'] = '## Delegations\n- `work` · 核对构建 · **Running**'

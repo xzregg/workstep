@@ -121,6 +121,17 @@
           "alt": "Probar, Verificar y Guardar configuración en una tarjeta Codex SDK",
           "caption": "La tarjeta SDK del Codex muestra Verificado, lo que indica que este motor pasó la prueba."
         }
+      },
+      {
+        "title": "Configurar proveedores, pruebas de autenticación y conexión. · Antigravity / Tau",
+        "steps": [
+          "Antigravity y Tau son motores opcionales. Las tarjetas con inicio de sesión interactivo ofrecen enlace oficial y campo de código/retorno temporal. Autoriza, actualiza modelos, guarda el predeterminado y prueba; puedes cancelar o reintentar tras caducar. Las cuotas solo aparecen con resultados válidos en motores compatibles y no son facturas."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Configurar proveedores, pruebas de autenticación y conexión. · Antigravity / Tau",
+          "caption": "Configurar proveedores, pruebas de autenticación y conexión. · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "Para flujos de trabajo existentes, inspeccione los cambios de pasos. En Aplicar cambios, seleccione las adiciones, actualizaciones o eliminaciones que desee, luego aplique y guarde."
         ],
         "tips": [
-          "Las propuestas de IA requieren su confirmación. El éxito de generación por sí solo no es motivo para ejecutarlos: inspeccionar conexiones, motores y revisar criterios."
+          "Las propuestas de IA requieren su confirmación. El éxito de generación por sí solo no es motivo para ejecutarlos: inspeccionar conexiones, motores y revisar criterios.",
+          "Previsualiza el flujo en la tarjeta de propuesta y vuelve para aplicarlo. La vista previa no guarda ni ejecuta; los nodos se bloquean durante la aplicación. Confirma el reemplazo de cambios sin guardar y guarda. Las delegaciones abren conversaciones de ejecución reales y botones rápidos del proyecto. La conversación principal y la reflexión actual no se archivan ni se eliminan en lote."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Configurar personalidad, responsabilidades y conversación principal",
         "steps": [
-          "Abra «Configuración → Figura digital → Guía inicial», escriba el nombre y edite personalidad, responsabilidades y memoria permanente en «Personalidad y responsabilidades». Use preajustes o importe del centro de roles, configure un motor disponible y pulse «Completar y activar».",
+          "Activa Ajustes → Centro digital para entrar sin cuestionario obligatorio. La primera conversación principal recopila nombre, personalidad, tono y tareas; permite omitir, pausar y continuar. Confirma el resumen completo antes de guardar. Las identidades existentes no se reinician y pueden editarse en Personalidad y responsabilidades.",
           "Tras guardar el perfil, abra «Conversar con la persona digital» en la barra lateral. El botón de teclado permite escribir y «Ver conversación» abre el historial de la misma sesión principal. Puede volver al espacio de trabajo normal.",
           "Personalidad, responsabilidades y memoria permanente usan Markdown. Los preajustes solo actualizan su parte. Si falla el guardado, se conserva el borrador para reintentar. Resuelva cambios pendientes antes de salir o cambiar de sección."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Consentimiento, captura en tres pasos y ajustes de reconocimiento",
           "caption": "Interfaz china real del entorno de demostración fijo. Muestra ajustes, accesos o listas vacías; durante esta captura no se llamó a ningún modelo ni se enviaron mensajes."
+        }
+      },
+      {
+        "title": "Configurar voz, activación y micrófono · CAMPPlus",
+        "steps": [
+          "En Audición → Entrada, descarga un modelo de voz local y CAMPPlus. Registra al menos 6 segundos y prueba antes de activar Solo mi voz para conversaciones continuas o toda la entrada. Los rasgos se cifran en el host conectado; el audio de registro/prueba no se conserva. Eliminar desactiva el filtro. No sirve para iniciar sesión."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Configurar voz, activación y micrófono · CAMPPlus",
+          "caption": "Configurar voz, activación y micrófono · CAMPPlus"
         }
       }
     ]

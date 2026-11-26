@@ -121,6 +121,17 @@
           "alt": "Tombol Uji, Terverifikasi, dan Simpan konfigurasi pada kartu Codex SDK",
           "caption": "Kartu Codex sdk berstatus Terverifikasi menandakan mesin ini lulus pengujian."
         }
+      },
+      {
+        "title": "Atur penyedia, autentikasi, dan uji koneksi · Antigravity / Tau",
+        "steps": [
+          "Antigravity dan Tau adalah mesin opsional. Kartu login interaktif menyediakan tautan otorisasi resmi dan kolom kode/callback sementara. Otorisasi, segarkan model, simpan bawaan dan uji; batalkan atau coba lagi setelah kedaluwarsa. Kuota hanya muncul untuk hasil valid mesin yang mendukung dan bukan tagihan."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Atur penyedia, autentikasi, dan uji koneksi · Antigravity / Tau",
+          "caption": "Atur penyedia, autentikasi, dan uji koneksi · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "Untuk alur lama, periksa perubahan langkah. Pada Terapkan perubahan, pilih penambahan, pembaruan, atau penghapusan yang diinginkan, lalu terapkan dan simpan."
         ],
         "tips": [
-          "Usulan AI memerlukan konfirmasi. Keberhasilan pembuatan saja bukan alasan menjalankan: periksa koneksi, mesin, dan kriteria tinjauan."
+          "Usulan AI memerlukan konfirmasi. Keberhasilan pembuatan saja bukan alasan menjalankan: periksa koneksi, mesin, dan kriteria tinjauan.",
+          "Pratinjau alur dari kartu usulan lalu kembali untuk menerapkan. Pratinjau tidak menyimpan atau menjalankan; simpul terkunci selama penerapan. Konfirmasi penggantian perubahan belum tersimpan lalu simpan. Delegasi membuka percakapan eksekusi nyata dengan tombol cepat proyek. Percakapan utama dan refleksi saat ini tidak dapat diarsipkan atau dihapus massal."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Mengatur persona, tanggung jawab, dan percakapan utama",
         "steps": [
-          "Buka Pengaturan → Avatar digital → Panduan awal dan masukkan nama. Di Persona dan tanggung jawab, sunting persona, tanggung jawab, dan memori tetap menggunakan prasetel atau impor dari pusat peran. Atur mesin yang tersedia, lalu Selesai dan aktifkan.",
+          "Aktifkan Pengaturan → Pusat digital untuk membuka beranda tanpa kuesioner wajib. Percakapan utama pertama mengumpulkan nama, persona, nada dan tugas bertahap; dapat dilewati, dijeda dan dilanjutkan. Konfirmasi ringkasan lengkap sebelum menyimpan. Identitas lama tidak direset otomatis dan dapat diedit di Persona dan tugas.",
           "Setelah profil disimpan, pilih Bicara dengan persona digital di bilah samping untuk membuka beranda. Gunakan tombol papan ketik untuk teks; Lihat percakapan membuka riwayat sesi utama yang sama. Anda dapat kembali ke meja kerja biasa.",
           "Persona, tanggung jawab, dan memori tetap memakai Markdown. Prasetel hanya memperbarui bagian terkait. Kegagalan menyimpan mempertahankan draf; ikuti petunjuk dan coba lagi. Tangani perubahan belum tersimpan sebelum berpindah atau menutup halaman."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Pendaftaran kenalan dengan persetujuan, pengambilan tiga arah, dan pengaturan pengenalan",
           "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
+        }
+      },
+      {
+        "title": "Mengatur suara, kata pemicu, dan mikrofon · CAMPPlus",
+        "steps": [
+          "Di Pendengaran → Input, unduh model suara lokal dan CAMPPlus. Daftarkan minimal 6 detik suara dan uji sebelum mengaktifkan Hanya suara saya untuk percakapan berkelanjutan atau semua input. Fitur dienkripsi di host terhubung; audio pendaftaran/uji tidak disimpan. Menghapus menonaktifkan filter. Bukan autentikasi login."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Mengatur suara, kata pemicu, dan mikrofon · CAMPPlus",
+          "caption": "Mengatur suara, kata pemicu, dan mikrofon · CAMPPlus"
         }
       }
     ]

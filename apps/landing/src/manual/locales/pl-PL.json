@@ -121,6 +121,17 @@
           "alt": "Przetestuj, zweryfikuj i zapisz konfigurację na karcie Codex SDK",
           "caption": "Karta Codex SDK wyświetla komunikat Verified, wskazując, że ten silnik przeszedł test."
         }
+      },
+      {
+        "title": "Skonfiguruj dostawców, testy uwierzytelniania i połączenia · Antigravity / Tau",
+        "steps": [
+          "Antigravity i Tau to opcjonalne silniki. Karty z logowaniem interaktywnym udostępniają oficjalny odnośnik autoryzacji i pole tymczasowego kodu/callbacku. Autoryzuj, odśwież modele, zapisz domyślny i przetestuj; anuluj lub ponów po wygaśnięciu. Poprawne limity obsługiwanych silników nie stanowią rachunku."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Skonfiguruj dostawców, testy uwierzytelniania i połączenia · Antigravity / Tau",
+          "caption": "Skonfiguruj dostawców, testy uwierzytelniania i połączenia · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "W przypadku istniejących przepływów pracy sprawdź zmiany kroków. W obszarze Zastosuj zmiany wybierz żądane dodatki, aktualizacje lub usunięcia, a następnie zastosuj i zapisz."
         ],
         "tips": [
-          "Propozycje AI wymagają Twojego potwierdzenia. Sam sukces generacji nie jest powodem do ich uruchomienia: sprawdź połączenia, silniki i sprawdź kryteria."
+          "Propozycje AI wymagają Twojego potwierdzenia. Sam sukces generacji nie jest powodem do ich uruchomienia: sprawdź połączenia, silniki i sprawdź kryteria.",
+          "Podejrzyj schemat z karty propozycji, potem wróć i zastosuj. Podgląd nie zapisuje ani nie uruchamia; węzły są blokowane podczas stosowania. Potwierdź zastąpienie niezapisanych zmian i zapisz. Delegacje otwierają rzeczywiste rozmowy wykonawcze z szybkimi przyciskami projektu. Głównej rozmowy i bieżącej refleksji nie można archiwizować ani usuwać zbiorczo."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Osobowość, obowiązki i główna rozmowa",
         "steps": [
-          "Otwórz «Ustawienia → Cyfrowa osoba → Pierwsze kroki», wpisz imię i edytuj osobowość, obowiązki oraz stałą pamięć w «Osobowość i obowiązki». Użyj ustawień wstępnych lub importu z centrum ról, skonfiguruj dostępny silnik i wybierz «Zakończ i włącz».",
+          "Włącz Ustawienia → Centrum cyfrowe, aby wejść bez obowiązkowej ankiety. Pierwsza główna rozmowa zbiera imię, osobowość, ton i zadania; można pomijać, wstrzymywać i wznawiać. Zapis następuje po potwierdzeniu pełnego podsumowania. Istniejąca tożsamość nie jest resetowana i pozostaje edytowalna w Osobowości i zadaniach.",
           "Po zapisaniu profilu otwórz stronę główną przez «Porozmawiaj z cyfrową osobą» w pasku bocznym. Przycisk klawiatury służy do pisania; «Pokaż rozmowę» otwiera ten sam główny wątek. Możesz wrócić do zwykłego obszaru roboczego.",
           "Osobowość, obowiązki i stała pamięć używają Markdown; ustawienia wstępne zmieniają tylko odpowiedni fragment. Błąd zapisu zachowuje szkic; ponów według wskazówek. Przed zmianą strony lub zamknięciem rozstrzygnij niezapisane zmiany."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Zgoda znajomego, pobieranie w trzech krokach i rozpoznawanie osób",
           "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
+        }
+      },
+      {
+        "title": "Głos, wybudzanie i mikrofon · CAMPPlus",
+        "steps": [
+          "W Słuch → Wejście pobierz lokalny model mowy i CAMPPlus. Nagraj minimum 6 sekund i przetestuj przed włączeniem Tylko mój głos dla rozmów ciągłych lub wszystkich wejść. Cechy są szyfrowane na połączonym hoście; nagrania rejestracji/testu nie są zachowywane. Usunięcie wyłącza filtr. To nie uwierzytelnianie logowania."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Głos, wybudzanie i mikrofon · CAMPPlus",
+          "caption": "Głos, wybudzanie i mikrofon · CAMPPlus"
         }
       }
     ]

@@ -121,6 +121,17 @@
           "alt": "Kiểm tra, xác minh và lưu cấu hình trên thẻ Codex SDK",
           "caption": "Thẻ sdk Codex hiển thị Đã xác minh, cho biết công cụ này đã vượt qua bài kiểm tra."
         }
+      },
+      {
+        "title": "Cấu hình nhà cung cấp, xác thực và kiểm tra kết nối · Antigravity / Tau",
+        "steps": [
+          "Antigravity và Tau là các bộ máy tùy chọn. Thẻ hỗ trợ đăng nhập tương tác có liên kết cấp quyền chính thức và ô mã tạm thời/callback. Cấp quyền, làm mới mô hình, lưu mặc định rồi kiểm tra; có thể hủy hoặc thử lại khi hết hạn. Hạn mức chỉ hiện khi được hỗ trợ và kết quả hợp lệ, không phải hóa đơn."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Cấu hình nhà cung cấp, xác thực và kiểm tra kết nối · Antigravity / Tau",
+          "caption": "Cấu hình nhà cung cấp, xác thực và kiểm tra kết nối · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "Đối với quy trình công việc hiện có, hãy kiểm tra các thay đổi của bước. Trong Áp dụng thay đổi, hãy chọn các bổ sung, cập nhật hoặc xóa mà bạn muốn, sau đó áp dụng và lưu."
         ],
         "tips": [
-          "Đề xuất AI cần có sự xác nhận của bạn. Chỉ riêng sự thành công của thế hệ không phải là lý do để chạy chúng: kiểm tra các kết nối, động cơ và xem xét các tiêu chí."
+          "Đề xuất AI cần có sự xác nhận của bạn. Chỉ riêng sự thành công của thế hệ không phải là lý do để chạy chúng: kiểm tra các kết nối, động cơ và xem xét các tiêu chí.",
+          "Xem trước quy trình từ thẻ đề xuất rồi quay lại áp dụng. Xem trước không lưu hay chạy; các nút bị khóa khi áp dụng. Xác nhận thay thế các chỉnh sửa chưa lưu rồi lưu. Ủy nhiệm mở cuộc trò chuyện thực thi thật với nút nhanh của dự án. Không thể lưu trữ hay xóa hàng loạt cuộc trò chuyện chính và suy ngẫm hiện tại."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Cấu hình nhân cách, nhiệm vụ và hội thoại chính",
         "steps": [
-          "Mở Cài đặt → Hình tượng số → Hướng dẫn ban đầu, nhập tên. Trong Nhân cách và nhiệm vụ, sửa nhân cách, nhiệm vụ và ghi nhớ thường trực bằng mẫu sẵn hoặc nhập từ trung tâm vai trò. Cấu hình công cụ thực thi khả dụng rồi Hoàn tất và bật.",
+          "Bật Cài đặt → Trung tâm số để vào trang chủ mà không bắt buộc điền bảng hỏi. Cuộc trò chuyện chính đầu tiên thu thập tên, tính cách, giọng điệu và trách nhiệm từng bước; có thể bỏ qua, tạm dừng và tiếp tục. Chỉ lưu sau khi xác nhận toàn bộ bản tóm tắt. Danh tính cũ không tự đặt lại và có thể sửa trong Tính cách và trách nhiệm.",
           "Sau khi lưu hồ sơ, chọn Trò chuyện với nhân vật số ở thanh bên để vào trang chính. Dùng nút bàn phím để nhập chữ; Xem hội thoại mở lịch sử của cùng phiên chính. Có thể quay về bàn làm việc thông thường.",
           "Nhân cách, nhiệm vụ và ghi nhớ thường trực dùng Markdown. Mẫu sẵn chỉ cập nhật phần tương ứng. Lỗi lưu vẫn giữ bản nháp; làm theo thông báo rồi thử lại. Xử lý thay đổi chưa lưu trước khi chuyển trang hoặc đóng."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Đăng ký người quen có đồng ý, chụp ba hướng và cài đặt nhận diện",
           "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
+        }
+      },
+      {
+        "title": "Cấu hình giọng nói, đánh thức và micrô · CAMPPlus",
+        "steps": [
+          "Trong Thính giác → Đầu vào, tải mô hình giọng nói cục bộ và CAMPPlus. Đăng ký ít nhất 6 giây rồi kiểm tra trước khi bật Chỉ giọng của tôi cho hội thoại liên tục hoặc mọi đầu vào. Đặc trưng được mã hóa trên máy chủ kết nối; âm thanh đăng ký/kiểm tra không được giữ lại. Xóa sẽ tắt bộ lọc. Đây không phải xác thực đăng nhập."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Cấu hình giọng nói, đánh thức và micrô · CAMPPlus",
+          "caption": "Cấu hình giọng nói, đánh thức và micrô · CAMPPlus"
         }
       }
     ]

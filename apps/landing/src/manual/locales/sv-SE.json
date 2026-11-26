@@ -121,6 +121,17 @@
           "alt": "Testa, verifiera och spara konfigurationen på ett Codex SDK-kort",
           "caption": "Codex sdk-kortet visar Verified, vilket indikerar att denna motor klarade sitt test."
         }
+      },
+      {
+        "title": "Konfigurera leverantörer, autentisering och anslutningstester · Antigravity / Tau",
+        "steps": [
+          "Antigravity och Tau är valfria motorer. Kort med interaktiv inloggning erbjuder en officiell auktoriseringslänk och ett tillfälligt kod-/återanropsfält. Auktorisera, uppdatera modeller, spara standard och testa; avbryt eller försök igen efter utgång. Endast giltiga kvoter från stödda motorer visas, inte en faktura."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Konfigurera leverantörer, autentisering och anslutningstester · Antigravity / Tau",
+          "caption": "Konfigurera leverantörer, autentisering och anslutningstester · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "Inspektera stegändringar för befintliga arbetsflöden. Under Tillämpa ändringar väljer du de tillägg, uppdateringar eller borttagningar du vill ha och tillämpar sedan och sparar."
         ],
         "tips": [
-          "AI-förslag kräver din bekräftelse. Generationsframgång ensam är inte en anledning att köra dem: inspektera anslutningar, motorer och granska kriterier."
+          "AI-förslag kräver din bekräftelse. Generationsframgång ensam är inte en anledning att köra dem: inspektera anslutningar, motorer och granska kriterier.",
+          "Förhandsvisa arbetsflödet från förslagskortet och återvänd för att tillämpa. Förhandsvisningen sparar eller kör inget; noder låses under tillämpningen. Bekräfta ersättning av osparade ändringar och spara. Delegeringar öppnar verkliga körningssamtal med projektets snabbknappar. Huvudsamtalet och aktuell reflektion kan inte arkiveras eller massraderas."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Konfigurera personlighet, uppgifter och huvudsamtal",
         "steps": [
-          "Öppna «Inställningar → Digital person → Inledande guide», fyll i namn och redigera personlighet, uppgifter och bestående minne under «Personlighet och uppgifter». Använd förval eller importera från rollcentret, konfigurera en tillgänglig motor och välj «Slutför och aktivera».",
+          "Aktivera Inställningar → Digitalt nav för att öppna startsidan utan obligatoriskt frågeformulär. Det första huvudsamtalet samlar namn, personlighet, ton och uppgifter stegvis; hoppa över, pausa och fortsätt. Bekräfta hela sammanfattningen före lagring. Befintlig identitet återställs inte automatiskt och kan ändras under Personlighet och uppgifter.",
           "Spara profilen och öppna startsidan via «Prata med den digitala personen» i sidofältet. Tangentbordsknappen ger textinmatning; «Visa samtal» öppnar samma huvudsamtal. Du kan återgå till vanliga arbetsytan.",
           "Personlighet, uppgifter och bestående minne använder Markdown; förval uppdaterar bara sin del. Vid sparfel behålls utkastet; försök enligt anvisningarna. Hantera osparade ändringar innan du byter sida eller stänger."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Samtyckt registrering, insamling i tre steg och personigenkänning",
           "caption": "Verkligt kinesiskt gränssnitt från den fasta demomiljön. Visar inställningar, ingångar eller tomma listor; ingen modell anropades och inget meddelande skickades under denna fotografering."
+        }
+      },
+      {
+        "title": "Konfigurera röst, aktivering och mikrofon · CAMPPlus",
+        "steps": [
+          "Ladda ned en lokal talmodell och CAMPPlus under Hörsel → Inmatning. Registrera minst 6 sekunder tal och testa innan Bara min röst aktiveras för kontinuerliga samtal eller all inmatning. Egenskaper krypteras på ansluten värd; registrerings-/testljud sparas inte. Radering stänger av filtret. Det är inte inloggningsautentisering."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Konfigurera röst, aktivering och mikrofon · CAMPPlus",
+          "caption": "Konfigurera röst, aktivering och mikrofon · CAMPPlus"
         }
       }
     ]

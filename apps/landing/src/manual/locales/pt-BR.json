@@ -121,6 +121,17 @@
           "alt": "Teste, verifique e salve a configuração em uma placa Codex SDK",
           "caption": "O cartão SDK do Codex exibe Verificado, indicando que este mecanismo passou no teste."
         }
+      },
+      {
+        "title": "Configurar provedores, autenticação e testes de conexão · Antigravity / Tau",
+        "steps": [
+          "Antigravity e Tau são motores opcionais. Cartões com login interativo fornecem link oficial e campo temporário de código/retorno. Autorize, atualize os modelos, salve o padrão e teste; cancele ou tente novamente após expirar. Cotas só aparecem com resultados válidos em motores compatíveis e não representam uma fatura."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Configurar provedores, autenticação e testes de conexão · Antigravity / Tau",
+          "caption": "Configurar provedores, autenticação e testes de conexão · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "Para fluxos de trabalho existentes, inspecione as alterações nas etapas. Em Aplicar alterações, selecione as adições, atualizações ou exclusões desejadas, aplique e salve."
         ],
         "tips": [
-          "As propostas de IA exigem sua confirmação. O sucesso da geração por si só não é motivo para executá-los: inspecionar conexões, motores e revisar critérios."
+          "As propostas de IA exigem sua confirmação. O sucesso da geração por si só não é motivo para executá-los: inspecionar conexões, motores e revisar critérios.",
+          "Visualize o fluxo no cartão da proposta antes de voltar e aplicar. A prévia não salva nem executa; os nós ficam bloqueados durante a aplicação. Confirme a substituição de alterações não salvas e salve. Delegações abrem conversas reais com botões rápidos do projeto. A conversa principal e a reflexão atual não podem ser arquivadas nem excluídas em lote."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Configurar personalidade, responsabilidades e conversa principal",
         "steps": [
-          "Abra «Configurações → Pessoa digital → Guia inicial», preencha o nome e edite personalidade, responsabilidades e memória permanente em «Personalidade e responsabilidades». Use predefinições ou importe da central de papéis, configure um mecanismo disponível e clique em «Concluir e ativar».",
+          "Ative Configurações → Central digital para abrir a página inicial sem questionário obrigatório. A conversa principal coleta nome, personalidade, tom e responsabilidades por etapas; é possível pular, pausar e continuar. Confirme o resumo completo antes de salvar. Identidades existentes não são redefinidas e podem ser editadas em Personalidade e responsabilidades.",
           "Após salvar o perfil, entre pela opção «Conversar com a pessoa digital» na barra lateral. O botão de teclado permite escrever; «Ver conversa» abre o mesmo histórico principal. É possível voltar à área de trabalho comum.",
           "Personalidade, responsabilidades e memória permanente usam Markdown; predefinições atualizam só a parte correspondente. Falhas de salvamento preservam o rascunho; tente novamente conforme indicado. Resolva mudanças não salvas antes de trocar de página ou fechar."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Cadastro com consentimento, captura em três passos e reconhecimento de pessoas",
           "caption": "Interface chinesa real do ambiente fixo de demonstração. Mostra configurações, acessos ou listas vazias; nesta captura não houve chamada de modelo nem envio de mensagem."
+        }
+      },
+      {
+        "title": "Configurar voz, ativação e microfone · CAMPPlus",
+        "steps": [
+          "Em Audição → Entrada, baixe um modelo de voz local e CAMPPlus. Cadastre pelo menos 6 segundos e teste antes de ativar Somente minha voz, para conversas contínuas ou todas as entradas. Características ficam criptografadas no host conectado; áudios de cadastro/teste não são mantidos. Excluir desativa o filtro. Não é autenticação de login."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Configurar voz, ativação e microfone · CAMPPlus",
+          "caption": "Configurar voz, ativação e microfone · CAMPPlus"
         }
       }
     ]

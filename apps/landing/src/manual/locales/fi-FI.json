@@ -121,6 +121,17 @@
           "alt": "Testaa, tarkista ja tallenna konfiguraatio Codex SDK-kortilla",
           "caption": "Codex sdk -kortissa näkyy Vahvistettu, mikä osoittaa, että tämä moottori läpäisi testin."
         }
+      },
+      {
+        "title": "Määritä palveluntarjoajat, todennus ja yhteystestit · Antigravity / Tau",
+        "steps": [
+          "Antigravity ja Tau ovat valinnaisia moottoreita. Vuorovaikutteista kirjautumista tukevat kortit tarjoavat virallisen valtuutuslinkin ja väliaikaisen koodi-/paluukentän. Valtuuta, päivitä mallit, tallenna oletus ja testaa; peruuta tai yritä vanhentumisen jälkeen uudelleen. Vain tuettujen moottorien kelvolliset kiintiöt näkyvät, eivät laskuna."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Määritä palveluntarjoajat, todennus ja yhteystestit · Antigravity / Tau",
+          "caption": "Määritä palveluntarjoajat, todennus ja yhteystestit · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "Tarkista nykyisten työnkulkujen vaihemuutokset. Valitse Käytä muutokset -kohdassa haluamasi lisäykset, päivitykset tai poistot, ota sitten käyttöön ja tallenna."
         ],
         "tips": [
-          "Tekoälyehdotukset vaativat vahvistuksesi. Pelkästään sukupolven menestys ei ole syy niiden käyttöön: tarkasta liitännät, moottorit ja tarkista kriteerit."
+          "Tekoälyehdotukset vaativat vahvistuksesi. Pelkästään sukupolven menestys ei ole syy niiden käyttöön: tarkasta liitännät, moottorit ja tarkista kriteerit.",
+          "Esikatsele työnkulkua ehdotuskortista ja palaa ottamaan se käyttöön. Esikatselu ei tallenna eikä suorita; solmut lukitaan käyttöönoton ajaksi. Vahvista tallentamattomien muutosten korvaaminen ja tallenna. Delegoinnit avaavat todelliset suorituskeskustelut projektin pikapainikkeineen. Pääkeskustelua ja nykyistä pohdintaa ei voi arkistoida tai joukkopoistaa."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Persoonan, vastuiden ja pääkeskustelun määrittäminen",
         "steps": [
-          "Avaa ”Asetukset → Digitaalinen hahmo → Aloitusopastus”. Anna nimi ja muokkaa persoonaa, vastuita ja pysyviä muistoja kohdassa ”Persoona ja vastuut”. Käytä esiasetuksia tai tuo roolikeskuksesta, määritä käytettävä moottori ja valitse ”Valmis ja käyttöön”.",
+          "Ota Asetukset → Digitaalinen keskus käyttöön päästäksesi alkuun ilman pakollista kyselyä. Ensimmäinen pääkeskustelu kerää nimen, persoonan, sävyn ja tehtävät vaiheittain; voit ohittaa, keskeyttää ja jatkaa. Vahvista koko yhteenveto ennen tallennusta. Vanhaa identiteettiä ei nollata automaattisesti; muokkaa Persoona ja tehtävät -osiossa.",
           "Tallennetun profiilin jälkeen avaa sivupalkin ”Keskustele digitaalisen henkilön kanssa”. Näppäimistöpainike avaa tekstisyötteen, ”Näytä keskustelu” saman pääistunnon historian. Voit palata tavalliseen työtilaan.",
           "Persoona, vastuut ja pysyvät muistot käyttävät Markdown-muotoa. Esiasetukset muuttavat vain oman osansa. Tallennusvirhe säilyttää luonnoksen uudelleenyritystä varten. Käsittele tallentamattomat muutokset ennen vaihtoa tai sulkemista."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Suostumus, kolmivaiheinen näytteenotto ja henkilöntunnistusasetukset",
           "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
+        }
+      },
+      {
+        "title": "Äänen, herätyksen ja mikrofonin asetukset · CAMPPlus",
+        "steps": [
+          "Lataa Kuulo → Syöte -kohdassa paikallinen puhemalli ja CAMPPlus. Rekisteröi vähintään 6 sekuntia puhetta ja testaa ennen Vain oma ääneni -suodatusta jatkuville keskusteluille tai kaikille syötteille. Piirteet salataan yhdistetyllä isännällä; rekisteröinti-/testiääntä ei säilytetä. Poistaminen sulkee suodattimen. Ei kirjautumistodennusta."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Äänen, herätyksen ja mikrofonin asetukset · CAMPPlus",
+          "caption": "Äänen, herätyksen ja mikrofonin asetukset · CAMPPlus"
         }
       }
     ]

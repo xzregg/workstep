@@ -12,6 +12,18 @@ function proseStrings(value: unknown): string[] {
 
 describe('builtin language selection', () => {
   for (const lang of supportedLanguages.map(item => item.locale)) {
+    it(`documents current identity setup, optional engines and voiceprint in ${lang}`, () => {
+      const chapters = getManualChapters(lang)
+      const voiceprint = chapters.find(chapter => chapter.id === 'digital-person')!
+        .sections.find(section => section.screenshot?.id === 'voiceprint')
+      expect(voiceprint).toBeDefined()
+      expect(voiceprint!.steps.join(' ')).toContain('CAMPPlus')
+      expect(voiceprint!.steps.join(' ')).toContain('6')
+      const engines = chapters.find(chapter => chapter.id === 'sdk-credentials')!
+        .sections.find(section => section.screenshot?.id === 'engine-login')
+      expect(engines).toBeDefined()
+      for (const name of ['Antigravity', 'Tau']) expect(engines!.steps.join(' ')).toContain(name)
+    })
     it(`documents native calendar entry and host limits in ${lang}`, () => {
       const section = getManualChapters(lang).find(chapter => chapter.id === 'digital-person')!
         .sections.find(section => section.screenshot?.id === 'native-calendar')

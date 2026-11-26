@@ -121,6 +121,17 @@
           "alt": "Test, verifisert og lagre konfigurasjon på et Codex SDK-kort",
           "caption": "Codex sdk-kortet viser Verified, noe som indikerer at denne motoren besto testen."
         }
+      },
+      {
+        "title": "Konfigurer leverandører, autentisering og tilkoblingstester · Antigravity / Tau",
+        "steps": [
+          "Antigravity og Tau er valgfrie motorer. Kort med interaktiv innlogging tilbyr offisiell godkjenningslenke og midlertidig kode-/tilbakekallfelt. Godkjenn, oppdater modeller, lagre standard og test; avbryt eller prøv igjen etter utløp. Bare gyldige kvoter fra støttede motorer vises, ikke en faktura."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Konfigurer leverandører, autentisering og tilkoblingstester · Antigravity / Tau",
+          "caption": "Konfigurer leverandører, autentisering og tilkoblingstester · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "For eksisterende arbeidsflyter, inspiser trinnendringer. Under Bruk endringer, velg tilleggene, oppdateringene eller slettingene du ønsker, og bruk og lagre."
         ],
         "tips": [
-          "AI-forslag krever din bekreftelse. Generasjonssuksess alene er ikke en grunn til å kjøre dem: inspiser koblinger, motorer og gjennomgå kriterier."
+          "AI-forslag krever din bekreftelse. Generasjonssuksess alene er ikke en grunn til å kjøre dem: inspiser koblinger, motorer og gjennomgå kriterier.",
+          "Forhåndsvis arbeidsflyten fra forslagskortet og gå tilbake for å bruke den. Visningen lagrer eller kjører ingenting; noder låses under bruk. Bekreft erstatning av ulagrede endringer og lagre. Delegeringer åpner reelle utførelsessamtaler med prosjektets hurtigknapper. Hovedsamtalen og gjeldende refleksjon kan ikke arkiveres eller masseslettes."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Konfigurer personlighet, oppgaver og hovedsamtale",
         "steps": [
-          "Åpne «Innstillinger → Digital person → Førstegangsveiledning», fyll inn navn og rediger personlighet, oppgaver og varig hukommelse under «Personlighet og oppgaver». Bruk forhåndsvalg eller importer fra rollesenteret, velg en tilgjengelig motor og avslutt med «Fullfør og aktiver».",
+          "Aktiver Innstillinger → Digitalt senter for å åpne startsiden uten obligatorisk spørreskjema. Den første hovedsamtalen samler navn, personlighet, tone og oppgaver trinnvis; hopp over, sett på pause og fortsett. Bekreft hele sammendraget før lagring. Eksisterende identitet nullstilles ikke automatisk og kan redigeres under Personlighet og oppgaver.",
           "Etter lagring åpner du startsiden via «Snakk med den digitale personen» i sidefeltet. Tastaturknappen gir tekstinntasting; «Vis samtale» åpner den samme hovedsamtalen. Du kan gå tilbake til vanlig arbeidsområde.",
           "Personlighet, oppgaver og varig hukommelse bruker Markdown; forhåndsvalg endrer bare tilsvarende del. Ved lagringsfeil beholdes utkastet; prøv igjen etter veiledningen. Håndter ulagrede endringer før sidebytte eller lukking."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Samtykket personregistrering, innsamling i tre trinn og gjenkjenningsinnstillinger",
           "caption": "Det faktiske kinesiske grensesnittet fra det faste demomiljøet. Viser innstillinger, innganger eller tomme lister; ingen modell ble kalt og ingen melding sendt under dette opptaket."
+        }
+      },
+      {
+        "title": "Konfigurer lyd, aktivering og mikrofon · CAMPPlus",
+        "steps": [
+          "Last ned en lokal talemodell og CAMPPlus under Hørsel → Inndata. Registrer minst 6 sekunder tale og test før Bare min stemme aktiveres for kontinuerlige samtaler eller alle inndata. Egenskaper krypteres på tilkoblet vert; registrerings-/testlyd lagres ikke. Sletting slår av filteret. Det er ikke innloggingsautentisering."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Konfigurer lyd, aktivering og mikrofon · CAMPPlus",
+          "caption": "Konfigurer lyd, aktivering og mikrofon · CAMPPlus"
         }
       }
     ]

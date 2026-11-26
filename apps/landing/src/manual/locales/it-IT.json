@@ -121,6 +121,17 @@
           "alt": "Testa, verifica e salva la configurazione su una scheda Codex SDK",
           "caption": "La scheda SDK del Codex visualizza Verificato, a indicare che questo motore ha superato il test."
         }
+      },
+      {
+        "title": "Configura provider, autenticazione e test di connessione · Antigravity / Tau",
+        "steps": [
+          "Antigravity e Tau sono motori facoltativi. Le schede con accesso interattivo offrono un collegamento ufficiale e un campo temporaneo codice/callback. Autorizza, aggiorna i modelli, salva il predefinito e prova; puoi annullare o riprovare dopo la scadenza. Le quote valide dei motori compatibili non sono una fattura."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Configura provider, autenticazione e test di connessione · Antigravity / Tau",
+          "caption": "Configura provider, autenticazione e test di connessione · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "Per i flussi di lavoro esistenti, ispeziona le modifiche ai passaggi. In Applica modifiche, seleziona le aggiunte, gli aggiornamenti o le eliminazioni desiderate, quindi applica e salva."
         ],
         "tips": [
-          "Le proposte AI richiedono la tua conferma. Il solo successo generazionale non è un motivo per gestirli: ispezionare connessioni, motori e criteri di revisione."
+          "Le proposte AI richiedono la tua conferma. Il solo successo generazionale non è un motivo per gestirli: ispezionare connessioni, motori e criteri di revisione.",
+          "Visualizza l’anteprima dal riquadro della proposta, poi torna e applica. L’anteprima non salva né esegue; i nodi sono bloccati durante l’applicazione. Conferma la sostituzione delle modifiche non salvate, poi salva. Le deleghe aprono conversazioni reali con azioni rapide del progetto. Conversazione principale e riflessione corrente non sono archiviabili né eliminabili in blocco."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Configurare personalità, compiti e conversazione principale",
         "steps": [
-          "Apri «Impostazioni → Persona digitale → Guida iniziale», inserisci il nome e modifica personalità, compiti e memoria permanente in «Personalità e compiti». Usa preimpostazioni o importa dal centro ruoli, configura un motore disponibile e scegli «Completa e attiva».",
+          "Attiva Impostazioni → Centro digitale per accedere senza questionario obbligatorio. La prima conversazione principale raccoglie nome, personalità, tono e compiti; puoi saltare, sospendere e riprendere. Conferma il riepilogo completo prima di salvare. Le identità esistenti non vengono azzerate e restano modificabili in Personalità e compiti.",
           "Salva il profilo e apri la pagina principale da «Parla con la persona digitale» nella barra laterale. Il pulsante tastiera permette di scrivere; «Visualizza conversazione» apre lo stesso storico principale. Puoi tornare all’area di lavoro normale.",
           "Personalità, compiti e memoria permanente sono in Markdown; le preimpostazioni aggiornano solo la parte corrispondente. Se il salvataggio fallisce la bozza resta: riprova come indicato. Risolvi le modifiche non salvate prima di cambiare pagina o chiudere."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Consenso del conoscente, acquisizione in tre passaggi e impostazioni del riconoscimento",
           "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
+        }
+      },
+      {
+        "title": "Configurare voce, risveglio e microfono · CAMPPlus",
+        "steps": [
+          "In Udito → Input scarica un modello vocale locale e CAMPPlus. Registra almeno 6 secondi e prova prima di attivare Solo la mia voce per conversazioni continue o tutti gli input. Le caratteristiche sono cifrate sull’host collegato; gli audio di registrazione/test non vengono conservati. Eliminare disattiva il filtro. Non è autenticazione di accesso."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Configurare voce, risveglio e microfono · CAMPPlus",
+          "caption": "Configurare voce, risveglio e microfono · CAMPPlus"
         }
       }
     ]

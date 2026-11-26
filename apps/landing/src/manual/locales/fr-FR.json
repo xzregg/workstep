@@ -121,6 +121,17 @@
           "alt": "Test, validation et enregistrement sur la carte Codex SDK",
           "caption": "La carte sdk de Codex affiche Validé : ce moteur a passé son test."
         }
+      },
+      {
+        "title": "Configurer fournisseur, authentification et connexion · Antigravity / Tau",
+        "steps": [
+          "Antigravity et Tau sont des moteurs facultatifs. Les cartes compatibles proposent un lien officiel d’autorisation et un champ de code/rappel temporaire. Autorisez, actualisez les modèles, enregistrez le modèle par défaut et testez ; annulez ou recommencez après expiration. Les quotas valides des moteurs compatibles ne constituent pas une facture."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Configurer fournisseur, authentification et connexion · Antigravity / Tau",
+          "caption": "Configurer fournisseur, authentification et connexion · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "Pour modifier l’existant, inspectez les changements, cochez ajouts, modifications ou suppressions dans Appliquer les modifications, puis appliquez et enregistrez."
         ],
         "tips": [
-          "Une proposition exige votre confirmation. Une génération réussie ne suffit pas : vérifiez connexions, moteurs et critères de revue."
+          "Une proposition exige votre confirmation. Une génération réussie ne suffit pas : vérifiez connexions, moteurs et critères de revue.",
+          "Prévisualisez le flux depuis sa carte de proposition, puis revenez pour l’appliquer. L’aperçu ne sauvegarde ni n’exécute ; les nœuds sont verrouillés pendant l’application. Confirmez le remplacement des modifications non enregistrées, puis sauvegardez. Les délégations ouvrent leur conversation réelle avec les actions rapides du projet. Conversations principale et de réflexion courante : ni archivage ni suppression groupée."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Configurer personnalité, responsabilités et chat principal",
         "steps": [
-          "Ouvrez « Paramètres → Figure numérique → Guide initial », renseignez le nom et éditez personnalité, responsabilités et mémoire permanente dans « Personnalité et responsabilités ». Utilisez les préréglages ou importez du centre de rôles, configurez un moteur disponible puis « Terminer et activer ».",
+          "Activez Paramètres → Centre numérique pour accéder à l’accueil sans questionnaire obligatoire. La première conversation principale recueille progressivement nom, personnalité, ton et responsabilités ; vous pouvez ignorer, suspendre ou reprendre. Confirmez le résumé complet avant l’enregistrement. Une identité existante n’est pas réinitialisée et reste modifiable dans Personnalité et responsabilités.",
           "Après enregistrement du profil, ouvrez « Discuter avec la personne numérique » dans la barre latérale. Le clavier permet la saisie ; « Voir la conversation » ouvre l’historique de la même session principale. Vous pouvez revenir à l’espace de travail ordinaire.",
           "Personnalité, responsabilités et mémoire permanente utilisent Markdown. Les préréglages ne modifient que leur partie. En cas d’échec, le brouillon est conservé pour réessayer. Traitez les modifications non enregistrées avant de changer de section ou fermer."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Consentement, capture en trois étapes et paramètres de reconnaissance",
           "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
+        }
+      },
+      {
+        "title": "Configurer voix, activation et microphone · CAMPPlus",
+        "steps": [
+          "Dans Écoute → Entrée, téléchargez un modèle vocal local et CAMPPlus. Inscrivez au moins 6 secondes de parole et testez avant d’activer Ma voix uniquement, pour les appels continus ou toutes les entrées. Les caractéristiques sont chiffrées sur l’hôte connecté ; les audios d’inscription/test ne sont pas conservés. La suppression désactive le filtre. Ce n’est pas une authentification."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Configurer voix, activation et microphone · CAMPPlus",
+          "caption": "Configurer voix, activation et microphone · CAMPPlus"
         }
       }
     ]

@@ -121,6 +121,17 @@
           "alt": "Otestujte, ověřte a uložte konfiguraci na kartě Codex SDK",
           "caption": "Na kartě Codex sdk se zobrazí Verified, což znamená, že tento motor prošel testem."
         }
+      },
+      {
+        "title": "Konfigurace poskytovatelů, ověřování a testy připojení · Antigravity / Tau",
+        "steps": [
+          "Antigravity a Tau jsou volitelné enginy. Karty s interaktivním přihlášením nabízejí oficiální autorizační odkaz a pole dočasného kódu/callbacku. Autorizujte, obnovte modely, uložte výchozí a otestujte; zrušte nebo opakujte po vypršení. Zobrazují se jen platné kvóty podporovaných enginů, nikoli účet."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Konfigurace poskytovatelů, ověřování a testy připojení · Antigravity / Tau",
+          "caption": "Konfigurace poskytovatelů, ověřování a testy připojení · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "U existujících pracovních postupů zkontrolujte změny kroků. V části Použít změny vyberte požadovaná přidání, aktualizace nebo odstranění, poté použijte a uložte."
         ],
         "tips": [
-          "Návrhy AI vyžadují vaše potvrzení. Úspěch generace sám o sobě není důvodem k jejich spuštění: zkontrolujte připojení, motory a zkontrolujte kritéria."
+          "Návrhy AI vyžadují vaše potvrzení. Úspěch generace sám o sobě není důvodem k jejich spuštění: zkontrolujte připojení, motory a zkontrolujte kritéria.",
+          "Prohlédněte návrh postupu z karty a vraťte se k použití. Náhled nic neukládá ani nespouští; během použití jsou uzly zamčené. Potvrďte nahrazení neuložených úprav a uložte. Delegace otevírají skutečné prováděcí rozhovory s rychlými tlačítky projektu. Hlavní rozhovor a aktuální reflexi nelze archivovat ani hromadně smazat."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Nastavení osobnosti, povinností a hlavního chatu",
         "steps": [
-          "Otevřete „Nastavení → Digitální postava → Úvodní průvodce“, vyplňte jméno a v „Osobnost a povinnosti“ upravte osobnost, povinnosti a trvalou paměť. Použijte předvolby nebo import z centra rolí, nastavte dostupný engine a zvolte „Dokončit a zapnout“.",
+          "Zapnutím Nastavení → Digitální centrum otevřete domov bez povinného dotazníku. První hlavní rozhovor postupně sbírá jméno, osobnost, tón a úkoly; lze přeskakovat, pozastavit a pokračovat. Uložení následuje až po potvrzení celého shrnutí. Stávající identita se automaticky nemaže; upravíte ji v Osobnosti a povinnostech.",
           "Po uložení profilu otevřete z postranního panelu „Mluvit s digitální osobou“. Tlačítko klávesnice umožní psát, „Zobrazit konverzaci“ otevře historii téže hlavní relace. Lze se vrátit do běžného pracovního prostoru.",
           "Osobnost, povinnosti a trvalá paměť používají Markdown. Předvolby mění jen příslušnou část. Při chybě ukládání koncept zůstává pro opakování. Před přepnutím nebo zavřením vyřešte neuložené změny."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Souhlas známé osoby, tři kroky snímání a nastavení rozpoznávání",
           "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
+        }
+      },
+      {
+        "title": "Nastavení zvuku, probuzení a mikrofonu · CAMPPlus",
+        "steps": [
+          "Ve Sluch → Vstup stáhněte místní řečový model a CAMPPlus. Zaregistrujte alespoň 6 sekund řeči a otestujte před zapnutím Pouze můj hlas pro průběžné hovory nebo všechny vstupy. Vlastnosti jsou šifrovány na připojeném hostiteli; registrační/testovací zvuk se neuchovává. Smazání vypne filtr. Nejde o přihlašovací ověření."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Nastavení zvuku, probuzení a mikrofonu · CAMPPlus",
+          "caption": "Nastavení zvuku, probuzení a mikrofonu · CAMPPlus"
         }
       }
     ]

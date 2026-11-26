@@ -121,6 +121,17 @@
           "alt": "Codex SDK kartında yapılandırmayı test edin, doğrulayın ve kaydedin",
           "caption": "Codex SDK kartında Doğrulandı mesajı görüntülenerek bu motorun testi geçtiğini belirtir."
         }
+      },
+      {
+        "title": "Sağlayıcıları, kimlik doğrulamayı ve bağlantı testlerini yapılandırma · Antigravity / Tau",
+        "steps": [
+          "Antigravity ve Tau isteğe bağlı motorlardır. Etkileşimli giriş kartları resmî yetkilendirme bağlantısı ve geçici kod/geri dönüş alanı sunar. Yetkilendirin, modelleri yenileyin, varsayılanı kaydedin ve sınayın; iptal edebilir veya süre dolunca yeniden deneyebilirsiniz. Desteklenen motorların geçerli kotaları gösterilir; bunlar fatura değildir."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Sağlayıcıları, kimlik doğrulamayı ve bağlantı testlerini yapılandırma · Antigravity / Tau",
+          "caption": "Sağlayıcıları, kimlik doğrulamayı ve bağlantı testlerini yapılandırma · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "Mevcut iş akışları için adım değişikliklerini inceleyin. Değişiklikleri uygula altında istediğiniz eklemeleri, güncellemeleri veya silmeleri seçin, ardından uygulayın ve kaydedin."
         ],
         "tips": [
-          "Yapay zeka teklifleri onayınızı gerektirir. Üretim başarısı tek başına bunları çalıştırmak için bir neden değildir: bağlantıları, motorları inceleyin ve kriterleri gözden geçirin."
+          "Yapay zeka teklifleri onayınızı gerektirir. Üretim başarısı tek başına bunları çalıştırmak için bir neden değildir: bağlantıları, motorları inceleyin ve kriterleri gözden geçirin.",
+          "Akışı öneri kartından önizleyin, sonra dönüp uygulayın. Önizleme kaydetmez veya çalıştırmaz; uygulama sırasında düğümler kilitlenir. Kaydedilmemiş değişikliklerin değiştirilmesini onaylayıp kaydedin. Yetkilendirilen işler proje hızlı düğmeleriyle gerçek yürütme konuşmasını açar. Ana konuşma ve mevcut düşünme konuşması arşivlenemez veya topluca silinemez."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Kişilik, sorumluluk ve ana sohbet ayarları",
         "steps": [
-          "«Ayarlar → Dijital kişi → İlk kurulum» açın, adı girin ve «Kişilik ve sorumluluklar» içinde kişilik, görevler ve kalıcı belleği düzenleyin. Hazır ayarlar veya rol merkezinden içe aktarma kullanın, kullanılabilir motoru ayarlayıp «Tamamla ve aç» seçin.",
+          "Zorunlu anket olmadan ana sayfaya girmek için Ayarlar → Dijital merkez'i açın. İlk ana konuşma ad, kişilik, üslup ve görevleri aşamalı toplar; atlayabilir, duraklatabilir ve sürdürebilirsiniz. Tam özeti onayladıktan sonra kaydedilir. Mevcut kimlik otomatik sıfırlanmaz; Kişilik ve görevler'den düzenlenebilir.",
           "Profili kaydettikten sonra kenar çubuğundan «Dijital kişiyle konuş» ile ana sayfaya girin. Klavye düğmesi metin girer; «Sohbeti görüntüle» aynı ana sohbet geçmişini açar. Normal çalışma alanına dönebilirsiniz.",
           "Kişilik, sorumluluklar ve kalıcı bellek Markdown kullanır; hazır ayarlar yalnızca ilgili bölümü değiştirir. Kayıt hatasında taslak korunur; yönergeye göre tekrar deneyin. Sayfa değiştirmeden veya kapatmadan kaydedilmemiş değişiklikleri çözün."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Tanıdık onayı, üç aşamalı örnek toplama ve kişi tanıma ayarları",
           "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
+        }
+      },
+      {
+        "title": "Ses, uyandırma ve mikrofon ayarları · CAMPPlus",
+        "steps": [
+          "İşitme → Girdi'de yerel konuşma modeli ve CAMPPlus indirin. En az 6 saniye ses kaydedip sınadıktan sonra sürekli konuşmalar veya tüm girdiler için Yalnızca benim sesim'i açın. Özellikler bağlı ana makinede şifrelenir; kayıt/test sesi saklanmaz. Silmek filtreyi kapatır. Bu, oturum açma kimlik doğrulaması değildir."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Ses, uyandırma ve mikrofon ayarları · CAMPPlus",
+          "caption": "Ses, uyandırma ve mikrofon ayarları · CAMPPlus"
         }
       }
     ]

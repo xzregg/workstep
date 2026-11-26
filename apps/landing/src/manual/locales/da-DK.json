@@ -121,6 +121,17 @@
           "alt": "Test, verificeret og gem konfiguration på et Codex SDK-kort",
           "caption": "Codex sdk-kortet viser Verified, hvilket indikerer, at denne motor bestod sin test."
         }
+      },
+      {
+        "title": "Konfigurer udbydere, autentificering og forbindelsestest · Antigravity / Tau",
+        "steps": [
+          "Antigravity og Tau er valgfrie motorer. Kort med interaktivt login tilbyder et officielt godkendelseslink og midlertidigt kode-/callbackfelt. Godkend, opdatér modeller, gem standard og test; annullér eller prøv igen efter udløb. Kun gyldige kvoter fra understøttede motorer vises, ikke en regning."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Konfigurer udbydere, autentificering og forbindelsestest · Antigravity / Tau",
+          "caption": "Konfigurer udbydere, autentificering og forbindelsestest · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "For eksisterende arbejdsgange skal du inspicere trinændringer. Under Anvend ændringer skal du vælge de tilføjelser, opdateringer eller sletninger, du ønsker, og derefter anvende og gemme."
         ],
         "tips": [
-          "AI-forslag kræver din bekræftelse. Generationssucces alene er ikke en grund til at køre dem: undersøg forbindelser, motorer og gennemgå kriterier."
+          "AI-forslag kræver din bekræftelse. Generationssucces alene er ikke en grund til at køre dem: undersøg forbindelser, motorer og gennemgå kriterier.",
+          "Forhåndsvis workflowet fra forslagskortet, og gå tilbage for at anvende. Visningen gemmer eller kører intet; noder låses under anvendelse. Bekræft erstatning af ugemte ændringer og gem. Delegationer åbner rigtige udførelsessamtaler med projektets hurtigknapper. Hovedsamtalen og aktuel refleksion kan ikke arkiveres eller masseslettes."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Konfigurér personlighed, ansvar og hovedsamtale",
         "steps": [
-          "Åbn „Indstillinger → Digital figur → Førstegangsvejledning“, skriv navnet, og redigér personlighed, ansvar og faste minder under „Personlighed og ansvar“. Brug forvalg eller importér fra rollecentret, konfigurér en tilgængelig motor, og vælg „Afslut og aktivér“.",
+          "Aktivér Indstillinger → Digitalt center for at åbne startsiden uden obligatorisk spørgeskema. Den første hovedsamtale indsamler navn, personlighed, tone og opgaver trinvis; spring over, sæt på pause og fortsæt. Bekræft hele oversigten før lagring. Eksisterende identitet nulstilles ikke automatisk og kan redigeres under Personlighed og opgaver.",
           "Efter profilen er gemt, åbner sidebjælkens „Tal med den digitale person“ forsiden. Tastaturknappen åbner tekstinput, og „Vis samtale“ viser den samme hovedsessions historik. Du kan vende tilbage til det almindelige arbejdsområde.",
           "Personlighed, ansvar og faste minder bruger Markdown. Forvalg opdaterer kun deres egen del. Kladden bevares ved lagringsfejl, så du kan prøve igen. Håndtér ugemte ændringer før sideskift eller lukning."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Samtykke, optagelse i tre trin og persongenkendelsesindstillinger",
           "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
+        }
+      },
+      {
+        "title": "Konfigurér lyd, vækning og mikrofon · CAMPPlus",
+        "steps": [
+          "Download en lokal talemodel og CAMPPlus under Hørelse → Input. Registrér mindst 6 sekunders tale og test, før Kun min stemme aktiveres for løbende samtaler eller alle input. Kendetegn krypteres på den tilsluttede vært; registrerings-/testlyd gemmes ikke. Sletning slår filteret fra. Det er ikke login-godkendelse."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Konfigurér lyd, vækning og mikrofon · CAMPPlus",
+          "caption": "Konfigurér lyd, vækning og mikrofon · CAMPPlus"
         }
       }
     ]

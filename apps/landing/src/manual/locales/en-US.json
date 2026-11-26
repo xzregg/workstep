@@ -121,6 +121,17 @@
           "alt": "Test, Verified and Save configuration on a Codex SDK card",
           "caption": "The Codex sdk card displays Verified, indicating that this engine passed its test."
         }
+      },
+      {
+        "title": "Configure providers, authentication and connection tests · Antigravity / Tau",
+        "steps": [
+          "Antigravity and Tau are optional engines installed under Execution engines. Cards supporting interactive login provide an official authorization link and temporary code/callback input; authorize, refresh models, save the default and test. Cancel or retry after expiry. Quota appears only for supported engines with valid results; it is not a bill."
+        ],
+        "screenshot": {
+          "id": "engine-login",
+          "alt": "Configure providers, authentication and connection tests · Antigravity / Tau",
+          "caption": "Configure providers, authentication and connection tests · Antigravity / Tau"
+        }
       }
     ]
   },
@@ -499,7 +510,8 @@
           "For existing workflows, inspect step changes. Under Apply changes, select the additions, updates or deletions you want, then apply and save."
         ],
         "tips": [
-          "AI proposals require your confirmation. Generation success alone is not a reason to run them: inspect connections, engines and review criteria."
+          "AI proposals require your confirmation. Generation success alone is not a reason to run them: inspect connections, engines and review criteria.",
+          "Preview a workflow from its proposal card before returning to apply it. Preview neither saves nor runs; nodes cannot be edited during application. Confirm replacement of unsaved edits, then save. Delegations open actual execution conversations with project quick buttons. Main and current reflection conversations cannot be archived or bulk-deleted."
         ],
         "screenshot": {
           "id": "ai-flow-proposal",
@@ -1648,7 +1660,7 @@
       {
         "title": "Set persona, duties and the main conversation",
         "steps": [
-          "Open Settings → Digital avatar → Initial setup and enter a name. In Persona and duties, edit persona, duties and standing memory using presets or imports from the role center. Configure an available engine, then Finish and enable.",
+          "Enable Settings → Digital hub to enter its home without a mandatory questionnaire. The first main conversation can collect name, persona, tone and duties gradually; skip, pause or resume, then confirm the complete summary before saving. Existing identities are not reset automatically; edit them later under Persona and duties.",
           "After saving the profile, choose Talk to digital person in the sidebar to open its home. Use the keyboard button for text. View conversation opens the same persistent main session; you can return to the normal workbench.",
           "Persona, duties and standing memory use Markdown. Presets update only their corresponding part. A failed save preserves your draft; follow the error and retry. Handle unsaved changes before switching pages or closing."
         ],
@@ -1743,6 +1755,17 @@
           "id": "face-recognition",
           "alt": "Consent-based enrollment, three-view capture and person recognition settings",
           "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
+        }
+      },
+      {
+        "title": "Configure speech, wake words and microphone · CAMPPlus",
+        "steps": [
+          "Under Hearing → Input, download a local speech model and CAMPPlus, enroll at least 6 seconds of speech and test before enabling My voice only for continuous calls or all input. Features are encrypted on the connected host; enrollment/test audio is not retained. Deleting disables filtering. Voiceprints are not login authentication."
+        ],
+        "screenshot": {
+          "id": "voiceprint",
+          "alt": "Configure speech, wake words and microphone · CAMPPlus",
+          "caption": "Configure speech, wake words and microphone · CAMPPlus"
         }
       }
     ]
