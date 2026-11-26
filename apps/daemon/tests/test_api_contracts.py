@@ -6006,6 +6006,11 @@ async def test_resume_step_message_slow_sql_does_not_block_health(
     """A stopped step's follow-up is persisted in its project DB executor."""
     import main
     from models import TaskStep
+    from engines.core.registry import list_all_engines
+
+    # The canary must also work on CI hosts without a user-installed Claude CLI.
+    monkeypatch.delitem(ENGINE_REGISTRY, "claude", raising=False)
+    monkeypatch.setattr(list_all_engines()["claude"], "is_installed", staticmethod(lambda: False))
 
     client, tmp_path = api_context
     project_dir = tmp_path / "slow-step-followup"
@@ -6013,7 +6018,14 @@ async def test_resume_step_message_slow_sql_does_not_block_health(
     project_id = (await client.post(
         "/api/project/init", json={"path": str(project_dir)}
     )).json()["id"]
-    workflow = await _create_test_workflow(client, project_id)
+    workflow_response = await client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={"name": "FollowupCanary", "steps": {
+            "steps": [{"key": "do", "engine": "pydantic_ai"}],
+        }},
+    )
+    assert workflow_response.status_code == 200, workflow_response.text
+    workflow = workflow_response.json()
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={
@@ -6056,7 +6068,7 @@ async def test_resume_step_message_slow_sql_does_not_block_health(
     accepted = await followup
 
     assert health.status_code == 200
-    assert accepted.status_code == 200
+    assert accepted.status_code == 200, accepted.text
     assert accepted.json()["run_id"] == "followup-run"
     restart.assert_awaited_once()
     history = await client.get(f"/api/task/{task_id}/history?project_id={project_id}")
