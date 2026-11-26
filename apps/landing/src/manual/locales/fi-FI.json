@@ -125,7 +125,8 @@
       {
         "title": "Määritä palveluntarjoajat, todennus ja yhteystestit · Antigravity / Tau",
         "steps": [
-          "Antigravity ja Tau ovat valinnaisia moottoreita. Vuorovaikutteista kirjautumista tukevat kortit tarjoavat virallisen valtuutuslinkin ja väliaikaisen koodi-/paluukentän. Valtuuta, päivitä mallit, tallenna oletus ja testaa; peruuta tai yritä vanhentumisen jälkeen uudelleen. Vain tuettujen moottorien kelvolliset kiintiöt näkyvät, eivät laskuna."
+          "Antigravity ja Tau ovat valinnaisia moottoreita. Vuorovaikutteista kirjautumista tukevat kortit tarjoavat virallisen valtuutuslinkin ja väliaikaisen koodi-/paluukentän. Valtuuta, päivitä mallit, tallenna oletus ja testaa; peruuta tai yritä vanhentumisen jälkeen uudelleen. Vain tuettujen moottorien kelvolliset kiintiöt näkyvät, eivät laskuna.",
+          "Tallenna päättelytaso Antigravity-asetuksissa tai jätä auto moottorin oletukselle. Toteutuva taso määräytyy valitun mallin tuen mukaan; vaihtoehdot vaihtelevat. Lisäviesti suorituksen aikana keskeyttää nykyisen natiivivuoron ennen seuraavaa kehotetta. Toimituskuittaus ei tarkoita työn valmistumista."
         ],
         "screenshot": {
           "id": "engine-login",

@@ -125,7 +125,8 @@
       {
         "title": "Skonfiguruj dostawców, testy uwierzytelniania i połączenia · Antigravity / Tau",
         "steps": [
-          "Antigravity i Tau to opcjonalne silniki. Karty z logowaniem interaktywnym udostępniają oficjalny odnośnik autoryzacji i pole tymczasowego kodu/callbacku. Autoryzuj, odśwież modele, zapisz domyślny i przetestuj; anuluj lub ponów po wygaśnięciu. Poprawne limity obsługiwanych silników nie stanowią rachunku."
+          "Antigravity i Tau to opcjonalne silniki. Karty z logowaniem interaktywnym udostępniają oficjalny odnośnik autoryzacji i pole tymczasowego kodu/callbacku. Autoryzuj, odśwież modele, zapisz domyślny i przetestuj; anuluj lub ponów po wygaśnięciu. Poprawne limity obsługiwanych silników nie stanowią rachunku.",
+          "Zapisz poziom rozumowania w Antigravity lub pozostaw auto dla ustawień silnika. Rzeczywisty poziom odpowiada zakresowi obsługi wybranego modelu; opcje się różnią. Dodatkowa wiadomość w trakcie pracy przerywa bieżącą turę przed kolejnym poleceniem. Potwierdzenie dostarczenia nie oznacza ukończenia pracy."
         ],
         "screenshot": {
           "id": "engine-login",

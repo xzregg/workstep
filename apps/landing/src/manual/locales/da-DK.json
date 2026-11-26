@@ -125,7 +125,8 @@
       {
         "title": "Konfigurer udbydere, autentificering og forbindelsestest · Antigravity / Tau",
         "steps": [
-          "Antigravity og Tau er valgfrie motorer. Kort med interaktivt login tilbyder et officielt godkendelseslink og midlertidigt kode-/callbackfelt. Godkend, opdatér modeller, gem standard og test; annullér eller prøv igen efter udløb. Kun gyldige kvoter fra understøttede motorer vises, ikke en regning."
+          "Antigravity og Tau er valgfrie motorer. Kort med interaktivt login tilbyder et officielt godkendelseslink og midlertidigt kode-/callbackfelt. Godkend, opdatér modeller, gem standard og test; annullér eller prøv igen efter udløb. Kun gyldige kvoter fra understøttede motorer vises, ikke en regning.",
+          "Gem ræsonnementsniveauet i Antigravity, eller behold auto for motorens standard. Det faktiske niveau følger den valgte models understøttelse; mulighederne varierer. En tilføjelse under kørsel afbryder den aktuelle native runde før næste prompt. Leveringsbekræftelse betyder ikke, at arbejdet er færdigt."
         ],
         "screenshot": {
           "id": "engine-login",

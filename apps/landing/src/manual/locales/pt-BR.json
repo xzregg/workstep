@@ -125,7 +125,8 @@
       {
         "title": "Configurar provedores, autenticação e testes de conexão · Antigravity / Tau",
         "steps": [
-          "Antigravity e Tau são motores opcionais. Cartões com login interativo fornecem link oficial e campo temporário de código/retorno. Autorize, atualize os modelos, salve o padrão e teste; cancele ou tente novamente após expirar. Cotas só aparecem com resultados válidos em motores compatíveis e não representam uma fatura."
+          "Antigravity e Tau são motores opcionais. Cartões com login interativo fornecem link oficial e campo temporário de código/retorno. Autorize, atualize os modelos, salve o padrão e teste; cancele ou tente novamente após expirar. Cotas só aparecem com resultados válidos em motores compatíveis e não representam uma fatura.",
+          "Salve o esforço de raciocínio no Antigravity ou mantenha auto para o padrão do motor. O nível efetivo segue o suporte do modelo escolhido; as opções variam. Uma mensagem durante a execução interrompe o turno nativo antes do próximo prompt. Confirmação de entrega não significa trabalho concluído."
         ],
         "screenshot": {
           "id": "engine-login",

@@ -223,7 +223,10 @@ async def test_memory_non_regular_file_stays_empty_and_responsive(filesystem_app
             pytest.skip("Platform has no FIFO support")
         os.mkfifo(path)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://local") as client:
-        response = await asyncio.wait_for(client.get("/api/fs/memory?project_id=p1"), .2)
+        # A finite timeout catches a FIFO open/read that never returns. Thread
+        # scheduling on shared CI runners is not a 200ms API-latency contract;
+        # the slow-I/O test above independently checks event-loop responsiveness.
+        response = await asyncio.wait_for(client.get("/api/fs/memory?project_id=p1"), 2)
         assert response.status_code == 200
         assert response.json()["content"] == ""
 

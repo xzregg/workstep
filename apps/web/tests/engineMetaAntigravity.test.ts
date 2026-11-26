@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { engineLabel, engineDescription } from '../src/engineMeta.ts'
 import { isEngineSelectable } from '../src/components/EngineSelect.tsx'
 
-test('Antigravity ACP is named and selectable only after installation and verification', () => {
-  assert.equal(engineLabel('antigravity'), 'Antigravity ACP')
+test('Antigravity is named and selectable only after installation and verification', () => {
+  assert.equal(engineLabel('antigravity'), 'Antigravity')
   assert.match(engineDescription('antigravity'), /本机登录/)
   const engine = { id: 'antigravity', installed: true, configured: true, verified: true, enabled: true }
   assert.equal(isEngineSelectable(engine), true)
@@ -12,7 +12,7 @@ test('Antigravity ACP is named and selectable only after installation and verifi
   assert.equal(isEngineSelectable({ ...engine, verified: false }), false)
 })
 
-test('Antigravity ACP clearly identifies native sign-in and settings', () => {
-  assert.equal(engineLabel('antigravity'), 'Antigravity ACP')
+test('Antigravity clearly identifies native sign-in and settings', () => {
+  assert.equal(engineLabel('antigravity'), 'Antigravity')
   assert.match(engineDescription('antigravity'), /本机登录/)
 })

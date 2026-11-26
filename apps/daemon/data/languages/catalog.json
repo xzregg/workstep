@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "20191f412304cb1b26f9a5c08349ef166aaca97456051cca3d8745958641ea2d",
+  "revision": "bc9414ca1c4c851a76f82f28312fa6701283299a78eeb4ddf6bad1a4bb9e7e3b",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -2706,7 +2706,7 @@
     "engine.label.claude_agent_sdk": "Claude Code",
     "engine.label.codex_sdk": "Codex",
     "engine.label.deepseek_harness": "DeepSeek Harness",
-    "engine.label.antigravity": "Antigravity ACP",
+    "engine.label.antigravity": "Antigravity",
     "engine.label.tau": "Tau",
     "engine.description.claude": "Anthropic 官方编码 CLI",
     "engine.description.codex": "OpenAI 官方编码 CLI",

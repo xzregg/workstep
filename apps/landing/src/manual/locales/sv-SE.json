@@ -125,7 +125,8 @@
       {
         "title": "Konfigurera leverantörer, autentisering och anslutningstester · Antigravity / Tau",
         "steps": [
-          "Antigravity och Tau är valfria motorer. Kort med interaktiv inloggning erbjuder en officiell auktoriseringslänk och ett tillfälligt kod-/återanropsfält. Auktorisera, uppdatera modeller, spara standard och testa; avbryt eller försök igen efter utgång. Endast giltiga kvoter från stödda motorer visas, inte en faktura."
+          "Antigravity och Tau är valfria motorer. Kort med interaktiv inloggning erbjuder en officiell auktoriseringslänk och ett tillfälligt kod-/återanropsfält. Auktorisera, uppdatera modeller, spara standard och testa; avbryt eller försök igen efter utgång. Endast giltiga kvoter från stödda motorer visas, inte en faktura.",
+          "Spara resonemangsnivån i Antigravity eller behåll auto för motorns standard. Den faktiska nivån följer det valda modellstödet; alternativen varierar. Ett tillägg under körning avbryter den aktuella inbyggda turen före nästa prompt. Leveransbekräftelse betyder inte att arbetet är klart."
         ],
         "screenshot": {
           "id": "engine-login",

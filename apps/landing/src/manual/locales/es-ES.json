@@ -125,7 +125,8 @@
       {
         "title": "Configurar proveedores, pruebas de autenticación y conexión. · Antigravity / Tau",
         "steps": [
-          "Antigravity y Tau son motores opcionales. Las tarjetas con inicio de sesión interactivo ofrecen enlace oficial y campo de código/retorno temporal. Autoriza, actualiza modelos, guarda el predeterminado y prueba; puedes cancelar o reintentar tras caducar. Las cuotas solo aparecen con resultados válidos en motores compatibles y no son facturas."
+          "Antigravity y Tau son motores opcionales. Las tarjetas con inicio de sesión interactivo ofrecen enlace oficial y campo de código/retorno temporal. Autoriza, actualiza modelos, guarda el predeterminado y prueba; puedes cancelar o reintentar tras caducar. Las cuotas solo aparecen con resultados válidos en motores compatibles y no son facturas.",
+          "Guarda el esfuerzo de razonamiento en Antigravity o deja auto para el valor del motor. El nivel efectivo se ajusta a lo que admite el modelo seleccionado; las opciones varían. Un mensaje durante la ejecución interrumpe el turno nativo antes del siguiente prompt. La confirmación de entrega no implica trabajo terminado."
         ],
         "screenshot": {
           "id": "engine-login",

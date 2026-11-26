@@ -125,7 +125,8 @@
       {
         "title": "Konfigurace poskytovatelů, ověřování a testy připojení · Antigravity / Tau",
         "steps": [
-          "Antigravity a Tau jsou volitelné enginy. Karty s interaktivním přihlášením nabízejí oficiální autorizační odkaz a pole dočasného kódu/callbacku. Autorizujte, obnovte modely, uložte výchozí a otestujte; zrušte nebo opakujte po vypršení. Zobrazují se jen platné kvóty podporovaných enginů, nikoli účet."
+          "Antigravity a Tau jsou volitelné enginy. Karty s interaktivním přihlášením nabízejí oficiální autorizační odkaz a pole dočasného kódu/callbacku. Autorizujte, obnovte modely, uložte výchozí a otestujte; zrušte nebo opakujte po vypršení. Zobrazují se jen platné kvóty podporovaných enginů, nikoli účet.",
+          "Uložte úroveň uvažování v Antigravity nebo ponechte auto pro výchozí nastavení enginu. Skutečná úroveň odpovídá podpoře vybraného modelu; možnosti se liší. Doplňující zpráva za běhu přeruší aktuální nativní tah před dalším zadáním. Potvrzení doručení neznamená dokončení práce."
         ],
         "screenshot": {
           "id": "engine-login",

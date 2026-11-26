@@ -125,7 +125,8 @@
       {
         "title": "Atur penyedia, autentikasi, dan uji koneksi · Antigravity / Tau",
         "steps": [
-          "Antigravity dan Tau adalah mesin opsional. Kartu login interaktif menyediakan tautan otorisasi resmi dan kolom kode/callback sementara. Otorisasi, segarkan model, simpan bawaan dan uji; batalkan atau coba lagi setelah kedaluwarsa. Kuota hanya muncul untuk hasil valid mesin yang mendukung dan bukan tagihan."
+          "Antigravity dan Tau adalah mesin opsional. Kartu login interaktif menyediakan tautan otorisasi resmi dan kolom kode/callback sementara. Otorisasi, segarkan model, simpan bawaan dan uji; batalkan atau coba lagi setelah kedaluwarsa. Kuota hanya muncul untuk hasil valid mesin yang mendukung dan bukan tagihan.",
+          "Simpan tingkat penalaran di Antigravity atau biarkan auto untuk bawaan mesin. Tingkat efektif mengikuti dukungan model terpilih; opsinya berbeda. Pesan tambahan saat berjalan menghentikan giliran asli sebelum prompt berikutnya. Konfirmasi pengiriman bukan berarti pekerjaan selesai."
         ],
         "screenshot": {
           "id": "engine-login",

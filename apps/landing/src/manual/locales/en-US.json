@@ -125,7 +125,8 @@
       {
         "title": "Configure providers, authentication and connection tests · Antigravity / Tau",
         "steps": [
-          "Antigravity and Tau are optional engines installed under Execution engines. Cards supporting interactive login provide an official authorization link and temporary code/callback input; authorize, refresh models, save the default and test. Cancel or retry after expiry. Quota appears only for supported engines with valid results; it is not a bill."
+          "Antigravity and Tau are optional engines installed under Execution engines. Cards supporting interactive login provide an official authorization link and temporary code/callback input; authorize, refresh models, save the default and test. Cancel or retry after expiry. Quota appears only for supported engines with valid results; it is not a bill.",
+          "Save reasoning effort in Antigravity settings, or leave auto for engine defaults. Effective levels follow the selected model's supported range; options differ by model. A live follow-up interrupts the current native turn before entering a subsequent prompt. Delivery acknowledgement does not mean the work is complete."
         ],
         "screenshot": {
           "id": "engine-login",

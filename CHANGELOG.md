@@ -8,6 +8,7 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 - Add native calendar access on supported desktop and Android hosts, with explicit permissions and bounded event reads.
 - Add Tau and Antigravity engine integrations, native login controls and account quota reporting.
+- Add model-aware Antigravity reasoning controls, live-message interruption, plan and subagent events, vision and manual compaction support.
 - Refine digital-hub identity setup, conversation boundaries, workflow delegation, follow-up tracking and activity navigation.
 - Improve voiceprint settings, speech continuity, voice input and phone-style turn handling.
 - Preview workflow proposals before applying changes and preserve explicit step-engine choices.

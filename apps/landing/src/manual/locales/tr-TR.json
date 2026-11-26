@@ -125,7 +125,8 @@
       {
         "title": "Sağlayıcıları, kimlik doğrulamayı ve bağlantı testlerini yapılandırma · Antigravity / Tau",
         "steps": [
-          "Antigravity ve Tau isteğe bağlı motorlardır. Etkileşimli giriş kartları resmî yetkilendirme bağlantısı ve geçici kod/geri dönüş alanı sunar. Yetkilendirin, modelleri yenileyin, varsayılanı kaydedin ve sınayın; iptal edebilir veya süre dolunca yeniden deneyebilirsiniz. Desteklenen motorların geçerli kotaları gösterilir; bunlar fatura değildir."
+          "Antigravity ve Tau isteğe bağlı motorlardır. Etkileşimli giriş kartları resmî yetkilendirme bağlantısı ve geçici kod/geri dönüş alanı sunar. Yetkilendirin, modelleri yenileyin, varsayılanı kaydedin ve sınayın; iptal edebilir veya süre dolunca yeniden deneyebilirsiniz. Desteklenen motorların geçerli kotaları gösterilir; bunlar fatura değildir.",
+          "Antigravity ayarlarında düşünme düzeyini kaydedin veya motor varsayılanı için auto bırakın. Etkin düzey seçilen modelin destek aralığına uyar; seçenekler değişir. Çalışırken eklenen mesaj, sonraki istemden önce mevcut yerel turu keser. Teslim onayı işin tamamlandığı anlamına gelmez."
         ],
         "screenshot": {
           "id": "engine-login",

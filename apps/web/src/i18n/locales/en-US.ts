@@ -896,7 +896,7 @@ export const enUS: Messages = {
       claude_agent_sdk: 'Claude Code',
       codex_sdk: 'Codex',
       deepseek_harness: 'DeepSeek Harness',
-      antigravity: 'Antigravity ACP',
+      antigravity: 'Antigravity',
       tau: 'Tau',
     },
     description: {

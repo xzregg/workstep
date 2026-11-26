@@ -23,9 +23,14 @@ def test_native_auth_has_no_key_gate(monkeypatch, tmp_path):
     assert engine.get_command() == [str(binary), "acp"]
     assert engine.is_configured()
     assert engine._is_acp_native
-    assert [field.key for field in engine.config_schema()] == ['permission_mode']
+    assert [field.key for field in engine.config_schema()] == ['permission_mode', 'thinking_effort']
     assert engine.supported_provider_protocols() == set()
     assert engine.supports_process_reuse
+    assert engine.supports_thinking_effort
+    assert engine.supports_live_step_message
+    assert engine.supports_vision
+    assert engine.supports_tool_approval
+    assert engine.supports_manual_compaction
     assert not engine.supports_session_fork
 
 
@@ -99,7 +104,7 @@ async def test_step_permission_override_reaches_command_and_does_not_leak(monkey
     async def capture(self, *args, **kwargs):
         seen.append((self.get_command(), self.runtime_permission_decision()))
         yield InternalEvent(type='status', data={'status':'done'})
-    monkeypatch.setattr(AcpEngineBase, 'spawn', capture)
+    monkeypatch.setattr(AntigravityEngine, '_spawn_with_live_interrupt', capture)
     engine = AntigravityEngine()
     async for _ in engine.spawn('hello', '/tmp', config_overrides={'permission_mode':'bypassPermissions'}):
         pass
@@ -158,7 +163,7 @@ async def test_native_modes_keep_approval_bridge_and_plan_toggle(monkeypatch, mo
         assert self.runtime_permission_decision() is None
         await self._configure_session_mode(Client(), 'session', kwargs.get('plan_mode'))
         yield InternalEvent(type='status', data={'status':'done'})
-    monkeypatch.setattr(AcpEngineBase, 'spawn', capture)
+    monkeypatch.setattr(AntigravityEngine, '_spawn_with_live_interrupt', capture)
     for plan in [None, True, False]:
         async for _ in engine.spawn('hello', '/tmp', plan_mode=plan):
             pass
@@ -177,9 +182,162 @@ async def test_plan_downgrades_full_access_and_restores_it(monkeypatch):
     async def capture(self, *args, **kwargs):
         seen.append((self.get_command(), self.runtime_permission_decision()))
         yield InternalEvent(type='status', data={'status':'done'})
-    monkeypatch.setattr(AcpEngineBase, 'spawn', capture)
+    monkeypatch.setattr(AntigravityEngine, '_spawn_with_live_interrupt', capture)
     engine = AntigravityEngine()
     for plan in [True, False]:
         async for _ in engine.spawn('hello', '/tmp', plan_mode=plan):
             pass
     assert seen == [(['/managed/agy', 'acp'], None), (['/managed/agy', 'acp', '--dangerously-skip-permissions'], True)]
+
+
+@pytest.mark.asyncio
+async def test_thinking_effort_config_persists_and_resolves_for_assistants(monkeypatch):
+    import engines.antigravity as module
+    values = {}
+    monkeypatch.setattr(module.config_store, 'get', lambda key, default=None: values.get(key, default))
+    monkeypatch.setattr(module.config_store, 'set', lambda key, value: values.__setitem__(key, value))
+    engine = AntigravityEngine()
+    assert engine.get_config_values()['thinking_effort'] == ''
+    await engine.save_config_values({'thinking_effort': 'high'})
+    assert engine.get_config_values()['thinking_effort'] == 'high'
+    assert module.config_store.get_engine_thinking_effort('antigravity') == 'high'
+    await engine.save_config_values({'thinking_effort': 'auto'})
+    assert engine.get_config_values()['thinking_effort'] == ''
+    assert module.config_store.get_engine_thinking_effort('antigravity') == ''
+    await engine.save_config_values({'thinking_effort': 'xhigh'})
+    assert engine.get_config_values()['thinking_effort'] == 'xhigh'
+    await engine.save_config_values({}, clear={'thinking_effort': True})
+    assert engine.get_config_values()['thinking_effort'] == ''
+    with pytest.raises(ValueError, match='thinking effort'):
+        await engine.save_config_values({'thinking_effort': 'ultra'})
+
+
+@pytest.mark.asyncio
+async def test_list_models_populates_per_model_thought_levels(monkeypatch):
+    monkeypatch.setattr(AntigravityEngine, "resolve_binary", staticmethod(lambda: "/fixture/agy"))
+    levels_by_model = {
+        "gemini-4-neon": ["low", "medium", "high", "xhigh"],
+        "claude-sonnet-5-5": ["low", "medium", "high"],
+        "gpt-oss-120b-medium": None,
+    }
+    closed = []
+
+    def tl_option(levels):
+        if levels is None:
+            return []
+        return [SimpleNamespace(id="thought_level", options=[SimpleNamespace(value=v, name=v) for v in levels])]
+
+    class Client:
+        async def initialize(self, **kwargs):
+            return SimpleNamespace()
+
+        async def new_session(self, **kwargs):
+            return SimpleNamespace(
+                session_id="s-models",
+                config_options=[
+                    SimpleNamespace(
+                        id="model",
+                        options=[
+                            SimpleNamespace(value=mid, name=mid, description=None)
+                            for mid in levels_by_model
+                        ],
+                    ),
+                    *tl_option(["low", "medium", "high", "xhigh"]),
+                ],
+            )
+
+        async def set_config_option(self, *, config_id, session_id, value):
+            assert config_id == "model" and session_id == "s-models"
+            return SimpleNamespace(config_options=tl_option(levels_by_model[value]))
+
+        async def close_session(self, *, session_id):
+            closed.append(session_id)
+
+    @asynccontextmanager
+    async def process(handler, *cmd, **kwargs):
+        yield Client(), object()
+
+    monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", process)
+    models = await AntigravityEngine().list_models("/tmp")
+    assert {m.id: m.supported_reasoning_efforts for m in models} == levels_by_model
+    assert closed == ["s-models"]
+
+
+@pytest.mark.asyncio
+async def test_configure_session_thinking_effort_uses_thought_level_and_clamps():
+    engine = AntigravityEngine()
+    engine._active_permission_config = {"permission_mode": "default", "thinking_effort": "medium"}
+    calls = []
+
+    class Client:
+        async def set_config_option(self, **kwargs):
+            calls.append(kwargs)
+
+    four_levels = [SimpleNamespace(id="thought_level", options=[SimpleNamespace(value=v) for v in ("low", "medium", "high", "xhigh")])]
+    three_levels = [SimpleNamespace(id="thought_level", options=[SimpleNamespace(value=v) for v in ("low", "medium", "high")])]
+    no_levels = [SimpleNamespace(id="model", options=[])]
+
+    await engine._configure_session_thinking_effort(Client(), "s1", None, four_levels)
+    await engine._configure_session_thinking_effort(Client(), "s1", "auto", four_levels)
+    await engine._configure_session_thinking_effort(Client(), "s1", "minimal", four_levels)
+    await engine._configure_session_thinking_effort(Client(), "s1", "xhigh", three_levels)
+    await engine._configure_session_thinking_effort(Client(), "s1", "high", no_levels)
+    assert [(c["config_id"], c["value"]) for c in calls] == [
+        ("thought_level", "medium"),
+        ("thought_level", "low"),
+        ("thought_level", "high"),
+    ]
+
+
+def test_antigravity_maps_invoke_subagent_and_update_steps_events():
+    from acp import schema
+
+    engine = AntigravityEngine()
+    start = engine.normalize_event(engine._map_notification(schema.ToolCallStart(
+        sessionUpdate="tool_call",
+        toolCallId="sub-1",
+        title="Run invoke_subagent",
+        kind="other",
+        status="in_progress",
+        rawInput={"TypeName": "research", "Role": "Quick Checker", "Prompt": "Inspect repo", "Model": "flash_lite"},
+    )))
+    assert start is not None and start.type == "subagent"
+    assert start.data["task_id"] == "sub-1"
+    assert start.data["status"] == "running"
+    assert start.data["stage"] == "started"
+    assert start.data["agent_name"] == "Quick Checker"
+    assert start.data["task_type"] == "research"
+    assert start.data["prompt"] == "Inspect repo"
+
+    done = engine.normalize_event(engine._map_notification(schema.ToolCallProgress(
+        sessionUpdate="tool_call_update",
+        toolCallId="sub-1",
+        status="completed",
+        rawOutput="All checks passed",
+    )))
+    assert done is not None and done.type == "subagent"
+    assert done.data["task_id"] == "sub-1"
+    assert done.data["status"] == "completed"
+    assert done.data["stage"] == "notification"
+    assert done.data["agent_name"] == "Quick Checker"
+    assert done.data["prompt"] == "Inspect repo"
+    assert done.data["result"] == "All checks passed"
+
+    plan = engine.normalize_event(engine._map_notification(schema.ToolCallStart(
+        sessionUpdate="tool_call",
+        toolCallId="plan-1",
+        title="Run update_steps",
+        kind="other",
+        status="in_progress",
+        rawInput={"steps": [
+            {"title": "Check config", "status": "done"},
+            {"title": "Wire events", "status": "in_progress"},
+            {"title": "Run tests", "status": "pending"},
+        ]},
+    )))
+    assert plan is not None and plan.type == "plan"
+    assert plan.data["entries"] == [
+        {"content": "Check config", "priority": "medium", "status": "completed"},
+        {"content": "Wire events", "priority": "medium", "status": "in_progress"},
+        {"content": "Run tests", "priority": "medium", "status": "pending"},
+    ]

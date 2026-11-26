@@ -125,7 +125,8 @@
       {
         "title": "Configura provider, autenticazione e test di connessione · Antigravity / Tau",
         "steps": [
-          "Antigravity e Tau sono motori facoltativi. Le schede con accesso interattivo offrono un collegamento ufficiale e un campo temporaneo codice/callback. Autorizza, aggiorna i modelli, salva il predefinito e prova; puoi annullare o riprovare dopo la scadenza. Le quote valide dei motori compatibili non sono una fattura."
+          "Antigravity e Tau sono motori facoltativi. Le schede con accesso interattivo offrono un collegamento ufficiale e un campo temporaneo codice/callback. Autorizza, aggiorna i modelli, salva il predefinito e prova; puoi annullare o riprovare dopo la scadenza. Le quote valide dei motori compatibili non sono una fattura.",
+          "Salva lo sforzo di ragionamento in Antigravity oppure lascia auto per il valore del motore. Il livello effettivo segue le capacità del modello selezionato; le opzioni variano. Un messaggio durante l’esecuzione interrompe il turno nativo prima del prompt successivo. La conferma di consegna non indica lavoro completato."
         ],
         "screenshot": {
           "id": "engine-login",

@@ -125,7 +125,8 @@
       {
         "title": "Configureer providers, authenticatie en verbindingstesten · Antigravity / Tau",
         "steps": [
-          "Antigravity en Tau zijn optionele engines. Kaarten met interactieve aanmelding bieden een officiële autorisatielink en tijdelijk code-/callbackveld. Autoriseer, vernieuw modellen, sla de standaard op en test; annuleer of probeer opnieuw na verloop. Alleen geldige quota van ondersteunde engines verschijnen; dit is geen factuur."
+          "Antigravity en Tau zijn optionele engines. Kaarten met interactieve aanmelding bieden een officiële autorisatielink en tijdelijk code-/callbackveld. Autoriseer, vernieuw modellen, sla de standaard op en test; annuleer of probeer opnieuw na verloop. Alleen geldige quota van ondersteunde engines verschijnen; dit is geen factuur.",
+          "Sla de redeneerinspanning op in Antigravity of laat auto staan voor de engine-standaard. Het effectieve niveau volgt de mogelijkheden van het geselecteerde model; opties verschillen. Een aanvulling tijdens uitvoering onderbreekt de huidige native beurt vóór de volgende prompt. Bezorgbevestiging betekent niet dat het werk klaar is."
         ],
         "screenshot": {
           "id": "engine-login",

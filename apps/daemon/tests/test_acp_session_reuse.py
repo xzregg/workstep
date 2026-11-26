@@ -216,3 +216,37 @@ async def test_antigravity_rejected_mode_never_sends_prompt(engine_config):
     assert any(e.type == 'error' for e in events)
     rows = [json.loads(line) for line in (root / 'wire.jsonl').read_text().splitlines()]
     assert not any(r.get('method') == 'session/prompt' for r in rows)
+
+
+@pytest.mark.anyio
+async def test_antigravity_mid_run_live_message_interrupts_and_delivers(engine_config):
+    cls, root = engine_config
+    if cls is not AntigravityEngine:
+        pytest.skip('Antigravity mid-run live message interrupt')
+    queue: asyncio.Queue = asyncio.Queue()
+    events = []
+
+    async def run():
+        async for event in cls().spawn('wait', str(root), live_message_queue=queue):
+            events.append(event)
+
+    task = asyncio.create_task(run())
+    for _ in range(100):
+        wire = root / 'wire.jsonl'
+        if wire.exists() and any('session/prompt' in line for line in wire.read_text().splitlines()):
+            break
+        await asyncio.sleep(0.01)
+    queue.put_nowait(('live-1', 'follow-up'))
+    await asyncio.wait_for(task, 5)
+    delivered_index = next(
+        i for i, e in enumerate(events)
+        if e.type == 'live_message' and e.data.get('message_id') == 'live-1' and e.data.get('status') == 'delivered'
+    )
+    chunk_index = next(
+        i for i, e in enumerate(events)
+        if e.type == 'agent_message_chunk' and e.data.get('content', {}).get('text') == 'follow-up'
+    )
+    assert delivered_index < chunk_index
+    assert any(e.type == 'status' and e.data.get('status') == 'done' for e in events)
+    rows = [json.loads(line) for line in (root / 'wire.jsonl').read_text().splitlines()]
+    assert any(r.get('method') == 'session/cancel' for r in rows)

@@ -125,7 +125,8 @@
       {
         "title": "Configurer fournisseur, authentification et connexion · Antigravity / Tau",
         "steps": [
-          "Antigravity et Tau sont des moteurs facultatifs. Les cartes compatibles proposent un lien officiel d’autorisation et un champ de code/rappel temporaire. Autorisez, actualisez les modèles, enregistrez le modèle par défaut et testez ; annulez ou recommencez après expiration. Les quotas valides des moteurs compatibles ne constituent pas une facture."
+          "Antigravity et Tau sont des moteurs facultatifs. Les cartes compatibles proposent un lien officiel d’autorisation et un champ de code/rappel temporaire. Autorisez, actualisez les modèles, enregistrez le modèle par défaut et testez ; annulez ou recommencez après expiration. Les quotas valides des moteurs compatibles ne constituent pas une facture.",
+          "Enregistrez l’effort de raisonnement dans Antigravity, ou gardez auto pour la valeur du moteur. Le niveau effectif suit les capacités du modèle sélectionné ; les options diffèrent. Un complément en cours interrompt le tour natif avant une nouvelle invite. L’accusé de réception ne signifie pas que le travail est terminé."
         ],
         "screenshot": {
           "id": "engine-login",

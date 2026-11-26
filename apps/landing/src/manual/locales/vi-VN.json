@@ -125,7 +125,8 @@
       {
         "title": "Cấu hình nhà cung cấp, xác thực và kiểm tra kết nối · Antigravity / Tau",
         "steps": [
-          "Antigravity và Tau là các bộ máy tùy chọn. Thẻ hỗ trợ đăng nhập tương tác có liên kết cấp quyền chính thức và ô mã tạm thời/callback. Cấp quyền, làm mới mô hình, lưu mặc định rồi kiểm tra; có thể hủy hoặc thử lại khi hết hạn. Hạn mức chỉ hiện khi được hỗ trợ và kết quả hợp lệ, không phải hóa đơn."
+          "Antigravity và Tau là các bộ máy tùy chọn. Thẻ hỗ trợ đăng nhập tương tác có liên kết cấp quyền chính thức và ô mã tạm thời/callback. Cấp quyền, làm mới mô hình, lưu mặc định rồi kiểm tra; có thể hủy hoặc thử lại khi hết hạn. Hạn mức chỉ hiện khi được hỗ trợ và kết quả hợp lệ, không phải hóa đơn.",
+          "Lưu mức suy luận trong Antigravity hoặc để auto dùng mặc định của bộ máy. Mức thực tế theo phạm vi mô hình đã chọn hỗ trợ; tùy chọn có thể khác. Tin nhắn bổ sung khi chạy sẽ ngắt lượt gốc trước lời nhắc tiếp theo. Xác nhận gửi không có nghĩa công việc đã hoàn tất."
         ],
         "screenshot": {
           "id": "engine-login",

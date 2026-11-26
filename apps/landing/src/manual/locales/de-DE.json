@@ -125,7 +125,8 @@
       {
         "title": "Anbieter, Anmeldung und Verbindungstest · Antigravity / Tau",
         "steps": [
-          "Antigravity und Tau sind optionale Ausführungsengines. Karten mit interaktiver Anmeldung bieten einen offiziellen Autorisierungslink und ein temporäres Code-/Callback-Feld. Danach Modelle aktualisieren, Standard speichern und testen. Abbrechen oder nach Ablauf erneut versuchen. Kontingente erscheinen nur bei gültigen Ergebnissen unterstützter Engines, nicht als Rechnung."
+          "Antigravity und Tau sind optionale Ausführungsengines. Karten mit interaktiver Anmeldung bieten einen offiziellen Autorisierungslink und ein temporäres Code-/Callback-Feld. Danach Modelle aktualisieren, Standard speichern und testen. Abbrechen oder nach Ablauf erneut versuchen. Kontingente erscheinen nur bei gültigen Ergebnissen unterstützter Engines, nicht als Rechnung.",
+          "Speichern Sie die Denkintensität in den Antigravity-Einstellungen oder belassen Sie auto für den Engine-Standard. Die effektive Stufe richtet sich nach dem gewählten Modell; Optionen unterscheiden sich. Eine laufende Ergänzung unterbricht den nativen Durchlauf vor dem nächsten Prompt. Eine Zustellbestätigung bedeutet nicht, dass die Arbeit abgeschlossen ist."
         ],
         "screenshot": {
           "id": "engine-login",
