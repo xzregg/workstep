@@ -1,0 +1,16 @@
+.markdown-editable-text[contenteditable="true"] {
+  min-width: 1ch;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.markdown-editable-text[contenteditable="true"]:empty {
+  display: inline-block;
+}
+
+.markdown-editable-text[contenteditable="true"]:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}

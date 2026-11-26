@@ -4,7 +4,7 @@ import { fsApi } from '../api/client'
 import { useI18n, localizeErrorDisplay } from '../i18n'
 import { formatMarkdownAttachment } from '../utils/markdownAttachment'
 import Icon from './Icon'
-import MarkdownMessage from './MarkdownMessage'
+import MarkdownPreviewEditor from './MarkdownPreviewEditor'
 import Textarea from './Textarea'
 
 interface MarkdownEditorProps {
@@ -141,7 +141,7 @@ export default function MarkdownEditor({
     }
   }
 
-  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = (event: React.ClipboardEvent<HTMLElement>) => {
     const fileItem = Array.from(event.clipboardData?.items || [])
       .find((item) => item.kind === 'file')
     const file = fileItem?.getAsFile()
@@ -213,9 +213,9 @@ export default function MarkdownEditor({
           />
         ) : (
           <div className="markdown-editor-preview" style={{ minHeight, maxHeight, height: expanded ? maxHeight : undefined }}>
-            {value.trim()
-              ? <MarkdownMessage content={value} projectId={projectId} />
-              : <span className="markdown-editor-empty">{t('md.empty')}</span>}
+            <MarkdownPreviewEditor id={id} value={value} onChange={next => replaceValue(next)}
+              projectId={projectId} readOnly={readOnly || disabled} maxLength={maxLength}
+              label={ariaLabel ?? t('md.ariaLabel')} onPaste={handlePaste} />
           </div>
         )}
 

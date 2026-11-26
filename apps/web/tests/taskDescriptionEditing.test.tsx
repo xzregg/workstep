@@ -2,7 +2,7 @@
 import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { act } from 'react'
+import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { I18nProvider } from '../src/i18n'
 import { useTaskStore } from '../src/stores/taskStore'
@@ -152,3 +152,64 @@ test('saving failure keeps description edits visible for retry', async () => {
     await window.happyDOM.close()
   }
 })
+
+for (const action of ['save', 'cancel', 'retry'] as const) {
+  test(`image description inline preview ${action} preserves the image and saved value`, async () => {
+    const { window } = installDomEnvironment()
+    const host = document.body.appendChild(document.createElement('div'))
+    const root = createRoot(host)
+    const initial = '# 旧标题\n\n![截图](.workstep/uploads/keep.png)'
+    let stored = initial
+    let fail = action === 'retry'
+    const calls: string[] = []
+    const previous = useTaskStore.getState().updateTaskDescription
+    let refresh = () => {}
+    useTaskStore.setState({ updateTaskDescription: async (_id, description) => {
+      calls.push(description)
+      if (fail) throw new Error('Save failed')
+      stored = description
+      refresh()
+      return {} as never
+    } })
+    function Description() {
+      const [, render] = useState(0)
+      refresh = () => render(v => v + 1)
+      return <I18nProvider><TaskDetailDescription task={{ ...task, description: stored }} projectId="project-1" editable /></I18nProvider>
+    }
+    try {
+      await act(async () => root.render(<Description />))
+      await act(async () => host.querySelector<HTMLButtonElement>('.task-description-edit')!.click())
+      await act(async () => host.querySelector<HTMLButtonElement>('.markdown-editor-action[data-active]')!.click())
+      assert.equal(host.querySelector('textarea') === null, true)
+      const editor = host.querySelector<HTMLElement>('.markdown-editor-preview [contenteditable="true"]')
+      assert.ok(editor)
+      await act(async () => {
+        editor.focus()
+        editor.textContent = '改好的标题'
+        editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+      })
+      assert.equal(host.querySelectorAll('.markdown-editor-preview img').length, 1)
+      await act(async () => editor.blur())
+      const actions = host.querySelectorAll<HTMLButtonElement>('.task-description-actions > button')
+      await act(async () => actions[action === 'cancel' ? 0 : 1].click())
+      if (action === 'retry') {
+        assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Save failed/)
+        assert.equal(host.querySelector('.markdown-editor-preview h1')?.textContent, '改好的标题')
+        assert.equal(host.querySelectorAll('.markdown-editor-preview img').length, 1)
+        fail = false
+        await act(async () => actions[1].click())
+      }
+      assert.equal(host.querySelector('.task-description-content h1')?.textContent, action === 'cancel' ? '旧标题' : '改好的标题')
+      assert.equal(host.querySelectorAll('.task-description-content img').length, 1)
+      assert.equal(stored.includes('![截图](.workstep/uploads/keep.png)'), true)
+      assert.equal(calls.length, action === 'cancel' ? 0 : action === 'retry' ? 2 : 1)
+      await act(async () => host.querySelector<HTMLButtonElement>('.task-description-edit')!.click())
+      assert.equal(host.querySelector<HTMLTextAreaElement>('textarea')?.value, stored)
+    } finally {
+      await act(async () => useTaskStore.setState({ updateTaskDescription: previous }))
+      await act(async () => root.unmount())
+      host.remove()
+      await window.happyDOM.close()
+    }
+  })
+}

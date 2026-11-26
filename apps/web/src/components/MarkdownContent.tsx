@@ -15,6 +15,8 @@ import rehypeStreamReveal, { REVEAL_WINDOW_CHARS } from '../utils/rehypeStreamRe
 import rehypeWebCitations, { incompleteWebCitationAtEnd } from '../utils/rehypeWebCitations'
 import { parseTaskDetailLink } from '../utils/taskDetailLink'
 import MarkdownTaskLink from './MarkdownTaskLink'
+import EditableMarkdownText from './EditableMarkdownText'
+import { rehypeEditableText } from '../utils/rehypeEditableText'
 
 interface MarkdownContentProps {
   content: string
@@ -31,13 +33,14 @@ interface MarkdownContentProps {
   animateReveal?: boolean
   animateInitialReveal?: boolean
   freezeReveal?: boolean
+  editableText?: boolean
 }
 
 const RevealContext = createContext({ enabled: false, animateInitial: true, from: 0 })
 const revealPlugins = [rehypeStreamReveal]
 const noRehypePlugins: [] = []
 
-const MarkdownBlock = memo(function MarkdownBlock({ content, source, components, enabled, animateInitial, from, incompleteCitation, freezeReveal }: {
+const MarkdownBlock = memo(function MarkdownBlock({ content, source, components, enabled, animateInitial, from, incompleteCitation, freezeReveal, editableText }: {
   content: string
   source: string
   components: ComponentProps<typeof ReactMarkdown>['components']
@@ -46,13 +49,14 @@ const MarkdownBlock = memo(function MarkdownBlock({ content, source, components,
   from: number
   incompleteCitation?: string
   freezeReveal?: boolean
+  editableText?: boolean
 }) {
   const settings = useMemo(() => ({ enabled, animateInitial, from }), [enabled, animateInitial, from])
-  const rehypePlugins: ComponentProps<typeof ReactMarkdown>['rehypePlugins'] = content.includes('\uE200')
+  const rehypePlugins: ComponentProps<typeof ReactMarkdown>['rehypePlugins'] = editableText ? [rehypeEditableText] : content.includes('\uE200')
     ? [[rehypeWebCitations, incompleteCitation], ...(enabled ? revealPlugins : noRehypePlugins)]
     : enabled ? revealPlugins : noRehypePlugins
   return <RevealContext.Provider value={settings}>
-    {content.length >= 2048
+    {!editableText && content.length >= 2048
       ? <WorkerMarkdownBlock content={content} source={source} incompleteCitation={incompleteCitation} components={components} urlTransform={fileAwareUrlTransform} paused={freezeReveal} />
       : <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={components} urlTransform={fileAwareUrlTransform}>
         {content}
@@ -136,14 +140,15 @@ function MarkdownContent({
   animateReveal = false,
   animateInitialReveal = true,
   freezeReveal = false,
+  editableText = false,
 }: MarkdownContentProps) {
   const { t } = useI18n()
   const markdownUrlResolver = useMarkdownUrlResolver()
   const taskFilePreview = useTaskFilePreview()
   // Structured results are literal data. Parsing their source-id arrays and
   // punctuation as GFM links/emphasis is expensive and changes string values.
-  const structured = !plainText && /^\s*(?:<json>\s*)?(?:\{\s*"|\[\s*\{)/.test(content)
-  const normalizedContent = structured
+  const structured = !editableText && !plainText && /^\s*(?:<json>\s*)?(?:\{\s*"|\[\s*\{)/.test(content)
+  const normalizedContent = editableText ? content : structured
     ? content.replace(/^\s*<json>/, '').replace(/<\/json>\s*$/, '')
     : convertFileCitations(convertVisualizeMarkers(content))
   const [historyParser] = useState(() => !streaming && !animateReveal)
@@ -210,6 +215,7 @@ function MarkdownContent({
 
   const components = useMemo(() => ({
     'stream-reveal-text': RevealText,
+    'editable-markdown-text': EditableMarkdownText,
     p: ({ children }: { children?: React.ReactNode }) => compactParagraphs
       ? <div className="markdown-compact-paragraph">{children}</div>
       : <p>{children}</p>,
@@ -248,9 +254,9 @@ function MarkdownContent({
           ) return null
           return <span key={index}>{segment.text}</span>
         }) : (
-          (historyParser && !streaming && markdown.length >= 2048
+          (editableText || (historyParser && !streaming && markdown.length >= 2048)
             ? [{ offset: 0, content: markdown }] : splitMarkdownBlocks(markdown)).map(block => <MarkdownBlock key={block.offset}
-            content={block.content} source={normalizedContent.slice(block.offset, block.offset + block.content.length)} components={components} freezeReveal={freezeReveal} enabled={animateReveal && block.offset + block.content.length > revealFrom}
+            editableText={editableText} content={block.content} source={normalizedContent.slice(block.offset, block.offset + block.content.length)} components={components} freezeReveal={freezeReveal} enabled={animateReveal && block.offset + block.content.length > revealFrom}
             incompleteCitation={(streaming || animateReveal) && block.offset + block.content.length === markdown.length
               ? incompleteWebCitationAtEnd(block.content) : undefined}
             animateInitial={animateReveal && block.offset + block.content.length > revealFrom && animateInitialReveal}
