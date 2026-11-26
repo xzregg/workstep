@@ -132,10 +132,13 @@ def apply_patch(
         node_id = _as_int(node.get("id"))
         if node_id is not None and node_id in nodes_by_id:
             node["id"] = node_id
-            # Omission keeps the existing selection; an explicit empty engine
+            # Omission or a non-string keeps the existing selection; an empty engine
             # still switches the step back to the configured default.
-            if "engine" not in node and "engine" in nodes_by_id[node_id]:
-                node["engine"] = nodes_by_id[node_id]["engine"]
+            if not isinstance(node.get("engine"), str):
+                if "engine" in nodes_by_id[node_id]:
+                    node["engine"] = nodes_by_id[node_id]["engine"]
+                else:
+                    node.pop("engine", None)
             if node == nodes_by_id[node_id]:
                 # Models sometimes echo the complete canvas in upsertNodes.
                 # Do not present unchanged steps as user-visible edits.

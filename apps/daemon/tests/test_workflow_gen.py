@@ -105,25 +105,27 @@ def test_generation_instructions_keep_unspecified_step_engines_default():
     assert "existing" in SYSTEM_PROMPT
 
 
-@pytest.mark.parametrize("existing_engine", ["", "claude", "codex"])
-@pytest.mark.parametrize("requested_engine", [None, "", "claude"])
-def test_patch_preserves_engine_unless_explicitly_changed(existing_engine, requested_engine):
+@pytest.mark.parametrize("existing_engine", [None, "", "claude", "codex"])
+@pytest.mark.parametrize("engine_update", [{}, {"engine": None}, {"engine": 42}, {"engine": ""}, {"engine": "claude"}],
+                         ids=["omitted", "null", "invalid", "default", "explicit"])
+def test_patch_preserves_engine_unless_explicitly_changed(existing_engine, engine_update):
     base = {"nodes": [
-        {"id": 1, "type": "build", "title": "Build", "engine": existing_engine},
+        {"id": 1, "type": "build", "title": "Build", **({"engine": existing_engine} if existing_engine is not None else {})},
         {"id": 2, "type": "test", "title": "Test", "engine": "codex"},
     ], "connections": []}
-    updated = {"id": "1", "type": "build", "title": "Updated"}
-    if requested_engine is not None:
-        updated["engine"] = requested_engine
+    updated = {"id": "1", "type": "build", "title": "Updated", **engine_update}
     patch = {"upsertNodes": [updated, {"type": "publish", "title": "Publish"}]}
     merged, _, resolved = apply_patch(base, patch)
-    expected = existing_engine if requested_engine is None else requested_engine
-    assert merged["nodes"][0]["engine"] == expected
-    assert resolved["upsertNodes"][0]["engine"] == expected
+    requested_engine = engine_update.get("engine")
+    expected = requested_engine if isinstance(requested_engine, str) else existing_engine or ""
+    assert merged["nodes"][0].get("engine", "") == expected
+    assert resolved["upsertNodes"][0].get("engine", "") == expected
+    if existing_engine is None and not isinstance(requested_engine, str):
+        assert "engine" not in merged["nodes"][0]
     assert merged["nodes"][1] == base["nodes"][1]
     assert "engine" not in merged["nodes"][2]
-    assert base["nodes"][0]["engine"] == existing_engine
-    assert ("engine" in updated) == (requested_engine is not None)
+    assert base["nodes"][0].get("engine") == existing_engine
+    assert updated == {"id": "1", "type": "build", "title": "Updated", **engine_update}
 
 
 @pytest.mark.anyio
