@@ -28,8 +28,11 @@ test('template editor reuses the shared AI flow editor with isolated template co
 })
 
 test('template AI editor guards manual changes and running generation on close', () => {
-  assert.match(source, /if \(canvasDirty\) \{ setPendingAiSteps\(steps\); return \}/)
-  assert.match(source, /open=\{pendingAiSteps !== null\}/)
+  assert.match(source, /useFlowProposalConfirmation\(`template:\$\{editing\?\.id\}`\)/)
+  assert.match(source, /if \(canvasDirty\) return proposalConfirmation\.request\(steps,/)
+  assert.match(source, /open=\{proposalConfirmation\.steps !== null\}/)
+  assert.match(source, /onConfirm=\{\(\) => void proposalConfirmation\.confirm\(\)\}/)
+  assert.match(source, /onCancel=\{proposalConfirmation\.cancel\}/)
   assert.match(source, /if \(aiGenBusy\) \{ setAiConfirmClose\(true\); return \}/)
   assert.match(source, /open=\{aiConfirmClose\}/)
 })

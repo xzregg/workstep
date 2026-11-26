@@ -1613,6 +1613,17 @@
     "summary": "Konfigurieren Sie Kommunikationsstil, Hauptchat, proaktives Nachdenken und Kanalbetreuung. Prüfen Sie belegte Erinnerungen und aktivieren bei Bedarf Sprache und Personenerkennung.",
     "sections": [
       {
+        "title": "Termine und Systemkalender",
+        "steps": [
+          "Öffnen Sie Termine auf der Digital-Hub-Startseite und wählen Sie ein Datum. Ein leerer Tag öffnet die Erstellung; Inhalte unterstützen Markdown. Verbinden und autorisieren Sie den nativen Kalender unter Einstellungen → Aktionen und wählen Sie einen beschreibbaren Kalender. Mit Synchronisierung werden neue Einträge dort gespeichert, sonst nur in WorkStep. Bestehende synchronisierte Einträge werden nicht automatisch verschoben oder gelöscht. Browser unterstützen den internen Kalender; native Vorgänge benötigen eine unterstützte macOS- oder Android-App online. Prüfen Sie bei Fehlern oder unklarem Ergebnis zuerst den ursprünglichen Eintrag und setzen Sie nur offene Vorgänge fort."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Termine und Systemkalender",
+          "caption": "Termine und Systemkalender"
+        }
+      },
+      {
         "title": "Bekannte bei der Rückkehr begrüßen",
         "steps": [
           "Öffnen Sie Einstellungen → Datenzentrale → Sehen → Gesichtserweckung. Personen nur mit Einwilligung aufnehmen und Gesichtserkennung einschalten; die Kamera muss geöffnet bleiben. Pro Zeile eine Begrüßung, höchstens 12 Zeilen mit je 160 Zeichen; {name} und {relationship} sind möglich. Die Zufallsvorschau zeigt nur Text. Untertitel oder Sprache, Abwesenheitsdauer, Abklingzeit und globale Limits wählen und speichern. Ruhezeiten und laufende Interaktionen unterdrücken Begrüßungen. Identität und Berechtigungen bleiben unverändert."

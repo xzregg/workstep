@@ -1613,6 +1613,17 @@
     "summary": "Määritä viestintätyyli, pääkeskustelu, oma-aloitteinen pohdinta ja kanavapalvelu. Tarkastele lähteistettyjä muistoja ja ota ääni sekä henkilöntunnistus tarvittaessa käyttöön.",
     "sections": [
       {
+        "title": "Aikataulut ja järjestelmäkalenterit",
+        "steps": [
+          "Avaa aikataulut digitaalikeskuksen etusivulta ja valitse päivämäärä. Tyhjä päivä avaa uuden merkinnän; sisältö tukee Markdownia. Yhdistä ja valtuuta natiivikalenteri kohdassa Asetukset → Toiminnot ja valitse kirjoitettava kalenteri. Synkronoinnin ollessa käytössä uudet merkinnät tallennetaan sinne, muuten vain WorkStepiin. Aiempia synkronoituja merkintöjä ei siirretä tai poisteta automaattisesti. Selain tukee sisäistä kalenteria; natiivitoiminnot vaativat tuetun macOS- tai Android-sovelluksen verkossa. Virheen tai tuntemattoman tuloksen jälkeen tarkista alkuperäinen merkintä ennen keskeneräisten toimintojen jatkamista, jotta kaksoiskappaleita ei synny."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Aikataulut ja järjestelmäkalenterit",
+          "caption": "Aikataulut ja järjestelmäkalenterit"
+        }
+      },
+      {
         "title": "Tuttujen tervehtiminen heidän palatessaan",
         "steps": [
           "Avaa Asetukset → Tietokeskus → Näkö → Kasvoherätys. Rekisteröi henkilöt suostumuksella ja ota tunnistus käyttöön; kameran on pysyttävä päällä. Yksi tervehdys riville, enintään 12 riviä ja 160 merkkiä, muuttujina {name} ja {relationship}. Satunnainen esikatselu näyttää vain tekstin. Valitse tekstitys tai puhe, poissaoloaika, viive ja yleisrajat ja tallenna. Hiljaiset ajat ja käynnissä oleva vuorovaikutus estävät tervehdykset. Henkilöllisyys ja käyttöoikeudet eivät muutu."

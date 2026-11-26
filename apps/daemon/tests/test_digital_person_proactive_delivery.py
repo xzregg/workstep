@@ -10,7 +10,7 @@ async def test_owner_proactive_uses_main_and_selected_channels_once(runtime,monk
     origin=await current.projects.run_db(project.id,lambda _:current.chats.create_session(project.id)['id'])
     await current.mutate(lambda state:state['runs'].append({'id':'run','trigger':'interval','kind':'social',
         'origin_session_id':origin,'sources':{'companion':{'scope':'local'}}}))
-    bindings=[{'id':x,'bot_id':'b','conversation_type':'single','conversation_id':x,'notify':x!='off'} for x in ['one','two','off']]
+    bindings=[{'id':x,'bot_id':'b','conversation_type':'single','conversation_id':x,'notify':x!='off','use_main_session':True} for x in ['one','two','off']]
     monkeypatch.setattr('services.digital_person_channels.get_bindings',lambda:bindings)
     sent=[];events=[]
     async def send(bots,binding,text):sent.append(binding['id']);return {}

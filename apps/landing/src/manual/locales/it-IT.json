@@ -1613,6 +1613,17 @@
     "summary": "Configura stile comunicativo, conversazione principale, riflessione proattiva e accoglienza sui canali. Consulta memorie con fonti e attiva voce e riconoscimento delle persone quando necessario.",
     "sections": [
       {
+        "title": "Agenda e calendari di sistema",
+        "steps": [
+          "Apri l’agenda nella pagina iniziale del centro digitale e scegli una data; una data vuota consente di creare una voce con Markdown. Collega e autorizza un calendario nativo in Impostazioni → Operazioni, quindi scegli un calendario modificabile. Con la sincronizzazione attiva, le nuove voci vengono salvate lì; altrimenti restano solo in WorkStep. Le voci già sincronizzate non vengono spostate o eliminate automaticamente. Il browser supporta il calendario interno; le operazioni native richiedono un’app macOS o Android compatibile online. In caso di errore o risultato sconosciuto, verifica la voce originale prima di riprendere gli elementi incompleti."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Agenda e calendari di sistema",
+          "caption": "Agenda e calendari di sistema"
+        }
+      },
+      {
         "title": "Salutare i conoscenti al ritorno",
         "steps": [
           "Apri Impostazioni → Centro dati → Visione → Risveglio facciale. Registra le persone con il loro consenso e abilita il riconoscimento; la fotocamera deve restare attiva. Una frase per riga, massimo 12 righe di 160 caratteri, con {name} e {relationship}. L’anteprima casuale mostra solo testo. Scegli sottotitoli o voce, assenza minima, pausa e limiti globali, poi salva. Gli orari silenziosi e le interazioni attive sospendono i saluti. Identità e autorizzazioni non cambiano."

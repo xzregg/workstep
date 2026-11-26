@@ -681,6 +681,9 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         deleted: list[str] = []
         skipped: list[str] = []
         for session_id in session_ids:
+            if self._digital_person_session_kind(project_id, session_id) in {'main', 'reflection'}:
+                skipped.append(session_id)
+                continue
             # Skip sessions that are actively running
             if any(
                 state.get("session_id") == session_id

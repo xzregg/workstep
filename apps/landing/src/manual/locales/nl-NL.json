@@ -1613,6 +1613,17 @@
     "summary": "Stel communicatiestijl, hoofdgesprek, proactieve reflectie en kanaalontvangst in. Bekijk herinneringen met bronnen en schakel zo nodig stem en persoonsherkenning in.",
     "sections": [
       {
+        "title": "Agenda en systeemkalenders",
+        "steps": [
+          "Open de agenda op de startpagina van de digitale hub en kies een datum. Een lege datum opent het aanmaken; inhoud ondersteunt Markdown. Verbind en autoriseer een native kalender via Instellingen → Acties en kies een beschrijfbare kalender. Met synchronisatie komen nieuwe items daarin, anders alleen in WorkStep. Bestaande gesynchroniseerde items worden niet automatisch verplaatst of verwijderd. Browsers ondersteunen de interne kalender; native acties vereisen een ondersteunde macOS- of Android-app online. Controleer bij fouten of een onbekend resultaat eerst het oorspronkelijke item en hervat alleen onvoltooide acties om duplicaten te voorkomen."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Agenda en systeemkalenders",
+          "caption": "Agenda en systeemkalenders"
+        }
+      },
+      {
         "title": "Bekenden bij terugkomst begroeten",
         "steps": [
           "Open Instellingen → Datacentrum → Zicht → Gezichtsactivering. Registreer mensen met toestemming en schakel herkenning in; de camera moet aan blijven. Eén groet per regel, maximaal 12 regels van 160 tekens, met {name} en {relationship}. Willekeurig voorbeeld toont alleen tekst. Kies ondertiteling of stem, afwezigheid, wachttijd en algemene limieten en sla op. Stille uren en actieve interactie onderdrukken begroetingen. Identiteit en rechten veranderen niet."

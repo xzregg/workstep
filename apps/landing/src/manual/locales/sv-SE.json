@@ -1613,6 +1613,17 @@
     "summary": "Konfigurera samtalsstil, huvudsamtal, proaktiv reflektion och kanalmottagning. Se källbelagda minnen och aktivera röst och personigenkänning vid behov.",
     "sections": [
       {
+        "title": "Schema och systemkalendrar",
+        "steps": [
+          "Öppna schemat på den digitala hubbens startsida och välj ett datum. Ett tomt datum öppnar skapandet; innehållet stöder Markdown. Anslut och godkänn en inbyggd kalender under Inställningar → Åtgärder och välj en skrivbar kalender. Med synkronisering sparas nya poster där, annars bara i WorkStep. Befintliga synkroniserade poster flyttas eller tas inte bort automatiskt. Webbläsaren stöder den interna kalendern; inbyggda åtgärder kräver en kompatibel macOS- eller Android-app online. Vid fel eller okänt resultat ska originalposten kontrolleras innan ofärdiga åtgärder återupptas för att undvika dubbletter."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Schema och systemkalendrar",
+          "caption": "Schema och systemkalendrar"
+        }
+      },
+      {
         "title": "Välkomna bekanta tillbaka",
         "steps": [
           "Öppna Inställningar → Datacenter → Syn → Ansiktsväckning. Registrera personer med samtycke och aktivera igenkänning; kameran måste förbli på. En fras per rad, högst 12 rader med 160 tecken, med {name} och {relationship}. Slumpförhandsvisning visar bara text. Välj textning eller tal, frånvarotid, väntetid och globala gränser, spara sedan. Tysta timmar och pågående interaktion hindrar hälsningar. Identitet och behörigheter ändras inte."

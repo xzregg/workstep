@@ -56,9 +56,8 @@ async def submit(body:OperationDraft):
     if bool(body.origin_project_id)!=bool(body.origin_session_id):raise HTTPException(422,'Calendar origin requires both project and session ids')
     if body.origin_session_id:
         from main import project_manager
-        from models.chat_session import ChatSession
         try:
-            valid=await project_manager.run_db(body.origin_project_id,lambda _:ChatSession.get_or_none(ChatSession.id==body.origin_session_id,ChatSession.archived==False) is not None)
+            valid=await project_manager.run_db(body.origin_project_id,lambda _:app.origin_exists(body.origin_session_id))
         except (KeyError,ValueError) as exc:
             raise HTTPException(404,'Calendar originating project not found') from exc
         if not valid:raise HTTPException(404,'Calendar originating conversation not found')

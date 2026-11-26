@@ -1613,6 +1613,17 @@
     "summary": "Konfigurer samtalestil, hovedsamtale, aktiv refleksjon og kanalmottak. Se kildebelagt hukommelse og aktiver lyd og persongjenkjenning ved behov.",
     "sections": [
       {
+        "title": "Planlegging og systemkalendere",
+        "steps": [
+          "Åpne planleggingen på den digitale hubens startside og velg en dato. En tom dato åpner oppretting; innhold støtter Markdown. Koble til og godkjenn en innebygd kalender under Innstillinger → Handlinger og velg en skrivbar kalender. Med synkronisering lagres nye oppføringer der, ellers bare i WorkStep. Eksisterende synkroniserte oppføringer flyttes eller slettes ikke automatisk. Nettleseren støtter den interne kalenderen; innebygde handlinger krever en støttet macOS- eller Android-app på nett. Ved feil eller ukjent resultat må originaloppføringen kontrolleres før ufullførte handlinger fortsettes, slik at duplikater unngås."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Planlegging og systemkalendere",
+          "caption": "Planlegging og systemkalendere"
+        }
+      },
+      {
         "title": "Ønsk kjente velkommen tilbake",
         "steps": [
           "Åpne Innstillinger → Datasenter → Syn → Ansiktsvekking. Registrer personer med samtykke og aktiver gjenkjenning; kameraet må være på. Én hilsen per linje, maksimalt 12 linjer med 160 tegn, med {name} og {relationship}. Tilfeldig forhåndsvisning viser bare tekst. Velg undertekster eller tale, fraværstid, ventetid og globale grenser, og lagre. Stille timer og pågående samhandling hindrer hilsner. Identitet og rettigheter endres ikke."

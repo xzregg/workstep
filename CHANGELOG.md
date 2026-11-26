@@ -4,6 +4,19 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+## 1.0.26
+
+- Add native calendar access on supported desktop and Android hosts, with explicit permissions and bounded event reads.
+- Add Tau and Antigravity engine integrations, native login controls and account quota reporting.
+- Refine digital-hub identity setup, conversation boundaries, workflow delegation, follow-up tracking and activity navigation.
+- Improve voiceprint settings, speech continuity, voice input and phone-style turn handling.
+- Preview workflow proposals before applying changes and preserve explicit step-engine choices.
+- Support editing Markdown text alongside image previews and keep streamed task content and historical review messages stable.
+- Preserve verified device-owner permissions and Gateway reviewer identity without widening project-scoped access.
+- Support coordinator CLI step handoff and retain the runtime environment required by delegated shell execution.
+- Improve task-detail scrolling, description editing, digital-hub layout and homepage guidance.
+- Strengthen DOM assertions and regression coverage across the workbench and Gateway interface.
+
 ## 1.0.25
 
 - Add privacy-filtered runtime diagnostics and bounded performance recording across the workbench, desktop and Android, with explicit report export and diagnostic attachments.

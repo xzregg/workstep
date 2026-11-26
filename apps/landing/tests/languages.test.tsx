@@ -12,6 +12,14 @@ function proseStrings(value: unknown): string[] {
 
 describe('builtin language selection', () => {
   for (const lang of supportedLanguages.map(item => item.locale)) {
+    it(`documents native calendar entry and host limits in ${lang}`, () => {
+      const section = getManualChapters(lang).find(chapter => chapter.id === 'digital-person')!
+        .sections.find(section => section.screenshot?.id === 'native-calendar')
+      expect(section).toBeDefined()
+      for (const term of ['Markdown', 'WorkStep', 'macOS', 'Android']) expect(section!.steps.join(' ')).toContain(term)
+    })
+  }
+  for (const lang of supportedLanguages.map(item => item.locale)) {
     it(`documents current delegation, atlas and batched speech controls in ${lang}`, () => {
       const chapter = getManualChapters(lang).find(chapter => chapter.id === 'digital-person')!
       const text = chapter.sections.flatMap(section => [...section.steps, ...section.tips ?? []]).join(' ')

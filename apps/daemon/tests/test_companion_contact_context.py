@@ -5,7 +5,8 @@ def test_assessment_prompt_budget_keeps_one_output_contract_and_persona():
     from services.digital_person_assessment import instruction
     from services.digital_person import DigitalPersonProfile
     prompt=instruction(DigitalPersonProfile(name='Ari',persona_markdown='PERSONA_SENTINEL'))
-    assert len(prompt)<13200
+    # Includes evidence-backed workflow delegation and current calendar rules.
+    assert len(prompt)<16000
     assert prompt.count('PERSONA_SENTINEL')==1
     assert prompt.count('exactly one <json>...</json> pair')==1
     assert prompt.count('Result contract:')==1

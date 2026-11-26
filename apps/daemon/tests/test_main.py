@@ -143,7 +143,7 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
         async def shutdown(self): pass
 
     monkeypatch.setattr('services.digital_person_runtime.DigitalPersonRuntime',
-                        lambda *args: DigitalPersonStub())
+                        lambda *args, **kwargs: DigitalPersonStub())
 
     class RuntimeStub:
         async def recover_running_workflows(self):
@@ -190,6 +190,9 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
             events.append("chats-shutdown")
 
     class BotStub:
+        def set_digital_person(self, runtime):
+            pass
+
         async def start(self):
             events.append("bots-start")
 
@@ -590,6 +593,7 @@ async def test_websocket_route_cancellation_closes_receivers_and_unsubscribes(mo
 
     class Socket:
         scope = {}
+        query_params = {}
 
         async def accept(self):
             pass

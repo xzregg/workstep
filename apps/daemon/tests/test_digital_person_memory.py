@@ -219,7 +219,7 @@ async def test_recent_birthday_can_trigger_main_message_and_enabled_channel_noti
         return {}
     monkeypatch.setattr(current, '_decide', decide)
     monkeypatch.setattr('services.digital_person_channels.get_bindings', lambda: [
-        {'id': 'someone-else', 'bot_id': 'b', 'conversation_type': 'single', 'conversation_id': 'other', 'notify': True}])
+        {'id': 'someone-else', 'bot_id': 'b', 'conversation_type': 'single', 'conversation_id': 'other', 'notify': True, 'use_main_session': True}])
     monkeypatch.setattr('services.digital_person_channels.send_binding', send)
     run = await current.check()
     assert run['status'] == 'notified', run

@@ -1613,6 +1613,17 @@
     "summary": "Atur gaya komunikasi, percakapan utama, pemikiran proaktif, dan penerimaan kanal. Tinjau memori beserta sumbernya, serta aktifkan suara dan pengenalan orang bila diperlukan.",
     "sections": [
       {
+        "title": "Jadwal dan kalender sistem",
+        "steps": [
+          "Buka jadwal di beranda pusat digital lalu pilih tanggal. Tanggal kosong membuka pembuatan entri; isinya mendukung Markdown. Hubungkan dan izinkan kalender asli melalui Pengaturan → Operasi, lalu pilih kalender yang dapat ditulis. Saat sinkronisasi aktif, entri baru disimpan di sana; jika tidak, hanya di WorkStep. Entri tersinkron yang sudah ada tidak dipindahkan atau dihapus otomatis. Peramban mendukung kalender internal; operasi asli memerlukan aplikasi macOS atau Android yang didukung dan daring. Setelah kegagalan atau hasil tidak diketahui, periksa catatan asli sebelum melanjutkan item yang belum selesai agar tidak terjadi duplikasi."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Jadwal dan kalender sistem",
+          "caption": "Jadwal dan kalender sistem"
+        }
+      },
+      {
         "title": "Menyambut kenalan yang kembali",
         "steps": [
           "Buka Pengaturan → Pusat data → Penglihatan → Bangun wajah. Daftarkan orang dengan persetujuan dan aktifkan pengenalan; kamera harus tetap menyala. Satu ucapan per baris, maksimal 12 baris berisi 160 karakter, dengan {name} dan {relationship}. Pratinjau acak hanya menampilkan teks. Pilih takarir atau suara, durasi pergi, jeda dan batas global lalu simpan. Jam tenang dan interaksi aktif menekan sapaan. Identitas dan izin tidak berubah."

@@ -1613,6 +1613,17 @@
     "summary": "Nastavte styl komunikace, hlavní konverzaci, proaktivní přemýšlení a obsluhu kanálů. Prohlížejte paměť se zdroji a podle potřeby zapněte zvuk i rozpoznávání osob.",
     "sections": [
       {
+        "title": "Plánování a systémové kalendáře",
+        "steps": [
+          "Otevřete plánování na domovské stránce digitálního centra a vyberte datum. Prázdný den otevře vytvoření záznamu s podporou Markdown. Připojte a povolte nativní kalendář v Nastavení → Operace a vyberte zapisovatelný kalendář. Při zapnuté synchronizaci se nové záznamy ukládají tam, jinak pouze do WorkStep. Existující synchronizované záznamy se automaticky nepřesouvají ani nemažou. Prohlížeč podporuje interní kalendář; nativní operace vyžadují podporovanou aplikaci macOS nebo Android online. Při chybě či neznámém výsledku ověřte původní záznam před pokračováním nedokončených operací, abyste zabránili duplicitám."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Plánování a systémové kalendáře",
+          "caption": "Plánování a systémové kalendáře"
+        }
+      },
+      {
         "title": "Vítání známých při návratu",
         "steps": [
           "Otevřete Nastavení → Datové centrum → Zrak → Probuzení obličejem. Osoby registrujte se souhlasem a zapněte rozpoznávání; kamera musí zůstat zapnutá. Jedna věta na řádek, nejvýše 12 řádků po 160 znacích, s {name} a {relationship}. Náhodný náhled ukazuje jen text. Vyberte titulky či hlas, dobu nepřítomnosti, prodlevu a globální limity, pak uložte. Klidové hodiny a probíhající interakce pozdravy potlačují. Identita ani oprávnění se nemění."

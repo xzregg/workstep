@@ -1613,6 +1613,17 @@
     "summary": "İletişim tarzını, ana sohbeti, proaktif düşünmeyi ve kanal karşılamasını yapılandırın. Kaynaklı anıları inceleyin; gerekirse ses ve kişi tanımayı açın.",
     "sections": [
       {
+        "title": "Program ve sistem takvimleri",
+        "steps": [
+          "Dijital merkez ana sayfasından programı açıp tarih seçin. Boş tarih yeni kayıt açar; içerik Markdown destekler. Ayarlar → İşlemler bölümünde yerel takvimi bağlayıp izin verin ve yazılabilir bir takvim seçin. Eşitleme açıkken yeni kayıtlar oraya, kapalıyken yalnızca WorkStep’e kaydedilir. Mevcut eşitlenmiş kayıtlar otomatik taşınmaz veya silinmez. Tarayıcı dahili takvimi destekler; yerel işlemler desteklenen bir macOS veya Android uygulamasının çevrimiçi olmasını gerektirir. Hata veya bilinmeyen sonuç sonrasında, yinelenen kayıtları önlemek için tamamlanmamış işlemlere devam etmeden önce asıl kaydı kontrol edin."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Program ve sistem takvimleri",
+          "caption": "Program ve sistem takvimleri"
+        }
+      },
+      {
         "title": "Geri dönen tanıdıkları karşılama",
         "steps": [
           "Ayarlar → Veri merkezi → Görme → Yüzle uyandırma bölümünü açın. Kişileri izinleriyle kaydedip tanımayı etkinleştirin; kamera açık kalmalıdır. Her satıra bir selamlama, en çok 12 satır ve 160 karakter; {name} ve {relationship} kullanılabilir. Rastgele önizleme yalnızca metindir. Altyazı veya ses, ayrılma süresi, bekleme ve genel sınırları seçip kaydedin. Sessiz saatlerde ve etkileşim sırasında selamlama yapılmaz. Kimlik ve yetkiler değişmez."

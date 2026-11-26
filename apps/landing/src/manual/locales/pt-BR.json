@@ -1613,6 +1613,17 @@
     "summary": "Configure estilo de comunicação, conversa principal, reflexão proativa e atendimento em canais. Consulte memórias com fontes e ative voz e reconhecimento de pessoas conforme necessário.",
     "sections": [
       {
+        "title": "Agenda e calendários do sistema",
+        "steps": [
+          "Abra a agenda na página inicial da central digital e selecione uma data; uma data vazia permite criar uma entrada com Markdown. Conecte e autorize um calendário nativo em Configurações → Operações e escolha um calendário editável. Com a sincronização ativa, novas entradas são salvas nele; caso contrário, ficam apenas no WorkStep. Entradas já sincronizadas não são movidas nem excluídas automaticamente. O navegador oferece o calendário interno; operações nativas exigem um aplicativo macOS ou Android compatível conectado. Em caso de falha ou resultado desconhecido, confira o registro original antes de continuar os itens pendentes, evitando duplicações."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Agenda e calendários do sistema",
+          "caption": "Agenda e calendários do sistema"
+        }
+      },
+      {
         "title": "Cumprimentar conhecidos ao retornarem",
         "steps": [
           "Abra Configurações → Central de dados → Visão → Ativação facial. Cadastre pessoas com consentimento e ative o reconhecimento; a câmera precisa permanecer ligada. Uma frase por linha, até 12 linhas de 160 caracteres, usando {name} e {relationship}. A prévia aleatória só mostra texto. Escolha legendas ou voz, ausência mínima, intervalo por pessoa e limites globais; salve. Horários silenciosos e interações em andamento impedem cumprimentos. A identidade e as permissões não mudam."

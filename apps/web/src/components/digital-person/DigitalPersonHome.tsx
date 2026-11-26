@@ -268,8 +268,8 @@ export default function DigitalPersonHome(props:Props){
       phase={avatarPhase} callState={callStates[orbPhase]} inputLevel={microphoneOn?dialogue.level:0} metered={outputFrame.metered!==false} activityId={motionActivity?.key} speaking={output.playing} level={output.level}
       affinity={affect.state?.affinity} emotion={affect.state?.emotion} intensity={Math.max(Math.abs(affect.state?.valence??0),affect.state?.arousal??0)/100}
       fallback={presentation=><DigitalPersonPresence key={`${projectId}/${sessionId}`} active={active} paused={presentationPaused} presentation={presentation} phase={orbPhase} readSpeechLevel={microphoneOn?dialogue.readSpeechLevel:undefined} metered={outputFrame.metered!==false} reply={lastMessage?.role==='assistant'?lastMessage:undefined} name={profile.name}/>}/>}
-    {welcome.text&&<p className="digital-home-welcome" role="status">{welcome.text}</p>}
    </section>
+   {welcome.text&&<p className="digital-home-welcome" role="status">{welcome.text}</p>}
    <DigitalPersonHomeInsights onConversationChange={setDelegationShown} atlasAction={atlasToggle} active={active} canControlWake={canCompose} name={profile.name} role={profile.role} state={identityState} activity={activity} affect={affect.state} chatShown={transcriptVisible} onInspect={mute}/>
    <DigitalPersonCalendar active={active&&!transcriptVisible&&!delegationShown&&!conversationWindow} projectId={projectId} canEdit={canCompose}/>
    {!transcriptVisible&&!conversationWindow&&!delegationShown&&<DigitalPersonCaptions projectId={projectId} messages={messages} feedback={activity?.feedback} sessionId={sessionId} greeting={identitySetupGreetingKey(profile)?t(identitySetupGreetingKey(profile)!):profile.greeting} liveText={voiceCaption} voicePhase={!hasVoiceDraft&&voiceActive?voicePhase:undefined}

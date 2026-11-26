@@ -1613,6 +1613,17 @@
     "summary": "Skonfiguruj styl rozmowy, główną konwersację, samodzielną refleksję i obsługę kanałów. Przeglądaj pamięć ze źródłami, a w razie potrzeby włącz głos i rozpoznawanie osób.",
     "sections": [
       {
+        "title": "Terminarz i kalendarze systemowe",
+        "steps": [
+          "Otwórz terminarz na stronie głównej centrum cyfrowego i wybierz datę. Pusta data pozwala utworzyć wpis obsługujący Markdown. Połącz i autoryzuj kalendarz natywny w Ustawieniach → Operacje, a następnie wybierz kalendarz z prawem zapisu. Przy włączonej synchronizacji nowe wpisy trafiają tam, w przeciwnym razie tylko do WorkStep. Istniejące zsynchronizowane wpisy nie są automatycznie przenoszone ani usuwane. Przeglądarka obsługuje kalendarz wewnętrzny; operacje natywne wymagają zgodnej aplikacji macOS lub Android online. Po błędzie lub nieznanym wyniku sprawdź oryginalny wpis przed wznowieniem niedokończonych działań, aby uniknąć duplikatów."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Terminarz i kalendarze systemowe",
+          "caption": "Terminarz i kalendarze systemowe"
+        }
+      },
+      {
         "title": "Powitanie znajomych po powrocie",
         "steps": [
           "Otwórz Ustawienia → Centrum danych → Wzrok → Wybudzanie twarzą. Dodawaj osoby za ich zgodą i włącz rozpoznawanie; kamera musi pozostać aktywna. Jedna fraza w wierszu, maksymalnie 12 wierszy po 160 znaków, z {name} i {relationship}. Losowy podgląd wyświetla tylko tekst. Wybierz napisy lub głos, czas nieobecności, przerwę i limity globalne, następnie zapisz. Godziny ciszy i aktywna rozmowa wstrzymują powitania. Tożsamość i uprawnienia nie zmieniają się."

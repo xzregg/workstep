@@ -229,21 +229,13 @@
  @keyframes presence-wake-breath{0%,35%,70%,100%{transform:translate(-50%,-50%) scale(1)}17.5%{transform:translate(-50%,-50%) scale(1.08)}52.5%{transform:translate(-50%,-50%) scale(1.04)}}
 }
 
-/* Reserve the subtitle area even while the greeting is absent. */
-.digital-home-main {
- --welcome-size:calc(var(--text-title-1) * 1.6);
- --welcome-height:calc(var(--welcome-size) * 1.25 * 3 + var(--space-3) * 2);
-}
-.digital-home-stage {
- box-sizing:border-box;
- padding-bottom:calc(var(--welcome-height) + var(--space-2));
-}
-.digital-home--chat .digital-home-stage{padding-bottom:0}
 .digital-home-welcome {
+ --welcome-size:calc(var(--text-title-1) * 1.6);
  position:absolute;
- z-index:1;
- inset-inline:var(--space-3);
- inset-block-end:0;
+ z-index:5;
+ inset-inline:max(var(--space-3),calc(50% - 340px));
+ inset-block-start:calc(var(--presence-height) - var(--space-3));
+ transform:translateY(-100%);
  box-sizing:border-box;
  width:fit-content;
  max-width:calc(100% - var(--space-3) * 2);
@@ -262,12 +254,15 @@
  overflow-wrap:anywhere;
 }
 @media(max-width:1023px){
- .digital-home-main{--welcome-size:calc(var(--text-title-1) * 1.4)}
+ .digital-home-welcome{--welcome-size:calc(var(--text-title-1) * 1.4)}
 }
-@media(max-height:680px) and (max-width:599px){
- .digital-home-presence-info{display:grid;width:148px;grid-template-columns:repeat(2,minmax(0,1fr))}
-}
-@media(max-height:500px) and (max-width:599px){
- .digital-home-main{--presence-height:max(45dvh,calc(var(--welcome-height) + var(--space-7) * 2 + var(--space-5)))}
- .digital-home-stage{left:50%;width:calc(100% - var(--space-5) * 2)}
+@media(max-height:500px) and (min-width:600px) and (max-width:1023px){
+ .digital-home-welcome{
+  inset-inline-start:var(--presence-left);
+  inset-inline-end:auto;
+  inset-block-start:auto;
+  inset-block-end:var(--space-2);
+  max-width:var(--presence-width);
+  transform:none;
+ }
 }

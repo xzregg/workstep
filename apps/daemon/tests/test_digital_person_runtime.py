@@ -1321,7 +1321,9 @@ async def test_checker_recreates_unavailable_conversation(runtime, monkeypatch, 
         if action == 'archive':
             ChatSession.update(archived=True).where(ChatSession.id == previous).execute()
         else:
-            ChatSession.get_by_id(previous).delete_instance(recursive=True)
+            from models.chat_session import ChatMessage
+            ChatMessage.delete().where(ChatMessage.session == previous).execute()
+            ChatSession.delete().where(ChatSession.id == previous).execute()
     await runtime.projects.run_db(project.id, change)
     await runtime._decide({})
     current = (await runtime.state())['check_session_id']

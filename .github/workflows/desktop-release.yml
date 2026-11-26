@@ -89,7 +89,7 @@ jobs:
   macos:
     if: ${{ !inputs.image_only }}
     needs: [validate, sandbox-image]
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:

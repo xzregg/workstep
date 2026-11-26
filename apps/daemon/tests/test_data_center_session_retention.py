@@ -91,17 +91,17 @@ async def test_new_and_clear_release_old_protection_and_create_clean_native_cont
         assert 'old-private-history' not in new['prompt']
 
 
-async def test_archive_replacement_moves_protection_to_new_data_center_session(retained_chat):
+async def test_archive_preserves_protected_data_center_session(retained_chat):
     f = retained_chat
     old_sid = (await f.current.main_session())['id']
     await f.send(old_sid, 'before archive')
     old = f.calls[-1]['entry']
     response = await f.api.patch(f'/api/chat-sessions/{old_sid}/archive',
                                json={'project_id': f.project.id, 'archived': True})
-    assert response.status_code == 200, response.text
-    assert old.retention_owner is None
+    assert response.status_code == 400, response.text
+    assert old.retention_owner
     new_sid = (await f.current.main_session())['id']
-    assert new_sid != old_sid
+    assert new_sid == old_sid
     await f.send(new_sid, 'after archive')
     assert f.calls[-1]['entry'].retention_owner
 
@@ -143,7 +143,7 @@ async def test_compact_keeps_current_main_protection(retained_chat):
 
 
 @pytest.mark.parametrize('bulk', [False, True])
-async def test_deletion_releases_main_protection(retained_chat, bulk):
+async def test_deletion_preserves_main_protection(retained_chat, bulk):
     f = retained_chat
     sid = (await f.current.main_session())['id']
     await f.send(sid, 'before deletion')
@@ -153,5 +153,10 @@ async def test_deletion_releases_main_protection(retained_chat, bulk):
                                     json={'session_ids': [sid]})
     else:
         response = await f.api.delete(f'/api/chat-sessions/{sid}', params={'project_id': f.project.id})
-    assert response.status_code == 200, response.text
-    assert old.retention_owner is None
+    if bulk:
+        assert response.status_code == 200, response.text
+        assert response.json() == {'deleted': [], 'skipped': [sid]}
+    else:
+        assert response.status_code == 400, response.text
+    assert old.retention_owner
+    assert (await f.current.main_session())['id'] == sid

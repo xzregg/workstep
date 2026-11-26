@@ -90,6 +90,15 @@ def test_release_publish_job_checks_out_tag_before_verification():
     assert "--verify-tag" in publish_job
 
 
+def test_macos_release_budget_includes_installer_acceptance_upload_and_cache_cleanup():
+    import re
+    workflow = (ROOT / ".github/workflows/desktop-release.yml").read_text()
+    job = workflow.split("  macos:\n", 1)[1].split("  windows:\n", 1)[0]
+    # v1.0.25 completed its Intel installer and acceptance, then hit the
+    # 25-minute job limit while saving cache. Keep a bounded cleanup margin.
+    assert 35 <= int(re.search(r"timeout-minutes: (\d+)", job).group(1)) <= 45
+
+
 def test_release_publish_job_refreshes_an_existing_draft_only():
     workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text()
     publish_job = workflow.split("  publish-draft:\n", 1)[1]

@@ -3412,6 +3412,8 @@ async def test_engine_list_matches_the_frontend_contract(api_context):
         "deepseek_harness",
         "cursor",
         "opencode",
+        "antigravity",
+        "tau",
     }
     assert all("installed" in engine for engine in engines)
 

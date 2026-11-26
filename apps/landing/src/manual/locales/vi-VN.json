@@ -1613,6 +1613,17 @@
     "summary": "Cấu hình phong cách giao tiếp, hội thoại chính, suy nghĩ chủ động và tiếp nhận qua kênh. Xem ký ức có nguồn và tùy chọn bật giọng nói, nhận diện người.",
     "sections": [
       {
+        "title": "Lịch trình và lịch hệ thống",
+        "steps": [
+          "Mở lịch trình trên trang chủ trung tâm số rồi chọn ngày. Ngày trống cho phép tạo mục mới với nội dung Markdown. Kết nối và cấp quyền lịch gốc trong Cài đặt → Thao tác, sau đó chọn lịch có thể ghi. Khi bật đồng bộ, mục mới được lưu vào đó; nếu tắt, chỉ lưu trong WorkStep. Các mục đã đồng bộ không tự di chuyển hoặc xóa. Trình duyệt hỗ trợ lịch nội bộ; thao tác gốc cần ứng dụng macOS hoặc Android tương thích đang trực tuyến. Khi thất bại hoặc kết quả chưa rõ, kiểm tra bản ghi gốc trước khi tiếp tục các mục chưa xong để tránh trùng lặp."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Lịch trình và lịch hệ thống",
+          "caption": "Lịch trình và lịch hệ thống"
+        }
+      },
+      {
         "title": "Chào người quen khi quay lại",
         "steps": [
           "Mở Cài đặt → Trung tâm dữ liệu → Thị giác → Đánh thức bằng khuôn mặt. Đăng ký người có sự đồng ý và bật nhận diện; camera phải tiếp tục mở. Mỗi dòng một lời chào, tối đa 12 dòng, mỗi dòng 160 ký tự, dùng {name} và {relationship}. Xem trước ngẫu nhiên chỉ hiển thị chữ. Chọn phụ đề hoặc giọng nói, thời gian vắng, khoảng nghỉ và giới hạn chung rồi lưu. Giờ yên lặng và tương tác đang diễn ra sẽ chặn lời chào. Không thay đổi danh tính hay quyền."

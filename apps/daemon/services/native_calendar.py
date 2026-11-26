@@ -59,6 +59,12 @@ class _Operation(dict):
 class CalendarApplication:
     def __init__(self,owner):self.owner=owner
 
+    @staticmethod
+    def origin_exists(session_id):
+        """Called within the originating project's database executor."""
+        from models.chat_session import ChatSession
+        return ChatSession.get_or_none(ChatSession.id==session_id,ChatSession.archived==False) is not None
+
     def connect(self):return calendar.connection()
 
     def schema(self,db):

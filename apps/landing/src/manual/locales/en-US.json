@@ -1613,6 +1613,17 @@
     "summary": "Configure communication style, the main conversation, proactive thinking and channel reception. Review memories with sources and optionally enable speech and person recognition.",
     "sections": [
       {
+        "title": "Schedules and system calendars",
+        "steps": [
+          "Open Schedules on the digital-hub home and select a date to view its agenda; an empty date opens creation. Content supports Markdown. Connect and authorize a native calendar in digital-hub settings → Operations, then select a writable calendar. With sync enabled, new entries use that system calendar; otherwise they remain in WorkStep. Existing synced entries are not moved or deleted automatically. Browsers support the internal calendar; native execution requires a supported macOS or Android app online. After failure or an unknown result, verify the original record before continuing unfinished items to avoid duplicates."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Schedules and system calendars",
+          "caption": "Schedules and system calendars"
+        }
+      },
+      {
         "title": "Welcome familiar people on return",
         "steps": [
           "Open Settings → Data hub → Vision → Face wake. Enroll familiar people with their consent and enable face recognition first; return detection requires the camera to remain on. Enter one greeting per line, at most 12 lines of 160 characters, using {name} or {relationship}; random preview displays text only. Choose captions or captions with speech, set absence, cooldown and global rate limits, then save. Quiet hours apply and active interaction suppresses greetings. Recognition does not change identity or authorization."

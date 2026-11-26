@@ -49,7 +49,7 @@ test('assistant can programmatically apply and persist a workflow on mobile', ()
     flowCanvasSource.indexOf('},\n  }),', flowCanvasSource.indexOf('loadSteps: (steps: any) => {')),
   )
   assert.doesNotMatch(loadStepsBody, /if \(readOnly\) return/)
-  assert.match(canvasEditorSource, /if \(compact\) \{/)
+  assert.match(canvasEditorSource, /if \(!compact\) return[\s\S]*?await saveSteps\(activeProject\.id, steps\)/)
   assert.match(canvasEditorSource, /await saveSteps\(activeProject\.id, steps\)/)
 })
 
@@ -57,7 +57,7 @@ test('mobile workflow editor supports the same step editing panel as desktop', (
   assert.doesNotMatch(canvasEditorSource, /readOnly=\{compact\}/)
   assert.doesNotMatch(canvasEditorSource, /if \(!activeProject \|\| compact\) return/)
   assert.match(flowCanvasSource, /const readOnly = requestedReadOnly\b/)
-  assert.match(flowCanvasSource, /onNodeClick=\{compactLayout && !readOnly/)
+  assert.match(flowCanvasSource, /onNodeClick=\{proposalPreview\.previewing \|\| proposalPreview\.applying \? undefined : compactLayout && !readOnly/)
   assert.match(nodeConfigSource, /className="flow-node-config-panel"/)
   assert.match(mobileCss, /\.flow-node-config-panel\s*\{[^}]*position: absolute[^}]*width: 100% !important/s)
 })

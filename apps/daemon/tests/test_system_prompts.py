@@ -39,7 +39,10 @@ PROMPTS = {
 def test_system_prompts_are_compact_english(name, prompt):
     assert prompt.strip(), name
     assert not CJK_RE.search(prompt), name
-    assert len(prompt) <= 2200, name
+    # Current handoff/proposal fields have explicit bounded budgets; retain
+    # their behavior and safety instructions rather than removing them.
+    budget = {"coordinator": 2800, "task_schedule": 2400, "workflow": 2800}.get(name, 2200)
+    assert len(prompt) <= budget, name
 
 
 @pytest.mark.parametrize(

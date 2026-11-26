@@ -1613,6 +1613,17 @@
     "summary": "Configure estilo de comunicación, chat principal, reflexión y atención en canales; consulte recuerdos con fuentes y active voz y reconocimiento de personas cuando lo necesite.",
     "sections": [
       {
+        "title": "Agenda y calendarios del sistema",
+        "steps": [
+          "Abra la agenda en el inicio del centro digital y elija una fecha; una fecha vacía permite crear una entrada con Markdown. Conecte y autorice un calendario nativo en Ajustes → Operaciones y seleccione uno editable. Con la sincronización activa, las nuevas entradas se guardan allí; de lo contrario, solo en WorkStep. Las entradas sincronizadas existentes no se mueven ni eliminan automáticamente. El navegador admite el calendario interno; las operaciones nativas requieren una aplicación macOS o Android compatible conectada. Ante un fallo o resultado desconocido, compruebe el registro original antes de continuar los elementos pendientes para evitar duplicados."
+        ],
+        "screenshot": {
+          "id": "native-calendar",
+          "alt": "Agenda y calendarios del sistema",
+          "caption": "Agenda y calendarios del sistema"
+        }
+      },
+      {
         "title": "Saludar a conocidos que regresan",
         "steps": [
           "Abra Ajustes → Centro de datos → Visión → Activación facial. Registre personas con su consentimiento y active el reconocimiento; la cámara debe seguir encendida. Una frase por línea, máximo 12 líneas de 160 caracteres, con {name} y {relationship}. La vista aleatoria solo muestra texto. Elija subtítulos o voz, ausencia mínima, espera y límites globales, y guarde. Se respetan las horas silenciosas y se omiten saludos durante interacciones. No cambia la identidad ni los permisos."

@@ -37,7 +37,7 @@ test('companion skips historical audio, speaks completed new replies and cancels
   await act(async()=>root.unmount());assert.equal(cancelled,1);assert.equal(utterances[0].onend,null)
  }finally{(globalThis as any).SpeechSynthesisUtterance=old;element.remove()}
 })
-test('first enable guides configuration and only activates after finishing',async()=>{
+test('first enable saves activation without the retired settings questionnaire',async()=>{
  installDomEnvironment();const element=document.body.appendChild(document.createElement('div')),root=createRoot(element)
  const originals=[digitalPersonApi.get,digitalPersonApi.save,assistantApi.list,providerApi.list,digitalRuntimeApi.channels,digitalRuntimeApi.activity]
  let saved={...profile,enabled:false,onboarding_completed:false}
@@ -50,9 +50,7 @@ test('first enable guides configuration and only activates after finishing',asyn
  try{
   await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonSettings onClose={()=>{}}/></I18nProvider></MemoryRouter>))
   await act(async()=>element.querySelector<HTMLButtonElement>('[role="switch"]')!.click())
-  assert.ok(element.querySelector('.digital-person-guide'));assert.equal(saved.enabled,false)
-  for(let i=0;i<6;i++)await act(async()=>{const buttons=element.querySelectorAll<HTMLButtonElement>('.digital-person-guide button');buttons[buttons.length-1].click()})
-  assert.equal(saved.enabled,true);assert.equal(saved.onboarding_completed,true)
+  assert.equal(saved.enabled,true);assert.equal(saved.onboarding_completed,false)
   assert.ok(element.querySelector('.digital-person-guide') === null)
  }finally{
   await act(async()=>root.unmount());element.remove()
@@ -85,7 +83,8 @@ test('activity loads small pages, opens details on demand, and retries failed de
   assert.match(element.querySelector('.digital-run-notification')!.textContent!,/已发送 1 条/)
   await act(async()=>element.querySelector<HTMLButtonElement>('[data-retry-delivery]')!.click())
   assert.equal(retried,'run-0')
-  assert.match(element.querySelector('[role=alert]')!.textContent!,/通知发送失败.*原因未记录/)
+  assert.equal(element.querySelector('[role=alert]')!.textContent,'通知发送失败')
+  assert.doesNotMatch(element.textContent!,/渠道连接超时/)
   await act(async()=>element.querySelector<HTMLButtonElement>('[data-kind=runs] [data-next-page]')!.click())
   assert.equal(pages.at(-1),5);assert.equal(element.querySelectorAll('[data-run-id]').length,2)
   assert.ok(element.querySelector('[data-run-id="run-0"]') === null)
