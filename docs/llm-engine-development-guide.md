@@ -439,6 +439,7 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 `AcpEngineBase` 的会话/审批缝）。引擎在 `Agent(..., capabilities=[...])` 挂载：
 
 - `WorkStepCoder(project_root)` 包装 Harness `Coder()`，显式挂载原生工作区（macOS/Linux 使用 `LocalWorkspace`，Windows 使用 `WindowsWorkspace`）、固定 `Planning(InMemoryPlanStore)`、Shell 命令白名单和子任务事件能力；项目记忆只使用流程层注入的 `.workstep/MEMORY.md`，不挂载 Harness 私有 Memory。文件及命令 I/O 通过 SDK 异步工作区执行，不再对整个文件工具嵌套运行事件循环；
+- `WorkStepShellToolset._resolve_env` 每次命令显式传递 CLI 运行环境（daemon 目录、Python、URL、配置目录及适用的桌面凭据），因为 SDK 工作区仅默认继承 PATH/HOME/locale。会话身份由 `execution_env` 绑定当前上下文，协调来源先清除旧值再由 `coordinator_source_env` 绑定当前轮次；复用 Shell 不得沿用旧项目或协调轮次。仍应用 SDK 的 `denied_env_patterns`，不将凭据写入提示词。`test_pydantic_ai_harness.py::test_shell_cli_environment_rebinds_current_coordinator_turn` 通过真实 Shell 子进程验证运行环境、跨轮身份与旧值清除。
 - `Skills(project_root / ".workstep" / "skills")`，目录内容只来自 SkillCenter 白名单镜像；
 - 有效的 `thinking_effort` 通过 Pydantic AI `Thinking(effort=...)` 挂载，不再传入 `model_settings.thinking`。
 

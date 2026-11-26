@@ -60,6 +60,62 @@ def prepare_execution_handoff(project, task, step, current: dict, target: dict,
         step.pending_handoff_json = json.dumps(metadata, ensure_ascii=False, sort_keys=True)
 
 
+def prepare_current_step_handoff(project, task_id, step_key, workflow_steps, *, authorize=False):
+    """DB-worker preflight; never changes configuration, sessions or run state."""
+    from engines.core.registry import create_engine
+    from services.config import config_store
+    from agent_assistants.session_state import PROVIDER_HANDOFF_REQUIRED
+
+    task = Task.get_or_none(Task.id == task_id)
+    if task is None:
+        raise ValueError(f"Task not found: {task_id}")
+    target = StepExecutionConfigService._find_step(workflow_steps(project, task), step_key)
+    step = TaskStep.get_or_none((TaskStep.task == task) & (TaskStep.step_key == step_key))
+    if target is None or step is None:
+        raise ValueError(f"Step does not exist: {step_key}")
+    if step.status in {*ACTIVE_STEP_CONFIG_STATUSES, "reviewing", "rework_waiting"}:
+        raise ValueError(f"Step cannot hand off at this time: {step_key} (current status {step.status})")
+    engine_id = resolve_execution_engine(target.get("engine"))
+    engine = create_engine(engine_id)
+    if engine is None:
+        raise ValueError(f"Unknown engine: {engine_id}")
+    provider = str((target.get("config") or {}).get("provider_id") or "").strip()
+    resolver = getattr(engine, "resolve_provider_id", None)
+    provider = resolver(provider) if callable(resolver) else (provider or config_store.get_engine_provider(engine_id))
+    provider = provider or ""
+    pending = json.loads(step.pending_handoff_json or "null")
+    if pending is not None and not isinstance(pending, dict):
+        raise ValueError("Invalid pending handoff metadata")
+    if (pending and pending.get("handoff_id")
+            and pending.get("target_engine") == engine_id
+            and (pending.get("target_provider") or "") == provider
+            and (not authorize or pending.get("mode") == "smart")):
+        return {"status": "prepared", "handoff_id": pending["handoff_id"], "next_actions": ["step-start"]}
+    previous = Message.select().where((Message.task == task) & (Message.step_key == step_key)
+        & (Message.channel == "execution") & (Message.role == "assistant")
+        & Message.run_status.in_(["succeeded", "completed"])).order_by(Message.sequence.desc()).first()
+    has_session = step.session_provider is not None or step.session_id or previous
+    session_engine = (previous.engine if previous else step.engine) or engine_id
+    provider_changed = (step.session_provider or "") != provider
+    changed = bool(pending or (has_session and (
+        provider_changed or (authorize and session_engine != engine_id)
+    )))
+    if not changed:
+        return {"status": "not_required", "next_actions": ["step-start"]}
+    if not authorize:
+        from services.task_step_start import StepProviderHandoffRequired
+        raise StepProviderHandoffRequired(PROVIDER_HANDOFF_REQUIRED)
+    resolved = {**target, "engine": engine_id, "config": {**(target.get("config") or {}), "provider_id": provider}}
+    prepare_execution_handoff(project, task, step, target, resolved, "smart")
+    if not step.pending_handoff_json:
+        raise ValueError("No execution history available for smart handoff; inspect the task before choosing a new session")
+    metadata = json.loads(step.pending_handoff_json)
+    if metadata.get("target_engine") != engine_id or (metadata.get("target_provider") or "") != provider:
+        raise ValueError("Prepared handoff does not match the current execution provider")
+    step.save(only=[TaskStep.pending_handoff_json])
+    return {"status": "prepared", "handoff_id": metadata["handoff_id"], "next_actions": ["step-start"]}
+
+
 class StepExecutionConfigService:
     def __init__(self, run_db, workflow_steps, operation_locks):
         self._run_db = run_db

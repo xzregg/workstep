@@ -1,12 +1,14 @@
 """Persist follow-up messages and validate failed-message retries."""
 
+import json
+
 from models import Message, ReviewRun, StepRun, Task, TaskStep
 from models.fields import utc_now
 from services.messages import create_task_message, new_message_id
 from services.step_execution_config import ACTIVE_STEP_CONFIG_STATUSES
 
 
-def persist_step_followup(task_id, step_key, normalized, author_name, pending_insert_ids, *, allow_pending=False, coordinator_turn_id=None):
+def persist_step_followup(task_id, step_key, normalized, author_name, pending_insert_ids, *, allow_pending=False, coordinator_turn_id=None, before_persist=None, request_message_id=None, request_data=None):
     """Write a validated follow-up and clear its consumed queue entries."""
     task = Task.get_or_none(Task.id == task_id)
     if task is None:
@@ -68,10 +70,17 @@ def persist_step_followup(task_id, step_key, normalized, author_name, pending_in
             or pending_review.status != "pending"
         ):
             raise ValueError("Step has no skippable manual review")
+    if coordinator_turn_id:
+        from services.coordinator_source import coordinator_message_fields
+
+        coordinator_message_fields(task, coordinator_turn_id)
+    if before_persist:
+        before_persist()
     now = utc_now()
-    message_id = new_message_id()
+    message_id = request_message_id or new_message_id()
     user_message = create_task_message(
         id=message_id,
+        **({"prompt_json": json.dumps({"step_start_request": request_data})} if request_data else {}),
         task=task,
         channel="execution",
         step_key=step_key,

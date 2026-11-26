@@ -75,6 +75,7 @@ class WorkflowRuntime:
         self._active_tasks: set[asyncio.Task[str]] = set()
         self._review_resumes: dict[str, WorkflowRunHandle] = {}
         self._operation_locks: dict[str, asyncio.Lock] = {}
+        self._step_resume_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._starting_tasks: set[asyncio.Task] = set()
         self._step_config = StepExecutionConfigService(
             self._run_db, self._current_workflow_steps, self._operation_locks
@@ -596,7 +597,70 @@ class WorkflowRuntime:
                     await self._event_bus.publish(agui_event)
             return True
 
+    async def handoff_step(self, project_id: str, task_id: str, step_key: str) -> dict:
+        from services.remote_access import require_user_actor
+        from services.step_execution_config import prepare_current_step_handoff
+
+        await asyncio.to_thread(require_user_actor)
+        lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
+        async with lock:
+            return await self._run_db(project_id, lambda project: prepare_current_step_handoff(
+                project, task_id, step_key, self._current_workflow_steps, authorize=True,
+            ))
+
     async def resume_step_with_message(
+        self, project_id: str, task_id: str, step_key: str, content: str,
+        *, handoff: str | None = None, request_id: str | None = None, **kwargs,
+    ) -> dict:
+        """Serialize submissions and durably deduplicate keyed CLI retries."""
+        from uuid import uuid5, NAMESPACE_URL
+        from services.remote_access import require_user_actor
+
+        if handoff not in {None, "smart"}:
+            raise ValueError("Unsupported handover method")
+        if handoff and (not request_id or kwargs.get("reset_session")):
+            raise ValueError("Smart handoff requires request_id and cannot reset the session")
+        if request_id is not None and (not request_id.strip() or len(request_id) > 128):
+            raise ValueError("Invalid request_id")
+        if not kwargs.get("replay_pending"):
+            await asyncio.to_thread(require_user_actor)
+        request_data = {"content": content.strip(), "handoff": handoff,
+                        "reset_session": bool(kwargs.get("reset_session"))}
+        message_id = (str(uuid5(NAMESPACE_URL, json.dumps(
+            [project_id, task_id, step_key, request_id], ensure_ascii=False))) if request_id else None)
+        lock = self._step_resume_locks.setdefault((project_id, task_id), asyncio.Lock())
+        async with lock:
+            if message_id:
+                def previous(_project):
+                    message = Message.get_or_none(Message.id == message_id)
+                    if message is None:
+                        return None
+                    data = json.loads(message.prompt_json or "{}")
+                    if data.get("step_start_request") != request_data:
+                        raise ValueError("request_id was already used with different parameters")
+                    return data.get("step_start_result") or {
+                        "ok": False, "status": "unknown", "message_id": message.id,
+                        "error": "Submission was interrupted; inspect task/history before another operation",
+                        "next_actions": ["task get", "task history"],
+                    }
+                receipt = await self._run_db(project_id, previous)
+                if receipt is not None:
+                    return receipt
+            result = await self._resume_step_with_message(
+                project_id, task_id, step_key, content, handoff=handoff,
+                request_message_id=message_id, request_data=request_data if message_id else None, **kwargs,
+            )
+            if message_id:
+                def save_receipt(_project):
+                    message = Message.get_by_id(message_id)
+                    data = json.loads(message.prompt_json or "{}")
+                    data["step_start_result"] = result
+                    message.prompt_json = json.dumps(data, ensure_ascii=False)
+                    message.save(only=[Message.prompt_json])
+                await self._run_db(project_id, save_receipt)
+            return result
+
+    async def _resume_step_with_message(
         self,
         project_id: str,
         task_id: str,
@@ -609,6 +673,9 @@ class WorkflowRuntime:
         replay_pending: bool = False,
         allow_pending: bool = False,
         coordinator_turn_id: str | None = None,
+        handoff: str | None = None,
+        request_message_id: str | None = None,
+        request_data: dict | None = None,
     ) -> dict:
         """Persist a user message and re-run a stopped or completed step.
 
@@ -624,17 +691,26 @@ class WorkflowRuntime:
         normalized = content.strip()
         if not normalized:
             raise ValueError("Message content cannot be empty")
-        if not replay_pending:
-            from services.remote_access import require_user_actor
+        from services.step_execution_config import prepare_current_step_handoff
 
-            await asyncio.to_thread(require_user_actor)
-        user_message, pending_review_id, trigger_name = await self._run_db(
-            project_id, lambda _project: persist_step_followup(
+        handoff_result = {}
+
+        def persist(project):
+            def preflight():
+                handoff_result.update(prepare_current_step_handoff(
+                    project, task_id, step_key, self._current_workflow_steps,
+                    authorize=handoff == "smart",
+                ))
+
+            return persist_step_followup(
                 task_id, step_key, normalized, author_name, pending_insert_ids,
                 allow_pending=allow_pending,
                 coordinator_turn_id=coordinator_turn_id,
+                request_message_id=request_message_id, request_data=request_data,
+                before_persist=None if reset_session else preflight,
             )
-        )
+
+        user_message, pending_review_id, trigger_name = await self._run_db(project_id, persist)
         message_id = user_message.id
         handle = await self.restart_from_step(
             project_id,
@@ -664,6 +740,7 @@ class WorkflowRuntime:
             "step_key": step_key,
             "run_id": handle.id,
             "status": "queued",
+            **({"handoff": handoff_result} if handoff else {}),
             "sequence": user_message.sequence,
             "created_at": user_message.created_at.isoformat(),
         }
@@ -751,8 +828,10 @@ class WorkflowRuntime:
         }
 
     async def retry_failed_message(
-        self, project_id: str, task_id: str, message_id: str, *, task_permit=None,
+        self, project_id: str, task_id: str, message_id: str, *, task_permit=None, handoff: str | None = None,
     ) -> dict:
+        if handoff not in {None, "smart"}:
+            raise ValueError("Unsupported handover method")
         active_runner = task_id in self._runners
         step_key, run_id = await self._run_db(
             project_id,
@@ -760,11 +839,14 @@ class WorkflowRuntime:
                 task_id, message_id, active_runner
             ),
         )
+        handoff_result = None
+        if handoff:
+            handoff_result = await self.handoff_step(project_id, task_id, step_key)
         handle = await self.restart_from_step(
             project_id, task_id, step_key,
             expected_run_id=run_id,
             expected_failed_message_id=message_id,
-            reset_session=True,
+            reset_session=handoff is None,
             **({'task_permit': task_permit} if task_permit is not None else {}),
         )
         return {
@@ -772,6 +854,7 @@ class WorkflowRuntime:
             "step_key": step_key,
             "run_id": handle.id,
             "status": "queued",
+            **({"handoff": handoff_result} if handoff else {}),
         }
 
     async def complete_failed_step(

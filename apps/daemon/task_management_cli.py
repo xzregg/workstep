@@ -36,6 +36,8 @@ def add_task_management_parsers(subparsers, add_json):
         if action in {"retry", "archive-prepare", "archive-stop"}:
             parser.add_argument("--message", required=True, dest="message_id",
                                 help="failed message ID, or stable draft UUID for prepare/poll/stop")
+        if action == "retry":
+            parser.add_argument("--handoff", choices=("smart",), help="preserve history through smart provider handoff")
         if action in {"review-approve", "review-reject"}:
             parser.add_argument("--step", required=True, dest="step_key")
             parser.add_argument("--review", required=True, dest="review_run_id")
@@ -54,7 +56,7 @@ def add_task_management_parsers(subparsers, add_json):
 async def dispatch_task_management(args, client):
     arguments = {"project_id": args.project_id, "task_id": args.task_id, "confirm": "yes"}
     for key in ("title", "description", "delete_workspace", "message_id", "step_key",
-                "review_run_id", "comment", "locale", "experience", "notify"):
+                "review_run_id", "comment", "locale", "experience", "notify", "handoff"):
         value = getattr(args, key, None)
         if value is not None:
             arguments[key] = value

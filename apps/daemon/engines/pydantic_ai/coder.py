@@ -2,6 +2,7 @@
 
 import copy
 import dataclasses
+import os
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -73,10 +74,20 @@ class WorkStepShellToolset(ShellToolset):
     def _resolve_env(self):
         from services.git.engine_credentials import engine_git_environment
 
+        from services.conversation_context import execution_env
+        from services.coordinator_source import COORDINATOR_TURN_ENV, coordinator_source_env
+
         # Workspace backends inherit only PATH/HOME/locale in SDK 2.69.
-        # Keep the host's credential helper, applying the SDK filters as usual.
+        # CLI transport uses the host runtime, but identity belongs to this turn.
+        runtime_env = {key: os.environ[key] for key in (
+            "WORKSTEP_DAEMON_DIR", "WORKSTEP_CLI_PYTHON", "WORKSTEP_DAEMON_URL",
+            "WORKSTEP_CONFIG_DIR", "WORKSTEP_DESKTOP_TOKEN",
+        ) if key in os.environ}
+        env = execution_env({**engine_git_environment(), **runtime_env, **(self._env or {})})
+        env.pop(COORDINATOR_TURN_ENV, None)
+        env.update(coordinator_source_env())
         resolver = copy.copy(self)
-        resolver._env = {**engine_git_environment(), **(self._env or {})}
+        resolver._env = env
         return ShellToolset._resolve_env(resolver)
 
     async def for_run(self, ctx):

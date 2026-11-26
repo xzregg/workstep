@@ -1105,3 +1105,42 @@ def test_session_rule_replacement_preserves_other_system_sources():
     cleared = engine._with_session_system_prompt(updated, "")
     assert [p.content for m in cleared for p in m.parts] == ["engine-owned rule"]
     assert [p.content for m in updated for p in m.parts] == ["updated rule", "engine-owned rule"]
+
+
+@pytest.mark.asyncio
+async def test_shell_cli_environment_rebinds_current_coordinator_turn(tmp_path, monkeypatch):
+    import json
+    import shlex
+    import sys
+    from pydantic_ai import RunContext, RunUsage
+    from pydantic_ai.models.test import TestModel
+    from pydantic_ai.workspaces import LocalWorkspaceBackend, Workspace
+    from services.conversation_context import conversation_context
+    from services.coordinator_source import coordinator_source
+
+    monkeypatch.setenv("WORKSTEP_DAEMON_DIR", "/runtime/daemon")
+    monkeypatch.setenv("WORKSTEP_CLI_PYTHON", sys.executable)
+    monkeypatch.setenv("WORKSTEP_DAEMON_URL", "http://127.0.0.1:19001")
+    monkeypatch.setenv("WORKSTEP_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKSTEP_COORDINATOR_TURN_ID", "stale-process-turn")
+    toolset = WorkStepShell(env={"WORKSTEP_PROJECT_ID": "stale-project", "WORKSTEP_COORDINATOR_TURN_ID": "stale-shell-turn"}).get_toolset()
+    keys = ["WORKSTEP_DAEMON_DIR", "WORKSTEP_CLI_PYTHON", "WORKSTEP_DAEMON_URL", "WORKSTEP_CONFIG_DIR",
+            "WORKSTEP_PROJECT_ID", "WORKSTEP_SESSION_ID", "WORKSTEP_COORDINATOR_TURN_ID"]
+    script = "import os,json; print(json.dumps({k:os.environ.get(k) for k in " + repr(keys) + "}))"
+    command = shlex.quote(sys.executable) + " -c " + shlex.quote(script)
+    ctx = RunContext(deps=None, model=TestModel(), usage=RunUsage(), workspace=Workspace(LocalWorkspaceBackend(tmp_path)))
+    for project_id, turn in [("project-a", "turn-a"), ("project-b", "turn-b")]:
+        with conversation_context(project_id, "task:" + project_id), coordinator_source(turn):
+            result = await toolset.run_command(ctx, command)
+            values = json.loads(next(line for line in result.splitlines() if line.startswith('{')))
+            assert values["WORKSTEP_DAEMON_DIR"] == "/runtime/daemon"
+            assert values["WORKSTEP_CLI_PYTHON"] == sys.executable
+            assert values["WORKSTEP_DAEMON_URL"] == "http://127.0.0.1:19001"
+            assert values["WORKSTEP_CONFIG_DIR"] == str(tmp_path)
+            assert values["WORKSTEP_PROJECT_ID"] == project_id
+            assert values["WORKSTEP_SESSION_ID"] == "task:" + project_id
+            assert values["WORKSTEP_COORDINATOR_TURN_ID"] == turn
+    with coordinator_source(None):
+        resolved = toolset._resolve_env()
+        assert "WORKSTEP_COORDINATOR_TURN_ID" not in resolved
+        assert "WORKSTEP_PROJECT_ID" not in resolved

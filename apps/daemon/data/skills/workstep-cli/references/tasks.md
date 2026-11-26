@@ -145,6 +145,63 @@ an isolated or force start. If other running stages outside the user's request
 would be stopped, explain the impact and ask before starting. Running targets
 reject this operation; use live messages or stop them first as authorized.
 
+### Provider changes and smart handoff
+
+When an authorized start/continuation is blocked by a provider change, transfer
+existing context to the step's **current resolved engine/provider**:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task step-handoff \
+  --project <project_id> --task <task_id> --step <step_key> --json
+```
+
+Native: `workstep_handoff_step`, the three IDs and `confirm='yes'`. This only
+prepares the existing handoff log; it does not start a run or edit configuration.
+`prepared` returns `handoff_id`; repeated preparation reuses that packet.
+`not_required` means no endpoint change needs handoff. Both allow a subsequent
+`step-start`. Inspect `ok`, `status`, `error` and `next_actions` before proceeding.
+
+Alternatively authorize handoff and continue in one request:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task step-start \
+  --project <project_id> --task <task_id> --step <step_key> \
+  --content "Continue the original task with its existing inputs" \
+  --handoff smart --request-id <stable-operation-key> --json
+```
+
+Native: `workstep_start_step` with `handoff='smart'`, `request_id` and
+`confirm='yes'`. Reuse the same request key and parameters when retrying this
+operation, including after it finishes. A new requested execution needs a new
+key. The receipt is persisted with the execution user message. An interrupted
+submission without a complete receipt returns `unknown`: inspect task/history;
+never automatically issue a new key and repeat possibly completed work.
+`--handoff` requires `--request-id` and cannot be combined with `--reset-session`.
+
+Without handoff authorization, a provider mismatch returns
+`ok=false, status=needs_confirmation, handoff=required` before adding a follow-up
+or creating a run. Busy/invalid targets return `blocked`; handoff I/O errors
+return `failed`. A successful submission returns `status=queued` plus the
+handoff result: it does **not** prove the engine has started or work is complete.
+Re-read task/history for execution outcome. Do not use a fresh session to work
+around handoff failure. Missing history may require a user's explicit choice.
+
+For the latest failed execution message, use the existing failure identity:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task retry \
+  --project <project_id> --task <task_id> --message <failed_message_id> \
+  --handoff smart --json
+```
+
+Native: `workstep_retry_task_message` with `handoff='smart'`. It validates the
+latest failure/current run, prepares handoff, and retries without clearing its
+context. A stale/repeated failure identity is rejected instead of creating
+another execution. The option-free retry retains its existing rebuild semantics.
+Smart handoff preserves task context, history, upstream artifact rounds and
+input snapshots. It does not approve reviews, change branches, or authorize Git
+merges; existing task scope, review gates and branch rules still apply.
+
 After each call, check the returned result. On errors or changed state, re-read
 the task before deciding what to do next; never blindly retry a mutation or
 also propose an operation already performed. Distinguish accepted starts from
