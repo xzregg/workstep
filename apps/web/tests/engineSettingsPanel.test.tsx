@@ -364,3 +364,62 @@ test('rescan publishes a newly registered custom engine to an already open selec
     await window.happyDOM.close()
   }
 })
+
+
+test('card order is partitioned on entry and frozen through saves, refreshes and rerenders', async () => {
+  const { window } = installDomEnvironment()
+  let root = createRoot(document.body.appendChild(document.createElement('div')))
+  const originals = { list: engineApi.list, refresh: engineApi.refresh,
+    executionConfig: engineApi.executionConfig, setVisibility: engineApi.setVisibility }
+  let catalog = [
+    { id: 'codex', enabled: true },
+    { id: 'claude', enabled: false },
+    { id: 'pydantic_ai' },
+    { id: 'antigravity', enabled: false },
+  ].map(item => ({ ...item, installed: false, config: null } as EngineInfo))
+  engineApi.list = async () => ({ engines: catalog.map(item => ({ ...item })) })
+  engineApi.refresh = async () => ({ engines: [...catalog].reverse().map(item => ({ ...item })) })
+  engineApi.executionConfig = async () => ({ engine: '' })
+  engineApi.setVisibility = async (id, enabled) => {
+    catalog = catalog.map(item => item.id === id ? { ...item, enabled } : item)
+    return { engines: catalog.map(item => ({ ...item })) }
+  }
+  const render = async (hidden = false, revision = 0) => {
+    await act(async () => root.render(<I18nProvider><EngineSettingsPanel
+      hidden={hidden} refreshRevision={revision} preferredProviderProtocol=""
+    /></I18nProvider>))
+  }
+  const ids = () => Array.from(document.querySelectorAll('[data-engine-id]'), card => card.getAttribute('data-engine-id'))
+  const toggle = async (id: string) => {
+    await act(async () => document.querySelector<HTMLButtonElement>(`[data-engine-id="${id}"] [role="switch"]`)!.click())
+  }
+  try {
+    await render(true)
+    await render()
+    const initial = ['pydantic_ai', 'codex', 'claude', 'antigravity']
+    assert.deepEqual(ids(), initial)
+    const claudeCard = document.querySelector('[data-engine-id="claude"]')
+    await toggle('claude')
+    await toggle('codex')
+    assert.deepEqual(ids(), initial)
+    assert.equal(document.querySelector('[data-engine-id="claude"]') === claudeCard, true)
+    assert.equal(document.querySelector('[data-engine-id="claude"] [role="switch"]')?.getAttribute('aria-checked'), 'true')
+    await render()
+    await render(false, 1)
+    await act(async () => document.querySelector<HTMLButtonElement>('.engine-settings-header > button')!.click())
+    assert.deepEqual(ids(), initial)
+    await render(true, 1)
+    await render(false, 1)
+    assert.deepEqual(ids(), ['pydantic_ai', 'claude', 'codex', 'antigravity'])
+    await act(async () => root.unmount())
+    root = createRoot(document.body.appendChild(document.createElement('div')))
+    await act(async () => root.render(<I18nProvider><EngineSettingsPanel
+      hidden={false} refreshRevision={0} preferredProviderProtocol=""
+    /></I18nProvider>))
+    assert.deepEqual(ids(), ['pydantic_ai', 'claude', 'codex', 'antigravity'])
+  } finally {
+    Object.assign(engineApi, originals)
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

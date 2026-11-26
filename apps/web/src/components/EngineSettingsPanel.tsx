@@ -14,6 +14,7 @@ import { engineApi, fetchEngineModels, invalidateEngineModels, type EngineInfo, 
 import { ENGINE_COLORS, engineLabel, engineDescription, sortExecutionEngines } from '../engineMeta'
 import { useI18n } from '../i18n'
 import { publishEngineCatalog } from '../stores/engineAvailabilityStore'
+import { useEngineSettingsOrder } from '../hooks/useEngineSettingsOrder'
 import './EngineSettingsPanel.css'
 
 function EngineIcon({ engine }: { engine: EngineInfo }) {
@@ -323,6 +324,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
     () => sortExecutionEngines(engines),
     [engines],
   )
+  const cardEngines = useEngineSettingsOrder(sortedEngines, hidden, loading)
   const installedCount = sortedEngines.filter((engine) => engine.installed).length
   const versionSummary = (version: string | null) =>
     version?.split(/\r?\n/, 1)[0]?.trim() || ''
@@ -380,7 +382,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
             </div>
           ) : (
             <div className="engine-settings-list">
-              {sortedEngines.map((engine) => {
+              {cardEngines.map((engine) => {
                 const testResult = testResults[engine.id]
                 const isTesting = testingEngine === engine.id
                 const engineModels = models[engine.id] || []
