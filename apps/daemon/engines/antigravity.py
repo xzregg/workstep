@@ -180,9 +180,11 @@ class AntigravityEngine(AcpEngineBase):
 
     @staticmethod
     def _login_completed():
+        from services import engine_quota as engine_quota_service
         config_store.clear_engine_models('antigravity')
         config_store.set_engine_verified('antigravity', False)
         AntigravityEngine._login_revision += 1
+        engine_quota_service.unified_quota_service.invalidate()
 
     def project_skill_env(self, cwd):
         return {**super().project_skill_env(cwd),

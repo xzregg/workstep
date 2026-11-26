@@ -34,7 +34,7 @@ def workspace_engine_catalog(items: list[dict]) -> list[dict]:
             "supports_coordinator", "supports_tool_disable", "supports_native_schema",
             "supports_live_step_message", "supports_provider", "supports_sessions",
             "supports_tool_approval", "supports_workstep_tools", "supports_mcp", "supports_controlled_skills",
-            "permission_modes", "permission_config_options", "supports_service_tier")
+            "permission_modes", "permission_config_options", "supports_service_tier", "supports_quota")
     result = []
     for item in items:
         public = {key: item[key] for key in keys if key in item}

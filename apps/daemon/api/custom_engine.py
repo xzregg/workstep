@@ -73,9 +73,12 @@ async def inspect_package(request: PackageRequest):
 
 @router.post("/configure")
 async def configure_package(request: ConfigureRequest):
+    from services import engine_quota as engine_quota_service
     await asyncio.to_thread(_assert_preview_path, Path(request.path).expanduser())
-    return await invoke(manager.configure(request.path, request.values, request.clear, request.confirmed,
-                                          request.provider_id, request.model))
+    result = await invoke(manager.configure(request.path, request.values, request.clear, request.confirmed,
+                                            request.provider_id, request.model))
+    engine_quota_service.unified_quota_service.invalidate()
+    return result
 
 
 @router.post("/operations", status_code=202)
@@ -96,18 +99,27 @@ async def stop_operation(operation_id: str):
 
 @router.post("/register")
 async def register_package(request: RegisterRequest):
+    from services import engine_quota as engine_quota_service
     await asyncio.to_thread(_assert_preview_path, Path(request.path).expanduser())
-    return await invoke(manager.register(request.path, replace=request.replace))
+    result = await invoke(manager.register(request.path, replace=request.replace))
+    engine_quota_service.unified_quota_service.invalidate()
+    return result
 
 
 @router.post("/disable")
 async def disable_engine(request: DisabledRequest):
-    return await invoke(manager.disable(request.engine_id, request.disabled))
+    from services import engine_quota as engine_quota_service
+    result = await invoke(manager.disable(request.engine_id, request.disabled))
+    engine_quota_service.unified_quota_service.invalidate()
+    return result
 
 
 @router.post("/rollback")
 async def rollback_engine(request: EngineRequest):
-    return await invoke(manager.rollback(request.engine_id))
+    from services import engine_quota as engine_quota_service
+    result = await invoke(manager.rollback(request.engine_id))
+    engine_quota_service.unified_quota_service.invalidate()
+    return result
 
 
 @router.get("/{engine_id}/export")
