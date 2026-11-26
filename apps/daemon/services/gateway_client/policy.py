@@ -145,6 +145,15 @@ class ManagedPolicyCache:
         self.current = None
 
 
+def is_managed_device_owner(user_id: str | None, device_id: str | None) -> bool:
+    """Match a verified or persisted managed identity to this bound device."""
+    from main import gateway_client
+
+    return bool(user_id and device_id
+                and user_id == getattr(gateway_client, "current_user_id", None)
+                and device_id == getattr(gateway_client, "device_id", None))
+
+
 def require_managed_capability(action: str, *, creator_fields: dict | None = None,
                                project_id: str | None = None) -> None:
     """Fail closed at a shared service entry when this daemon is Gateway-managed."""
@@ -155,6 +164,14 @@ def require_managed_capability(action: str, *, creator_fields: dict | None = Non
         return
     actor = get_current_actor()
     principal = authenticated_remote_dispatch()
+    # Local managed sessions carry the verified Gateway identity. The bound
+    # device owner keeps host capabilities without a live policy snapshot.
+    if (action in ("task.create", "task.share", "project.publish", "provider.local", "engine.install")
+            and principal is None
+            and actor is not None and actor.source == "managed"
+            and actor.project_id is None and actor.access_source is None
+            and is_managed_device_owner(actor.actor_id, actor.device_id)):
+        return
     if (actor is not None and actor.source == "managed"
             and actor.access_source == "gateway" and actor.project_id is None
             and principal is None

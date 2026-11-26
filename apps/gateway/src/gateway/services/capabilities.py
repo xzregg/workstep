@@ -85,6 +85,12 @@ async def capability_rules(session, user_id: str):
     ))).all()
 
 
+async def is_device_owner(session, user_id: str, device_id: str) -> bool:
+    device = await session.get(Device, device_id)
+    return bool(user_id and device is not None and device.status == "active"
+                and device.owner_user_id == user_id)
+
+
 def rules_allow(rules, capability: str, device_id: str, project_id: str | None = None):
     applicable = [rule for rule in rules if rule.capability == capability and (
         rule.scope_type == "global" or
@@ -125,13 +131,14 @@ async def compiled_project_scopes(session, device_id: str, user_id: str,
 async def compiled_device_capabilities(database, device_id: str, user_id: str
                                        ) -> dict[str, bool | list[str]]:
     async with database.session() as session:
-        super_admin = await IdentityService.super_admin_in_session(session, user_id)
-        rules = await capability_rules(session, user_id) if not super_admin else []
-        allowed_projects, denied_projects = ([], []) if super_admin else await compiled_project_scopes(
+        host_access = (await IdentityService.super_admin_in_session(session, user_id)
+                       or await is_device_owner(session, user_id, device_id))
+        rules = await capability_rules(session, user_id) if not host_access else []
+        allowed_projects, denied_projects = ([], []) if host_access else await compiled_project_scopes(
             session, device_id, user_id, "share.create", rules)
         return {"task_share_project_ids": allowed_projects,
                 "task_share_denied_project_ids": denied_projects,
-                **{field: super_admin or rules_allow(rules, capability, device_id)
+                **{field: host_access or rules_allow(rules, capability, device_id)
                    for field, capability in (("allow_local_providers", "provider.local"),
                                             ("task_share", "share.create"),
                                             ("engine_install", "engine.install"))}}
@@ -143,7 +150,8 @@ async def compiled_device_policy(database, device_id: str, user_id: str
         device = await session.get(Device, device_id)
         if device is None:
             raise ValueError("Device not found")
-        if await IdentityService.super_admin_in_session(session, user_id):
+        if (await IdentityService.super_admin_in_session(session, user_id)
+                or await is_device_owner(session, user_id, device_id)):
             return device.policy_revision, True, True, [], []
         assignments = await capability_rules(session, user_id)
         allowed_projects, denied_projects = await compiled_project_scopes(

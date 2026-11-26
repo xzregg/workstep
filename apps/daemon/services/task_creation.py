@@ -8,7 +8,7 @@ from datetime import datetime
 
 from services.config import DEFAULT_EXECUTION_ENGINE
 from services.workflow_definition import WorkflowDefinition
-from services.gateway_client.policy import require_managed_capability
+from services.gateway_client.policy import is_managed_device_owner, require_managed_capability
 from services.remote_access import get_current_actor, replayed_actor_context
 
 
@@ -26,6 +26,12 @@ async def _require_scheduled_creation(
 
     if not creator_fields or not creator_fields.get("creator_id"):
         raise denied("Scheduled rule lacks creator identity; please have a user with task creation permissions resave the rule.")
+    # ScheduleModule persists this identity from the authenticated actor, never
+    # from request-supplied template metadata. Recheck ownership at every run.
+    if creator_source == "managed" and is_managed_device_owner(
+        creator_fields["creator_id"], creator_fields.get("creator_device_id"),
+    ):
+        return
     if creator_source in {None, "remote"}:
         device_id = creator_fields.get("creator_device_id")
 

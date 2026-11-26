@@ -1195,6 +1195,60 @@ async def test_managed_task_creation_uses_live_signed_policy(api_context, monkey
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("policy_state", ["missing", "denied", "expired"])
+async def test_local_device_owner_can_create_and_copy_tasks(api_context, monkeypatch, policy_state):
+    from dataclasses import replace
+    from services.gateway_client.identity import ManagedActor
+    from services.gateway_client.policy import ManagedPolicy
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "owner-task-policy"
+    project_dir.mkdir()
+    pid = (await client.post("/api/project/init", json={"path": str(project_dir)})).json()["id"]
+    workflow_id = (await _create_test_workflow(client, pid))["id"]
+    monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
+    monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-secret")
+    gateway = main.gateway_client
+    monkeypatch.setattr(gateway, "managed_config", object())
+    monkeypatch.setattr(gateway, "current_user_id", "owner")
+    monkeypatch.setattr(gateway, "device_id", "owner-device")
+    gateway.policy_cache.clear()
+    if policy_state != "missing":
+        now = int(time.time())
+        policy = ManagedPolicy("gateway-test", "owner-device", "owner", 0, now, now + 600,
+                               frozenset(), frozenset(), False, False, False, False, False)
+        gateway.policy_cache.apply(replace(policy, expires_at=0) if policy_state == "expired" else policy)
+    session = gateway.local_sessions.create(ManagedActor("owner", "Alice", "owner-device", "app", 0))
+    headers = {"X-WorkStep-Desktop-Token": "desktop-secret", "X-WorkStep-Local-Session": session}
+    body = {"title": "Owner task", "workflow_id": workflow_id, "auto_start": False}
+    created = await client.post(f"/api/task/create?project_id={pid}", json=body, headers=headers)
+    assert created.status_code == 200, created.text
+    assert created.json()["creator_id"] == "owner"
+    copied = await client.post(f"/api/task/copy?project_id={pid}", headers=headers,
+                               json={"task_id": created.json()["id"], "newTitle": "Owner copy"})
+    assert copied.status_code == 200, copied.text
+    assert copied.json()["creator_id"] == "owner"
+    guest_session = gateway.local_sessions.create(ManagedActor("guest", "Guest", "owner-device", "app", 0))
+    guest_headers = {**headers, "X-WorkStep-Local-Session": guest_session}
+    denied = await client.post(f"/api/task/create?project_id={pid}", json=body, headers=guest_headers)
+    assert denied.status_code == 403
+    from types import SimpleNamespace
+    import services.gateway_client.service as gateway_service
+    publish = AsyncMock(return_value={"project_id": "platform-owner", "status": "published"})
+    monkeypatch.setattr(gateway_service, "project_manager", main.project_manager)
+    monkeypatch.setattr(gateway, "control_client", SimpleNamespace(publish_project=publish))
+    response = await client.post(f"/api/project/{pid}/publication", json={"published": True}, headers=headers)
+    assert response.status_code == 200, response.text
+    publish.assert_awaited_once()
+    publish.reset_mock()
+    response = await client.post(f"/api/project/{pid}/publication", json={"published": True}, headers=guest_headers)
+    assert response.status_code == 403, response.text
+    publish.assert_not_awaited()
+    gateway.policy_cache.clear()
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("copy", [False, True])
 async def test_native_remote_task_creation_on_managed_host(api_context, monkeypatch, copy):
     import main

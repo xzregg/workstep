@@ -493,16 +493,7 @@ def test_device_explicitly_publishes_and_unpublishes_its_project(tmp_path):
                                          "project_id": None, "status": "unpublished",
                                          "grants": [], "can_manage": False,
                                          "can_invite": True,
-                                         "can_publish": False}
-            ws.send_json({"kind": "project_publish", "version": 1,
-                          "action": "publish", "host_project_id": "host-1",
-                          "name": "Backend"})
-            assert ws.receive_json()["status"] == "denied"
-        denied = client.post(f"/api/admin/capabilities/{owner_id}", json={
-            "capability": "project.publish", "scope_type": "device",
-            "scope_id": device_id, "effect": "allow",
-        }, headers={"X-CSRF-Token": csrf})
-        assert denied.status_code == 200, denied.text
+                                         "can_publish": True}
         with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
@@ -538,6 +529,66 @@ def test_device_explicitly_publishes_and_unpublishes_its_project(tmp_path):
                 ).fetchone() == ("policy_only",)
 
 
+@pytest.mark.parametrize("explicit_denial", [False, True])
+def test_device_owner_keeps_all_host_capabilities(tmp_path, explicit_denial):
+    from gateway.services.capabilities import compiled_device_policy, compiled_device_capabilities
+    from gateway.services.platform_shares import can_create_platform_share
+
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test", public_origin="https://gateway.test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, csrf = _active_device(client)
+        owner_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "==="))["user_id"]
+        csrf = _ordinary_device_owner(client, owner_id, csrf)
+        if explicit_denial:
+            for capability in ("task.create", "project.publish", "share.create", "engine.install", "provider.local"):
+                response = client.post(f"/api/admin/capabilities/{owner_id}", headers={"X-CSRF-Token": csrf},
+                    json={"capability": capability, "scope_type": "device", "scope_id": device_id, "effect": "deny"})
+                assert response.status_code == 200, response.text
+        with client.websocket_connect("/ws/control") as ws:
+            _handshake(ws, token, device_key)
+            hello = ws.receive_json()
+            policy = json.loads(base64.urlsafe_b64decode(hello["policy_snapshot"].split(".")[1] + "==="))
+            for capability in ("task_create", "project_publish", "task_share", "engine_install", "allow_local_providers"):
+                assert policy[capability] is True, policy
+            ws.send_json({"kind": "project_publish", "version": 1, "action": "publish",
+                          "host_project_id": "owner-project", "name": "OwnerProject"})
+            assert ws.receive_json()["status"] == "published"
+
+        async def verify_scope():
+            database = app.state.database
+            async with database.session() as session:
+                assert await can_create_platform_share(session, owner_id, None, device_id=device_id)
+                # Recovery is an admin; use a nonexistent identity for a fail-closed boundary.
+                assert not await can_create_platform_share(session, "unknown", None, device_id=device_id)
+            assert (await compiled_device_policy(database, device_id, "unknown"))[1:3] == (False, False)
+            capabilities = await compiled_device_capabilities(database, device_id, "unknown")
+            assert capabilities["task_share"] is False
+            from types import SimpleNamespace
+            from gateway.services.device_task_shares import manage
+            call = SimpleNamespace(database=database, settings=app.state.settings,
+                                   tokens={}, gateway_signer=app.state.gateway_signer)
+            created = await manage(call, device_id, owner_id, {
+                "version": 1, "host_project_id": "unpublished-owner-project", "action": "create",
+                "payload": {"task_id": "owner-task", "password": "owner-key"},
+            })
+            assert created["url"].startswith("https://gateway.test/share/")
+            assert (await manage(call, device_id, owner_id, {
+                "version": 1, "host_project_id": "unpublished-owner-project", "action": "revoke",
+                "payload": {"share_id": created["id"]},
+            }))["ok"] is True
+            # Ownership is resolved live; keeping a device grant does not keep owner privileges.
+            from gateway.models import Device
+            async with database.session() as session:
+                device = await session.get(Device, device_id)
+                device.owner_user_id = None
+                await session.commit()
+            assert (await compiled_device_policy(database, device_id, owner_id))[1:3] == (False, False)
+            assert (await compiled_device_capabilities(database, device_id, owner_id))["task_share"] is False
+            async with database.session() as session:
+                assert not await can_create_platform_share(session, owner_id, None, device_id=device_id)
+        client.portal.call(verify_scope)
+
+
 def test_project_scoped_task_create_is_compiled_for_the_host_project(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
@@ -555,6 +606,9 @@ def test_project_scoped_task_create_is_compiled_for_the_host_project(tmp_path):
             "scope_id": "platform-1", "effect": "allow",
         }, headers={"X-CSRF-Token": csrf})
         assert grant.status_code == 200, grant.text
+        # Exercise delegated device access separately from ownership.
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+            database.execute("UPDATE devices SET owner_user_id=(SELECT id FROM users WHERE username='recovery') WHERE id=?", (device_id,))
         with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             hello = ws.receive_json()
@@ -816,6 +870,9 @@ def test_super_admin_receives_all_managed_capabilities_and_loses_them_on_revocat
             "capability": "task.create", "scope_type": "device", "scope_id": device_id,
             "effect": "deny",
         }).status_code == 200
+        # Exercise delegated device access separately from ownership.
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+            database.execute("UPDATE devices SET owner_user_id=(SELECT id FROM users WHERE username='recovery') WHERE id=?", (device_id,))
         with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             policy = json.loads(base64.urlsafe_b64decode(
@@ -859,6 +916,9 @@ def test_capability_assignment_changes_signed_policy_revision(tmp_path):
         device_id, token, device_key, csrf = _active_device(client)
         user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))["user_id"]
         csrf = _ordinary_device_owner(client, user_id, csrf)
+        # Exercise delegated device access separately from ownership.
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+            database.execute("UPDATE devices SET owner_user_id=(SELECT id FROM users WHERE username='recovery') WHERE id=?", (device_id,))
         with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             initial = ws.receive_json()

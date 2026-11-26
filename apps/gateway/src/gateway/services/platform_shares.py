@@ -244,7 +244,7 @@ async def _share_git_branch_body(call: GatewayCall, kind: str) -> bytes:
 
 async def can_create_platform_share(session, user_id: str, project: PlatformProject | None, *, device_id: str | None = None) -> bool:
     from gateway.services.identity import IdentityService
-    from gateway.services.capabilities import capability_rules
+    from gateway.services.capabilities import capability_rules, is_device_owner
     from gateway.services.permission_subjects import active_group_ids
     from gateway.models import GroupCapabilityAssignment
     if project is not None and project.status != 'active':
@@ -252,7 +252,8 @@ async def can_create_platform_share(session, user_id: str, project: PlatformProj
     device_id = project.device_id if project is not None else device_id
     if not device_id:
         return False
-    if await IdentityService.super_admin_in_session(session, user_id):
+    if (await IdentityService.super_admin_in_session(session, user_id)
+            or await is_device_owner(session, user_id, device_id)):
         return True
     from gateway.services.device_grants import has_device_access
     whole_device = await has_device_access(session, user_id, device_id)

@@ -168,3 +168,63 @@ async def test_schedule_denial_explains_required_repair(monkeypatch, case, detai
     }
     with pytest.raises(PermissionError, match=detail):
         await _require_scheduled_creation("project", fields, "local" if case == "legacy-local" else "managed")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", ["static", "agent"])
+@pytest.mark.parametrize("policy_state", ["missing", "denied", "expired"])
+async def test_managed_device_owner_schedule_keeps_creation_rights(tmp_path, monkeypatch, mode, policy_state):
+    import main
+    from models import Task
+    from services.gateway_client.policy import ManagedPolicy, ManagedPolicyCache
+    from services.project import DEFAULT_STEPS, ProjectManager
+    from services.remote_access import ActorSnapshot, actor_context
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "owner-project")
+    try:
+        workflow = await manager.run_db(project.id, lambda p: manager.create_workflow(p, "流程", DEFAULT_STEPS))
+        async def generate(*args, **kwargs):
+            return {"title": "Generated task", "description": "Generated content", "workflow_id": workflow["id"]}
+        module = ScheduleModule(manager, TaskService(EventBus()), None,
+                                task_agent=SimpleNamespace(run_schedule=generate))
+        template = ({"mode": "agent", "instruction": "生成任务", "candidate_workflow_ids": [workflow["id"]]}
+                    if mode == "agent" else {"title": "Owner scheduled task"})
+        owner = ActorSnapshot("owner", "Owner", "owner-device", "PC", "managed")
+        with actor_context(owner):
+            created = await manager.run_db(project.id, lambda _: module.create(
+                project.id, name="主人定时任务", workflow_id=workflow["id"] if mode == "static" else "",
+                task_template=template, execution_mode="manual",
+                rule={"kind": "once", "run_at": "2099-01-02T03:04:00", "timezone": "UTC"},
+            ))
+        cache = ManagedPolicyCache()
+        if policy_state != "missing":
+            now = int(time.time())
+            cache.apply(ManagedPolicy("gateway", "owner-device", "owner", 1, now,
+                0 if policy_state == "expired" else now + 600,
+                frozenset(), frozenset(), False, False, False, False, False))
+        gateway = SimpleNamespace(managed_config=object(), policy_cache=cache,
+                                  current_user_id="owner", device_id="owner-device")
+        monkeypatch.setattr(main, "gateway_client", gateway)
+        await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+        await module.wait_idle()
+        runs = await manager.run_db(project.id, lambda _: module.list_runs(project.id, created["id"]))
+        assert runs[0]["status"] == "created", runs[0].get("reason")
+        task = await manager.run_db(project.id, lambda _: Task.get_by_id(runs[0]["task_id"]))
+        assert task.creator_id == "owner"
+        from services.task_creation import _require_scheduled_creation
+        fields = {"creator_id": "owner", "creator_device_id": "owner-device"}
+        # Identity/source and current ownership must all match the saved creator.
+        for source, saved in (("remote", fields), (None, fields),
+                              ("managed", {**fields, "creator_device_id": "other-device"}),
+                              ("managed", {**fields, "creator_id": "guest"})):
+            with pytest.raises(PermissionError):
+                await _require_scheduled_creation(project.id, saved, source)
+        gateway.current_user_id = "new-owner"
+        with pytest.raises(PermissionError):
+            await _require_scheduled_creation(project.id, fields, "managed")
+    finally:
+        manager.close_all()

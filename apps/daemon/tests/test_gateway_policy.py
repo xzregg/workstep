@@ -87,6 +87,46 @@ def test_authenticated_whole_device_access_has_device_capabilities(monkeypatch, 
                 require_managed_capability(action, project_id="host-1")
 
 
+@pytest.mark.parametrize("action", ["task.create", "task.share", "project.publish", "provider.local", "engine.install"])
+@pytest.mark.parametrize("policy_state", ["missing", "denied", "expired"])
+def test_device_owner_has_managed_capabilities(monkeypatch, policy_state, action):
+    import main
+    from dataclasses import replace
+    from services.remote_access import RemotePrincipal, _remote_dispatch_principal
+
+    cache = ManagedPolicyCache()
+    if policy_state != "missing":
+        token, pem, fingerprint = _signed_policy()
+        policy = verify_policy_snapshot(token, pem, fingerprint,
+                                        "gateway-test", "device-1", "user-1")
+        cache.apply(replace(policy, expires_at=0) if policy_state == "expired" else policy)
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(
+        managed_config=object(), policy_cache=cache,
+        current_user_id="user-1", device_id="device-1",
+    ))
+    owner = ActorSnapshot("user-1", "Alice", "device-1", "PC", "managed")
+    with actor_context(owner):
+        require_managed_capability(action, project_id="project-1")
+        # A delegated request cannot borrow its host's owner identity.
+        dispatch = _remote_dispatch_principal.set(RemotePrincipal("project-1", owner))
+        try:
+            with pytest.raises(PermissionError):
+                require_managed_capability(action, project_id="project-1")
+        finally:
+            _remote_dispatch_principal.reset(dispatch)
+    for restricted in (
+        replace(owner, actor_id="guest"), replace(owner, device_id="other-device"),
+        replace(owner, source="browser"), replace(owner, project_id="project-1"),
+        replace(owner, access_source="gateway_share"),
+    ):
+        with actor_context(restricted), pytest.raises(PermissionError):
+            require_managed_capability(action, project_id="project-1")
+    # Saved creator metadata alone is not an authenticated owner session.
+    with actor_context(None), pytest.raises(PermissionError):
+        require_managed_capability(action, creator_fields={"creator_id": "user-1"},
+                                   project_id="project-1")
+
+
 def test_managed_task_creation_requires_matching_live_capability(monkeypatch):
     import main
 
