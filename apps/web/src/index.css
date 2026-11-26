@@ -4880,32 +4880,48 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   cursor: default;
   transition: background var(--motion-fast);
 }
-.chat-input-quota-tip {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  width: max-content;
-  min-width: 220px;
-  max-width: min(360px, calc(100vw - 32px));
-  line-height: 1.45;
+/* Shared account quota cards. */
+.engine-quota-trigger {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  height: 100%; min-height: 0;
+  padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer;
 }
-.chat-input-quota-heading {
-  display: flex;
-  width: 100%;
-  min-height: 24px;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
+.chat-input-quota { cursor: pointer; }
+.engine-quota-panel {
+  position: fixed; z-index: 2100; display: flex; flex-direction: column;
+  width: min(400px, calc(100vw - 32px)); max-height: min(560px, calc(100dvh - 32px));
+  box-sizing: border-box; padding: var(--space-3); gap: var(--space-3);
+  background: var(--surface); color: var(--text-primary); border: 0.5px solid var(--border);
+  border-radius: var(--radius-xl); box-shadow: var(--elev-raised);
+  white-space: normal; font-size: var(--text-body); font-weight: 400; line-height: 1.45;
 }
-.chat-input-quota-group,
-.chat-input-quota-group > span {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.chat-input-quota-group + .chat-input-quota-group {
-  margin-top: var(--space-2);
+.engine-quota-panel[hidden] { display: none; }
+.chat-input-quota-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-shrink: 0; }
+.chat-input-quota-heading > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.engine-quota-filters { display: flex; flex-shrink: 0; padding: var(--space-1); border-radius: var(--radius-sm); background: var(--border-soft); }
+.engine-quota-filters button { flex: 1; min-width: 0; padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: inherit; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.engine-quota-filters button[aria-pressed="true"] { background: var(--bg); color: var(--text-primary); box-shadow: var(--ring); }
+.engine-quota-cards { display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+.engine-quota-card { display: flex; flex-direction: column; flex-shrink: 0; gap: var(--space-3); padding: var(--space-3); border: 0.5px solid var(--border-soft); border-radius: var(--radius-xs); background: var(--bg); overflow-wrap: anywhere; }
+.engine-quota-card-heading { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.engine-quota-plan { color: var(--text-secondary); font-size: var(--text-caption); padding: 0 var(--space-1); background: var(--surface); border-radius: var(--radius-pill); }
+.engine-quota-limit-name, .engine-quota-status, .engine-quota-reset { color: var(--text-muted); }
+.engine-quota-status { display: flex; align-items: center; gap: var(--space-2); }
+.chat-input-quota-group { display: flex; flex-direction: column; gap: var(--space-2); }
+.chat-input-quota-group + .chat-input-quota-group { border-top: 0.5px solid var(--border-soft); padding-top: var(--space-3); }
+.chat-input-quota-group > strong { color: var(--text-secondary); font-weight: 500; }
+.engine-quota-window { display: flex; flex-direction: column; gap: var(--space-1); }
+.engine-quota-window-info { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: var(--space-2); }
+.engine-quota-window-info > strong { font-variant-numeric: tabular-nums; }
+.engine-quota-reset { font-size: var(--text-caption); font-weight: 400; }
+.engine-quota-meter { width: 100%; height: 6px; background: var(--border-soft); border-radius: var(--radius-pill); overflow: hidden; }
+.engine-quota-meter > i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.engine-quota-balance { display: flex; flex-direction: column; gap: var(--space-1); }
+@media (max-width: 1023px) {
+  .engine-quota-filters button { min-height: var(--mobile-control-regular); }
+  .engine-quota-window-info { grid-template-columns: minmax(0, 1fr) auto; }
+  .engine-quota-window-info .engine-quota-reset { grid-column: 1 / -1; grid-row: 2; }
+  .engine-quota-panel .chat-input-quota-refresh { width: var(--mobile-control-regular); height: var(--mobile-control-regular); }
 }
 .chat-input-quota-refresh {
   display: inline-flex;

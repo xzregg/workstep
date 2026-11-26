@@ -28,6 +28,11 @@ test('slash opens at the start or after whitespace and filters skills by name pr
         headers: { 'Content-Type': 'application/json' },
       })
     }
+    if (url.split('?')[0].endsWith('/engine/quota')) {
+      return new Response(JSON.stringify({ engines: [], cached: false, collected_at: 0, expires_at: 0 }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
     requests += 1
     return new Response(JSON.stringify({
       skills: [

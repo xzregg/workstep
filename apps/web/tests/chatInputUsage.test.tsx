@@ -118,3 +118,91 @@ test('chat usage owns quota and context details in toolbar order', async () => {
     await window.happyDOM.close()
   }
 })
+
+
+test('unified quota cards keep failures visible, show remaining meters and filter to the selected engine', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact={false} selectedEngine="custom" entries={[
+      {engine_id: 'custom', name: 'Custom', supported: true, status: 'ok', quota: {engine_id: 'custom', groups: [
+        {name: 'Gemini', windows: [{kind: 'weekly', remaining_percent: 83, used_percent: 17}]},
+      ]}},
+      {engine_id: 'other', supported: true, status: 'unauthenticated', quota: null},
+    ]} /></I18nProvider>))
+    await act(async () => (container.querySelector('.chat-input-quota') as HTMLElement).click())
+    assert.equal(container.querySelectorAll('[data-quota-engine]').length, 1)
+    assert.equal(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'), '83')
+    await act(async () => (container.querySelector('[data-quota-all]') as HTMLButtonElement).click())
+    assert.equal(container.querySelectorAll('[data-quota-engine]').length, 2)
+    assert.match(container.textContent || '', /Sign in required|登录/)
+    assert.equal(container.querySelector('.chat-input-quota')?.classList.contains('is-tip-open'), true)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('switching selected engine refocuses the quota popover while keeping all-engine view available', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const entries = [
+    { engine_id: 'codex_sdk', supported: true, status: 'ok' as const, quota: { engine_id: 'codex_sdk', primary: { remaining_percent: 82, used_percent: 18 } } },
+    { engine_id: 'antigravity', supported: true, status: 'ok' as const, quota: { engine_id: 'antigravity', primary: { remaining_percent: 61, used_percent: 39 } } },
+  ]
+  try {
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact={false} selectedEngine="codex_sdk" entries={entries} /></I18nProvider>))
+    await act(async () => (container.querySelector('.engine-quota-trigger') as HTMLButtonElement).click())
+    assert.deepEqual([...container.querySelectorAll('[data-quota-engine]')].map(n => n.getAttribute('data-quota-engine')), ['codex_sdk'])
+    await act(async () => (container.querySelector('[data-quota-all]') as HTMLButtonElement).click())
+    assert.deepEqual([...container.querySelectorAll('[data-quota-engine]')].map(n => n.getAttribute('data-quota-engine')), ['codex_sdk', 'antigravity'])
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact={false} selectedEngine="antigravity" entries={entries} /></I18nProvider>))
+    assert.deepEqual([...container.querySelectorAll('[data-quota-engine]')].map(n => n.getAttribute('data-quota-engine')), ['antigravity'])
+    // Non-quota selected engine falls back to showing all eligible engines.
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact={false} selectedEngine="pydantic_ai" entries={entries} /></I18nProvider>))
+    assert.deepEqual([...container.querySelectorAll('[data-quota-engine]')].map(n => n.getAttribute('data-quota-engine')), ['codex_sdk', 'antigravity'])
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('shared ChatInput exposes the unified quota button for session, task creation, and task detail while skipping share projects', async () => {
+  const { window } = installDomEnvironment()
+  const { default: ChatInput } = await import('../src/components/ChatInput')
+  const { engineApi } = await import('../src/api/client')
+  const originalQuotas = engineApi.quotas
+  const fetched: Array<[string, boolean]> = []
+  engineApi.quotas = async (project = '', refresh = false) => {
+    fetched.push([project, refresh])
+    return {
+      engines: [
+        { engine_id: 'codex_sdk', supported: true, status: 'ok', quota: { engine_id: 'codex_sdk', primary: { remaining_percent: 78, used_percent: 22 } } },
+        { engine_id: 'antigravity', supported: true, status: 'ok', quota: { engine_id: 'antigravity', primary: { remaining_percent: 65, used_percent: 35 } } },
+      ],
+      cached: false, collected_at: 1, expires_at: 301,
+    }
+  }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    // 1. Task creation composer (projectId only, no sessionId/taskId)
+    await act(async () => root.render(<I18nProvider><ChatInput value="" onChange={() => {}} onSend={() => {}} projectId="proj-create" /></I18nProvider>))
+    assert.ok(container.querySelector('.chat-input-quota') !== null)
+    // 2. Task detail composer (projectId + taskId + selected step engine)
+    await act(async () => root.render(<I18nProvider><ChatInput value="" onChange={() => {}} onSend={() => {}} projectId="proj-detail" taskId="task-1" skillEngine="antigravity" /></I18nProvider>))
+    assert.ok(container.querySelector('.chat-input-quota') !== null)
+    assert.match(container.querySelector('.engine-quota-trigger')?.textContent || '', /65%/)
+    // 3. Shared task composer must not query host quotas
+    const countBeforeShare = fetched.length
+    await act(async () => root.render(<I18nProvider><ChatInput value="" onChange={() => {}} onSend={() => {}} projectId="share:tok-1" taskId="task-1" /></I18nProvider>))
+    assert.equal(fetched.length, countBeforeShare)
+    assert.ok(container.querySelector('.chat-input-quota') === null)
+  } finally {
+    engineApi.quotas = originalQuotas
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

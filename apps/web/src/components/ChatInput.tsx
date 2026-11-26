@@ -1282,7 +1282,17 @@ function ChatInput({
             </button>
           )}
           <div className="chat-input-toolbar-spacer" />
-          <ChatInputUsage context={context} quota={quota} onRefreshQuota={onRefreshQuota} quotaRefreshing={quotaRefreshing} compact={isCompact} />
+          <ChatInputUsage
+            managed={quota === undefined && !(projectId || imageAttach?.projectId || config?.projectId || '').startsWith('share:')}
+            projectId={projectId || imageAttach?.projectId || config?.projectId}
+            selectedEngine={effectiveEngine}
+            conversationKey={sessionId || taskId || ''}
+            context={context}
+            quota={quota}
+            onRefreshQuota={onRefreshQuota}
+            quotaRefreshing={quotaRefreshing}
+            compact={isCompact}
+          />
           {config && (
             <div className="chat-input-config-anchor">
               <button

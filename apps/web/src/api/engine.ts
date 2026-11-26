@@ -6,11 +6,18 @@ import { browserActorHeaders } from '../utils/browserActor'
 import { workspaceCatalogPath } from './workspaceScope'
 import type { CoordinatorEngineSummary, EngineQuota } from './task'
 
-type QuotaResult = {
+export type QuotaResult = {
+  name?: string
   engine_id: string
   supported: boolean
   status?: 'ok' | 'unsupported' | 'unauthenticated' | 'unavailable'
   quota: EngineQuota | null
+}
+export interface UnifiedQuotaResult {
+  engines: QuotaResult[]
+  cached: boolean
+  collected_at: number
+  expires_at: number
 }
 const quotaCache = new Map<string, { expires: number; result: QuotaResult }>()
 
@@ -550,6 +557,15 @@ export const engineApi = {
     request<EngineInstallResult>(`/engine/${encodeURIComponent(engineId)}/update`, {
       method: 'POST',
     }),
+  // The daemon owns the TTL. Every entry/re-entry reaches its authorization boundary.
+  quotas: (projectId = '', refresh = false): Promise<UnifiedQuotaResult> => {
+    const scope = typeof window === 'undefined' ? '' : window.location.origin + gatewayWorkspacePath()
+    const key = JSON.stringify([scope, browserActorHeaders(), projectId, refresh])
+    const query = new URLSearchParams()
+    if (projectId) query.set('project_id', projectId)
+    if (refresh) query.set('refresh', '1')
+    return singleFlight(`engine/quotas::${key}`, () => request<UnifiedQuotaResult>(`/engine/quota${query.size ? `?${query}` : ''}`))
+  },
   quota: (engineId: string, projectId = '', refresh = false): Promise<QuotaResult> => {
     const scope = typeof window === 'undefined' ? '' : window.location.origin + gatewayWorkspacePath()
     const key = JSON.stringify([scope, engineId, projectId])
