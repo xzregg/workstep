@@ -4,6 +4,7 @@ import {digitalBrowserApi,type DigitalBrowserStatus} from '../../api/digitalPers
 import {useI18n} from '../../i18n'
 import Button from '../Button'
 import Spinner from '../Spinner'
+import NativeCalendarSettings from '../native-calendar/NativeCalendarSettings'
 import './DigitalPersonOperations.css'
 
 export default function DigitalPersonOperations(){
@@ -39,6 +40,7 @@ export default function DigitalPersonOperations(){
  },[data])
  const installing=Boolean(data?.installing)
  return <div ref={container} className="digital-person-operations">
+  <NativeCalendarSettings/>
   <div className="digital-person-operation-heading settings-heading-row"><h3>{t('digitalPerson.browserControl')}</h3>
    <Button variant="ghost" data-scan-browser disabled={busy||loading} loading={loading} onClick={()=>refresh(n=>n+1)}>{t('digitalPerson.browserScan')}</Button>
   </div>

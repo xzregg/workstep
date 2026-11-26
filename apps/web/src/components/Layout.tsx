@@ -45,6 +45,7 @@ import GatewayConnectionStatus from './GatewayConnectionStatus'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
 import LayoutOnboardingActions from './LayoutOnboardingActions'
 import DigitalPersonDesktopBridge from './digital-person/DigitalPersonDesktopBridge'
+import NativeCalendarControl from './native-calendar/NativeCalendarControl'
 import WorkspaceNavigationActions, { WORKSPACE_TOOL_RAIL_WIDTH } from './WorkspaceNavigationActions'
 import DigitalPersonSidebarEntry from './digital-person/DigitalPersonSidebarEntry'
 import { useCompactLayout } from '../hooks/useCompactLayout'
@@ -1281,6 +1282,7 @@ export default function Layout({ onSelectProject, children }: Props) {
 
       <RuntimeDiagnosticsControl />
       <DigitalPersonDesktopBridge />
+      <NativeCalendarControl />
       <DigitalPersonProactiveSpeech />
       <LayoutOnboardingActions
         onOpenSettings={openOnboardingSettings}

@@ -1,5 +1,5 @@
 import { useProjectProviders } from '../hooks/useProjectProviders'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { randomUuid } from '../utils/uuid'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import Button from './Button'
@@ -41,7 +41,13 @@ import { applyWorkflowPatch } from '../utils/workflowPatch'
    parent can render/apply it to a canvas preview.
    ══════════════════════════════════════════ */
 
+export interface AiFlowChatHandle {
+  hasContent: () => boolean
+  discard: () => Promise<void>
+}
+
 export interface AiFlowChatProps {
+  ref?: Ref<AiFlowChatHandle>
   projectId: string
   /** Called with the steps ({nodes, connections}) of each validated proposal. */
   onProposal?: (steps: any, proposal?: GenProposalCard) => unknown
@@ -69,6 +75,7 @@ export interface AiFlowChatProps {
 const EMPTY_PROPOSALS: GenProposalCard[] = []
 
 export default function AiFlowChat({
+  ref,
   projectId,
   onProposal,
   onPreview,
@@ -84,6 +91,9 @@ export default function AiFlowChat({
   const { t, locale } = useI18n()
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [input, setInput] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const pendingSubmission = useRef<Promise<void> | null>(null)
+  const activeSessionId = useRef<string | null>(null)
   const [sendError, setSendError] = useState('')
   const [stopping, setStopping] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -138,9 +148,9 @@ export default function AiFlowChat({
   }, [projectId, workflowId])
 
   useEffect(() => {
-    onBusyChange?.(running)
+    onBusyChange?.(running || submitting)
     if (!running) setStopping(false)
-  }, [running, onBusyChange])
+  }, [running, submitting, onBusyChange])
 
   // A fresh proposals batch resets the "applied" highlight.
   useEffect(() => {
@@ -217,7 +227,7 @@ export default function AiFlowChat({
 
   const send = useCallback(async (contentOverride?: string) => {
     const content = (contentOverride ?? input).trim()
-    if (!content || (running && contentOverride === undefined)) return false
+    if (!content || pendingSubmission.current || (running && contentOverride === undefined)) return false
     setSendError('')
     let sid = sessionId
     if (!sid) {
@@ -225,6 +235,10 @@ export default function AiFlowChat({
       useWorkflowGenStore.getState().newSession(sid)
       setSessionId(sid)
     }
+    activeSessionId.current = sid
+    setSubmitting(true)
+    let submissionDone!: () => void
+    pendingSubmission.current = new Promise<void>((resolve) => { submissionDone = resolve })
     const optimisticId = useWorkflowGenStore.getState().addUserMessage(sid, content)
     setInput('')
     resetEnhance()
@@ -271,6 +285,7 @@ export default function AiFlowChat({
           }))
           store.resetSession(sid)
         }
+        activeSessionId.current = accepted.session_id
         setSessionId(accepted.session_id)
       }
       useWorkflowGenStore.getState().acceptAssistantReply(accepted.session_id || sid, accepted.assistant_message_id, {
@@ -282,6 +297,10 @@ export default function AiFlowChat({
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('aiFlow.sendFailed'))
       return false
+    } finally {
+      setSubmitting(false)
+      pendingSubmission.current = null
+      submissionDone()
     }
   }, [input, running, sessionId, projectId, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t, resetEnhance, assistantConfig])
 
@@ -355,6 +374,24 @@ export default function AiFlowChat({
       setSendError(reason instanceof Error ? reason.message : t('aiFlow.stopFailed'))
     }
   }, [sessionId, stopping, projectId, t])
+
+  useImperativeHandle(ref, () => ({
+    hasContent: () => Boolean(input.trim() || messages.length || pendingSubmission.current),
+    discard: async () => {
+      // Submission may still be awaiting its accepted session/turn response.
+      await pendingSubmission.current
+      const sid = activeSessionId.current || sessionId
+      if (!sid) return
+      const store = useWorkflowGenStore.getState()
+      if (store.sessions[sid]?.running) {
+        const result = await workflowGenApi.stop(sid, projectId)
+        if (!result.stopped && useWorkflowGenStore.getState().sessions[sid]?.running) {
+          throw new Error(t('aiFlow.stopFailed'))
+        }
+      }
+      useWorkflowGenStore.getState().resetSession(sid)
+    },
+  }))
 
   return (
     <>

@@ -1,6 +1,6 @@
 # 系统日历接入技术方案
 
-状态：待确认、未实现。现有页面、CLI、聊天工具操作 WorkStep 内部日历；本方案定义原生接入边界，不表示已有系统日历能力。
+状态：统一协议、CLI、前端授权和安卓／macOS 适配代码已实现；真实系统权限、日历读写、通知及签名安装包仍待验收。现行职责与验证边界见 [系统日历](../docs/native-calendar.md)。下文保留设计约束，不能将代码接入等同于真机验收完成。
 
 ## 决策
 
@@ -47,7 +47,7 @@ sequenceDiagram
 
 现有接缝：桌面 `apps/desktop/src/preload.cjs` 已通过 contextBridge + IPC 暴露原生能力；安卓 `MainActivity.java` 已使用限定来源和主框架的 `WebViewCompat.addWebMessageListener`。日历各增加窄接口 `calendar.status/requestPermission/listCalendars/execute/openSettings`，不开放任意代码执行。前端桥接执行器挂载在已认证应用外壳，不依赖数字中枢页面或日历弹窗是否打开。
 
-现有 `/ws` 是可广播的业务事件流，不能直接发布包含日程内容、任何客户端收到就执行的 CUSTOM 事件。新增宿主范围 `/ws/device-actions`，只接受已登记且能证明安装身份的原生客户端；复用已有登录／网关传输认证，再绑定安装设备凭证。客户端自报的 device_id 不能构成授权。
+现有 `/ws` 是可广播的业务事件流，不能直接发布包含日程内容、任何客户端收到就执行的 CUSTOM 事件。采用宿主范围 `/ws?calendar_device=1` 专用模式（复用现有 Gateway 的 `/ws` 路由及查询串转发），只接受已登记且能证明安装身份的原生客户端；复用已有登录／网关传输认证，再绑定安装设备凭证。客户端自报的 device_id 不能构成授权。
 
 WebSocket 只发操作就绪、授权状态、进度变化等短通知；操作领取、结果提交和恢复通过已认证 API。设备内容不经过全局 EventBus 广播，也不混入会话历史。断线后按持久化操作恢复，不依赖 WebSocket 消息必达。网关须同步开放专用宿主路径，项目分享和公开分享不可访问。
 
@@ -88,7 +88,7 @@ CalendarHostBridge 的 execute 是统一入口，负责子项串行执行、原�
 digital-hub calendar targets --json
 digital-hub calendar create-batch --target <target_id> --start-date 2030-01-01 --end-date 2030-01-30 --time 08:00 --timezone Asia/Shanghai --duration-minutes 30 --content-file <markdown-file> --request-id <key> --json
 digital-hub calendar list --target <target_id> --since <ISO8601> --before <ISO8601> --json
-digital-hub calendar delete-occurrences --target <target_id> --plan <plan_id> --dates 2030-01-05,2030-01-12,2030-01-19 --revision <revision> --request-id <key> --json
+digital-hub calendar delete-occurrences --target <target_id> --plan <plan_id> --dates 2030-01-05,2030-01-12,2030-01-19 --request-id <key> --json
 digital-hub calendar operation get --id <operation_id> --json
 digital-hub calendar operation cancel --id <operation_id> --json
 ```
@@ -141,7 +141,7 @@ digital-hub calendar operation cancel --id <operation_id> --json
 
 ## 指定某几天删除
 
-用户说“删掉这个计划 1 月 5 日、12 日和 19 日”，工具先查询计划及具体日期，再提交 `delete_occurrences`，包含计划标识、日期和当前版本。daemon 找到三条关联，原生侧核对当前系统记录后逐项删除，只更新对应子项，其他 27 天保持原样。
+用户说“删掉这个计划 1 月 5 日、12 日和 19 日”，工具先查询计划及具体日期，再提交 `delete_occurrences`，包含计划标识和日期，daemon 读取各条当前版本并找到三条关联，原生侧核对当前系统记录后逐项删除，只更新对应子项，其他 27 天保持原样。
 
 如果是不同请求创建的同名计划，不能只凭“最近一条”或标题猜测，需展示可区分的计划让用户选。若创建前已指定排除日期，则生成计划时直接排除，不先新增再删除。
 

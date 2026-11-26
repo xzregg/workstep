@@ -1,6 +1,8 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const zhTW: Messages = {
+  engineLogin: zhCN.engineLogin,
+  nativeCalendar: zhCN.nativeCalendar,
   digitalCalendar: zhCN.digitalCalendar,
   voiceprint: zhCN.voiceprint,
   digitalPersonUi: {
@@ -1630,8 +1632,8 @@ export const zhTW: Messages = {
     dragResizeComposer: '拖動調整輸入區高度，雙擊恢復預設',
     createFlow: '建立流程',
     dragResizeModal: '拖動調整彈框大小',
-    abandonGenerating: 'AI 正在生成流程，確定放棄並關閉？',
-    abandonPreview: '流程預覽有未儲存的改動，確定放棄並關閉？',
+    abandonGenerating: 'AI 正在產生流程，確定停止並放棄草稿？',
+    abandonPreview: '確定放棄流程草稿和助手對話？',
     discardChanges: '放棄更改',
     aiOverwritePreviewTitle: 'AI 提案將覆蓋預覽',
     aiOverwritePreviewMessage: '新生成的流程提案將替換當前預覽中的手動改動。確定應用？',

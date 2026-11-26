@@ -242,6 +242,7 @@ def get_available_engines() -> list[dict]:
                 "permission_config_options": instance.permission_config_options(),
                 "supports_service_tier": instance.supports_service_tier,
                 "supports_quota": instance.supports_quota,
+                "supports_login": instance.SUPPORTS_LOGIN,
                 "supports_workstep_tools": caps.supports_workstep_tools,
                 "supports_mcp": caps.supports_mcp,
                 "skill_policy": instance.skill_policy.value,
@@ -267,6 +268,7 @@ def get_available_engines() -> list[dict]:
                 "permission_config_options": target().permission_config_options() if target else [],
                 "supports_service_tier": bool(target and target().supports_service_tier),
                 "supports_quota": bool(target and target().supports_quota),
+                "supports_login": bool(target and target.SUPPORTS_LOGIN),
                 "config": _engine_config_payload(target) if target else None,
                 "supports_provider": bool(
                     target and target.supported_provider_protocols()

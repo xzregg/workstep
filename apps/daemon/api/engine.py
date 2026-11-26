@@ -31,6 +31,9 @@ from services.project import project_manager
 
 router = APIRouter(prefix="/api/engine")
 
+from api.engine_login import router as login_router
+router.include_router(login_router)
+
 
 class EngineTestRequest(BaseModel):
     engine_id: str = Field(min_length=1)

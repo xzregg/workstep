@@ -9,6 +9,7 @@ import ExecutionDefaultSettings from './ExecutionDefaultSettings'
 import CustomEngineOnboardingButton from './CustomEngineOnboardingButton'
 import CustomEngineControls from './CustomEngineControls'
 import EngineRuntimeControl from './EngineRuntimeControl'
+import EngineLoginControl from './EngineLoginControl'
 import { engineApi, fetchEngineModels, invalidateEngineModels, type EngineInfo, type EngineModel, type EngineTestResult } from '../api/client'
 import { ENGINE_COLORS, engineLabel, engineDescription, sortExecutionEngines } from '../engineMeta'
 import { useI18n } from '../i18n'
@@ -557,6 +558,13 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                   </div>
                   </div>
                   <div className="engine-settings-card-details" hidden={!isExpanded}>
+                  {engine.installed && engine.supports_login && <EngineLoginControl engineId={engine.id}
+                    active={!hidden && isExpanded} onAuthenticated={async () => {
+                      clearEngineModelCache(engine.id)
+                      await loadEngines(false)
+                      if (isExpanded) await loadEngineModels(engine.id, true)
+                      onConfigurationChanged?.()
+                    }} />}
                   {engine.config && (
                     <EngineConfigForm
                       ref={(el) => { engineFormRefs.current[engine.id] = el }}

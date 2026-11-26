@@ -93,14 +93,12 @@ def test_history_only_follows_exact_recorded_links():
     assert notification_audit(new, [])['delegation_notifications']==[{'state':'unknown','reason':'receipt_unavailable'}]
 
 
-def test_model_silent_reason_is_explicit_and_safe_not_guessed_from_summary():
+def test_legacy_model_reason_is_ignored_while_program_delivery_reasons_remain():
     from services.digital_person_notifications import notification_projection
-    old = {'status':'silent','summary':'请连接手机','notification':{'state':'silent','reason':'model_silent'}}
-    assert 'model_reason' not in notification_projection(old)
-    new = {**old, 'notification':{**old['notification'], 'model_reason':'用户已明确暂停，等待回复。联系 owner@example.com，token=private-secret https://private.invalid/path'}}
-    result = notification_projection(new)
-    assert '用户已明确暂停，等待回复。' in result['model_reason']
-    assert all(secret not in result['model_reason'] for secret in ['owner@example.com','private-secret','private.invalid'])
+    for state, reason in [('silent', 'model_silent'), ('delivery_failed', 'delivery_failed'), ('deferred', 'quiet_hours')]:
+        run = {'status': state, 'model_notification_reason': 'redundant model explanation',
+               'notification': {'state': state, 'reason': reason, 'model_reason': 'legacy explanation'}}
+        assert notification_projection(run) == {'state': state, 'reason': reason}
 
 
 @pytest.mark.parametrize('quiet,with_summary', [(False,False),(True,False),(False,True),(True,True)])
@@ -167,7 +165,7 @@ async def test_automatic_followup_uses_its_actual_origin_and_never_copies_to_mai
     assert not await service.projects.run_db(home.id,lambda _:ChatMessage.select().where(ChatMessage.session==main,ChatMessage.id!='main-busy').exists())
 
 
-async def test_silent_model_reason_survives_actual_assessment_and_api_projection(runtime, monkeypatch):
+async def test_silent_model_reason_is_not_saved_or_exposed_by_actual_assessment(runtime, monkeypatch):
     service, _, _, _, _ = await seed(runtime)
     await service.mutate(lambda state:state['delegations'][0].update(followup_state='pending'))
     reason = '这项阻塞已向用户报告，等待授权后再继续。'
@@ -177,8 +175,9 @@ async def test_silent_model_reason_survives_actual_assessment_and_api_projection
     monkeypatch.setattr(service,'_decide',decide)
     run=await service.check()
     detail=await service.run_detail(run['id'])
-    assert detail['notification']['model_reason']==reason
-    assert (await service.activity_records())['runs'][0]['notification']['model_reason']==reason
+    assert 'model_notification_reason' not in run
+    assert 'model_reason' not in detail['notification']
+    assert 'model_reason' not in (await service.activity_records())['runs'][0]['notification']
 
 
 @pytest.mark.parametrize('action', ['notify','needs_user','complete'])

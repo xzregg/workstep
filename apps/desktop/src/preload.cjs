@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('workstepDesktop', {
+  calendar: { invoke: (action, value) => ipcRenderer.invoke('workstep:calendar', action, value) },
   digitalPerson: {
     sync: state => ipcRenderer.invoke('workstep:digital-person:sync', state),
     onOpenChat: callback => {

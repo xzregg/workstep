@@ -337,6 +337,7 @@ async def _application_lifespan(app: FastAPI):
         from services.action_runtime import action_runtime
         from engines.codex_sdk_clients import close_codex_clients
         from engines.core.session_pool import close_session_pools
+        from services.engine_login import login_manager
         from services.shutdown import run_shutdown, close_deepseek_pool
 
         app.state.local_cli_runtime = None
@@ -352,6 +353,7 @@ async def _application_lifespan(app: FastAPI):
             ("gateway", gateway_client.close),
             ("git", git_service.close),
             ("engine_runtime", runtime_manager.shutdown),
+            ("engine_login", login_manager.shutdown),
             ("custom_engines", custom_engine_manager.shutdown),
         ]
         for name, module in (

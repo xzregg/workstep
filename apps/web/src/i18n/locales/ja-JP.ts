@@ -1,6 +1,8 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const jaJP: Messages = {
+  engineLogin: zhCN.engineLogin,
+  nativeCalendar: zhCN.nativeCalendar,
   digitalCalendar: zhCN.digitalCalendar,
   voiceprint: zhCN.voiceprint,
   digitalPersonUi: zhCN.digitalPersonUi,
@@ -1623,8 +1625,8 @@ export const jaJP: Messages = {
     dragResizeComposer: 'ドラッグして入力領域の高さを調整、ダブルクリックでリセット',
     createFlow: 'フローを作成',
     dragResizeModal: 'ドラッグしてダイアログのサイズを調整',
-    abandonGenerating: 'AI がフローを生成中です。破棄して閉じますか？',
-    abandonPreview: 'フロープレビューに未保存の変更があります。破棄して閉じますか？',
+    abandonGenerating: '生成を停止して下書きを破棄しますか？',
+    abandonPreview: 'フローの下書きとアシスタントの会話を破棄しますか？',
     discardChanges: '変更を破棄',
     aiOverwritePreviewTitle: 'AI 提案がプレビューを上書きします',
     aiOverwritePreviewMessage: '新しく生成されたフロー提案が、現在のプレビューの手動変更を置き換えます。適用しますか？',

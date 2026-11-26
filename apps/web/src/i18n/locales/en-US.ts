@@ -1,6 +1,15 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const enUS: Messages = {
+  engineLogin: {
+    title: 'Account sign-in', start: 'Sign in', again: 'Sign in again', cancel: 'Cancel sign-in',
+    loading: 'Reading sign-in status…', starting: 'Preparing sign-in…', waiting: 'Waiting for authorization code',
+    submitting: 'Verifying authorization…', succeeded: 'Signed in', cancelled: 'Sign-in cancelled',
+    openBrowser: 'Authorize in browser', code: 'Authorization code', codePlaceholder: 'Paste the authorization code or full callback URL',
+    submit: 'Complete sign-in', readFailed: 'Unable to read sign-in status. Try again.',
+    failed: 'Sign-in did not complete. Sign in again.', timeout: 'Sign-in expired. Sign in again.',
+  },
+  nativeCalendar: zhCN.nativeCalendar,
   digitalCalendar: zhCN.digitalCalendar,
   voiceprint: zhCN.voiceprint,
   digitalPersonUi: {
@@ -1655,8 +1664,8 @@ export const enUS: Messages = {
     dragResizeComposer: 'Drag to resize the input area; double-click to reset',
     createFlow: 'Create flow',
     dragResizeModal: 'Drag to resize the dialog',
-    abandonGenerating: 'AI is still generating the flow. Discard and close?',
-    abandonPreview: 'The flow preview has unsaved changes. Discard and close?',
+    abandonGenerating: 'Stop generation and discard this draft?',
+    abandonPreview: 'Discard this workflow draft and assistant conversation?',
     discardChanges: 'Discard changes',
     aiOverwritePreviewTitle: 'AI proposal will overwrite preview',
     aiOverwritePreviewMessage: 'The new flow proposal will replace manual edits in the preview. Apply?',

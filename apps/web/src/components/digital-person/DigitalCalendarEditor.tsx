@@ -1,4 +1,4 @@
-import {useLayoutEffect,useRef,useState,type FormEvent} from 'react'
+import {useEffect,useLayoutEffect,useRef,useState,type FormEvent} from 'react'
 import {createPortal} from 'react-dom'
 import {digitalCalendarApi,type CalendarEvent} from '../../api/digitalCalendar'
 import {localizeErrorDisplay,useI18n} from '../../i18n'
@@ -10,6 +10,8 @@ import DateTimePicker from '../DateTimePicker'
 import ConfirmDialog from '../ConfirmDialog'
 import Button from '../Button'
 import Icon from '../Icon'
+import {useNativeCalendarStore,openNativeCalendar} from '../../stores/nativeCalendarStore'
+import {nativeCalendarApi} from '../../api/nativeCalendar'
 
 function localCalendarTime(date:Date){
  const pad=(n:number)=>String(n).padStart(2,'0')
@@ -19,6 +21,9 @@ function localCalendarTime(date:Date){
 export default function DigitalCalendarEditor({date,event,projectId,onClose,onSaved}:{date:Date;event?:CalendarEvent;projectId:string;onClose:()=>void;onSaved:()=>void}){
  const {t}=useI18n(),compact=useCompactLayout(),panel=useRef<HTMLDivElement>(null),initialFocus=useRef<HTMLElement>(null)
  const [content,setContent]=useState(event?.content??'')
+ const native=useNativeCalendarStore()
+ const target=event?(event.target_id??'internal'):(native.syncEnabled?native.defaultTarget:'internal')
+ useEffect(()=>{void useNativeCalendarStore.getState().refresh().catch(()=>{})},[])
  const [time,setTime]=useState(()=>event?localCalendarTime(new Date(event.starts_at)):localCalendarTime(date))
  const [reminder,setReminder]=useState(event?.reminder_minutes??0),[saving,setSaving]=useState(false),[error,setError]=useState(''),[discard,setDiscard]=useState(false)
  const request=useRef({id:crypto.randomUUID(),signature:''}),inFlight=useRef(false)
@@ -31,13 +36,18 @@ export default function DigitalCalendarEditor({date,event,projectId,onClose,onSa
  const save=async(e?:FormEvent)=>{
   e?.preventDefault()
   if(!valid||inFlight.current)return
+  if(!event&&native.syncEnabled&&target==='internal'){openNativeCalendar();return}
   inFlight.current=true;setSaving(true);setError('')
   const draft={content,starts_at:new Date(time).toISOString(),timezone_name:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC',reminder_minutes:reminder}
-  const signature=JSON.stringify(draft)
+  const signature=JSON.stringify({draft,target})
   if(request.current.signature&&request.current.signature!==signature)request.current.id=crypto.randomUUID()
   request.current.signature=signature
   try{
-   if(event)await digitalCalendarApi.update(event.id,draft,event.revision)
+   if(target!=='internal'){
+    native.observe(await nativeCalendarApi.submit({action:event?'update':'create',target_id:target,request_id:request.current.id,
+     ...(event?{event_id:event.id,revision:event.revision,draft,duration_minutes:event.duration_minutes??30}:draft)}))
+   }
+   else if(event)await digitalCalendarApi.update(event.id,draft,event.revision)
    else await digitalCalendarApi.create(draft,request.current.id)
    onSaved();onClose()
   }catch(reason){setError(localizeErrorDisplay(reason instanceof Error?reason.message:String(reason)))}

@@ -1,6 +1,7 @@
 """Admission rules shared by extraction, validation feedback and evaluation."""
 
 NOTIFICATION_RULES = ("Write notification summaries (top-level and delegation actions) in the companion's configured identity, personality and tone, speaking directly to the user in first person. "
+                      "Do not describe yourself or the user as a third party. Name the task title or concrete subject in every notification; do not rely on another notice or vague references such as 'two changes'. "
                       "Follow existing reply agreements, including length and format; avoid repetition and unnecessary detail. "
                       "Otherwise, in 1-2 short sentences, name the user's concrete request, its new status and any needed decision. "
                       "Keep paths, logs and rule citations internal unless essential. Distinguish reported progress from verified results; "
@@ -64,7 +65,7 @@ def repair_instruction(error, context):
             'Finish the response with the literal closing tag </json> after the JSON object. '
             'Required top-level fields: decision (silent or notify), summary (string), source_ids (array of strings, [] is valid). '
             'Top-level summary must be empty when silent; use nonempty notification text when notify. '
-            'When silent, omit notification_reason. '
+            'Do not output notification_reason; delivery failures are recorded by the program. '
             + NOTIFICATION_RULES + ' '
             'These fields remain required for historical or memory-only batches; memories is an optional separate array. '
             'Allowed current-batch source_ids: '+json.dumps(allowed)+'. '

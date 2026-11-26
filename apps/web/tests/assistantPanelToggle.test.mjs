@@ -4,7 +4,6 @@ import test from 'node:test'
 
 const taskListSource = await readFile(new URL('../src/pages/TaskList.tsx', import.meta.url), 'utf8')
 const taskCreateSource = await readFile(new URL('../src/components/TaskCreatePanel.tsx', import.meta.url), 'utf8')
-const workflowCreateDialogSource = await readFile(new URL('../src/components/WorkflowCreateDialog.tsx', import.meta.url), 'utf8')
 const scheduleSource = await readFile(new URL('../src/pages/SchedulePage.tsx', import.meta.url), 'utf8')
 
 test('task assistant button toggles its embedded conversation', () => {
@@ -17,17 +16,6 @@ test('task assistant button toggles its embedded conversation', () => {
   assert.doesNotMatch(
     taskCreateSource,
     /const handleStartTaskAi[\s\S]*?if \(!newTitle\.trim\(\)\)[\s\S]*?setTaskAiOpen\(true\)/,
-  )
-})
-
-test('new-workflow assistant button toggles its embedded conversation', () => {
-  assert.match(workflowCreateDialogSource, /aria-expanded=\{aiOpen\}/)
-  assert.match(workflowCreateDialogSource, /const \[aiOpen, setAiOpen\] = useState\(true\)/)
-  assert.match(workflowCreateDialogSource, /const reset[\s\S]*?setAiOpen\(true\)/)
-  assert.match(workflowCreateDialogSource, /if \(aiOpen\) \{[\s\S]*?setAiOpen\(false\)[\s\S]*?return/)
-  assert.doesNotMatch(
-    workflowCreateDialogSource,
-    /const toggleAi[\s\S]*?if \(!name\.trim\(\)\)[\s\S]*?setAiOpen\(true\)/,
   )
 })
 

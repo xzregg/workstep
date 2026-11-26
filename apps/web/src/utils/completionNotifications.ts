@@ -74,6 +74,7 @@ export class CompletionDeduplicator {
 
 type NativeBridge = { postMessage: (message: string) => void }
 type DesktopBridge = {
+  calendar?: {invoke:(action:string,value:Record<string,unknown>)=>Promise<unknown>}
   feedback?: { open: () => Promise<void> }
   files?: {
     action: (path: string, action: 'open' | 'reveal' | 'save', opener?: string) => Promise<{ path?: string; canceled?: boolean }>

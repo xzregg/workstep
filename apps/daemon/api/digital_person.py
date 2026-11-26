@@ -19,6 +19,8 @@ router = APIRouter(prefix="/api/digital-person", dependencies=[Depends(authorize
 from api.face_recognition import router as face_router
 router.include_router(face_router)
 from api.digital_calendar import router as calendar_router
+from api.native_calendar import router as native_calendar_router
+router.include_router(native_calendar_router)
 router.include_router(calendar_router)
 
 

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.workstep.desktop.calendar</string>
+  <key>CFBundleName</key><string>WorkStep Calendar</string>
+  <key>NSCalendarsUsageDescription</key><string>WorkStep 在你授权后管理通过聊天或页面安排的日程。</string>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>WorkStep 需要查询、创建、修改和删除你安排的系统日程。</string>
+</dict></plist>

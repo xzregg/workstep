@@ -52,3 +52,47 @@ Native tools: `workstep_list_digital_hub_calendar`,
 `workstep_delete_digital_hub_calendar_event`,
 `workstep_remind_digital_hub_calendar_event` (optional `early:true`). Mutation
 calls use `confirm:"yes"`.
+
+## System calendars
+
+First list `digital-hub calendar targets --json`; choose a returned target ID,
+not a guessed device/calendar ID. Native execution currently supports the
+Android and macOS packages. Permission, a writable calendar and an online app
+are required. Ordinary browsers cannot execute native operations themselves.
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-hub calendar targets --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-hub calendar create-batch --target <target-id> --start-date 2030-01-01 --end-date 2030-01-30 --time 08:00 --timezone Asia/Shanghai --duration-minutes 30 --content-file <markdown-file> --request-id <stable-key> --project <current-project> --session <current-session> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-hub calendar delete-occurrences --target <target-id> --plan <plan-id> --dates 2030-01-05,2030-01-12 --request-id <stable-key> --project <current-project> --session <current-session> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-hub calendar operation get --id <operation-id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-hub calendar operation resume --id <operation-id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli digital-hub calendar operation cancel --id <operation-id> --json
+```
+
+Single create/update/get/delete/list also accept `--target`. Creation reuses
+`--idempotency-key`; update accepts `--request-id`. Native list/get are query
+operations: read their operation result, including item drafts and revisions.
+Creating a date range makes independent events with one plan_id; it is not an
+unbounded recurring series. At most 100 items and 1 MiB normalized payload.
+
+Always pass current `--project` and `--session` on chat-originated native
+mutations so final receipts return to that conversation. Both IDs are required
+together; obtain them from runtime context, never guess them.
+
+Only `succeeded` and each successfully verified item are confirmed complete.
+queued, executing, needs_permission, needs_calendar, needs_device and unknown
+are not success. Partial results must report actual counts. Native deletion
+failures leave the event visible; it can still alert in the system calendar.
+Do not delete its internal mirror to pretend the system deletion succeeded.
+Resume only unfinished items. Unknown creation reconciles by its original
+marker; never create it again under a new key. Cancel stops unexecuted items,
+not already written events. Infinite recurring series are not supported yet.
+
+Native tool equivalents: `workstep_list_calendar_targets`,
+`workstep_submit_calendar_operation`, `workstep_get_calendar_operation`,
+`workstep_resume_calendar_operation`, `workstep_cancel_calendar_operation`.
+Submit uses action=create/query/update/delete and target_id/request_id;
+optional origin_project_id/origin_session_id return results to the source.
+System calendars own their scheduled alerts. For proactive advance notices,
+first query via the online target and then use the existing early reminder tool;
+stale/offline mirrors are not sufficient.

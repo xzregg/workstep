@@ -22,7 +22,7 @@ def test_silent_summary_can_be_empty_in_primary_and_repair_contracts():
     for prompt in (instruction(DigitalPersonProfile()), repair_instruction('invalid evidence', {})):
         assert 'summary must be empty when silent' in prompt
         assert 'nonempty notification text when notify' in prompt
-        assert 'When silent, omit notification_reason' in prompt
+        assert 'Do not output notification_reason' in prompt
         assert 'include notification_reason' not in prompt
     result = parse_check_result('<json>{"decision":"silent","summary":"","source_ids":[]}</json>')
     assert result['summary'] == ''
@@ -41,6 +41,9 @@ def test_notification_voice_applies_to_general_and_delegation_summaries_includin
     assert 'avoid repetition and unnecessary detail' in NOTIFICATION_RULES
     assert "user's concrete request" in NOTIFICATION_RULES
     assert 'reported progress from verified results' in NOTIFICATION_RULES
+    assert 'task title or concrete subject in every notification' in NOTIFICATION_RULES
+    assert 'do not rely on another notice' in NOTIFICATION_RULES
+    assert 'Do not describe yourself or the user as a third party' in NOTIFICATION_RULES
 
 
 def test_contact_timing_distinguishes_attempt_and_user_response():
@@ -203,3 +206,12 @@ def test_memory_skill_explains_literal_cross_language_retrieval():
                      'Translate general topic or relationship words',
                      'evidence-backed identity aliases'):
         assert contract in text
+
+
+def test_reflection_discards_model_notification_reason_for_both_decisions():
+    import json
+    from services.digital_person_runtime import parse_check_result
+    for decision in ('silent', 'notify'):
+        result = parse_check_result(json.dumps({'decision': decision, 'summary': 'Task update' if decision == 'notify' else '',
+                                               'source_ids': [], 'notification_reason': 'redundant model explanation'}))
+        assert 'notification_reason' not in result

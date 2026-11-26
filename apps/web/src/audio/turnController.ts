@@ -13,7 +13,7 @@ export interface TurnState {
 
 const CANDIDATE_SAMPLES = 4000
 const COMMIT_SAMPLES = 9600
-const PHONE_COMMIT_SAMPLES = 20480 // 1.28 seconds at 16 kHz
+const PHONE_COMMIT_SAMPLES = 28800 // 1.8 seconds at 16 kHz
 const VISUAL_HOLD_SAMPLES = 960
 
 /** Turns use the capture sample clock, including when worker results arrive late. */

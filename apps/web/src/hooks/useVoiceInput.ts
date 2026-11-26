@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
+import { createContext, useContext, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { speechApi, type SpeechResult, type SpeechStreaming } from '../api/speech'
 import type { TurnState } from '../audio/turnController'
 import { browserDiagnostics } from '../utils/browserDiagnostics'
 import { voiceCapture, pcmBase64, type VoiceCapture } from '../utils/voiceCapture'
 
 export type VoicePhase = 'idle' | 'requesting' | 'preparing' | 'recording' | 'finishing' | 'error'
+/** Applies to nested composers too, including React portals. */
+export const VoiceprintNoticesContext = createContext(true)
 function withDeadline<T>(work: Promise<T>, milliseconds: number, message: string, signal: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
     const cleanup = () => { clearTimeout(timer); signal.removeEventListener('abort', abort) }
@@ -20,9 +22,13 @@ interface Options {
   value: string; cursor: number; automatic?: boolean; showLevel?: boolean; reuseCaptureContext?: boolean; trackSpeechLevel?: boolean
   continuous?: boolean
   deliverSegments?: boolean
-  onInsert: (text: string, cursor: number) => void
+  voiceprintNotices?: boolean
+  recognitionContext?: () => string | undefined
+  onPreview?: (text: string, context?: string) => void
+  onInsert: (text: string, cursor: number, context?: string) => void
 }
 interface VoiceSegment {
+  context?: string
   frames: Int16Array[]
   samples: number
   hasSpeech: boolean
@@ -56,11 +62,17 @@ const INITIAL_PREVIEW = SAMPLE_RATE * 1.2
 const SPEECH_METER_MAX_AGE_MS = 160
 const VAD_ONLY_LEVEL = .12
 const RECORDING_LIMIT = 120 * SAMPLE_RATE
-const transcript = (r: Run) => (r.completedText ?? '') + r.text
+const transcript = (r: Run) => {
+  const left = r.completedText ?? '', right = r.text
+  const space = /[\p{Script=Latin}\p{N},，.。．!?！？;；:：]$/u.test(left) && /^[\p{Script=Latin}\p{N}]/u.test(right)
+  return left + (space ? ' ' : '') + right
+}
 const recognitionTurn = (r: Run) => r.segments ? r.segments[0]?.turn : r.turn
 const recognitionSamples = (r: Run) => r.segments ? r.segments[0]?.samples ?? 0 : (r.sentSamples ?? 0) + r.queued
 
 export function useVoiceInput(options: Options) {
+  const voiceprintNotices = useContext(VoiceprintNoticesContext) && options.voiceprintNotices !== false
+  const noticePolicy = useRef(voiceprintNotices); noticePolicy.current = voiceprintNotices
   const [mode, setMode] = useState(false)
   const [phase, setPhase] = useState<VoicePhase>('idle')
   const [text, setText] = useState('')
@@ -116,7 +128,7 @@ export function useVoiceInput(options: Options) {
   const commit = (r: Run) => {
     if (!r.segments) { insertTranscript(r); return }
 
-    if (r.deliverSegments) latest.current.onInsert(r.text, r.cursor)
+    if (r.deliverSegments) latest.current.onInsert(r.text, r.cursor, r.segments[0]?.context)
     else r.completedText = transcript(r)
     r.segments.shift()
     const next = r.segments[0]
@@ -149,7 +161,7 @@ export function useVoiceInput(options: Options) {
     if (preview && !final) {
       r.previewSamples = previewSamples
       // Slow CPUs refresh less often; never replay every queued hypothesis.
-      r.previewInterval = Math.max(SAMPLE_RATE * 2.4, requestMs * 32)
+      r.previewInterval = Math.max(SAMPLE_RATE * (r.segments?.[0]?.context ? .48 : 2.4), requestMs * 32)
     }
     const queuedMs = r.queued / 16
     if (requestMs >= 1000 || queuedMs >= 2000) {
@@ -158,9 +170,11 @@ export function useVoiceInput(options: Options) {
     if (candidateAt !== undefined && candidateAt !== recognitionTurn(r)?.lastVoice) return
     if (preview) r.text = result.text
     if (result.final) commit(r)
-    else if (preview) setText(transcript(r))
+    else if (preview) { setText(transcript(r)); latest.current.onPreview?.(r.text, r.segments?.[0]?.context) }
     if (result.speaker_status === 'matched') setNotice('')
-    else if (result.final && result.speaker_status) setNotice(`voiceprint.${result.speaker_status}`)
+    // Filter by result source, not an enumerated list of failure keys: new
+    // speaker statuses must remain silent in the hub too. Other notices/errors survive.
+    else if (result.final && result.speaker_status && noticePolicy.current) setNotice(`voiceprint.${result.speaker_status}`)
   }
   const pump = async (r: Run) => {
     if (r.pumping || r.draining || !r.id || !live(r)) return
@@ -177,7 +191,7 @@ export function useVoiceInput(options: Options) {
         const streamingBatch = r.phoneCall && r.streaming === 'native' ? PHONE_STREAM_BATCH : 8000
         const minimum = buffered ? r.maxFrameSamples : r.turn ? streamingBatch : 1
         const longPreview = r.streaming === 'segment' && (!turn || turn.recentSpeech)
-          && recognitionSamples(r) - (r.previewSamples ?? 0) >= (r.previewSamples === undefined ? INITIAL_PREVIEW : r.previewInterval!)
+          && recognitionSamples(r) - (r.previewSamples ?? 0) >= (r.previewSamples === undefined ? (r.segments?.[0]?.context ? SAMPLE_RATE * .32 : INITIAL_PREVIEW) : r.previewInterval!)
         if (!segmentComplete && !candidate && !longPreview && r.queued < minimum) break
         // Catch up with the latest audio in one request rather than replaying
         // every outdated half-second hypothesis after a slow decode.
@@ -282,6 +296,8 @@ export function useVoiceInput(options: Options) {
     // the head is waiting for its final response.
     const tail = segments.at(-1)!
     r.turn = turn
+    const context = latest.current.recognitionContext?.()
+    if (context) tail.context = context
     tail.frames.push(samples)
     tail.samples += samples.length
     tail.hasSpeech ||= turn.hasSpeech

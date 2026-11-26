@@ -349,6 +349,11 @@ function createWindow(url) {
     BrowserWindow, ipcMain, getMain: () => mainWindow,
     trusted: event => event.sender === window.webContents && isTrustedNavigation(event.senderFrame?.url, rootUrl),
   })
+  const calendarHost = require('./calendar-host.cjs').createCalendarHost({
+    ipcMain, app, shell,
+    trusted: event => event.sender === window.webContents && event.senderFrame === window.webContents.mainFrame && isTrustedNavigation(event.senderFrame?.url, rootUrl),
+  })
+  window.on('closed', () => calendarHost.dispose())
   window.on('closed', () => avatarWindow.dispose())
   captureRendererErrors(window.webContents, diagnostics, () => rootUrl)
   Menu.setApplicationMenu(Menu.buildFromTemplate([

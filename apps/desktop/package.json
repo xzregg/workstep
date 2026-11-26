@@ -82,7 +82,9 @@
     "mac": {
       "extendInfo": {
         "NSCameraUsageDescription": "WorkStep 使用摄像头在发送消息时提供当前画面。",
-        "NSMicrophoneUsageDescription": "WorkStep 使用麦克风将语音转换为消息草稿。"
+        "NSMicrophoneUsageDescription": "WorkStep 使用麦克风将语音转换为消息草稿。",
+        "NSCalendarsUsageDescription": "WorkStep 在你授权后创建、查询、修改和删除日程。",
+        "NSCalendarsFullAccessUsageDescription": "WorkStep 需要日历访问权限来管理你通过聊天或页面安排的日程。"
       },
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
@@ -94,7 +96,13 @@
         "dmg",
         "zip"
       ],
-      "artifactName": "WorkStep-macos-${arch}.${ext}"
+      "artifactName": "WorkStep-macos-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "build/calendar-helper",
+          "to": "calendar-helper"
+        }
+      ]
     },
     "win": {
       "icon": "build/icon.ico",

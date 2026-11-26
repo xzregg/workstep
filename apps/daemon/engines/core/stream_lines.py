@@ -27,6 +27,12 @@ DEFAULT_CHUNK_SIZE = 64 * 1024
 DEFAULT_MAX_LINE_BYTES = 256 * 1024 * 1024
 
 
+async def iter_stream_chunks(stream: Any, chunk_size: int = DEFAULT_CHUNK_SIZE) -> AsyncIterator[bytes]:
+    """Read interactive CLI prompts, which may wait for input before newline."""
+    while chunk := await stream.read(chunk_size):
+        yield chunk
+
+
 class ChunkedLineReader:
     """把任意提供 ``read(n)`` 的异步字节流按 ``\\n`` 切分为行。"""
 

@@ -71,8 +71,8 @@ function feedAudio(count:number, level:number, probability:(index:number)=>numbe
  log,setRunStartDelay:(ms:number)=>{runStartDelay=ms},setTtsDelay:(ms:number)=>{ttsDelay=ms},
  clickNoise:()=>feedAudio(16,.8,i=>i===0?.97:.02),
  sound:(level:number,nextText?:string)=>{if(nextText)text=nextText;feedAudio(16,level,()=>.8)},
- silence:(frames=phoneCall?40:19)=>feedAudio(frames,0,()=>.02),
- speaking:(playing:boolean,level=.6)=>window.dispatchEvent(new CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{projectId:'demo',sessionId:'main',playing,level}}))
+ silence:(frames=phoneCall?57:19)=>feedAudio(frames,0,()=>.02),
+ speaking:(playing:boolean,level=.6,text='今天北京天气晴朗，适合出门。')=>window.dispatchEvent(new CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{projectId:'demo',sessionId:'main',playing,level,text}}))
 }
 const initial:AssistantChatMessage[]=[{id:'user',role:'user',content:'帮我检查一下构建结果，并验证移动端的界面布局和按钮对齐。',status:'succeeded'},{id:'answer',role:'assistant',content:'已交给 WorkStep 项目新执行会话处理，后台处理中。重点检查移动端按钮、图标和文字的对齐，并验证不同屏幕下的显示。结果核验后会回到这里通知你。',status:'succeeded'}]
 function App(){

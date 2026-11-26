@@ -57,7 +57,7 @@ test('phone turns survive natural pauses and keep capturing while final recognit
  const render=(running=false,speaking=false)=>act(async()=>root.render(<Harness running={running} speaking={speaking}/>))
  try{
   await render();await act(async()=>host.querySelector('button')!.click())
-  await act(async()=>{emit(1,.9);emit(40,.05)})
+  await act(async()=>{emit(1,.9);emit(57,.05)})
   assert.equal(sessions,0,'an isolated noise spike does not start recognition')
   await act(async()=>{emit(16,.9);emit(30,.05)})
   assert.deepEqual(finalRequests,[],'960 ms of silence must not request a final result')
@@ -65,12 +65,12 @@ test('phone turns survive natural pauses and keep capturing while final recognit
   assert.deepEqual(segments,[])
   await act(async()=>{
    for(let i=0;i<16;i++)emit(16,.9)
-   emit(39,.05)
+   emit(56,.05)
   })
   assert.deepEqual(segments,[])
   await act(async()=>emit(1,.05))
   assert.deepEqual(finalRequests,['turn-1'])
-  await act(async()=>{emit(2,.9);emit(40,.05)})
+  await act(async()=>{emit(2,.9);emit(57,.05)})
   assert.equal(sessions,1,'a slow final result must not lose the next utterance')
   await act(async()=>finishRecognition())
   assert.deepEqual(segments,['检查构建和测试'])
@@ -80,7 +80,7 @@ test('phone turns survive natural pauses and keep capturing while final recognit
   assert.deepEqual(segments,['检查构建和测试','好'])
   assert.equal(captures,1)
   assert.equal(host.querySelector('button')!.getAttribute('aria-pressed'),'true')
-  await act(async()=>{emit(2,.9);emit(40,.05)})
+  await act(async()=>{emit(2,.9);emit(57,.05)})
   await act(async()=>host.querySelectorAll('button')[1].click())
   await act(async()=>finishRecognition())
   assert.deepEqual(segments,['检查构建和测试','好'],'hangup invalidates a pending final result')
@@ -120,7 +120,7 @@ for(const [streaming,firstFrames] of [['native',10],['segment',38]] as const){
    await act(async()=>emit(24,.9))
    if(streaming==='segment')assert.equal(requests.length,1,'a segment model does not repeatedly decode the growing prefix')
    assert.deepEqual(messages,[])
-   await act(async()=>emit(40,.05))
+   await act(async()=>emit(57,.05))
    assert.deepEqual(messages,['请检查构建结果'])
   }finally{await act(async()=>root.unmount());Object.assign(speechApi,original);voiceCapture.start=start;await window.happyDOM.close()}
  })
@@ -232,36 +232,83 @@ test('pagehide ends the call even when it precedes visibilitychange',async()=>{
  }finally{await act(async()=>root.unmount());voiceCapture.start=start;await window.happyDOM.close()}
 })
 
-test('continuous conversation keeps capture during thinking but protects against playback echo',async()=>{
+for(const streaming of ['native','segment'] as const)test(`phone ${streaming} interrupts playback without restarting capture or submitting echo`,async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
  const oldStart=voiceCapture.start,oldSpeech={...speechApi}
- let captures=0,disposed=0,stops=0,sends=0,late:((samples:Int16Array,level:number)=>void)|undefined
- speechApi.start=async()=>({id:'v',sample_rate:16000,streaming:'native'}) as any
+ let captures=0,disposed=0,stops=0,interrupts=0,text='今天北京天气晴朗'
+ let emit!:ReturnType<typeof samples>
+ const messages:string[]=[]
+ speechApi.start=async()=>({id:'v',sample_rate:16000,streaming}) as any
  speechApi.cancel=async()=>({cancelled:true}) as any
- voiceCapture.start=async callback=>{captures++;late=callback;return {stop:()=>disposed++,flush:async()=>{}}}
+ speechApi.audio=async(id,_p,sequence,_audio,final)=>({id,sequence,final,text})
+ voiceCapture.start=async(callback,_t,_d,_s,options)=>{captures++;emit=samples(callback,options);return {stop:()=>disposed++,flush:async()=>checkpoints.get(callback)}}
+ const interrupted=()=>{interrupts++}
+ window.addEventListener('workstep:digital-person-stop-speech',interrupted)
  function Harness({running=false,speaking=false}){
-  const voice=useDigitalPersonDialogue({projectId:'p',sessionId:'s',active:true,running,speaking,onRecognized:()=>{sends++},onStop:async()=>{stops++;return true}})
-  return <><button onClick={voice.startContinuous}>call</button><button onClick={voice.stopReply}>stop</button><span data-in-call={voice.continuous}>{voice.phase}</span></>
+  const voice=useDigitalPersonDialogue({projectId:'p',sessionId:'s',active:true,running,speaking,playbackText:'今天北京天气晴朗，适合出门。',onRecognized:value=>messages.push(value),onStop:async()=>{stops++;return true}})
+  return <><button onClick={voice.startContinuous}>call</button><button onClick={voice.toggle}>mic</button><button onClick={voice.stopReply}>stop</button><span data-in-call={voice.continuous}>{voice.phase}</span></>
  }
  const render=(running=false,speaking=false)=>act(async()=>root.render(<Harness running={running} speaking={speaking}/>))
  try{
-  await render();await act(async()=>host.querySelector('button')!.click());assert.equal(captures,1)
-  const oldFrame=late!;await render(true)
-  assert.equal(disposed,0)
+  await render();await act(async()=>host.querySelector('button')!.click())
   await render(true,true)
-  assert.ok(disposed>0)
-  await act(async()=>{oldFrame(new Int16Array(8000),.6);oldFrame(new Int16Array(8000),.6)})
-  assert.equal(stops,0);assert.equal(sends,0);assert.equal(captures,1)
-  await render(false,true);assert.equal(captures,1)
-  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,650))})
-  assert.equal(captures,1,'long playback stays protected')
-  await render();assert.equal(captures,1,'no immediate echo recapture')
-  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750))})
-  assert.equal(captures,2)
-  await render(true)
+  const baseline=interrupts
+  assert.equal(disposed,0,'playback keeps capture open')
+  await act(async()=>emit(10,.9))
+  assert.equal(interrupts,baseline,'preview matching playback cannot interrupt')
+  // End playback before the final ASR reply: context must remain on this segment.
+  await render()
+  await act(async()=>emit(57,.05))
+  assert.deepEqual(messages,[],'late playback echo is never delivered')
+  await render(true,true);text='停止'
+  await act(async()=>emit(10,.9))
+  assert.equal(interrupts,baseline+1,'user preview stops playback before endpoint')
+  assert.deepEqual(messages,[],'preview itself does not submit')
+  await render(true,false)
+  await act(async()=>emit(57,.05))
+  assert.deepEqual(messages,['停止'])
+  assert.equal(captures,1,'the call and microphone are retained')
+  assert.equal(host.querySelector('span')?.getAttribute('data-in-call'),'true')
+  await render(true,true)
   await act(async()=>host.querySelectorAll('button')[1].click())
-  assert.equal(stops,1,'the stop square interrupts the reply')
-  assert.equal(host.querySelector('span')?.getAttribute('data-in-call'),'true','stopping a reply keeps the call open')
+  assert.equal(interrupts,baseline+2,'microphone click also interrupts during a running reply')
+  assert.equal(disposed,1,'explicit interruption discards buffered playback audio')
+  await act(async()=>host.querySelectorAll('button')[2].click())
+  assert.equal(stops,1,'the stop square retains its existing reply stop behavior')
+ }finally{window.removeEventListener('workstep:digital-person-stop-speech',interrupted);await act(async()=>root.unmount());voiceCapture.start=oldStart;Object.assign(speechApi,oldSpeech);await window.happyDOM.close()}
+})
+
+for(const streaming of ['native','segment'] as const)test(`phone ${streaming} retains an unfinished thought across endpoints and fillers`,async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const oldStart=voiceCapture.start,oldSpeech={...speechApi}
+ let emit!:ReturnType<typeof samples>,text='我想',captures=0
+ const messages:string[]=[]
+ speechApi.start=async()=>({id:'thought',sample_rate:16000,streaming}) as any
+ speechApi.cancel=async()=>({cancelled:true}) as any
+ speechApi.audio=async(id,_p,sequence,_audio,final)=>({id,sequence,final,text})
+ voiceCapture.start=async(callback,_t,_d,_s,options)=>{captures++;emit=samples(callback,options);return {stop(){},flush:async()=>checkpoints.get(callback)}}
+ function Harness(){
+  const voice=useDigitalPersonDialogue({projectId:'p',sessionId:'thought',active:true,running:false,speaking:false,onRecognized:value=>messages.push(value),onStop:async()=>true})
+  return <><button onClick={voice.startContinuous}>call</button><button onClick={voice.end}>end</button><span>{voice.text}</span></>
+ }
+ const say=async(value:string)=>{text=value;await act(async()=>emit(16,.9));await act(async()=>emit(57,.02))}
+ try{
+  await act(async()=>root.render(<Harness/>));await act(async()=>host.querySelector('button')!.click())
+  await say('我想')
+  assert.deepEqual(messages,[],'an acoustic endpoint is not sufficient to submit a fragment')
+  assert.equal(host.querySelector('span')!.textContent,'我想','the unfinished thought remains visible')
+  await say('嗯')
+  assert.deepEqual(messages,[],'filler does not finish or erase the thought')
+  await say('查一下明天北京的天气')
+  assert.deepEqual(messages,['我想 查一下明天北京的天气'])
+  await say('停')
+  assert.deepEqual(messages,['我想 查一下明天北京的天气','停'],'useful one-character commands remain automatic')
+  await say('我想')
+  await act(async()=>host.querySelectorAll('button')[1].click())
+  await act(async()=>host.querySelector('button')!.click())
+  await say('取消')
+  assert.equal(messages.at(-1),'取消','hangup clears the previous call fragment')
+  assert.equal(captures,2)
  }finally{await act(async()=>root.unmount());voiceCapture.start=oldStart;Object.assign(speechApi,oldSpeech);await window.happyDOM.close()}
 })
 

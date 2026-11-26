@@ -4,6 +4,7 @@ import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
 import { useRef, type ReactNode } from 'react'
 import Button from './Button'
+import Icon from './Icon'
 import { useI18n } from '../i18n'
 
 interface Props {
@@ -27,12 +28,14 @@ interface Props {
   /** Override the default dialog width (px). */
   width?: number
   zIndex?: number
+  className?: string
+  showClose?: boolean
   onConfirm: () => void
   onSecondary?: () => void
   onCancel: () => void
 }
 
-export default function ConfirmDialog({ open, title, message, confirmText, noConfirm, hideFooter, cancelText, secondaryText, danger, children, loading, confirmDisabled, secondaryLoading, secondaryDisabled, width = 380, zIndex = 2000, onConfirm, onSecondary, onCancel }: Props) {
+export default function ConfirmDialog({ open, title, message, confirmText, noConfirm, hideFooter, cancelText, secondaryText, danger, children, loading, confirmDisabled, secondaryLoading, secondaryDisabled, width = 380, zIndex = 2000, className, showClose=false, onConfirm, onSecondary, onCancel }: Props) {
   const { t } = useI18n()
   const compact = useCompactLayout()
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -49,11 +52,11 @@ export default function ConfirmDialog({ open, title, message, confirmText, noCon
       <ResizablePanel
         ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className="confirm-dialog-panel"
+        className={['confirm-dialog-panel',className].filter(Boolean).join(' ')}
         style={{ width }}
       >
         {/* Header */}
-        <div data-dialog-drag-handle className="confirm-dialog-header">
+        <div data-dialog-drag-handle className={`confirm-dialog-header${showClose?' confirm-dialog-header--closable':''}`}>
           <div className="confirm-dialog-title">
             {title}
           </div>
@@ -62,6 +65,7 @@ export default function ConfirmDialog({ open, title, message, confirmText, noCon
               {message}
             </div>
           )}
+          {showClose&&<Button variant="icon" aria-label={t('common.close')} onClick={onCancel}><Icon name="x"/></Button>}
         </div>
 
         {children && (

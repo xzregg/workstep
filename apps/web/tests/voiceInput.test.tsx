@@ -2,8 +2,9 @@ import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
+import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
-import { useVoiceInput } from '../src/hooks/useVoiceInput'
+import { useVoiceInput, VoiceprintNoticesContext } from '../src/hooks/useVoiceInput'
 import { speechApi } from '../src/api/speech'
 import { captureVoice, voiceCapture, VoiceResampler, pcmBase64 } from '../src/utils/voiceCapture'
 import {TurnController} from '../src/audio/turnController'
@@ -982,5 +983,47 @@ test('resuming after a short pause preserves the visible prefix and discards a l
   assert.equal(voice.text,'预览0','continue showing the useful prefix while a newer transcript is pending')
   assert.deepEqual(inserted,[])
   await act(async()=>voice.finish());assert.deepEqual(inserted,['续说后的完整句子'])
+ }finally{await act(async()=>root.unmount());Object.assign(speechApi,original);voiceCapture.start=capture;await window.happyDOM.close()}
+})
+
+
+for (const compact of [false, true]) test(`continuous dictation joins English segments with spaces (${compact})`, async()=>{
+ const {window}=installDomEnvironment(),root=createRoot(document.body.appendChild(document.createElement('div')))
+ const original={...speechApi},capture=voiceCapture.start
+ let voice!:ReturnType<typeof useVoiceInput>,chunk!:Parameters<typeof voiceCapture.start>[0],index=0
+ const inserted:string[]=[]
+ speechApi.start=async()=>({id:String(index++),sample_rate:16000,streaming:'native'})
+ speechApi.cancel=async()=>({cancelled:true})
+ speechApi.audio=async(id,_p,sequence,_audio,final)=>({id,sequence,final,text:['Hello, world','how are you？','fine，很好'][Number(id)]})
+ voiceCapture.start=async callback=>{chunk=callback;return {stop(){},flush(){}}}
+ function Harness(){voice=useVoiceInput({ownerKey:'join',disabled:false,compact,continuous:true,value:'',cursor:0,onInsert:text=>inserted.push(text)});return null}
+ try{
+  await act(async()=>root.render(<Harness/>));await act(async()=>voice.start())
+  for(let i=0;i<3;i++)await act(async()=>chunk(new Int16Array(8000),.3,{lastVoice:i+1,hasSpeech:true,recentSpeech:false,candidate:true,canCommit:true}))
+  await act(async()=>voice.finish())
+  assert.deepEqual(inserted,['Hello, world how are you？ fine，很好'])
+ }finally{await act(async()=>root.unmount());Object.assign(speechApi,original);voiceCapture.start=capture;await window.happyDOM.close()}
+})
+
+
+for(const show of [false,true])test(`voiceprint notice policy follows a portal and preserves other failures (${show})`,async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),portal=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const original={...speechApi},capture=voiceCapture.start
+ let voice!:ReturnType<typeof useVoiceInput>,reason=''
+ speechApi.start=async()=>{if(reason)throw new Error(reason);return {id:'notice',sample_rate:16000}}
+ speechApi.cancel=async()=>({cancelled:true})
+ speechApi.audio=async(id,_p,sequence,_audio,final)=>({id,sequence,final,text:'',speaker_status:'unmatched'})
+ voiceCapture.start=async callback=>({stop(){},flush(){callback(new Int16Array(8000),.2)}})
+ function Harness(){voice=useVoiceInput({ownerKey:'notice',disabled:false,compact:false,value:'',cursor:0,onInsert:()=>{}});return voice.notice?<p className="voice-input-notice">{voice.notice}</p>:null}
+ try{
+  await act(async()=>root.render(<VoiceprintNoticesContext value={show}>{createPortal(<Harness/>,portal)}</VoiceprintNoticesContext>))
+  await act(async()=>voice.start());await act(async()=>voice.finish())
+  assert.equal(voice.notice,show?'voiceprint.unmatched':'')
+  assert.equal(portal.childElementCount,show?1:0)
+  for(reason of ['speech.serviceUnavailable','speech.failed','speech.deviceLost']){
+   await act(async()=>voice.cancel());await act(async()=>voice.start())
+   assert.equal(voice.error,reason)
+   assert.equal(voice.phase,'error')
+  }
  }finally{await act(async()=>root.unmount());Object.assign(speechApi,original);voiceCapture.start=capture;await window.happyDOM.close()}
 })

@@ -671,6 +671,8 @@ async def test_task_assistant_actual_system_input(draft_module, monkeypatch, sch
     assert await _wait_turn(module, accepted.turn_id) == "completed"
     expected = draft.SYSTEM_PROMPT_SCHEDULE if schedule_mode else draft.SYSTEM_PROMPT
     assert calls[0]["system_prompt"] == expected
+    assert "Prefer a numbered Markdown list (1., 2., 3., ...)" in calls[0]["system_prompt"]
+    assert "one requirement per item on its own line" in calls[0]["system_prompt"]
     assert expected not in calls[0]["prompt"]
     assert "实际用户要求" in calls[0]["prompt"]
     view = session.messages[-1]["prompt"]

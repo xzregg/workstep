@@ -69,6 +69,9 @@ def test_new_recording_discards_cancelled_stream_and_endpoint_prefix():
 
 def test_english_endpoint_boundaries_keep_word_spacing():
     assert StreamingDecoder.join('hello', 'world') == 'hello world'
+    assert StreamingDecoder.join('hello,', 'world') == 'hello, world'
+    assert StreamingDecoder.join('how are you?', 'fine') == 'how are you? fine'
+    assert StreamingDecoder.join('how are you？', 'fine') == 'how are you？ fine'
     assert StreamingDecoder.join('你好', '世界') == '你好世界'
 
 
@@ -82,9 +85,9 @@ def test_punctuation_runs_only_at_endpoint_and_final_and_never_on_silence():
     assert decoder.feed('a', [1], False) == '临时词'
     assert calls == []
     recognizer.endpoint = True
-    assert decoder.feed('a', [2], False) == '临时词。'
+    assert decoder.feed('a', [2], False) == '临时词'
     recognizer.endpoint = False
-    assert decoder.feed('a', [3], True) == '临时词。最终词。'
+    assert decoder.feed('a', [3], True) == '临时词最终词'
     assert calls == ['临时词', '最终词']
     recognizer.get_result = lambda stream: ''
     assert decoder.feed('b', [], True) == ''
@@ -104,3 +107,26 @@ def test_sense_voice_candidate_reuses_identical_audio_and_decodes_resumed_speech
     assert decoder.feed("b", [4], True) == "text"
     assert decoded[-2:] == [([3],), ([3], [4])]
     assert decoder.feed("c", [], True) == ""
+
+
+def test_punctuation_keeps_internal_stops_questions_and_existing_raw_punctuation():
+    recognizer = Recognizer()
+    recognizer.get_result = lambda stream: 'hello world'
+    for stop in ['。', '.', '．']:
+        decoder = StreamingDecoder(recognizer, lambda text: 'hello, world' + stop)
+        assert decoder.feed('a', [1], True) == 'hello, world'
+    decoder = StreamingDecoder(recognizer, lambda text: '你好。明天有空吗？')
+    assert decoder.feed('a', [1], True) == '你好。明天有空吗？'
+    recognizer.get_result = lambda stream: '版本3.14。'
+    decoder = StreamingDecoder(recognizer, lambda text: text + '。')
+    assert decoder.feed('a', [1], True) == '版本3.14。'
+
+
+def test_sense_voice_removes_segment_terminal_period_but_keeps_inner_punctuation():
+    from services.speech_worker import SegmentDecoder
+    for text, expected in [('你好，世界。', '你好，世界'), ('Hello, world.', 'Hello, world'),
+                           ('版本3.14。', '版本3.14'), ('你好？', '你好？'),
+                           ('Hello...', 'Hello...'), ('你好。再见！', '你好。再见！')]:
+        decoder = SegmentDecoder(lambda chunks: text)
+        assert decoder.feed('a', [1], False) == expected
+        assert decoder.feed('a', [], True) == expected

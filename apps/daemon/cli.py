@@ -206,7 +206,27 @@ def build_parser() -> argparse.ArgumentParser:
     add_json(person_sub.add_parser('info', help='read digital hub name, role, level, experience, statistics and available skills'))
     calendar = person_sub.add_parser('calendar', help='query or manage Markdown schedules and due reminders')
     calendar_sub = calendar.add_subparsers(dest='calendar_action', required=True)
+    add_json(calendar_sub.add_parser('targets'))
+    operations=calendar_sub.add_parser('operation').add_subparsers(dest='operation_action',required=True)
+    for action in ('get','cancel','resume'):
+        item=operations.add_parser(action);item.add_argument('--id',dest='operation_id',required=True);add_json(item)
+    batch=calendar_sub.add_parser('create-batch')
+    for flag in ('target','start-date','end-date','time','request-id'):
+        batch.add_argument('--'+flag,required=True)
+    batch.add_argument('--timezone',dest='timezone_name',default='UTC')
+    batch.add_argument('--duration-minutes',type=int,default=30)
+    batch.add_argument('--reminder-minutes',type=int,default=0)
+    batch.add_argument('--exclude-dates',default='')
+    batch.add_argument('--project',dest='origin_project_id')
+    batch.add_argument('--session',dest='origin_session_id')
+    text=batch.add_mutually_exclusive_group(required=True);text.add_argument('--content');text.add_argument('--content-file');add_json(batch)
+    deletion=calendar_sub.add_parser('delete-occurrences')
+    for flag in ('target','plan','dates','request-id'):deletion.add_argument('--'+flag,required=True)
+    deletion.add_argument('--project',dest='origin_project_id')
+    deletion.add_argument('--session',dest='origin_session_id')
+    add_json(deletion)
     calendar_list = calendar_sub.add_parser('list')
+    calendar_list.add_argument('--target',default='internal')
     for flag in ('since','before'):
         calendar_list.add_argument('--'+flag, help='timezone-aware ISO8601 time')
     calendar_list.add_argument('--limit',type=int,default=200)
@@ -214,6 +234,9 @@ def build_parser() -> argparse.ArgumentParser:
     add_json(calendar_list)
     for action in ('get','delete','remind'):
         item = calendar_sub.add_parser(action)
+        item.add_argument('--target',default='internal')
+        item.add_argument('--project',dest='origin_project_id')
+        item.add_argument('--session',dest='origin_session_id')
         item.add_argument('--id',dest='event_id',required=True)
         if action != 'get':
             item.add_argument('--revision',required=True)
@@ -222,15 +245,20 @@ def build_parser() -> argparse.ArgumentParser:
         add_json(item)
     for action in ('create','update'):
         item = calendar_sub.add_parser(action)
+        item.add_argument('--target',default='internal')
+        item.add_argument('--project',dest='origin_project_id')
+        item.add_argument('--session',dest='origin_session_id')
         if action == 'update':
             item.add_argument('--id',dest='event_id',required=True)
             item.add_argument('--revision',required=True)
+            item.add_argument('--request-id')
         content = item.add_mutually_exclusive_group(required=True)
         content.add_argument('--content')
         content.add_argument('--content-file')
         item.add_argument('--at',dest='starts_at',required=True,help='timezone-aware ISO8601 start time; minute precision')
         item.add_argument('--timezone',dest='timezone_name',default='UTC')
         item.add_argument('--reminder-minutes',type=int,default=0)
+        item.add_argument('--duration-minutes',type=int)
         if action == 'create':
             item.add_argument('--idempotency-key',dest='request_id')
         add_json(item)
@@ -696,6 +724,24 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
     if command in ('digital-hub', 'digital-person'):
         if args.subcommand == 'calendar':
             action = args.calendar_action
+            if action=='targets':return await client.call('workstep_list_calendar_targets',{})
+            if action=='operation':return await client.call('workstep_'+args.operation_action+'_calendar_operation',{'operation_id':args.operation_id,**({'confirm':'yes'} if args.operation_action!='get' else {})})
+            if action in ('create-batch','delete-occurrences') or getattr(args,'target','internal')!='internal':
+                import uuid
+                from datetime import datetime,timedelta,timezone
+                command={'action':{'create-batch':'create','delete-occurrences':'delete','list':'query','get':'query'}.get(action,action),'target_id':args.target,'request_id':getattr(args,'request_id',None) or str(uuid.uuid4()),'confirm':'yes'}
+                for field in ('event_id','revision','timezone_name','starts_at','reminder_minutes','duration_minutes','origin_project_id','origin_session_id'):
+                    if getattr(args,field,None) is not None:command[field]=getattr(args,field)
+                if action in ('create','update','create-batch'):
+                    command['content']=await asyncio.to_thread(Path(args.content_file).read_text,encoding='utf-8') if args.content_file else args.content
+                if action=='create-batch':
+                    command['schedule']={key:getattr(args,key) for key in ('start_date','end_date','time','timezone_name')}
+                    command['exclude_dates']=[value for value in args.exclude_dates.split(',') if value]
+                if action=='update':command['draft']={key:command[key] for key in ('content','starts_at','timezone_name','reminder_minutes')}
+                if action=='delete-occurrences':command.update(plan_id=args.plan,dates=args.dates.split(','))
+                if action=='list':command.update(since=args.since or datetime.now(timezone.utc).isoformat(),before=args.before or (datetime.now(timezone.utc)+timedelta(days=30)).isoformat())
+                if action=='remind':raise ValueError('Use the system calendar reminder; WorkStep does not duplicate it')
+                return await client.call('workstep_submit_calendar_operation',command)
             if action == 'list':
                 return await client.call('workstep_list_digital_hub_calendar',{
                     key:getattr(args,key) for key in ('since','before','limit','offset') if getattr(args,key,None) is not None})

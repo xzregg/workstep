@@ -14,7 +14,7 @@ from models.fields import utc_now
 from services import customization_workspace, digital_person
 from services import digital_person_memory_index as memory_index
 from services.memory_secrets import redact
-from services.digital_person_notifications import notification_audit, delivery_failure_reason, safe_model_reason
+from services.digital_person_notifications import notification_audit, delivery_failure_reason
 
 KEY = 'digital_person_runtime'
 CHECK_SESSION_TITLE = '主动思考'
@@ -196,6 +196,7 @@ def parse_check_result(content):
             or not isinstance(result.get('source_ids'), list)
             or any(not isinstance(item, str) for item in result['source_ids'])):
         raise ValueError('The active check result structure is invalid. Please retry or switch to a different digital human engine.')
+    result.pop('notification_reason', None)
     return result
 
 
@@ -1032,9 +1033,6 @@ class DigitalPersonRuntime:
                 run['status'] = decision['decision']
                 run['notification'] = {'state':'silent' if decision['decision']=='silent' else 'notifying',
                                        'reason':'model_silent' if decision['decision']=='silent' else 'unknown'}
-                if decision['decision'] == 'silent' and (reason := safe_model_reason(decision.get('notification_reason'))):
-                    run['notification']['model_reason'] = reason
-                    run['model_notification_reason'] = reason
                 run['kind'] = decision.get('kind', 'work')
                 if run['kind'] not in ('work', 'social'):
                     raise ValueError('Invalid proactive check type')

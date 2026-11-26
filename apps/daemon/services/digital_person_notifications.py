@@ -35,8 +35,6 @@ def notification_projection(run):
         return {'state':'unknown','reason':'unknown'}
     if saved.get('state') in STATES:
         result = {'state': saved['state'], 'reason': saved.get('reason') if saved.get('reason') in REASONS else 'unknown'}
-        if reason := safe_model_reason(run.get('model_notification_reason') or (saved.get('model_reason') if result['reason'] == 'model_silent' else None)):
-            result['model_reason'] = reason
         return result
     status = run.get('status')
     state = status if status in STATES and status != 'notified' else 'unknown'

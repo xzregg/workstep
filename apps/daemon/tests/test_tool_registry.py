@@ -16,6 +16,11 @@ from services.tool_registry import (
 def test_registry_defines_expected_tool_set():
     names = {tool.name for tool in WORKSTEP_TOOLS}
     assert names == {
+        'workstep_list_calendar_targets',
+        'workstep_submit_calendar_operation',
+        'workstep_get_calendar_operation',
+        'workstep_cancel_calendar_operation',
+        'workstep_resume_calendar_operation',
         'workstep_list_digital_hub_calendar',
         'workstep_get_digital_hub_calendar_event',
         'workstep_create_digital_hub_calendar_event',

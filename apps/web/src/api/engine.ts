@@ -17,6 +17,7 @@ const quotaCache = new Map<string, { expires: number; result: QuotaResult }>()
 // --- Engine API ---
 
 export interface EngineInfo {
+  supports_login?: boolean
   permission_modes?: string[]
   permission_config_options?: PermissionConfigOption[]
   supports_service_tier?: boolean
@@ -52,6 +53,13 @@ export interface EngineInfo {
   provider_protocols: string[]
   binary_path: string | null
   configured_path: string | null
+}
+
+export interface EngineLoginState {
+  id: string
+  phase: 'starting' | 'waiting_code' | 'submitting' | 'succeeded' | 'failed' | 'cancelled'
+  authorization_url: string | null
+  error: string | null
 }
 
 export interface EngineRuntimeCatalog {
@@ -461,6 +469,14 @@ export function invalidateEngineModels(engineId: string): void {
 }
 
 export const engineApi = {
+  loginStatus: (engineId: string) => request<EngineLoginState | null>(`/engine/${encodeURIComponent(engineId)}/login`),
+  startLogin: (engineId: string) => request<EngineLoginState>(`/engine/${encodeURIComponent(engineId)}/login`, { method: 'POST' }),
+  submitLoginCode: (engineId: string, id: string, code: string) => request<EngineLoginState>(`/engine/${encodeURIComponent(engineId)}/login/code`, {
+    method: 'POST', body: JSON.stringify({ id, code }),
+  }),
+  cancelLogin: (engineId: string, id: string) => request<EngineLoginState>(`/engine/${encodeURIComponent(engineId)}/login/cancel`, {
+    method: 'POST', body: JSON.stringify({ id }),
+  }),
   customImport: async (file: File) => {
     const response = await gatewayFetch('/api/engine/custom/import?title=' + encodeURIComponent(zhCNT('builtinContent.importTitle')), {
       method: 'POST', body: file,

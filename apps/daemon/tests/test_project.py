@@ -20,6 +20,7 @@ from models import (
     CoordinatorTurn,
     ActionProposal,
     StepSupplement,
+    TaskShare,
 )
 from services.project import ProjectManager, DEFAULT_STEPS
 from services.config import ConfigStore
@@ -671,6 +672,11 @@ def test_workflow_hard_delete_clears_all_flow_data(tmp_path, manager):
         created_at=1,
         updated_at=1,
     )
+    for task_id in ("task-1", "task-other"):
+        TaskShare.create(
+            id=f"share-{task_id}", task=task_id,
+            token=f"token-{task_id}", created_at=1,
+        )
 
     # Soft delete → data stays.
     result = m.delete_workflow(proj, wf["id"])
@@ -694,6 +700,81 @@ def test_workflow_hard_delete_clears_all_flow_data(tmp_path, manager):
     assert StepSupplement.select().count() == 0
     assert Workflow.select().where(Workflow.id == wf["id"]).count() == 0
     assert Workflow.select().where(Workflow.id == other["id"]).count() == 1
+    assert [share.task_id for share in TaskShare.select()] == ["task-other"]
+
+
+def test_workflow_hard_delete_rolls_back_on_cleanup_failure(tmp_path, manager):
+    m, _, _ = manager
+    proj = m.init_project(tmp_path)
+    wf = m.create_workflow(proj, "Flow")
+    m.create_workflow(proj, "Other")
+    _seed_workflow_task_data(m, proj, wf["id"])
+    m.delete_workflow(proj, wf["id"])
+
+    with patch.object(Task, "delete", side_effect=RuntimeError("cleanup failed")):
+        with pytest.raises(RuntimeError, match="cleanup failed"):
+            m.delete_workflow(proj, wf["id"])
+
+    assert Workflow.get_by_id(wf["id"]).deleted == 1
+    assert Task.get_by_id("task-1").id == "task-1"
+    assert Message.select().count() == 1
+    assert StepSupplement.select().count() == 1
+
+
+@pytest.mark.asyncio
+async def test_workflow_delete_api_cleans_shares_without_blocking_health(tmp_path, manager):
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+    from api import workflow as workflow_api
+
+    m, _, _ = manager
+    proj = await asyncio.to_thread(m.init_project, tmp_path)
+
+    def seed(project):
+        flow = m.create_workflow(project, "Flow")
+        m.create_workflow(project, "Other")
+        _seed_workflow_task_data(m, project, flow["id"])
+        TaskShare.create(id="share", task="task-1", token="test-token", created_at=1)
+        return flow["id"]
+
+    workflow_id = await m.run_db(proj.id, seed)
+    app = FastAPI()
+    app.include_router(workflow_api.router)
+
+    @app.get("/health")
+    async def health():
+        return {"ok": True}
+
+    entered = threading.Event()
+    release = threading.Event()
+    original_delete = TaskShare.delete
+
+    def slow_delete():
+        entered.set()
+        assert release.wait(5), "Share cleanup was not released"
+        return original_delete()
+
+    url = f"/api/workflow/{workflow_id}?project_id={proj.id}"
+    with patch.object(workflow_api, "project_manager", m):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            assert (await client.delete(url)).json() == {"deleted": True, "soft": True}
+            with patch.object(TaskShare, "delete", side_effect=slow_delete):
+                deletion = asyncio.create_task(client.delete(url))
+                try:
+                    assert await asyncio.to_thread(entered.wait, 2)
+                    response = await asyncio.wait_for(client.get("/health"), timeout=0.5)
+                    assert response.json() == {"ok": True}
+                finally:
+                    release.set()
+                    result = await deletion
+            assert result.status_code == 200
+            assert result.json() == {"deleted": True, "soft": False}
+            assert (await client.get(url)).status_code == 404
+
+    def remaining(project):
+        return TaskShare.select().count(), Task.select().count()
+
+    assert await m.run_db(proj.id, remaining) == (0, 0)
 
 
 def test_workflow_restore_brings_it_back_from_recycle_bin(tmp_path, manager):

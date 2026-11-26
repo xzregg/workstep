@@ -19,7 +19,7 @@ test('completed reading keeps sentences together and bounds long Unicode text wi
 
 test('long complete reading waits for playback before creating another server session', async () => {
   const original = { ...speechOutputApi }, previous = globalThis.AudioContext
-  const started: string[] = []
+  const started: string[] = [], references: string[] = []
   let clock = 0
   class Context {
     state = 'running'; destination = {}
@@ -38,11 +38,12 @@ test('long complete reading waits for playback before creating another server se
     return { done: false, audio: 'AAA=', format: 'pcm', sample_rate: 24000 }
   }
   speechOutputApi.cancel = async () => {}
-  const player = new SpeechOutputPlayer({ settings: { ...outputStatus.settings, mode: 'remote' }, completeReply: true })
+  const player = new SpeechOutputPlayer({ settings: { ...outputStatus.settings, mode: 'remote' }, completeReply: true, onReference: text => references.push(text) })
   try {
     player.enqueue(['完整第一批。', '超长正文的下一批。'], { final: true })
     await new Promise(resolve => setTimeout(resolve, 40))
     assert.deepEqual(started, ['完整第一批。'], 'no unread prefetched session expires during the long first batch')
+    assert.equal(references.at(-1)?.trim(), '完整第一批。', 'unread future batches must not replace the audible echo reference')
     clock = 90
     await new Promise(resolve => setTimeout(resolve, 40))
     assert.deepEqual(started, ['完整第一批。', '超长正文的下一批。'])

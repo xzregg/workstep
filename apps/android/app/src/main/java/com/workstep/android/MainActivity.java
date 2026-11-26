@@ -101,6 +101,7 @@ public final class MainActivity extends Activity {
     private boolean pageLoading;
     private boolean pageHadError;
     private SystemSpeech systemSpeech;
+    private CalendarHost calendarHost;
     private int pageLoadGeneration;
     private long lastRendererFailure;
     private static volatile boolean activityVisible;
@@ -439,6 +440,12 @@ public final class MainActivity extends Activity {
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
         settings.setSafeBrowsingEnabled(true);
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            calendarHost = new CalendarHost(this);
+            WebViewCompat.addWebMessageListener(view, "WorkStepCalendar",
+                    Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
+                        if (source != webView || !isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
+                        calendarHost.handle(message.getData(), reply);
+                    });
             systemSpeech = new SystemSpeech(this);
             WebViewCompat.addWebMessageListener(view, "WorkStepSpeech",
                     Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
@@ -699,6 +706,11 @@ public final class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == CalendarHost.PERMISSION_REQUEST) {
+            getSharedPreferences("native_calendar", MODE_PRIVATE).edit().putBoolean("permission_asked", true).apply();
+            if (calendarHost != null) calendarHost.permissionResult();
+            return;
+        }
         if (requestCode == ImageCapture.PERMISSION_REQUEST) {
             if (imageCapture != null) imageCapture.permissionResult(permissions, grantResults);
             return;

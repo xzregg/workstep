@@ -14,7 +14,7 @@
 
 ## 功能方案与待验收边界
 
-- [系统日历接入](native-calendar.md) — 待确认；定义前端原生桥接、设备定向操作、授权引导、30 天批量创建与指定日期删除，尚未实现。
+- [系统日历接入](native-calendar.md) — 原生接入代码已实现；保留真实授权、系统提醒及签名安装包验收。
 - [语音输入](voice-input.md) — 轻量本地首期已接入，保留真机权限验收、上下文联想、云端和更多模型的后续范围。
 - [数字员工与记忆迭代架构图](digital-employee-architecture.html)（[可编辑源图](digital-employee-architecture.drawio)）— 方向草图；以项目作为员工，展示有容量上限的短记忆、历史检索、按需技能及验证后迭代的闭环，图中标明现有基础与规划能力。
 - [Git 合并预览与三栏冲突解决](git-merge-conflict-resolution.md) — 尚未实现；现有 Git 行为见 [开发指南](../docs/development.md#git-管理的现行边界)。

@@ -22,6 +22,7 @@ from models import (
     StepRun,
     StepSupplement,
     Task,
+    TaskShare,
     TaskStep,
     Workflow,
     WorkflowRun,
@@ -189,10 +190,11 @@ class ProjectWorkflowService:
             # Already in the recycle bin → permanent delete. Clear every
             # record owned by this workflow (tasks, messages, runs, reviews,
             # coordinator data) before removing the workflow row itself.
-            self._delete_workflow_data(workflow_id)
-            self._invalidate_workflow_schedules(workflow_id)
-            self._prune_schedule_candidates(workflow_id)
-            row.delete_instance()
+            with proj.db.atomic():
+                self._delete_workflow_data(workflow_id)
+                self._invalidate_workflow_schedules(workflow_id)
+                self._prune_schedule_candidates(workflow_id)
+                row.delete_instance()
             self._sync_project_workflows(proj)
             return {"deleted": True, "soft": False}
 
@@ -308,4 +310,5 @@ class ProjectWorkflowService:
         WorkflowRun.delete().where(WorkflowRun.task.in_(task_ids)).execute()
         Message.delete().where(Message.task.in_(task_ids)).execute()
         TaskStep.delete().where(TaskStep.task.in_(task_ids)).execute()
+        TaskShare.delete().where(TaskShare.task.in_(task_ids)).execute()
         Task.delete().where(tasks).execute()

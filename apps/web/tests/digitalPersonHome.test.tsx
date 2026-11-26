@@ -350,11 +350,12 @@ test('voice starts only by gesture, mute releases capture and hiding never resta
   })))
   await act(async()=>render(true))
   await playback(true)
-  assert.equal(mic.getAttribute('aria-pressed'),'false','automatic echo protection pauses the microphone')
+  assert.equal(mic.getAttribute('aria-pressed'),'true','the call microphone keeps listening during playback')
   assert.equal(mic.disabled,false)
   await act(async()=>mic.click())
   assert.equal(captures,5,'explicitly reopening starts recognition during playback')
   assert.equal(mic.getAttribute('aria-pressed'),'true')
+  await playback(false)
   assert.equal(call.dataset.action,'stop','the model is still running')
   assert.equal(modelStops,0)
   await act(async()=>mic.click())
@@ -363,7 +364,7 @@ test('voice starts only by gesture, mute releases capture and hiding never resta
   assert.equal(captures,6,'a muted call can also reopen the microphone during playback')
   await playback(false)
   await playback(true)
-  assert.equal(mic.getAttribute('aria-pressed'),'false','the next playback is protected again')
+  assert.equal(mic.getAttribute('aria-pressed'),'true','the next playback keeps listening with echo filtering')
   await playback(false)
   await act(async()=>render())
   await act(async()=>call.click())
@@ -733,7 +734,7 @@ test('continuous voice queues recognized turns during execution and sends direct
  const say=async(value:string)=>{
   text=value
   await act(async()=>frame(.8))
-  await act(async()=>frame(.02,40))
+  await act(async()=>frame(.02,57))
  }
  try{
   await act(async()=>root.render(<Harness running={false}/>))
@@ -744,7 +745,7 @@ test('continuous voice queues recognized turns during execution and sends direct
   assert.match(host.querySelector('.digital-home-live-caption')!.textContent!,/请检查移动端/)
   await act(async()=>frame(.02,25))
   assert.deepEqual(inserted,[],'a natural pause never enters the pending queue')
-  await act(async()=>frame(.02,15))
+  await act(async()=>frame(.02,32))
   assert.deepEqual(sent,[],'generating replies queue the voice turn instead of dispatching it')
   assert.deepEqual(inserted,[['p','voice-target','请检查移动端']])
   await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-keyboard')!.click())
@@ -752,7 +753,7 @@ test('continuous voice queues recognized turns during execution and sends direct
   assert.equal(input.value,'手写内容','voice turns never append to the typed draft')
   text='再检查桌面端'
   await act(async()=>frame(.8))
-  await act(async()=>frame(.02,40))
+  await act(async()=>frame(.02,57))
   assert.deepEqual(inserted,[['p','voice-target','请检查移动端'],['p','voice-target','再检查桌面端']])
   assert.equal(input.value,'手写内容')
   assert.equal(captures,1);assert.equal(call.dataset.action,'stop')
@@ -810,4 +811,30 @@ test('atlas playback meters do not rerender the page for every volume sample',as
   await publish(false,0)
   assert.equal(host.querySelector('.digital-home')?.getAttribute('data-state'),'idle','playback transitions must still reach the page')
  }finally{await act(async()=>root.unmount());globalThis.ResizeObserver=oldObserver;await window.happyDOM.close()}
+})
+
+
+for(const call of [false,true])test(`hub silently ignores every speaker status while preserving microphone errors (${call})`,async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const oldSpeech={...speechApi},oldCapture=voiceCapture.start,oldOutput=speechOutputApi.status
+ let frame!:ReturnType<typeof mockVoice>['emit'],speaker='unmatched'
+ speechOutputApi.status=async()=>structuredClone(outputStatus)
+ speechApi.start=async()=>({id:'silent-speaker',sample_rate:16000,streaming:'native'})
+ speechApi.cancel=async()=>({cancelled:true})
+ speechApi.audio=async(id,_p,sequence,_audio,final)=>({id,sequence,final,text:'',speaker_status:speaker as any})
+ voiceCapture.start=async(callback,_token,_detect,_size,options)=>{const mock=mockVoice(callback,options);frame=mock.emit;return mock.capture}
+ try{
+  await act(async()=>root.render(<MemoryRouter><I18nProvider><DigitalPersonHome profile={profile} activity={null} projectId="p" projectName="p" sessionId="silent-speaker" messages={[]} inputValue="" onDraft={()=>{}} running={false} active onSend={async()=>true} onStop={async()=>true}/></I18nProvider></MemoryRouter>))
+  await act(async()=>host.querySelector<HTMLButtonElement>(call?'.digital-home-end':'.digital-home-microphone')!.click())
+  for(speaker of ['unmatched','insufficient','invalidFeatures','needMoreSpeech','futureSpeakerFailure']){
+   await act(async()=>frame(.9));await act(async()=>frame(.01,call?57:19))
+   assert.equal(host.querySelectorAll('.voice-input-notice').length,0,speaker)
+   assert.doesNotMatch(host.textContent!,/未匹配到你的声音|无法确认声纹|未取得有效声纹/)
+  }
+  if(call)await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-end')!.click())
+  else await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-microphone')!.click())
+  voiceCapture.start=async()=>{throw new DOMException('denied','NotAllowedError')}
+  await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-microphone')!.click())
+  assert.match(host.querySelector('.digital-home-error')?.textContent??'',/麦克风/)
+ }finally{await act(async()=>root.unmount());Object.assign(speechApi,oldSpeech);voiceCapture.start=oldCapture;speechOutputApi.status=oldOutput;await window.happyDOM.close()}
 })

@@ -10,6 +10,7 @@ function validateRelease(release) {
 }
 
 module.exports = async function beforePack(context) {
+  if (context.electronPlatformName === 'darwin') await require('./build-calendar-helper.cjs').buildCalendarHelper(context.packager.projectDir,context.arch)
   const file = path.join(context.packager.projectDir, 'src/sandbox-release.json')
   validateRelease(JSON.parse(await fs.readFile(file, 'utf8')))
   const root = context.packager.projectDir

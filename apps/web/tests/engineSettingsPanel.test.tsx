@@ -9,6 +9,37 @@ import EngineSettingsPanel from '../src/components/EngineSettingsPanel'
 import EngineSelect from '../src/components/EngineSelect'
 import { resetEngineAvailabilityStoreForTests, useCoordinatorEngines } from '../src/stores/engineAvailabilityStore'
 
+test('engine-declared login appears only for installed capable engines', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { list: engineApi.list, executionConfig: engineApi.executionConfig, models: engineApi.models,
+    loginStatus: engineApi.loginStatus }
+  const reads: string[] = []
+  engineApi.list = async () => ({ engines: [
+    { id:'antigravity', installed:true, supports_login:true, config:null },
+    { id:'future-native', installed:false, supports_login:true, config:null },
+    { id:'other', installed:true, config:null },
+  ] as EngineInfo[] })
+  engineApi.executionConfig = async () => ({ engine:'' })
+  engineApi.models = async id => ({ engine_id:id, models:[], default_model:'', error:null })
+  engineApi.loginStatus = async id => { reads.push(id); return null }
+  try {
+    await act(async () => root.render(<I18nProvider><EngineSettingsPanel hidden={false} refreshRevision={0} preferredProviderProtocol="" /></I18nProvider>))
+    assert.deepEqual(reads, [])
+    const card = document.querySelector('[data-engine-id="antigravity"]')!
+    await act(async () => card.querySelector<HTMLButtonElement>('.engine-settings-expand-button')!.click())
+    assert.deepEqual(reads, ['antigravity'])
+    assert.equal(card.querySelectorAll('.engine-login-control').length, 1)
+    assert.equal(document.querySelector('[data-engine-id="other"]')!.querySelectorAll('.engine-login-control').length, 0)
+    assert.equal(document.querySelector('[data-engine-id="future-native"]')!.querySelectorAll('.engine-login-control').length, 0)
+  } finally {
+    Object.assign(engineApi, original)
+    invalidateEngineModels('antigravity')
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('Antigravity uses the shared runtime version installer instead of a shell installer', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))

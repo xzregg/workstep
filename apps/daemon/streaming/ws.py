@@ -291,6 +291,10 @@ def register_websocket_routes(app: FastAPI) -> None:
         ``WsSubscription``). Before the first subscribe message the connection
         receives everything (backward compatible).
         """
+        if ws.query_params.get('calendar_device')=='1':
+            from api.native_calendar import device_socket
+            await device_socket(ws)
+            return
         main = _main()
         if not await desktop_websocket_allowed(ws):
             await ws.close(code=4401, reason="desktop authentication required")

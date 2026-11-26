@@ -48,6 +48,7 @@ logs/
 
 # Temporary test and debugging artifacts
 /tmp/
+/apps/desktop/build/calendar-helper
 
 # Local examples
 /examples/

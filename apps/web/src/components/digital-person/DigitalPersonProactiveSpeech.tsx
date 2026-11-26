@@ -28,9 +28,10 @@ export default function DigitalPersonProactiveSpeech(){
     if(!alive||request!==sequence||document.hidden)return
     const latest=getProactiveSpeechContext()
     if(!latest||latest.projectId!==value.projectId||latest.sessionId!==value.sessionId||latest.muted||latest.blockNew||!latest.profile.enabled||!latest.profile.auto_speak)return
-    const frame={projectId:value.projectId,sessionId:value.sessionId,source:value.welcome?'welcome':'proactive',metered:settings.mode!=='system'&&settings.volume>0,playing:false,busy:false,level:0}
+    const frame={projectId:value.projectId,sessionId:value.sessionId,source:value.welcome?'welcome':'proactive',metered:settings.mode!=='system'&&settings.volume>0,playing:false,busy:false,level:0,text:''}
     const publish=()=>window.dispatchEvent(new window.CustomEvent(DIGITAL_OUTPUT_FRAME,{detail:{...frame}}))
     player=new SpeechOutputPlayer({projectId:value.projectId,digitalSessionId:value.sessionId,settings:{...settings,rate:profile.voice_rate??settings.rate},systemVoice:profile.voice_name,
+     onReference:text=>{frame.text=text;publish()},
      onPlayback:playing=>{frame.playing=playing;publish()},
      onLevel:level=>{frame.level=level;publish()},
      onState:busy=>{frame.busy=busy;publish()},

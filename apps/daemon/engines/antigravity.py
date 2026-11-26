@@ -7,13 +7,18 @@ import os
 import shutil
 import sys
 import asyncio
+import re
 from contextlib import aclosing
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from engines.core.acp_base import AcpEngineBase
 from engines.core.base import EngineConfigField, EngineConfigOption
 from engines.core.packages import RuntimePackage
 from engines.core.permissions import EnginePermissionPolicy
+from engines.core.login import EngineLoginSession
+from engines.core.process_cleanup import finish_cleanup, terminate_owned_process
+from engines.core.stream_lines import iter_stream_chunks
 from services import antigravity_runtime
 from services.config import config_store
 
@@ -21,6 +26,9 @@ from services.config import config_store
 class AntigravityEngine(AcpEngineBase):
     ENGINE_ID = "antigravity"
     SUPPORTS_QUOTA = True
+    SUPPORTS_LOGIN = True
+    LOGIN_TIMEOUT_SECONDS = 300
+    _login_revision = 0
     PERMISSION_MODES = {"default", "auto", "accept-edits", "plan", "bypassPermissions"}
     COMMAND = ["agy", "acp"]
     RUNTIME_PACKAGE = RuntimePackage("antigravity-cli", "native")
@@ -34,6 +42,22 @@ class AntigravityEngine(AcpEngineBase):
     # session/load replays historical content; WorkStep already owns that history.
     DROP_REPLAYED_HISTORY_ON_RESUME = True
     QUOTA_TIMEOUT_SECONDS = 12
+
+    def create_login_session(self):
+        binary = self.resolve_binary()
+        if not binary:
+            raise ValueError('Antigravity is not installed')
+        return _AntigravityLogin(binary, self.LOGIN_TIMEOUT_SECONDS, self._login_completed)
+
+    @staticmethod
+    def _login_completed():
+        config_store.clear_engine_models('antigravity')
+        config_store.set_engine_verified('antigravity', False)
+        AntigravityEngine._login_revision += 1
+
+    def project_skill_env(self, cwd):
+        return {**super().project_skill_env(cwd),
+                'WORKSTEP_ENGINE_LOGIN_REVISION': str(self._login_revision)}
 
     async def get_quota(self, cwd=""):
         from engines.core.antigravity_quota import read_quota
@@ -174,4 +198,109 @@ class AntigravityEngine(AcpEngineBase):
     @property
     def supports_session_fork(self):
         return False
+
+
+class _AntigravityLogin(EngineLoginSession):
+    """Keep the official code-paste process in the daemon's own environment.
+
+    In a desktop sandbox the daemon and this child already run in the container;
+    HOME is its persistent mount. Never export host keychain tokens or change HOME.
+    """
+    MAX_OUTPUT_BYTES = 256 * 1024
+
+    def __init__(self, binary, timeout, on_success):
+        super().__init__()
+        self.binary = binary
+        self.timeout = timeout
+        self.on_success = on_success
+        self.process = None
+        self.task = None
+
+    async def start(self):
+        self.task = asyncio.create_task(self._run())
+
+    async def _launch(self):
+        self.process = await asyncio.create_subprocess_exec(
+            self.binary, 'acp', '--login',
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+
+    async def _run(self):
+        phase, error = 'failed', 'login_failed'
+        try:
+            async with asyncio.timeout(self.timeout):
+                launch = asyncio.create_task(self._launch())
+                try:
+                    await asyncio.shield(launch)
+                except asyncio.CancelledError:
+                    await finish_cleanup(launch)
+                    raise
+                output = bytearray()
+                # Prompts need not end with a newline. Read bounded chunks rather
+                # than readline(), retaining only temporary, private CLI output.
+                async for chunk in iter_stream_chunks(self.process.stdout, 4096):
+                    output.extend(chunk)
+                    if len(output) > self.MAX_OUTPUT_BYTES:
+                        error = 'login_output_limit'
+                        break
+                    if self.state.phase != 'starting':
+                        continue
+                    text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', output.decode(errors='replace'))
+                    for match in re.finditer(r'https://[^\s<>]+(?=\s)', text):
+                        url = match.group()
+                        parsed = urlsplit(url)
+                        if (parsed.hostname == 'accounts.google.com'
+                                and parsed.username is None and parsed.password is None
+                                and parsed.port in (None, 443)
+                                and parsed.path in ('/o/oauth2/auth', '/o/oauth2/v2/auth')):
+                            self.state.authorization_url = url
+                    if (self.state.authorization_url and 'paste' in text.lower()
+                            and 'authorization code' in text.lower()):
+                        self.state.phase = 'waiting_code'
+                else:
+                    if await self.process.wait() == 0:
+                        phase, error = 'succeeded', None
+        except TimeoutError:
+            error = 'login_timeout'
+        except asyncio.CancelledError:
+            phase, error = 'cancelled', None
+        except Exception:
+            # Native errors can contain tokens and account details. Expose only
+            # stable error codes; never log raw output or submitted credentials.
+            pass
+        finally:
+            try:
+                if self.process:
+                    await finish_cleanup(terminate_owned_process(self.process))
+                if phase == 'succeeded':
+                    await asyncio.to_thread(self.on_success)
+            except Exception:
+                phase, error = 'failed', 'login_failed'
+            finally:
+                self.state.phase = phase
+                self.state.error = error
+                self.state.authorization_url = None
+
+    async def submit(self, code):
+        code = code.strip()
+        if not code or len(code) > 8192 or any(ord(c) < 32 or ord(c) == 127 for c in code):
+            raise ValueError('Enter a single authorization code or callback URL')
+        if self.state.phase != 'waiting_code' or not self.process or self.process.returncode is not None:
+            raise ValueError('Login is not waiting for an authorization code')
+        self.state.phase = 'submitting'
+        self.state.authorization_url = None
+        try:
+            self.process.stdin.write((code + '\n').encode())
+            await self.process.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError):
+            raise ValueError('Login session expired; start again') from None
+
+    async def cancel(self):
+        if self.task and not self.task.done():
+            self.task.cancel()
+            await finish_cleanup(asyncio.gather(self.task, return_exceptions=True))
+        if self.state.active:
+            self.state.phase = 'cancelled'
+            self.state.authorization_url = None
 

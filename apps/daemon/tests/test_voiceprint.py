@@ -231,3 +231,35 @@ async def test_live_recording_rejects_profile_mutation_and_cancel_discards_pendi
     with pytest.raises(LookupError):
         await request
     await service.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('reason', ['voiceprint.invalidFeatures', 'voiceprint.needMoreSpeech', 'speech.serviceUnavailable'])
+async def test_capture_voiceprint_validation_failures_drop_text_but_keep_settings_feedback(tmp_path, monkeypatch, reason):
+    service = SpeechService(tmp_path, MODEL_ID)
+    service.settings = {'enabled': True, 'language': 'auto'}
+    monkeypatch.setattr(service, 'installed', lambda: True)
+    async def profile():
+        return {'enabled': True, 'scope': 'all', 'embedding': [1., 0., 0.]}
+    async def verify(*args):
+        raise ValueError(reason)
+    async def infer(*args):
+        return 'must not leak unverified speech'
+    monkeypatch.setattr(service.voiceprint, 'profile', profile)
+    monkeypatch.setattr(service.voiceprint, 'available', lambda: True)
+    monkeypatch.setattr(service.voiceprint, 'verify', verify)
+    monkeypatch.setattr(service, 'infer', infer)
+    try:
+        # The settings test still receives the original actionable feedback.
+        with pytest.raises(ValueError, match=reason):
+            await service.voiceprint.verify(b'\x01\x02' * 24000)
+        sid = (await service.start('p', 'owner'))['id']
+        if reason.startswith('voiceprint.'):
+            result = await service.audio(sid, 'p', 'owner', 0, b'\x01\x02' * 24000, True)
+            assert result['text'] == ''
+            assert result['speaker_status'] == 'insufficient'
+        else:
+            with pytest.raises(ValueError, match=reason):
+                await service.audio(sid, 'p', 'owner', 0, b'\x01\x02' * 24000, True)
+    finally:
+        await service.close()

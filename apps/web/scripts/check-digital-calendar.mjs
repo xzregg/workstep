@@ -28,6 +28,7 @@ try{
     const data=route.request().postDataJSON(),event={...data,id:'created',revision:'created-rev',reminder_at:data.starts_at,reminder_status:'pending'}
     events.push(event);return route.fulfill({json:event})
    }
+   if(url.pathname==='/api/digital-person/calendar/targets')return route.fulfill({json:{owner:'test',items:[{id:'internal',name:'WorkStep'}]}})
    if(url.pathname.startsWith('/api/digital-person/calendar/')){
     const parts=url.pathname.split('/'),event=events.find(row=>row.id===parts[4]);assert.ok(event)
     if(method==='DELETE'){assert.equal(url.searchParams.get('revision'),event.revision);event.deleted_at=new Date().toISOString();event.revision+='-deleted'}
@@ -46,7 +47,20 @@ try{
   })
   await page.goto('https://calendar.invalid/')
   const calendar=page.locator('.digital-home-calendar')
-  if(width<=1023){assert.equal(await calendar.isVisible(),false);await page.screenshot({path:path.join(artifacts,`mobile-${width}.png`)});results.push({width,hiddenOnMobile:true});await page.close();continue}
+  if(width<=1023){
+   assert.equal(await calendar.isVisible(),false)
+   const entry=page.getByRole('button',{name:'日程',exact:true})
+   assert.equal(await entry.isVisible(),true)
+   assert.equal(await page.getByRole('button',{name:'系统日历',exact:true}).count(),0)
+   const alignment=await entry.evaluate(button=>{
+    const icon=button.querySelector('svg').getBoundingClientRect(),text=button.querySelector('span')?.getBoundingClientRect(),box=button.getBoundingClientRect()
+    return {hasLabel:Boolean(text),centerDelta:text?Math.abs(text.y+text.height/2-icon.y-icon.height/2):null,buttonCenterDelta:Math.abs(box.y+box.height/2-icon.y-icon.height/2)}
+   })
+   assert.equal(alignment.hasLabel,true,'calendar label has an explicit alignment box')
+   assert.ok(alignment.centerDelta<=1&&alignment.buttonCenterDelta<=1,'calendar icon and label are vertically centered')
+   await page.screenshot({path:path.join(artifacts,`mobile-${width}.png`)})
+   results.push({width,mobileCalendarEntry:true,alignment});await page.close();continue
+  }
   const day=()=>calendar.locator('[data-today=true]')
   await day().waitFor()
   await day().locator('xpath=self::*[@data-has-events="true"]').waitFor()
@@ -58,11 +72,18 @@ try{
   await page.screenshot({path:path.join(artifacts,`hover-${width}.png`)})
   const box=await popover.boundingBox();assert.ok(box.x>=0&&box.y>=0&&box.x+box.width<=width&&box.y+box.height<=height)
   await page.mouse.move(400,100);await popover.waitFor({state:'detached'})
-  await day().click();const editor=page.getByRole('dialog',{name:'新增日程',exact:true}),input=page.getByRole('textbox',{name:'日程内容',exact:true})
+  const dayDialog=page.locator('[role=dialog]').filter({has:page.locator('.digital-calendar-day-dialog')})
+  await day().click()
+  await dayDialog.getByText('发布复盘',{exact:true}).waitFor()
+  assert.equal(await page.getByRole('dialog',{name:'新增日程',exact:true}).count(),0)
+  await page.mouse.move(400,100);assert.equal(await dayDialog.isVisible(),true)
+  await page.screenshot({path:path.join(artifacts,`view-day-${width}.png`)})
+  await dayDialog.getByRole('button',{name:'新增日程',exact:true}).click()
+  const editor=page.getByRole('dialog',{name:'新增日程',exact:true}),input=page.getByRole('textbox',{name:'日程内容',exact:true})
   await input.waitFor();assert.equal(await input.evaluate(el=>el===document.activeElement),true)
   assert.equal(await editor.getByRole('button',{name:'添加',exact:true}).isDisabled(),true)
   await page.mouse.click(5,100);await editor.waitFor({state:'detached'})
-  await day().click();await input.fill('**讨论方案**\n\n- 确认交互\n- 补齐回归')
+  await day().click();await dayDialog.getByRole('button',{name:'新增日程',exact:true}).click();await input.fill('**讨论方案**\n\n- 确认交互\n- 补齐回归')
   await page.mouse.click(5,100);assert.equal(await editor.isVisible(),true)
   await editor.getByRole('button',{name:'添加',exact:true}).click()
   await editor.getByRole('alert').waitFor();assert.match(await input.inputValue(),/讨论方案/)
@@ -83,9 +104,9 @@ try{
   await day().hover();await popover.getByText('讨论方案',{exact:true}).waitFor()
   const entry=popover.locator('.digital-calendar-entry').filter({hasText:'讨论方案'})
   await entry.getByRole('button',{name:'删除日程',exact:true}).click()
-  await calendar.getByText('日程已删除',{exact:true}).waitFor()
-  await calendar.getByRole('button',{name:'撤销',exact:true}).click()
-  await day().hover();await popover.getByText('讨论方案',{exact:true}).waitFor()
+  await popover.getByText('讨论方案',{exact:true}).waitFor({state:'hidden'})
+  assert.equal(await page.getByRole('button',{name:'撤销',exact:true}).count(),0)
+  assert.ok(events.find(row=>row.id==='created').deleted_at,'deletion commits directly')
   await page.mouse.move(400,100);await popover.waitFor({state:'detached'})
   const before=await calendar.boundingBox()
   await page.locator('.digital-home-voice-dock [data-camera-toggle]').click()
@@ -95,12 +116,12 @@ try{
   await page.mouse.move(header.x+40,header.y+8);await page.mouse.down();await page.mouse.move(header.x-300,header.y+80,{steps:6});await page.mouse.up()
   await page.screenshot({path:path.join(artifacts,`camera-${width}.png`)})
   if(width===1440){
-   await day().click();await input.fill('窄屏保留的日程草稿')
+   await day().click();await dayDialog.getByRole('button',{name:'新增日程',exact:true}).click();await input.fill('窄屏保留的日程草稿')
    await page.setViewportSize({width:390,height:844})
    const narrow=await editor.boundingBox();assert.ok(narrow.x>=0&&narrow.width<=390&&narrow.y+narrow.height<=844)
    await page.screenshot({path:path.join(artifacts,'editor-390.png')})
   }
-  assert.deepEqual(errors,[]);results.push({width,calendar:true,markdown:true,quickEntry:true,blankDismiss:true,saveRecovery:true,deleteUndo:true,floatingCamera:true})
+  assert.deepEqual(errors,[]);results.push({width,calendar:true,markdown:true,quickEntry:true,blankDismiss:true,saveRecovery:true,directDelete:true,floatingCamera:true})
   await page.close()
  }
 }finally{await browser.close()}

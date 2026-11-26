@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import {
-  Heart, CircleAlert, AudioLines, Keyboard, MicOff, Phone, PhoneOff, Camera, CameraOff, SwitchCamera, ScanFace, ThumbsUp, ThumbsDown, Volume2, VolumeOff, Square, ScanLine, Plug, Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock, Copy, Download, Drama, Ellipsis, Eye,
+  CalendarDays, Heart, CircleAlert, AudioLines, Keyboard, MicOff, Phone, PhoneOff, Camera, CameraOff, SwitchCamera, ScanFace, ThumbsUp, ThumbsDown, Volume2, VolumeOff, Square, ScanLine, Plug, Archive, BarChart3, Bell, Book, Bookmark, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock, Copy, Download, Drama, Ellipsis, Eye,
   ExternalLink, FileText, Folder, FolderOpen, GitFork, GripVertical, Image as ImageIcon, Layers, LayoutGrid, List, Monitor, Smartphone, MousePointer2, PanelTop,
   CircleHelp, Crosshair, Maximize2, Menu, Mic, Lightbulb, LoaderCircle, Minimize2, Minus, Paperclip, Pencil, Play, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
   MessageCircleHeart, MessagesSquare, PanelLeftClose, PanelLeftOpen, Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Upload, User, Webhook, Workflow, X, Zap,
@@ -10,6 +10,7 @@ import {composerSendGlyphs} from '../skins/composerSendGlyphs'
 
 /** 统一 Icon 库：lucide 图标 + 少量自定义字形（保留既有固定规格） */
 const glyphs = {
+  calendar: CalendarDays,
   heart: Heart,
   'circle-alert': CircleAlert,
   'thumbs-up': ThumbsUp,

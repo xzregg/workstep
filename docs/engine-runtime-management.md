@@ -2,7 +2,9 @@
 
 设置 → 执行引擎 → **安装与版本**提供主包大小、确切版本选择、安装过程和上一版本回退。适用于 Codex CLI、Claude Code CLI，以及 Codex、Claude、Qoder、DeepSeek Harness、Tau 和 Antigravity ACP。Pydantic AI 随项目依赖管理；Hermes、OpenClaw 仍由外部安装方式管理。
 
-Antigravity ACP（`antigravity`）通过同一“安装与版本”面板安装官方 `agy` 原生程序，目标固定为 `$WORKSTEP_CONFIG_DIR/runtime/native/antigravity/agy`（默认 `~/.workstep/`，Windows 为 `agy.exe`）。不执行官方 shell／PowerShell 安装器，不写 `~/.local/bin`、系统目录、PATH 或 shell 配置。路径优先级为显式配置／`ANTIGRAVITY_BIN`、WorkStep 托管目录、宿主机已有 CLI；显式路径启用时禁止托管版本切换。版本面板只把托管目录中的程序计为已安装版本，宿主同版本 CLI 不会阻止安装独立副本。CLI 自己管理账号认证，WorkStep 不复制 IDE 凭据；需要登录时在终端运行托管目录里的完整 `agy` 路径。安装后重新扫描、测试，并在展开配置中刷新和选择模型。
+Antigravity ACP（`antigravity`）通过同一“安装与版本”面板安装官方 `agy` 原生程序，目标固定为 `$WORKSTEP_CONFIG_DIR/runtime/native/antigravity/agy`（默认 `~/.workstep/`，Windows 为 `agy.exe`）。不执行官方 shell／PowerShell 安装器，不写 `~/.local/bin`、系统目录、PATH 或 shell 配置。路径优先级为显式配置／`ANTIGRAVITY_BIN`、WorkStep 托管目录、宿主机已有 CLI；显式路径启用时禁止托管版本切换。版本面板只把托管目录中的程序计为已安装版本，宿主同版本 CLI 不会阻止安装独立副本。CLI 自己管理账号认证，WorkStep 不复制 IDE 凭据。安装后展开引擎配置，在“账号登录”点击“登录账号”，打开浏览器授权，再粘贴授权码或授权后的完整 URL，点击“完成登录”；也可在终端运行同一完整路径的 `agy acp --login`。登录后刷新模型目录，选择模型并测试连接。
+
+桌面容器沙箱中的登录进程由容器内 daemon 启动，授权链接通过桌面壳打开本机浏览器，输入的授权码返回同一容器进程。原生凭据由 CLI 保存，复用沙箱既有 `/root` 持久化挂载；不能把宿主机钥匙串或配置目录直接视为容器登录态。取消、超时及 daemon 关闭会回收登录进程，授权码不写入引擎配置或诊断日志。
 
 原生版本来源是[官方安装器](https://antigravity.google/docs/getting-started/)使用的平台发布清单，平台覆盖 macOS／Windows／Linux 的 x64 与 arm64（Linux 含 musl）。官方下载仅提供当前版本清单，因此版本列表显示当前官方版本和 WorkStep 已记录的同平台确切版本，不虚构完整历史目录。操作记录保存不可变下载地址、大小和 SHA-512，供重试与回退；接管前的外部安装若没有相应清单，不声明可回退。下载复用 `ResourceDownload` 断点续传和真实字节进度；校验通过后只提取已知普通可执行文件，在托管目录内暂存并验证版本，再原子替换。失败保留原程序，不随桌面包或镜像预装。
 

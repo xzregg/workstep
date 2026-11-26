@@ -35,7 +35,7 @@ export default function DigitalPersonSpeech({ ref, profile, projectId, sessionId
   const manual = useRef<{id:string} | null>(null)
   const recovery = useRef<{remaining: string[]; submitted: number; readingId?: string} | null>(null)
   const tracked = useRef(speechTracking())
-  const outputFrame=useRef({playing:false,level:0,busy:false,metered:false})
+  const outputFrame=useRef({playing:false,level:0,busy:false,metered:false,text:''})
   const publishOutput=useCallback(()=>window.dispatchEvent(new window.CustomEvent<DigitalOutputFrame>(DIGITAL_OUTPUT_FRAME,{detail:{projectId,sessionId,...outputFrame.current,readingId:manual.current?.id}})),[projectId,sessionId])
   const latest = messages[messages.length - 1]
   const reply = latest?.role === 'assistant' ? latest : null
@@ -47,7 +47,7 @@ export default function DigitalPersonSpeech({ ref, profile, projectId, sessionId
     const current=player.current
     player.current=null; manual.current=null; current?.stop()
     if(outputFrame.current.busy||outputFrame.current.playing){
-      outputFrame.current={playing:false,level:0,busy:false,metered:false};setPlayback({ busy: false });publishOutput()
+      outputFrame.current={playing:false,level:0,busy:false,metered:false,text:''};setPlayback({ busy: false });publishOutput()
     }
   }, [publishOutput])
 
@@ -93,6 +93,7 @@ export default function DigitalPersonSpeech({ ref, profile, projectId, sessionId
     outputFrame.current.metered=config.mode!=='system'&&config.volume>0
     const result = new SpeechOutputPlayer({ projectId, completeReply: !!readingId, batchStreaming: !readingId, digitalSessionId: sessionId ?? undefined,
       settings: { ...config, rate: profile.voice_rate ?? config.rate }, systemVoice: profile.voice_name,
+      onReference: text=>{if(player.current===result){outputFrame.current.text=text;publishOutput()}},
       onPlayback: value=>{if(player.current===result){outputFrame.current.playing=value;publishOutput()}},
       onLevel: value=>{if(player.current===result){outputFrame.current.level=value;publishOutput()}},
       onInterrupt: () => { if (player.current === result) { tracked.current.suppressed = true; stop() } },

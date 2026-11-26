@@ -1,8 +1,18 @@
 """Private streaming JSONL worker, launched with -I and an isolated runtime."""
 import base64
 import json
+import re
 import sys
 from pathlib import Path
+
+
+def without_segment_period(text):
+    """A pause ends an audio segment, not necessarily a sentence.
+
+    Keep inner punctuation, questions/exclamations and ellipses. The bundled
+    Chinese/English model emits fullwidth stops even for English; handle ASCII too.
+    """
+    return re.sub(r'(?<![.。．])[.。．]$', '', text.strip())
 
 
 class StreamingDecoder:
@@ -17,7 +27,7 @@ class StreamingDecoder:
 
     @staticmethod
     def join(left, right):
-        space = bool(left and right and left[-1].isascii() and left[-1].isalnum()
+        space = bool(left and right and (left[-1].isascii() and left[-1].isalnum() or left[-1] in ',，.。．!?！？;；:：')
                      and right[0].isascii() and right[0].isalnum())
         return left + (' ' if space else '') + right
 
@@ -35,8 +45,10 @@ class StreamingDecoder:
             self.recognizer.decode_stream(self.stream)
         partial = self.recognizer.get_result(self.stream).strip()
         endpoint = not final and self.recognizer.is_endpoint(self.stream)
-        if partial and (final or endpoint):
-            partial = self.punctuate(partial)
+        if partial and (final or endpoint) and not any(c in partial for c in ',，.。．!?！？;；:：'):
+            # Re-punctuating already punctuated ASR text duplicates commas/stops
+            # and can break decimal numbers. Only strip the model-added final stop.
+            partial = without_segment_period(self.punctuate(partial))
         text = self.join(self.prefix, partial)
         if final:
             self.session_id = None
@@ -68,7 +80,7 @@ class SegmentDecoder:
         if not final and not preview:
             return ''
         if self.text is None:
-            self.text = self.decode(self.chunks) if self.chunks else ''
+            self.text = without_segment_period(self.decode(self.chunks)) if self.chunks else ''
         text = self.text
         if final:
             self.session_id = None

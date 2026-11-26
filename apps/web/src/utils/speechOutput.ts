@@ -180,6 +180,7 @@ export class SpeechOutputPlayer {
   private active = false
   private startedPlayback = false
   private pcmTail: number | undefined
+  private reference=''
   private playback=false
   private levelTimer:ReturnType<typeof setInterval>|undefined
   private audioFrames=new Map<AudioBufferSourceNode,{start:number;rate:number;data:Float32Array}>()
@@ -188,7 +189,7 @@ export class SpeechOutputPlayer {
     cachedAudio?: { text: string; chunks: readonly SpeechAudioChunk[] }; audioGain?: number; leadingSilence?: number; wakeGreeting?: boolean;
     onInterrupt?: () => void; onState?: (active: boolean) => void; onError?: (error: Error) => void;
     onRecovery?: (error: Error, remaining: string[], submitted: number) => void;
-    onPlayback?: (active:boolean)=>void; onLevel?: (level:number)=>void }
+    onReference?: (text:string)=>void; onPlayback?: (active:boolean)=>void; onLevel?: (level:number)=>void }
 
   constructor(options: SpeechOutputPlayer['options']) { this.options = options }
 
@@ -502,6 +503,8 @@ export class SpeechOutputPlayer {
         const covered = !!this.context && this.sources.size > 0 && this.until - this.context.currentTime > BATCH_WAIT_MS / 1000
         batch = prepared ?? this.takeBatch(covered)
         if (!batch) break
+        this.reference = (this.reference.slice(-4096) + ' ' + batch.text).trimStart()
+        this.options.onReference?.(this.reference)
         committed = false
         if (this.options.settings.mode === 'system') await this.system(batch.text, markCommitted)
         else {

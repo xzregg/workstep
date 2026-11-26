@@ -530,7 +530,13 @@ class SpeechService:
                     del s['speaker_pcm'][:-MAX_VOICEPRINT_AUDIO]
                     speaker_status = 'insufficient'
                     if (final or preview) and len(s['speaker_pcm']) >= MIN_VERIFY_SAMPLES * 2:
-                        speaker_status = await self.voiceprint.verify(bytes(s['speaker_pcm']), s['voiceprint'])
+                        try:
+                            speaker_status = await self.voiceprint.verify(bytes(s['speaker_pcm']), s['voiceprint'])
+                        except ValueError as error:
+                            # Invalid/short speaker features reject this segment, not
+                            # the recording. Enrollment/test APIs keep their feedback.
+                            if str(error) not in {'voiceprint.invalidFeatures', 'voiceprint.needMoreSpeech'}:
+                                raise
                     self._session(sid, project, owner)
                 allowed = speaker_status is None or speaker_status == 'matched'
                 decode_preview = preview and allowed

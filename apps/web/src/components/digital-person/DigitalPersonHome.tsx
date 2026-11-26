@@ -6,6 +6,7 @@ import {identitySetupGreetingKey} from './identitySetupGreeting'
 import type {AssistantChatMessage} from '../../stores/assistantStore'
 import {useI18n} from '../../i18n'
 import {useCompactLayout} from '../../hooks/useCompactLayout'
+import {VoiceprintNoticesContext} from '../../hooks/useVoiceInput'
 import {useGatewayProjectPermissions} from '../../hooks/useGatewayProjectPermissions'
 import {BrandIcon} from '../BrandIcon'
 import Button from '../Button'
@@ -61,7 +62,7 @@ export default function DigitalPersonHome(props:Props){
  const canCompose=active&&!props.composerDisabled&&can('session.chat')
  const {t}=useI18n(),navigate=useNavigate(),compact=useCompactLayout()
  const [outputFrame,setOutput]=useState<DigitalOutputFrame>({projectId,sessionId,playing:false,level:0,busy:false}),[keyboardShown,setKeyboardShown]=useState(false),[chatShown,setChatShown]=useState(false)
- const output=active&&outputFrame.projectId===projectId&&outputFrame.sessionId===sessionId?outputFrame:{playing:false,level:0,busy:false,readingId:undefined,source:undefined}
+ const output=active&&outputFrame.projectId===projectId&&outputFrame.sessionId===sessionId?outputFrame:{playing:false,level:0,busy:false,readingId:undefined,source:undefined,text:undefined}
  const speech=useRef<DigitalPersonSpeechControls>(null)
  const toggleCaptionSpeech=useCallback((id:string)=>speech.current?.toggle(id),[])
  const wake=useRef<WakeControls>(null)
@@ -101,7 +102,7 @@ export default function DigitalPersonHome(props:Props){
  const textButton=useRef<HTMLButtonElement>(null),inputRef=useRef<HTMLTextAreaElement>(null)
  const recognized=useRef<(text:string)=>void>(()=>{})
  const submitVoiceDraft=useRef<(text:string)=>Promise<boolean>>(async()=>false)
- const dialogue=useDigitalPersonDialogue({projectId,sessionId,active:canCompose,running,speaking:outputBusy,showLevel:!atlas,
+ const dialogue=useDigitalPersonDialogue({projectId,sessionId,active:canCompose,running,speaking:outputBusy,playbackText:output.text,showLevel:!atlas,
   onRecognized:text=>recognized.current(text),onSendDraft:text=>submitVoiceDraft.current(text),onStop:props.onStop})
  useEffect(()=>{
   let published:DigitalOutputFrame={projectId,sessionId,playing:false,level:0,busy:false}
@@ -121,7 +122,7 @@ export default function DigitalPersonHome(props:Props){
    // Atlas amplitude is read by its visual meter. Publishing every 50 ms would
    // rerender the transcript, camera and composer even while the user types.
    if(next.playing===published.playing&&next.busy===published.busy&&next.readingId===published.readingId
-     &&next.source===published.source&&next.metered===published.metered
+     &&next.source===published.source&&next.metered===published.metered&&next.text===published.text
      &&(atlasMode.current||next.level===published.level))return
    published=next
    setOutput(next)
@@ -249,7 +250,7 @@ export default function DigitalPersonHome(props:Props){
   :(microphoneOn?'digitalPerson.homeCancelVoiceInput':'digitalPerson.homeStartVoiceInput'))
  const transcriptButton=<Button variant="ghost" className={`digital-home-dock-transcript${compact?' digital-home-settings':''}`} aria-label={t('digitalPerson.homeExpandConversation')} title={t('digitalPerson.homeExpandConversation')} aria-expanded={transcriptVisible} onClick={()=>{mute();setChatShown(true)}}><Icon name="message-circle-heart" size={16}/>{!compact&&<span>{t('digitalPerson.homeExpandConversation')}</span>}</Button>
  const atlasToggle=<Button variant="ghost" className="digital-home-atlas-toggle" onClick={()=>writeHomePreference(preferenceScope,'atlas',!atlas)}><span>{t(atlas?'digitalPerson.title':'digitalMemoryView.atlas')}</span></Button>
- return <main className={`digital-home${atlas?' digital-home--atlas':''}${transcriptVisible||delegationShown?' digital-home--chat':''}${ui.panel?' digital-home--conversation-window':''}`} data-state={state}>
+ return <VoiceprintNoticesContext value={false}><main className={`digital-home${atlas?' digital-home--atlas':''}${transcriptVisible||delegationShown?' digital-home--chat':''}${ui.panel?' digital-home--conversation-window':''}`} data-state={state}>
   {atlas&&active&&!compact&&<AtlasBackdrop/>}
   <header className="digital-home-header">
    <div className="digital-home-brand"><BrandIcon size={26}/><strong>WorkStep</strong><span>{t('digitalPerson.homeWorkspace')}</span></div>
@@ -300,5 +301,5 @@ export default function DigitalPersonHome(props:Props){
    <DigitalPersonSpeech ref={speech} muted={speechMuted} blockNew={blockNewSpeech} manualEnabled={!blockNewSpeech} hideControls profile={{...profile,auto_speak:true}} projectId={projectId} sessionId={sessionId} messages={messages} active={active}/>
   </footer>
   {facesShown&&active&&<FaceHomePanel key={`${projectId}/${sessionId}`} onClose={()=>setFacesShown(false)}/>}
- </main>
+ </main></VoiceprintNoticesContext>
 }

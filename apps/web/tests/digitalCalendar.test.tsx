@@ -7,6 +7,28 @@ import {I18nProvider} from '../src/i18n'
 import DigitalPersonCalendar from '../src/components/digital-person/DigitalPersonCalendar'
 import {digitalCalendarApi,type CalendarEvent} from '../src/api/digitalCalendar'
 
+for(const presentation of ['home','panel'] as const)test(`${presentation}: occupied dates show schedules; add action and empty dates open creation`,async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ window.happyDOM.setWindowSize({width:presentation==='home'?1440:390,height:900})
+ const globals={SVGElement:globalThis.SVGElement,ResizeObserver:globalThis.ResizeObserver,history:globalThis.history}
+ Object.assign(globalThis,{SVGElement:window.SVGElement,ResizeObserver:window.ResizeObserver,history:window.history})
+ const old={...digitalCalendarApi},today=new Date()
+ digitalCalendarApi.list=async()=>({items:[{id:'existing',revision:'one',content:'**已有安排**',starts_at:today.toISOString(),timezone_name:'Asia/Shanghai',reminder_minutes:0,reminder_status:'pending',reminder_at:today.toISOString(),created_at:'',updated_at:''}],has_more:false,now:today.toISOString()})
+ try{
+  await act(async()=>root.render(<I18nProvider><DigitalPersonCalendar active projectId="p" canEdit presentation={presentation}/></I18nProvider>))
+  await act(async()=>host.querySelector<HTMLButtonElement>('[data-today=true]')!.click())
+  assert.equal(Boolean(document.querySelector('[role=dialog][aria-label="新增日程"]')),false)
+  const view=document.querySelector<HTMLElement>('[role=dialog]:has(.digital-calendar-day-dialog)')!
+  assert.equal(Boolean(view),true,'clicking an occupied date opens a separate schedule dialog')
+  assert.match(view.textContent!,/已有安排/)
+  await act(async()=>[...view.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent==='新增日程')!.click())
+  assert.equal(Boolean(document.querySelector('[role=dialog][aria-label="新增日程"]')),true)
+  await act(async()=>document.querySelector<HTMLElement>('.digital-calendar-editor-backdrop')!.click())
+  await act(async()=>host.querySelector<HTMLButtonElement>('[data-has-events=false]')!.click())
+  assert.equal(Boolean(document.querySelector('[role=dialog][aria-label="新增日程"]')),true)
+ }finally{await act(async()=>root.unmount());Object.assign(digitalCalendarApi,old);Object.assign(globalThis,globals);await window.happyDOM.close()}
+})
+
 test('calendar opens a name-free Markdown editor; blank outside closes, filled outside preserves, save failures retain content',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
  window.happyDOM.setWindowSize({width:1440,height:1000})
@@ -26,6 +48,7 @@ test('calendar opens a name-free Markdown editor; blank outside closes, filled o
   assert.ok(document.querySelector('.digital-calendar-editor')===null)
   await act(async()=>date().click())
   const input=()=>document.querySelector<HTMLTextAreaElement>('[aria-label="日程内容"]')!
+  assert.equal(document.querySelector('#calendar-target')!==null,false,'schedule editor has no destination selector')
   await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value')!.set!.call(input(),'**方案评审**');input().dispatchEvent(new window.Event('input',{bubbles:true}))})
   await act(async()=>document.querySelector<HTMLElement>('.digital-calendar-editor-backdrop')!.click())
   assert.equal(input().value,'**方案评审**')

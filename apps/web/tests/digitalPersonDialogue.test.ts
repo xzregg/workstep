@@ -70,3 +70,17 @@ test('the visual speech gate ends during a pause and clears across a capture gap
   turn.discontinuity(end)
   assert.equal(turn.snapshot().recentSpeech, false)
 })
+
+
+test('phone endpoint requires 1.8 seconds and resumed speech vetoes it',()=>{
+ const turn=new TurnController(true)
+ turn.frame({end:512,probability:.9});turn.frame({end:1024,probability:.9})
+ turn.frame({end:1024+20480,probability:.01})
+ assert.equal(turn.canCommit,false,'old 1.28 second cutoff must not commit')
+ turn.frame({end:1024+28799,probability:.01})
+ assert.equal(turn.canCommit,false)
+ turn.frame({end:1024+28800,probability:.01})
+ assert.equal(turn.canCommit,true)
+ turn.frame({end:1024+29312,probability:.9})
+ assert.equal(turn.canCommit,false)
+})

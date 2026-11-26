@@ -374,8 +374,13 @@ class BaseLLMEngine(ABC):
     SKILL_POLICY: ClassVar[EngineSkillPolicy] = EngineSkillPolicy.UNSUPPORTED
     SUPPORTS_MANUAL_COMPACTION: ClassVar[bool] = True
     SUPPORTS_QUOTA: ClassVar[bool] = False
+    SUPPORTS_LOGIN: ClassVar[bool] = False
     SUPPORTS_SERVICE_TIER: ClassVar[bool] = False
     SUPPORTS_HOST_SESSION_IDS: ClassVar[bool] = False
+
+    def create_login_session(self):
+        """Return an engine-owned EngineLoginSession; invoked off-loop."""
+        raise NotImplementedError('This engine does not support interactive login')
 
     @classmethod
     def permission_modes(cls) -> tuple[str, ...]:
