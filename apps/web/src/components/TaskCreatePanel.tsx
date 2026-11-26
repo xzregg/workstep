@@ -277,7 +277,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
             onChange={setNewDesc}
             projectId={project?.id}
             placeholder={t('taskList.descPlaceholder', { lane: createLane?.label || t('taskList.currentStep') })}
-            minHeight={102}
+            minHeight="var(--task-create-description-min-height, 102px)"
             showAttachmentHint
           />
           <div className="task-create-start-options" data-scheduled={newStartMode === 'scheduled'}>
