@@ -14,6 +14,7 @@ import { useComposerOverlayClearance } from './useComposerOverlayClearance'
 
 type ScrollOptions = {
   active?: boolean
+  conversationKey?: string
   historyMessages: unknown[]
   liveMessages: Record<string, LiveMessage>
   events: unknown[]
@@ -33,6 +34,7 @@ type ScrollOptions = {
 /** Owns follow, unread, media resize, and scroll interaction for a task transcript. */
 export function useTaskConversationScroll({
   active = true,
+  conversationKey,
   historyMessages, liveMessages, events, content, actionRuns,
   chatScrollRef, chatEndRef, shouldFollowMessagesRef, lastProgrammaticScrollTopRef,
   stepLastMessageRefs, pendingStepScrollRef, hasUnreadMessages,
@@ -54,6 +56,7 @@ export function useTaskConversationScroll({
   const pendingScrollRef = pendingStepScrollRef ?? localPendingStepRef
   const lastScrollTopRef = useRef(0)
   const wasActiveRef = useRef(active)
+  const previousConversationKeyRef = useRef(conversationKey)
   const lastScrollHeightRef = useRef(0)
   const contentRef = useRef<HTMLDivElement>(null)
   const [scrolledToBottom, setScrolledToBottom] = useState(true)
@@ -70,12 +73,14 @@ export function useTaskConversationScroll({
 
   // Follow content changes and tab returns; elapsed-time ticks do not trigger scrolling.
   useEffect(() => {
+    const conversationChanged = conversationKey !== previousConversationKeyRef.current
+    previousConversationKeyRef.current = conversationKey
     const returningToConversation = active && !wasActiveRef.current
     wasActiveRef.current = active
     if (!active) return
-    if (returningToConversation && !pendingScrollRef.current) followRef.current = true
+    if ((returningToConversation || conversationChanged) && !pendingScrollRef.current) followRef.current = true
     const container = scrollRef.current
-    if (!returningToConversation && container && hasActiveSelectionWithin(
+    if (!returningToConversation && !conversationChanged && container && hasActiveSelectionWithin(
       container, container.ownerDocument.getSelection(),
     )) {
       followRef.current = false
@@ -89,7 +94,7 @@ export function useTaskConversationScroll({
         const target = conversationBottomScrollTop(container.scrollHeight, container.clientHeight)
         programmaticRef.current = target
         lastScrollHeightRef.current = container.scrollHeight
-        followConversationBottom(container, programmaticRef, followRef, returningToConversation)
+        followConversationBottom(container, programmaticRef, followRef, returningToConversation || conversationChanged)
         lastScrollTopRef.current = target
         setScrolledToBottom(isNearConversationBottom(container.scrollHeight, target, container.clientHeight))
       }
@@ -100,7 +105,7 @@ export function useTaskConversationScroll({
       setUnreadMessages(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, historyMessages, liveMessages, events, content, actionScrollKey])
+  }, [active, conversationKey, historyMessages, liveMessages, events, content, actionScrollKey])
 
   // Keep step navigation in this scroll owner, including anchors loaded after the click.
   useEffect(() => {
