@@ -867,7 +867,7 @@ WorkStep Web `TaskShareButton.tsx` 统一任务详情的分享入口，`GatewayT
 | 步骤进度图交互和渲染 | `TaskStepProgressGraph.tsx` | `taskStepProgressGraph.test.tsx`、`taskDetailProgressLayout.test.mjs` |
 | 步骤进度图的依赖布局、连线几何与轮次 | `taskStepProgressLayout.ts` | `taskStepProgressLayout.test.ts`、`taskStepProgressGraph.test.tsx` |
 | 步骤输入、输出、产物轮次及重新执行 | `TaskStepIoPanel.tsx` | `taskStepIoPanel.test.tsx`、`taskDetailProgressLayout.test.mjs` |
-| 审核结果展示与操作入口 | `TaskReviewResult.tsx` | `taskReviewResult.test.tsx`、`reviewTerminateAction.test.mjs` |
+| 审核结果展示与操作入口 | `TaskReviewResult.tsx` → `ReviewReportContent.tsx`，兼容历史审核问题的 `message/recommendation` 与标准 `description/suggestion`；`MarkdownMessage.tsx` 将缺失正文按空文本处理，保留后续正常正文 | `reviewReportMarkdown.test.tsx`、`markdownMessagePresentation.test.tsx`、`taskReviewResult.test.tsx`、`reviewTerminateAction.test.mjs` |
 | 审核消息关联、最新可操作审核、人工审核识别及停止后的标记完成资格 | `src/pages/taskReviewRules.ts`；任务消息、审核结果和移动端入口共用 | `taskReviewRules.test.ts` |
 | 审核列表刷新、决策提交、失败执行标记完成与下游调度确认 | `src/hooks/useTaskReviewActions.ts`；`TaskDetail.tsx` 只接入审核面板和确认框 | `useTaskReviewActions.test.tsx` |
 | 步骤审核设置的有效配置、草稿、保存与错误恢复 | `TaskDetail.tsx` 保留流程步骤的 `review`，`TaskDetailView.tsx` 将其传入 `TaskReviewConfigPanel.tsx`；面板先继承流程配置，再合并任务覆盖，与 `services/review_messages.py::resolve_review_config` 的模式优先级一致，禁止将未保存的配置显示成人工；任务页仅开启编辑，分享页不显示设置 | `taskReviewConfigPanel.test.tsx`；后端 `tests/test_task_review_overrides.py` 验证任务人工配置在初次执行和重新执行时均覆盖流程自动配置 |

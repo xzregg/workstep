@@ -45,7 +45,7 @@ interface MarkdownMessageProps {
  * 靠 memo 按值比较直接跳过整棵解析子树。
  */
 function MarkdownMessage({
-  content,
+  content: rawContent,
   streaming = false,
   revealInitial = false,
   projectId,
@@ -55,6 +55,7 @@ function MarkdownMessage({
   mermaidRenderDelayMs,
   reveal = 'a',
 }: MarkdownMessageProps) {
+  const content = rawContent ?? ''
   const [previewFile, setPreviewFile] = useState<ProjectFileLink | null>(null)
   const taskFilePreview = useTaskFilePreview()
   const [imageGallery, setImageGallery] = useState<ImagePreviewGallery | null>(null)

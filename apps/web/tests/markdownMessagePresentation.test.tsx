@@ -35,3 +35,12 @@ test('literal citations in inline code, fenced code and user text stay intact', 
   assert.ok(render('citeunknown').includes('citeunknown'))
   assert.ok(render('citeturn2view').includes('citeturn2view'))
 })
+
+
+test('missing Markdown body renders empty without losing normal Markdown', () => {
+  for (const content of [undefined, null]) {
+    const html = render(content as unknown as string)
+    assert.doesNotMatch(html, /undefined|null/)
+  }
+  assert.match(render('**正常正文**'), /<strong>正常正文<\/strong>/)
+})
