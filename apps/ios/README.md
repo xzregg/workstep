@@ -111,3 +111,18 @@ Web 行为入口为 `apps/web/tests/iosNotifications.test.ts`、`completionNotif
 本批验证：核心行为检查、JavaScript 桥接／工程资源检查、Web 两端原生朗读协议回归通过；Xcode 27.2 的模拟器与未签名 iPhone 设备版编译通过。构建日志和产物位于仓库 `tmp/ios-media/`；未运行手机实机采集和出声验收。
 
 带声音视频采集与单独相机／录音共用系统相机和麦克风权限，没有独立录像授权项。两次系统申请之间复核页面、服务和前后台状态；任一拒绝或上下文改变均拒绝网页请求。只在用户触发采集时申请，需安装更新后的 iOS 应用；网页 Permissions-Policy 禁止采集时不会进入系统授权回调，仍需更新对应后台。此处补齐采集授权，不新增独立录像界面。
+
+## 应用图标
+
+AppIcon 资产目录中的 `AppIcon.png` 沿用网站标识，使用与桌面包相同的带箭头图形和中央 80% 留白，并铺为不透明白底；iOS 由系统施加圆角，不在图中预裁圆角。资源随源码提交，Xcode 的 `ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon` 直接编译这张 1024px RGB PNG。
+
+更新网站 `apps/web/public/favicon.svg` 后，安装桌面端开发依赖，在仓库根目录按顺序执行：
+
+```bash
+rtk proxy node apps/desktop/scripts/generate-icons.cjs
+rtk proxy node apps/desktop/scripts/check-icons.cjs
+rtk proxy swift apps/ios/scripts/prepare-icon.swift
+rtk proxy swift apps/ios/scripts/prepare-icon.swift --check
+```
+
+`prepare-icon.swift` 默认读取桌面生成的 1024px PNG，仍支持显式输入、输出路径；`--check` 仅验证，不改写资源。Xcode 构建不依赖 Node 或 Electron。回归由 `tests/project.test.mjs` 验证资产尺寸、不透明度及生成结果一致性；安装后的系统遮罩效果需在模拟器或设备主屏检查。

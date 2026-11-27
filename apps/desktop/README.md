@@ -60,7 +60,7 @@ WORKSTEP_DESKTOP_PORT=43123 WorkStep
 
 ## 本地开发
 
-桌面应用和安装包图标以 `apps/web/public/favicon.svg` 为源，与网页品牌图标一致。更新网页图标后，在 `apps/desktop` 执行 `yarn icons`，重新生成 `build/app-icon.svg`、macOS ICNS、Windows ICO 和 Linux 各尺寸 PNG，再重新打包。
+桌面应用和安装包图标以 `apps/web/public/favicon.svg` 为源，与网页品牌图标一致。更新网页图标后，在 `apps/desktop` 执行 `yarn icons`，重新生成 `build/app-icon.svg`、macOS ICNS、Windows ICO 和 Linux 各尺寸 PNG，再重新打包。原生栅格图将标识缩放到画布中央 80%，为箭头和系统圆角保留留白，网页源图不变。生成器同步写入 `build/icon-manifest.json`；`node scripts/check-icons.cjs` 和打包 `beforePack` 核对网站源文件与所有图标变体的哈希，资源过期或遗漏时拒绝打包。校验只使用 Node，不要求 Linux 打包机启动图形环境。32px PNG 同时用于包内托盘与启动窗口。行为回归见 `tests/icon-resources.test.cjs`。
 
 先分别启动 daemon 和 Web 开发服务，再启动 Electron：
 
