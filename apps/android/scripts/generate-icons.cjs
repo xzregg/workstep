@@ -24,19 +24,27 @@ if (!process.versions.electron) {
       { name: 'app_icon', size: 512, logo: 512 * 60 / 72, background: true },
       // 108dp adaptive layer, with a 60dp SVG; its arrow tips fit inside the central 66dp safe circle.
       { name: 'app_icon_foreground', size: 432, logo: 240, background: false },
+      ...[['mdpi', 24], ['hdpi', 36], ['xhdpi', 48], ['xxhdpi', 72], ['xxxhdpi', 96]]
+        .map(([density, size]) => ({ name: 'notification_icon', folder: `drawable-${density}`,
+          size, logo: size * 20 / 24, notification: true })),
     ]
     for (const variant of variants) {
       const data = await window.webContents.executeJavaScript(`(async () => {
         const image = new Image(); image.src = 'data:image/svg+xml;base64,' + ${JSON.stringify(Buffer.from(source).toString('base64'))};
         await image.decode();
-        const { size, logo, background } = ${JSON.stringify(variant)};
+        const { size, logo, background, notification } = ${JSON.stringify(variant)};
         const canvas = document.createElement('canvas'); canvas.width = canvas.height = size;
         const ctx = canvas.getContext('2d');
         if (background) {
           ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.roundRect(0, 0, size, size, size / 5); ctx.fill();
         }
         ctx.drawImage(image, (size - logo) / 2, (size - logo) / 2, logo, logo);
-        if (!background) {
+        if (notification) {
+          // Android tints the alpha mask; keep the SVG's arrows, never its color/background.
+          ctx.globalCompositeOperation = 'source-in'; ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, size, size);
+        }
+        if (!background && !notification) {
           const pixels = ctx.getImageData(0, 0, size, size).data;
           for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
             if (pixels[(y * size + x) * 4 + 3] && Math.hypot(x + .5 - size / 2, y + .5 - size / 2) > size * 33 / 108) {
@@ -47,10 +55,12 @@ if (!process.versions.electron) {
         return canvas.toDataURL('image/png');
       })()`)
       const png = Buffer.from(data.split(',')[1], 'base64')
-      const target = path.join(android, 'app/src/main/res/drawable-nodpi', variant.name + '.png')
+      const directory = path.join(android, 'app/src/main/res', variant.folder || 'drawable-nodpi')
+      const target = path.join(directory, variant.name + '.png')
       if (process.argv.includes('--check')) {
         if (!png.equals(await fs.readFile(target))) throw new Error('Regenerate Android icon: ' + variant.name)
       } else {
+        await fs.mkdir(directory, { recursive: true })
         await fs.writeFile(target, png)
       }
     }

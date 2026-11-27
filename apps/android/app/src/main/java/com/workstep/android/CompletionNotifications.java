@@ -8,6 +8,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.os.Build;
 
@@ -16,6 +17,12 @@ import java.io.IOException;
 final class CompletionNotifications {
     static final String CHANNEL_ID = "workstep_completion";
     static final String WATCH_CHANNEL_ID = "workstep_watch";
+
+    private static Notification.Builder builder(Context context, String channel) {
+        return new Notification.Builder(context, channel)
+                .setSmallIcon(R.drawable.notification_icon)
+                .setLargeIcon(Icon.createWithResource(context, R.drawable.app_icon));
+    }
 
     static void createChannels(Context context) {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
@@ -27,8 +34,7 @@ final class CompletionNotifications {
 
     /** Minimal notification used before any logging, networking, or pending-intent setup. */
     static Notification starting(Context context) {
-        return new Notification.Builder(context, WATCH_CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_notify_sync)
+        return builder(context, WATCH_CHANNEL_ID)
                 .setContentTitle("WorkStep 正在等待回复")
                 .setOngoing(true)
                 .build();
@@ -49,8 +55,7 @@ final class CompletionNotifications {
         }
         PendingIntent pending = PendingIntent.getActivity(context, 7001, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(context, WATCH_CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_notify_sync)
+        return builder(context, WATCH_CHANNEL_ID)
                 .setContentTitle("WorkStep 正在等待回复")
                 .setContentText("回复完成或失败时将提醒你")
                 .setContentIntent(pending)
@@ -81,8 +86,7 @@ final class CompletionNotifications {
         }
         PendingIntent pending = PendingIntent.getActivity(context, id.hashCode(), intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        Notification notice = new Notification.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_notify_chat)
+        Notification notice = builder(context, CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setAutoCancel(true)

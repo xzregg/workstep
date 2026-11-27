@@ -89,3 +89,17 @@ rtk proxy node apps/android/scripts/generate-icons.cjs --check
 生成资源随源码提交，Gradle 直接打包，不在 Android 构建时依赖 Electron。Manifest 的普通及圆形入口共用 `@drawable/app_icon`：`drawable-nodpi/app_icon.png` 是普通回退图标，API 26+ 使用 `drawable-anydpi-v26/app_icon.xml` 的白底自适应图标和 `app_icon_foreground.png`。前景为 108dp 图层（432px），完整 SVG 缩放至中央 60dp，箭头尖端均处于 66dp 安全圆内，避免启动器遮罩裁掉箭头。当前没有额外的产品风味或活动别名图标，也未配置单色主题图标。
 
 回归：`LauncherIconTest` 核对打包入口与自适应层引用；生成器 `--check` 核对已提交 PNG 与网站源图的实际渲染一致。安装后仍须检查设备启动器遮罩与图标显示。
+
+### 通知图标
+
+测试通知、网页与后台服务的回复／步骤完成或失败通知均由 `CompletionNotifications.show` 发送；前台服务先用 `starting`，再用 `ongoing`。三条构建路径共用通知图标设置：`notification_icon` 为从网站 SVG 生成的透明背景白色单色轮廓（24dp，mdpi–xxxhdpi），用于状态栏和通知小图标；彩色大图显式引用现有 `app_icon` 自适应资源。厂商通知卡片也可能读取 Manifest 的应用／圆形图标，这两个入口仍指向同一新版 `app_icon`，没有另外保留旧蓝底通知图。
+
+单色资源与启动器资源由同一 `scripts/generate-icons.cjs` 生成，`--check` 一并验证。修改后须重新安装 APK；网页更新不会替换已安装应用的资源。厂商界面可自行决定大小图标的显示位置与缓存，不能用 AOSP 模拟器验证代替对应手机验收。
+
+设备回归位于 `app/src/androidTest/java/com/workstep/android/NotificationIconsTest.java`，运行器由 `app/src/androidTest/AndroidManifest.xml` 注册，只进入测试 APK，不增加生产调试入口或导出组件，也不修改应用版本配置。构建 `assembleDebug assembleDebugAndroidTest` 并安装两个 APK，授予应用通知权限后运行：
+
+```bash
+adb shell am instrument -w -e phase test com.workstep.android.test/com.workstep.android.NotificationIconsTest
+```
+
+`phase` 支持 `test`、`success`、`failure`、`starting`、`waiting`。截图时可加 `-e holdSeconds 20`，在测试结束清理服务前保留通知。每轮检查生产构建器、实际发布通知的大小图标、Manifest 应用图标，以及单色轮廓的透明度和颜色；`waiting` 实际启动既有前台服务，测试数据只连接设备本机丢弃端口，不接触用户服务；`starting` 单独发布通常瞬时被替换的启动通知以便截图。测试／消息阶段直接调用生产发送方法，保留原有权限、去重和点击行为，不代表真实后台业务或网络结果链路已验收。
