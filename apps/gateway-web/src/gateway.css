@@ -746,6 +746,8 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
   .gateway-usage-date-popup .ant-picker-panels,
   .gateway-usage-date-popup .ant-picker-panel-layout,
   .gateway-usage-date-popup .ant-picker-datetime-panel { flex-direction: column; }
+  .gateway-usage-date-popup .ant-picker-panels { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  .gateway-usage-date-popup .ant-picker-panels .ant-picker-panel { flex-shrink: 0; overflow: visible; }
   .gateway-usage-date-popup .ant-picker-panel-layout { min-height: 0; }
   .gateway-usage-date-popup .ant-picker-panel-layout > div:not(.ant-picker-presets) { min-height: 0; display: flex; flex-direction: column; }
   .gateway-usage-date-popup .ant-picker-panel { min-height: 0; overflow: auto; overscroll-behavior: contain; }

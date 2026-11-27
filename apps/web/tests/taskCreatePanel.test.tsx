@@ -1,6 +1,7 @@
 import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { taskApi, type Project } from '../src/api/client'
@@ -105,6 +106,17 @@ test('scheduled creation submits the selected local time as the same ISO instant
       title.dispatchEvent(new window.Event('input', { bubbles: true }))
       container.querySelector<HTMLInputElement>('input[value="scheduled"]')!.click()
     })
+    const styles = document.head.appendChild(document.createElement('style'))
+    const css = ['index.css', 'mobile.css'].map(file => readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8')).join('\n')
+    const startOptions = container.querySelector<HTMLElement>('.task-create-start-options')!
+    const previousWidth = window.innerWidth
+    for (const width of [320, 390, 1023, 1024, 1440]) {
+      window.innerWidth = width
+      styles.textContent = css
+      assert.equal(window.getComputedStyle(startOptions).gridTemplateColumns, width <= 1023 ? '1fr' : '1fr 1fr')
+    }
+    window.innerWidth = previousWidth
+    styles.remove()
     assert.equal(container.querySelector<HTMLButtonElement>('.task-create-primary')!.disabled, true)
     await act(async () => container.querySelector<HTMLInputElement>('.ant-picker-input input')!.click())
     const preset = [...document.querySelectorAll<HTMLButtonElement>('.date-time-picker-preset')].find(button => /Next week|下周/.test(button.textContent || ''))!

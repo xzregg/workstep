@@ -134,7 +134,7 @@ Android App 内文件预览的「新窗口」由 `apps/web/src/utils/filePreview
 
 | 入口（源码路径相对各应用 `src/`） | 实际组件／控件 | 排查结论与修复范围 |
 | --- | --- | --- |
-| Web 新建任务的定时启动：`TaskCreatePanel.tsx` | 公共 `DateTimePicker`，秒精度 | 原横排弹层溢出、输入唤起键盘；公共修复覆盖 |
+| Web 新建任务的定时启动：`TaskCreatePanel.tsx` | 公共 `DateTimePicker`，秒精度 | 原横排弹层溢出、输入唤起键盘；公共修复覆盖，移动定时字段改为单列以完整显示日期 |
 | Web 任务详情编辑定时启动：`TaskDetailDescription.tsx` | 同上 | 同类问题；公共修复覆盖 |
 | Web 数字人日程新增／编辑：`digital-person/DigitalCalendarEditor.tsx` | 公共 `DateTimePicker`，分钟精度 | 同类问题；公共修复覆盖，保留日程弹窗层级 |
 | Web 定时中心、任务／对话定时规则：`ScheduleRuleEditor.tsx`，由 `SchedulePage`、`TaskScheduleEditor`、`ConversationScheduleEditor` 消费 | 原生 `time`、`datetime-local`、起止 `date` | 不使用横排自定义弹层；已有字段宽度约束，未改日期语义 |
