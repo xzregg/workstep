@@ -7,7 +7,15 @@ import { installDomEnvironment } from './helpers/domEnv'
 import ChatMessageBubble from '../src/components/ChatMessageBubble'
 import { I18nProvider } from '../src/i18n'
 
-for (const options of [[], ['网关页面打不开', '设备离线']]) {
+for (const options of [
+  [],
+  ['网关页面打不开', '设备离线'],
+  [
+    '先做可玩原型，使用现有素材和程序绘图，不调用付费服务',
+    '使用 AI 美术和音乐；若工具要求登录或付费，再由你完成',
+    'ContinuousLongStringWithoutSpaces'.repeat(12),
+  ],
+]) {
   test(`question in the body keeps a title beside its ${options.length} choices`, async () => {
     const { window } = installDomEnvironment()
     const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))

@@ -966,10 +966,14 @@ a.btn { box-sizing: border-box; text-decoration: none; vertical-align: middle; }
 
 .chat-message-row .chat-message-action { opacity: 0; }
 .chat-async-question {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 10px 12px;
   border: 1px solid var(--border-soft);
   border-radius: 10px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 .chat-async-question-title {
@@ -979,6 +983,11 @@ a.btn { box-sizing: border-box; text-decoration: none; vertical-align: middle; }
 .chat-async-question-options { display: flex; flex-wrap: wrap; gap: 8px; }
 .chat-async-question .chat-message-action {
   opacity: 1;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
   min-height: 36px;
   padding: 6px 10px;
   border: 1px solid var(--border-soft);
