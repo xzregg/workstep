@@ -517,6 +517,7 @@ export const ar: Messages = {
     scheduledPresetNextMonth: "الشهر المقبل",
     scheduledPickerPlaceholder: "اختر التاريخ والوقت",
     scheduledPickerLabel: "التاريخ والوقت المجدولان",
+    aiApplyToContent: '应用到任务内容',
     aiApply: "تطبيق",
     discard: "تجاهل",
   },

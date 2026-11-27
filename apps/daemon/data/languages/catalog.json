@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "f4660383e5000694ade8a482ad0205f127f0c12e3ec40a2c657d6b42e0470308",
+  "revision": "61a85904f303b6bdc0bb98315dd49b28997f5603ee3f40fd03bc5540ad6b1bc1",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -4221,6 +4221,7 @@
     "taskList.aiGenerateFailed": "生成任务失败",
     "taskList.aiOverwriteTitle": "应用 AI 生成的任务内容",
     "taskList.aiOverwriteMessage": "AI 将覆盖当前任务说明，并把起始步骤切换为“{step}”。确定应用？",
+    "taskList.aiApplyToContent": "应用到任务内容",
     "taskList.aiApply": "应用",
     "taskList.aiRunningCloseMessage": "任务助手仍在生成，确定放弃并关闭新建任务？",
     "taskList.autoStartTitle": "当前任务在“{lane}”创建后自动开始",

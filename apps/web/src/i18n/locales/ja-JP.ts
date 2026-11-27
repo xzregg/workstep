@@ -2381,6 +2381,7 @@ export const jaJP: Messages = {
     aiGenerateFailed: 'タスク生成に失敗しました',
     aiOverwriteTitle: 'AI が生成したタスク内容を適用',
     aiOverwriteMessage: '現在の説明を上書きし、開始ステップを「{step}」に変更します。適用しますか？',
+    aiApplyToContent: '应用到任务内容',
     aiApply: '適用',
     aiRunningCloseMessage: 'タスクアシスタントが生成中です。破棄して新規タスクを閉じますか？',
     autoStartTitle: 'このタスクは“{lane}”作成後に自動開始します',

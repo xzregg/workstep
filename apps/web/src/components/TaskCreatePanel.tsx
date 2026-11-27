@@ -58,7 +58,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
     .find((step: any) => (step.type || step.key || String(step.id)) === selectedStepKey)
   const initialAutoStart = can('task.start_on_create') && Boolean(selectedStep?.autoStart)
   const initialOverrides = useRef(initialReviewOverrides(project.steps)).current
-  const [createStartStepKey, setCreateStartStepKey] = useState<string | null>(selectedStepKey)
+  const [createStartStepKey] = useState<string | null>(selectedStepKey)
   const createLane = lanes.find((lane) => lane.key === createStartStepKey) || lanes[0]
   const createLaneIndex = Math.max(0, lanes.findIndex((lane) => lane.key === createLane?.key))
   const [reviewOverrides, setReviewOverrides] = useState<Record<string, ReviewOverride>>(initialOverrides)
@@ -75,7 +75,6 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
   const [taskAiBusy, setTaskAiBusy] = useState(false)
   const [taskAiMessage, setTaskAiMessage] = useState('')
   const [taskAiChatWidth, setTaskAiChatWidth] = useState<number | null>(null)
-  const [pendingTaskDraft, setPendingTaskDraft] = useState<TaskDraftResult | null>(null)
   const newTitleInputRef = useRef<HTMLInputElement>(null)
   const newPanelRef = useRef<HTMLDivElement>(null)
   const newPanelBaselineRef = useRef({
@@ -144,24 +143,10 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
   }
 
   const applyTaskDraft = useCallback((draft: TaskDraftResult) => {
-    const targetLane = lanes.find((lane) => lane.key === draft.start_step_key)
-    if (!targetLane) {
-      setCreateError(t('taskList.aiGenerateFailed'))
-      return
-    }
     setNewTitle((current) => backfillEmptyTitle(current, draft.title))
     setNewDesc(draft.description)
-    setCreateStartStepKey(targetLane.key)
-    setPendingTaskDraft(null)
-  }, [lanes, t])
-
-  const handleTaskDraft = useCallback((draft: TaskDraftResult) => {
-    if (newDesc.trim()) {
-      setPendingTaskDraft(draft)
-      return
-    }
-    applyTaskDraft(draft)
-  }, [applyTaskDraft, newDesc])
+    setActiveTab('content')
+  }, [])
 
   const startTaskAiDividerDrag = (event: React.MouseEvent) => {
     event.preventDefault()
@@ -375,7 +360,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
                 workflowId={workflowId || undefined}
                 startStepKey={createLane?.key}
                 initialMessage={taskAiMessage}
-                onDraft={handleTaskDraft}
+                onApplyDraft={applyTaskDraft}
                 onBusyChange={setTaskAiBusy}
                 onClose={requestCloseTaskAi}
               />
@@ -398,20 +383,6 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
         onCancel={() => setConfirmCloseNewTask(false)}
       />
 
-      <ConfirmDialog
-        open={pendingTaskDraft !== null}
-        title={t('taskList.aiOverwriteTitle')}
-        message={t('taskList.aiOverwriteMessage', {
-          step: lanes.find((lane) => lane.key === pendingTaskDraft?.start_step_key)?.label
-            || pendingTaskDraft?.start_step_key
-            || t('taskList.currentStep'),
-        })}
-        confirmText={t('taskList.aiApply')}
-        onConfirm={() => {
-          if (pendingTaskDraft) applyTaskDraft(pendingTaskDraft)
-        }}
-        onCancel={() => setPendingTaskDraft(null)}
-      />
 
     </>
   )

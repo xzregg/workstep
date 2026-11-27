@@ -99,3 +99,18 @@ test('keeps all batch drafts and independent scheduled start times', () => {
     value: { ...drafts[0], task_drafts: drafts } })
   assert.deepEqual(useTaskDraftStore.getState().sessions.batch.latestResult?.task_drafts, drafts)
 })
+
+
+test('retains each message draft even after newer and invalid results', () => {
+  useTaskDraftStore.setState({ sessions: {} })
+  const store = useTaskDraftStore.getState()
+  store.newSession('multi')
+  for (const [id, description] of [['first', '完整草稿一'], ['second', '完整草稿二'], ['invalid', '   ']]) {
+    store.handleWsEvent({ type: 'CUSTOM', name: 'workstep.task_draft', channel: 'task_create',
+      session_id: 'multi', messageId: id, value: { description } })
+  }
+  const messages = useTaskDraftStore.getState().sessions.multi.messages
+  assert.equal(messages.find(message => message.id === 'first')?.result?.description, '完整草稿一')
+  assert.equal(messages.find(message => message.id === 'second')?.result?.description, '完整草稿二')
+  assert.equal(messages.find(message => message.id === 'invalid')?.result, undefined)
+})

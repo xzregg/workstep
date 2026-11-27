@@ -2566,6 +2566,7 @@ export const zhCN = {
     aiGenerateFailed: '生成任务失败',
     aiOverwriteTitle: '应用 AI 生成的任务内容',
     aiOverwriteMessage: 'AI 将覆盖当前任务说明，并把起始步骤切换为“{step}”。确定应用？',
+    aiApplyToContent: '应用到任务内容',
     aiApply: '应用',
     aiRunningCloseMessage: '任务助手仍在生成，确定放弃并关闭新建任务？',
     autoStartTitle: '当前任务在“{lane}”创建后自动开始',
