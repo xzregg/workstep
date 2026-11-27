@@ -10,10 +10,17 @@ if TYPE_CHECKING:
 
 Percent = Annotated[float, Field(strict=True, ge=0, le=100, allow_inf_nan=False)]
 NonNegative = Annotated[float, Field(strict=True, ge=0, allow_inf_nan=False)]
+QuotaFailureReason = Literal['command_failed', 'invalid_report', 'timeout']
 
 
 class QuotaAuthenticationRequired(Exception):
     """The engine requires account authentication before reading quota."""
+
+
+class QuotaUnavailable(Exception):
+    def __init__(self, reason: QuotaFailureReason):
+        super().__init__(reason)
+        self.reason = reason
 
 
 class QuotaWindow(BaseModel):
@@ -98,6 +105,7 @@ class EngineQuotaResult(BaseModel):
     supported: bool
     status: Literal['ok', 'unsupported', 'unauthenticated', 'unavailable']
     quota: EngineQuota | None = None
+    reason: QuotaFailureReason | None = None
 
 
 async def query_quota(engine: 'BaseLLMEngine', cwd: str, *, timeout: float = 20) -> dict:
@@ -120,6 +128,9 @@ async def query_quota(engine: 'BaseLLMEngine', cwd: str, *, timeout: float = 20)
                 result.quota, result.status = quota, 'ok'
         except QuotaAuthenticationRequired:
             result.status = 'unauthenticated'
+        except QuotaUnavailable as error:
+            if error.reason in ('command_failed', 'invalid_report', 'timeout'):
+                result.reason = error.reason
         except Exception:
             # SDK errors can contain tokens, endpoints or account identifiers.
             # Do not expose or log arbitrary adapter diagnostics here.

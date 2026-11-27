@@ -192,8 +192,11 @@ class AntigravityEngine(AcpEngineBase):
 
     async def get_quota(self, cwd=""):
         from engines.core.antigravity_quota import read_quota
+        from engines.core.quota import QuotaUnavailable
         binary = await asyncio.to_thread(self.resolve_binary)
-        return await read_quota(binary, cwd, self.QUOTA_TIMEOUT_SECONDS) if binary else None
+        if not binary:
+            raise QuotaUnavailable('command_failed')
+        return await read_quota(binary, cwd, self.QUOTA_TIMEOUT_SECONDS)
 
     @classmethod
     def get_binary_override(cls):

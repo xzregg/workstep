@@ -47,10 +47,20 @@ test('desktop chat opens at most four independent panes, preserves drafts across
   const oldFetch = globalThis.fetch
   const sentTo: string[] = []
   let creates = 0
+  let quotaNow = 1000
+  let quotaCollectedAt = 0
+  let quotaCalls = 0
   let finishCreation!: () => void
   const creationPending = new Promise<void>(resolve => { finishCreation = resolve })
   globalThis.fetch = async (input, init) => {
     const url = String(input)
+    if (/\/engine\/quota(?:\?|$)/.test(url)) {
+      assert.doesNotMatch(url, /refresh=1/)
+      quotaCalls += 1
+      const cached = quotaNow < quotaCollectedAt + 300
+      if (!cached) quotaCollectedAt = quotaNow
+      return Response.json({engines: [], cached, collected_at: quotaCollectedAt, expires_at: quotaCollectedAt + 300})
+    }
     if (url.includes('/chat-sessions?') && init?.method === 'POST') {
       if (++creates === 1) throw new Error('创建失败，请重试')
       assert.equal(JSON.parse(String(init.body)).project_id, 'p')
@@ -126,6 +136,13 @@ test('desktop chat opens at most four independent panes, preserves drafts across
     assert.equal(document.querySelectorAll('.chat-workspace-pane').length, 4)
     assert.equal(document.querySelectorAll('.chat-workspace-separator[aria-orientation="vertical"]').length, 3)
     assert.equal(document.querySelectorAll('.chat-workspace-pane textarea').length, 4, document.querySelector('.chat-workspace')!.textContent!)
+    const firstComposer = document.querySelector('.chat-workspace-pane textarea')
+    const beforeReentry = quotaCalls
+    quotaNow += 300
+    await act(async () => navigate('/chat?project=demo&session=a'))
+    assert.ok(firstComposer === document.querySelector('.chat-workspace-pane--active textarea'))
+    assert.equal(quotaCalls, beforeReentry + 1)
+    assert.equal(document.querySelector('.chat-workspace-pane--active .engine-quota-updated')?.getAttribute('datetime'), new Date(quotaNow * 1000).toISOString())
     await act(async () => openWindows())
     assert.equal(arrangementOption('增加对话窗口').disabled, true)
     await act(async () => openWindows())

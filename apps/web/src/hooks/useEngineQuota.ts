@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { engineApi, type UnifiedQuotaResult } from '../api/client'
+import { ApiError, engineApi, type UnifiedQuotaResult } from '../api/client'
 
 /** All engines share the daemon cache; engine selection is a local projection. */
 export function useEngineQuota(projectId: string | undefined, engine: string, conversationKey = '', enabled = true) {
@@ -15,9 +15,13 @@ export function useEngineQuota(projectId: string | undefined, engine: string, co
     setError(false)
     try {
       const result = await engineApi.quotas(scope, force)
+      if (!Array.isArray(result?.engines)) throw new Error('Invalid quota response')
       if (requestId.current === id) setSnapshot({projectId: scope, result})
-    } catch {
-      if (requestId.current === id) setError(true)
+    } catch (failure) {
+      if (requestId.current === id) {
+        if (failure instanceof ApiError && failure.status === 409) setSnapshot(null)
+        setError(true)
+      }
     } finally {
       if (requestId.current === id) setRefreshing(false)
     }
@@ -26,9 +30,8 @@ export function useEngineQuota(projectId: string | undefined, engine: string, co
     void refresh(false)
     return () => { requestId.current += 1 }
   }, [refresh, conversationKey])
-  const entries = snapshot?.projectId === scope && Array.isArray(snapshot.result?.engines)
-    ? snapshot.result.engines.filter(entry => entry.supported)
-    : []
+  const result = snapshot?.projectId === scope ? snapshot.result : null
+  const entries = result?.engines.filter(entry => entry.supported) ?? []
   const selected = entries.find(entry => entry.engine_id === engine)
-  return {entries, quota: selected?.status === 'ok' ? selected.quota : null, refreshing, refresh, error}
+  return {entries, collectedAt: result?.collected_at, quota: selected?.status === 'ok' ? selected.quota : null, refreshing, refresh, error}
 }

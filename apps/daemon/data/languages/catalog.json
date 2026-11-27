@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "3bce296b79e996077fdc680b9f68b8ce4b19b13306ada153aef9007fd6fdd83e",
+  "revision": "26ca50d12c524fa989c76a8496b544b130bae0034b1c17df7ed045aa9fdce402",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -3068,7 +3068,12 @@
     "chatInput.quotaCompact": "额度 {remaining}%",
     "chatInput.quotaAll": "全部引擎",
     "chatInput.quotaUnavailable": "暂时无法查询",
+    "chatInput.quotaLastKnown": "显示上次成功查询的额度",
     "chatInput.quotaLogin": "请先登录",
+    "chatInput.quotaTimeout": "额度查询超时，可重试",
+    "chatInput.quotaCommandFailed": "额度查询命令执行失败",
+    "chatInput.quotaInvalidReport": "额度报告格式无法识别",
+    "chatInput.quotaLastRefresh": "上次刷新 {time}",
     "chatInput.quotaLoading": "查询中",
     "chatInput.quotaEmpty": "暂无支持额度查询的引擎",
     "chatInput.quotaMinutes": "{minutes} 分钟",

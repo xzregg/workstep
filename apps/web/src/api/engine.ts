@@ -11,6 +11,7 @@ export type QuotaResult = {
   engine_id: string
   supported: boolean
   status?: 'ok' | 'unsupported' | 'unauthenticated' | 'unavailable'
+  reason?: 'command_failed' | 'invalid_report' | 'timeout'
   quota: EngineQuota | null
 }
 export interface UnifiedQuotaResult {

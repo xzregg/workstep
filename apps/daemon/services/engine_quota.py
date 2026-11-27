@@ -16,6 +16,10 @@ class QuotaBusyError(Exception):
     pass
 
 
+class QuotaInvalidatedError(Exception):
+    pass
+
+
 @dataclass
 class _Pending:
     task: asyncio.Task
@@ -90,21 +94,39 @@ def quota_scope_key(project_id: str) -> tuple[str, ...]:
 @dataclass
 class _UnifiedCacheEntry:
     engines: list[dict]
+    quota_or_barrier_seq: dict[str, int]
     collected_at: float
     expires_at_wall: float
     expires_at_mono: float
     seq: int
 
+    def reconcile_late_results(self, engines: list[dict], seq: int) -> None:
+        """Update fallback values without replacing the newer batch's status or TTL."""
+        by_id = {item["engine_id"]: item for item in engines}
+        for index, item in enumerate(self.engines):
+            engine_id = item["engine_id"]
+            result = by_id.get(engine_id)
+            if item.get("status") != "unavailable" or not result or seq <= self.quota_or_barrier_seq[engine_id]:
+                continue
+            quota = result.get("quota")
+            status = result.get("status")
+            if (status == "ok" and quota is not None) or status in {"unauthenticated", "unsupported"}:
+                self.engines[index] = {**item, "quota": quota if status == "ok" else None}
+                self.quota_or_barrier_seq[engine_id] = seq
+
 
 class _UnifiedLoopState:
     def __init__(self):
         self.cache: dict[tuple[str, ...], _UnifiedCacheEntry] = {}
-        self.normal_inflight: dict[tuple[str, ...], _Pending] = {}
-        self.refresh_inflight: dict[tuple[str, ...], _Pending] = {}
+        self.normal_inflight: dict[tuple[tuple[str, ...], int], _Pending] = {}
+        self.refresh_inflight: dict[tuple[tuple[str, ...], int], _Pending] = {}
         self.collector_limit = asyncio.Semaphore(2)
         self.seq = 0
         self.invalidated_seq = 0
         self.scope_invalidated_seq: dict[tuple[str, ...], int] = {}
+
+    def generation(self, scope_key: tuple[str, ...]) -> int:
+        return max(self.invalidated_seq, self.scope_invalidated_seq.get(scope_key, 0))
 
 
 def _snapshot(entry: _UnifiedCacheEntry, *, cached: bool) -> dict:
@@ -152,22 +174,25 @@ class UnifiedQuotaService:
     async def get(self, scope_key: tuple[str, ...], collect, *, refresh: bool = False) -> dict:
         state = self._state()
         now_mono = self._clock()
+        generation = state.generation(scope_key)
+        pending_key = (scope_key, generation)
+
+        async def await_current(bucket: dict, pending: _Pending) -> dict:
+            entry = await self._await_pending(bucket, pending_key, pending)
+            if generation != state.generation(scope_key):
+                raise QuotaInvalidatedError()
+            current = state.cache.get(scope_key)
+            return _snapshot(current if current is not None and current.seq >= entry.seq else entry, cached=False)
 
         if not refresh:
             cached = state.cache.get(scope_key)
             if cached is not None and now_mono < cached.expires_at_mono:
                 return _snapshot(cached, cached=True)
-            # Reuse any in-flight refresh or normal query for the exact same scope.
-            existing = state.refresh_inflight.get(scope_key) or state.normal_inflight.get(scope_key)
-            if existing is not None:
-                bucket = state.refresh_inflight if state.refresh_inflight.get(scope_key) is existing else state.normal_inflight
-                return await self._await_pending(bucket, scope_key, existing)
-            bucket = state.normal_inflight
-        else:
-            existing = state.refresh_inflight.get(scope_key)
-            if existing is not None:
-                return await self._await_pending(state.refresh_inflight, scope_key, existing)
-            bucket = state.refresh_inflight
+        bucket = state.refresh_inflight if refresh else state.normal_inflight
+        if existing := state.refresh_inflight.get(pending_key):
+            return await await_current(state.refresh_inflight, existing)
+        if not refresh and (existing := bucket.get(pending_key)):
+            return await await_current(bucket, existing)
 
         if len(state.normal_inflight) + len(state.refresh_inflight) >= _MAX_PENDING_KEYS:
             raise QuotaBusyError()
@@ -175,42 +200,57 @@ class UnifiedQuotaService:
         state.seq += 1
         started_seq = state.seq
 
-        async def run_collect() -> dict:
-            engines = await collect()
+        async def run_collect() -> _UnifiedCacheEntry:
+            engines = list(await collect())
+            if generation != state.generation(scope_key):
+                raise QuotaInvalidatedError()
+            current = state.cache.get(scope_key)
+            if current is not None and started_seq < current.seq:
+                current.reconcile_late_results(engines, started_seq)
+                return current
+            previous_quotas = {item["engine_id"]: item.get("quota") for item in current.engines} if current else {}
+            quota_or_barrier_seq = {}
+            resolved_engines = []
+            for item in engines:
+                engine_id = item["engine_id"]
+                quota_or_barrier_seq[engine_id] = started_seq
+                if item.get("status") == "unavailable" and item.get("quota") is None:
+                    quota_or_barrier_seq[engine_id] = current.quota_or_barrier_seq.get(engine_id, current.seq) if current else 0
+                    if (quota := previous_quotas.get(engine_id)) is not None:
+                        item = {**item, "quota": quota}
+                resolved_engines.append(item)
             collected_mono = self._clock()
             collected_wall = self._wall_clock()
             entry = _UnifiedCacheEntry(
-                engines=list(engines),
+                engines=resolved_engines,
+                quota_or_barrier_seq=quota_or_barrier_seq,
                 collected_at=collected_wall,
                 expires_at_wall=collected_wall + self.ttl_seconds,
                 expires_at_mono=collected_mono + self.ttl_seconds,
                 seq=started_seq,
             )
-            min_valid_seq = max(state.invalidated_seq, state.scope_invalidated_seq.get(scope_key, 0))
-            current = state.cache.get(scope_key)
-            if started_seq > min_valid_seq and (current is None or started_seq >= current.seq):
-                if scope_key in state.cache:
-                    del state.cache[scope_key]
-                state.cache[scope_key] = entry
-                if len(state.cache) > _MAX_CACHE_ENTRIES:
-                    oldest_key = next(iter(state.cache))
-                    state.cache.pop(oldest_key, None)
-            return _snapshot(entry, cached=False)
+            state.cache.pop(scope_key, None)
+            state.cache[scope_key] = entry
+            if len(state.cache) > _MAX_CACHE_ENTRIES:
+                active_scopes = {key[0] for bucket in (state.normal_inflight, state.refresh_inflight) for key in bucket}
+                oldest_key = next(key for key in state.cache if key not in active_scopes)
+                state.cache.pop(oldest_key, None)
+            return entry
 
         pending = _Pending(asyncio.create_task(run_collect()))
-        bucket[scope_key] = pending
-        return await self._await_pending(bucket, scope_key, pending)
+        bucket[pending_key] = pending
+        return await await_current(bucket, pending)
 
     @staticmethod
-    async def _await_pending(bucket: dict, scope_key: tuple[str, ...], entry: _Pending) -> dict:
+    async def _await_pending(bucket: dict, pending_key: tuple[tuple[str, ...], int], entry: _Pending) -> _UnifiedCacheEntry:
         entry.waiters += 1
         try:
             return await asyncio.shield(entry.task)
         finally:
             entry.waiters -= 1
             if entry.waiters == 0:
-                if bucket.get(scope_key) is entry:
-                    bucket.pop(scope_key, None)
+                if bucket.get(pending_key) is entry:
+                    bucket.pop(pending_key, None)
 
                 async def cleanup():
                     if not entry.task.done():

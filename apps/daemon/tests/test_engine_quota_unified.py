@@ -14,6 +14,43 @@ from workstep_gateway_protocol import FrameType, ProxyFrame
 
 
 @pytest.mark.asyncio
+async def test_unified_quota_keeps_last_success_only_for_transient_failures_in_current_scope():
+    from services.engine_quota import UnifiedQuotaService
+
+    clock = [1000.0]
+    service = UnifiedQuotaService(clock=lambda: clock[0], wall_clock=lambda: clock[0])
+    scope = ("host", "alice")
+    good = {"engine_id": "codex", "status": "ok", "quota": {"collected_at": 990, "remaining_percent": 75}}
+    failed = {"engine_id": "codex", "status": "unavailable", "reason": "timeout", "quota": None}
+    other = {"engine_id": "other", "status": "ok", "quota": {"remaining_percent": 80}}
+    targets = [good, other]
+
+    async def collect():
+        return targets
+
+    await service.get(scope, collect)
+    clock[0] += 300
+    targets = [failed, other]
+    fallback = {**failed, "quota": good["quota"]}
+    expired = await service.get(scope, collect)
+    assert expired["engines"] == [fallback, other]
+    assert expired["collected_at"] == 1300
+    assert (await service.get(scope, collect))["cached"] is True
+    assert (await service.get(scope, collect, refresh=True))["engines"] == [fallback, other]
+    assert (await service.get(("host", "bob"), collect))["engines"] == [failed, other]
+
+    targets = [{**failed, "status": "unauthenticated"}]
+    assert (await service.get(scope, collect, refresh=True))["engines"] == targets
+    targets = [failed]
+    assert (await service.get(scope, collect, refresh=True))["engines"] == targets
+    targets = [good]
+    assert (await service.get(scope, collect, refresh=True))["engines"] == targets
+    targets = [failed]
+    service.invalidate(scope)
+    assert (await service.get(scope, collect, refresh=True))["engines"] == targets
+
+
+@pytest.mark.asyncio
 async def test_unified_quota_service_caches_5_minutes_refreshes_and_deduplicates():
     from services.engine_quota import UnifiedQuotaService
 
@@ -114,13 +151,103 @@ async def test_unified_quota_service_coalesces_concurrent_queries_and_preserves_
     release.set()
     results = await asyncio.gather(*tasks)
     assert calls == 1
-    assert all(item["engines"][0]["quota"]["primary"]["remaining_percent"] == 70 for item in results)
+    assert all(item == refreshed for item in results)
 
     # Subsequent cached read must keep the newer refresh result (95), not the stale slow fetch (70)
     cached = await service.get(scope, slow_collect, refresh=False)
     assert calls == 1
     assert cached["cached"] is True
     assert cached["engines"][0]["quota"]["primary"]["remaining_percent"] == 95
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("intervening", "expected_percent"), [
+    ("first_query", 75),
+    ("older_fallback", 75),
+    ("newer_success", 95),
+    ("unauthenticated", None),
+    ("unauthenticated_under_pressure", None),
+    ("late_unauthenticated", None),
+    ("removed", None),
+    ("current_unauthenticated", None),
+    ("current_removed", None),
+    ("invalidated", None),
+])
+async def test_late_success_updates_only_the_eligible_engine_fallback(intervening, expected_percent):
+    from services.engine_quota import _MAX_CACHE_ENTRIES, UnifiedQuotaService
+
+    clock = [1000.0]
+    service = UnifiedQuotaService(clock=lambda: clock[0], wall_clock=lambda: clock[0])
+    scope = ("host", "alice")
+    started = asyncio.Event()
+    release = asyncio.Event()
+    failure = {"engine_id": "codex", "status": "unavailable", "reason": "timeout", "quota": None}
+    unauthenticated = {**failure, "status": "unauthenticated"}
+    other = {"engine_id": "other", "status": "ok", "quota": {"remaining_percent": 80}}
+
+    def success(percent):
+        return {"engine_id": "codex", "status": "ok", "quota": {"remaining_percent": percent}}
+
+    slow_result = unauthenticated if intervening == "late_unauthenticated" else success(75)
+
+    async def slow_collect():
+        started.set()
+        await release.wait()
+        return [slow_result]
+
+    async def refresh(entries):
+        async def collect():
+            return entries
+
+        return await service.get(scope, collect, refresh=True)
+
+    if intervening in {"older_fallback", "late_unauthenticated"}:
+        await refresh([success(20)])
+        clock[0] += 300
+    pending = asyncio.create_task(service.get(scope, slow_collect))
+    try:
+        await asyncio.wait_for(started.wait(), 2)
+        if intervening == "newer_success":
+            await refresh([success(95)])
+        elif intervening in {"unauthenticated", "unauthenticated_under_pressure"}:
+            await refresh([unauthenticated])
+            if intervening == "unauthenticated_under_pressure":
+                async def empty_collect():
+                    return []
+
+                for index in range(_MAX_CACHE_ENTRIES):
+                    await service.get(("host", f"other-{index}"), empty_collect)
+        elif intervening == "removed":
+            await refresh([])
+        elif intervening == "invalidated":
+            service.invalidate(scope)
+
+        latest_engines = [failure, other]
+        if intervening == "current_unauthenticated":
+            latest_engines = [unauthenticated, other]
+        elif intervening == "current_removed":
+            latest_engines = [other]
+        failed = await refresh(latest_engines)
+        fallback = {**failure, "quota": success(expected_percent)["quota"] if expected_percent is not None else None}
+        expected = [fallback, other] if latest_engines[0] is failure else latest_engines
+        clock[0] += 1
+        release.set()
+        if intervening == "invalidated":
+            from services.engine_quota import QuotaInvalidatedError
+            result = (await asyncio.gather(pending, return_exceptions=True))[0]
+            assert isinstance(result, QuotaInvalidatedError)
+        else:
+            assert await pending == {**failed, "engines": expected}
+
+        async def unexpected_collect():
+            pytest.fail("reopening a session should use the cache")
+
+        cached = await service.get(scope, unexpected_collect)
+        assert cached == {**failed, "cached": True, "engines": expected}
+        assert (await refresh([failure, other]))["engines"] == [fallback, other]
+    finally:
+        release.set()
+        await asyncio.gather(pending, return_exceptions=True)
 
 
 @pytest.mark.asyncio
@@ -150,14 +277,50 @@ async def test_unified_quota_service_invalidation_prevents_stale_inflight_cache_
     await asyncio.wait_for(started.wait(), 2)
     service.invalidate()
     release.set()
-    stale_result = await pending
-    assert stale_result["engines"][0]["quota"]["primary"]["remaining_percent"] == 11
+    from services.engine_quota import QuotaInvalidatedError
+    with pytest.raises(QuotaInvalidatedError):
+        await pending
 
     # Next read must NOT see the stale pre-invalidation value from cache
     fresh_result = await service.get(scope, fresh_collect, refresh=False)
     assert calls == 2
     assert fresh_result["cached"] is False
     assert fresh_result["engines"][0]["quota"]["primary"]["remaining_percent"] == 99
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('old_refresh', 'new_refresh'), [(False, False), (True, False), (True, True)])
+@pytest.mark.parametrize('global_invalidation', [False, True])
+async def test_unified_quota_invalidation_does_not_join_previous_generation(old_refresh, new_refresh, global_invalidation):
+    from services.engine_quota import UnifiedQuotaService
+
+    service = UnifiedQuotaService()
+    scope = ('host', 'project')
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def before_engine_disabled():
+        started.set()
+        await release.wait()
+        return [{'engine_id': 'codex_sdk'}]
+
+    async def after_engine_disabled():
+        return []
+
+    stale = asyncio.create_task(service.get(scope, before_engine_disabled, refresh=old_refresh))
+    await asyncio.wait_for(started.wait(), 2)
+    try:
+        service.invalidate(None if global_invalidation else scope)
+        fresh = await asyncio.wait_for(service.get(scope, after_engine_disabled, refresh=new_refresh), 1)
+        assert fresh['engines'] == []
+        assert not fresh['cached']
+    finally:
+        release.set()
+        from services.engine_quota import QuotaInvalidatedError
+        with pytest.raises(QuotaInvalidatedError):
+            await stale
+    cached = await service.get(scope, before_engine_disabled)
+    assert cached['cached'] and cached['engines'] == []
 
 
 @pytest.mark.asyncio
@@ -343,6 +506,125 @@ async def test_unified_quota_api_queries_enabled_supported_engines_dynamically_w
         assert resp4.json()["cached"] is True
         assert calls["codex_sdk"] == 2
         assert next(x for x in resp4.json()["engines"] if x["engine_id"] == "codex_sdk")["quota"]["primary"]["remaining_percent"] == 80
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("adapter_failure", ["missing", "exception"])
+async def test_unified_quota_preserves_snapshot_when_catalog_adapter_cannot_initialize(monkeypatch, adapter_failure):
+    import main
+    from api import engine as engine_api
+    from services.engine_quota import UnifiedQuotaService
+
+    class CodexFake:
+        ENGINE_ID = "codex_sdk"
+        supports_quota = True
+
+        async def get_quota(self, cwd=""):
+            return {"collected_at": 990, "primary": {"remaining_percent": 75}}
+
+    catalog = [{"id": "codex_sdk", "enabled": True, "installed": True, "supports_quota": True}]
+    initializing = False
+
+    def create_engine(_engine_id):
+        if not initializing:
+            return CodexFake()
+        if adapter_failure == "exception":
+            raise RuntimeError("private constructor diagnostic")
+        return None
+
+    monkeypatch.setattr("services.engine_quota.unified_quota_service", UnifiedQuotaService())
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **_kw: None)
+    monkeypatch.setattr(engine_api, "get_available_engines", lambda: catalog)
+    monkeypatch.setattr(engine_api, "create_engine", create_engine)
+
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        success = (await client.get("/api/engine/quota")).json()["engines"][0]
+        assert success["quota"]["primary"]["remaining_percent"] == 75
+        initializing = True
+        failure = await client.get("/api/engine/quota?refresh=1")
+        assert failure.status_code == 200
+        assert failure.json()["engines"] == [{**success, "status": "unavailable"}]
+        assert "private constructor diagnostic" not in failure.text
+
+        reopened = (await client.get("/api/engine/quota")).json()
+        assert reopened["cached"] is True
+        assert reopened["engines"] == failure.json()["engines"]
+
+        catalog[0]["enabled"] = False
+        assert (await client.get("/api/engine/quota?refresh=1")).json()["engines"] == []
+
+
+@pytest.mark.anyio
+async def test_unified_quota_isolates_constructor_failure_during_real_registry_scan(monkeypatch):
+    import main
+    from engines.core import registry
+    from engines.core.acp_base import AcpEngineBase
+    from services.engine_quota import UnifiedQuotaService
+
+    class QuotaAdapter(AcpEngineBase):
+        ENGINE_ID = "first_quota_test"
+        SUPPORTS_QUOTA = True
+        fail = False
+
+        def __init__(self):
+            if self.fail:
+                raise RuntimeError("private adapter diagnostic")
+            super().__init__()
+
+        @classmethod
+        def is_installed(cls):
+            return True
+
+        @classmethod
+        def get_version(cls):
+            return "test"
+
+        @staticmethod
+        def resolve_binary():
+            return None
+
+        async def get_quota(self, cwd=""):
+            return {"collected_at": 990, "primary": {"remaining_percent": 75}}
+
+    class OtherAdapter(QuotaAdapter):
+        ENGINE_ID = "second_quota_test"
+        fail = False
+
+    monkeypatch.setattr(registry, "_ALL_ENGINES", {cls.ENGINE_ID: cls for cls in (QuotaAdapter, OtherAdapter)})
+    monkeypatch.setattr(registry, "ENGINE_REGISTRY", {})
+    monkeypatch.setattr(registry, "_VERSION_CACHE", {})
+    monkeypatch.setattr(registry, "_SCAN_CACHE", None)
+    monkeypatch.setattr(registry.config_store, "is_engine_enabled", lambda _engine_id: True)
+    service = UnifiedQuotaService()
+    monkeypatch.setattr("services.engine_quota.unified_quota_service", service)
+
+    async with AsyncClient(transport=ASGITransport(app=main.app, raise_app_exceptions=False), base_url="http://test") as client:
+        response = await client.get("/api/engine/quota")
+        assert response.status_code == 200
+        first, other = response.json()["engines"]
+        assert first["quota"]["primary"]["remaining_percent"] == 75
+        assert other["status"] == "ok"
+
+        QuotaAdapter.fail = True
+        monkeypatch.setattr(registry, "_SCAN_CACHE", None)
+        response = await client.get("/api/engine/quota?refresh=1")
+        assert response.status_code == 200
+        assert response.json()["engines"] == [{**first, "status": "unavailable"}, other]
+        assert "private adapter diagnostic" not in response.text
+        reopened = (await client.get("/api/engine/quota")).json()
+        assert reopened["cached"] is True
+        assert reopened["engines"] == response.json()["engines"]
+
+        QuotaAdapter.fail = False
+
+        async def collect_after_invalidation(_instance, cwd=""):
+            service.invalidate()
+            return {"primary": {"remaining_percent": 75}}
+
+        monkeypatch.setattr(QuotaAdapter, "get_quota", collect_after_invalidation)
+        invalidated = await client.get("/api/engine/quota?refresh=1")
+        assert invalidated.status_code == 409
+        assert invalidated.json() == {"detail": "Engine quota query invalidated"}
 
 
 @pytest.mark.anyio

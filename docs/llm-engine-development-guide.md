@@ -1100,11 +1100,21 @@ Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多�
 
 ## 账户额度统一接口
 
+切回仍挂载的会话窗格时会再次发起普通查询，是否重新采集由服务端缓存决定。配置变更后，普通查询与手动刷新都不会复用旧代次的在途请求；旧查询不得回写缓存或返回额度，而是返回 HTTP 409，前端清除失效额度快照。
+
+统一响应的 `collected_at` 是本批次采集完成的 Unix 秒；命中缓存仍返回原时间，供输入框显示「上次刷新」。单项 `unavailable` 可带固定 `reason`：`command_failed`（原生命令无法执行或返回失败）、`invalid_report`（报告不可解析或超长）、`timeout`（采集超时）；没有分类时省略。Antigravity 跳过原生报告中未启用的 `disabled` 窗口，保留其他有效窗口；明确返回需要认证时使用 `unauthenticated`，不透传 CLI 输出或原始报错。前端将缺少标签的 10080／300 分钟窗口显示为「每周额度」／「5 小时额度」，仍保留原始窗口长度和重置时间。
+
 账户额度是 `BaseLLMEngine` 的可选能力，与 ACP 会话用量分开。默认 `SUPPORTS_QUOTA=False`；有可靠数据源的引擎声明 `True` 并实现 `async get_quota(cwd="") -> dict | None`。HTTP、原生 SDK/CLI、脚本调用、认证和原生数据转换均归该引擎；公共层及前端不按引擎 ID 分支，不发送模型提示词猜测额度。
 
 `engines/core/quota.py` 定义 `EngineQuota`、窗口／分组／余额模型与 `query_quota`。快照支持 primary/secondary、多个 groups.windows、credits、individual_limit 和 collected_at（Unix 秒）。百分比保留小数，提供 used_percent 或 remaining_percent 即可补齐另一项；缺少 primary 时从分组／secondary 取最低剩余额度。credits.balance 保留原始十进制字符串，可带 unit；未知余额不补 0。原生缓存／脚本快照需携带其真实 collected_at，不能把读取时间冒充采集时间。完整字段以模型为准。
 
 `GET /api/engine/quota`（支持 `project_id` 与 `refresh=1`）是统一多引擎额度查询入口，保留宿主／项目范围授权，按注册目录动态发现所有已启用、已安装且声明 `supports_quota` 的引擎并发采集并返回 `{ engines, cached, collected_at, expires_at }`；单个引擎失败（`unauthenticated` / `unavailable`）不影响其他引擎返回。`services/engine_quota.py::UnifiedQuotaService` 按授权范围（宿主／项目／身份／设备）维护 5 分钟内存缓存并合并并发在途查询；`refresh=1` 绕过缓存真实采集并重置有效期；引擎启停、配置、登录、二进制路径及自定义引擎变更时失效缓存并阻止旧在途结果回写。单引擎兼容路由 `GET /api/engine/{id}/quota` 保留原契约，通过 `query_quota` 返回 `supported/status/quota`：unsupported、ok、unauthenticated、unavailable。支持的引擎返回 None、超时、错误或畸形数据均为 unavailable；需登录时抛 `QuotaAuthenticationRequired`。公共查询默认限时 20 秒，传播调用方取消，不返回原始异常及未知字段。引擎使用异步 I/O，负责在取消／超时时回收自有客户端和进程。
+
+统一接口中，仍符合查询条件的引擎返回 `unavailable` 时，若同授权范围、同配置代次内有上次成功的 `quota`，则保留该额度及原 `quota.collected_at`，同时返回本次失败的 `status` 和 `reason`。没有历史值或引擎明确要求登录时，`quota` 仍为空。浮层将保留值标为上次成功查询的额度；批次 `collected_at` 仍表示最近一次采集完成时间。
+
+并发普通查询和手动刷新按发起顺序确定最新批次。如果刷新先失败、较早发起的普通查询随后成功，仍可补齐该引擎的回退额度，但不改变最新批次的失败状态、刷新时间或有效期。迟到的请求返回补齐后的当前快照，不会覆盖更新的成功额度，也不会恢复已移除或已失效授权的额度。
+
+目录扫描期间如果某个适配器构造失败，仍保留该引擎的安装状态和静态 `SUPPORTS_QUOTA` 声明，继续扫描其他引擎，不缓存不完整目录。已安装、已启用且支持额度的引擎若仍无法初始化，统一接口返回该引擎的 `unavailable` 状态并应用回退，不透传内部异常。前端只有收到合法结果且没有符合条件的引擎时才显示空目录；缺少 `engines` 数组的响应按失败处理，保留当前范围已有快照。
 
 现有 Codex SDK 和 Antigravity 分别在其引擎内调用原生额度接口／命令，其他符合能力的内置或自定义引擎声明 `SUPPORTS_QUOTA=True` 后自动纳入统一查询范围。前端所有共用 `ChatInput` 的消息输入框（会话、任务创建、任务详情、AI 流程、原型助手、数字中枢等；公开分享路由除外）均通过 `ChatInputUsage` + `EngineQuotaPopover` 展示额度按钮与浮层：按选中引擎默认展示对应引擎额度并提供「全部引擎」切换与手动刷新；桌面与移动端浮层均可滚动且受视口边界约束。余额单独存在也可展示。
 

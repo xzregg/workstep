@@ -5,6 +5,117 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import ChatInputUsage from '../src/components/ChatInputUsage'
 import { I18nProvider } from '../src/i18n'
+import { ApiError, engineApi } from '../src/api/client'
+
+test('quota popover remains inside the visible viewport when the keyboard shrinks and offsets it', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setWindowSize({width: 390, height: 740})
+  const viewport = new window.EventTarget()
+  Object.assign(viewport, {width: 390, height: 420, offsetTop: 30, offsetLeft: 0})
+  Object.defineProperty(window, 'visualViewport', {value: viewport, configurable: true})
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact quota={{engine_id: 'codex_sdk',
+      primary: {used_percent: 10, remaining_percent: 90}}} /></I18nProvider>))
+    const wrapper = container.querySelector<HTMLElement>('.chat-input-quota')!
+    wrapper.getBoundingClientRect = () => new window.DOMRect(100, 390, 60, 32)
+    await act(async () => wrapper.querySelector<HTMLButtonElement>('button')!.click())
+    const panel = wrapper.querySelector<HTMLElement>('.engine-quota-panel')!
+    assert.equal(panel.style.bottom, '358px')
+    assert.equal(panel.style.maxHeight, '336px')
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('account quota displays named windows, classified failures, and the server refresh time', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const original = engineApi.quotas
+  const collectedAt = 1795737600
+  engineApi.quotas = async (_project, refresh) => ({
+    engines: [
+      {engine_id: 'codex_sdk', supported: true, status: refresh ? 'unavailable' : 'ok',
+        reason: refresh ? 'timeout' : undefined, quota: {engine_id: 'codex_sdk',
+        primary: {window_duration_mins: 10080, used_percent: 0, remaining_percent: 100},
+        secondary: {window_duration_mins: 300, used_percent: 5, remaining_percent: 95}}},
+      {engine_id: 'antigravity', supported: true, status: 'unavailable', reason: 'invalid_report', quota: null},
+    ],
+    cached: !refresh, collected_at: collectedAt + (refresh ? 60 : 0), expires_at: collectedAt + 300,
+  })
+  const render = (conversationKey: string) => <I18nProvider><ChatInputUsage managed compact={false}
+    selectedEngine="codex_sdk" projectId="project" conversationKey={conversationKey} /></I18nProvider>
+  const refreshTime = () => container.querySelector('.engine-quota-updated')?.getAttribute('datetime')
+  try {
+    await act(async () => root.render(render('first')))
+    await act(async () => container.querySelector<HTMLButtonElement>('.engine-quota-trigger')!.click())
+    assert.match(container.textContent || '', /Weekly|每周/)
+    assert.match(container.textContent || '', /5.hour|5 小时/i)
+    assert.doesNotMatch(container.textContent || '', /10080/)
+    assert.equal(refreshTime(), new Date(collectedAt * 1000).toISOString())
+    await act(async () => root.render(render('second')))
+    assert.equal(refreshTime(), new Date(collectedAt * 1000).toISOString())
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-quota-all]')!.click())
+    assert.match(container.querySelector('[data-quota-engine="antigravity"]')?.textContent || '', /report.*format|报告格式/i)
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-quota-refresh]')!.click())
+    assert.equal(refreshTime(), new Date((collectedAt + 60) * 1000).toISOString())
+    const codex = container.querySelector('[data-quota-engine="codex_sdk"]')!
+    assert.match(codex.textContent || '', /timed out|超时/i)
+    assert.match(codex.textContent || '', /last known quota|上次成功查询的额度/i)
+    assert.equal(codex.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'), '100')
+    assert.doesNotMatch(container.querySelector('[data-quota-engine="antigravity"]')?.textContent || '', /last known quota|上次成功查询的额度/i)
+  } finally {
+    engineApi.quotas = original
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('quota keeps old values on malformed responses but clears them on explicit invalidation', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const original = engineApi.quotas
+  let response = {} as Awaited<ReturnType<typeof engineApi.quotas>>
+  let invalidated = false
+  engineApi.quotas = async () => {
+    if (invalidated) throw new ApiError('Engine quota query invalidated', 409)
+    return response
+  }
+  const refresh = async () => act(async () => container.querySelector<HTMLButtonElement>('[data-quota-refresh]')!.click())
+  const status = () => container.querySelector('[role="status"]')?.textContent || ''
+  const emptyMessage = /No engines support quota checks|暂无支持额度查询的引擎/
+  try {
+    await act(async () => root.render(<I18nProvider><ChatInputUsage managed compact={false} selectedEngine="codex_sdk" /></I18nProvider>))
+    await act(async () => container.querySelector<HTMLButtonElement>('.engine-quota-trigger')!.click())
+    assert.match(status(), /unavailable|暂时无法查询/i)
+    assert.doesNotMatch(status(), emptyMessage)
+    response = {cached: false, collected_at: 100, expires_at: 400, engines: [{engine_id: 'codex_sdk', supported: true,
+      status: 'ok', quota: {engine_id: 'codex_sdk', primary: {used_percent: 25, remaining_percent: 75}}}]}
+    await refresh()
+    response = {} as typeof response
+    await refresh()
+    assert.match(status(), /last known quota|上次成功查询的额度/i)
+    assert.equal(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'), '75')
+    invalidated = true
+    await refresh()
+    assert.match(status(), /unavailable|暂时无法查询/i)
+    assert.doesNotMatch(status(), emptyMessage)
+    assert.ok(!container.querySelector('[role="progressbar"]'), 'an invalidated snapshot must not display a quota meter')
+    invalidated = false
+    response = {cached: false, collected_at: 200, expires_at: 500, engines: []}
+    await refresh()
+    assert.match(status(), emptyMessage)
+    assert.ok(!container.querySelector('[role="progressbar"]'), 'an empty catalog must not display a quota meter')
+  } finally {
+    engineApi.quotas = original
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
 
 test('balance-only engines display actual credit balance without inventing a percentage', async () => {
   const { window } = installDomEnvironment()

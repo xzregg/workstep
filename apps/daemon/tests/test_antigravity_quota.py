@@ -4,6 +4,7 @@ import pytest
 
 from engines.antigravity import AntigravityEngine
 from engines.core.antigravity_quota import parse_quota
+from engines.core.quota import query_quota
 
 REPORT = ('Gemini Models\tWeekly Limit Remaining\t85%\t2026-12-02T03:20:26Z\n'
           'Claude and GPT models\tWeekly Limit Remaining\t73%\t2026-12-02T03:31:21Z\n'
@@ -20,6 +21,12 @@ def test_native_quota_report_preserves_groups_windows_and_reset_times():
     assert quota['groups'][1]['windows'][1]['resets_at'] == 1795595481
     assert parse_quota('Authentication required') is None
     assert parse_quota(REPORT.replace('85%', '185%')) is None
+
+
+def test_native_report_keeps_valid_windows_when_another_is_disabled():
+    disabled = 'Gemini Models\tFive Hour Limit Remaining\tdisabled\t\n'
+    assert parse_quota(disabled + REPORT) == parse_quota(REPORT)
+    assert parse_quota(disabled) is None
 
 
 @pytest.mark.asyncio
@@ -52,8 +59,32 @@ async def test_quota_timeout_reaps_its_owned_process(monkeypatch, tmp_path):
     monkeypatch.setattr(AntigravityEngine, 'resolve_binary', staticmethod(lambda: '/managed/agy'))
     monkeypatch.setattr(asyncio, 'create_subprocess_exec', start)
     monkeypatch.setattr(AntigravityEngine, 'QUOTA_TIMEOUT_SECONDS', .1, raising=False)
-    assert await AntigravityEngine().get_quota(str(tmp_path)) is None
+    result = await query_quota(AntigravityEngine(), str(tmp_path))
+    assert result['status'] == 'unavailable'
+    assert result['reason'] == 'timeout'
     assert processes[0].returncode is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('report', 'exit_code', 'status', 'reason'), [
+    ('Authentication required', 1, 'unauthenticated', None),
+    ('unexpected report with private contents', 0, 'unavailable', 'invalid_report'),
+    ('private CLI diagnostics', 1, 'unavailable', 'command_failed'),
+])
+async def test_quota_reports_safe_failure_reason(monkeypatch, tmp_path, report, exit_code, status, reason):
+    import sys
+    original = asyncio.create_subprocess_exec
+
+    async def start(*command, **kwargs):
+        return await original(sys.executable, '-c', f'print({report!r}); raise SystemExit({exit_code})', **kwargs)
+
+    monkeypatch.setattr(AntigravityEngine, 'resolve_binary', staticmethod(lambda: '/managed/agy'))
+    monkeypatch.setattr(asyncio, 'create_subprocess_exec', start)
+    result = await query_quota(AntigravityEngine(), str(tmp_path))
+    assert result['status'] == status
+    assert result.get('reason') == reason
+    assert result['quota'] is None
+    assert report not in str(result)
 
 
 @pytest.mark.asyncio
