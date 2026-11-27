@@ -119,7 +119,14 @@ test('mobile applies only the selected message content and preserves creation se
       store.handleWsEvent({ type: 'TEXT_MESSAGE_START', channel: 'task_create', session_id: sid, messageId: id, role: 'assistant' })
       store.handleWsEvent({ type: 'CUSTOM', name: 'workstep.task_draft', channel: 'task_create', session_id: sid, messageId: id,
         value: { title: `标题${id}`, description, start_step_key: 'other', workflow_id: 'other-workflow' } })
-      store.handleWsEvent({ type: 'TEXT_MESSAGE_END', channel: 'task_create', session_id: sid, messageId: id, content: '已整理需求' })
+    })
+    if (description.trim()) {
+      const button = container.querySelector<HTMLButtonElement>(`[data-message-id="${id}"] .task-draft-apply`)!
+      assert.ok(button)
+      assert.equal(button.disabled, true)
+    }
+    await act(async () => {
+      useTaskDraftStore.getState().handleWsEvent({ type: 'TEXT_MESSAGE_END', channel: 'task_create', session_id: sid, messageId: id, content: '已整理需求' })
     })
   }
   try {
@@ -132,6 +139,16 @@ test('mobile applies only the selected message content and preserves creation se
     assert.ok(sid)
     await result('first', '## 完整草稿一\n\n- 验收一\n- 验收二')
     assert.equal(container.querySelectorAll('.task-draft-apply').length, 1)
+    const firstPreview = container.querySelector('[data-message-id="first"] .task-draft-preview')!
+    assert.ok(firstPreview)
+    assert.match(firstPreview.textContent || '', /标题first/)
+    assert.match(firstPreview.textContent || '', /完整草稿一/)
+    assert.match(firstPreview.textContent || '', /验收一/)
+    assert.match(firstPreview.textContent || '', /验收二/)
+    const applyButton = firstPreview.querySelector<HTMLButtonElement>('.task-draft-apply')!
+    assert.equal(applyButton.tagName, 'BUTTON')
+    assert.equal(applyButton.classList.contains('btn-primary'), true)
+    assert.equal(applyButton.disabled, false)
     assert.equal(container.querySelector('.task-create-panel')?.getAttribute('data-tab'), 'assistant')
     await click('[data-message-id="first"] .task-draft-apply')
     assert.equal(container.querySelector('.task-create-panel')?.getAttribute('data-tab'), 'content')
@@ -148,6 +165,12 @@ test('mobile applies only the selected message content and preserves creation se
     await result('second', '第二轮完整草稿')
     await result('invalid', '   ')
     assert.equal(container.querySelectorAll('.task-draft-apply').length, 2)
+    assert.equal(container.querySelectorAll('.task-draft-preview').length, 2)
+    assert.match(container.querySelector('[data-message-id="first"] .task-draft-preview')?.textContent || '', /验收二/)
+    const secondPreview = container.querySelector('[data-message-id="second"] .task-draft-preview')!
+    assert.match(secondPreview.textContent || '', /标题second/)
+    assert.match(secondPreview.textContent || '', /第二轮完整草稿/)
+    assert.equal(container.querySelector('[data-message-id="invalid"] .task-draft-preview') === null, true)
     await click('[data-message-id="second"] .task-draft-apply')
     assert.equal(container.querySelector<HTMLInputElement>('#new-task-title')?.value, '用户标题')
     assert.equal(container.querySelector<HTMLTextAreaElement>('.markdown-editor-input')?.value, '第二轮完整草稿')

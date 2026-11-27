@@ -20,8 +20,7 @@ import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import AssistantChatPanel from './AssistantChatPanel'
 import Button from './Button'
-import MarkdownMessage from './MarkdownMessage'
-import './TaskDraftPreview.css'
+import TaskDraftPreview from './TaskDraftPreview'
 
 
 export interface AiTaskCreateChatProps {
@@ -250,26 +249,24 @@ export default function AiTaskCreateChat({
       onAttachmentError={setSendError}
       onClose={onClose}
       onA2uiAction={handleA2uiAction}
-      renderMessageActions={onApplyDraft ? (messageId) => {
-        const result = messages.find((message) => message.id === messageId)?.result
+      renderMessageContent={onApplyDraft ? (message, canEdit) => {
+        const result = message.result
         if (!result || typeof result.description !== 'string' || !result.description.trim()) return null
-        return <Button variant="ghost" size="sm" className="chat-message-action task-draft-apply"
-          onClick={() => onApplyDraft(result as TaskDraftResult)}>{t('taskList.aiApplyToContent')}</Button>
+        const draft = result as TaskDraftResult
+        return <TaskDraftPreview draft={draft} projectId={projectId}>
+          <Button variant="primary" className="chat-message-action task-draft-apply"
+            disabled={!canEdit || message.status === 'running'}
+            onClick={() => onApplyDraft(draft)}>{t('taskList.aiApplyToContent')}</Button>
+        </TaskDraftPreview>
       } : undefined}
       afterMessages={!onApplyDraft && latestResult ? (
         <div style={{ marginTop: 2 }}>
           <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, color: 'var(--meta)', margin: '2px 2px 8px' }}>
             {t('taskList.aiDraftTitle')}
           </div>
-          {((latestResult as TaskDraftResult).task_drafts || [latestResult]).map((draft, index) => <div className="task-draft-preview" key={index}>
-            {typeof draft.title === 'string' && draft.title.trim() && (
-              <div style={{ fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))' }}>{draft.title}</div>
-            )}
-            <div style={{ marginTop: typeof draft.title === 'string' && draft.title.trim() ? 6 : 0, fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6 }}>
-              <MarkdownMessage content={String(draft.description || '')} projectId={projectId} />
-            </div>
-            {typeof draft.scheduled_start_at === 'string' && <time className="task-draft-preview-time" dateTime={draft.scheduled_start_at}>{new Date(draft.scheduled_start_at).toLocaleString()}</time>}
-          </div>)}
+          {((latestResult as TaskDraftResult).task_drafts || [latestResult as TaskDraftResult]).map((draft, index) => (
+            <TaskDraftPreview key={index} draft={draft} projectId={projectId} />
+          ))}
         </div>
       ) : undefined}
       quickPromptsLabel={t('taskList.aiQuickPromptsLabel')}
