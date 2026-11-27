@@ -1,5 +1,6 @@
 @import '@workstep/gateway-ui/TaskShareLoginToggle.css';
 :root {
+  -webkit-tap-highlight-color: transparent;
   --font-scale: 1;
   --bg: #ffffff;
   --surface: #f5f5f7;
