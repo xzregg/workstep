@@ -31,7 +31,7 @@ export function DigitalPersonRunNotificationReasons({run}:{run:DigitalRunDetail}
    :t(`digitalPerson.notificationReason${reasonKeys[reason]}` as never)
   return <>{t(`digitalPerson.notificationCategory${category}` as never)} · {description}{reason!=='model_silent'&&modelReason&&<> · {t('digitalPerson.notificationModelReason',{reason:modelReason!})}</>}</>
  }
- const primary=explain(run.notification??(run.status==='delivery_failed'||!!run.outcome?.failed?{state:'delivery_failed',reason:'delivery_failed'}:{state:'unknown',reason:'unknown'}))
+ const primary=run.status==='failed'?null:explain(run.notification??(run.status==='delivery_failed'||!!run.outcome?.failed?{state:'delivery_failed',reason:'delivery_failed'}:{state:'unknown',reason:'unknown'}))
  const notices=(run.delegation_notifications??[]).map(explain).filter(item=>item!==null)
  if(!primary&&!notices.length)return null
  return <div className="digital-run-outcome digital-run-notification-reasons">

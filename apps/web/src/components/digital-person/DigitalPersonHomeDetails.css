@@ -80,3 +80,13 @@ button.digital-home-detail-run-header:hover {
 .digital-home-detail-switch-row .settings-switch[aria-checked="true"] {
   background: var(--accent);
 }
+
+.digital-home-detail-panel--reflection>header{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--space-3)}
+.digital-home-detail-panel--reflection>header h2{min-width:0;grid-column:1;grid-row:1}
+.digital-home-detail-panel--reflection>header .digital-home-detail-close{grid-column:3;grid-row:1}
+.digital-reflection-control{display:flex;align-items:center;gap:var(--space-2);grid-column:2;grid-row:1}
+.digital-reflection-error{grid-column:1/-1;grid-row:2;font-size:var(--text-body);color:var(--danger);overflow-wrap:anywhere}
+@media(max-width:1023px){.digital-reflection-control{min-height:var(--mobile-control-touch);min-width:var(--mobile-control-touch);justify-content:center}.digital-reflection-control .settings-switch::before{content:"";position:absolute;inset:calc((var(--mobile-control-regular) - var(--mobile-control-touch))/2) 0}.digital-reflection-control .settings-switch{position:relative}.digital-home-detail-panel--reflection>header .digital-home-detail-close{min-height:var(--mobile-control-touch);min-width:var(--mobile-control-touch)}}
+
+.digital-reflection-control .settings-switch{flex-shrink:0;background:var(--border)}
+.digital-reflection-control .settings-switch[aria-checked="true"]{background:var(--accent)}

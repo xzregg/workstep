@@ -65,7 +65,7 @@ export interface DigitalActivityRecords {
   delegation_total: number
   delegation_pending?: boolean
   delegations: Array<DigitalActivity['delegations'][number] & {notification_state?: string; notification_run_id?: string | null; result_viewed?: boolean | null}>
-  runs: Array<Pick<DigitalActivity['runs'][number], 'id' | 'status' | 'summary' | 'created_at'> & {outcome?:DigitalRunOutcome|null;processing?:DigitalRunProcessing;notification?:DigitalRunNotification;delegation_notifications?:DigitalRunNotification[]}>
+  runs: Array<Pick<DigitalActivity['runs'][number], 'id' | 'status' | 'summary' | 'created_at'> & {failure_reason?:string|null;outcome?:DigitalRunOutcome|null;processing?:DigitalRunProcessing;notification?:DigitalRunNotification;delegation_notifications?:DigitalRunNotification[]}>
 }
 export type DigitalRunDetail = DigitalActivityRecords['runs'][number] & {error?:string;draft_summary?:string|null;failure_reason?:string|null;notification_message?:string|null}
 export interface DigitalRunKnowledge {

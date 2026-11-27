@@ -81,7 +81,17 @@ def save_profile(profile: DigitalPersonProfile) -> DigitalPersonProfile:
             established = _established_identity(previous)
             state = IdentitySetup(status='completed') if established else IdentitySetup(base=_identity(profile))
         profile = profile.model_copy(update={'identity_setup': state})
-        config_store.set("digital_person", profile.model_dump())
+        if previous.reflection_enabled != profile.reflection_enabled:
+            from services.digital_person_runtime import KEY
+            from services import digital_person_memory_index as index
+            def reset(state):
+                for key, default in {'main_session_id':'', 'runs':[], 'delegations':[], 'feedback':{}, 'cursor':'', 'last_check':''}.items():
+                    state.setdefault(key, default)
+                state.update(reflection_epoch=uuid.uuid4().hex, reflection_failures=0)
+                config_store.set("digital_person", profile.model_dump())
+            index.mutate_state(KEY, reset)
+        else:
+            config_store.set("digital_person", profile.model_dump())
     return profile
 
 
