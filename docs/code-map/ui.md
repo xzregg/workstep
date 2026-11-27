@@ -128,3 +128,21 @@ Android App 内文件预览的「新窗口」由 `apps/web/src/utils/filePreview
 `useFaceRecognition` 持有每次摄像头打开后首次推理的加载状态，`DigitalPersonCamera` 在桌面面板、移动浮窗和内嵌画面中共用同一状态提示。首帧完成即收起，加载失败显示原有错误，关闭摄像头清除提示。行为回归：`tests/faceSettings.test.tsx`。
 实时预览由 `useFaceRecognition` 把不同视频帧交给 `previewTracking.ts`。同一位置的人脸连续两帧匹配到同一熟人才显示姓名；短时漏识别时，仅在框可唯一关联且当前特征仍接近最近成功帧时保留姓名，最多 1.5 秒，不累计续期。所有框也按采集时间在 1.5 秒后过期，避免输入暂停、冻结视频或慢推理时旧框一直覆盖新画面；迟到结果不产生欢迎识别或刷新已超时的近期发送回退。人脸消失、出现冲突或切换媒体流／人脸库时清除关联。预览发送回退只记录已确认且当帧首次推理匹配成功的 ID。回归：`faceRecognition.test.ts`、`faceSettings.test.tsx`。
 行为测试：daemon `tests/test_face_recognition.py`；Web `tests/faceRecognition.test.ts`（逐帧对照、过期、竞争与换人）、`tests/faceSettings.test.tsx`、`tests/digitalPersonVision.test.tsx`；浏览器验证入口 `tests/fixtures/face-recognition/`，临时截图、日志与性能数据在 `tmp/face-recognition-implementation/` 和 `tmp/face-preview-stability/`。
+## 日期与时间输入入口
+
+工作台公共 `apps/web/src/components/DateTimePicker.tsx` / `DateTimePicker.css` 持有本地日期时间选择、语言、精度及移动弹层。≤1023px 时输入只读，日历与时间纵向排列，标题取消区和底部确认区常驻，内容区独立滚动；通过 VisualViewport 的高度与偏移避让键盘，安全区由 CSS 处理。弹层复用 `useOverlay` 管理焦点、返回、Escape 和滚动锁；桌面沿用可编辑输入与锚点定位。日期格式、最小日期、快捷项及本地时间转 ISO 的规则不变。
+
+| 入口（源码路径相对各应用 `src/`） | 实际组件／控件 | 排查结论与修复范围 |
+| --- | --- | --- |
+| Web 新建任务的定时启动：`TaskCreatePanel.tsx` | 公共 `DateTimePicker`，秒精度 | 原横排弹层溢出、输入唤起键盘；公共修复覆盖 |
+| Web 任务详情编辑定时启动：`TaskDetailDescription.tsx` | 同上 | 同类问题；公共修复覆盖 |
+| Web 数字人日程新增／编辑：`digital-person/DigitalCalendarEditor.tsx` | 公共 `DateTimePicker`，分钟精度 | 同类问题；公共修复覆盖，保留日程弹窗层级 |
+| Web 定时中心、任务／对话定时规则：`ScheduleRuleEditor.tsx`，由 `SchedulePage`、`TaskScheduleEditor`、`ConversationScheduleEditor` 消费 | 原生 `time`、`datetime-local`、起止 `date` | 不使用横排自定义弹层；已有字段宽度约束，未改日期语义 |
+| Web 统计自定义区间：`pages/StatisticsPage.tsx` | 两个原生 `date` | 不使用自定义弹层；未改 |
+| Web 分享到期：`ShareDialog.tsx`；本地项目分享：`ProjectLocalSharing.tsx`；远程设备授权：`RemoteDeviceAccessList.tsx` | 原生 `datetime-local` | 不使用自定义弹层；未改 |
+| Gateway 用量查询、用量对账日期、审计查询：`AdminUsagePage.tsx`、`AdminUsageReconciliation.tsx`、`AdminAuditPage.tsx` → `GatewayDateRange.tsx` | `GatewayDateRangePicker.tsx` 的 Ant Design RangePicker | 已有手机纵排但仍可唤起键盘，高度依赖布局视口；补只读触发、VisualViewport 边界、安全区、可滚动内容与吸底确认，响应式边界统一至 1023px；样式在 `gateway.css` |
+| Gateway 项目邀请到期：`ProjectInvitationsPage.tsx`；分享到期：`GatewayShareCreatePage.tsx`；组织同步时刻：`OrganizationSyncSettings.tsx`；账单导入日期：`AdminUsageBillImport.tsx` | 原生 `datetime-local`、`time`、`date` | 不使用自定义弹层；未改 |
+
+原生输入的选择面板由操作系统提供，代码排查未发现本次自定义横排弹层问题；这不代表已完成 iOS／Android 系统面板与软键盘的真机验收。
+
+行为入口：Web `tests/dateTimePicker.test.tsx`（移动只读、桌面输入、取消不提交、滚动锁释放、VisualViewport 高度／偏移、最小日期与分钟／秒确认）；`taskCreatePanel.test.tsx`（空定时禁提交、选择值传至真实 store／模拟 API 响应后回填一致）；既有 `taskDescriptionEditing.test.tsx`、`digitalCalendar.test.tsx`、`scheduledStart.test.ts`、`scheduleRuleEditor.test.tsx`。Gateway `tests/date-range-mobile.test.tsx` 与 `admin-usage.test.tsx` 覆盖移动键盘约束、桌面恢复输入和区间请求语义。后端定时语义沿用 `src/utils/scheduledStart.ts` → `src/api/task.ts` → daemon `api/task.py`，本次不修改后端。

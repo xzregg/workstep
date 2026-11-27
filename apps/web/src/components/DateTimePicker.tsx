@@ -17,7 +17,10 @@ import 'dayjs/locale/ja.js'
 import 'dayjs/locale/fr.js'
 import 'dayjs/locale/de.js'
 import 'dayjs/locale/ar.js'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from 'react'
+import { useOverlay } from '../hooks/useOverlay'
+import Button from './Button'
+import './DateTimePicker.css'
 import { useI18n } from '../i18n'
 
 interface DateTimePickerProps {
@@ -36,9 +39,46 @@ function parseLocalValue(value: string): Dayjs | null {
   return date.isValid() ? date : null
 }
 
+function MobilePickerPanel({ children, open, onClose, panelRef }: { children: ReactNode; open: boolean; onClose: () => void; panelRef: Ref<HTMLDivElement> }) {
+  const { t } = useI18n()
+  const [viewport, setViewport] = useState({ height: window.innerHeight, top: 0 })
+  useEffect(() => {
+    if (!open) return
+    const visual = window.visualViewport
+    const update = () => {
+      if (visual && visual.scale !== 1) return
+      setViewport({ height: visual?.height ?? window.innerHeight, top: visual?.offsetTop ?? 0 })
+    }
+    update()
+    visual?.addEventListener('resize', update)
+    visual?.addEventListener('scroll', update)
+    window.addEventListener('resize', update)
+    return () => {
+      visual?.removeEventListener('resize', update)
+      visual?.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [open])
+  return <div ref={panelRef} className="date-time-picker-mobile-panel" role="dialog" aria-modal="true"
+    aria-label={t('taskList.scheduledPickerLabel')}
+    style={{ top: viewport.top, maxHeight: viewport.height }}>
+    <div className="date-time-picker-toolbar"><Button type="button" variant="ghost" className="date-time-picker-cancel" onClick={onClose}>{t('common.cancel')}</Button></div>
+    {children}
+  </div>
+}
+
 export default function DateTimePicker({ value, min, onChange, disabled, precision='second', ariaLabel, popupClassName }: DateTimePickerProps) {
+  const [open, setOpen] = useState(false)
   const skin = useActiveSkin()
   const compact = useCompactLayout()
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [panelMounted, setPanelMounted] = useState(false)
+  // Ant Design mounts and caches its popup after the trigger render.
+  const attachPanel = useCallback((node: HTMLDivElement | null) => {
+    panelRef.current = node
+    setPanelMounted(Boolean(node))
+  }, [])
+  useOverlay(open && compact && panelMounted, () => setOpen(false), panelRef)
   const tokens = effectiveSkinTokens(skin, compact)
   const { t, fallbackLocale: locale } = useI18n()
   const selected = parseLocalValue(value)
@@ -84,6 +124,10 @@ export default function DateTimePicker({ value, min, onChange, disabled, precisi
     }}>
       <DatePicker
         value={selected}
+        open={open}
+        onOpenChange={setOpen}
+        inputReadOnly={compact}
+        panelRender={compact ? panel => <MobilePickerPanel panelRef={attachPanel} open={open} onClose={() => setOpen(false)}>{panel}</MobilePickerPanel> : undefined}
         onChange={handleChange}
         minDate={minimum || undefined}
         disabledDate={(current) => Boolean(minimum && current.isBefore(minimum, 'day'))}
@@ -92,13 +136,13 @@ export default function DateTimePicker({ value, min, onChange, disabled, precisi
         locale={antdLocale.DatePicker}
         showNow={false}
         renderExtraFooter={() => (
-          <div style={{ display: 'flex', gap: 8, padding: '4px 0', flexWrap: 'wrap' }}>
+          <div className="date-time-picker-presets">
             {presets.map((preset) => (
               <button
                 key={preset.label}
                 type="button"
                 onClick={() => handleChange(preset.value)}
-                style={{ border: 0, padding: '2px 4px', color: 'var(--accent)', background: 'transparent', cursor: 'pointer', fontSize: 'calc(12px * var(--font-scale))' }}
+                className="date-time-picker-preset"
               >
                 {preset.label}
               </button>
@@ -109,8 +153,8 @@ export default function DateTimePicker({ value, min, onChange, disabled, precisi
         disabled={disabled}
         placeholder={t('taskList.scheduledPickerPlaceholder')}
         aria-label={ariaLabel??t('taskList.scheduledPickerLabel')}
-        classNames={popupClassName?{popup:{root:popupClassName}}:undefined}
-        style={{ width: '100%' }}
+        classNames={{ popup: { root: ['workstep-date-popup', popupClassName].filter(Boolean).join(' ') } }}
+        className="date-time-picker"
       />
     </ConfigProvider>
   )

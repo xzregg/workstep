@@ -1,0 +1,46 @@
+.date-time-picker { width: 100%; min-width: 0; }
+.date-time-picker-presets { display: flex; gap: 8px; padding: 4px 0; flex-wrap: wrap; }
+.date-time-picker-preset { border: 0; padding: 2px 4px; color: var(--accent); background: transparent; cursor: pointer; font-size: calc(12px * var(--font-scale)); }
+
+@media (max-width: 1023px) {
+  .workstep-date-popup.ant-picker-dropdown {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2200;
+  }
+  .workstep-date-popup .ant-picker-panel-container { box-shadow: none; background: transparent; overflow: visible; }
+  .date-time-picker-mobile-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    width: min(100%, 400px);
+    box-sizing: border-box;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--fg);
+    box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .date-time-picker-toolbar { display: flex; justify-content: flex-end; flex-shrink: 0; }
+  .workstep-date-popup .ant-picker-panel-layout { min-height: 0; display: flex; flex-direction: column; }
+  .workstep-date-popup .ant-picker-panel-layout > div { min-height: 0; display: flex; flex-direction: column; max-height: 100%; }
+  .workstep-date-popup .ant-picker-panel { overflow: auto; min-height: 0; overscroll-behavior: contain; }
+  .workstep-date-popup .ant-picker-datetime-panel { flex-direction: column; }
+  .workstep-date-popup .ant-picker-date-panel,
+  .workstep-date-popup .ant-picker-month-panel,
+  .workstep-date-popup .ant-picker-year-panel,
+  .workstep-date-popup .ant-picker-decade-panel,
+  .workstep-date-popup .ant-picker-time-panel { width: 100%; }
+  .workstep-date-popup .ant-picker-time-panel { border-inline-start: 0; border-top: 1px solid var(--border); }
+  .workstep-date-popup .ant-picker-time-panel .ant-picker-content { height: calc(3 * var(--mobile-control-touch, 44px)); }
+  .workstep-date-popup .ant-picker-time-panel-column { flex: 1; }
+  .workstep-date-popup .ant-picker-footer { flex-shrink: 0; }
+  .workstep-date-popup .ant-picker-ranges { margin-bottom: 0; }
+  .workstep-date-popup .ant-picker-ok,
+  .date-time-picker-cancel,
+  .date-time-picker-preset { min-height: var(--mobile-control-touch, 44px); }
+}
