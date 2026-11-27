@@ -35,12 +35,12 @@ export default function MobileTaskSelection({ projectId, tasks, showArchived, ch
   }
   return <div className="mobile-task-selection">
     {active && <div className="mobile-task-selection-header">
-      <Button variant="ghost" disabled={busy} onClick={() => {
-        setActive(false); bulk.setSelectedIds([]); bulk.setPendingAction(null)
-      }}>{t('common.cancel')}</Button>
       <span role="status">{t('taskList.selectedTasks', { count: bulk.selectedIds.length })}</span>
       <Button variant="ghost" disabled={busy || actionableIds.length === 0} onClick={bulk.toggleAll}
         aria-label={t('taskList.selectAllTasks')} aria-pressed={bulk.allSelected}>{t('taskList.selectAll')}</Button>
+      <Button data-selection-action="cancel" variant="ghost" disabled={busy} onClick={() => {
+        setActive(false); bulk.setSelectedIds([]); bulk.setPendingAction(null)
+      }}>{t('common.cancel')}</Button>
     </div>}
     {children({ active, selectedIds: bulk.selectedIds, disabled: busy, select })}
     {active && <div className="mobile-task-bulk-actions" role="toolbar" aria-label={t('taskList.selectTasks')}>

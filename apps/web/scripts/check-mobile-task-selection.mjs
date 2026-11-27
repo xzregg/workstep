@@ -109,7 +109,11 @@ try {
       const list=document.querySelector('.mobile-task-list'); if(list) list.scrollTop=list.scrollHeight;
       const footer=document.querySelector('.mobile-task-bulk-actions');
       const rect=el=>{const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,height:r.height}};
+      const header=document.querySelector('.mobile-task-selection-header');
+      const headerButtons=header?[...header.querySelectorAll('button')].map(rect):[];
       return {overflow:document.documentElement.scrollWidth>innerWidth,
+        header:header?{count:rect(header.querySelector('[role="status"]')),buttons:headerButtons}:null,
+        marks:[...document.querySelectorAll('.mobile-task-selection-mark')].map(mark=>({mark:rect(mark),row:rect(mark.parentElement)})),
         rowMore:document.querySelectorAll('.mobile-task-row-more').length,topMore:document.querySelectorAll('.mobile-task-toolbar .mobile-toolbar-icon-button').length,
         footer:footer?{...rect(footer),padding:getComputedStyle(footer).paddingBottom}:null,
         last:list?.lastElementChild?rect(list.lastElementChild):null,
@@ -132,6 +136,16 @@ try {
     })()`},sessionId)
     const measured=result.result.value
     assert.equal(measured.overflow,false)
+    if(measured.header) {
+      assert.equal(measured.header.buttons.length,2)
+      assert.ok(measured.header.count.right<=measured.header.buttons[0].left)
+      assert.ok(measured.header.buttons[0].right<=measured.header.buttons[1].left)
+      assert.equal(measured.header.buttons[1].right,width-16)
+    }
+    for(const {mark,row} of measured.marks) {
+      assert.ok(mark.left>(row.left+row.right)/2,'selection mark must be on the right')
+      assert.equal(row.right-mark.right,4)
+    }
     assert.equal(measured.rowMore,0)
     if(state==='page') assert.equal(measured.topMore,1)
     for(const button of measured.buttons) {

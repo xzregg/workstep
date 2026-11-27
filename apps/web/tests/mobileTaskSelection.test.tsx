@@ -181,7 +181,7 @@ test('board has no row more buttons, preserves context menus and long-press sele
     assert.equal(Boolean(document.querySelector('.mobile-task-row-more')), false)
     assert.equal(Boolean(document.querySelector('[role="dialog"]')), false)
     assert.equal(row.getAttribute('aria-pressed'), 'true')
-    await click('.mobile-task-selection-header button')
+    await click('.mobile-task-selection-header [data-selection-action="cancel"]')
     await act(async () => row.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true })))
     assert.equal(Boolean(document.querySelector('[role="dialog"]')), true)
     await menuAction('开始任务')
