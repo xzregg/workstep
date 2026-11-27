@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../i18n'
 import { gatewayFetch } from '../../utils/gatewayWorkspacePath'
 import { isGatewayRemoteBrowser } from '../../utils/gatewayRemote'
@@ -58,6 +58,9 @@ export default function WebRtcP2pSettings() {
   const [showKey, setShowKey] = useState(false)
   const [loading, setLoading] = useState(!remoteReadOnly)
   const [saving, setSaving] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [connectivity, setConnectivity] = useState<{ signaling: boolean; stun: boolean | null } | null>(null)
+  const checkRequest = useRef(0)
   const [rotating, setRotating] = useState(false)
   const [confirmRotate, setConfirmRotate] = useState(false)
   const [copiedField, setCopiedField] = useState<'key' | 'url' | null>(null)
@@ -66,6 +69,7 @@ export default function WebRtcP2pSettings() {
   const loadSettings = useCallback(async () => {
     if (remoteReadOnly) return
     setLoading(true)
+    setConnectivity(null)
     setError('')
     try {
       const response = await gatewayFetch('/api/webrtc-p2p/settings')
@@ -86,7 +90,32 @@ export default function WebRtcP2pSettings() {
 
   useEffect(() => {
     void loadSettings()
+    return () => { checkRequest.current += 1 }
   }, [loadSettings])
+
+  const checkConnectivity = async () => {
+    const request = ++checkRequest.current
+    setChecking(true)
+    setConnectivity(null)
+    setError('')
+    try {
+      const response = await gatewayFetch('/api/webrtc-p2p/check', { method: 'POST' })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(String((body as { detail?: string }).detail || `HTTP ${response.status}`))
+      }
+      const result = await response.json() as { signaling: boolean; stun: boolean | null }
+      if (request !== checkRequest.current) return
+      setConnectivity(result)
+      setData((prev) => prev ? { ...prev, online: result.signaling, last_error: '' } : prev)
+    } catch (err) {
+      if (request === checkRequest.current) {
+        setError(err instanceof Error ? err.message : t('webrtcP2p.checkFailed'))
+      }
+    } finally {
+      if (request === checkRequest.current) setChecking(false)
+    }
+  }
 
   if (remoteReadOnly) {
     return (
@@ -102,7 +131,7 @@ export default function WebRtcP2pSettings() {
   const urlValid = validSignalUrl(signalUrl) && (!enabled || Boolean(signalUrl.trim()))
 
   const saveSettings = async () => {
-    if (!urlValid || saving) return
+    if (!urlValid || saving || checking) return
     setSaving(true)
     setError('')
     try {
@@ -122,6 +151,8 @@ export default function WebRtcP2pSettings() {
       setData(next)
       setEnabled(next.enabled)
       setSignalUrl(next.signal_url)
+      setConnectivity(null)
+      if (next.enabled) await checkConnectivity()
     } catch (err) {
       setError(err instanceof Error ? err.message : t('webrtcP2p.saveFailed'))
     } finally {
@@ -172,6 +203,7 @@ export default function WebRtcP2pSettings() {
           size="sm"
           variant="ghost"
           loading={loading}
+          disabled={saving || checking}
           aria-label={t('webrtcP2p.refresh')}
           onClick={() => void loadSettings()}
         >
@@ -191,8 +223,8 @@ export default function WebRtcP2pSettings() {
             id="webrtc-p2p-enabled"
             type="checkbox"
             checked={enabled}
-            disabled={loading || saving}
-            onChange={(event) => setEnabled(event.target.checked)}
+            disabled={loading || saving || checking}
+            onChange={(event) => { setEnabled(event.target.checked); setConnectivity(null) }}
           />
           <span>{t('webrtcP2p.enable')}</span>
         </label>
@@ -207,11 +239,12 @@ export default function WebRtcP2pSettings() {
             id="webrtc-signal-url"
             type="url"
             value={signalUrl}
-            disabled={loading || saving}
+            disabled={loading || saving || checking}
             placeholder="https://signal.example.com:8780"
             onChange={(event) => {
               setSignalUrl(event.target.value)
               setError('')
+              setConnectivity(null)
             }}
           />
         </Field>
@@ -250,7 +283,7 @@ export default function WebRtcP2pSettings() {
               size="sm"
               data-testid="webrtc-rotate-btn"
               loading={rotating}
-              disabled={loading || rotating}
+              disabled={loading || rotating || saving || checking}
               onClick={() => setConfirmRotate(true)}
             >
               {t('webrtcP2p.rotateKey')}
@@ -275,17 +308,42 @@ export default function WebRtcP2pSettings() {
           </Field>
         )}
 
+        {(checking || connectivity) && (
+          <Field label={t('webrtcP2p.checkTitle')}>
+            <div className="webrtc-p2p-check" data-testid="webrtc-connectivity" role="status">
+              <StatusBadge
+                status={checking ? 'running' : !connectivity?.signaling ? 'failed' : connectivity.stun ? 'completed' : 'pending'}
+                loading={checking}
+                label={t(checking ? 'webrtcP2p.checkRunning' : !connectivity?.signaling
+                  ? 'webrtcP2p.checkNoSignal' : connectivity.stun ? 'webrtcP2p.checkReady' : 'webrtcP2p.checkNoStun')}
+              />
+              {connectivity?.signaling && <span className="webrtc-p2p-check-hint">{t('webrtcP2p.checkPeerHint')}</span>}
+            </div>
+          </Field>
+        )}
+
         {(error || data?.last_error) && (
           <p className="webrtc-p2p-feedback" role="alert">{error || data?.last_error}</p>
         )}
 
         <div className="webrtc-p2p-actions">
+          {data?.enabled && (
+            <Button
+              type="button"
+              data-testid="webrtc-check-btn"
+              loading={checking}
+              disabled={loading || saving || checking || enabled !== data.enabled || signalUrl !== data.signal_url}
+              onClick={() => void checkConnectivity()}
+            >
+              {t('webrtcP2p.checkButton')}
+            </Button>
+          )}
           <Button
             type="submit"
             variant="primary"
             data-testid="webrtc-save-btn"
             loading={saving}
-            disabled={loading || saving || !urlValid}
+            disabled={loading || saving || checking || !urlValid}
           >
             {t('common.save')}
           </Button>

@@ -3099,6 +3099,14 @@ export const jaJP: Messages = {
     "noEscalationHint": "仅执行当前沙箱允许的操作"
 },
   "webrtcP2p": {
+    "checkTitle": "连接检测",
+    "checkButton": "重新检测",
+    "checkRunning": "正在检测连接",
+    "checkReady": "UDP/STUN 可用",
+    "checkNoSignal": "信令未连接",
+    "checkNoStun": "UDP/STUN 未响应",
+    "checkPeerHint": "直连是否可用，需手机连接确认。",
+    "checkFailed": "连接检测失败，请重试",
     "title": "WebRTC 直接接続",
     "enable": "WebRTC 直接接続を有効化",
     "signalUrl": "シグナリング・STUN URL",

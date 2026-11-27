@@ -138,6 +138,18 @@ async function captureAcrossViewports(page, prefix) {
       scrollWidth: document.documentElement.scrollWidth,
       innerWidth: window.innerWidth,
     }));
+    if (prefix === 'local-settings-webrtc') {
+      const aligned = await page.evaluate(() => {
+        const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+        const save = rect('[data-testid="webrtc-save-btn"]');
+        const check = rect('[data-testid="webrtc-check-btn"]');
+        const title = rect('.webrtc-p2p-header h1');
+        const refresh = rect('.webrtc-p2p-header button');
+        return Math.abs(save.top - check.top) < 1 && Math.abs(save.height - check.height) < 1
+          && Math.abs(title.top + title.height / 2 - refresh.top - refresh.height / 2) < 1;
+      });
+      if (!aligned) throw new Error('WebRTC settings actions are not aligned at ' + vp.name);
+    }
     checks.push({ name: `${prefix}-${vp.name}`, ...metrics });
     await page.screenshot({ path: path.join(screenshotDir, `${prefix}-${vp.name}.png`), fullPage: false });
   }
@@ -282,7 +294,8 @@ function waitForGoLine() {
       }
 
       // Capture local workbench Settings -> Remote Access -> WebRTC Direct
-      const localPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      await page.close();
+      const localPage = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } });
       await localPage.goto(cfg.daemonUrl, { waitUntil: 'networkidle' });
       const overlay = localPage.locator('.modal-overlay').first();
       if (await overlay.count()) {
@@ -306,6 +319,11 @@ function waitForGoLine() {
       await webrtcTab.waitFor({ timeout: 10000 });
       await webrtcTab.click();
       await localPage.waitForSelector('#webrtc-signal-url', { timeout: 10000 });
+      await localPage.click('[data-testid="webrtc-save-btn"]');
+      await localPage.waitForFunction(() => {
+        const check = document.querySelector('[data-testid="webrtc-connectivity"]');
+        return check && check.textContent.includes('UDP/STUN 可用');
+      }, undefined, { timeout: 15000 });
       layoutChecks.push(...(await captureAcrossViewports(localPage, 'local-settings-webrtc')));
       await localPage.close();
     }

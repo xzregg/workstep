@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "f8f5ecc86baabc53f4496b54d59834016c21055c73c3030f1c39665e2e121ce3",
+  "revision": "c9aea6fd5ce6e848d459dd5152899b5efc4e3cc512e5a7e9e1bcd905349e5b4e",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -4941,6 +4941,14 @@
     "enginePermission.askHint": "执行工具前询问",
     "enginePermission.denyHint": "拒绝工具执行",
     "enginePermission.noEscalationHint": "仅执行当前沙箱允许的操作",
+    "webrtcP2p.checkTitle": "连接检测",
+    "webrtcP2p.checkButton": "重新检测",
+    "webrtcP2p.checkRunning": "正在检测连接",
+    "webrtcP2p.checkReady": "UDP/STUN 可用",
+    "webrtcP2p.checkNoSignal": "信令未连接",
+    "webrtcP2p.checkNoStun": "UDP/STUN 未响应",
+    "webrtcP2p.checkPeerHint": "直连是否可用，需手机连接确认。",
+    "webrtcP2p.checkFailed": "连接检测失败，请重试",
     "webrtcP2p.title": "WebRTC 直连",
     "webrtcP2p.enable": "启用 WebRTC 直连",
     "webrtcP2p.signalUrl": "信令与 STUN 地址",

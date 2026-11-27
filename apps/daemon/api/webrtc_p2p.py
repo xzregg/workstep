@@ -62,6 +62,12 @@ async def rotate_webrtc_pair_key(request: Request):
     return await service.rotate_pair_key()
 
 
+@router.post("/check")
+async def check_webrtc_connectivity(request: Request):
+    service = await _require_host_manager(request, mutation=True)
+    return await service.check_connectivity()
+
+
 @router.get("/status")
 async def get_webrtc_status(request: Request):
     service = await _require_host_manager(request)

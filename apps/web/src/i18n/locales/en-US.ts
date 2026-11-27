@@ -3138,6 +3138,14 @@ export const enUS: Messages = {
     "noEscalationHint": "Use only the current sandbox permissions"
 },
   "webrtcP2p": {
+    "checkTitle": "Connection check",
+    "checkButton": "Check again",
+    "checkRunning": "Checking connection",
+    "checkReady": "UDP/STUN available",
+    "checkNoSignal": "Signaling disconnected",
+    "checkNoStun": "No STUN response",
+    "checkPeerHint": "Connect from your phone to verify the direct connection.",
+    "checkFailed": "Connection check failed. Try again.",
     "title": "WebRTC Direct",
     "enable": "Enable WebRTC direct",
     "signalUrl": "Signaling & STUN URL",

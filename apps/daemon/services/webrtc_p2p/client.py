@@ -23,12 +23,14 @@ from websockets.exceptions import ConnectionClosed
 from workstep_gateway_protocol.origin import is_private_gateway_hostname
 
 from .peer import WebRtcPeerSession
+from .connectivity import probe_stun
 
 logger = logging.getLogger(__name__)
 
 DEVICE_SIGNAL_PREFIX = "workstep-webrtc-device-v1"
 GATEWAY_BIND_PREFIX = "workstep-webrtc-gateway-bind-v1"
 MAX_CONCURRENT_P2P_SESSIONS = 8
+SIGNAL_CHECK_TIMEOUT = 6.0
 
 
 def normalize_signal_url(value: str) -> str:
@@ -164,6 +166,7 @@ class WebRtcClientService:
         self.online = False
         self.last_error = ""
         self._stun_urls: list[str] = []
+        self._signal_checked = asyncio.Event()
         self.heartbeat_interval: float = 20.0
         self.heartbeat_timeout: float = 45.0
         self._last_rx_monotonic: float = 0.0
@@ -253,6 +256,22 @@ class WebRtcClientService:
             "last_error": self.last_error,
         }
 
+    async def check_connectivity(self) -> dict[str, Any]:
+        settings = await self.get_settings()
+        if not settings["enabled"]:
+            return {"signaling": False, "stun": None}
+        generation = self._task
+        try:
+            await asyncio.wait_for(self._signal_checked.wait(), timeout=SIGNAL_CHECK_TIMEOUT)
+        except asyncio.TimeoutError:
+            return {"signaling": False, "stun": None}
+        if not self.online or generation is not self._task:
+            return {"signaling": False, "stun": None}
+        reachable = await probe_stun(self._stun_urls)
+        if not self.online or generation is not self._task:
+            return {"signaling": False, "stun": None}
+        return {"signaling": True, "stun": reachable}
+
     async def update_settings(self, *, enabled: bool, signal_url: str) -> dict[str, Any]:
         normalized = normalize_signal_url(signal_url) if signal_url.strip() else ""
         if enabled and not normalized:
@@ -310,6 +329,8 @@ class WebRtcClientService:
 
     async def close(self) -> None:
         self._stop.set()
+        self._signal_checked.clear()
+        self._stun_urls = []
         if self._task is not None:
             self._task.cancel()
             try:
@@ -328,6 +349,7 @@ class WebRtcClientService:
         ws_endpoint = device_ws_url(signal_url)
         delay = 1.0
         while not self._stop.is_set():
+            self._signal_checked.clear()
             try:
                 async with self.connector(ws_endpoint, open_timeout=10, max_size=256 * 1024) as ws:
                     challenge = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
@@ -391,6 +413,7 @@ class WebRtcClientService:
                     # Fetch STUN URLs once via HTTP or infer from signaling host
                     stun_urls = await self._fetch_stun_urls(signal_url, device_id)
                     self._stun_urls = stun_urls
+                    self._signal_checked.set()
 
                     heartbeat = asyncio.create_task(self._heartbeat(ws))
                     try:
@@ -408,6 +431,7 @@ class WebRtcClientService:
                 self.online = False
                 self._active_ws = None
                 self.last_error = str(exc) or type(exc).__name__
+                self._signal_checked.set()
                 logger.debug("WebRTC signaling reconnect in %.1fs (%s)", delay, self.last_error)
             finally:
                 self.online = False

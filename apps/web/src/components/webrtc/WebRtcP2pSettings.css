@@ -80,7 +80,7 @@
 .webrtc-p2p-actions {
   display: flex;
   justify-content: flex-end;
-  align-items: center;
+  align-items: stretch;
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
@@ -89,6 +89,18 @@
   font-size: var(--text-caption);
   color: var(--danger);
   margin: 0;
+}
+
+.webrtc-p2p-check {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.webrtc-p2p-check-hint {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
 }
 
 .webrtc-p2p-readonly {
