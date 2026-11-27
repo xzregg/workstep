@@ -4,7 +4,7 @@ import { useI18n } from '../i18n'
 import { reviewActorLabel } from '../pages/taskReviewRules'
 import ReviewReportContent from './ReviewReportContent'
 import ReviewDecisionActions, { type ReviewDecisionAction } from './ReviewDecisionActions'
-import Textarea from './Textarea'
+import TaskReviewCommentInput from './TaskReviewCommentInput'
 
 interface TaskReviewResultProps {
   review: ReviewRun
@@ -44,9 +44,7 @@ export default function TaskReviewResult({ review, projectId, actionable, pendin
         {t('taskDetail.reviewedBy', { name: actor })}
       </div>}
       {onAction && actionable && <>
-        <Textarea rows={2} value={comment ?? ''}
-          onChange={(event) => onCommentChange?.(event.target.value)}
-          placeholder={t('taskDetail.reviewCommentPlaceholder')} />
+        <TaskReviewCommentInput value={comment ?? ''} onChange={onCommentChange} />
         <ReviewDecisionActions canCompleteStep={canCompleteStep} status={review.status} pending={!!pending} onAction={onAction} />
       </>}
     </div>

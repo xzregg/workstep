@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "bc9414ca1c4c851a76f82f28312fa6701283299a78eeb4ddf6bad1a4bb9e7e3b",
+  "revision": "185f63efb1d40b78c8cf9a5b16f6355c76729b6cd9d026220b442d6325d67067",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -4396,6 +4396,7 @@
     "taskDetail.reviewWaiting": "等待确认",
     "taskDetail.reviewedBy": "审核人：{name}",
     "taskDetail.scorePoints": "{score} 分 · ",
+    "taskDetail.clearReviewComment": "清除",
     "taskDetail.reviewCommentPlaceholder": "审核意见（可选）",
     "taskDetail.reject": "驳回重做",
     "taskDetail.terminate": "终止任务",

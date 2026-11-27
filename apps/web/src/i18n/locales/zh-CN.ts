@@ -2743,6 +2743,7 @@ export const zhCN = {
     reviewWaiting: '等待确认',
     reviewedBy: '审核人：{name}',
     scorePoints: '{score} 分 · ',
+    clearReviewComment: '清除',
     reviewCommentPlaceholder: '审核意见（可选）',
     reject: '驳回重做',
     terminate: '终止任务',

@@ -2548,6 +2548,7 @@ export const jaJP: Messages = {
     reviewWaiting: '確認待ち',
     reviewedBy: 'レビュー担当：{name}',
     scorePoints: '{score} 点 · ',
+    clearReviewComment: 'クリア',
     reviewCommentPlaceholder: 'レビューコメント（任意）',
     reject: '否決',
     terminate: 'タスクを終了',

@@ -2555,6 +2555,7 @@ export const zhTW: Messages = {
     reviewWaiting: '等待確認',
     reviewedBy: '審核人：{name}',
     scorePoints: '{score} 分 · ',
+    clearReviewComment: '清除',
     reviewCommentPlaceholder: '審核意見（可選）',
     reject: '駁回',
     terminate: '終止任務',

@@ -14,7 +14,7 @@ import { stripA2uiBlocks } from '../utils/a2ui'
 import ReviewDecisionActions from './ReviewDecisionActions'
 import MarqueeText from './MarqueeText'
 import TaskMessageArtifacts from './TaskMessageArtifacts'
-import Textarea from './Textarea'
+import TaskReviewCommentInput from './TaskReviewCommentInput'
 import Button from './Button'
 import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import { formatConversationDateTime } from '../utils/datetime'
@@ -68,6 +68,7 @@ interface TaskConversationMessageProps extends Pick<TaskDetailViewProps,
   | 'onReviewAction'
   | 'reviewCanCompleteStep'
   | 'reviewComment'
+  | 'getReviewComment'
   | 'onReviewCommentChange'
   | 'projectId'
   | 'executionStepModel'
@@ -114,6 +115,7 @@ export default function TaskConversationMessage({
   onReviewAction,
   reviewCanCompleteStep,
   reviewComment,
+  getReviewComment,
   onReviewCommentChange,
   projectId,
   executionStepModel,
@@ -723,25 +725,8 @@ export default function TaskConversationMessage({
                     {onReviewAction &&
                       msgReview!.status ===
                         'pending' && (
-                        <Textarea
-                          rows={2}
-                          value={
-                            reviewComment ??
-                            ''
-                          }
-                          onChange={(
-                            event,
-                          ) =>
-                            onReviewCommentChange?.(
-                              event
-                                .target
-                                .value,
-                            )
-                          }
-                          placeholder={t(
-                            'taskDetail.reviewCommentPlaceholder',
-                          )}
-                        />
+                        <TaskReviewCommentInput inMessage value={getReviewComment?.(msgReview!) ?? reviewComment ?? ''}
+                          onChange={(value) => onReviewCommentChange?.(value, msgReview)} />
                       )}
                     {onReviewAction && (
                       <ReviewDecisionActions

@@ -95,3 +95,69 @@ test('failed execution completion waits for choice and leaves dialog open after 
     await window.happyDOM.close()
   }
 })
+
+
+test('manual fallback drafts use the last automatic review body and preserve edits and clearing across refreshes', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originalDecide = taskApi.decideReview
+  const requests: unknown[][] = []
+  taskApi.decideReview = async (...args) => { requests.push(args); throw new Error('offline') }
+  const review = (id: string, mode: 'auto' | 'manual', time: number, stepRun = 'step-run') => ({
+    id, mode, step_key: 'build', step_run_id: stepRun, workflow_run_id: 'run',
+    status: mode === 'manual' ? 'pending' : 'rejected', started_at: `2026-11-27T00:00:0${time}Z`,
+  } as ReviewRun)
+  const first = review('auto-1', 'auto', 1)
+  const last = review('auto-2', 'auto', 2)
+  const manual = review('manual', 'manual', 3)
+  const unrelated = { ...review('other', 'auto', 4), step_key: 'test' }
+  const old = review('old', 'auto', 0, 'old-step-run')
+  let snapshot = [manual, unrelated, first, old, last]
+  const body = '**审核结果：未通过**\n## 最后一轮\n完整正文\n- 问题 → 修改建议\n'
+  let historyMessages = [old, first, last, unrelated].map(item => ({
+    channel: 'review', role: 'assistant', step_key: item.step_key, review_run_id: item.id,
+    content: item.id === last.id ? body : item.id, started_at: item.started_at,
+  }))
+  let actions!: ReturnType<typeof useTaskReviewActions>
+  function Harness() {
+    actions = useTaskReviewActions({ taskId: 'task', projectId: 'project',
+      snapshot, historyMessages, reviewEventSignal: '', fetchTasks: async () => {},
+      refreshTask: async () => {}, onError: () => {} })
+    return <div />
+  }
+  const render = async () => act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+  try {
+    await render()
+    assert.equal(actions.reviewComment, body)
+    await act(async () => actions.setReviewComment('用户编辑'))
+    snapshot = [...snapshot]
+    historyMessages = historyMessages.map(message => ({ ...message }))
+    await render()
+    assert.equal(actions.reviewComment, '用户编辑')
+    await act(async () => actions.decideReview('reject', manual, 'build'))
+    assert.equal(requests[0][5], '用户编辑')
+    await act(async () => actions.setReviewComment(''))
+    historyMessages = historyMessages.map(message => ({ ...message, content: message.content + '\n刷新正文' }))
+    await render()
+    assert.equal(actions.reviewComment, '')
+    await act(async () => actions.decideReview('approve', manual, 'build'))
+    assert.equal(requests[1][5], undefined)
+    await act(async () => actions.setReviewComment('另一步骤草稿', unrelated))
+    assert.equal(actions.getReviewComment(unrelated), '另一步骤草稿')
+    assert.equal(actions.getReviewComment(manual), '')
+    const next = review('manual-next', 'manual', 5, 'next-step-run')
+    snapshot = [next, ...snapshot]
+    await render()
+    assert.equal(actions.reviewComment, '')
+    await act(async () => actions.setReviewComment('重新填写'))
+    await render()
+    await act(async () => actions.decideReview('approve', next, 'build'))
+    assert.equal(requests[2][5], '重新填写')
+  } finally {
+    taskApi.decideReview = originalDecide
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
