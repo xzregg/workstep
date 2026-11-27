@@ -50,6 +50,12 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
     if(url.pathname.endsWith('/chat')&&failChatOnce){failChatOnce=false;return new Response(JSON.stringify({detail:'retry me'}),{status:500,headers:{'Content-Type':'application/json'}})}
     return new Response(JSON.stringify(result),{headers:{'Content-Type':'application/json'}})
   }
+  const unrelatedStatus = document.body.appendChild(document.createElement('div'))
+  unrelatedStatus.hidden = true
+  unrelatedStatus.setAttribute('role', 'status')
+  unrelatedStatus.textContent = '暂时无法查询'
+  const unrelatedRefresh = unrelatedStatus.appendChild(document.createElement('button'))
+  unrelatedRefresh.setAttribute('aria-label', '刷新')
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   const click = async (text:string) => {
@@ -218,8 +224,9 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
     await act(async()=>undo.dispatchEvent(undoKey()))
     assert.equal(calls.filter(call=>call.path.endsWith('/undo')).length,count,'exhausted shortcut does not request undo')
     inspectionOnly=true
-    await act(async()=>document.querySelector<HTMLButtonElement>('button[aria-label="刷新"]')!.click())
-    assert.match(document.querySelector('[role="status"]')!.textContent!,/动态渲染页面/)
+    await act(async()=>document.querySelector<HTMLButtonElement>('.prototype-toolbar button[aria-label="刷新"]')!.click())
+    assert.match(document.querySelector('.prototype-recovery[role="status"]')!.textContent!,/动态渲染页面/)
+    assert.equal(unrelatedStatus.isConnected,true,'unrelated status remains mounted')
     const runtimeFrame=document.querySelector('iframe')!
     const runtimeMessage=(message:Record<string,unknown>)=>window.dispatchEvent(new window.MessageEvent('message',{source:runtimeFrame.contentWindow,data:{source:'workstep-prototype',token:'ticket-v2',version:'v2',...message}}))
     await act(async()=>runtimeMessage({type:'select',selection:{...selection,selector:'#root h1',text:'Runtime heading'}}))
@@ -235,6 +242,7 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
     globalThis.fetch=previousFetch
     usePrototypeStore.setState({sessions:{}})
     container.remove()
+    unrelatedStatus.remove()
     await window.happyDOM.close()
   }
 })

@@ -193,3 +193,29 @@ test('channel reviewer source is displayed once for persisted channel identities
     }), `${source} · 小陈`)
   }
 })
+
+
+test('manual fallback never borrows an earlier report when its latest automatic review has no body', async () => {
+  const { manualReviewInitialComment } = await import('../src/pages/taskReviewRules')
+  const base = { step_key: 'build', workflow_run_id: 'run', step_run_id: 'step-run' }
+  const first = { ...base, id: 'first', mode: 'auto', status: 'rejected', started_at: '2026-11-27T00:00:01Z' }
+  const last = { ...base, id: 'last', mode: 'auto', status: 'rejected', started_at: '2026-11-27T00:00:02Z' }
+  const manual = { ...base, id: 'manual', mode: 'manual', status: 'pending' }
+  const reviews = [first, last, manual] as import('../src/api/client').ReviewRun[]
+  const messages = [{ channel: 'review', role: 'assistant', review_run_id: 'first', content: '早一轮' }]
+  assert.equal(manualReviewInitialComment(reviews[2], reviews, messages), '')
+  assert.equal(manualReviewInitialComment(reviews[2], [reviews[2]], messages), '')
+  assert.equal(manualReviewInitialComment(reviews[0], reviews, messages), '')
+})
+
+
+test('manual fallback resolves the complete automatic body from current AG-UI history events', async () => {
+  const { manualReviewInitialComment } = await import('../src/pages/taskReviewRules')
+  const base = { step_key: 'build', workflow_run_id: 'run', step_run_id: 'step-run' }
+  const automatic = { ...base, id: 'auto', mode: 'auto', status: 'rejected' }
+  const manual = { ...base, id: 'manual', mode: 'manual', status: 'pending' }
+  const reviews = [manual, automatic] as import('../src/api/client').ReviewRun[]
+  const messages = [{ channel: 'review', role: 'assistant', content: '完整正文与问题清单',
+    events: [{ type: 'CUSTOM', name: 'workstep.review_context', value: { review_run_id: 'auto' } }] }]
+  assert.equal(manualReviewInitialComment(reviews[0], reviews, messages), '完整正文与问题清单')
+})

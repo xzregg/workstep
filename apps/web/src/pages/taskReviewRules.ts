@@ -1,3 +1,5 @@
+import type { ReviewRun } from '../api/client'
+import { CUSTOM } from '../utils/agui'
 import { toMilliseconds } from "../utils/datetime"
 
 interface ReviewConversationMessage {
@@ -7,7 +9,7 @@ interface ReviewConversationMessage {
   started_at?: string | null
   review_run_id?: string | null
   engine?: string | null
-  events?: Array<{ type?: string; data?: Record<string, unknown> }>
+  events?: Array<{ type?: string; data?: Record<string, unknown>; name?: string; value?: Record<string, unknown> }>
 }
 
 interface MessageReview {
@@ -36,7 +38,9 @@ export function resolveMessageReview<T extends MessageReview>(
   const eventReviewId = message.events?.find((event) => (
     event.type === 'review_context' && event.data?.review_run_id
   ))?.data?.review_run_id
-  const reviewId = String(message.review_run_id || eventReviewId || '')
+  const context = message.events?.find((event) => event.type === 'CUSTOM'
+    && event.name === CUSTOM.reviewContext)?.value
+  const reviewId = String(message.review_run_id || context?.review_run_id || eventReviewId || '')
   if (reviewId) return reviews.find((review) => review.id === reviewId)
 
   const messageStartedAt = toMilliseconds(message.started_at)
@@ -148,4 +152,20 @@ export function findActionablePendingReview<T extends PendingReviewCandidate>(
     if (latest?.status === 'pending') return latest
   }
   return undefined
+}
+
+/** Use the complete persisted message from the automatic review that led to this manual gate. */
+export function manualReviewInitialComment(
+  review: ReviewRun | undefined,
+  reviews: readonly ReviewRun[],
+  messages: readonly (ReviewConversationMessage & { content?: string })[],
+): string {
+  if (review?.mode !== 'manual' || review.status !== 'pending') return ''
+  const automatic = reviews.filter((item) => item.mode === 'auto'
+    && item.step_key === review.step_key && item.workflow_run_id === review.workflow_run_id
+    && item.step_run_id === review.step_run_id)
+    .sort((a, b) => (toMilliseconds(b.started_at) ?? 0) - (toMilliseconds(a.started_at) ?? 0))[0]
+  if (!automatic) return ''
+  return messages.find((message) => message.role !== 'user'
+    && resolveMessageReview(message, reviews)?.id === automatic.id)?.content ?? ''
 }

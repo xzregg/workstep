@@ -18,7 +18,7 @@ type ReviewMode = 'skip' | 'auto' | 'manual'
 function reviewDraft(config: Record<string, any> | undefined) {
   const mode: ReviewMode = ['skip', 'auto', 'manual'].includes(config?.mode)
     ? config!.mode : config?.auto ? 'auto' : 'manual'
-  return { mode, retries: config?.maxRetries ?? 1, prompt: config?.prompt ?? '' }
+  return { mode, retries: String(config?.maxRetries ?? 1), prompt: config?.prompt ?? '' }
 }
 
 /** Owns the selected step's review draft, persistence, and save error. */
@@ -41,8 +41,11 @@ export default function TaskReviewConfigPanel({ taskId, stepKey, projectId,
     setError('')
   }, [taskId, stepKey, config])
 
+  const retries = Number(draft.retries)
+  const validRetries = draft.retries.trim() !== '' && Number.isInteger(retries) && retries >= 1 && retries <= 5
+
   const save = async () => {
-    if (saving) return
+    if (saving || (draft.mode === 'auto' && !validRetries)) return
     setSaving(true)
     setError('')
     try {
@@ -51,7 +54,7 @@ export default function TaskReviewConfigPanel({ taskId, stepKey, projectId,
         [stepKey]: {
           mode: draft.mode,
           auto: draft.mode === 'auto',
-          maxRetries: draft.retries,
+          maxRetries: validRetries ? retries : config.maxRetries ?? 1,
           prompt: draft.prompt,
         },
       })
@@ -85,8 +88,8 @@ export default function TaskReviewConfigPanel({ taskId, stepKey, projectId,
           {draft.mode === 'auto' && <div className="task-review-config-retries">
             <span>{t('flow.retry')}</span>
             <Input className="task-review-config-retry-input" type="number" min={1} max={5}
-              value={draft.retries} onChange={(event) => setDraft((current) => ({ ...current,
-                retries: Math.max(1, Math.min(5, Number(event.target.value) || 1)),
+              value={draft.retries} aria-invalid={!validRetries} onChange={(event) => setDraft((current) => ({ ...current,
+                retries: event.target.value,
               }))} />
             <span className="task-review-config-hint">{t('flow.reviewAutoRetryHint')}</span>
           </div>}
@@ -95,10 +98,10 @@ export default function TaskReviewConfigPanel({ taskId, stepKey, projectId,
         </div>
         <MarkdownEditor value={draft.prompt} onChange={(prompt) => setDraft((current) => ({ ...current, prompt }))}
           projectId={projectId} placeholder={t('taskDetail.reviewPromptPlaceholder')}
-          minHeight={64} maxHeight={160} ariaLabel={t('taskDetail.reviewPromptAria')} />
+          minHeight={120} maxHeight={160} ariaLabel={t('taskDetail.reviewPromptAria')} />
         {error && <div role="alert" className="task-review-config-error">{localizeErrorDisplay(error)}</div>}
         <div className="task-review-config-actions">
-          <Button variant="ghost" className="task-review-config-save" loading={saving}
+          <Button variant="ghost" className="task-review-config-save" loading={saving} disabled={draft.mode === 'auto' && !validRetries}
             onClick={() => void save()}>
             {t('common.save')}
           </Button>

@@ -2598,6 +2598,7 @@ export const enUS: Messages = {
     reviewWaiting: 'Awaiting confirmation',
     reviewedBy: 'Reviewed by: {name}',
     scorePoints: 'Score {score} · ',
+    clearReviewComment: 'Clear',
     reviewCommentPlaceholder: 'Review comment (optional)',
     reject: 'Reject',
     terminate: 'Terminate task',

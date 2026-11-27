@@ -302,11 +302,11 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
   } = useTaskArtifacts({ taskId, projectId, steps: task?.steps, remote: detailProject?.type === 'remote', snapshot: shared })
   const {
     reviews, pending: reviewActionPending, pendingCompletion: pendingReviewCompletion,
-    reviewComment, setReviewComment, decideReview,
+    getReviewComment, setReviewComment, decideReview,
     requestFailedExecutionComplete, confirmCompletion, cancelCompletion,
   } = useTaskReviewActions({
     taskId, projectId, updatedAt: task?.updated_at, reviewEventSignal,
-    snapshot: shared?.reviews,
+    snapshot: shared?.reviews, historyMessages,
     fetchTasks, refreshTask, onError: setChatError,
   })
   const [showPromptEditor, setShowPromptEditor] = useState(false)
@@ -953,7 +953,7 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
         content={content}
         reviews={reviews}
         reviewActionPending={reviewActionPending}
-        reviewComment={reviewComment}
+        getReviewComment={getReviewComment}
         onReviewCommentChange={setReviewComment}
         onReviewAction={(decision, review, stepKey) => {
           void decideReview(decision, review ?? selectedReview, stepKey ?? currentStep.key)

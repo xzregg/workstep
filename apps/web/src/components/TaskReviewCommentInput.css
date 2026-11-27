@@ -1,0 +1,9 @@
+.task-review-comment {
+  min-width: 0;
+}
+
+.task-review-comment-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-1);
+}

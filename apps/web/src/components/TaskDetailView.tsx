@@ -203,7 +203,8 @@ export interface TaskDetailViewProps {
   reviewCanCompleteStep?: boolean
   reviewActionPending?: boolean
   reviewComment?: string
-  onReviewCommentChange?: (value: string) => void
+  getReviewComment?: (review?: ReviewRun) => string
+  onReviewCommentChange?: (value: string, review?: ReviewRun) => void
   onReviewAction?: (
     action: ReviewDecisionAction,
     review?: any,
@@ -370,6 +371,7 @@ export default function TaskDetailView({
   reviewCanCompleteStep,
   reviewActionPending,
   reviewComment,
+  getReviewComment,
   onReviewCommentChange,
   onReviewAction,
   artifacts,
@@ -649,7 +651,8 @@ export default function TaskDetailView({
         {/* Review results */}
         {selectedReview && <TaskReviewResult review={selectedReview} projectId={projectId}
           canCompleteStep={reviewCanCompleteStep} actionable={selectedReviewActionable} pending={reviewActionPending}
-          comment={reviewComment} onCommentChange={onReviewCommentChange}
+          comment={getReviewComment?.(selectedReview) ?? reviewComment}
+          onCommentChange={(value) => onReviewCommentChange?.(value, selectedReview)}
           onAction={onReviewAction} containerRef={mobileReviewRef} />}
 
         {/* Review config drawer (edit mode only) */}
@@ -766,6 +769,7 @@ export default function TaskDetailView({
                     reviewCanCompleteStep={reviewCanCompleteStep}
                     reviewActionPending={reviewActionPending}
                     onReviewAction={onReviewAction}
+                    getReviewComment={getReviewComment}
                     reviewComment={reviewComment}
                     onReviewCommentChange={onReviewCommentChange}
                     projectId={projectId}
