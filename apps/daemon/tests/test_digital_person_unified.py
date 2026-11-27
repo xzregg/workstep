@@ -518,7 +518,8 @@ async def test_old_inflight_result_cannot_apply_after_history_discard(runtime,mo
                 'memories':[{'summary':'旧偏好不能再保存','kind':'preference','outcome':'stated','source_ids':ctx['conversation'][0]['memory_ids']}]}
     monkeypatch.setattr(current,'_decide',decide)
     result=await current.check()
-    assert result['status']=='failed'
+    assert result['status']=='silent'
+    assert (await current.state()).get('reflection_failures',0)==0
     assert result['relationship_updates']==[] and result['deliveries']==[]
     with index.connect() as db:
         assert db.execute('select count(*) from memory_knowledge').fetchone()[0]==0

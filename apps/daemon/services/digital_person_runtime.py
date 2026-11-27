@@ -14,7 +14,7 @@ from models.fields import utc_now
 from services import customization_workspace, digital_person
 from services import digital_person_memory_index as memory_index
 from services.memory_secrets import redact
-from services.digital_person_notifications import notification_audit, delivery_failure_reason
+from services.digital_person_notifications import notification_audit, delivery_failure_reason, safe_model_reason
 
 KEY = 'digital_person_runtime'
 CHECK_SESSION_TITLE = '主动思考'
@@ -65,17 +65,30 @@ def activity_failure_reason(run):
     error = run.get('error')
     if not error:
         return None
+    lower = str(error).lower()
+    # Only return fixed descriptions; never echo provider payloads or credentials.
+    for markers, reason in (
+        (('insufficient_quota', 'insufficient balance', 'credit balance', 'quota exceeded', 'exceeded your current quota', 'not enough credits', '额度不足', '余额不足'), '供应商额度不足'),
+        (('rate limit', 'rate_limit', 'too many requests', '限流'), '供应商请求限流'),
+        (('invalid api key', 'invalid_api_key', 'incorrect api key', 'authentication', 'unauthorized', '认证失败'), '供应商认证失败'),
+        (('timed out', 'timeout', '超时'), '思考请求超时'),
+        (('engine unavailable', 'engine not found', 'engine is not installed', '引擎不可用', '引擎未安装'), '思考引擎不可用'),
+    ):
+        if str(error) == reason or any(marker in lower for marker in markers):
+            return reason
+    if re.fullmatch(r'Of the \d+ sources cited in this round, \d+ could not be matched to the current batch of messages, so the results were not adopted\.', str(error)):
+        return '思考结果无法匹配当前消息，本轮结果未采用'
     if error in {'Invalid sources in the check result', '检查结果来源无效'}:
-        return 'Could not match the reflection to its source messages. The result was discarded.'
+        return '思考结果无法匹配当前消息，本轮结果未采用'
     if error in {'The CLI has not fetched the messages to review', '尚未调用 CLI 获取待整理消息'}:
-        return 'Reflection could not finish because it did not fetch the pending messages.'
+        return '思考未读取待处理消息，本轮结果未采用'
     if 'JSON' in error or 'result structure' in error or '结果结构' in error:
-        return 'Reflection could not finish because its result was incomplete or malformed.'
+        return '思考结果格式不完整或无效，本轮结果未采用'
     if 'not yet read' in error or '尚未读取' in error:
-        return 'Some required messages were not read. The reflection result was discarded.'
+        return '思考未完整读取必要消息，本轮结果未采用'
     if error.startswith('Source changed during thinking') or '来源已变化' in error:
-        return 'The source messages changed during reflection. The previous result was discarded.'
-    return str(error)
+        return '思考期间来源消息已变化，本轮结果未采用'
+    return "主动思考运行失败，请检查供应商或引擎后重试"
 
 
 def is_notification_run(run):
@@ -296,7 +309,9 @@ class DigitalPersonRuntime:
             feedback = state['feedback']
             from services.digital_person_statistics import read_statistics
             statistics = read_statistics(state)
-            return {**state, **statistics, 'suggestions': [], 'checking': self._check_lock.locked(),
+            runs = [{**row, **({'error':activity_failure_reason(row), 'failure_reason':activity_failure_reason(row)}
+                               if row.get('status') == 'failed' else {})} for row in state.get('runs', [])]
+            return {**state, 'runs':runs, **statistics, 'suggestions': [], 'checking': self._check_lock.locked(),
                     'answers': [{'id': row.id, 'content': row.content[:300], 'feedback': feedback.get(row.id, 0)} for row in answers[:20]]}
         from services.digital_person_statistics import enabled_skills
         result, skills = await asyncio.gather(self.projects.run_db(home.id, operation), asyncio.to_thread(enabled_skills, home))
@@ -334,6 +349,7 @@ class DigitalPersonRuntime:
                                  'instruction': str(row.get('instruction') or '')[:120], **notification(row)}
                                 for row in delegations[delegation_offset:delegation_offset + limit]],
                 'runs': [{**{key: row.get(key) for key in ('id', 'status', 'created_at')},
+                          'failure_reason': activity_failure_reason(row),
                           'outcome': activity_outcome(row),
                           **notification_audit(row, all_runs),
                           **activity_record_content(row, preview=True)}
@@ -403,7 +419,10 @@ class DigitalPersonRuntime:
             result['notification_message'] = redact(message) if message else None
             result['outcome'] = activity_outcome(row)
             result.update(notification_audit(row, runs))
-            result['draft_summary'] = row.get('draft_summary')
+            result['draft_summary'] = redact(row['draft_summary']) if row.get('draft_summary') else None
+            if row.get('status') == 'failed':
+                result['error'] = activity_failure_reason(row)
+                result['summary'] = ''
             result['failure_reason'] = delivery_failure_reason(row['error']) if row.get('status') == 'delivery_failed' and row.get('error') else activity_failure_reason(row)
             return result
         return await self.projects.run_db(home.id, read)
@@ -885,8 +904,15 @@ class DigitalPersonRuntime:
                             state.pop('check_context_pending_scope', None)
                         await self.mutate(confirmed)
                         return decision
-                    if status in ('failed', 'error', 'stopped'):
-                        raise RuntimeError('Active check incomplete:' + status)
+                    if status == 'stopped':
+                        raise asyncio.CancelledError
+                    if status in ('failed', 'error'):
+                        # The assistant runtime retains the actual engine exception.
+                        task = checker._turn_tasks.get(accepted.turn_id)
+                        if task:
+                            await asyncio.shield(task)
+                        error = checker._turn_states.get(accepted.turn_id, {}).get('error')
+                        raise RuntimeError(error or 'Active check incomplete:' + status)
                     await asyncio.sleep(.25)
         finally:
             if access:
@@ -988,6 +1014,9 @@ class DigitalPersonRuntime:
         if self._check_lock.locked():
             raise ValueError('An existing check is in progress')
         async with self._check_lock:
+            epoch = (await self.state()).get('reflection_epoch', '')
+            if not manual and not (await asyncio.to_thread(digital_person.get_profile)).reflection_enabled:
+                return {'status':'cancelled'}
             from services.memory_pending_queue import has_pending
             from services.digital_person_memory import allowed_projects
             if manual:
@@ -1037,7 +1066,6 @@ class DigitalPersonRuntime:
                     raise
                 finally:
                     self._active_assessment_task = None
-                from services.memory_secrets import redact
                 run['draft_summary'] = redact(str(decision.get('summary', '')))[:3000]
                 if '_load' in context:
                     raise ValueError('The CLI has not fetched the messages to review')
@@ -1237,7 +1265,11 @@ class DigitalPersonRuntime:
                 raise
             except Exception as exc:
                 run.pop('model_notification_reason', None)
-                run.update(status='failed',error=str(exc)[:1000], notification={'state':'failed','reason':'assessment_failed'})
+                if str(exc).startswith(('The source is being processed or has changed', 'Source changed during thinking')):
+                    run.update(status='silent', summary='', sources={**context, 'no_work':True},
+                               notification={'state':'suppressed','reason':'stale_result'})
+                else:
+                    run.update(status='failed',error=safe_model_reason(str(exc) or type(exc).__name__), notification={'state':'failed','reason':'assessment_failed'})
             finally:
                 if claimed and not committed:
                     await asyncio.to_thread(assessment.release,run.get('sources',context).get('reflection_batch',[]))
@@ -1249,6 +1281,8 @@ class DigitalPersonRuntime:
                     s['runs'] = [saved if r['id']==run['id'] else r for r in s['runs']][:100]
                     s['last_check'] = run['ended_at']
                 await self.mutate(finish)
+                if manual:
+                    await self._finish_reflection_cycle(run, epoch)
             return run
 
     async def start(self):
@@ -1285,6 +1319,7 @@ class DigitalPersonRuntime:
         return {'status': 'accepted'}
 
     async def _tick(self, now=None, *, background=False):
+        await self._flush_reflection_shutdown()
         profile = await asyncio.to_thread(digital_person.get_profile)
         if not profile.enabled or not profile.reflection_enabled:
             return
@@ -1315,30 +1350,89 @@ class DigitalPersonRuntime:
                 import logging
                 logging.getLogger(__name__).exception('Digital person assessment cycle failed')
 
+    async def _finish_reflection_cycle(self, result, epoch):
+        """Settle once per scheduler cycle, after every retry and batch has ended."""
+        home = await self.home()
+        def settle(_):
+            with digital_person._profile_lock:
+                def update(state):
+                    if state.get('reflection_epoch', '') != epoch:
+                        return
+                    profile = digital_person.get_profile()
+                    if not profile.enabled or not profile.reflection_enabled:
+                        return
+                    cycle_id = result['id']
+                    settled = state.setdefault('reflection_settled', [])
+                    if cycle_id in settled:
+                        return
+                    state['reflection_settled'] = [cycle_id, *settled][:100]
+                    delivery_errors = [row.get('error') for row in result.get('deliveries', [])
+                                       if row.get('status') in ('failed', 'delivery_failed')]
+                    if result['status'] == 'failed' or (result['status'] == 'delivery_failed' and delivery_errors):
+                        state['reflection_failures'] = state.get('reflection_failures', 0) + 1
+                    elif result['status'] in ('silent', 'notified', 'delivery_failed', 'deferred') and not (result.get('sources') or {}).get('no_work'):
+                        state['reflection_failures'] = 0
+                    if state.get('reflection_failures', 0) >= 3:
+                        digital_person.config_store.set('digital_person', profile.model_copy(update={'reflection_enabled':False}).model_dump())
+                        state['reflection_shutdown'] = {'id':'reflection-shutdown:' + cycle_id,
+                                                        'reason':activity_failure_reason({'error':result.get('error') or next((error for error in delivery_errors if error), None) or 'unknown'})}
+                        return True
+                return memory_index.mutate_state(KEY, update)
+        if await self.projects.run_db(home.id, settle):
+            await self.bus.publish({'type':'CUSTOM', 'name':'workstep.digital_person_changed', 'value':{}})
+        await self._flush_reflection_shutdown()
+
+    async def _flush_reflection_shutdown(self):
+        notice = (await self.state()).get('reflection_shutdown')
+        if not notice:
+            return
+        # Same persisted receipt ID makes restart and publication retries idempotent.
+        session = await self.main_session()
+        text = ('主动思考已因连续 3 次运行失败而关闭。原因：' + notice['reason'] +
+                '。请检查供应商或引擎后手动重新开启主动思考。')
+        await self._deliver_local(session['id'], text, notice['id'], reflection=True)
+        await self.bus.publish({'type':'CUSTOM', 'name':'workstep.digital_person_changed', 'value':{}})
+        await self.mutate(lambda s: s.pop('reflection_shutdown', None)
+                          if (s.get('reflection_shutdown') or {}).get('id') == notice['id'] else None)
+
     async def _drain_assessments(self):
         profile = await asyncio.to_thread(digital_person.get_profile)
         if not profile.enabled or not profile.reflection_enabled:
             return
-        await self.follow_delegations(profile)
-        seen = set()
-        # Bound each scheduled cycle, including messages arriving while it runs.
-        # Remaining durable work waits for the next configured interval.
-        for _ in range(2):
-            profile = await asyncio.to_thread(digital_person.get_profile)
-            if not profile.enabled or not profile.reflection_enabled:
-                break
-            result = await self.check(manual=False)
-            if not isinstance(result, dict) or result.get('status') in ('failed','cancelled','deferred'):
-                break
-            sources = result.get('sources') or {}
-            batch = tuple(row['id'] for row in sources.get('reflection_batch', []))
-            knowledge = (result.get('memory_processing') or {}).get('knowledge') or {}
-            if batch:
-                if batch in seen:
+        epoch = (await self.state()).get('reflection_epoch', '')
+        cycle = {'id': str(uuid.uuid4()), 'status': 'cancelled'}
+        try:
+            await self.follow_delegations(profile)
+            seen = set()
+            # Two batches still constitute one complete scheduled cycle.
+            for _ in range(2):
+                profile = await asyncio.to_thread(digital_person.get_profile)
+                if not profile.enabled or not profile.reflection_enabled:
                     break
-                seen.add(batch)
-            elif not knowledge.get('processed') and not sources.get('indexed'):
-                break
+                result = await self.check(manual=False)
+                if not isinstance(result, dict):
+                    break
+                if not (result.get('sources') or {}).get('no_work'):
+                    cycle.update(result, id=cycle['id'])
+                if result.get('status') in ('failed','cancelled','deferred'):
+                    break
+                sources = result.get('sources') or {}
+                batch = tuple(row['id'] for row in sources.get('reflection_batch', []))
+                knowledge = (result.get('memory_processing') or {}).get('knowledge') or {}
+                if batch:
+                    if batch in seen:
+                        break
+                    seen.add(batch)
+                elif not knowledge.get('processed') and not sources.get('indexed'):
+                    break
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            cycle.update(status='failed', error=safe_model_reason(str(exc) or type(exc).__name__))
+        else:
+            await self._finish_reflection_cycle(cycle, epoch)
+            return
+        await self._finish_reflection_cycle(cycle, epoch)
 
 
     async def _loop(self):

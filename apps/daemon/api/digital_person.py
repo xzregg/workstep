@@ -32,7 +32,10 @@ async def get_profile():
 @router.put("", response_model=DigitalPersonProfile)
 async def save_profile(profile: DigitalPersonProfile):
     try:
-        return await asyncio.to_thread(service.save_profile, profile)
+        saved = await asyncio.to_thread(service.save_profile, profile)
+        from main import event_bus
+        await event_bus.publish({'type':'CUSTOM', 'name':'workstep.digital_person_changed', 'value':{}})
+        return saved
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except OSError as exc:

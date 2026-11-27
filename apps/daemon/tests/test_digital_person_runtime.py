@@ -1617,7 +1617,7 @@ async def test_failed_reflection_preserves_generated_content_and_separates_failu
     assert run['status'] == 'failed'
     detail = await current.run_detail(run['id'])
     assert detail['draft_summary'] == '我想跟进昨天的安排。'
-    assert detail['failure_reason'] == 'Of the 1 sources cited in this round, 1 could not be matched to the current batch of messages, so the results were not adopted.'
+    assert detail['failure_reason'] == '思考结果无法匹配当前消息，本轮结果未采用'
     assert detail['outcome']['affinity_increased'] == 0
     records = await current.activity_records()
     assert records['runs'][0]['status'] == 'failed'
@@ -1625,7 +1625,7 @@ async def test_failed_reflection_preserves_generated_content_and_separates_failu
     await current.mutate(lambda state: state['runs'].append({'id':'legacy-failure','status':'failed','error':'检查结果来源无效'}))
     legacy = await current.run_detail('legacy-failure')
     assert not legacy.get('draft_summary')
-    assert legacy['failure_reason'] == 'Could not match the reflection to its source messages. The result was discarded.'
+    assert legacy['failure_reason'] == '思考结果无法匹配当前消息，本轮结果未采用'
 
 
 def test_reflection_source_references_resolve_only_unique_current_batch_aliases():

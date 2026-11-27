@@ -14,6 +14,7 @@ import {RelationshipReadout} from './DigitalPersonRelationship'
 import DigitalPersonRunDetail from './DigitalPersonRunDetail'
 import {DigitalPersonRunHeader} from './DigitalPersonRunKnowledge'
 import DigitalPersonRunOutcome, {DigitalPersonRunNotificationStatus,DigitalPersonRunNotificationReasons} from './DigitalPersonRunOutcome'
+import ReflectionSwitch from './ReflectionSwitch'
 import WakePreferenceSwitch from './WakePreferenceSwitch'
 import './DigitalPersonHomeDetails.css'
 
@@ -43,7 +44,7 @@ export default function DigitalPersonHomeDetails({kind,canControlWake,name,role,
  const title=t(kind==='profile'?'digitalPerson.title':kind==='affinity'?'digitalPerson.affinity':'digitalPerson.thoughtHistory')
  return createPortal(<div className={`digital-home-detail-backdrop${kind==='reflection'?' digital-home-detail-backdrop--reflection':''}`} onClick={onClose}>
   <ResizablePanel ref={panel} className={`digital-home-detail-panel${kind==='reflection'?' digital-home-detail-panel--reflection':''}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onClick={event=>event.stopPropagation()}>
-   <header><h2>{kind==='reflection'&&<Icon name="lightbulb"/>}{title}</h2><Button variant="icon" className="digital-home-detail-close" aria-label={t('common.close')} onClick={onClose}><Icon name="x"/></Button></header>
+   <header><h2>{kind==='reflection'&&<Icon name="lightbulb"/>}{title}</h2>{kind==='reflection'&&<ReflectionSwitch/>}<Button variant="icon" className="digital-home-detail-close" aria-label={t('common.close')} onClick={onClose}><Icon name="x"/></Button></header>
    <div className="digital-home-detail-content">
     {kind==='profile'&&<><div className="digital-home-detail-profile"><Icon name="bot" size={24}/><div><h3>{name}</h3>{role&&<p>{role}</p>}</div><strong>{activity?.level!=null?`Lv.${activity.level}`:'—'}</strong></div><p className="digital-home-detail-state">{t(state==='checking'?'digitalPerson.homeReflection':`digitalPerson.homeState${state}` as never)}</p>{activity&&<><progress value={activity.experience??0} max={activity.next_level_experience||1}/><p>{t('digitalPerson.experience',{count:activity.experience??0,next:activity.next_level_experience??0})}</p><dl className="digital-home-detail-stats">{[['sessionCount',activity.session_count],['replyCount',activity.reply_count],['taskCount',activity.task_count],['completedTaskCount',activity.completed_task_count]].map(([label,value])=><div key={label}><dt>{t(`digitalPerson.${label}` as never)}</dt><dd>{value??'—'}</dd></div>)}</dl></>}</>}
     {kind==='profile'&&canControlWake&&<WakePreferenceSwitch className="digital-home-detail-switch-row" label={t('voiceWake.title')}/>}
@@ -51,7 +52,7 @@ export default function DigitalPersonHomeDetails({kind,canControlWake,name,role,
     {kind==='reflection'&&(loading?<div className="digital-home-detail-loading"><Spinner/></div>:error?<div role="alert"><p>{localizeErrorDisplay(error)}</p><Button onClick={()=>setRevision(value=>value+1)}>{t('common.retry')}</Button></div>:current?.runs?.length?current.runs.map(run=>{
      const busy=['running','notifying'].includes(run.status),statusKey=run.status==='delivery_failed'?'digitalPerson.runNotificationFailed':`digitalPerson.status${run.status.charAt(0).toUpperCase()+run.status.slice(1)}`,status=t(statusKey as never),label=run.status==='failed'?t('digitalPerson.runIncompleteStatus'):run.status==='running'?t('digitalPerson.homeStatethinking'):status===statusKey?t('digitalPerson.homeReflection'):status
      const expanded=openRun===run.id
-     const fallback=run.status==='failed'?t('digitalPerson.homeThoughtIncomplete'):run.summary||label
+     const fallback=run.status==='failed'?run.failure_reason?`${t('digitalPerson.runIncompleteStatus')} · ${run.failure_reason}`:t('digitalPerson.homeThoughtIncomplete'):run.summary||label
      const showStatus=run.processing || (run.status!=='failed' && fallback!==label)
      return <div className="digital-home-detail-run" key={run.id} data-expanded={expanded}>
       <DigitalPersonRunHeader runId={run.id} className="digital-home-detail-run-header" processing={run.processing} fallback={fallback}
