@@ -15,6 +15,7 @@ export function useEngineQuota(projectId: string | undefined, engine: string, co
     setError(false)
     try {
       const result = await engineApi.quotas(scope, force)
+      if (!Array.isArray(result?.engines)) throw new Error('Invalid quota response')
       if (requestId.current === id) setSnapshot({projectId: scope, result})
     } catch {
       if (requestId.current === id) setError(true)
@@ -27,9 +28,7 @@ export function useEngineQuota(projectId: string | undefined, engine: string, co
     return () => { requestId.current += 1 }
   }, [refresh, conversationKey])
   const result = snapshot?.projectId === scope ? snapshot.result : null
-  const entries = Array.isArray(result?.engines)
-    ? result.engines.filter(entry => entry.supported)
-    : []
+  const entries = result?.engines.filter(entry => entry.supported) ?? []
   const selected = entries.find(entry => entry.engine_id === engine)
   return {entries, collectedAt: result?.collected_at, quota: selected?.status === 'ok' ? selected.quota : null, refreshing, refresh, error}
 }

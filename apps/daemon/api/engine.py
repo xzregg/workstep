@@ -434,7 +434,7 @@ async def get_all_engine_quotas(project_id: str = "", refresh: bool = False):
                 if normalized_project else None
             )
             cwd = str(project.path) if project else str(Path.cwd())
-            targets: list[tuple[str, str | None, BaseLLMEngine]] = []
+            targets: list[tuple[str, str | None, BaseLLMEngine | None]] = []
             for item in get_available_engines():
                 if not item.get("enabled", True):
                     continue
@@ -444,9 +444,12 @@ async def get_all_engine_quotas(project_id: str = "", refresh: bool = False):
                     continue
                 if not item.get("supports_quota"):
                     continue
-                engine = create_engine(item["id"])
-                if engine is None or not engine.supports_quota:
-                    continue
+                try:
+                    engine = create_engine(item["id"])
+                    if engine is not None and not engine.supports_quota:
+                        continue
+                except Exception:
+                    engine = None
                 name = str(item.get("name") or "").strip() or None
                 targets.append((item["id"], name, engine))
             return cwd, targets
@@ -464,20 +467,15 @@ async def get_all_engine_quotas(project_id: str = "", refresh: bool = False):
 
         semaphore = service.collector_semaphore()
 
-        async def collect_one(engine_id: str, name: str | None, engine: BaseLLMEngine) -> dict:
-            try:
-                async with asyncio.timeout(25):
-                    async with semaphore:
-                        result = await query_quota(engine, cwd)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                result = {
-                    "engine_id": engine_id,
-                    "supported": True,
-                    "status": "unavailable",
-                    "quota": None,
-                }
+        async def collect_one(engine_id: str, name: str | None, engine: BaseLLMEngine | None) -> dict:
+            result = {"engine_id": engine_id, "supported": True, "status": "unavailable", "quota": None}
+            if engine is not None:
+                try:
+                    async with asyncio.timeout(25):
+                        async with semaphore:
+                            result = await query_quota(engine, cwd)
+                except Exception:
+                    pass
             if name and "name" not in result:
                 result["name"] = name
             return result

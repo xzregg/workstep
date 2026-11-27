@@ -74,6 +74,39 @@ test('account quota displays named windows, classified failures, and the server 
   }
 })
 
+test('malformed quota responses preserve last known values and differ from a valid empty catalog', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const original = engineApi.quotas
+  let response = {} as Awaited<ReturnType<typeof engineApi.quotas>>
+  engineApi.quotas = async () => response
+  const refresh = async () => act(async () => container.querySelector<HTMLButtonElement>('[data-quota-refresh]')!.click())
+  const status = () => container.querySelector('[role="status"]')?.textContent || ''
+  const emptyMessage = /No engines support quota checks|暂无支持额度查询的引擎/
+  try {
+    await act(async () => root.render(<I18nProvider><ChatInputUsage managed compact={false} selectedEngine="codex_sdk" /></I18nProvider>))
+    await act(async () => container.querySelector<HTMLButtonElement>('.engine-quota-trigger')!.click())
+    assert.match(status(), /unavailable|暂时无法查询/i)
+    assert.doesNotMatch(status(), emptyMessage)
+    response = {cached: false, collected_at: 100, expires_at: 400, engines: [{engine_id: 'codex_sdk', supported: true,
+      status: 'ok', quota: {engine_id: 'codex_sdk', primary: {used_percent: 25, remaining_percent: 75}}}]}
+    await refresh()
+    response = {} as typeof response
+    await refresh()
+    assert.match(status(), /last known quota|上次成功查询的额度/i)
+    assert.equal(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'), '75')
+    response = {cached: false, collected_at: 200, expires_at: 500, engines: []}
+    await refresh()
+    assert.match(status(), emptyMessage)
+    assert.equal(container.querySelector('[role="progressbar"]'), null)
+  } finally {
+    engineApi.quotas = original
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('balance-only engines display actual credit balance without inventing a percentage', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))

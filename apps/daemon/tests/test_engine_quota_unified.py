@@ -493,6 +493,52 @@ async def test_unified_quota_api_queries_enabled_supported_engines_dynamically_w
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("adapter_failure", ["missing", "exception"])
+async def test_unified_quota_preserves_snapshot_when_catalog_adapter_cannot_initialize(monkeypatch, adapter_failure):
+    import main
+    from api import engine as engine_api
+    from services.engine_quota import UnifiedQuotaService
+
+    class CodexFake:
+        ENGINE_ID = "codex_sdk"
+        supports_quota = True
+
+        async def get_quota(self, cwd=""):
+            return {"collected_at": 990, "primary": {"remaining_percent": 75}}
+
+    catalog = [{"id": "codex_sdk", "enabled": True, "installed": True, "supports_quota": True}]
+    initializing = False
+
+    def create_engine(_engine_id):
+        if not initializing:
+            return CodexFake()
+        if adapter_failure == "exception":
+            raise RuntimeError("private constructor diagnostic")
+        return None
+
+    monkeypatch.setattr("services.engine_quota.unified_quota_service", UnifiedQuotaService())
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **_kw: None)
+    monkeypatch.setattr(engine_api, "get_available_engines", lambda: catalog)
+    monkeypatch.setattr(engine_api, "create_engine", create_engine)
+
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        success = (await client.get("/api/engine/quota")).json()["engines"][0]
+        assert success["quota"]["primary"]["remaining_percent"] == 75
+        initializing = True
+        failure = await client.get("/api/engine/quota?refresh=1")
+        assert failure.status_code == 200
+        assert failure.json()["engines"] == [{**success, "status": "unavailable"}]
+        assert "private constructor diagnostic" not in failure.text
+
+        reopened = (await client.get("/api/engine/quota")).json()
+        assert reopened["cached"] is True
+        assert reopened["engines"] == failure.json()["engines"]
+
+        catalog[0]["enabled"] = False
+        assert (await client.get("/api/engine/quota?refresh=1")).json()["engines"] == []
+
+
+@pytest.mark.anyio
 async def test_unified_quota_api_slow_collection_keeps_health_responsive_and_respects_project_bridge_scope(
     api_context, monkeypatch,
 ):
