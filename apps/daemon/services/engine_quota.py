@@ -90,10 +90,25 @@ def quota_scope_key(project_id: str) -> tuple[str, ...]:
 @dataclass
 class _UnifiedCacheEntry:
     engines: list[dict]
+    quota_or_barrier_seq: dict[str, int]
     collected_at: float
     expires_at_wall: float
     expires_at_mono: float
     seq: int
+
+    def reconcile_late_results(self, engines: list[dict], seq: int) -> None:
+        """Update fallback values without replacing the newer batch's status or TTL."""
+        by_id = {item["engine_id"]: item for item in engines}
+        for index, item in enumerate(self.engines):
+            engine_id = item["engine_id"]
+            result = by_id.get(engine_id)
+            if item.get("status") != "unavailable" or not result or seq <= self.quota_or_barrier_seq[engine_id]:
+                continue
+            quota = result.get("quota")
+            status = result.get("status")
+            if (status == "ok" and quota is not None) or status in {"unauthenticated", "unsupported"}:
+                self.engines[index] = {**item, "quota": quota if status == "ok" else None}
+                self.quota_or_barrier_seq[engine_id] = seq
 
 
 class _UnifiedLoopState:
@@ -175,28 +190,39 @@ class UnifiedQuotaService:
         started_seq = state.seq
 
         async def run_collect() -> dict:
-            engines = await collect()
+            engines = list(await collect())
             current_generation = generation == state.generation(scope_key)
             current = state.cache.get(scope_key) if current_generation else None
-            previous_quotas = {item["engine_id"]: item["quota"] for item in current.engines
-                               if item.get("quota") is not None} if current else {}
+            previous_quotas = {item["engine_id"]: item.get("quota") for item in current.engines} if current else {}
+            quota_or_barrier_seq = {}
+            resolved_engines = []
+            for item in engines:
+                engine_id = item["engine_id"]
+                quota_or_barrier_seq[engine_id] = started_seq
+                if item.get("status") == "unavailable" and item.get("quota") is None:
+                    quota_or_barrier_seq[engine_id] = current.quota_or_barrier_seq.get(engine_id, current.seq) if current else 0
+                    if (quota := previous_quotas.get(engine_id)) is not None:
+                        item = {**item, "quota": quota}
+                resolved_engines.append(item)
             collected_mono = self._clock()
             collected_wall = self._wall_clock()
             entry = _UnifiedCacheEntry(
-                engines=[{**item, "quota": previous_quotas[item["engine_id"]]}
-                         if item.get("status") == "unavailable" and item.get("quota") is None
-                         and item["engine_id"] in previous_quotas else item for item in engines],
+                engines=resolved_engines,
+                quota_or_barrier_seq=quota_or_barrier_seq,
                 collected_at=collected_wall,
                 expires_at_wall=collected_wall + self.ttl_seconds,
                 expires_at_mono=collected_mono + self.ttl_seconds,
                 seq=started_seq,
             )
-            if current_generation and (current is None or started_seq >= current.seq):
+            if current is not None and started_seq < current.seq:
+                current.reconcile_late_results(engines, started_seq)
+            elif current_generation:
                 if scope_key in state.cache:
                     del state.cache[scope_key]
                 state.cache[scope_key] = entry
                 if len(state.cache) > _MAX_CACHE_ENTRIES:
-                    oldest_key = next(iter(state.cache))
+                    active_scopes = {key[0] for bucket in (state.normal_inflight, state.refresh_inflight) for key in bucket}
+                    oldest_key = next(key for key in state.cache if key not in active_scopes)
                     state.cache.pop(oldest_key, None)
             return _snapshot(entry, cached=False)
 

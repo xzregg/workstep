@@ -161,6 +161,83 @@ async def test_unified_quota_service_coalesces_concurrent_queries_and_preserves_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("intervening", "expected_percent"), [
+    ("first_query", 75),
+    ("older_fallback", 75),
+    ("newer_success", 95),
+    ("unauthenticated", None),
+    ("unauthenticated_under_pressure", None),
+    ("late_unauthenticated", None),
+    ("removed", None),
+    ("invalidated", None),
+])
+async def test_late_success_updates_only_the_eligible_engine_fallback(intervening, expected_percent):
+    from services.engine_quota import _MAX_CACHE_ENTRIES, UnifiedQuotaService
+
+    clock = [1000.0]
+    service = UnifiedQuotaService(clock=lambda: clock[0], wall_clock=lambda: clock[0])
+    scope = ("host", "alice")
+    started = asyncio.Event()
+    release = asyncio.Event()
+    failure = {"engine_id": "codex", "status": "unavailable", "reason": "timeout", "quota": None}
+    unauthenticated = {**failure, "status": "unauthenticated"}
+    other = {"engine_id": "other", "status": "ok", "quota": {"remaining_percent": 80}}
+
+    def success(percent):
+        return {"engine_id": "codex", "status": "ok", "quota": {"remaining_percent": percent}}
+
+    slow_result = unauthenticated if intervening == "late_unauthenticated" else success(75)
+
+    async def slow_collect():
+        started.set()
+        await release.wait()
+        return [slow_result]
+
+    async def refresh(entries):
+        async def collect():
+            return entries
+
+        return await service.get(scope, collect, refresh=True)
+
+    if intervening in {"older_fallback", "late_unauthenticated"}:
+        await refresh([success(20)])
+        clock[0] += 300
+    pending = asyncio.create_task(service.get(scope, slow_collect))
+    try:
+        await asyncio.wait_for(started.wait(), 2)
+        if intervening == "newer_success":
+            await refresh([success(95)])
+        elif intervening in {"unauthenticated", "unauthenticated_under_pressure"}:
+            await refresh([unauthenticated])
+            if intervening == "unauthenticated_under_pressure":
+                async def empty_collect():
+                    return []
+
+                for index in range(_MAX_CACHE_ENTRIES):
+                    await service.get(("host", f"other-{index}"), empty_collect)
+        elif intervening == "removed":
+            await refresh([])
+        elif intervening == "invalidated":
+            service.invalidate(scope)
+
+        failed = await refresh([failure, other])
+        clock[0] += 1
+        release.set()
+        assert (await pending)["engines"] == [slow_result]
+
+        async def unexpected_collect():
+            pytest.fail("reopening a session should use the cache")
+
+        cached = await service.get(scope, unexpected_collect)
+        expected = {**failure, "quota": success(expected_percent)["quota"] if expected_percent is not None else None}
+        assert cached == {**failed, "cached": True, "engines": [expected, other]}
+        assert (await refresh([failure, other]))["engines"] == [expected, other]
+    finally:
+        release.set()
+        await pending
+
+
+@pytest.mark.asyncio
 async def test_unified_quota_service_invalidation_prevents_stale_inflight_cache_write():
     from services.engine_quota import UnifiedQuotaService
 
