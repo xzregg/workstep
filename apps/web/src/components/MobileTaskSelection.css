@@ -1,0 +1,59 @@
+/* The footer occupies its own flex row, so the last task never sits under it. */
+.mobile-task-selection {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.mobile-task-selection-header,
+.mobile-task-bulk-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg);
+}
+.mobile-task-selection-header {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-soft);
+}
+.mobile-task-selection-header > span {
+  color: var(--text-secondary);
+  font-size: var(--text-body);
+}
+.mobile-task-bulk-actions {
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-soft);
+  padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+}
+.mobile-task-selection-header > button,
+.mobile-task-bulk-actions > button {
+  min-height: var(--mobile-control-touch);
+  white-space: nowrap;
+  gap: var(--space-2);
+}
+.mobile-task-bulk-actions > button { flex: 1 1 auto; min-width: max-content; }
+.mobile-task-row[data-selecting] {
+  position: relative;
+  padding-left: calc(var(--space-5) + var(--space-2));
+}
+.mobile-task-row[data-selected] { background: var(--accent-light); }
+.mobile-task-selection-mark {
+  position: absolute;
+  left: var(--space-1);
+  top: var(--space-5);
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--space-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mobile-task-row[data-selected] .mobile-task-selection-mark {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border-color: var(--accent);
+}
+.mobile-task-row[aria-disabled="true"] { opacity: 0.5; }

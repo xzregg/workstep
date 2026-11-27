@@ -4,8 +4,13 @@ import MobileSheet from './MobileSheet'
 import Button from './Button'
 import Icon from './Icon'
 import TaskCopyButton from './TaskCopyButton'
+import './MobileTaskRow.css'
 
-export default function MobileTaskRow({ title, status, archived, canArchive, canDelete, onOpen, onArchive, onRestore, onDelete, projectId, taskId, canStart = false, starting = false, readOnly = false, onStart, children }: {
+export default function MobileTaskRow({ title, status, archived, canArchive, canDelete, onOpen, onArchive, onRestore, onDelete, projectId, taskId, canStart = false, starting = false, readOnly = false, onStart, selectionMode = false, selected = false, selectionDisabled = false, onSelect, children }: {
+  selectionMode?: boolean
+  selected?: boolean
+  selectionDisabled?: boolean
+  onSelect?: () => void
   projectId?: string
   taskId?: string
   canStart?: boolean
@@ -41,13 +46,15 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
   const start = (event: PointerEvent<HTMLButtonElement>) => {
     cancel()
     suppressClick.current = false
+    if (selectionMode || selectionDisabled) return
     if (event.button !== 0 || event.pointerType === 'mouse') return
     pending.current = {
       x: event.clientX, y: event.clientY,
       timer: setTimeout(() => {
         pending.current = null
         suppressClick.current = true
-        setMenuOpen(true)
+        if (onSelect) onSelect()
+        else setMenuOpen(true)
       }, 500),
     }
   }
@@ -56,7 +63,12 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
     callback()
   }
   return <>
-    <button type="button" className="mobile-task-row" aria-haspopup="dialog" data-board-task-id={taskId}
+    <div className="mobile-task-row-container">
+    <button type="button" className="mobile-task-row" aria-haspopup={onSelect ? undefined : 'dialog'}
+      aria-pressed={selectionMode ? selected : undefined}
+      aria-disabled={selectionMode && selectionDisabled || undefined}
+      data-selecting={selectionMode || undefined}
+      data-selected={selected || undefined} data-board-task-id={taskId}
       onPointerDown={start}
       onPointerMove={event => {
         if (pending.current && Math.hypot(event.clientX - pending.current.x, event.clientY - pending.current.y) > 10) cancel()
@@ -64,15 +76,34 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
       onPointerUp={cancel} onPointerCancel={cancel} onPointerLeave={cancel}
       onContextMenu={event => {
         event.preventDefault()
+        const heldTouch = Boolean(pending.current)
         cancel()
-        suppressClick.current = true; setMenuOpen(true)
+        if (onSelect && heldTouch && !selectionMode && !selectionDisabled) {
+          suppressClick.current = true
+          onSelect()
+        }
+        if (!onSelect) { suppressClick.current = true; setMenuOpen(true) }
       }}
       onClick={() => {
         if (suppressClick.current) { suppressClick.current = false; return }
+        if (selectionMode) { if (!selectionDisabled) onSelect?.(); return }
         onOpen()
       }}>
+      {selectionMode && <span className="mobile-task-selection-mark" aria-hidden="true">
+        {selected && <Icon name="check" size={12} />}
+      </span>}
       {children}
     </button>
+    {onSelect && !selectionMode && <Button
+      variant="ghost" className="mobile-task-row-more"
+      aria-label={t('layout.moreActions')} title={t('layout.moreActions')}
+      aria-haspopup="dialog" aria-expanded={menuOpen}
+      onPointerDown={event => { event.stopPropagation(); cancel() }}
+      onContextMenu={event => event.preventDefault()}
+      onClick={event => { event.stopPropagation(); cancel(); setMenuOpen(true) }}>
+      <Icon name="ellipsis" />
+    </Button>}
+    </div>
     <MobileSheet open={menuOpen} title={title} onClose={() => setMenuOpen(false)}>
       <div className="mobile-task-menu">
         {allowStart && <Button data-task-action="start" disabled={starting} loading={starting} onClick={() => action(onStart!)}>

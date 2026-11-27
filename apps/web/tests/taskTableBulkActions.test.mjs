@@ -5,6 +5,7 @@ import { hasActiveTaskExecution } from '../src/utils/taskDisplayStatus.ts'
 
 const taskCardSource = await readFile(new URL('../src/components/TaskBoardCard.tsx', import.meta.url), 'utf8')
 const tableSource = await readFile(new URL('../src/components/TaskTableView.tsx', import.meta.url), 'utf8')
+const bulkSource = await readFile(new URL('../src/components/useTaskBulkActions.tsx', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 
 test('keeps task card metadata and fixed action buttons on one line', () => {
@@ -30,10 +31,11 @@ test('table view supports selecting individual and all actionable tasks', () => 
 test('table selection offers confirmed bulk archive and delete actions', () => {
   assert.match(tableSource, /t\('taskList\.bulkArchive'\)/)
   assert.match(tableSource, /t\('taskList\.bulkDelete'\)/)
-  assert.match(tableSource, /await Promise\.all\(selectedIds\.map\(id => onArchiveTask\(id, canCleanWorkspace && archiveWorkspace\)\)\)/)
-  assert.match(tableSource, /await Promise\.all\(selectedIds\.map\(id => onDeleteTask\(id, deleteWorkspace\)\)\)/)
-  assert.match(tableSource, /<ConfirmDialog/)
-  assert.match(tableSource, /<DeleteTaskConfirmation/)
+  assert.match(tableSource, /useTaskBulkActions\(actionableIds/)
+  assert.match(bulkSource, /onArchiveTask\(id, canCleanWorkspace && archiveWorkspace\)/)
+  assert.match(bulkSource, /onDeleteTask\(id, deleteWorkspace\)/)
+  assert.match(bulkSource, /<ConfirmDialog/)
+  assert.match(bulkSource, /<DeleteTaskConfirmation/)
 })
 
 test('active and tool-waiting executions remain protected from destructive actions', () => {

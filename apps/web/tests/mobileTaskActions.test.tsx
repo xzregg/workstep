@@ -28,7 +28,11 @@ test('mobile board confirms start, uses the selected project, and exposes failur
   })
   useManagedModeStore.setState({ load: async () => {} })
   const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
-  const openMenu = async () => act(async () => container.querySelector('.mobile-task-row')!.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
+  const openMenu = async () => {
+    await act(async () => container.querySelector<HTMLButtonElement>('.mobile-task-row-more')!.click())
+    assert.ok(document.querySelector('.mobile-task-menu'))
+    assert.equal(Boolean(container.querySelector('.mobile-task-selection-header')), false)
+  }
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><TaskList /></I18nProvider></MemoryRouter>))
     await openMenu()

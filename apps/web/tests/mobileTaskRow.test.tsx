@@ -102,3 +102,79 @@ test('mobile start action respects task state and closes the menu before request
     await window.happyDOM.close()
   }
 })
+
+test('selection long press selects once and suppresses navigation and context menu', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  let selected = 0
+  let opened = 0
+  const pointer = (type: string, x = 0) => new window.PointerEvent(type, { bubbles: true, pointerType: 'touch', button: 0, clientX: x })
+  const render = async (selectionMode = false) => act(async () => root.render(<I18nProvider><MobileTaskRow
+    title="选择任务" status="ready" archived={false} canArchive canDelete
+    selectionMode={selectionMode} selected={selectionMode} onSelect={() => selected++}
+    onOpen={() => opened++} onArchive={() => {}} onRestore={() => {}} onDelete={() => {}}
+  >选择任务</MobileTaskRow></I18nProvider>))
+  try {
+    await render()
+    const row = document.querySelector<HTMLButtonElement>('.mobile-task-row')!
+    for (const kind of ['move', 'scroll', 'cancel', 'short']) {
+      await act(async () => {
+        row.dispatchEvent(pointer('pointerdown'))
+        if (kind === 'move') row.dispatchEvent(pointer('pointermove', 30))
+        if (kind === 'scroll') window.dispatchEvent(new window.Event('scroll'))
+        if (kind === 'cancel') row.dispatchEvent(pointer('pointercancel'))
+        if (kind === 'short') row.dispatchEvent(pointer('pointerup'))
+        await new Promise(resolve => setTimeout(resolve, 520))
+      })
+      assert.equal(selected, 0)
+    }
+    await act(async () => {
+      row.dispatchEvent(pointer('pointerdown'))
+      await new Promise(resolve => setTimeout(resolve, 520))
+    })
+    assert.equal(selected, 1)
+    await render(true)
+    await act(async () => {
+      row.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      row.dispatchEvent(pointer('pointerup')); row.click()
+    })
+    assert.equal(selected, 1)
+    assert.equal(opened, 0)
+    assert.equal(Boolean(document.querySelector('[role="dialog"]')), false)
+    assert.equal(row.getAttribute('aria-pressed'), 'true')
+    await act(async () => { row.dispatchEvent(pointer('pointerdown')); row.dispatchEvent(pointer('pointerup')); row.click() })
+    assert.equal(selected, 2)
+    await render(false)
+    await act(async () => { row.dispatchEvent(pointer('pointerdown')); row.dispatchEvent(pointer('pointerup')); row.click() })
+    assert.equal(opened, 1)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('native context menu during a held touch enters selection without cancelling the long press', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  let selected = 0
+  let opened = 0
+  try {
+    await act(async () => root.render(<I18nProvider><MobileTaskRow
+      title="任务" status="ready" archived={false} canArchive canDelete
+      onSelect={() => selected++} onOpen={() => opened++} onArchive={() => {}} onRestore={() => {}} onDelete={() => {}}
+    >任务</MobileTaskRow></I18nProvider>))
+    const row = document.querySelector<HTMLButtonElement>('.mobile-task-row')!
+    await act(async () => {
+      row.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', button: 0 }))
+      row.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      row.dispatchEvent(new window.PointerEvent('pointerup', { bubbles: true }))
+      row.click()
+    })
+    assert.equal(selected, 1)
+    assert.equal(opened, 0)
+    assert.equal(Boolean(document.querySelector('[role="dialog"]')), false)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
