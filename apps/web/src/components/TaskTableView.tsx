@@ -1,13 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import type { Task } from '../api/client'
 import { useI18n, type TKey } from '../i18n'
 import { formatDuration, toMilliseconds } from '../utils/datetime'
 import { taskDisplayStatus, hasActiveTaskExecution, taskFailureLabelKey } from '../utils/taskDisplayStatus'
 import { isTaskCompleted } from '../pages/taskDetailChat'
 import Button from './Button'
-import ConfirmDialog from './ConfirmDialog'
-import DeleteTaskConfirmation from './DeleteTaskConfirmation'
-import ArchiveWorkspaceChoice from './ArchiveWorkspaceChoice'
+import { useTaskBulkActions } from './useTaskBulkActions'
 import Icon from './Icon'
 import Input from './Input'
 import TaskCopyButton from './TaskCopyButton'
@@ -94,10 +92,6 @@ export default function TaskTableView({
 }: TaskTableViewProps) {
   const { t, locale } = useI18n()
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({})
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [pendingAction, setPendingAction] = useState<'archive' | 'delete' | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [archiveWorkspace, setArchiveWorkspace] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase(locale)
   const visibleTasksByLane = useMemo(() => {
@@ -117,41 +111,9 @@ export default function TaskTableView({
     [lanes, visibleTasksByLane],
   )
 
-  useEffect(() => {
-    const actionable = new Set(actionableIds)
-    setSelectedIds((current) => current.filter((id) => actionable.has(id)))
-  }, [actionableIds])
-
-  const allSelected = actionableIds.length > 0 && actionableIds.every((id) => selectedIds.includes(id))
-  const toggleAll = () => {
-    setSelectedIds(allSelected ? [] : actionableIds)
-  }
-  const toggleTask = (taskId: string) => {
-    setSelectedIds((current) => current.includes(taskId)
-      ? current.filter((id) => id !== taskId)
-      : [...current, taskId])
-  }
-
-  const runBulkAction = async (deleteWorkspace = false) => {
-    if (!pendingAction || (pendingAction === 'archive' ? !canArchive : !canDelete) || selectedIds.length === 0 || busy) return
-    setBusy(true)
-    try {
-      if (pendingAction === 'archive') {
-        await Promise.all(selectedIds.map(id => onArchiveTask(id, canCleanWorkspace && archiveWorkspace)))
-      } else {
-        await Promise.all(selectedIds.map(id => onDeleteTask(id, deleteWorkspace)))
-      }
-      setSelectedIds([])
-      setPendingAction(null)
-    } catch (error) {
-      onError(t(
-        pendingAction === 'archive' ? 'taskList.bulkArchiveFailed' : 'taskList.bulkDeleteFailed',
-        { error: error instanceof Error ? error.message : t('common.unknownError') },
-      ))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { selectedIds, allSelected, toggleAll, toggleTask, busy, setPendingAction, setArchiveWorkspace, dialogs } = useTaskBulkActions(actionableIds, {
+    readOnly, canArchive, canDelete, canCleanWorkspace, onArchiveTask, onDeleteTask, onError,
+  })
 
   const cellStyle: React.CSSProperties = {
     padding: '9px 14px', borderTop: '1px solid var(--border-soft)',
@@ -328,22 +290,7 @@ export default function TaskTableView({
         )
       })}
 
-      <ConfirmDialog
-        open={pendingAction === 'archive'}
-        title={t('taskList.bulkArchiveTitle')}
-        message={t('taskList.bulkArchiveMessage', { count: selectedIds.length })}
-        confirmText={t('taskList.bulkArchive')}
-        loading={busy}
-        onConfirm={() => void runBulkAction()}
-        onCancel={() => { if (!busy) setPendingAction(null) }}
-      >{canCleanWorkspace && <ArchiveWorkspaceChoice checked={archiveWorkspace} disabled={busy} onChange={setArchiveWorkspace} />}</ConfirmDialog>
-      <DeleteTaskConfirmation
-        open={pendingAction === 'delete'}
-        count={selectedIds.length}
-        busy={busy}
-        onConfirm={choice => void runBulkAction(choice)}
-        onCancel={() => setPendingAction(null)}
-      />
+      {dialogs}
     </>
   )
 }

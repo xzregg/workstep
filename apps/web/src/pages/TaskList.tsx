@@ -10,6 +10,7 @@ import { useTaskRoute } from '../hooks/useTaskRoute'
 import { useManagedMode } from '../hooks/useManagedMode'
 import MobileSheet from '../components/MobileSheet'
 import MobileTaskRow from '../components/MobileTaskRow'
+import MobileTaskSelection from '../components/MobileTaskSelection'
 import { isTaskNotStarted } from './taskDetailChat'
 import StatusBadge from '../components/StatusBadge'
 import Icon from '../components/Icon'
@@ -562,7 +563,15 @@ export default function TaskList() {
       )}
 
       {/* Kanban board */}
-      {compact && <TaskBoardMotion className="mobile-task-list"
+      {compact && <MobileTaskSelection
+        key={JSON.stringify([activeProject?.id, activeWorkflowId, showArchived, mobileStep])}
+        tasks={mobileTasks} showArchived={showArchived}
+        canArchive={can('task.archive')} canDelete={can('task.delete')}
+        canCleanWorkspace={!bound && can('file.edit')}
+        onArchiveTask={(id, clean) => archiveTask(id, activeProject!.id, clean)}
+        onDeleteTask={(id, clean) => deleteTask(id, activeProject!.id, clean)}
+        onError={setDirectoryNotice}>
+        {selection => <TaskBoardMotion className="mobile-task-list"
         scope={motionScope && JSON.stringify([motionScope, mobileStep])}
         layout={JSON.stringify([mobileTasks.map(task => task.id)])}>
         {directoryNotice && <p className="mobile-task-notice" role="status">{directoryNotice}</p>}
@@ -570,6 +579,9 @@ export default function TaskList() {
         {!loading && mobileTasks.length === 0 && <p className="mobile-empty">{t('mobile.emptyTasks')}</p>}
         {mobileTasks.map(task => <MobileTaskRow key={task.id} title={task.title} status={task.status} archived={showArchived}
           projectId={activeProject?.id} taskId={task.id} readOnly={!canEdit}
+          selectionMode={selection.active} selected={selection.selectedIds.includes(task.id)}
+          selectionDisabled={selection.disabled || hasActiveTaskExecution(task)}
+          onSelect={() => selection.select(task.id)}
           canStart={can('task.run') && isTaskNotStarted(task.steps || [])}
           starting={startingTaskId === task.id} onStart={() => setConfirmStartTaskId(task.id)}
           canArchive={can('task.archive') && !hasActiveTaskExecution(task)} canDelete={can('task.delete') && !hasActiveTaskExecution(task)}
@@ -581,6 +593,7 @@ export default function TaskList() {
           <span className="mobile-task-row-meta"><StatusBadge status={task.status} loading={['running', 'reviewing', 'retrying'].includes(task.status)} label={t(`status.${task.status === 'completed' ? 'passed' : task.status || 'ready'}` as 'status.ready')} />{task.creator_name && <span>{t('taskList.creator')}：{task.creator_name}</span>}<span>{lanes.find(lane => lane.key === getCardLane(task.id))?.label}</span><time>{new Date(task.updated_at || task.created_at).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></span>
         </MobileTaskRow>)}
       </TaskBoardMotion>}
+      </MobileTaskSelection>}
       <TaskBoardMotion className={`desktop-task-board ${boardView === 'table' ? 'task-board-table' : 'task-board-lanes'}`}
         scope={!compact && boardView !== 'table' && motionScope ? JSON.stringify([motionScope, boardView, boardLanes.map(lane => lane.key)]) : null}
         layout={JSON.stringify(boardLanes.map(lane => (boardTasksByLane[lane.key] || []).map(task => task.id)))}>
