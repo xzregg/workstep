@@ -330,3 +330,22 @@ async def test_antigravity_bypass_permissions_still_surfaces_ask_question_elicit
         await asyncio.gather(task, return_exceptions=True)
 
     assert json.loads(text(output)) == {'action': 'cancel'}
+
+
+@pytest.mark.anyio
+async def test_antigravity_inline_quota_warning_ends_turn_with_error_not_body(engine_config):
+    cls, root = engine_config
+    if cls is not AntigravityEngine:
+        pytest.skip('Antigravity inline quota warning contract')
+    events = [e async for e in cls().spawn_with_retry(prompt='quota_after_body', cwd=str(root))]
+    assert text(events) == '已完成代码修改。'
+    errors = [e for e in events if e.type == 'error']
+    assert len(errors) == 1
+    assert errors[0].data['message'] == (
+        'Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h4m13s.'
+    )
+    assert not any(e.type == 'status' and e.data.get('status') in {'done', 'retrying'} for e in events)
+    pool = get_session_pool(cls.ENGINE_ID)
+    assert not pool._entries
+    rows = [json.loads(line) for line in (root / 'wire.jsonl').read_text().splitlines()]
+    assert sum(r.get('method') == 'session/prompt' for r in rows) == 1

@@ -126,6 +126,15 @@ for line in sys.stdin:
                     'required': ['q1'],
                 },
             }})
+        elif prompt == 'quota_after_body':
+            send({'method': 'session/update', 'params': {'sessionId': sid, 'update': {
+                'sessionUpdate': 'agent_message_chunk', 'content': {'type': 'text', 'text': '已完成代码修改。'}}}})
+            send({'method': 'session/update', 'params': {'sessionId': sid, 'update': {
+                'sessionUpdate': 'agent_message_chunk', 'content': {
+                    'type': 'text',
+                    'text': '\n⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h4m13s.\n',
+                }}}})
+            result(message, {'stopReason': 'end_turn'})
         else:
             answer(message, sid, 'x' * 100_000 if prompt == 'large' else prompt)
     elif method == 'session/cancel':

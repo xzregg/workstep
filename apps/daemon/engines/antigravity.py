@@ -52,6 +52,30 @@ _STEP_STATUS_MAP = {
     "skipped": "completed",
     "failed": "completed",
 }
+_ANTIGRAVITY_WARNING_BANNER_RE = re.compile(r"^\n?⚠\ufe0f?[ \t]+([^\r\n]+)\n?$")
+_ANTIGRAVITY_INLINE_ERROR_RE = re.compile(
+    r"(?:"
+    r"\b(?:quota|rate\s+limit|usage\s+limit)\s+(?:reached|exceeded)\b"
+    r"|\bplease\s+upgrade\s+your\s+subscription\b"
+    r"|\byou(?:'ve|\s+have)\s+(?:reached|exceeded)\s+(?:your\s+)?(?:[\w-]+\s+)*(?:quota|limit)\b"
+    r"|\b(?:model|service|server)\s+(?:is\s+)?(?:currently\s+)?(?:overloaded|at\s+capacity|unavailable)\b"
+    r")",
+    re.IGNORECASE,
+)
+_ANTIGRAVITY_NON_RETRYABLE_ERROR_RE = re.compile(
+    r"(?:\b(?:quota|usage\s+limit)\s+(?:reached|exceeded)\b|\bplease\s+upgrade\s+your\s+subscription\b)",
+    re.IGNORECASE,
+)
+
+
+def _antigravity_inline_error_message(text: str) -> str | None:
+    match = _ANTIGRAVITY_WARNING_BANNER_RE.fullmatch(text)
+    if match is None:
+        return None
+    message = match.group(1).strip()
+    if not message or _ANTIGRAVITY_INLINE_ERROR_RE.search(message) is None:
+        return None
+    return message
 
 
 def _extract_thought_levels(config_options) -> tuple[bool, list[str]]:
@@ -605,7 +629,7 @@ class AntigravityEngine(AcpEngineBase):
 
                 interrupt_state = {"requested": False}
 
-                async def _drain_prompt(task: asyncio.Task):
+                async def _drain_prompt(task: asyncio.Task, error_holder: list[InternalEvent]):
                     while not task.done() or not handler.updates.empty():
                         if (
                             live_message_queue is not None
@@ -628,18 +652,28 @@ class AntigravityEngine(AcpEngineBase):
                             continue
                         event = self._map_notification(update)
                         if event:
+                            if event.type == "error":
+                                if not error_holder:
+                                    error_holder.append(event)
+                                continue
                             yield event
 
                 prompt_task = asyncio.create_task(
                     client.prompt(session_id=active_session_id, prompt=prompt_blocks)
                 )
-                async for event in _drain_prompt(prompt_task):
+                turn_errors: list[InternalEvent] = []
+                async for event in _drain_prompt(prompt_task, turn_errors):
                     yield event
 
                 prompt_response = await prompt_task
                 usage_event = self._map_prompt_response_usage(prompt_response)
                 if usage_event:
                     yield usage_event
+                if turn_errors:
+                    if hasattr(client, "success"):
+                        client.success = False
+                    yield turn_errors[0]
+                    return
                 stop_reason = str(getattr(prompt_response, "stop_reason", "end_turn") or "end_turn")
                 if stop_reason == "cancelled":
                     if not (
@@ -681,12 +715,18 @@ class AntigravityEngine(AcpEngineBase):
                                 prompt=[acp.text_block(injected)],
                             )
                         )
-                        async for event in _drain_prompt(prompt_task):
+                        turn_errors = []
+                        async for event in _drain_prompt(prompt_task, turn_errors):
                             yield event
                         prompt_response = await prompt_task
                         usage_event = self._map_prompt_response_usage(prompt_response)
                         if usage_event:
                             yield usage_event
+                        if turn_errors:
+                            if hasattr(client, "success"):
+                                client.success = False
+                            yield turn_errors[0]
+                            return
                         stop_reason = str(getattr(prompt_response, "stop_reason", "end_turn") or "end_turn")
                         if stop_reason == "cancelled" and not (
                             interrupt_state["requested"] and not live_message_queue.empty()
@@ -766,10 +806,22 @@ class AntigravityEngine(AcpEngineBase):
                     pass
             logger.warning("Antigravity session rejected thought_level=%s", mapped)
 
+    def _execution_retry_delays(self, message: str) -> tuple[float, ...]:
+        if _ANTIGRAVITY_NON_RETRYABLE_ERROR_RE.search(message or ""):
+            return ()
+        return super()._execution_retry_delays(message)
+
     def _map_notification(self, update) -> InternalEvent | None:
         event = super()._map_notification(update)
         if event is None:
             return None
+        if event.type == "agent_message_chunk":
+            content = event.data.get("content")
+            text = content.get("text") if isinstance(content, dict) else None
+            if isinstance(text, str):
+                inline_error = _antigravity_inline_error_message(text)
+                if inline_error is not None:
+                    return InternalEvent(type="error", data={"message": inline_error})
         calls = getattr(self, "_subagent_calls", None)
         if calls is None:
             calls = self._subagent_calls = {}

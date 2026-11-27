@@ -187,14 +187,28 @@ test('adoption refuses unrelated contents and external Home links', async () => 
   } finally { await fs.rm(base, { recursive: true, force: true }) }
 })
 
-for (const running of [false, true]) test(`import backs up old configuration and refuses symlinks out of source (running=${running})`, async () => {
+for (const running of [false, true]) test(`Codex import only replaces allowed config and keeps sandbox sessions (running=${running})`, async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-sandbox-test-'))
   try {
     const root = path.join(await fs.realpath(base), 'sandbox'), host = path.join(base, 'host')
     await fs.mkdir(path.join(root, 'home/.codex'), { recursive: true }); await fs.mkdir(path.join(host, '.codex'), { recursive: true })
     await fs.writeFile(path.join(root, 'home/.codex/auth.json'), 'old')
     await fs.writeFile(path.join(host, '.codex/auth.json'), 'new')
-    await fs.writeFile(path.join(base, 'outside'), 'private'); await fs.symlink(path.join(base, 'outside'), path.join(host, '.codex/escape'))
+    await fs.writeFile(path.join(host, '.codex/config.toml'), 'approval_policy = "on-request"')
+    await fs.mkdir(path.join(host, '.codex/rules'))
+    await fs.writeFile(path.join(host, '.codex/rules/default.rules'), 'rules')
+    await fs.mkdir(path.join(host, '.codex/skills/example'), { recursive: true })
+    await fs.writeFile(path.join(host, '.codex/skills/example/SKILL.md'), 'skill')
+    await fs.writeFile(path.join(base, 'outside'), 'private'); await fs.symlink(path.join(base, 'outside'), path.join(host, '.codex/skills/escape'))
+    for (const directory of ['sessions', 'archived_sessions', 'plugins']) {
+      await fs.mkdir(path.join(host, '.codex', directory))
+      await fs.writeFile(path.join(host, '.codex', directory, 'host-data'), 'private')
+    }
+    for (const file of ['history.jsonl', 'session_index.jsonl', 'state_5.sqlite', 'state_5.sqlite-wal']) {
+      await fs.writeFile(path.join(host, '.codex', file), 'private')
+    }
+    await fs.mkdir(path.join(root, 'home/.codex/sessions'))
+    await fs.writeFile(path.join(root, 'home/.codex/sessions/sandbox-data'), 'keep')
     const manager = new SandboxManager({ stateDir: path.join(base, 'state'), hostHome: host })
     await manager.save({ enabled: running, root, project: path.join(base, 'project'), mounts: [], id: 'test' })
     manager.running = running
@@ -203,12 +217,65 @@ for (const running of [false, true]) test(`import backs up old configuration and
     await manager.importConfig('codex')
     assert.equal((await manager.status()).configSyncVersion, 1)
     assert.equal(await fs.readFile(path.join(root, 'home/.codex/auth.json'), 'utf8'), 'new')
-    await assert.rejects(fs.stat(path.join(root, 'home/.codex/escape')))
+    assert.equal(await fs.readFile(path.join(root, 'home/.codex/config.toml'), 'utf8'), 'approval_policy = "on-request"')
+    assert.equal(await fs.readFile(path.join(root, 'home/.codex/rules/default.rules'), 'utf8'), 'rules')
+    assert.equal(await fs.readFile(path.join(root, 'home/.codex/skills/example/SKILL.md'), 'utf8'), 'skill')
+    assert.equal(await fs.readFile(path.join(root, 'home/.codex/sessions/sandbox-data'), 'utf8'), 'keep')
+    for (const file of ['sessions/host-data', 'archived_sessions', 'plugins', 'history.jsonl', 'session_index.jsonl', 'state_5.sqlite', 'state_5.sqlite-wal', 'skills/escape']) {
+      await assert.rejects(fs.lstat(path.join(root, 'home/.codex', file)), { code: 'ENOENT' })
+    }
     const backups = await fs.readdir(path.join(root, 'desktop/backups'))
     assert.equal(await fs.readFile(path.join(root, 'desktop/backups', backups[0], '.codex/auth.json'), 'utf8'), 'old')
+    await assert.rejects(fs.lstat(path.join(root, 'desktop/backups', backups[0], '.codex/sessions')), { code: 'ENOENT' })
     assert.equal(manager.running, running)
     assert.equal((await manager.settings()).enabled, running)
   } finally { await fs.rm(base, { recursive: true, force: true }) }
+})
+
+test('Claude import excludes host projects and history and preserves existing sandbox state', async t => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-claude-config-'))
+  t.after(() => fs.rm(base, { recursive: true, force: true }))
+  const root = path.join(await fs.realpath(base), 'sandbox'), host = path.join(base, 'host')
+  const manager = new SandboxManager({ stateDir: path.join(base, 'state'), hostHome: host })
+  await manager.save({ root, project: path.join(base, 'project'), mounts: [], id: 'test' })
+  await manager.claimRoot(await manager.settings())
+  await fs.mkdir(path.join(host, '.claude/skills/example'), { recursive: true })
+  for (const [file, value] of Object.entries({ 'settings.json': '{"permissions":{}}', 'settings.local.json': '{"permissions":{"allow":[]}}', '.credentials.json': '{"token":"demo"}', 'skills/example/SKILL.md': 'skill', 'history.jsonl': 'private' })) {
+    await fs.writeFile(path.join(host, '.claude', file), value)
+  }
+  await fs.mkdir(path.join(host, '.claude/projects'))
+  await fs.writeFile(path.join(host, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'demo' }, primaryApiKey: 'demo', numStartups: 42, projects: { '/host': { history: ['private'] } } }))
+  await fs.writeFile(path.join(root, 'home/.claude.json'), JSON.stringify({ numStartups: 7, projects: { '/sandbox': { history: ['keep'] } } }))
+  await manager.importConfig('claude')
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(root, 'home/.claude.json'), 'utf8')), {
+    oauthAccount: { accountUuid: 'demo' }, primaryApiKey: 'demo', numStartups: 7, projects: { '/sandbox': { history: ['keep'] } },
+  })
+  assert.deepEqual((await fs.readdir(path.join(root, 'home/.claude'))).sort(), ['.credentials.json', 'settings.json', 'settings.local.json', 'skills'])
+  assert.equal(await fs.readFile(path.join(root, 'home/.claude/skills/example/SKILL.md'), 'utf8'), 'skill')
+  await fs.writeFile(path.join(host, '.claude/.credentials.json'), '{"token":"updated"}')
+  await fs.writeFile(path.join(host, '.claude.json'), 'invalid-demo-secret')
+  await assert.rejects(manager.importConfig('claude'), { message: 'Invalid Claude account configuration' })
+  assert.equal(await fs.readFile(path.join(root, 'home/.claude/.credentials.json'), 'utf8'), '{"token":"demo"}')
+})
+
+test('engine import refuses symlinked source and target engine directories', async t => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-config-symlink-'))
+  t.after(() => fs.rm(base, { recursive: true, force: true }))
+  const root = path.join(await fs.realpath(base), 'sandbox'), host = path.join(base, 'host')
+  const outside = path.join(base, 'outside')
+  await fs.mkdir(host); await fs.mkdir(outside)
+  await fs.writeFile(path.join(outside, 'auth.json'), 'outside')
+  const manager = new SandboxManager({ stateDir: path.join(base, 'state'), hostHome: host })
+  await manager.save({ root, project: path.join(base, 'project'), mounts: [], id: 'test' })
+  await manager.claimRoot(await manager.settings())
+  await fs.symlink(outside, path.join(host, '.codex'), 'dir')
+  await assert.rejects(manager.importConfig('codex'), /symbolic link/)
+  await fs.unlink(path.join(host, '.codex'))
+  await fs.mkdir(path.join(host, '.codex'))
+  await fs.writeFile(path.join(host, '.codex/auth.json'), 'new')
+  await fs.symlink(outside, path.join(root, 'home/.codex'), 'dir')
+  await assert.rejects(manager.importConfig('codex'), /symbolic link/)
+  assert.equal(await fs.readFile(path.join(outside, 'auth.json'), 'utf8'), 'outside')
 })
 
 test('custom configuration directory imports preserve its name, back up targets, and reject unsafe sources', async t => {
@@ -234,6 +301,8 @@ test('custom configuration directory imports preserve its name, back up targets,
   await assert.rejects(manager.importConfig({ source: path.join(root, 'home/.qoder') }), /cannot overlap with the sandbox directory/)
   await fs.mkdir(path.join(host, '.workstep'))
   await assert.rejects(manager.importConfig({ source: path.join(host, '.workstep') }), /WorkStep/)
+  await fs.mkdir(path.join(host, '.codex'))
+  await assert.rejects(manager.importConfig({ source: path.join(host, '.codex') }), /engine configuration import/)
   await fs.symlink(source, path.join(host, '.linked'))
   await assert.rejects(manager.importConfig({ source: path.join(host, '.linked') }), /cannot be a symbolic link/)
   await assert.rejects(manager.importConfig({ source: path.join(source, 'config.json') }), /must be a directory/)

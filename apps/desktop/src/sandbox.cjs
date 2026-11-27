@@ -10,8 +10,38 @@ const { listDockerImages, importDockerImage } = require('./sandbox-docker.cjs')
 const { MACHINE_DISK_GIB, ensureMachineDisk, ensureMachineFilesystem, storageError } = require('./sandbox-storage.cjs')
 const { migrateConfig, readConfig, projectCatalog, mapProjects, localProviderWarnings } = require('./sandbox-config.cjs')
 
-const IMPORTS = { codex: ['.codex'], claude: ['.claude', '.claude.json'], agents: ['.agents'] }
+const IMPORTS = {
+  codex: ['.codex/auth.json', '.codex/config.toml', '.codex/rules', '.codex/skills'],
+  claude: ['.claude/.credentials.json', '.claude/settings.json', '.claude/settings.local.json', '.claude/skills', '.claude.json'],
+  agents: ['.agents'],
+}
+const CLAUDE_ACCOUNT_FIELDS = ['oauthAccount', 'primaryApiKey', 'permissions']
 const contains = (parent, child) => child === parent || (!path.relative(parent, child).startsWith('..' + path.sep) && !path.isAbsolute(path.relative(parent, child)) && path.relative(parent, child) !== '..')
+async function importStat(file) {
+  try { return await fs.lstat(file) } catch (error) { if (error.code !== 'ENOENT') throw error; return null }
+}
+async function checkImportDirectory(directory) {
+  const stat = await importStat(directory)
+  if (stat && !stat.isDirectory()) throw new Error('Engine configuration directory must be a real directory, not a file or symbolic link')
+}
+async function readImportJson(file) {
+  const text = await fs.readFile(file, 'utf8')
+  let value
+  try { value = JSON.parse(text) } catch { throw new Error('Invalid Claude account configuration') }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid Claude account configuration')
+  return value
+}
+async function stageClaudeAccount(source, target, destination) {
+  const host = await readImportJson(source)
+  const fields = CLAUDE_ACCOUNT_FIELDS.filter(key => Object.hasOwn(host, key))
+  if (!fields.length) return false
+  const stat = await importStat(target)
+  if (stat && !stat.isFile()) throw new Error('Claude account configuration must be a regular file')
+  const previous = stat ? await readImportJson(target) : {}
+  const values = Object.fromEntries(fields.map(key => [key, host[key]]))
+  await fs.writeFile(destination, JSON.stringify({ ...previous, ...values }, null, 2) + '\n', { mode: 0o600 })
+  return true
+}
 async function fileDigest(file) {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(file)) hash.update(chunk)
@@ -527,36 +557,49 @@ class SandboxManager {
         if (contains(root, real) || contains(real, root)) throw new Error('The configuration source cannot overlap with the sandbox directory:')
         const name = path.basename(path.resolve(source))
         if (name.toLowerCase() === '.workstep') throw new Error('Please use the configuration migration entry for WorkStep configuration')
+        if (['.codex', '.claude'].includes(name.toLowerCase())) throw new Error('Please use the engine configuration import for Codex or Claude')
         sources = [{ source: real, name }]
       } else sources = IMPORTS[kind].map(name => ({ source: path.join(this.hostHome, name), name }))
       await this.claimRoot(settings)
-      const backup = path.join(settings.root, 'desktop/backups', `${Date.now()}-${kind}`)
-      const stage = await fs.mkdtemp(path.join(settings.root, 'home', `.import-${kind}-`))
+      const home = path.join(settings.root, 'home')
+      if (kind === 'codex' || kind === 'claude') {
+        await checkImportDirectory(path.join(this.hostHome, `.${kind}`))
+        await checkImportDirectory(path.join(home, `.${kind}`))
+      }
+      const backup = path.join(settings.root, 'desktop/backups', `${Date.now()}-${kind}-${randomUUID()}`)
+      const stage = await fs.mkdtemp(path.join(home, `.import-${kind}-`))
       const entries = [], installed = [], backedUp = []
       try {
         for (const { source, name } of sources) {
-          try {
-            const stat = await fs.lstat(source)
-            if (stat.isSymbolicLink()) throw new Error('Configuration source cannot be a symbolic link')
-          } catch (error) { if (error.code === 'ENOENT') continue; throw error }
-          await fs.cp(source, path.join(stage, name), { recursive: true, dereference: false, filter: async file => {
+          const stat = await importStat(source)
+          if (!stat) continue
+          if (stat.isSymbolicLink()) throw new Error('Configuration source cannot be a symbolic link')
+          const isDirectory = kind === 'agents' || kind === 'other' || ['rules', 'skills'].includes(path.basename(name))
+          if (isDirectory ? !stat.isDirectory() : !stat.isFile()) throw new Error('Unexpected configuration source type')
+          const staged = path.join(stage, name)
+          await fs.mkdir(path.dirname(staged), { recursive: true })
+          if (name === '.claude.json') {
+            if (!(await stageClaudeAccount(source, path.join(home, name), staged))) continue
+          } else await fs.cp(source, staged, { recursive: isDirectory, dereference: false, filter: async file => {
             const stat = await fs.lstat(file)
-            return !stat.isSymbolicLink() && !stat.isSocket() && !['.tmp', 'cache', 'node_modules'].includes(path.basename(file)) && !/\.(lock|sock)$/.test(file)
+            return (stat.isFile() || stat.isDirectory()) && !['.tmp', 'cache', 'node_modules'].includes(path.basename(file)) && !/\.(lock|sock)$/.test(file)
           } })
           entries.push(name)
         }
         if (!entries.length) throw new Error('Host does not have corresponding engine configuration')
         for (const name of entries) {
-          const target = path.join(settings.root, 'home', name)
-          if (await fs.lstat(target).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error })) {
-            await fs.mkdir(backup, { recursive: true })
-            await fs.rename(target, path.join(backup, name)); backedUp.push(name)
+          const target = path.join(home, name)
+          await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
+          if (await importStat(target)) {
+            const saved = path.join(backup, name)
+            await fs.mkdir(path.dirname(saved), { recursive: true, mode: 0o700 })
+            await fs.rename(target, saved); backedUp.push(name)
           }
           await fs.rename(path.join(stage, name), target); installed.push(name)
         }
       } catch (error) {
-        for (const name of installed) await fs.rm(path.join(settings.root, 'home', name), { recursive: true, force: true })
-        for (const name of backedUp) await fs.rename(path.join(backup, name), path.join(settings.root, 'home', name))
+        for (const name of installed) await fs.rm(path.join(home, name), { recursive: true, force: true })
+        for (const name of backedUp) await fs.rename(path.join(backup, name), path.join(home, name))
         throw error
       } finally { await fs.rm(stage, { recursive: true, force: true }) }
       return this.status()
