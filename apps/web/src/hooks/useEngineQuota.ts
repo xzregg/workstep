@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { engineApi, type UnifiedQuotaResult } from '../api/client'
+import { ApiError, engineApi, type UnifiedQuotaResult } from '../api/client'
 
 /** All engines share the daemon cache; engine selection is a local projection. */
 export function useEngineQuota(projectId: string | undefined, engine: string, conversationKey = '', enabled = true) {
@@ -17,8 +17,11 @@ export function useEngineQuota(projectId: string | undefined, engine: string, co
       const result = await engineApi.quotas(scope, force)
       if (!Array.isArray(result?.engines)) throw new Error('Invalid quota response')
       if (requestId.current === id) setSnapshot({projectId: scope, result})
-    } catch {
-      if (requestId.current === id) setError(true)
+    } catch (failure) {
+      if (requestId.current === id) {
+        if (failure instanceof ApiError && failure.status === 409) setSnapshot(null)
+        setError(true)
+      }
     } finally {
       if (requestId.current === id) setRefreshing(false)
     }

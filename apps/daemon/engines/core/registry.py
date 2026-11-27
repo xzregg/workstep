@@ -188,12 +188,18 @@ def get_available_engines() -> list[dict]:
                 versions[future_map[future]] = future.result()
 
     result: list[dict] = []
+    scan_complete = True
     for backend, _candidates in backends:
         resolved = resolved_map[backend]
         target = targets[backend]
         configured_path = config_store.get_engine_binary_path(backend)
-        if resolved:
-            instance = resolved()
+        try:
+            instance = target() if target else None
+        except Exception:
+            logger.warning("Could not initialize adapter for engine catalog: %s", backend)
+            instance = None
+            scan_complete = False
+        if resolved and instance is not None:
             if getattr(resolved, "_metadata", {}).get("custom"):
                 mode = resolved._metadata.get("mode", "cli")
             elif issubclass(resolved, AcpEngineBase) and instance._is_acp_native:
@@ -220,7 +226,7 @@ def get_available_engines() -> list[dict]:
                 "built_in": backend == "pydantic_ai",
                 "version": versions.get(backend),
                 "mode": mode,
-                "config": _engine_config_payload(resolved),
+                "config": _engine_config_payload(instance),
                 "supports_provider": bool(resolved.supported_provider_protocols()),
                 "provider_protocols": sorted(resolved.supported_provider_protocols()),
                 "runtime_manageable": resolved.RUNTIME_PACKAGE is not None,
@@ -258,18 +264,18 @@ def get_available_engines() -> list[dict]:
             result.append({
                 "id": backend,
                 "enabled": config_store.is_engine_enabled(backend),
-                "installed": False,
+                "installed": resolved is not None,
                 "configured": False,
                 "verified": False,
                 "built_in": backend == "pydantic_ai",
                 "version": None,
                 "mode": None,
                 "permission_modes": list(target.permission_modes()) if target else [],
-                "permission_config_options": target().permission_config_options() if target else [],
-                "supports_service_tier": bool(target and target().supports_service_tier),
-                "supports_quota": bool(target and target().supports_quota),
+                "permission_config_options": instance.permission_config_options() if instance is not None else [],
+                "supports_service_tier": bool(instance and instance.supports_service_tier),
+                "supports_quota": instance.supports_quota if instance is not None else bool(target and target.SUPPORTS_QUOTA),
                 "supports_login": bool(target and target.SUPPORTS_LOGIN),
-                "config": _engine_config_payload(target) if target else None,
+                "config": _engine_config_payload(instance) if instance is not None else None,
                 "supports_provider": bool(
                     target and target.supported_provider_protocols()
                 ),
@@ -295,8 +301,8 @@ def get_available_engines() -> list[dict]:
                 "supports_tool_approval": False,
                 "supports_workstep_tools": False,
                 "supports_mcp": False,
-                "skill_policy": target().skill_policy.value if target else "unsupported",
-                "supports_controlled_skills": bool(target and target().supports_controlled_skills),
+                "skill_policy": instance.skill_policy.value if instance is not None else "unsupported",
+                "supports_controlled_skills": bool(instance and instance.supports_controlled_skills),
                 "binary_path": target.resolve_binary() if target else None,
                 "configured_path": configured_path or None,
             })
@@ -308,20 +314,21 @@ def get_available_engines() -> list[dict]:
                          description=metadata.get("description", ""),
                          mode=metadata.get("mode", "cli"),
                          disabled=entry["id"] in config_store.get("disabled_custom_engines", []))
-    _SCAN_CACHE = result
+    if scan_complete:
+        _SCAN_CACHE = result
     return list(result)
 
 
-def _engine_config_payload(cls: type[AcpEngineBase]) -> dict | None:
+def _engine_config_payload(instance: AcpEngineBase) -> dict | None:
     """Embed the engine's config schema and masked values into the engine list.
 
     Lets the settings page render every engine's config form from the single
     ``/api/engine/list`` response instead of fetching one config per engine.
     """
+    cls = type(instance)
     schema = cls.full_config_schema()
     if not schema:
         return None
-    instance = cls()
     return {
         "fields": [asdict(field) for field in schema],
         "step_fields": [

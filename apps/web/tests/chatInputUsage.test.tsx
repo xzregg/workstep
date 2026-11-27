@@ -5,7 +5,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import ChatInputUsage from '../src/components/ChatInputUsage'
 import { I18nProvider } from '../src/i18n'
-import { engineApi } from '../src/api/client'
+import { ApiError, engineApi } from '../src/api/client'
 
 test('quota popover remains inside the visible viewport when the keyboard shrinks and offsets it', async () => {
   const { window } = installDomEnvironment()
@@ -74,13 +74,17 @@ test('account quota displays named windows, classified failures, and the server 
   }
 })
 
-test('malformed quota responses preserve last known values and differ from a valid empty catalog', async () => {
+test('quota keeps old values on malformed responses but clears them on explicit invalidation', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   const original = engineApi.quotas
   let response = {} as Awaited<ReturnType<typeof engineApi.quotas>>
-  engineApi.quotas = async () => response
+  let invalidated = false
+  engineApi.quotas = async () => {
+    if (invalidated) throw new ApiError('Engine quota query invalidated', 409)
+    return response
+  }
   const refresh = async () => act(async () => container.querySelector<HTMLButtonElement>('[data-quota-refresh]')!.click())
   const status = () => container.querySelector('[role="status"]')?.textContent || ''
   const emptyMessage = /No engines support quota checks|暂无支持额度查询的引擎/
@@ -96,6 +100,12 @@ test('malformed quota responses preserve last known values and differ from a val
     await refresh()
     assert.match(status(), /last known quota|上次成功查询的额度/i)
     assert.equal(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'), '75')
+    invalidated = true
+    await refresh()
+    assert.match(status(), /unavailable|暂时无法查询/i)
+    assert.doesNotMatch(status(), emptyMessage)
+    assert.ok(!container.querySelector('[role="progressbar"]'), 'an invalidated snapshot must not display a quota meter')
+    invalidated = false
     response = {cached: false, collected_at: 200, expires_at: 500, engines: []}
     await refresh()
     assert.match(status(), emptyMessage)

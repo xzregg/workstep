@@ -487,6 +487,8 @@ async def get_all_engine_quotas(project_id: str = "", refresh: bool = False):
 
     try:
         return await service.get(scope_key, collect, refresh=refresh)
+    except engine_quota_service.QuotaInvalidatedError:
+        raise HTTPException(status_code=409, detail="Engine quota query invalidated") from None
     except (engine_quota_service.QuotaBusyError, TimeoutError):
         raise HTTPException(status_code=503, detail="Engine quota temporarily unavailable")
 
