@@ -122,3 +122,41 @@ test('task creation blocks invalid review counts even when submitted from the ti
     await window.happyDOM.close()
   }
 })
+
+for (const mode of ['manual', 'skip'] as const) {
+  test(`task creation ignores an empty hidden retry draft in ${mode} mode`, async () => {
+    const { window } = installDomEnvironment()
+    useLocaleStore.setState({ locale: 'zh-CN' })
+    const originalCreate = useTaskStore.getState().createTask, previousFetch = globalThis.fetch
+    globalThis.fetch = async () => Response.json({ providers: [], buttons: [], assistants: [] })
+    const calls: unknown[][] = []
+    useTaskStore.setState({ createTask: async (...args) => { calls.push(args); return { id: 'new' } as any } })
+    const project = { id: 'project', path: '/project', name: 'Project', workflows: [], steps: { nodes: [{ id: 'write', type: 'write', title: '撰写', review: { mode: 'auto', maxRetries: 4 } }] } } as Project
+    const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
+    const set = (input: HTMLInputElement, value: string) => act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+      input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    const button = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === label)!
+    try {
+      await act(async () => root.render(<I18nProvider><TaskCreatePanel project={project} workflowId="workflow" lanes={[{ key: 'write', label: '撰写' }]} onClose={() => {}} /></I18nProvider>))
+      await set(container.querySelector('#new-task-title')!, '隐藏次数草稿')
+      await act(async () => button('审核配置').click())
+      await set(container.querySelector('input[type="number"]')!, '')
+      const create = container.querySelector<HTMLButtonElement>('.task-create-primary')!
+      assert.equal(create.disabled, true)
+      await act(async () => button(mode === 'manual' ? '人工审核' : '跳过审核').click())
+      assert.equal(container.querySelector('input[type="number"]') === null, true)
+      assert.equal(create.disabled, false)
+      await act(async () => create.click())
+      assert.equal(calls.length, 1)
+      const submitted = (calls[0][5] as any).write
+      assert.equal(submitted.mode, mode)
+      assert.equal(submitted.maxRetries, 4, 'submit retains the original legal count')
+    } finally {
+      await act(async () => root.unmount()); container.remove()
+      useTaskStore.setState({ createTask: originalCreate }); globalThis.fetch = previousFetch
+      await window.happyDOM.close()
+    }
+  })
+}

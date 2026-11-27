@@ -8,6 +8,7 @@ import NodeConfigPanel from '../src/components/NodeConfigPanel'
 import ReviewOverridesEditor from '../src/components/ReviewOverridesEditor'
 import ScheduleRuleEditor from '../src/components/ScheduleRuleEditor'
 import { emptyReview, type StepNodeData } from '../src/components/flowCanvasData'
+import { reviewOverridesForSubmit, reviewOverridesValid } from '../src/utils/numericConfigValidation'
 import type { ScheduleRule } from '../src/api/client'
 
 const noop = () => {}
@@ -46,6 +47,8 @@ test('step review retries and return rounds allow clearing and validate before s
       assert.equal(input.value, '')
       assert.equal(save.disabled, true)
       assert.ok(error)
+      await act(async () => app.container.querySelector<HTMLInputElement>('.node-execution-settings-toggle input')!.click())
+      assert.equal(saved.length, 0, 'auto-start changes cannot submit an invalid numeric draft')
       await render()
       assert.equal(input.value, '', 'ordinary renders preserve the empty draft')
       await app.set(input, invalid)
@@ -109,3 +112,48 @@ for (const rule of [{ kind: 'minutes', every: 10 }, { kind: 'interval', every: 1
     } finally { await app.cleanup() }
   })
 }
+
+for (const mode of ['manual', 'skip'] as const) {
+  test(`clearing step retries then selecting ${mode} allows saving a finite count`, async () => {
+    const app = await setup()
+    const node: StepNodeData = { nodeId: 1, key: 'write', label: '撰写', engine: '', model: '', color: '#2678dd', prompt: '', config: {}, inputs: [], outputs: [], maxReturnRounds: 3, review: { ...emptyReview(), mode: 'auto', maxRetries: 4 } }
+    const saved: StepNodeData[] = []
+    let error = ''
+    try {
+      await act(async () => app.root.render(<I18nProvider><NodeConfigPanel node={node} unavailableKeys={[]} engines={[]} enginesLoading={false} enginesError="" defaultExecutionEngine="" onValidationChange={value => { error = value }} onDraftChange={noop} onDirtyChange={noop} onSave={value => saved.push(value)} onRequestDelete={noop} onClose={noop} /></I18nProvider>))
+      await app.set(app.container.querySelector<HTMLInputElement>('[aria-label="重试"]')!, '')
+      const button = (label: string) => [...app.container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === label)!
+      assert.equal(button('暂存').disabled, true)
+      await act(async () => button(mode === 'manual' ? '人工审核' : '跳过审核').click())
+      assert.equal(app.container.querySelector('[aria-label="重试"]') === null, true)
+      assert.equal(button('暂存').disabled, false)
+      assert.equal(error, '')
+      await act(async () => button('暂存').click())
+      assert.equal(saved.length, 1)
+      assert.equal(saved[0].review?.mode, mode)
+      assert.equal(saved[0].review?.maxRetries, 4)
+      assert.equal(JSON.stringify(saved[0]).includes('null'), false)
+    } finally { await app.cleanup() }
+  })
+}
+
+
+test('inactive review counts serialize safely without losing the active editing draft', () => {
+  const lanes = [{ key: 'write' }, { key: 'check' }]
+  for (const maxRetries of [NaN, Infinity, 0, 6, 1.5]) {
+    const draft = { write: { mode: 'auto', maxRetries, prompt: '保留正文' }, check: { mode: 'auto', maxRetries: 2, prompt: '' } }
+    assert.equal(reviewOverridesValid(draft, lanes, 'write'), false)
+    assert.equal(reviewOverridesValid(draft, lanes, 'check'), true)
+    const submitted = reviewOverridesForSubmit(draft, { write: { mode: 'auto', maxRetries: 4 } })
+    assert.equal(submitted.write.maxRetries, 4)
+    assert.equal(submitted.write.prompt, '保留正文')
+    assert.equal(submitted.check.maxRetries, 2)
+    assert.equal(Object.is(draft.write.maxRetries, maxRetries), true)
+    assert.equal(reviewOverridesValid(draft, lanes, 'write'), false)
+    assert.equal(reviewOverridesForSubmit(draft).write.maxRetries, 1)
+    assert.equal(reviewOverridesForSubmit(draft, { write: { mode: 'auto', maxRetries: NaN } }).write.maxRetries, 1)
+    for (const mode of ['manual', 'skip']) {
+      assert.equal(reviewOverridesValid({ write: { mode, maxRetries } }, lanes), true)
+    }
+  }
+})

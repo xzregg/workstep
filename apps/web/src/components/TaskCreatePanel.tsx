@@ -1,4 +1,4 @@
-import { reviewOverridesValid } from '../utils/numericConfigValidation'
+import { reviewOverridesForSubmit, reviewOverridesValid } from '../utils/numericConfigValidation'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import React, { useCallback, useRef, useState } from 'react'
 import type { Project } from '../api/client'
@@ -98,7 +98,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
         project.id,
         newDesc.trim() || undefined,
         createLane?.key,
-        can('task.config') && Object.keys(reviewOverrides).length > 0 ? reviewOverrides : undefined,
+        can('task.config') && Object.keys(reviewOverrides).length > 0 ? reviewOverridesForSubmit(reviewOverrides, initialOverrides) : undefined,
         workflowId,
         can('task.start_on_create') && newStartMode === 'immediate',
         can('task.schedule_start') && newStartMode === 'scheduled' ? localDateTimeToIso(newScheduledStart) : null,

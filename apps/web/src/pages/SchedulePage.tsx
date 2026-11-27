@@ -1,4 +1,4 @@
-import { reviewOverridesValid, scheduleRuleNumbersValid } from '../utils/numericConfigValidation'
+import { reviewOverridesForSubmit, reviewOverridesValid, scheduleRuleNumbersValid } from '../utils/numericConfigValidation'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -344,7 +344,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
           }
         : {
             title: derivedTitle, description: description.trim() || undefined,
-            start_step_key: startStep || undefined, review_overrides: reviewOverrides,
+            start_step_key: startStep || undefined, review_overrides: reviewOverridesForSubmit(reviewOverrides, selected?.task_template.review_overrides as Record<string, ReviewOverride> | undefined),
           },
       notification: notification.value, rule: buildRule(), execution_mode: execution, overlap_policy: overlap,
     }

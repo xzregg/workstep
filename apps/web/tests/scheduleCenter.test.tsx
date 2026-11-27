@@ -533,3 +533,54 @@ test('agent schedule retry counts can be cleared and only valid integers are sav
     assert.equal(document.querySelector<HTMLInputElement>('[aria-label="重试次数"]')!.value, '4')
   } finally { await app.cleanup() }
 })
+
+
+for (const action of ['manual', 'skip', 'startStep'] as const) {
+  test(`schedule saving ignores inactive retry drafts after ${action}`, async () => {
+    const app = await setup()
+    const overrides = {
+      write: { mode: 'auto', auto: true, prompt: '撰写审核', maxRetries: 4 },
+      check: { mode: 'manual', auto: false, prompt: '核查审核', maxRetries: 2 },
+    }
+    const item = { ...schedule('a'), task_template: { title: '示例', start_step_key: 'write', review_overrides: overrides } }
+    scheduleApi.list = async () => ({ schedules: [item] })
+    workflowApi.get = async id => ({ id, name: id, steps: { nodes: [{ key: 'write', title: '撰写' }, { key: 'check', title: '核查' }] } }) as any
+    const writes: any[] = []
+    scheduleApi.update = async (_projectId, _id, value) => { writes.push(value); return { ...item, ...value } }
+    try {
+      await app.render(); await app.click('定时任务')
+      await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+      await act(async () => new Promise(resolve => setTimeout(resolve, 280)))
+      await app.click('审核配置')
+      const input = document.querySelector<HTMLInputElement>('.review-overrides-editor input[type="number"]')!
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(app.window.HTMLInputElement.prototype, 'value')!.set!.call(input, '')
+        input.dispatchEvent(new app.window.Event('input', { bubbles: true }))
+      })
+      const save = app.button('保存')
+      assert.equal(save.disabled, true)
+      if (action === 'startStep') {
+        await app.click('任务内容')
+        const select = [...document.querySelectorAll<HTMLSelectElement>('.schedule-editor select')].find(select => [...select.options].some(option => option.value === 'check'))!
+        const choose = (value: string) => act(async () => {
+          Object.getOwnPropertyDescriptor(app.window.HTMLSelectElement.prototype, 'value')!.set!.call(select, value)
+          select.dispatchEvent(new app.window.Event('change', { bubbles: true }))
+        })
+        await choose('check'); assert.equal(save.disabled, false)
+        await choose('write'); assert.equal(save.disabled, true, 'returning to the edited step restores its validation')
+        await choose('check')
+      } else {
+        const row = document.querySelector('.review-overrides-editor > div')!
+        await act(async () => app.button(action === 'manual' ? '人工审核' : '跳过审核', row).click())
+      }
+      assert.equal(save.disabled, false)
+      await act(async () => save.click())
+      assert.equal(writes.length, 1)
+      assert.equal(writes[0].task_template.review_overrides.write.maxRetries, 4)
+      assert.equal(writes[0].task_template.review_overrides.write.prompt, '撰写审核')
+      assert.equal(writes[0].task_template.review_overrides.check.maxRetries, 2)
+      if (action === 'startStep') assert.equal(writes[0].task_template.start_step_key, 'check')
+      else assert.equal(writes[0].task_template.review_overrides.write.mode, action)
+    } finally { await app.cleanup() }
+  })
+}

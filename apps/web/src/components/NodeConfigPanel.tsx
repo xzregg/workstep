@@ -128,10 +128,15 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
   )
   const review: ReviewConfig = draft.review || emptyReview()
   const updateReview = (field: keyof ReviewConfig, value: string | number | boolean | Record<string, string>) => {
-    updateDraft('review', { ...review, [field]: value })
+    const updated = { ...review, [field]: value }
+    if (field === 'mode' && value !== 'auto' && !(Number.isInteger(updated.maxRetries) && updated.maxRetries >= 0)) {
+      const original = node.review?.maxRetries
+      updated.maxRetries = original !== undefined && Number.isInteger(original) && original >= 0 ? original : emptyReview().maxRetries
+    }
+    updateDraft('review', updated)
   }
   const roundsValid = Number.isInteger(draft.maxReturnRounds) && draft.maxReturnRounds >= 1 && draft.maxReturnRounds <= MAX_CONFIGURED_RETURN_ROUNDS
-  const retriesValid = Number.isFinite(review.maxRetries) && (review.mode !== 'auto' || (Number.isInteger(review.maxRetries) && review.maxRetries >= 0))
+  const retriesValid = review.mode !== 'auto' || (Number.isInteger(review.maxRetries) && review.maxRetries >= 0)
   const configError = keyError || (draft.kind !== 'task_dispatch' && (!roundsValid || !retriesValid) ? t('flow.numericConfigInvalid') : '')
   useEffect(() => {
     onValidationChange(configError)
@@ -352,7 +357,7 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
                 onChange={(e) => {
                   const updated = { ...draft, autoStart: e.target.checked }
                   setDraft(updated)
-                  onSave({ ...updated, key: normalizedKey })
+                  if (!configError) onSave({ ...updated, key: normalizedKey })
                 }}
                 />
                 {t('flow.autoStart')}
