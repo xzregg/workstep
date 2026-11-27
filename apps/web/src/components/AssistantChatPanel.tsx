@@ -151,6 +151,8 @@ export interface AssistantChatPanelProps {
   onLoadOlderHistory?: (beforePrepend?: () => void) => Promise<void>
   /** Optional message-level fork action, shown on completed assistant replies. */
   renderMessageActions?: (messageId: string) => ReactNode
+  /** Assistant-specific content displayed above each reply footer. */
+  renderMessageContent?: (message: AssistantChatMessage, canEdit: boolean) => ReactNode
   onForkMessage?: (messageId: string, preferSmart?: boolean) => void
 }
 
@@ -172,6 +174,8 @@ interface MessageItemProps {
   onViewPrompt: (value: string | null) => void
   onLoadMessageEvents?: MessageEventsLoader
   renderMessageActions?: (messageId: string) => ReactNode
+  /** Assistant-specific content displayed above each reply footer. */
+  renderMessageContent?: (message: AssistantChatMessage, canEdit: boolean) => ReactNode
   onForkMessage?: (messageId: string, preferSmart?: boolean) => void
   onSendToInput: (content: string) => void
   onAsyncQuestionSubmit: (content: string) => Promise<boolean>
@@ -191,7 +195,7 @@ interface MessageItemProps {
 const MessageItem = memo(function MessageItem({
   message, copy, deviceId, userName, locale, showUserTag, projectId, sessionId, visibilityPermission,
   a2uiEntry, respondInteraction, onViewPrompt, onLoadMessageEvents,
-  renderMessageActions, onForkMessage, onSendToInput, onAsyncQuestionSubmit, canResumeQuestion, onA2uiAction,
+  renderMessageActions, renderMessageContent, onForkMessage, onSendToInput, onAsyncQuestionSubmit, canResumeQuestion, onA2uiAction,
 }: MessageItemProps) {
   const { t } = useI18n()
   const { can } = useGatewayProjectPermissions(projectId)
@@ -275,22 +279,25 @@ const MessageItem = memo(function MessageItem({
       footer={
         // 无正文、失败或停止的助手回复也保留元信息与分叉操作。
         message.role === 'assistant' ? (
-          <MessageResponseFooter
-            projectId={projectId}
-            content={stripA2uiBlocks(message.content)}
-            usage={usageFromEvents(message.events ?? [])}
-            events={message.events ?? []}
-            eventSummary={message.event_summary}
-            engine={message.engine}
-            model={message.model}
-            startedAt={message.created_at}
-            running={message.status === 'running'}
-            stopped={message.status === 'stopped'}
-            onFork={message.status !== 'running' && onForkMessage
-              ? () => onForkMessage(message.id, message.status === 'error')
-              : undefined}
-            actions={message.status !== 'running' && canEdit ? renderMessageActions?.(message.id) : undefined}
-          />
+          <>
+            {renderMessageContent?.(message, canEdit)}
+            <MessageResponseFooter
+              projectId={projectId}
+              content={stripA2uiBlocks(message.content)}
+              usage={usageFromEvents(message.events ?? [])}
+              events={message.events ?? []}
+              eventSummary={message.event_summary}
+              engine={message.engine}
+              model={message.model}
+              startedAt={message.created_at}
+              running={message.status === 'running'}
+              stopped={message.status === 'stopped'}
+              onFork={message.status !== 'running' && onForkMessage
+                ? () => onForkMessage(message.id, message.status === 'error')
+                : undefined}
+              actions={message.status !== 'running' && canEdit ? renderMessageActions?.(message.id) : undefined}
+            />
+          </>
         ) : undefined
       }
       onSendToInput={canEdit ? onSendToInput : undefined}
@@ -306,7 +313,7 @@ export default function AssistantChatPanel({
   locale, config, permission, enhance, context, quota, quotaActive, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
   onA2uiAction, headerDrag, headerTitle, headerContext, headerActions, composerActions, composerStatus, composerOverlay, roleBinding, workflowSkill, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
-  onLoadMessageEvents, onLoadOlderHistory, renderMessageActions, onForkMessage, allowSendWhileRunning = false, composerDisabled = false,
+  onLoadMessageEvents, onLoadOlderHistory, renderMessageActions, renderMessageContent, onForkMessage, allowSendWhileRunning = false, composerDisabled = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const userName = useUserSettingsStore((state) => state.userName)
@@ -643,6 +650,7 @@ export default function AssistantChatPanel({
               onViewPrompt={setViewingPrompt}
               onLoadMessageEvents={onLoadMessageEvents}
               renderMessageActions={renderMessageActions}
+              renderMessageContent={renderMessageContent}
               onForkMessage={canEdit && can('session.create') ? onForkMessage : undefined}
               onSendToInput={handleSendToInput}
               onAsyncQuestionSubmit={handleAsyncQuestionSubmit}
