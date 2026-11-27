@@ -191,3 +191,53 @@ test('board composition retains single-task menus with onSelect, including start
     await window.happyDOM.close()
   }
 })
+
+test('selection copy reuses the PC single-task action, disables multi-selection and retains errors for retry', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const originalCopy = useTaskStore.getState().copyTask
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const calls: string[][] = []
+  let fail = true
+  let pendingCopy: Promise<void> | undefined
+  useTaskStore.setState({ copyTask: async (...args) => {
+    calls.push(args)
+    if (fail) throw new Error('copy denied')
+    await pendingCopy
+  } })
+  try {
+    await act(async () => root.render(<I18nProvider><MobileTaskSelection projectId="demo" tasks={tasks} showArchived={false}
+      canArchive canDelete canCleanWorkspace onArchiveTask={async () => {}} onDeleteTask={async () => {}} onError={() => {}}>
+      {selection => <div><button data-one onClick={() => selection.select('one')}>one</button>
+        <button data-two onClick={() => selection.select('two')}>two</button></div>}
+    </MobileTaskSelection></I18nProvider>))
+    const click = async (selector: string) => act(async () => document.querySelector<HTMLButtonElement>(selector)!.click())
+    const copy = () => document.querySelector<HTMLButtonElement>('.mobile-task-bulk-actions [data-task-action="copy"]')!
+    await click('[data-one]')
+    assert.equal(copy().disabled, false)
+    await click('[data-two]')
+    assert.equal(copy().disabled, true)
+    await act(async () => copy().click())
+    assert.equal(calls.length, 0)
+    await click('[data-two]')
+    await act(async () => copy().click())
+    assert.deepEqual(calls, [['one', 'one（副本）', 'demo']])
+    assert.match(document.querySelector('.task-copy-error')!.textContent!, /copy denied/)
+    fail = false
+    let finish!: () => void
+    pendingCopy = new Promise<void>(resolve => { finish = resolve })
+    await act(async () => { copy().click(); copy().click() })
+    assert.equal(calls.length, 2)
+    assert.equal(document.querySelector<HTMLButtonElement>('.mobile-task-selection-header button')!.disabled, true)
+    assert.equal(document.querySelector<HTMLButtonElement>('.mobile-task-delete')!.disabled, true)
+    await act(async () => finish())
+    assert.equal(Boolean(document.querySelector('.task-copy-error')), false)
+    assert.match(document.querySelector('.mobile-task-selection-header [role="status"]')!.textContent!, /1/)
+    await click('[data-one]')
+    assert.equal(copy().disabled, true)
+  } finally {
+    useTaskStore.setState({ copyTask: originalCopy })
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

@@ -24,14 +24,31 @@
 }
 .mobile-task-bulk-actions {
   flex-wrap: wrap;
+  row-gap: var(--space-4);
   border-top: 1px solid var(--border-soft);
   padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
 }
 .mobile-task-selection-header > button,
 .mobile-task-bulk-actions > button {
-  min-height: var(--mobile-control-touch);
+  position: relative;
+  height: var(--mobile-control-regular);
+  min-height: var(--mobile-control-regular);
+  min-width: var(--mobile-control-touch);
+  padding-block: 0;
+  line-height: normal;
+  justify-content: center;
   white-space: nowrap;
   gap: var(--space-2);
+}
+.mobile-task-selection-header > button::before,
+.mobile-task-bulk-actions > button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, var(--mobile-control-touch));
+  height: var(--mobile-control-touch);
+  transform: translate(-50%, -50%);
 }
 .mobile-task-bulk-actions > button { flex: 1 1 auto; min-width: max-content; }
 .mobile-task-row[data-selecting] {
@@ -57,3 +74,7 @@
   border-color: var(--accent);
 }
 .mobile-task-row[aria-disabled="true"] { opacity: 0.5; }
+
+.mobile-task-bulk-actions > .task-copy-error { order: 1; flex-basis: 100%; max-width: none; }
+/* The loading indicator takes the action icon's place without widening the row. */
+.mobile-task-bulk-actions > .btn-loading > svg { display: none; }
