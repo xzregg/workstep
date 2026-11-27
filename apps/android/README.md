@@ -96,7 +96,7 @@ rtk proxy node apps/android/scripts/generate-icons.cjs --check
 
 单色资源与启动器资源由同一 `scripts/generate-icons.cjs` 生成，`--check` 一并验证。修改后须重新安装 APK；网页更新不会替换已安装应用的资源。厂商界面可自行决定大小图标的显示位置与缓存，不能用 AOSP 模拟器验证代替对应手机验收。
 
-设备回归位于 `app/src/androidTest/java/com/workstep/android/NotificationIconsTest.java`，只进入测试 APK，不增加生产调试入口或导出组件。构建 `assembleDebug assembleDebugAndroidTest` 并安装两个 APK，授予应用通知权限后运行：
+设备回归位于 `app/src/androidTest/java/com/workstep/android/NotificationIconsTest.java`，运行器由 `app/src/androidTest/AndroidManifest.xml` 注册，只进入测试 APK，不增加生产调试入口或导出组件，也不修改应用版本配置。构建 `assembleDebug assembleDebugAndroidTest` 并安装两个 APK，授予应用通知权限后运行：
 
 ```bash
 adb shell am instrument -w -e phase test com.workstep.android.test/com.workstep.android.NotificationIconsTest

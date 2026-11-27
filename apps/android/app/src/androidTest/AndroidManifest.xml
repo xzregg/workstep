@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <instrumentation
+        android:name="android.test.InstrumentationTestRunner"
+        tools:node="remove" />
+    <instrumentation
+        android:name="com.workstep.android.NotificationIconsTest"
+        android:targetPackage="com.workstep.android" />
+</manifest>
