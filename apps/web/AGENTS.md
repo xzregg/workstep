@@ -28,6 +28,7 @@
 - **图标按钮**：按钮直接内联 `svg`/`Icon` 时必须显式 `padding: 0`（或按设计给最小内边距），禁止依赖全局 `button` 默认 padding（`4px 8px`），否则固定尺寸按钮的内容区被压缩、图标被裁剪。
 - **复选框**：原生 `input[type="checkbox"]` 必须使用全局紧凑规格，默认可见尺寸统一为 `16px × 16px`，特殊密集选择场景最多 `18px × 18px`；禁止继承文本输入框的 `width: 100%` / `height: 32px`，也禁止通过放大可见方框满足触控尺寸。需要扩大点击区域时应使用 `label` 或外层容器提供命中范围，复选框本体仍保持紧凑。
 - **移动端适配**（`apps/web/src/mobile.css`，断点 `≤1023px`）：
+  - 交互控件须避免浏览器默认蓝色 tap highlight，复用 `index.css` 根元素继承的 `-webkit-tap-highlight-color: transparent`。新增或修改交互样式时，区分瞬态浏览器触摸反馈与产品定义的 `hover`／`active`／选中／禁用／`focus-visible` 状态；不得为消除触摸高亮改写控件原有视觉状态，须保留键盘焦点及无障碍提示，并在移动 Chromium 视口检查触摸后的状态。
   - 普通可见控件使用 `--mobile-control-regular` 的 32px 高度；菜单项和需要更大点击区域的控件使用 44px 变量。消息操作按钮（`.chat-message-action`）和浮层小按钮（如 `.conversation-new-messages-button`）保持紧凑。新增尺寸须复用 `mobile.css` 的共享变量，不写单独的像素高度。
   - 修改任务详情头部的按钮或信息时，必须整体检查标题、状态、创建者、时间、绑定 BOT、分享、任务 ID 和关闭入口在 320px、390px 及 1023px 宽度下的排布；移动端头部信息优先在两行内显示，创建者和时间保持可见，长文本可限宽滚动，不能因新增按钮把任务 ID 挤到第三行。长 ID 须限制占用宽度并保持完整值可查看、可复制；使用跑马灯时兼容 `prefers-reduced-motion`。除行为测试外，还须在窄屏实际渲染中核对换行、按钮高度和点击区域。
   - `.btn-ghost` 在消息区域（`.chat-message-row`、`.process-trace-thinking-copy`、`.llm-tool-call`）内必须去掉 border、强制 `min-height/min-width: 24px`，避免 ghost 边框在小按钮上显得过大。
