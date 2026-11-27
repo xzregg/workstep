@@ -38,8 +38,10 @@
 
 Gateway 启动默认同时内置 WebRTC P2P 信令与 UDP STUN（`WORKSTEP_GATEWAY_WEBRTC_ENABLED=true`，默认监听 `0.0.0.0:3478/udp`），并开放 `/api/webrtc/*`、`/ws/webrtc/device`、`/ws/webrtc/client` 与直连入口 `/p2p/{device_id}/`：
 - 反向代理主域时，需同步放行 `/api/webrtc/` 与 `/ws/webrtc/` 的 WebSocket Upgrade；若使用网关内置 STUN，需宿主机/防火墙开放 `3478/udp`（可通过 `WORKSTEP_GATEWAY_STUN_HOST`、`WORKSTEP_GATEWAY_STUN_PORT` 调整本地监听端口）；网关开箱默认已预置 5 个国内外公共 STUN 节点，管理员也可在「管理后台 → 平台设置 → 平台信息」修改、恢复默认或清空，持久化到网关数据库并立即下发给手机与在线设备，无需修改启动环境变量。
-- 管理后台仅在「设备管理」查看在线 WebRTC 注册设备（同时支持已完成网关授权绑定的设备免密直连与仅配置信令地址设备的配对密钥接入），不影响既有控制连接或工作台代理链路。
+- 管理后台仅在「设备管理」查看在线 WebRTC 注册设备（所有设备均须使用本机配对密钥，网关账号及管理权限不授予 WebRTC 访问权），不影响既有控制连接或工作台代理链路。
 
 Nginx 可用 `location = /ws` 和 `location ^~ /ws/` 单独匹配新 WebSocket 路径。`proxy_pass` 不带 URI 后缀，保留 Host、查询参数、Cookie、Upgrade、Connection 和 HTTPS scheme，设置足够的长连接超时。工作台兑换票据时同时签发 HTTP 和 WebSocket 路径各自的设备会话 Cookie；已打开的旧工作台需重新进入设备入口完成兑换后使用新路径。
 
 路径统一不意味着支持拆成独立 HTTP/WS 进程。控制连接和数据连接使用进程内状态，目前仍须代理到同一网关实例；如需分别监听端口，应确保共享同一实例的连接状态。
+
+WebRTC 配对密钥仅能通过本机桌面或回环地址查看及轮换；网关代理、项目身份、远程 P2P 和普通局域网访问均不能管理。浏览器只向信令提交加盐摘要 `pair_proof`，建立加密 DataChannel 后仍由设备本机校验原密钥，信令票据不能替代密钥。轮换会断开现有 P2P 会话。协议升级须同时更新网关、设备 daemon 与 Web 构建，旧版客户端不能继续免密接入。此边界不改变既有网关代理本身的授权。

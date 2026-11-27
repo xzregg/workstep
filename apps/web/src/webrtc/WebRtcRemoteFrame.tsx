@@ -48,7 +48,6 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
 
   const [deviceName, setDeviceName] = useState(deviceId)
   const [deviceOnline, setDeviceOnline] = useState<boolean | null>(null)
-  const [sessionAuthorized, setSessionAuthorized] = useState(false)
   const [pairKey, setPairKey] = useState(() => loadSessionPairKey(deviceId))
   const [showKey, setShowKey] = useState(false)
   const [phase, setPhase] = useState<'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error'>('idle')
@@ -60,7 +59,6 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
   const restoreTransportRef = useRef<(() => void) | null>(null)
   const blobCacheRef = useRef(new Map<string, string>())
   const connectAttemptRef = useRef(0)
-  const sessionAuthorizedRef = useRef(false)
   const manualDisconnectedRef = useRef(false)
   const hasConnectedRef = useRef(false)
   const autoRetryCountRef = useRef(0)
@@ -102,12 +100,11 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
 
   const startConnect = useCallback(async (
     secret: string,
-    options?: { sessionAuthorized?: boolean; isAutoReconnect?: boolean },
+    options?: { isAutoReconnect?: boolean },
   ) => {
     const trimmed = secret.trim()
-    const allowEmpty = Boolean(options?.sessionAuthorized)
     const isAutoReconnect = Boolean(options?.isAutoReconnect)
-    if (!deviceId || (!trimmed && !allowEmpty)) return
+    if (!deviceId || !trimmed) return
 
     manualDisconnectedRef.current = false
     clearReconnectTimer()
@@ -133,9 +130,8 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
     const scheduleReconnect = () => {
       if (!mountedRef.current || manualDisconnectedRef.current || connectAttemptRef.current !== attempt) return
       const saved = loadSessionPairKey(deviceId)
-      const authorized = sessionAuthorizedRef.current
       const retryIdx = autoRetryCountRef.current
-      if ((!saved && !authorized) || retryIdx >= AUTO_RECONNECT_DELAYS_MS.length) {
+      if (!saved || retryIdx >= AUTO_RECONNECT_DELAYS_MS.length) {
         hasConnectedRef.current = false
         teardownTransport()
         setPhase('error')
@@ -153,7 +149,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       reconnectTimerRef.current = window.setTimeout(() => {
         reconnectTimerRef.current = null
         if (!mountedRef.current || manualDisconnectedRef.current || connectAttemptRef.current !== attempt) return
-        void startConnect(saved, { sessionAuthorized: sessionAuthorizedRef.current, isAutoReconnect: true })
+        void startConnect(saved, { isAutoReconnect: true })
       }, AUTO_RECONNECT_DELAYS_MS[retryIdx])
     }
 
@@ -209,11 +205,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       if (!mountedRef.current || attempt !== connectAttemptRef.current) return
       isConnectingRef.current = false
       const msg = err instanceof Error ? err.message : String(err)
-      if (allowEmpty && !trimmed && !/relay|ice|timeout|timed out/i.test(msg)) {
-        sessionAuthorizedRef.current = false
-        setSessionAuthorized(false)
-      }
-      if (isAutoReconnect && !/relay/i.test(msg) && (loadSessionPairKey(deviceId) || sessionAuthorizedRef.current)
+      if (isAutoReconnect && !/relay/i.test(msg) && loadSessionPairKey(deviceId)
         && autoRetryCountRef.current < AUTO_RECONNECT_DELAYS_MS.length) {
         releaseConnection()
         scheduleReconnect()
@@ -233,29 +225,15 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
     manualDisconnectedRef.current = false
     hasConnectedRef.current = false
     autoRetryCountRef.current = 0
-    sessionAuthorizedRef.current = false
-    setSessionAuthorized(false)
     const initialAttempt = connectAttemptRef.current
     const savedKey = loadSessionPairKey(deviceId)
-    if (savedKey) {
-      void startConnect(savedKey)
-    }
     void fetchWebRtcDeviceConfig(deviceId).then((cfg) => {
       if (!mounted) return
       setDeviceOnline(cfg.online)
       if (cfg.device_name) setDeviceName(cfg.device_name)
-      const authorized = Boolean(cfg.session_authorized)
-      sessionAuthorizedRef.current = authorized
-      setSessionAuthorized(authorized)
-      if (
-        !savedKey
-        && !manualDisconnectedRef.current
-        && cfg.online
-        && authorized
-        && connectAttemptRef.current === initialAttempt
-        && !handleRef.current
-      ) {
-        void startConnect('', { sessionAuthorized: true })
+      if (savedKey && !manualDisconnectedRef.current && cfg.online
+        && connectAttemptRef.current === initialAttempt && !handleRef.current) {
+        void startConnect(savedKey)
       }
     }).catch(() => undefined)
 
@@ -287,9 +265,8 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       if (reconnectOnFirstFailure || missedPingsRef.current >= 2) {
         missedPingsRef.current = 0
         const saved = loadSessionPairKey(deviceId)
-        if (saved || sessionAuthorizedRef.current) {
+        if (saved) {
           void startConnect(saved, {
-            sessionAuthorized: sessionAuthorizedRef.current,
             isAutoReconnect: true,
           })
         }
@@ -316,7 +293,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
     const triggerRecover = (isNetworkEvent: boolean) => {
       if (manualDisconnectedRef.current) return
       const saved = loadSessionPairKey(deviceId)
-      if (!saved && !sessionAuthorizedRef.current) return
+      if (!saved) return
       if (isConnectingRef.current && reconnectTimerRef.current === null && !isNetworkEvent) return
       const current = handleRef.current
       if (
@@ -326,7 +303,6 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
         || current.peerConnection.iceConnectionState === 'closed'
       ) {
         void startConnect(saved, {
-          sessionAuthorized: sessionAuthorizedRef.current,
           isAutoReconnect: hasConnectedRef.current,
         })
         return
@@ -431,7 +407,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => void startConnect(loadSessionPairKey(deviceId) || pairKey, { sessionAuthorized })}
+              onClick={() => void startConnect(loadSessionPairKey(deviceId) || pairKey, {})}
             >
               <Icon name="refresh" size={14} />
               {t('webrtcP2p.reconnect')}
@@ -470,8 +446,8 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
             className="webrtc-pair-form"
             onSubmit={(event) => {
               event.preventDefault()
-              if ((pairKey.trim() || sessionAuthorized) && phase !== 'connecting') {
-                void startConnect(pairKey, { sessionAuthorized })
+              if (pairKey.trim() && phase !== 'connecting') {
+                void startConnect(pairKey, {})
               }
             }}
           >
@@ -514,7 +490,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
                 type="submit"
                 variant="primary"
                 loading={phase === 'connecting'}
-                disabled={(!pairKey.trim() && !sessionAuthorized) || phase === 'connecting'}
+                disabled={!pairKey.trim() || phase === 'connecting'}
               >
                 {phase === 'error' ? t('webrtcP2p.retry') : t('webrtcP2p.connect')}
               </Button>

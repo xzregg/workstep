@@ -157,6 +157,7 @@ class WebRtcPeerSession:
         session_id: str,
         device_id: str,
         expected_ticket: str,
+        verify_pair_key: Callable[[str], Awaitable[bool]],
         stun_urls: list[str],
         asgi_app: Any,
         send_signal: Callable[[dict[str, Any]], Awaitable[None]],
@@ -165,6 +166,7 @@ class WebRtcPeerSession:
         self.session_id = session_id
         self.device_id = device_id
         self.expected_ticket = expected_ticket
+        self._verify_pair_key = verify_pair_key
         self.stun_urls = list(stun_urls)
         self.asgi_app = asgi_app
         self._send_signal = send_signal
@@ -271,6 +273,7 @@ class WebRtcPeerSession:
                 app=self.asgi_app,
                 device_id=self.device_id,
                 expected_ticket=self.expected_ticket,
+                verify_pair_key=self._verify_pair_key,
                 candidate_info=self.candidate_info,
                 send_text=lambda text: self.sctp.send_datachannel_text(stream_id=self._primary_stream_id, text=text),
                 send_bytes=lambda raw: self.sctp.send_datachannel_bytes(stream_id=self._primary_stream_id, data=raw),
@@ -288,6 +291,7 @@ class WebRtcPeerSession:
             else:
                 await asyncio.wait_for(self.sctp.accept(), timeout=15.0)
             logger.debug("WebRTC session=%s SCTP established", self.session_id)
+            await asyncio.wait_for(self.bridge.authenticated.wait(), timeout=10.0)
             await self._recv_task
         except RelayCandidateRejected as exc:
             logger.warning("WebRTC direct-only check rejected session=%s: %s", self.session_id, exc)

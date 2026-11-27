@@ -81,7 +81,7 @@ test('DeviceAdminPage renders WebRTC registered devices table and details withou
   assert.ok(within(section).getByText('203.0.113.10'))
   assert.ok(within(section).getByText('/p2p/rtc-signal-2/'))
   assert.ok(within(section).getByText('仅信令注册'))
-  assert.ok(within(section).getByText('支持网关账号直连'))
+  assert.equal(within(section).getAllByText('需输入本机配对密钥').length, 2)
 
   // Managed device row indicates WebRTC P2P online status too.
   assert.ok(screen.getByText('WebRTC P2P 在线'))
@@ -90,7 +90,7 @@ test('DeviceAdminPage renders WebRTC registered devices table and details withou
   fireEvent.click(within(section).getByRole('button', { name: 'Home Linux · WebRTC 详情' }))
   const dialog = screen.getByRole('dialog', { name: 'Home Linux · WebRTC 详情' })
   assert.ok(within(dialog).getByText('rtc-signal-2'))
-  assert.ok(within(dialog).getByText('仅信令配对'))
+  assert.ok(within(dialog).getByText('本机配对密钥'))
   fireEvent.click(within(dialog).getByRole('button', { name: '关闭弹窗' }))
   assert.ok(screen.queryByRole('dialog') === null)
 })

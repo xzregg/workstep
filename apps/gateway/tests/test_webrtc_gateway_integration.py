@@ -37,6 +37,12 @@ def _b64u(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 
+def _pair_payload(client, device_id, key):
+    config = client.get("/api/webrtc/config", params={"device_id": device_id}).json()
+    proof = hashlib.sha256(f"{config['pair_key_salt']}:{key}".encode()).hexdigest()
+    return {"device_id": device_id, "pair_proof": proof}
+
+
 def _sign_webrtc_register(
     webrtc_priv: Ed25519PrivateKey,
     webrtc_pem: str,
@@ -120,7 +126,7 @@ def _setup_owner_and_member(client: TestClient):
     return owner_csrf, alice_id
 
 
-def test_gateway_webrtc_p2p_page_signaling_account_autopair_and_admin_visibility(tmp_path):
+def test_gateway_webrtc_requires_pair_key_for_every_account_and_preserves_admin_visibility(tmp_path):
     portal = tmp_path / "gateway-web"
     portal.mkdir()
     (portal / "index.html").write_text("<html><body>Gateway Portal</body></html>")
@@ -251,6 +257,9 @@ def test_gateway_webrtc_p2p_page_signaling_account_autopair_and_admin_visibility
             assert managed_by_id["gw-dev-1"]["webrtc_p2p_path"] == "/p2p/dev-bound/"
             assert managed_by_id["gw-dev-other"]["webrtc_online"] is False
 
+            # Managing the device never grants its local pairing secret, even to super_admin.
+            assert client.post("/api/webrtc/pair", json={"device_id": "dev-bound"}).status_code == 403
+
             # Device-group admin (scoped) does NOT see unbound WebRTC device or out-of-scope bound device.
             client.post("/api/auth/logout", headers={"X-CSRF-Token": owner_csrf})
             da_login = client.post(
@@ -274,9 +283,9 @@ def test_gateway_webrtc_p2p_page_signaling_account_autopair_and_admin_visibility
 
             # Unauthenticated visitor: neither device grants session_authorized.
             assert client.get("/api/webrtc/config", params={"device_id": "dev-bound"}).json()["session_authorized"] is False
-            assert client.post("/api/webrtc/pair", json={"device_id": "dev-bound", "pair_key": ""}).status_code == 403
+            assert client.post("/api/webrtc/pair", json={"device_id": "dev-bound", "pair_proof": ""}).status_code == 403
             # Valid pair_key always works for unbound device.
-            unbound_pair = client.post("/api/webrtc/pair", json={"device_id": "dev-unbound", "pair_key": "k-unbound"})
+            unbound_pair = client.post("/api/webrtc/pair", json=_pair_payload(client, "dev-unbound", "k-unbound"))
             assert unbound_pair.status_code == 200
             assert unbound_pair.json()["p2p_ticket"]
 
@@ -284,10 +293,10 @@ def test_gateway_webrtc_p2p_page_signaling_account_autopair_and_admin_visibility
             bob_login = client.post("/api/auth/login", json={"username": "bob", "password": "BobPassphrase-2026!"})
             assert bob_login.status_code == 200
             assert client.get("/api/webrtc/config", params={"device_id": "dev-bound"}).json()["session_authorized"] is False
-            assert client.post("/api/webrtc/pair", json={"device_id": "dev-bound", "pair_key": ""}).status_code == 403
+            assert client.post("/api/webrtc/pair", json={"device_id": "dev-bound", "pair_proof": ""}).status_code == 403
             client.post("/api/auth/logout", headers={"X-CSRF-Token": bob_login.json()["csrf_token"]})
 
-            # Alice (granted access to gw-dev-1): session_authorized=True and passwordless pair succeeds!
+            # Alice has device access, but still needs the local device secret.
             alice_login = client.post(
                 "/api/auth/login",
                 json={"username": "alice", "password": "AlicePassphrase-2026!"},
@@ -295,7 +304,7 @@ def test_gateway_webrtc_p2p_page_signaling_account_autopair_and_admin_visibility
             assert alice_login.status_code == 200
             alice_cfg = client.get("/api/webrtc/config", params={"device_id": "dev-bound"}).json()
             assert alice_cfg["online"] is True
-            assert alice_cfg["session_authorized"] is True
+            assert alice_cfg["session_authorized"] is False
             # Still requires pair_key for signaling-only unbound device.
             assert client.get("/api/webrtc/config", params={"device_id": "dev-unbound"}).json()["session_authorized"] is False
 
@@ -303,20 +312,21 @@ def test_gateway_webrtc_p2p_page_signaling_account_autopair_and_admin_visibility
             cross_origin_pair = client.post(
                 "/api/webrtc/pair",
                 headers={"Origin": "https://evil.example"},
-                json={"device_id": "dev-bound", "pair_key": ""},
+                json={"device_id": "dev-bound", "pair_proof": ""},
             )
             assert cross_origin_pair.status_code == 403
 
             auto_pair = client.post(
                 "/api/webrtc/pair",
                 headers={"Origin": "https://gateway.test"},
-                json={"device_id": "dev-bound", "pair_key": ""},
+                json={"device_id": "dev-bound", "pair_proof": ""},
             )
-            assert auto_pair.status_code == 200
-            assert auto_pair.json()["p2p_ticket"]
-            assert auto_pair.json()["session_token"]
+            assert auto_pair.status_code == 403
+            keyed_pair = client.post("/api/webrtc/pair", json=_pair_payload(client, "dev-bound", "k-bound"))
+            assert keyed_pair.status_code == 200
+            assert keyed_pair.json()["p2p_ticket"]
 
-            # If Alice's access or device status is disabled by owner, passwordless pair stops immediately.
+            # Disabling the managed device does not introduce any passwordless path.
             client.post("/api/auth/logout", headers={"X-CSRF-Token": alice_login.json()["csrf_token"]})
             owner_login2 = client.post("/api/auth/login", json={"username": "owner", "password": "OwnerPassphrase-2026!"})
             csrf2 = owner_login2.json()["csrf_token"]
@@ -326,7 +336,7 @@ def test_gateway_webrtc_p2p_page_signaling_account_autopair_and_admin_visibility
 
             client.post("/api/auth/login", json={"username": "alice", "password": "AlicePassphrase-2026!"})
             assert client.get("/api/webrtc/config", params={"device_id": "dev-bound"}).json()["session_authorized"] is False
-            assert client.post("/api/webrtc/pair", json={"device_id": "dev-bound", "pair_key": ""}).status_code == 403
+            assert client.post("/api/webrtc/pair", json={"device_id": "dev-bound", "pair_proof": ""}).status_code == 403
 
 
 def test_gateway_starts_built_in_udp_stun_server(tmp_path):
@@ -379,7 +389,7 @@ def test_gateway_multi_stun_admin_config_propagates_to_pair_and_offer(tmp_path):
             device_ws.send_json(_sign_webrtc_register(priv, pem, nonce, "dev-multi-gw", "k-multi"))
             assert device_ws.receive_json()["type"] == "registered"
 
-            pair = client.post("/api/webrtc/pair", json={"device_id": "dev-multi-gw", "pair_key": "k-multi"})
+            pair = client.post("/api/webrtc/pair", json=_pair_payload(client, "dev-multi-gw", "k-multi"))
             assert pair.status_code == 200
             pair_data = pair.json()
             assert pair_data["stun_urls"] == expected_stun

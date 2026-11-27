@@ -7,37 +7,6 @@ from typing import Any
 from sqlalchemy import select
 
 from gateway.models import Device, User
-from gateway.services.device_grants import has_device_access
-from gateway.services.identity import IdentityService
-from gateway.services.identity_errors import IdentityError
-
-
-async def is_gateway_device_session_authorized(
-    database,
-    hub,
-    *,
-    device_id: str,
-    session_cookie: str | None,
-) -> bool:
-    """Return True when the current Gateway user may passwordlessly access this WebRTC device."""
-    if database is None or hub is None or not device_id or not session_cookie:
-        return False
-    reg = hub.get_device(device_id)
-    if reg is None or not reg.gateway_key_fingerprint:
-        return False
-    try:
-        user, _ = await IdentityService(database).session_user(session_cookie)
-    except IdentityError:
-        return False
-    if user.status != "active":
-        return False
-    async with database.session() as session:
-        device = await session.scalar(
-            select(Device).where(Device.public_key_fingerprint == reg.gateway_key_fingerprint)
-        )
-        if device is None or device.status != "active":
-            return False
-        return bool(await has_device_access(session, user.id, device.id))
 
 
 async def resolve_webrtc_admin_devices(

@@ -12,8 +12,6 @@ from fastapi.responses import FileResponse, HTMLResponse
 from workstep_webrtc_signal import SignalingHub, create_webrtc_router
 
 from gateway.config import GatewaySettings
-from gateway.services.identity import COOKIE_NAME
-from gateway.services.webrtc_auth import is_gateway_device_session_authorized
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "testclient"}
 
@@ -58,22 +56,6 @@ def _resolve_static(root: Path, rel: str) -> Path | None:
 def install_webrtc_gateway(app: FastAPI, settings: GatewaySettings, hub: SignalingHub) -> None:
     """Register WebRTC signaling HTTP/WS endpoints and /p2p/<device_id>/ SPA routes."""
 
-    async def _session_authorizer(request: Request, device_id: str) -> bool:
-        if request.method != "GET":
-            origin = request.headers.get("origin")
-            if origin is not None:
-                cleaned = origin.strip().rstrip("/")
-                request_origin = f"{request.url.scheme}://{request.url.netloc}"
-                if cleaned != request_origin and cleaned not in settings.platform_origins:
-                    return False
-        database = getattr(request.app.state, "database", None)
-        return await is_gateway_device_session_authorized(
-            database,
-            hub,
-            device_id=device_id,
-            session_cookie=request.cookies.get(COOKIE_NAME),
-        )
-
     app.include_router(
         create_webrtc_router(
             hub,
@@ -82,7 +64,6 @@ def install_webrtc_gateway(app: FastAPI, settings: GatewaySettings, hub: Signali
                 settings,
                 getattr(req.app.state, "stun_port", 0),
             ),
-            session_authorizer=_session_authorizer,
         )
     )
 

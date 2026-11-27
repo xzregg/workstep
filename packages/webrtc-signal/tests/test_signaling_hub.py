@@ -30,7 +30,7 @@ def _sign_registration(private_key: Ed25519PrivateKey, nonce: str, device_id: st
     return base64.urlsafe_b64encode(private_key.sign(payload)).rstrip(b"=").decode("ascii")
 
 
-def _make_app(*, authorizer=None, session_authorizer=None):
+def _make_app(*, authorizer=None):
     hub = SignalingHub()
     app = FastAPI()
     app.include_router(
@@ -38,7 +38,6 @@ def _make_app(*, authorizer=None, session_authorizer=None):
             hub,
             stun_urls_provider=lambda _req: ["stun:127.0.0.1:3478"],
             authorizer=authorizer,
-            session_authorizer=session_authorizer,
         )
     )
     return app, hub
@@ -93,13 +92,15 @@ def test_device_ed25519_registration_pairing_and_direct_only_signaling():
                 "device_name": "Lab Mac",
                 "stun_urls": ["stun:127.0.0.1:3478"],
                 "direct_only": True,
+                "pair_key_salt": salt,
+                "session_authorized": False,
             }
 
             # Wrong pair key fails; correct key mints session & ticket.
-            bad_pair = client.post("/api/webrtc/pair", json={"device_id": "dev-1", "pair_key": "wrong"})
+            bad_pair = client.post("/api/webrtc/pair", json={"device_id": "dev-1", "pair_proof": "0" * 64})
             assert bad_pair.status_code == 403
 
-            pair = client.post("/api/webrtc/pair", json={"device_id": "dev-1", "pair_key": "secret-pair-key-123"})
+            pair = client.post("/api/webrtc/pair", json={"device_id": "dev-1", "pair_proof": verifier})
             assert pair.status_code == 200
             pair_data = pair.json()
             assert pair_data["device_name"] == "Lab Mac"
@@ -176,13 +177,13 @@ def test_pairing_rate_limit_and_custom_authorizer_hook():
             })
             assert device_ws.receive_json()["type"] == "registered"
 
-            denied = client.post("/api/webrtc/pair", json={"device_id": "dev-2", "pair_key": "secret-pair-key-123"})
+            denied = client.post("/api/webrtc/pair", json={"device_id": "dev-2", "pair_proof": verifier})
             assert denied.status_code == 403
 
             allowed = client.post(
                 "/api/webrtc/pair",
                 headers={"x-test-user": "alice"},
-                json={"device_id": "dev-2", "pair_key": "secret-pair-key-123"},
+                json={"device_id": "dev-2", "pair_proof": verifier},
             )
             assert allowed.status_code == 200
             assert allowed.json()["session_token"]
@@ -207,12 +208,8 @@ def _sign_gateway_binding(
     return gw_pem, sig
 
 
-def test_gateway_binding_verification_device_snapshot_and_session_authorizer():
-    app, hub = _make_app(
-        session_authorizer=lambda request, device_id: (
-            request.headers.get("x-gateway-session") == f"allow:{device_id}"
-        )
-    )
+def test_gateway_binding_snapshot_never_grants_passwordless_access():
+    app, hub = _make_app()
     private_key, public_pem, salt, verifier = _device_credentials()
     gw_key = Ed25519PrivateKey.generate()
 
@@ -269,21 +266,19 @@ def test_gateway_binding_verification_device_snapshot_and_session_authorizer():
             # Unauthenticated visitor cannot pair without pair_key.
             anon_cfg = client.get("/api/webrtc/config", params={"device_id": "dev-gw"}).json()
             assert anon_cfg["session_authorized"] is False
-            anon_pair = client.post("/api/webrtc/pair", json={"device_id": "dev-gw", "pair_key": ""})
+            anon_pair = client.post("/api/webrtc/pair", json={"device_id": "dev-gw", "pair_proof": ""})
             assert anon_pair.status_code == 403
 
-            # Authorized Gateway user receives session_authorized=True and pairs without pair_key.
+            # A gateway session never bypasses the device secret.
             auth_headers = {"x-gateway-session": "allow:dev-gw"}
             auth_cfg = client.get("/api/webrtc/config", params={"device_id": "dev-gw"}, headers=auth_headers).json()
-            assert auth_cfg["session_authorized"] is True
+            assert auth_cfg["session_authorized"] is False
             auth_pair = client.post(
                 "/api/webrtc/pair",
                 headers=auth_headers,
-                json={"device_id": "dev-gw", "pair_key": ""},
+                json={"device_id": "dev-gw", "pair_proof": ""},
             )
-            assert auth_pair.status_code == 200
-            assert auth_pair.json()["p2p_ticket"]
-            assert auth_pair.json()["session_token"]
+            assert auth_pair.status_code == 403
 
 
 def test_normalize_stun_urls_and_live_signaling_forwarding():
@@ -366,7 +361,7 @@ def test_normalize_stun_urls_and_live_signaling_forwarding():
 
             pair_res = client.post(
                 "/api/webrtc/pair",
-                json={"device_id": "dev-multi-stun", "pair_key": "secret-pair-key-123"},
+                json={"device_id": "dev-multi-stun", "pair_proof": verifier},
             )
             assert pair_res.status_code == 200
             pair_data = pair_res.json()

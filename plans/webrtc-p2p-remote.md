@@ -24,8 +24,8 @@
 ### 2.1 通用信令与 STUN（`packages/webrtc-signal` + `apps/webrtc-signal`）
 
 - `stun.py`：基于 `asyncio.DatagramProtocol` 实现 RFC 5389 STUN Binding 服务，返回 `XOR-MAPPED-ADDRESS`（IPv4/IPv6），含格式校验与单 IP 限流。
-- `hub.py`：内存态设备注册表（Ed25519 挑战-应答验签防伪造与防重放，支持可选网关设备私钥绑定签名 `workstep-webrtc-gateway-bind-v1`）、配对密钥哈希校验（不落盘明文、防爆破限流）、已授权会话免密签发、短期会话票据与 SDP/ICE 转发；转发阶段过滤 `typ relay` 候选并拒绝非信令消息。
-- `router.py`：`create_webrtc_router(...)` 支持可选外部鉴权钩子与 `session_authorizer` 免密会话校验钩子，兼容独立零数据库部署与 Gateway 账号会话校验。
+- `hub.py`：内存态设备注册表（Ed25519 挑战-应答验签防伪造与防重放，支持可选网关设备私钥绑定签名 `workstep-webrtc-gateway-bind-v1`）、配对摘要校验（不接收明文密钥、防爆破限流）、短期会话票据与 SDP/ICE 转发；转发阶段过滤 `typ relay` 候选并拒绝非信令消息。
+- `router.py`：`create_webrtc_router(...)` 支持可选外部鉴权钩子，独立部署与 Gateway 均强制设备密钥。
 - `apps/webrtc-signal`：零数据库极简启动服务，同时拉起信令 HTTP/WS 端口与 UDP STUN 端口，并托管前端构建产物用于 `/p2p/<device_id>/` 访问。
 
 ### 2.2 Daemon 侧协议适配（`apps/daemon/services/webrtc_p2p/`）
@@ -33,7 +33,7 @@
 - `sdp.py` / `dtls.py` / `sctp.py` / `peer.py`：纯 Python（`aioice` + `pyopenssl` + `cryptography`）实现 `UDP/DTLS/SCTP webrtc-datachannel` 栈，避免引入重型音视频二进制依赖（如 `aiortc`/`av`），兼容 Python 3.12 / 3.14 及桌面/Docker 打包链路。
 - 强校验 `verify_direct_candidate_pair()`：核验实际通信候选对双方均不为 `relay`。
 - `bridge.py`：复用 `workstep_gateway_protocol.ProxyFrame` 完成流复用、分块传输、`window.update` 背压流控与 `cancel` 取消；支持高吞吐二进制数据帧承载大文件响应体；通过 ASGI `scope["webrtc_remote_actor"]` 在安全守卫中建立合法身份边界，保留对主机原生危险路径的保护。
-- `client.py` + `api/webrtc_p2p.py`：管理信令地址、启用开关、配对密钥轮换（配置存 `~/.workstep/config.json`）、后台连接与重连退避，所有阻塞磁盘配置读写均隔离到工作线程；若设备已完成网关平台授权且存在本机网关设备私钥，向信令注册时自动附带网关绑定签名以支持网关账号免密直连。
+- `client.py` + `api/webrtc_p2p.py`：管理信令地址、启用开关、配对密钥轮换（配置存 `~/.workstep/config.json`）、后台连接与重连退避，所有阻塞磁盘配置读写均隔离到工作线程；若设备已完成网关平台授权且存在本机网关设备私钥，向信令注册时自动附带网关绑定签名仅用于关联管理后台设备展示。
 
 ### 2.3 Gateway 融合、管理后台可见性与 Docker 集成
 
@@ -41,20 +41,17 @@
 - **多 STUN 并发探测与网络/局内 IP 变化自动重连**：
   - `POST /api/webrtc/pair` 签发会话时固定服务端当前 `stun_urls` 并在 `offer` / `ice_restart` 信令中同步下发给在线 Daemon（剥离客户端伪造字段）；Daemon 侧 `peer.py::select_reachable_stun_server()` 并发向多个 STUN 发送 RFC 5389 Binding 探测包，择优选择最快可达节点后再收集候选。
   - **三层网络/IP 变化恢复**：① 浏览器 `peerClient.ts` 对 `iceConnectionState === 'disconnected'` 提供 4 秒瞬断自愈窗口（恢复到 `connected`/`completed` 即不断开）；② Daemon `client.py::_heartbeat` 基于 `pong` 接收时间戳触发心跳超时主动关闭半开死连接，从而在宿主机局内/公网 IP 变更后立即重连信令；③ `WebRtcRemoteFrame.tsx` 遇到意外断连时保留已挂载工作台 DOM 不销毁，进入 `reconnecting` 原位指数退避自动重连（`1s → 2s → 4s → 8s`，并监听 `online`、`visibilitychange`、`workstep:resume` 与 `navigator.connection` `change`）。当连接看似仍 `open` 但网络变动导致底层静默失效时，立即通过 `transportAdapter.ts::ping()` 发起 1500ms 主动 `p2p.ping`/`p2p.pong` 探针，超时即触发无感原位重连并在恢复后派发 `workstep:resume`；日常每 10 秒自动测量实时 RTT，在顶部连接栏（桌面与手机视口均显示）和侧栏状态 `GatewayConnectionStatus` 中按网关同款规范展示 `· XX ms` 与延迟分档颜色（`<500ms` 正常、`500–1000ms` 警告、`>1000ms` 缓慢）。
-- **双模鉴权（网关账号免密 + 仅信令配对密钥）**：
-  - 主机已绑定且处于 `active` 状态的受管设备携带网关设备私钥签名注册后，若当前浏览器登录的网关账号具备该受管设备访问权限，`GET /api/webrtc/config` 返回 `session_authorized: true`，`POST /api/webrtc/pair` 与前端 `WebRtcRemoteFrame` 免输入配对密钥自动直连；未登录、无权、停用/撤销或仅填写信令地址注册的设备均自动使用配对密钥验证。
-- **管理后台设备可见性**：`GET /api/admin/devices` 严格按 `device_scope` 返回 `webrtc_devices` 列表（平台管理员可见全部在线 WebRTC 注册设备；部门/设备组管理员仅可见已绑定到管辖受管设备的记录）；`apps/gateway-web/src/DeviceAdminPage.tsx` 新增展示 WebRTC 直连注册列表，手机端仍通过专属 `/p2p/<device_id>/` 链接进入。
-- **Docker 共享镜像（`Dockerfile` + `docker-compose.yaml`）**：安装 editable `packages/webrtc-signal` 并暴露 `3478/udp` STUN 端口，更新 `scripts/lock-container-gateway.py` 与 `scripts/container-gateway-requirements.txt`。
+- **本机密钥鉴权**：所有浏览器（包括网关管理员）均须输入设备本机生成的配对密钥；信令只验证加盐摘要，直连后由本机再次校验密钥，票据或账号权限不能替代。密钥仅本机可查看／轮换，轮换关闭已有会话。
 
 ### 2.4 Web 前端适配（`apps/web`）
 
-- 路由入口：`/p2p/<device_id>/...` 由 `WebRtcRemoteFrame` 托管解锁配对（支持网关账号已授权时自动免密发起连接）、纯直连状态检查、ICE 重启（网络切换/切后台恢复）及顶部连接状态条。
+- 路由入口：`/p2p/<device_id>/...` 由 `WebRtcRemoteFrame` 托管解锁配对（始终要求本机配对密钥）、纯直连状态检查、ICE 重启（网络切换/切后台恢复）及顶部连接状态条。
 - 传输层：`transportAdapter.ts` 在 P2P 活跃时拦截同源 Daemon 请求（排除 `/api/webrtc/*`、`/assets/*` 与 `/workspace-assets/*`）与 `/ws*` 连接，流式响应使用 `ReadableStream` + 信用窗口实现低内存占用文件传输。
 - 设置入口：在「设置 → 远程访问」新增「WebRTC 直连」标签页（`WebRtcP2pSettings`），提供启用开关、信令地址配置、配对密钥显隐/轮换及移动入口链接复制。
 
 ## 3. 验收标准
 
 1. `packages/webrtc-signal`、`apps/gateway`、`apps/daemon`、`apps/desktop`、`apps/web` 与 `apps/gateway-web` 单元测试、慢 I/O Canary 及打包检查全部通过。
-2. 真实无头 Chromium ↔ Gateway（`gateway.app:create_app` 含信令、UDP STUN、`/p2p/<device_id>/` 与账号免密/配对密钥直连）↔ 真实 `apps/daemon` 端到端链路验证通过。
+2. 真实无头 Chromium ↔ Gateway（`gateway.app:create_app` 含信令、UDP STUN、`/p2p/<device_id>/` 与管理员仍须配对密钥直连）↔ 真实 `apps/daemon` 端到端链路验证通过。
 3. `apps/web`（`yarn build`、`yarn build:gateway-share`）与 `apps/gateway-web`（`yarn build`）编译通过；管理后台设备页与工作台在 `320px/390px/1023px/1024px/1440px` 多视口渲染检查无溢出与错位。
 4. 实际构建 `workstep:latest` Docker 镜像并在隔离空 Home 下通过 `scripts/verify-shared-image.py` 及真实 UDP STUN 响应检查，仓库健康检查与密钥扫描通过。

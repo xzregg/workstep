@@ -213,7 +213,7 @@ export function DeviceAdminPage() {
                 <td>
                   {item.gateway_bound ? (item.owner_name || item.bound_device_name || '已绑定网关') : '仅信令注册'}
                   <small className="gateway-admin-cell-meta">
-                    {item.gateway_bound ? '支持网关账号直连' : '需输入配对密钥'}
+                    需输入本机配对密钥
                   </small>
                 </td>
                 <td>{item.connection_ip || '—'}</td>
@@ -226,7 +226,7 @@ export function DeviceAdminPage() {
                         <div><dt>设备名称</dt><dd>{item.name}</dd></div>
                         <div><dt>连接 IP</dt><dd>{item.connection_ip || '—'}</dd></div>
                         <div><dt>接入地址</dt><dd>{item.p2p_path}</dd></div>
-                        <div><dt>绑定模式</dt><dd>{item.gateway_bound ? '支持网关账号直连' : '仅信令配对'}</dd></div>
+                        <div><dt>授权方式</dt><dd>本机配对密钥</dd></div>
                         <div><dt>关联受管设备</dt><dd>{item.bound_device_name ? `${item.bound_device_name}（${item.bound_device_id}）` : '未绑定'}</dd></div>
                         <div><dt>所有者</dt><dd>{item.owner_name || '—'}</dd></div>
                         <div><dt>活跃会话</dt><dd>{item.active_sessions}</dd></div>

@@ -119,6 +119,8 @@ async def test_webrtc_p2p_settings_blocks_project_scoped_and_remote_webrtc_visit
             request.scope["webrtc_remote_actor"] = SimpleNamespace(
                 user_id="p2p-1", username="p2p-1", device_id="dev-1", project_id=None,
             )
+        elif mode == "gateway-owner":
+            request.scope["gateway_remote_actor"] = SimpleNamespace(project_id=None)
         return await call_next(request)
 
     app.include_router(router)
@@ -126,7 +128,7 @@ async def test_webrtc_p2p_settings_blocks_project_scoped_and_remote_webrtc_visit
     app.state.gateway_client = None
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://127.0.0.1:8765") as client:
-        for actor_mode in ("project", "webrtc"):
+        for actor_mode in ("project", "webrtc", "gateway-owner"):
             assert (
                 await client.get("/api/webrtc-p2p/settings", headers={"x-test-actor": actor_mode})
             ).status_code == 403

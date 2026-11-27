@@ -15,7 +15,6 @@ from pydantic import BaseModel, Field
 from .hub import PairRateLimitError, SignalingError, SignalingHub
 
 AuthorizerFn = Callable[[Request, str], tuple[bool, str | None] | Awaitable[tuple[bool, str | None]]]
-SessionAuthorizerFn = Callable[[Request, str], bool | Awaitable[bool]]
 StunUrlsProvider = Callable[[Request], list[str]]
 
 CLIENT_SESSION_COOKIE = "workstep_webrtc_session"
@@ -23,20 +22,7 @@ CLIENT_SESSION_COOKIE = "workstep_webrtc_session"
 
 class PairRequest(BaseModel):
     device_id: str = Field(min_length=1, max_length=128)
-    pair_key: str = Field(default="", max_length=256)
-
-
-async def _is_session_authorized(
-    session_authorizer: SessionAuthorizerFn | None,
-    request: Request,
-    device_id: str,
-) -> bool:
-    if session_authorizer is None or not device_id:
-        return False
-    allowed = session_authorizer(request, device_id)
-    if inspect.isawaitable(allowed):
-        allowed = await allowed
-    return bool(allowed)
+    pair_proof: str = Field(default="", max_length=64, pattern=r"^(?:[0-9a-f]{64})?$")
 
 
 def create_webrtc_router(
@@ -44,7 +30,6 @@ def create_webrtc_router(
     *,
     stun_urls_provider: StunUrlsProvider,
     authorizer: AuthorizerFn | None = None,
-    session_authorizer: SessionAuthorizerFn | None = None,
 ) -> APIRouter:
     """Create a mountable FastAPI router with zero database dependencies."""
     router = APIRouter()
@@ -60,13 +45,8 @@ def create_webrtc_router(
             **summary,
             "stun_urls": list(stun_urls_provider(request)),
             "direct_only": True,
+            "session_authorized": False,
         }
-        if session_authorizer is not None:
-            payload["session_authorized"] = (
-                await _is_session_authorized(session_authorizer, request, device_id)
-                if summary["online"]
-                else False
-            )
         return payload
 
     @router.post("/api/webrtc/pair")
@@ -82,18 +62,12 @@ def create_webrtc_router(
         client_ip = request.client.host if request.client else ""
         resolved_stun_urls = list(stun_urls_provider(request))
         try:
-            if await _is_session_authorized(session_authorizer, request, body.device_id):
-                result = hub.pair_authorized_client(
-                    device_id=body.device_id,
-                    stun_urls=resolved_stun_urls,
-                )
-            else:
-                result = hub.pair_client(
-                    device_id=body.device_id,
-                    pair_key=body.pair_key,
-                    client_ip=client_ip,
-                    stun_urls=resolved_stun_urls,
-                )
+            result = hub.pair_client(
+                device_id=body.device_id,
+                pair_proof=body.pair_proof,
+                client_ip=client_ip,
+                stun_urls=resolved_stun_urls,
+            )
         except PairRateLimitError as exc:
             raise HTTPException(status_code=429, detail=exc.message) from exc
         except SignalingError as exc:

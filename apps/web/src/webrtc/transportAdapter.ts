@@ -350,7 +350,7 @@ export class WebRtcTransportClient {
     return !this._closed && this.channel.readyState === 'open'
   }
 
-  authenticate(ticket: string, timeoutMs = 10000): Promise<{ device_id: string; candidate_info?: Record<string, unknown> }> {
+  authenticate(ticket: string, pairKey: string, timeoutMs = 10000): Promise<{ device_id: string; candidate_info?: Record<string, unknown> }> {
     return new Promise((resolve, reject) => {
       if (!this.isOpen) {
         reject(new Error('DataChannel is not open'))
@@ -366,7 +366,7 @@ export class WebRtcTransportClient {
         resolve: (data) => { clearTimeout(timer); resolve(data) },
         reject: (err) => { clearTimeout(timer); reject(err) },
       }
-      this.channel.send(JSON.stringify({ type: 'p2p.auth', ticket }))
+      this.channel.send(JSON.stringify({ type: 'p2p.auth', ticket, pair_key: pairKey }))
     })
   }
 

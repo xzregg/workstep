@@ -250,6 +250,7 @@ async def test_webrtc_data_bridge_http_streaming_websocket_and_desktop_security(
         app=app,
         device_id="dev-1",
         expected_ticket="ticket-xyz",
+        verify_pair_key=lambda key: asyncio.sleep(0, result=key == "local-secret"),
         candidate_info={"local_type": "host", "remote_type": "srflx"},
         send_text=send_text,
         send_bytes=send_bytes,
@@ -260,8 +261,8 @@ async def test_webrtc_data_bridge_http_streaming_websocket_and_desktop_security(
     auth_err = await asyncio.wait_for(outbound_text.get(), timeout=1.0)
     assert auth_err["type"] == "p2p.error"
 
-    # Valid ticket unlocks bridge
-    await bridge.handle_text(json.dumps({"type": "p2p.auth", "ticket": "ticket-xyz"}))
+    # A valid ticket and the host secret unlock the bridge
+    await bridge.handle_text(json.dumps({"type": "p2p.auth", "ticket": "ticket-xyz", "pair_key": "local-secret"}))
     ready = await asyncio.wait_for(outbound_text.get(), timeout=1.0)
     assert ready["type"] == "p2p.ready"
     assert ready["candidate_info"] == {"local_type": "host", "remote_type": "srflx"}

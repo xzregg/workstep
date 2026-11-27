@@ -13,7 +13,7 @@ import { useWebRtcConnectionStore } from '../src/webrtc/webrtcConnectionStore'
 import { ICE_DISCONNECT_GRACE_MS } from '../src/webrtc/peerClient'
 import { I18nProvider } from '../src/i18n'
 
-test('WebRtcRemoteFrame auto-pairs without pair key when gateway session_authorized is true', async () => {
+test('WebRtcRemoteFrame requires the device key even when gateway claims session_authorized', async () => {
   const { window } = installDomEnvironment()
   window.happyDOM.setURL('https://gateway.example.com/p2p/dev-bound-1/tasks')
 
@@ -31,6 +31,7 @@ test('WebRtcRemoteFrame auto-pairs without pair key when gateway session_authori
           stun_urls: ['stun:gateway.example.com:3478'],
           direct_only: true,
           session_authorized: true,
+          pair_key_salt: 'test-salt',
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       )
@@ -62,11 +63,11 @@ test('WebRtcRemoteFrame auto-pairs without pair key when gateway session_authori
       })
     }
 
-    assert.equal(pairBodies.length, 1)
-    assert.deepEqual(pairBodies[0], { device_id: 'dev-bound-1', pair_key: '' })
+    assert.equal(pairBodies.length, 0)
     // After 403 fallback, manual pair key form stays usable and reveals the error.
     assert.equal(document.getElementById('webrtc-remote-pair-key') !== null, true)
-    assert.equal(Boolean(document.querySelector('.webrtc-pair-error')), true)
+    assert.equal(Boolean(document.querySelector('.webrtc-pair-error')), false)
+    assert.equal((document.querySelector('.webrtc-pair-form button[type=submit]') as HTMLButtonElement).disabled, true)
   } finally {
     await act(async () => root.unmount())
     globalThis.fetch = originalFetch
@@ -79,6 +80,7 @@ test('WebRtcRemoteFrame tolerates brief ICE disconnect and preserves workbench D
 
   const { window } = installDomEnvironment()
   window.happyDOM.setURL('https://gateway.example.com/p2p/dev-reconn-1/tasks')
+  sessionStorage.setItem('workstep-webrtc-pair-key:dev-reconn-1', 'local-secret')
 
   const originalFetch = globalThis.fetch
   const originalRtc = globalThis.RTCPeerConnection
@@ -215,6 +217,7 @@ test('WebRtcRemoteFrame tolerates brief ICE disconnect and preserves workbench D
         stun_urls: ['stun:stun.cloudflare.com:3478'],
         direct_only: true,
         session_authorized: true,
+          pair_key_salt: 'test-salt',
       }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
     if (url === '/api/webrtc/pair') {
@@ -291,6 +294,7 @@ test('WebRtcRemoteFrame shows live millisecond latency matching Gateway and acti
 
   const { window } = installDomEnvironment()
   window.happyDOM.setURL('https://gateway.example.com/p2p/dev-probe-1/tasks')
+  sessionStorage.setItem('workstep-webrtc-pair-key:dev-probe-1', 'local-secret')
 
   const originalFetch = globalThis.fetch
   const originalRtc = globalThis.RTCPeerConnection
@@ -431,6 +435,7 @@ test('WebRtcRemoteFrame shows live millisecond latency matching Gateway and acti
         stun_urls: ['stun:stun.cloudflare.com:3478'],
         direct_only: true,
         session_authorized: true,
+          pair_key_salt: 'test-salt',
       }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
     if (url === '/api/webrtc/pair') {

@@ -141,6 +141,7 @@ class SignalingHub:
             "online": True,
             "device_id": device.device_id,
             "device_name": device.device_name,
+            "pair_key_salt": device.pair_key_salt,
         }
 
     async def register_device(
@@ -253,22 +254,11 @@ class SignalingHub:
             "direct_only": True,
         }
 
-    def pair_authorized_client(
-        self,
-        *,
-        device_id: str,
-        stun_urls: list[str] | None = None,
-    ) -> dict[str, Any]:
-        device = self._devices.get(device_id)
-        if device is None:
-            raise SignalingError("device_offline", "Target device is offline")
-        return self._issue_client_session(device, stun_urls=stun_urls)
-
     def pair_client(
         self,
         *,
         device_id: str,
-        pair_key: str,
+        pair_proof: str,
         client_ip: str = "",
         stun_urls: list[str] | None = None,
     ) -> dict[str, Any]:
@@ -285,8 +275,7 @@ class SignalingHub:
         if device is None:
             raise SignalingError("device_offline", "Target device is offline")
 
-        candidate = hash_pair_key(pair_key, device.pair_key_salt)
-        if not pair_key or not hmac.compare_digest(candidate, device.pair_key_verifier):
+        if not pair_proof or not hmac.compare_digest(pair_proof, device.pair_key_verifier):
             bucket.append(now)
             raise SignalingError("invalid_pair_key", "Invalid pairing key")
 

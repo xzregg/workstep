@@ -20,6 +20,7 @@ export interface WebRtcConfigSummary {
   stun_urls: string[]
   direct_only: boolean
   session_authorized?: boolean
+  pair_key_salt: string
 }
 
 export interface WebRtcConnectionHandle {
@@ -48,11 +49,16 @@ export async function connectWebRtcDirect(options: {
   signal?: AbortSignal
 }): Promise<WebRtcConnectionHandle> {
   const { deviceId, pairKey, signal } = options
+  if (!pairKey.trim()) throw new Error('Device pairing key required')
+  const config = await fetchWebRtcDeviceConfig(deviceId)
+  if (!config.pair_key_salt) throw new Error('Device pairing configuration unavailable')
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${config.pair_key_salt}:${pairKey}`))
+  const proof = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
   const pairResponse = await fetch('/api/webrtc/pair', {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ device_id: deviceId, pair_key: pairKey }),
+    body: JSON.stringify({ device_id: deviceId, pair_proof: proof }),
     signal,
   })
   if (!pairResponse.ok) {
@@ -255,7 +261,7 @@ export async function connectWebRtcDirect(options: {
     }
 
     const transport = new WebRtcTransportClient(channel)
-    await transport.authenticate(pairData.p2p_ticket)
+    await transport.authenticate(pairData.p2p_ticket, pairKey)
 
     // Signaling can be closed once the direct peer connection is authenticated.
     try { sigWs.close() } catch { /* ignore */ }

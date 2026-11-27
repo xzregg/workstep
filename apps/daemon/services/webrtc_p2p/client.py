@@ -237,6 +237,9 @@ class WebRtcClientService:
     async def get_settings(self) -> dict[str, Any]:
         return await asyncio.to_thread(self._settings_sync)
 
+    async def verify_remote_pair_key(self, candidate: str) -> bool:
+        return await asyncio.to_thread(self.verify_pair_key, candidate)
+
     async def get_status(self) -> dict[str, Any]:
         settings = await self.get_settings()
         return {
@@ -302,6 +305,10 @@ class WebRtcClientService:
                 return section, self._settings_sync()
 
         section, result = await asyncio.to_thread(_rotate)
+        sessions = list(self._sessions.values())
+        self._sessions.clear()
+        if sessions:
+            await asyncio.gather(*(session.close() for session in sessions), return_exceptions=True)
         ws = self._active_ws
         if ws is not None and self.online:
             try:
@@ -508,6 +515,7 @@ class WebRtcClientService:
                 session_id=session_id,
                 device_id=device_id,
                 expected_ticket=ticket,
+                verify_pair_key=self.verify_remote_pair_key,
                 stun_urls=effective_stun,
                 asgi_app=self.asgi_app,
                 send_signal=lambda payload: ws.send(json.dumps(payload)),

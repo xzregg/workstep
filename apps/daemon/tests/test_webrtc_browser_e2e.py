@@ -579,7 +579,7 @@ const VIEWPORTS = [
     const page = await context.newPage();
     page.on('pageerror', (err) => consoleErrors.push(`pageerror: ${err.message}`));
 
-    // Sign into Gateway as owner so Gateway session authorizes passwordless WebRTC access.
+    // Sign in as super_admin and prove the gateway account still cannot bypass the device key.
     await page.goto(`${cfg.gatewayUrl}/auth`, { waitUntil: 'networkidle' });
     const loginStatus = await page.evaluate(async ({ username, password }) => {
       const res = await fetch('/api/auth/login', {
@@ -592,9 +592,19 @@ const VIEWPORTS = [
     }, { username: cfg.username, password: cfg.password });
     if (loginStatus !== 200) throw new Error(`Gateway browser login failed: ${loginStatus}`);
 
-    // Open /p2p/<device_id>/ directly -> must auto-pair without submitting pair key.
+    const pairRequests = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/api/webrtc/pair') pairRequests.push(request.postData() || '');
+    });
     await page.goto(cfg.p2pUrl, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#webrtc-remote-pair-key', { timeout: 15000 });
+    if (pairRequests.length !== 0) throw new Error('Gateway account attempted passwordless pairing');
+    await page.fill('#webrtc-remote-pair-key', cfg.pairKey);
+    await page.click('.webrtc-pair-form button[type="submit"]');
     await page.waitForSelector('[data-webrtc-connected="true"]', { timeout: 25000 });
+    if (!pairRequests.length || pairRequests.some((body) => body.includes(cfg.pairKey) || JSON.parse(body).pair_key)) {
+      throw new Error('Device secret was exposed to signaling');
+    }
     const candidatePath = (await page.textContent('[data-testid="webrtc-candidate-path"]')) || '';
     await page.waitForSelector('[data-testid="webrtc-latency"]', { timeout: 10000 });
     const latencyText = ((await page.textContent('[data-testid="webrtc-latency"]')) || '').trim();
@@ -714,7 +724,7 @@ const VIEWPORTS = [
 
 @pytest.mark.timeout(120)
 @pytest.mark.asyncio
-async def test_gateway_chromium_direct_webrtc_auto_pair_and_admin_e2e(tmp_path, monkeypatch):
+async def test_gateway_chromium_direct_webrtc_key_required_and_admin_e2e(tmp_path, monkeypatch):
     import base64
     from urllib.parse import parse_qs, urlsplit
     from cryptography.hazmat.primitives import serialization
@@ -963,6 +973,7 @@ async def test_gateway_chromium_direct_webrtc_auto_pair_and_admin_e2e(tmp_path, 
             "gatewayUrl": gw_url,
             "username": "owner",
             "password": owner_password,
+            "pairKey": cfg_resp.json()["pair_key"],
             "p2pUrl": f"{gw_url}/p2p/{webrtc_device_id}/",
             "wsUrl": f"ws://127.0.0.1:{gw_port}/ws",
             "projectId": project_id,

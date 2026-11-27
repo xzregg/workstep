@@ -376,6 +376,7 @@ class WebRtcDataBridge:
         app: Any,
         device_id: str,
         expected_ticket: str,
+        verify_pair_key: Callable[[str], Awaitable[bool]],
         candidate_info: dict[str, Any],
         send_text: Callable[[str], Awaitable[None]],
         send_bytes: Callable[[bytes], Awaitable[None]],
@@ -384,6 +385,8 @@ class WebRtcDataBridge:
         self.app = app
         self.device_id = device_id
         self.expected_ticket = expected_ticket
+        self._verify_pair_key = verify_pair_key
+        self.authenticated = asyncio.Event()
         self.candidate_info = candidate_info
         self._send_text = send_text
         self._send_bytes = send_bytes
@@ -440,7 +443,12 @@ class WebRtcDataBridge:
             if not supplied or not hmac.compare_digest(supplied, self.expected_ticket):
                 await self._send_text(json.dumps({"type": "p2p.error", "code": "unauthorized", "message": "Invalid P2P session ticket"}))
                 return
+            pair_key = raw.get("pair_key")
+            if not isinstance(pair_key, str) or not pair_key or len(pair_key) > 256 or not await self._verify_pair_key(pair_key):
+                await self._send_text(json.dumps({"type": "p2p.error", "code": "unauthorized", "message": "Invalid device pairing key"}))
+                return
             self._authenticated = True
+            self.authenticated.set()
             await self._send_text(
                 json.dumps({
                     "type": "p2p.ready",
