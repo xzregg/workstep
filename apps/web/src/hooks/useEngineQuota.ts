@@ -26,9 +26,10 @@ export function useEngineQuota(projectId: string | undefined, engine: string, co
     void refresh(false)
     return () => { requestId.current += 1 }
   }, [refresh, conversationKey])
-  const entries = snapshot?.projectId === scope && Array.isArray(snapshot.result?.engines)
-    ? snapshot.result.engines.filter(entry => entry.supported)
+  const result = snapshot?.projectId === scope ? snapshot.result : null
+  const entries = Array.isArray(result?.engines)
+    ? result.engines.filter(entry => entry.supported)
     : []
   const selected = entries.find(entry => entry.engine_id === engine)
-  return {entries, quota: selected?.status === 'ok' ? selected.quota : null, refreshing, refresh, error}
+  return {entries, collectedAt: result?.collected_at, quota: selected?.status === 'ok' ? selected.quota : null, refreshing, refresh, error}
 }

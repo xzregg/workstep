@@ -1100,6 +1100,8 @@ Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多�
 
 ## 账户额度统一接口
 
+统一响应的 `collected_at` 是本批次采集完成的 Unix 秒；命中缓存仍返回原时间，供输入框显示「上次刷新」。单项 `unavailable` 可带固定 `reason`：`command_failed`（原生命令无法执行或返回失败）、`invalid_report`（报告不可解析或超长）、`timeout`（采集超时）；没有分类时省略。Antigravity 跳过原生报告中未启用的 `disabled` 窗口，保留其他有效窗口；明确返回需要认证时使用 `unauthenticated`，不透传 CLI 输出或原始报错。前端将缺少标签的 10080／300 分钟窗口显示为「每周额度」／「5 小时额度」，仍保留原始窗口长度和重置时间。
+
 账户额度是 `BaseLLMEngine` 的可选能力，与 ACP 会话用量分开。默认 `SUPPORTS_QUOTA=False`；有可靠数据源的引擎声明 `True` 并实现 `async get_quota(cwd="") -> dict | None`。HTTP、原生 SDK/CLI、脚本调用、认证和原生数据转换均归该引擎；公共层及前端不按引擎 ID 分支，不发送模型提示词猜测额度。
 
 `engines/core/quota.py` 定义 `EngineQuota`、窗口／分组／余额模型与 `query_quota`。快照支持 primary/secondary、多个 groups.windows、credits、individual_limit 和 collected_at（Unix 秒）。百分比保留小数，提供 used_percent 或 remaining_percent 即可补齐另一项；缺少 primary 时从分组／secondary 取最低剩余额度。credits.balance 保留原始十进制字符串，可带 unit；未知余额不补 0。原生缓存／脚本快照需携带其真实 collected_at，不能把读取时间冒充采集时间。完整字段以模型为准。

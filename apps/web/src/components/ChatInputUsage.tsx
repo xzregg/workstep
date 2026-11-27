@@ -50,7 +50,7 @@ export default function ChatInputUsage({
     <>
       <EngineQuotaPopover compact={compact} selectedEngine={selectedEngine}
         entries={managed ? unified.entries : entries ?? (quota ? [{engine_id: quota.engine_id, supported: true, status: 'ok', quota}] : [])}
-        alwaysVisible={managed} error={managed && unified.error}
+        alwaysVisible={managed} error={managed && unified.error} collectedAt={managed ? unified.collectedAt : quota?.collected_at}
         refreshing={managed ? unified.refreshing : quotaRefreshing}
         onRefresh={managed ? () => { void unified.refresh() } : onRefreshQuota} />
           {context && (

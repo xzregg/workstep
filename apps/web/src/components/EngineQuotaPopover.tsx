@@ -1,13 +1,13 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import Icon from './Icon'
 import { useI18n } from '../i18n'
 import { engineLabel } from '../engineMeta'
 import type { EngineQuotaWindow, QuotaResult } from '../api/client'
 
 export default function EngineQuotaPopover({ entries, selectedEngine = '', compact, refreshing = false, error = false,
-  alwaysVisible = false, onRefresh }: {
+  alwaysVisible = false, collectedAt, onRefresh }: {
   entries: QuotaResult[]; selectedEngine?: string; compact: boolean; refreshing?: boolean; error?: boolean
-  alwaysVisible?: boolean; onRefresh?: () => void
+  alwaysVisible?: boolean; collectedAt?: number; onRefresh?: () => void
 }) {
   const { t, locale } = useI18n()
   const [open, setOpen] = useState(false)
@@ -34,7 +34,7 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
   }
   const label = primary ? t('chatInput.quotaCompact', {remaining: primary.remaining_percent}) : t('chatInput.quotaTitle')
   useEffect(() => { setAll(false) }, [selectedEngine])
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return
     const update = () => {
       const rect = ref.current?.getBoundingClientRect()
@@ -69,17 +69,30 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
     }
   }, [open])
   if (!alwaysVisible && !entries.length) return null
+  const collectedDate = collectedAt === undefined ? null : new Date(collectedAt * 1000)
   const resetText = (reset?: number | null) => reset
     ? t('chatInput.quotaReset', {reset: new Date(reset * 1000).toLocaleString(locale)}) : t('chatInput.quotaResetUnknown')
+  const windowLabel = (window: EngineQuotaWindow) => window.label
+    || (window.kind === 'weekly' || window.window_duration_mins === 10080 ? t('chatInput.quotaWeekly')
+      : window.kind === 'five-hour' || window.window_duration_mins === 300 ? t('chatInput.quotaFiveHour')
+        : window.window_duration_mins ? t('chatInput.quotaMinutes', {minutes: window.window_duration_mins})
+          : window.kind || t('chatInput.quotaTitle'))
+  const failureText = (entry: QuotaResult) => {
+    if (entry.status === 'unauthenticated') return t('chatInput.quotaLogin')
+    switch (entry.reason) {
+      case 'timeout': return t('chatInput.quotaTimeout')
+      case 'command_failed': return t('chatInput.quotaCommandFailed')
+      case 'invalid_report': return t('chatInput.quotaInvalidReport')
+      default: return t('chatInput.quotaUnavailable')
+    }
+  }
   const windowRow = (window: EngineQuotaWindow, index: number) => <span className="engine-quota-window" key={index}>
     <span className="engine-quota-window-info">
-      <span>{window.label || (window.kind === 'weekly' ? t('chatInput.quotaWeekly') : window.kind === 'five-hour'
-        ? t('chatInput.quotaFiveHour') : window.window_duration_mins
-          ? t('chatInput.quotaMinutes', {minutes: window.window_duration_mins}) : window.kind || t('chatInput.quotaTitle'))}</span>
+      <span>{windowLabel(window)}</span>
       <span className="engine-quota-reset" title={resetText(window.resets_at)}>{resetText(window.resets_at)}</span>
       <strong>{window.remaining_percent}%</strong>
     </span>
-    <span className="engine-quota-meter" role="progressbar" aria-label={window.label || window.kind || t('chatInput.quotaTitle')}
+    <span className="engine-quota-meter" role="progressbar" aria-label={windowLabel(window)}
       aria-valuemin={0} aria-valuemax={100} aria-valuenow={window.remaining_percent}>
       <i style={{width: `${Math.min(100, Math.max(0, window.remaining_percent))}%`}} />
     </span>
@@ -94,6 +107,10 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
       hidden={!open} onClick={event => event.stopPropagation()}>
       <span className="chat-input-quota-heading">
         <strong>{t('chatInput.quotaTitle')}</strong>
+        {collectedDate && Number.isFinite(collectedDate.getTime()) && <time className="engine-quota-updated" dateTime={collectedDate.toISOString()}
+          title={t('chatInput.quotaLastRefresh', {time: collectedDate.toLocaleString(locale)})}>
+          {t('chatInput.quotaLastRefresh', {time: collectedDate.toLocaleTimeString(locale, {hour: 'numeric', minute: '2-digit'})})}
+        </time>}
         {onRefresh && <button type="button" className="chat-input-quota-refresh" data-quota-refresh="" disabled={refreshing}
           aria-label={t('common.refresh')} title={t('common.refresh')} onClick={onRefresh}>
           {refreshing ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="refresh" size={14} />}
@@ -114,8 +131,7 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
           return <span className="engine-quota-card" data-quota-engine={entry.engine_id} key={entry.engine_id}>
           <span className="engine-quota-card-heading"><strong>{title}</strong>
             {entry.quota?.plan_type && <span className="engine-quota-plan">{entry.quota.plan_type}</span>}</span>
-          {entry.status !== 'ok' || !entry.quota ? <span className="engine-quota-status">{entry.status === 'unauthenticated'
-            ? t('chatInput.quotaLogin') : t('chatInput.quotaUnavailable')}</span> : <>
+          {entry.status !== 'ok' || !entry.quota ? <span className="engine-quota-status">{failureText(entry)}</span> : <>
             {entry.quota.limit_name && entry.quota.limit_name !== title && <span className="engine-quota-limit-name">{entry.quota.limit_name}</span>}
             {(entry.quota.groups?.length ? entry.quota.groups : [{name: '', windows: [
               entry.quota.primary, entry.quota.secondary,

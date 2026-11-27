@@ -5,6 +5,45 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import ChatInputUsage from '../src/components/ChatInputUsage'
 import { I18nProvider } from '../src/i18n'
+import { engineApi } from '../src/api/client'
+
+test('account quota displays named windows, classified failures, and the server refresh time', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const original = engineApi.quotas
+  const collectedAt = 1795737600
+  engineApi.quotas = async (_project, refresh) => ({
+    engines: [
+      {engine_id: 'codex_sdk', supported: true, status: 'ok', quota: {engine_id: 'codex_sdk',
+        primary: {window_duration_mins: 10080, used_percent: 0, remaining_percent: 100},
+        secondary: {window_duration_mins: 300, used_percent: 5, remaining_percent: 95}}},
+      {engine_id: 'antigravity', supported: true, status: 'unavailable', reason: 'invalid_report', quota: null},
+    ],
+    cached: !refresh, collected_at: collectedAt + (refresh ? 60 : 0), expires_at: collectedAt + 300,
+  })
+  const render = (conversationKey: string) => <I18nProvider><ChatInputUsage managed compact={false}
+    selectedEngine="codex_sdk" projectId="project" conversationKey={conversationKey} /></I18nProvider>
+  const refreshTime = () => container.querySelector('.engine-quota-updated')?.getAttribute('datetime')
+  try {
+    await act(async () => root.render(render('first')))
+    await act(async () => container.querySelector<HTMLButtonElement>('.engine-quota-trigger')!.click())
+    assert.match(container.textContent || '', /Weekly|每周/)
+    assert.match(container.textContent || '', /5.hour|5 小时/i)
+    assert.doesNotMatch(container.textContent || '', /10080/)
+    assert.equal(refreshTime(), new Date(collectedAt * 1000).toISOString())
+    await act(async () => root.render(render('second')))
+    assert.equal(refreshTime(), new Date(collectedAt * 1000).toISOString())
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-quota-all]')!.click())
+    assert.match(container.querySelector('[data-quota-engine="antigravity"]')?.textContent || '', /report.*format|报告格式/i)
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-quota-refresh]')!.click())
+    assert.equal(refreshTime(), new Date((collectedAt + 60) * 1000).toISOString())
+  } finally {
+    engineApi.quotas = original
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
 
 test('balance-only engines display actual credit balance without inventing a percentage', async () => {
   const { window } = installDomEnvironment()
