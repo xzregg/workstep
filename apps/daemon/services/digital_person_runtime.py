@@ -1414,7 +1414,8 @@ class DigitalPersonRuntime:
                     break
                 if not (result.get('sources') or {}).get('no_work'):
                     cycle.update(result, id=cycle['id'])
-                if result.get('status') in ('failed','cancelled','deferred'):
+                # Do not let a later batch overwrite a failed delivery in this cycle.
+                if result.get('status') in ('failed','delivery_failed','cancelled','deferred'):
                     break
                 sources = result.get('sources') or {}
                 batch = tuple(row['id'] for row in sources.get('reflection_batch', []))

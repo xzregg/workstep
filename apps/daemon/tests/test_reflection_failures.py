@@ -185,3 +185,30 @@ async def test_delivery_failures_count_once_but_missing_targets_do_not(runtime):
     await asyncio.to_thread(digital_person.save_profile, digital_person.get_profile().model_copy(update={'reflection_enabled':True}))
     await current._finish_reflection_cycle({'id':'no-targets','status':'delivery_failed','deliveries':[]},(await current.state())['reflection_epoch'])
     assert (await current.state())['reflection_failures']==0
+
+async def test_delivery_failure_ends_scheduled_cycle_before_later_success(runtime, monkeypatch):
+    current, project, _ = runtime
+    sid = await seed(current, project)
+    calls = []
+    async def follow(profile):pass
+    async def check(**kwargs):
+        calls.append(kwargs)
+        # A second batch would succeed and overwrite the failed first batch.
+        if len(calls) > expected_calls:
+            return {'status':'silent','sources':{'reflection_batch':[{'id':2}]}}
+        return {'status':'delivery_failed','sources':{'reflection_batch':[{'id':1}]},
+                'deliveries':[{'status':'failed','error':'request timed out'}]}
+    monkeypatch.setattr(current, 'follow_delegations', follow)
+    monkeypatch.setattr(current, 'check', check)
+    for expected_calls in range(1, 4):
+        await current._drain_assessments()
+        assert len(calls) == expected_calls, 'do not start another batch after delivery failure'
+        assert (await current.state())['reflection_failures'] == expected_calls
+        assert digital_person.get_profile().reflection_enabled is (expected_calls < 3)
+    await current._drain_assessments()
+    await current._flush_reflection_shutdown()
+    assert len(calls) == 3
+    messages = await current.projects.run_db(project.id, lambda _: [m.content for m in
+        ChatMessage.select().where(ChatMessage.session==sid, ChatMessage.content.contains('连续 3 次运行失败'))])
+    assert len(messages) == 1
+    assert '思考请求超时' in messages[0]
