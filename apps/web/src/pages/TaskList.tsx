@@ -565,7 +565,7 @@ export default function TaskList() {
       {/* Kanban board */}
       {compact && <MobileTaskSelection
         key={JSON.stringify([activeProject?.id, activeWorkflowId, showArchived, mobileStep])}
-        tasks={mobileTasks} showArchived={showArchived}
+        projectId={activeProject?.id} tasks={mobileTasks} showArchived={showArchived}
         canArchive={can('task.archive')} canDelete={can('task.delete')}
         canCleanWorkspace={!bound && can('file.edit')}
         onArchiveTask={(id, clean) => archiveTask(id, activeProject!.id, clean)}

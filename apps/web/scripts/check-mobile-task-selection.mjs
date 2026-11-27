@@ -8,6 +8,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import MobileTaskSelection from '../src/components/MobileTaskSelection.tsx'
 import MobileTaskRow from '../src/components/MobileTaskRow.tsx'
+import { useTaskStore } from '../src/stores/taskStore.ts'
 import TaskTableView from '../src/components/TaskTableView.tsx'
 import { I18nProvider, useLocaleStore } from '../src/i18n/index.tsx'
 const dir=path.resolve('../../tmp/mobile-task-multiselect/render')
@@ -20,13 +21,14 @@ const tasks=Array.from({length:12},(_,i)=>({id:String(i),title:i===0?'模拟任�
 const noop=()=>{}
 const actions={canArchive:true,canDelete:true,canCleanWorkspace:true,onArchiveTask:async()=>{},onDeleteTask:async()=>{},onError:noop}
 const css=['index.css','mobile.css','components/MobileTaskSelection.css','components/MobileTaskRow.css','components/TaskCopyButton.css','components/ConfirmDialog.css'].map(file=>fs.readFileSync(new URL('../src/'+file,import.meta.url),'utf8')).join('\n')
-for(const state of ['normal','selected','archived','selected-en','empty','confirm','busy','desktop','menu-active','menu-archived','normal-archived']) {
+for(const state of ['normal','selected','archived','selected-en','empty','confirm','busy','desktop','menu-active','menu-archived','normal-archived','copy-busy','copy-error','multiple']) {
   await act(async()=>useLocaleStore.setState({locale:state==='selected-en'?'en-US':'zh-CN'}))
+  useTaskStore.setState({copyTask:state==='copy-error'?async()=>{throw new Error('模拟复制失败')}:()=>new Promise(()=>{})})
   const archived=['archived','menu-archived','normal-archived'].includes(state)
   const list=state==='empty'?[]:tasks
   await act(async()=>root.render(React.createElement(I18nProvider,null,
     state==='desktop'?React.createElement(TaskTableView,{...actions,lanes:[{key:'todo',label:'待办',color:'blue'}],tasksByLane:{todo:tasks},showArchived:false,durationNowMs:0,onOpenTask:noop,onAddTask:noop}):
-    React.createElement(MobileTaskSelection,{...actions,key:state,tasks:list,showArchived:archived,onArchiveTask:state==='busy'?()=>new Promise(()=>{}):actions.onArchiveTask},
+    React.createElement(MobileTaskSelection,{...actions,key:state,projectId:'demo',tasks:list,showArchived:archived,onArchiveTask:state==='busy'?()=>new Promise(()=>{}):actions.onArchiveTask},
       selection=>React.createElement('div',{className:'mobile-task-list'},list.map(task=>
         React.createElement(MobileTaskRow,{key:task.id,taskId:task.id,title:task.title,status:task.status,archived,
           canArchive:true,canDelete:true,canStart:true,onStart:noop,projectId:'demo',onOpen:noop,onArchive:noop,onRestore:noop,onDelete:noop,
@@ -41,8 +43,10 @@ for(const state of ['normal','selected','archived','selected-en','empty','confir
       await new Promise(resolve=>setTimeout(resolve,520))
       row.dispatchEvent(new window.PointerEvent('pointerup',{bubbles:true}));row.click()
     })
-    if(state==='confirm'||state==='busy') await act(async()=>container.querySelector('.mobile-task-bulk-actions button').click())
+    if(state==='confirm'||state==='busy') await act(async()=>container.querySelector('.mobile-task-bulk-actions [data-task-action="archive"]').click())
   }
+  if(state==='multiple') await act(async()=>container.querySelectorAll('.mobile-task-row')[1].click())
+  if(state.startsWith('copy-')) await act(async()=>container.querySelector('.mobile-task-bulk-actions [data-task-action="copy"]').click())
   if(state.startsWith('menu-')) await act(async()=>container.querySelector('.mobile-task-row-more').click())
   if(state==='busy') await act(async()=>container.querySelector('.confirm-dialog-confirm').click())
   fs.writeFileSync(path.join(dir,state+'.html'),`<!doctype html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>${css}
@@ -79,7 +83,7 @@ const timeout = setTimeout(() => browser.kill(), 30000)
 try {
   const { result: { targetId } } = await call('Target.createTarget', { url: 'about:blank' })
   const { result: { sessionId } } = await call('Target.attachToTarget', { targetId, flatten: true })
-  for (const [state,width,scale] of [['menu-active',320,1],['menu-active',390,1],['menu-active',1023,1],['menu-archived',320,1],['menu-archived',390,1],['normal-archived',390,1],['normal',320,1.3],['normal',1023,1],['normal',320,1],['normal',390,1],['selected',320,1],['selected',390,1],['selected',1023,1],['archived',320,1],['archived',390,1],['selected',320,1.3],['selected-en',320,1.3],['empty',390,1],['confirm',390,1],['busy',390,1],['desktop',1024,1],['desktop',1440,1]]) {
+  for (const [state,width,scale] of [['copy-busy',320,1],['copy-error',390,1],['multiple',320,1],['menu-active',320,1],['menu-active',390,1],['menu-active',1023,1],['menu-archived',320,1],['menu-archived',390,1],['normal-archived',390,1],['normal',320,1.3],['normal',1023,1],['normal',320,1],['normal',390,1],['selected',320,1],['selected',390,1],['selected',1023,1],['archived',320,1],['archived',390,1],['selected',320,1.3],['selected-en',320,1.3],['empty',390,1],['confirm',390,1],['busy',390,1],['desktop',1024,1],['desktop',1440,1]]) {
     const file=path.join(dir,state+'.html')
     await call('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true},sessionId)
     await call('Page.navigate',{url:`file://${file}`},sessionId)
@@ -92,16 +96,39 @@ try {
       const footer=document.querySelector('.mobile-task-bulk-actions');
       const rect=el=>{const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,height:r.height}};
       return {overflow:document.documentElement.scrollWidth>innerWidth,
+        visibleMore:[...document.querySelectorAll('.mobile-task-row-more')].filter(b=>getComputedStyle(b).visibility!=='hidden').length,
         footer:footer?{...rect(footer),padding:getComputedStyle(footer).paddingBottom}:null,
         last:list?.lastElementChild?rect(list.lastElementChild):null,
         buttons:[...document.querySelectorAll('.mobile-task-selection-header>button,.mobile-task-bulk-actions>button,.mobile-task-row-more,.mobile-task-menu>button')]
-        .map(b=>({...rect(b),text:b.textContent,minimum:b.matches('.mobile-task-menu>button')?32:44,clipped:b.scrollWidth>b.clientWidth,lineHeight:getComputedStyle(b).lineHeight,icon:b.querySelector('svg')?.getBoundingClientRect().width}))};
+        .map(b=>{
+          const r=b.getBoundingClientRect(), pseudo=getComputedStyle(b,'::before');
+          const compact=b.matches('.mobile-task-selection-header>button,.mobile-task-bulk-actions>button');
+          const hitHeight=compact?parseFloat(pseudo.height):r.height;
+          const hits=compact&&!document.querySelector('[role="dialog"]')?
+            [-5,r.height+5].every(y=>document.elementFromPoint(r.left+r.width/2,r.top+y)===b):true;
+          const content=[...b.childNodes].filter(n=>n.nodeType===1||n.textContent.trim()).map(n=>{
+            if(n.nodeType===1) return n.getBoundingClientRect();
+            const range=document.createRange();range.selectNodeContents(n);return range.getBoundingClientRect();
+          }).filter(r=>r.width>0&&r.height>0);
+          const left=Math.min(...content.map(c=>c.left)),right=Math.max(...content.map(c=>c.right));
+          const top=Math.min(...content.map(c=>c.top)),bottom=Math.max(...content.map(c=>c.bottom));
+          return {...rect(b),hitHeight,hits,centerX:Math.abs((left+right-r.left-r.right)/2),centerY:Math.abs((top+bottom-r.top-r.bottom)/2),overflow:getComputedStyle(b).overflow,
+            targets:[-5,r.height+5].map(y=>document.elementFromPoint(r.left+r.width/2,r.top+y)?.className),
+            compact:b.matches('.mobile-task-selection-header>button,.mobile-task-bulk-actions>button'),text:b.textContent,minimum:b.matches('.mobile-task-menu>button')?32:44,clipped:left<r.left||right>r.right||top<r.top||bottom>r.bottom,lineHeight:getComputedStyle(b).lineHeight,icon:b.querySelector('svg')?.getBoundingClientRect().width}})};
     })()`},sessionId)
     const measured=result.result.value
     assert.equal(measured.overflow,false)
+    if(state.startsWith('menu-')) assert.equal(measured.visibleMore,0)
     for(const button of measured.buttons) {
       assert.ok(button.left>=0 && button.right<=width)
-      assert.ok(button.height>=button.minimum)
+      if(button.compact) {
+        assert.equal(button.height,32)
+        assert.ok(button.hitHeight>=44)
+        assert.ok(button.centerX<=1)
+        assert.ok(button.centerY<=1)
+        assert.equal(button.hits,true,JSON.stringify(button))
+      }
+      else assert.ok(button.height>=button.minimum)
       assert.equal(button.clipped,false)
     }
     if(measured.footer) {
@@ -116,6 +143,11 @@ try {
     const top=await call('Page.captureScreenshot',{format:'png'},sessionId)
     fs.writeFileSync(path.join(dir,`${state}-${width}-${scale}-top.png`),Buffer.from(top.result.data,'base64'))
     console.log(`${state} ${width}px scale ${scale}: passed`)
+  }
+  for(const [state,width] of [['copy-busy',320],['busy',390]]) {
+    const idle=measurements.find(m=>m.state==='selected'&&m.width===width&&m.scale===1)
+    const loading=measurements.find(m=>m.state===state&&m.width===width)
+    assert.equal(loading.footer.height,idle.footer.height,'loading must not add a button row')
   }
   fs.writeFileSync(path.join(dir,'measurements.json'),JSON.stringify(measurements,null,2))
   console.log(`Screenshots: ${dir}`)

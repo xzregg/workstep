@@ -15,3 +15,8 @@
   align-items: center;
   justify-content: center;
 }
+
+/* Only the task board's repeated triggers are hidden behind its open menu. */
+body:has(> .mobile-sheet-backdrop .mobile-task-menu) .mobile-task-row-more {
+  visibility: hidden;
+}
