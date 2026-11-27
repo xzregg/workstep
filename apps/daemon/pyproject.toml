@@ -29,6 +29,8 @@ dependencies = [
     "tinycss2>=1.4,<2",
     "lark-oapi>=1.7.5,<1.8",
     "pillow>=13.0,<14",
+    "aioice>=0.9",
+    "pyopenssl>=24.0",
 ]
 
 [tool.uv.sources]

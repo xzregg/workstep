@@ -68,6 +68,8 @@ class GatewayDependencies:
     usage_batch_slots: Any = None
     share_upload_slots: Any = None
     usage_batch_timeout_seconds: float = 10.0
+    webrtc_hub: Any = None
+    webrtc_stun: Any = None
 
 
 @dataclass

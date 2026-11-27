@@ -46,6 +46,7 @@ services:
 #     command: ["python", "-m", "uvicorn", "gateway.app:app", "--host", "0.0.0.0", "--port", "8765"]
 #     ports:
 #       - "${WORKSTEP_GATEWAY_PORT:-8700}:8765"
+#       - "${WORKSTEP_GATEWAY_STUN_PORT:-3478}:3478/udp"
 #     environment:
 #       TZ: Asia/Shanghai
 #       # 本机默认地址；远程部署设置为用户实际访问的 HTTPS 地址。

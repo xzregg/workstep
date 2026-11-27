@@ -52,6 +52,23 @@ def verify(image):
                     viewer = docker("exec", name, "cat", "/app/apps/web/dist-gateway-share/index.html").stdout
                     for asset in re.findall(r'(?:src|href)="(/workspace-assets/[^\"]+)"', viewer):
                         docker("exec", name, "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8765" + asset)
+                    webrtc_cfg = json.loads(
+                        docker("exec", name, "curl", "-fsS", "http://127.0.0.1:8765/api/webrtc/config").stdout
+                    )
+                    assert webrtc_cfg.get("direct_only") is True, webrtc_cfg
+                    assert webrtc_cfg.get("stun_urls"), webrtc_cfg
+                    p2p_page = docker("exec", name, "curl", "-fsS", "http://127.0.0.1:8765/p2p/smoke-device/").stdout
+                    assert "/workspace-assets/" in p2p_page, "P2P workbench assets missing"
+                    stun_probe = (
+                        "import os, socket, struct; "
+                        "tx=os.urandom(12); "
+                        "req=struct.pack('!HHI', 0x0001, 0, 0x2112A442)+tx; "
+                        "s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.settimeout(2); "
+                        "s.sendto(req, ('127.0.0.1', 3478)); resp,_=s.recvfrom(1500); s.close(); "
+                        "mt,ml,ck=struct.unpack('!HHI', resp[:8]); "
+                        "assert mt==0x0101 and ck==0x2112A442 and resp[8:20]==tx"
+                    )
+                    docker("exec", name, "python", "-c", stun_probe)
                     database = Path(home) / ".workstep-gateway/workstep_platform.db"
                     assert database.is_file(), "Gateway database missing from mounted HOME"
                     probe = (

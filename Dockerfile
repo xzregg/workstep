@@ -147,13 +147,15 @@ RUN command -v python && python --version \
 # 后端源码（清理字节码缓存）
 COPY apps/daemon ./
 COPY apps/gateway /app/apps/gateway
+COPY packages/webrtc-signal /app/packages/webrtc-signal
 COPY scripts/package_payload.py scripts/check_secrets.py /usr/local/lib/workstep-packaging/
 RUN python /usr/local/lib/workstep-packaging/package_payload.py check --ignore-runtime-venv \
-    /app/apps/daemon /app/apps/gateway /app/packages/gateway-protocol
+    /app/apps/daemon /app/apps/gateway /app/packages/gateway-protocol /app/packages/webrtc-signal
 # Both services use daemon's locked environment. Gateway additions are resolved
 # against that lock; never run a second uv sync that would remove daemon packages.
 COPY scripts/container-gateway-requirements.txt /app/container-gateway-requirements.txt
 RUN uv pip install --python .venv/bin/python -r /app/container-gateway-requirements.txt \
+    && uv pip install --python .venv/bin/python --no-deps -e /app/packages/webrtc-signal \
     && uv pip install --python .venv/bin/python --no-deps -e /app/apps/gateway \
     && uv pip check --python .venv/bin/python
 RUN find /app -name '__pycache__' -type d -prune -exec rm -rf {} + \
@@ -181,7 +183,7 @@ RUN chmod 755 /usr/local/bin/workstep-entrypoint
 
 # Persist /root as one HOME mount; mount project roots separately.
 
-EXPOSE 8765
+EXPOSE 8765 3478/udp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD curl -fsS http://127.0.0.1:8765/api/health || exit 1

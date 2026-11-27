@@ -4,6 +4,7 @@ from urllib.parse import urlsplit
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from workstep_gateway_protocol.origin import is_loopback_hostname, validate_gateway_origin
+from workstep_gateway_protocol.webrtc import DEFAULT_PUBLIC_STUN_URLS, normalize_stun_urls
 
 
 class GatewaySettings(BaseSettings):
@@ -18,8 +19,17 @@ class GatewaySettings(BaseSettings):
     directory_reconcile_seconds: int = Field(default=21600, ge=60)
     gateway_id: str = Field(default="local-development", min_length=1)
     public_origin: str | None = None
+    webrtc_enabled: bool = True
+    stun_host: str = "0.0.0.0"
+    stun_port: int = Field(default=3478, ge=0, le=65535)
+    stun_urls: list[str] = Field(default_factory=lambda: list(DEFAULT_PUBLIC_STUN_URLS), max_length=16)
 
     allowed_origins: list[str] = Field(default_factory=list, max_length=32)
+
+    @field_validator('stun_urls')
+    @classmethod
+    def valid_stun_urls(cls, values: list[str]) -> list[str]:
+        return normalize_stun_urls(values, max_items=16)
 
     @field_validator('allowed_origins')
     @classmethod

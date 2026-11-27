@@ -85,7 +85,7 @@ def test_platform_address_saved_live_and_restored_on_restart(tmp_path):
         assert restored.state.settings.device_url('pc') == 'https://workstep.example.com/workspace/pc/'
 
 
-@pytest.mark.parametrize("endpoint,body", [("platform-address", {"public_origin": "https://workstep.example.com"}), ("company-display-name", {"company_display_name": "示例公司"})])
+@pytest.mark.parametrize("endpoint,body", [("platform-address", {"public_origin": "https://workstep.example.com"}), ("company-display-name", {"company_display_name": "示例公司"}), ("webrtc-stun", {"stun_urls": ["stun:stun.cloudflare.com:3478"]})])
 def test_platform_address_write_lock_keeps_health_responsive(tmp_path, endpoint, body):
     import asyncio
     import sqlite3
@@ -170,3 +170,95 @@ def test_additional_origins_are_validated(origins):
     from gateway.services.platform_address import PlatformAddressInput
     with pytest.raises(ValidationError):
         PlatformAddressInput(public_origin='https://gateway.test', allowed_origins=origins)
+
+
+def test_webrtc_stun_settings_saved_live_validated_and_restored_on_restart(tmp_path):
+    from workstep_gateway_protocol.webrtc import DEFAULT_PUBLIC_STUN_URLS
+    from test_external_identity import _setup
+
+    assert "stun_public_host" not in GatewaySettings.model_fields
+    assert "stun_public_port" not in GatewaySettings.model_fields
+
+    settings = GatewaySettings(data_dir=tmp_path, public_origin="https://gateway.test", stun_port=0)
+    app = create_app(settings)
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        assert client.get("/api/admin/platform-settings").json()["stun_urls"] == list(DEFAULT_PUBLIC_STUN_URLS)
+        builtin_1 = [f"stun:gateway.test:{app.state.stun_port}"] if app.state.stun_port > 0 else []
+        assert client.get("/api/webrtc/config").json()["stun_urls"] == [*DEFAULT_PUBLIC_STUN_URLS, *builtin_1]
+        assert client.put(
+            "/api/admin/webrtc-stun",
+            headers={"X-CSRF-Token": csrf},
+            json={"stun_urls": ["stun.miwifi.com:3478"]},
+        ).status_code == 403
+        assert client.post(
+            "/api/auth/step-up",
+            headers={"X-CSRF-Token": csrf},
+            json={"password": "OwnerPassphrase-2026!"},
+        ).status_code == 200
+        assert client.put(
+            "/api/admin/webrtc-stun",
+            json={"stun_urls": ["stun.miwifi.com:3478"]},
+        ).status_code == 403
+
+        res = client.put(
+            "/api/admin/webrtc-stun",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "stun_urls": [
+                    "stun.miwifi.com:3478",
+                    "stun:stun.cloudflare.com",
+                    "stun:stun.miwifi.com:3478",
+                    "stun.l.google.com:19302",
+                ]
+            },
+        )
+        assert res.status_code == 200, res.text
+        expected = [
+            "stun:stun.miwifi.com:3478",
+            "stun:stun.cloudflare.com:3478",
+            "stun:stun.l.google.com:19302",
+        ]
+        assert res.json() == {"stun_urls": expected}
+        assert settings.stun_urls == expected
+        assert client.get("/api/admin/platform-settings").json()["stun_urls"] == expected
+        assert client.get("/api/webrtc/config").json()["stun_urls"] == [*expected, *builtin_1]
+
+        for bad in (
+            ["turn:turn.example.com:3478"],
+            ["https://stun.example.com"],
+            ["stun:bad..host:3478"],
+            [f"stun:s{i}.example.com:3478" for i in range(17)],
+        ):
+            assert client.put(
+                "/api/admin/webrtc-stun",
+                headers={"X-CSRF-Token": csrf},
+                json={"stun_urls": bad},
+            ).status_code == 422
+        assert settings.stun_urls == expected
+
+    restored = create_app(GatewaySettings(data_dir=tmp_path, public_origin="https://gateway.test", stun_port=0))
+    with TestClient(restored, base_url="https://gateway.test") as client:
+        assert restored.state.settings.stun_urls == expected
+        bound_port = restored.state.stun_port
+        expected_builtin = [f"stun:gateway.test:{bound_port}"] if bound_port > 0 else []
+        assert client.get("/api/webrtc/config").json()["stun_urls"] == [*expected, *expected_builtin]
+
+        client.post("/api/auth/login", json={"username": "owner", "password": "OwnerPassphrase-2026!"})
+        csrf2 = client.get("/api/auth/session").json()["csrf_token"]
+        client.post("/api/auth/step-up", headers={"X-CSRF-Token": csrf2}, json={"password": "OwnerPassphrase-2026!"})
+        cleared = client.put(
+            "/api/admin/webrtc-stun",
+            headers={"X-CSRF-Token": csrf2},
+            json={"stun_urls": []},
+        )
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json() == {"stun_urls": []}
+        assert client.get("/api/webrtc/config").json()["stun_urls"] == expected_builtin
+
+    restored_cleared = create_app(GatewaySettings(data_dir=tmp_path, public_origin="https://gateway.test", stun_port=0))
+    with TestClient(restored_cleared, base_url="https://gateway.test") as client:
+        assert restored_cleared.state.settings.stun_urls == []
+        bound_3 = restored_cleared.state.stun_port
+        expected_builtin_3 = [f"stun:gateway.test:{bound_3}"] if bound_3 > 0 else []
+        assert client.get("/api/webrtc/config").json()["stun_urls"] == expected_builtin_3

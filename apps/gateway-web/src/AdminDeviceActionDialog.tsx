@@ -5,7 +5,15 @@ import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
 export type AdminDevice = { owner_user_id?: string | null; owner_name?: string | null; id: string; name: string; status: string; online: boolean;
   connection_ip?: string | null; daemon_health?: boolean | null; version: string | null; app_instance_id: string | null;
-  latest_version?: string | null; update_available?: boolean | null }
+  latest_version?: string | null; update_available?: boolean | null;
+  webrtc_online?: boolean; webrtc_p2p_path?: string | null }
+export type WebRtcAdminDevice = {
+  device_id: string; name: string; online: boolean
+  connection_ip?: string | null; connected_at?: number | null; active_sessions: number
+  p2p_path: string; gateway_bound: boolean
+  bound_device_id?: string | null; bound_device_name?: string | null; bound_device_status?: string | null
+  owner_user_id?: string | null; owner_name?: string | null
+}
 export type DeviceAction = 'approve' | 'enable' | 'disable' | 'revoke' | 'delete'
 
 const actionLabel: Record<DeviceAction, string> = { approve: '批准', enable: '重新启用', disable: '停用', revoke: '撤销', delete: '彻底删除' }

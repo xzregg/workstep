@@ -23,10 +23,12 @@ from settings import settings
 from services.engine_packages import prepare_engine_package_dir
 from services.gateway_client import GatewayClientService
 from services.gateway_client.browser_login import GatewayBrowserLogin
+from services.webrtc_p2p import WebRtcClientService
 from api.gateway_platform import router as gateway_platform_router
 from api.gateway_task_shares import router as gateway_task_shares_router
 from api.managed import router as managed_router
 from api.platform_share import router as platform_share_router
+from api.webrtc_p2p import router as webrtc_p2p_router
 
 prepare_engine_package_dir()
 
@@ -176,6 +178,8 @@ channel_bot_manager: BotManager | None = None
 digital_person_runtime = None
 gateway_client = GatewayClientService()
 gateway_client.event_sink = event_bus.publish
+webrtc_client = WebRtcClientService()
+webrtc_client.event_sink = event_bus.publish
 
 
 @asynccontextmanager
@@ -307,6 +311,8 @@ async def _application_lifespan(app: FastAPI):
         await schedule_module.start()
     async with startup_stage("网关初始化"):
         await gateway_client.start()
+    async with startup_stage("WebRTC 直连"):
+        await webrtc_client.start()
     from services.project_audit_retention import ProjectAuditRetention
     audit_retention = ProjectAuditRetention(project_manager)
     audit_retention.start()
@@ -351,6 +357,7 @@ async def _application_lifespan(app: FastAPI):
             ("audit_retention", audit_retention.close),
             ("diagnostic_retention", diagnostic_retention.close),
             ("gateway", gateway_client.close),
+            ("webrtc_p2p", webrtc_client.close),
             ("git", git_service.close),
             ("engine_runtime", runtime_manager.shutdown),
             ("engine_login", login_manager.shutdown),
@@ -390,12 +397,16 @@ async def _application_lifespan(app: FastAPI):
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/favicon.svg")
 app.state.completion_push = completion_push
 app.state.gateway_client = gateway_client
+app.state.webrtc_client = webrtc_client
+app.state.webrtc_scope_token = webrtc_client.scope_token
 app.state.remote_access_service = remote_access_service
 app.state.gateway_browser_login = GatewayBrowserLogin(gateway_client)
 app.include_router(gateway_platform_router)
 app.include_router(gateway_task_shares_router)
+app.include_router(webrtc_p2p_router)
 app.include_router(completion_notifications_router)
 gateway_client.asgi_app = app
+webrtc_client.asgi_app = app
 app.include_router(managed_router)
 app.include_router(platform_share_router)
 instrument_fastapi(app)

@@ -29,5 +29,6 @@ def test_routine_writes_without_step_up_keep_sensitive_operations_protected(tmp_
         assert client.put(f'/api/admin/device-groups/{group}/devices/pc', headers=headers).status_code == 403
         assert client.post('/api/admin/devices/pc/disable', headers=headers).status_code == 403
         assert client.put('/api/admin/platform-address', headers=headers, json={'public_origin': 'https://example.test'}).status_code == 403
+        assert client.put('/api/admin/webrtc-stun', headers=headers, json={'stun_urls': ['stun.cloudflare.com:3478']}).status_code == 403
         client.cookies.clear()
         assert client.post('/api/groups', headers=headers, json={'name': '空组', 'slug': 'other'}).status_code == 401

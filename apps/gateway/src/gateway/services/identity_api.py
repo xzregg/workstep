@@ -477,6 +477,7 @@ async def admin_platform_settings(call: GatewayCall):
         "company_display_name": name,
         "public_origin": settings.public_origin,
         "allowed_origins": settings.allowed_origins,
+        "stun_urls": list(settings.stun_urls),
         "registration_mode": await identity.registration_mode(),
         "password_login_enabled": enabled,
         "device_approval_mode": approval,

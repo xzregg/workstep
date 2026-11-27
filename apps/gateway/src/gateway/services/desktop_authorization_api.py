@@ -177,11 +177,37 @@ async def list_devices(call: GatewayCall, status: Literal["pending", "active", "
         owners = {user.id: user.display_name or user.username for user in
                   (await session.scalars(select(User).where(User.id.in_(
                       {device.owner_user_id for device in devices if device.owner_user_id})))).all()}
+        from gateway.services.webrtc_auth import resolve_webrtc_admin_devices
+        webrtc_devices, fp_to_hub = await resolve_webrtc_admin_devices(
+            session,
+            call.webrtc_hub,
+            allowed_ids=allowed,
+            q=q,
+        )
     result = []
     for device in devices:
         latest_version, update_available = release_status(device)
-        result.append({'id': device.id, 'name': device.name, 'owner_user_id': device.owner_user_id, 'owner_name': owners.get(device.owner_user_id), 'status': device.status, 'department_id': device.department_id, 'online': call.control_connections.is_online(device.id), 'connection_ip': call.control_connections.connection_ip(device.id), 'daemon_health': call.control_connections.daemon_health(device.id), 'version': device.version, 'os': device.os, 'arch': device.arch, 'latest_version': latest_version, 'update_available': update_available, 'app_instance_id': device.app_instance_id})
-    return {"devices": result, "total": total, "page": page, "page_size": page_size}
+        hub_match = fp_to_hub.get(device.public_key_fingerprint) if device.public_key_fingerprint else None
+        result.append({
+            'id': device.id,
+            'name': device.name,
+            'owner_user_id': device.owner_user_id,
+            'owner_name': owners.get(device.owner_user_id),
+            'status': device.status,
+            'department_id': device.department_id,
+            'online': call.control_connections.is_online(device.id),
+            'connection_ip': call.control_connections.connection_ip(device.id),
+            'daemon_health': call.control_connections.daemon_health(device.id),
+            'version': device.version,
+            'os': device.os,
+            'arch': device.arch,
+            'latest_version': latest_version,
+            'update_available': update_available,
+            'app_instance_id': device.app_instance_id,
+            'webrtc_online': bool(hub_match and device.status == 'active'),
+            'webrtc_p2p_path': f"/p2p/{hub_match['device_id']}/" if hub_match else None,
+        })
+    return {"devices": result, "webrtc_devices": webrtc_devices, "total": total, "page": page, "page_size": page_size}
 
 
 async def disable_device(call: GatewayCall, device_id: str):

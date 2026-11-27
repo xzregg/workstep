@@ -19,7 +19,9 @@ def main():
         subprocess.run([
             "uv", "pip", "compile", "apps/gateway/pyproject.toml", "-c", str(constraints),
             "--python-version", "3.14", "--python-platform", "linux",
-            "--no-emit-package", "workstep-gateway-protocol", "--no-annotate", "--no-header",
+            "--no-emit-package", "workstep-gateway-protocol",
+            "--no-emit-package", "workstep-webrtc-signal",
+            "--no-annotate", "--no-header",
             "-o", str(OUTPUT),
         ], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     OUTPUT.write_text(

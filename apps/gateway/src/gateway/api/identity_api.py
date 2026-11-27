@@ -13,6 +13,7 @@ from gateway.services.admin_user_operations import BulkUserInput, bulk_users as 
 from gateway.services.login_policy import LoginPolicyInput, set_login_policy as _handle_login_policy
 
 from gateway.services.platform_address import PlatformAddressInput, set_platform_address as _handle_platform_address
+from gateway.services.webrtc_stun_settings import WebRtcStunInput, set_webrtc_stun_settings as _handle_webrtc_stun_settings
 from gateway.services.company_display_name import CompanyDisplayNameInput, set_company_display_name as _handle_company_display_name
 
 router = APIRouter(prefix="/api")
@@ -167,6 +168,11 @@ async def admin_reset_password(request: Request, user_id: str, body: ResetPasswo
 @router.put('/admin/platform-address')
 async def set_platform_address(request: Request, body: PlatformAddressInput):
     return await invoke(_handle_platform_address, request=request, body=body)
+
+
+@router.put('/admin/webrtc-stun')
+async def set_webrtc_stun(request: Request, body: WebRtcStunInput):
+    return await invoke(_handle_webrtc_stun_settings, request=request, body=body)
 
 
 from gateway.services.device_approval_policy import DeviceApprovalPolicyInput, set_device_approval_policy

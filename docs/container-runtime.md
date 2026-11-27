@@ -110,7 +110,7 @@ docker-compose -f docker-compose.yaml up -d --build gateway
 或 `docker-compose -f docker-compose.yaml stop gateway`。两者没有启动依赖，均在各自容器内监听 8765 并使用
 `/api/health` 健康检查。用户可修改各自 `command`，无需更换镜像。
 
-网关端口可用 `WORKSTEP_GATEWAY_PORT` 修改，Home 可用 `WORKSTEP_GATEWAY_HOME` 修改。
+网关端口可用 `WORKSTEP_GATEWAY_PORT` 修改，Home 可用 `WORKSTEP_GATEWAY_HOME` 修改；`gateway` 服务默认同时启用内置 WebRTC 信令、`3478/udp` STUN 及开箱预置的 5 个国内外公共 STUN 节点，可通过 `WORKSTEP_GATEWAY_STUN_PORT` 映射宿主机 UDP STUN 端口；如需自定义公共 STUN 列表或改回仅内置 STUN，可进入网关「管理后台 → 平台设置 → 平台信息」配置并立即生效。
 网关本机默认外部地址是 `http://localhost:8700`；修改宿主端口或远程部署时，须同步设置
 `WORKSTEP_GATEWAY_PUBLIC_ORIGIN` 为实际访问地址，公开部署使用 HTTPS。部署时设置稳定的
 `WORKSTEP_GATEWAY_GATEWAY_ID`，例如 `production-gateway`。这些变量可以在 `.env`

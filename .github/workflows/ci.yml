@@ -97,7 +97,7 @@ jobs:
       - name: Gateway and protocol tests
         run: |
           uv sync --project apps/gateway --frozen --group dev
-          uv run --project apps/gateway --no-sync pytest apps/gateway/tests packages/gateway-protocol/tests
+          uv run --project apps/gateway --no-sync pytest apps/gateway/tests packages/gateway-protocol/tests packages/webrtc-signal/tests apps/webrtc-signal/tests
           uv run --project apps/gateway --no-sync python packages/gateway-protocol/scripts/schema.py --check
       - name: Isolation-sensitive daemon contracts
         working-directory: apps/daemon

@@ -1,0 +1,133 @@
+.webrtc-remote-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+}
+
+.webrtc-remote-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 40px;
+  padding: 4px var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-soft);
+  font-size: var(--text-caption);
+  flex-shrink: 0;
+}
+
+.webrtc-remote-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.webrtc-remote-device {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.webrtc-remote-path {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.webrtc-remote-latency {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.webrtc-remote-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.webrtc-remote-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.webrtc-remote-content > .app-shell {
+  height: 100%;
+}
+
+.webrtc-pair-card {
+  width: min(420px, calc(100vw - 32px));
+}
+
+.webrtc-pair-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.webrtc-pair-error {
+  color: var(--danger);
+  font-size: var(--text-caption);
+  margin: 0;
+}
+
+.webrtc-pair-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-body);
+}
+
+.webrtc-secret-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.webrtc-secret-group .ws-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.webrtc-secret-toggle {
+  flex: 0 0 auto;
+  height: 32px;
+  min-width: 32px;
+  padding: 0 var(--space-2);
+}
+
+.webrtc-pair-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 1023px) {
+  .webrtc-remote-banner {
+    padding: 4px var(--space-3);
+    gap: var(--space-2);
+  }
+  .webrtc-remote-path {
+    display: none;
+  }
+  .webrtc-remote-device {
+    max-width: 104px;
+  }
+  .webrtc-secret-toggle {
+    height: var(--mobile-control-menu);
+    min-width: var(--mobile-control-menu);
+  }
+}

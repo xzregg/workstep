@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 from urllib.parse import urlencode
@@ -9,9 +11,11 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 from workstep_gateway_protocol import PROTOCOL_VERSION
+from workstep_webrtc_signal import SignalingHub, StunServer
 
 from gateway.config import GatewaySettings
 from gateway.api.share_viewer import install_share_viewer
+from gateway.api.webrtc_gateway import install_webrtc_gateway
 from gateway.database import GatewayDatabase
 from gateway.api.errors import identity_error_response, gateway_error_response
 from gateway.services.errors import GatewayError
@@ -67,7 +71,9 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         database = GatewayDatabase(settings)
         await database.start()
         from gateway.services.platform_address import restore_platform_address
+        from gateway.services.webrtc_stun_settings import restore_webrtc_stun_settings
         await restore_platform_address(database, settings)
+        await restore_webrtc_stun_settings(database, settings)
         app.state.database = database
         app.state.gateway_signer = await asyncio.to_thread(
             GatewaySigner.load_or_create, settings.data_dir / "gateway-signing-key.pem",
@@ -88,10 +94,31 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             stop_reconciliation, callback_wake,
         ))
         rollup_task = asyncio.create_task(run_usage_rollups(database, stop_reconciliation))
+        if settings.webrtc_enabled:
+            try:
+                app.state.stun_port = await app.state.webrtc_stun.start()
+            except OSError as exc:
+                if settings.stun_port == 3478 and "WORKSTEP_GATEWAY_STUN_PORT" not in os.environ:
+                    try:
+                        app.state.webrtc_stun.port = 0
+                        app.state.stun_port = await app.state.webrtc_stun.start()
+                    except OSError:
+                        app.state.stun_port = 0
+                        logging.getLogger(__name__).warning("WebRTC STUN server disabled (%s)", exc)
+                else:
+                    app.state.stun_port = 0
+                    logging.getLogger(__name__).warning(
+                        "WebRTC STUN server failed to bind %s:%s (%s)",
+                        settings.stun_host,
+                        settings.stun_port,
+                        exc,
+                    )
         try:
             yield
         finally:
             app.state.ready = False
+            await app.state.webrtc_stun.close()
+            app.state.stun_port = 0
             await app.state.notifications.close()
             stop_reconciliation.set()
             callback_wake.set()
@@ -120,6 +147,9 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.state.usage_batch_slots = asyncio.Semaphore(2)
     app.state.share_upload_slots = asyncio.Semaphore(2)
     app.state.usage_batch_timeout_seconds = 10.0
+    app.state.webrtc_hub = SignalingHub()
+    app.state.webrtc_stun = StunServer(host=settings.stun_host, port=settings.stun_port)
+    app.state.stun_port = settings.stun_port if settings.webrtc_enabled else 0
 
     from gateway.api.request_audit import audit_admin_request
     app.middleware("http")(audit_admin_request)
@@ -209,10 +239,11 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     @app.middleware('http')
     async def response_privacy(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith('/workspace/'):
+        if request.url.path.startswith('/workspace/') or request.url.path.startswith('/p2p/'):
             response.headers['Cache-Control'] = 'private, no-store'
         if (request.url.path in ('/auth/authorize', '/api/auth/exchange')
-                or request.url.path.startswith('/api/auth/third-party/')):
+                or request.url.path.startswith('/api/auth/third-party/')
+                or request.url.path.startswith('/api/webrtc/')):
             response.headers.update({'Cache-Control': 'no-store', 'Pragma': 'no-cache',
                                      'Referrer-Policy': 'no-referrer'})
         return response
@@ -233,6 +264,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(remote_access_router)
     app.include_router(remote_access_router, prefix="/workspace/{workspace_device_id}")
     # Specific visitor sockets must precede the whole-device catch-all route.
+    if settings.webrtc_enabled:
+        install_webrtc_gateway(app, settings, app.state.webrtc_hub)
     app.include_router(platform_shares_router)
     app.include_router(share_websocket_router)
     app.include_router(remote_websocket_router)

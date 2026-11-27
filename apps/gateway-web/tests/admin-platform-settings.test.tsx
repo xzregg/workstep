@@ -6,6 +6,7 @@ import { AdminPlatformSettingsPage } from '../src/AdminPlatformSettingsPage'
 import { AdminRegistrationPolicyDialog } from '../src/AdminRegistrationPolicyDialog'
 import { AdminCompanyNameDialog } from '../src/AdminCompanyNameDialog'
 import { AdminPlatformAddressDialog } from '../src/AdminPlatformAddressDialog'
+import { DEFAULT_PUBLIC_STUN_URLS } from '../src/AdminWebRtcStunDialog'
 import { AdminLoginPolicyDialog } from '../src/AdminLoginPolicyDialog'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
@@ -221,4 +222,74 @@ test('administrator can save additional origins without changing default address
   fireEvent.change(screen.getByLabelText('管理员密码'), {target: {value: 'password'}})
   fireEvent.click(screen.getByRole('button', {name: '保存平台地址'}))
   await waitFor(()=>assert.equal(saved, true))
+})
+
+test('administrator configures multiple public STUN servers, retries failure, and resets to defaults or built-in', async () => {
+  let configuredStun: string[] = [...DEFAULT_PUBLIC_STUN_URLS]
+  let writes = 0
+  globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    if (url === '/api/admin/platform-settings') {
+      return Response.json({
+        gateway_id: 'test',
+        public_origin: 'https://gateway.test',
+        stun_urls: configuredStun,
+        registration_mode: 'open',
+        session_seconds: 86400,
+        protocol_version: 3,
+        data_dir: '/data',
+        database: { backend: 'sqlite', location: 'db', healthy: true, migration_version: null },
+      })
+    }
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url === '/api/auth/step-up') return Response.json({})
+    if (url === '/api/admin/webrtc-stun') {
+      assert.equal(init?.method, 'PUT')
+      assert.equal(new Headers(init?.headers).get('X-CSRF-Token'), 'csrf')
+      writes++
+      if (writes === 1) return new Response(null, { status: 503 })
+      const body = JSON.parse(String(init?.body)) as { stun_urls: string[] }
+      configuredStun = body.stun_urls
+      return Response.json({ stun_urls: configuredStun })
+    }
+    return Response.json({ sources: [] })
+  }
+
+  render(<MemoryRouter><AdminPlatformSettingsPage /></MemoryRouter>)
+  await screen.findByText('stun:stun.miwifi.com:3478')
+  await screen.findByText('stun:stun.l.google.com:19302')
+  fireEvent.click(screen.getByRole('button', { name: '修改 STUN 服务器' }))
+  assert.ok(screen.getByRole('dialog', { name: '修改 STUN 服务器' }))
+
+  const textarea = screen.getByLabelText('STUN 服务器') as HTMLTextAreaElement
+  fireEvent.change(textarea, { target: { value: 'turn:bad.example:3478' } })
+  assert.equal((screen.getByRole('button', { name: '保存 STUN 服务器' }) as HTMLButtonElement).disabled, true)
+
+  fireEvent.change(textarea, {
+    target: { value: 'stun.miwifi.com:3478\nstun:stun.cloudflare.com\nstun:stun.miwifi.com:3478' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: '取消' }))
+  const discard = screen.getByRole('dialog', { name: '放弃 STUN 服务器修改' })
+  fireEvent.click(within(discard).getByRole('button', { name: '取消' }))
+
+  fireEvent.change(screen.getByLabelText('管理员密码'), { target: { value: 'password' } })
+  fireEvent.click(screen.getByRole('button', { name: '保存 STUN 服务器' }))
+  await screen.findByRole('alert')
+  assert.equal(textarea.value.includes('stun.miwifi.com:3478'), true)
+
+  fireEvent.click(screen.getByRole('button', { name: '保存 STUN 服务器' }))
+  await screen.findByText('stun:stun.miwifi.com:3478')
+  await screen.findByText('stun:stun.cloudflare.com:3478')
+  assert.deepEqual(configuredStun, ['stun:stun.miwifi.com:3478', 'stun:stun.cloudflare.com:3478'])
+
+  fireEvent.click(screen.getByRole('button', { name: '修改 STUN 服务器' }))
+  const dialogTextarea = screen.getByLabelText('STUN 服务器') as HTMLTextAreaElement
+  fireEvent.click(screen.getByRole('button', { name: '恢复默认推荐' }))
+  assert.equal(dialogTextarea.value, DEFAULT_PUBLIC_STUN_URLS.join('\n'))
+  fireEvent.click(screen.getByRole('button', { name: '清空（仅内置）' }))
+  assert.equal(dialogTextarea.value, '')
+  fireEvent.change(screen.getByLabelText('管理员密码'), { target: { value: 'password' } })
+  fireEvent.click(screen.getByRole('button', { name: '保存 STUN 服务器' }))
+  await screen.findByText('仅网关内置 STUN')
+  assert.deepEqual(configuredStun, [])
 })

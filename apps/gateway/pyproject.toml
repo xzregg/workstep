@@ -19,10 +19,12 @@ dependencies = [
     "cryptography>=44",
     "packaging>=24",
     "workstep-gateway-protocol[http]",
+    "workstep-webrtc-signal",
 ]
 
 [tool.uv.sources]
 workstep-gateway-protocol = { path = "../../packages/gateway-protocol", editable = true }
+workstep-webrtc-signal = { path = "../../packages/webrtc-signal", editable = true }
 
 [tool.uv]
 constraint-dependencies = ["certifi>=2026.10.18", "anyio>=4.14.2"]

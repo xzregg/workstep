@@ -183,6 +183,7 @@ class LocalCliRuntime:
         if (not request.client or request.client.host not in LOOPBACK
                 or request.url.hostname not in LOOPBACK
                 or 'gateway_remote_actor' in request.scope
+                or 'webrtc_remote_actor' in request.scope
                 or any(key in request.headers for key in (
                     'origin', 'forwarded', 'x-forwarded-for', 'x-forwarded-host'))
                 or any(key.startswith('sec-fetch-') for key in request.headers)):

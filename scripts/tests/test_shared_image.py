@@ -158,6 +158,9 @@ class SharedImageTests(unittest.TestCase):
     def test_image_contains_both_apps_and_gateway_workspace(self):
         dockerfile = (ROOT / "Dockerfile").read_text()
         self.assertIn("COPY apps/gateway /app/apps/gateway", dockerfile)
+        self.assertIn("COPY packages/webrtc-signal /app/packages/webrtc-signal", dockerfile)
+        self.assertIn("/app/packages/webrtc-signal", dockerfile)
+        self.assertIn("EXPOSE 8765 3478/udp", dockerfile)
         self.assertIn("/app/apps/gateway-web/dist", dockerfile)
         self.assertIn("/app/apps/web/dist-gateway-share", dockerfile)
         self.assertIn("yarn build:gateway-share", dockerfile)

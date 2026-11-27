@@ -210,6 +210,19 @@ wheels = [
 ]
 
 [[package]]
+name = "aioice"
+version = "0.15.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dnspython" },
+    { name = "ifaddr" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/20/6f/84961dbeecaed4f298c762556748303da302b5823dc3cdcf2434ba88c6f5/aioice-0.15.1.tar.gz", hash = "sha256:c585e0cfa66646a617153d5f111814a4ec47dfbe1ccfa4d7c1f6158866dee78f", size = 72498, upload-time = "2026-11-25T09:30:21.579Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/af/37/66a9f0298c5e4012bc5f71ef05b541d3d33eed76999db4e78fc7507f5282/aioice-0.15.1-py3-none-any.whl", hash = "sha256:f1830fde71051f2cd91405c8a306a263be55967c65da248495380f53c56aca55", size = 31023, upload-time = "2026-11-25T09:30:20.337Z" },
+]
+
+[[package]]
 name = "aiosignal"
 version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -615,6 +628,15 @@ wheels = [
 ]
 
 [[package]]
+name = "dnspython"
+version = "2.9.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/49/900383b471c645a3c397f47b3211d1fcecb3a540c98f683494cdf86b33de/dnspython-2.9.2.tar.gz", hash = "sha256:8d4d39a513e649d634004ce4d39ade2352efcea472a0247535a5c2d18a9d7ba9", size = 455484, upload-time = "2026-11-03T23:56:53.601Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1e/0c/5346358b3a20275d256978c35203ddc2c8617f78c1b23795b79ba22ced6d/dnspython-2.9.2-py3-none-any.whl", hash = "sha256:af15f7d385a6ae2fb35a796fde2138004c8c42c7389090e2addc83e3b3340fd8", size = 360455, upload-time = "2026-11-03T23:56:52.088Z" },
+]
+
+[[package]]
 name = "docstring-parser"
 version = "0.18.0"
 source = { registry = "https://pypi.org/simple" }
@@ -934,6 +956,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/cd/63/9496c57188a2ee585e0f1db071d75089a11e98aa86eb99d9d7618fc1edce/idna-3.18.tar.gz", hash = "sha256:ffb385a7e039654cef1ab9ef32c6fafe283c0c0467bba1d9029738ce4a14a848", size = 196711, upload-time = "2026-06-02T14:34:07.794Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/5e/d4e9f1a599fb8e573b7b87160658329fbf28d19eac2718f51fc3def3aa5a/idna-3.18-py3-none-any.whl", hash = "sha256:7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2", size = 65455, upload-time = "2026-06-02T14:34:06.319Z" },
+]
+
+[[package]]
+name = "ifaddr"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/ac/fb4c578f4a3256561548cd825646680edcadb9440f3f68add95ade1eb791/ifaddr-0.2.0.tar.gz", hash = "sha256:cc0cbfcaabf765d44595825fb96a99bb12c79716b73b44330ea38ee2b0c4aed4", size = 10485, upload-time = "2022-06-15T21:40:27.561Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9c/1f/19ebc343cc71a7ffa78f17018535adc5cbdd87afb31d7c34874680148b32/ifaddr-0.2.0-py3-none-any.whl", hash = "sha256:085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748", size = 12314, upload-time = "2022-06-15T21:40:25.756Z" },
 ]
 
 [[package]]
@@ -2441,6 +2472,7 @@ dependencies = [
     { name = "typing-inspection", version = "0.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.15'" },
     { name = "typing-inspection", version = "0.4.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15'" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/fe/0c/48ec1a5a68ccd8c5819ffcc2567635ec5b231d12f9881ed50e73a6f4f504/pydantic_graph-2.69.0.tar.gz", hash = "sha256:de750c4b671a60b4648f0357cc713418c64f57703c873bde3ceacfd58da9a42f", size = 47714, upload-time = "2026-11-17T01:53:06.284Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7b/35/34b37f3bb73140c6ba58fa5c242b798c7632da3a509f66767f7fe13d0e39/pydantic_graph-2.69.0-py3-none-any.whl", hash = "sha256:bef3065672c6cfaf93c09d7c7ada858fa4475ecdd6f77eafd8a26b3643368f9a", size = 54877, upload-time = "2026-11-17T01:52:55.958Z" },
 ]
@@ -2519,6 +2551,19 @@ wheels = [
 [package.optional-dependencies]
 crypto = [
     { name = "cryptography" },
+]
+
+[[package]]
+name = "pyopenssl"
+version = "26.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3f/e8/7325d258199b159eb2c03fe32107533e2832e70e63f4fb88a6aa00023201/pyopenssl-26.4.0.tar.gz", hash = "sha256:28dfcce0162b9211413e26dfbfdf1d24317fbeba18fc93c12400a1856b2a0bc7", size = 182046, upload-time = "2026-08-01T19:50:50.512Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/ad/2cf6d3fa2fae5c79e1ed9960c0d42badd0f94d81dd12b50604cdc839e648/pyopenssl-26.4.0-py3-none-any.whl", hash = "sha256:f0eb0cb2d581d3ad2b9c489468485e7f2ab6727d08401bcf9d824c3caddf3c1c", size = 56026, upload-time = "2026-08-01T19:50:48.94Z" },
 ]
 
 [[package]]
@@ -3447,6 +3492,7 @@ version = "1.0.26"
 source = { virtual = "." }
 dependencies = [
     { name = "agent-client-protocol" },
+    { name = "aioice" },
     { name = "croniter" },
     { name = "cryptography" },
     { name = "dingtalk-stream" },
@@ -3462,6 +3508,7 @@ dependencies = [
     { name = "pydantic-ai-harness", extra = ["coder", "skills"] },
     { name = "pydantic-ai-slim", extra = ["anthropic", "duckduckgo", "logfire", "openai", "web-fetch"] },
     { name = "pydantic-settings" },
+    { name = "pyopenssl" },
     { name = "python-socks" },
     { name = "pywebpush" },
     { name = "tinycss2" },
@@ -3485,6 +3532,7 @@ qoder = [
 [package.metadata]
 requires-dist = [
     { name = "agent-client-protocol", specifier = ">=0.11.0" },
+    { name = "aioice", specifier = ">=0.9" },
     { name = "croniter", specifier = ">=6.0" },
     { name = "cryptography", specifier = ">=43.0" },
     { name = "dingtalk-stream", specifier = ">=0.24.3" },
@@ -3500,6 +3548,7 @@ requires-dist = [
     { name = "pydantic-ai-harness", extras = ["coder", "skills"], specifier = "==0.69.0" },
     { name = "pydantic-ai-slim", extras = ["anthropic", "logfire", "openai", "duckduckgo", "web-fetch"], specifier = ">=2.69.0,<3" },
     { name = "pydantic-settings", specifier = ">=2.0" },
+    { name = "pyopenssl", specifier = ">=24.0" },
     { name = "python-socks", specifier = ">=2.0.0" },
     { name = "pywebpush", specifier = ">=2.5.0" },
     { name = "tinycss2", specifier = ">=1.4,<2" },

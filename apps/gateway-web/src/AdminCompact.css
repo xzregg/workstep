@@ -92,3 +92,20 @@
 
 .gateway-admin-shell .gateway-admin-toolbar > a { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; height: var(--gateway-admin-control-height); padding: 0 10px; border: 1px solid var(--gateway-admin-separator); border-radius: 8px; background: #fff; color: var(--gateway-admin-secondary); font-size: 13px; text-decoration: none; white-space: nowrap; }
 .gateway-admin-shell .gateway-admin-toolbar > a:hover { color: var(--gateway-admin-accent); border-color: #b7d4f6; background: #f3f7fc; }
+
+.gateway-webrtc-devices-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--gateway-admin-separator); }
+.gateway-webrtc-devices-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.gateway-webrtc-devices-header h3 { margin: 0; }
+.gateway-webrtc-devices-header span { font-size: 12px; color: var(--gateway-admin-muted); }
+.gateway-webrtc-empty { margin: 0; color: var(--gateway-admin-muted); font-size: 12px; }
+.gateway-webrtc-path { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; color: var(--gateway-admin-secondary); white-space: nowrap; }
+.gateway-webrtc-inline-meta { white-space: nowrap; }
+.gateway-webrtc-devices-section .gateway-admin-table { min-width: 720px; }
+.gateway-webrtc-devices-section .gateway-admin-table :is(th,td) { white-space: nowrap; overflow-wrap: normal; }
+.gateway-webrtc-devices-section .gateway-admin-table td:last-child { width: 96px; }
+.gateway-webrtc-devices-section .gateway-device-presence { white-space: nowrap; }
+.gateway-platform-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.gateway-stun-field-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.gateway-platform-address-dialog .gateway-platform-address-field .gateway-stun-field-header label { margin: 0; }
+.gateway-stun-preset-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.gateway-stun-preset-actions button { height: 26px; padding: 0 8px; font-size: 12px; }

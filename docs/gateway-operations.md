@@ -32,9 +32,13 @@
 
 回滚客户端时使用已登记且仍兼容当前 Gateway 协议的旧包；不要在旧包中修改受管配置或复用新版本的文件名。若服务端协议或数据库迁移已改变，先按上节恢复对应快照，再回滚客户端。设备被撤销或停用时，门户访问和数据通道应立即失效；运维人员应在设备页确认状态，并检查审计事件。
 
-## WebSocket 反向代理路径
+## WebSocket 反向代理路径与内置 WebRTC 信令/STUN
 
 新客户端统一访问 `/ws/control`、`/ws/data`、`/ws/notifications`；公开任务分享使用 `/ws/public/shares/{token}`，沿用访客会话 Cookie 和 Origin 校验；同源设备工作台访问 `/ws/workspace/{device_id}`，设备子域仍使用 `/ws`。GET、POST 和页面路径保持不变。旧 `/api/control/ws`、`/api/data/ws`、`/api/notifications/ws`、`/workspace/{device_id}/ws` 保留兼容，迁移期间仍须支持 Upgrade。
+
+Gateway 启动默认同时内置 WebRTC P2P 信令与 UDP STUN（`WORKSTEP_GATEWAY_WEBRTC_ENABLED=true`，默认监听 `0.0.0.0:3478/udp`），并开放 `/api/webrtc/*`、`/ws/webrtc/device`、`/ws/webrtc/client` 与直连入口 `/p2p/{device_id}/`：
+- 反向代理主域时，需同步放行 `/api/webrtc/` 与 `/ws/webrtc/` 的 WebSocket Upgrade；若使用网关内置 STUN，需宿主机/防火墙开放 `3478/udp`（可通过 `WORKSTEP_GATEWAY_STUN_HOST`、`WORKSTEP_GATEWAY_STUN_PORT` 调整本地监听端口）；网关开箱默认已预置 5 个国内外公共 STUN 节点，管理员也可在「管理后台 → 平台设置 → 平台信息」修改、恢复默认或清空，持久化到网关数据库并立即下发给手机与在线设备，无需修改启动环境变量。
+- 管理后台仅在「设备管理」查看在线 WebRTC 注册设备（同时支持已完成网关授权绑定的设备免密直连与仅配置信令地址设备的配对密钥接入），不影响既有控制连接或工作台代理链路。
 
 Nginx 可用 `location = /ws` 和 `location ^~ /ws/` 单独匹配新 WebSocket 路径。`proxy_pass` 不带 URI 后缀，保留 Host、查询参数、Cookie、Upgrade、Connection 和 HTTPS scheme，设置足够的长连接超时。工作台兑换票据时同时签发 HTTP 和 WebSocket 路径各自的设备会话 Cookie；已打开的旧工作台需重新进入设备入口完成兑换后使用新路径。
 

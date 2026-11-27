@@ -24,6 +24,8 @@ import FirstUseDialog from './components/FirstUseDialog'
 import RemoteAccessGate from './components/RemoteAccessGate'
 import GatewayRemoteFrame from './components/GatewayRemoteFrame'
 import GatewayWorkspaceLocation from './components/GatewayWorkspaceLocation'
+import WebRtcRemoteFrame from './webrtc/WebRtcRemoteFrame'
+import { isWebRtcRemoteBrowser, webrtcWorkspacePath } from './webrtc/webrtcLocation'
 import { projectSelectionPath } from './utils/projectSelectionPath'
 import { isGatewayRemoteBrowser } from './utils/gatewayRemote'
 import { useGatewaySessionStore } from './stores/gatewaySessionStore'
@@ -113,17 +115,19 @@ function WelcomeView() {
 
 function App() {
   return (
-    <BrowserRouter basename={gatewayWorkspacePath() || undefined}>
-      <SkinRecovery />
+    <BrowserRouter basename={gatewayWorkspacePath() || webrtcWorkspacePath() || undefined}>
       <GatewayWorkspaceLocation />
-      <GatewayRemoteFrame><GatedApp /></GatewayRemoteFrame>
+      <WebRtcRemoteFrame>
+        <SkinRecovery />
+        <GatewayRemoteFrame><GatedApp /></GatewayRemoteFrame>
+      </WebRtcRemoteFrame>
     </BrowserRouter>
   )
 }
 
 function GatedApp() {
   const location = useLocation()
-  if (isGatewayRemoteBrowser()) return <AppRoutes />
+  if (isGatewayRemoteBrowser() || isWebRtcRemoteBrowser()) return <AppRoutes />
   // Development-only mock surface: no daemon, project selection or Git operations.
   if (GitPrototype && location.pathname === '/prototype/git') {
     return <Suspense fallback={<div>…</div>}><GitPrototype /></Suspense>

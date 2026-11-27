@@ -1768,5 +1768,6 @@
   ["messagebe86a720a3c0", "The default workflow or the last workflow cannot be deleted", "默认流程或最后一个流程不能删除"],
   ["messageaf4a6e1a6e95", "Default skin cannot be deleted", "默认皮肤不可删除"],
   ["message739eb37bf1d0", "Default skin cannot be exported", "默认皮肤不可导出"],
-  ["message1313231b74ff", "Default skin cannot be overridden", "默认皮肤不可覆盖"]
+  ["message1313231b74ff", "Default skin cannot be overridden", "默认皮肤不可覆盖"],
+  ["message_webrtc_stun_invalid", "Invalid STUN server address. Enter up to 16 host:port or stun:host:port lines.", "STUN 服务器地址无效，请每行填写一个域名:端口或 stun:域名:端口（最多 16 个）。"]
 ]

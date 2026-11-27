@@ -111,10 +111,22 @@ def gateway_device_owner(request: Request) -> bool:
                 and request.scope.get('gateway_device_owner') is True)
 
 
+def webrtc_bridge_authenticated(request: Request | WebSocket) -> bool:
+    scope = getattr(request, "scope", {})
+    if scope.get("webrtc_remote_actor") is None:
+        return False
+    expected = getattr(request.app.state, "webrtc_scope_token", None)
+    return expected is not None and scope.get("webrtc_bridge_token") is expected
+
+
+def webrtc_device_owner(request: Request) -> bool:
+    return webrtc_bridge_authenticated(request) and request.scope.get("webrtc_device_owner") is True
+
+
 def _remote_filesystem_denied(request: Request) -> bool:
     path = request.url.path
     if path in ('/api/project/init', '/api/project/register', '/api/fs/browse', '/api/fs/search', '/api/fs/mkdir'):
-        if gateway_device_owner(request): return False
+        if gateway_device_owner(request) or webrtc_device_owner(request): return False
         if path == '/api/fs/mkdir': return True
     if path in REMOTE_NATIVE_PATHS:
         return True
@@ -148,6 +160,7 @@ def desktop_runtime_authenticated(request: Request | WebSocket) -> bool:
     from services.local_cli import local_cli_authenticated
     return (isinstance(request, Request) and local_cli_authenticated(request)) or (_desktop_token() is not None
             and "gateway_remote_actor" not in request.scope
+            and "webrtc_remote_actor" not in request.scope
             and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
 
 
@@ -163,9 +176,12 @@ async def desktop_websocket_allowed(ws: WebSocket) -> bool:
     if ws.url.path == "/ws/remote-project":
         # Native LAN connections authenticate their project invitation/device
         # credential in the remote host handler, independently of Gateway login.
-        return ('gateway_remote_actor' not in ws.scope and (
+        return ('gateway_remote_actor' not in ws.scope and 'webrtc_remote_actor' not in ws.scope and (
             desktop_runtime_authenticated(ws)
             or await asyncio.to_thread(_remote_access_enabled, ws.app)))
+    if webrtc_bridge_authenticated(ws):
+        ws.scope["managed_actor"] = ws.scope["webrtc_remote_actor"]
+        return True
     remote_actor = ws.scope.get("gateway_remote_actor")
     if (remote_actor is not None and gateway_client is not None
             and getattr(gateway_client, "managed_config", None) is not None):
@@ -205,6 +221,7 @@ def local_gateway_fallback_allowed(request: Request | WebSocket) -> bool:
         _desktop_token() is None and request.client is not None
         and request.client.host in loopback and request.url.hostname in loopback)
     return bool(local and "gateway_remote_actor" not in request.scope
+        and "webrtc_remote_actor" not in request.scope
         and request.scope.get("gateway_share_scope") is None
         and not os.environ.get("WORKSTEP_MANAGED_BUNDLE_DIR"))
 
@@ -213,6 +230,7 @@ async def gateway_workspace_access_allowed(request: Request | WebSocket) -> bool
     if local_gateway_fallback_allowed(request):
         return True
     if ('gateway_remote_actor' in request.scope
+            or 'webrtc_remote_actor' in request.scope
             or request.scope.get('gateway_share_scope') is not None
             or os.environ.get('WORKSTEP_MANAGED_BUNDLE_DIR')):
         return False
@@ -293,12 +311,14 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         gateway_client = getattr(request.app.state, "gateway_client", None)
         managed = gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None
         actor = request.scope.get("gateway_remote_actor")
+        webrtc_bridge = webrtc_bridge_authenticated(request)
+        webrtc_actor = request.scope.get("webrtc_remote_actor") if webrtc_bridge else None
         remote_bridge = actor is not None and managed
-        native_public_share = (managed and actor is None
+        native_public_share = (managed and actor is None and not webrtc_bridge
             and request.url.path.startswith('/api/task-share/public/')
             and await asyncio.to_thread(_remote_access_enabled, request.app))
         remote_access = request.url.path == '/api/health' or (
-            (protected or request.url.path == "/") and not remote_bridge
+            (protected or request.url.path == "/") and not remote_bridge and not webrtc_bridge
             and not desktop_authenticated
             and request.url.path != '/api/health' and not native_public_share
             and await asyncio.to_thread(_remote_access_enabled, request.app)
@@ -348,28 +368,29 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             response = JSONResponse({"detail": "project scope denied"}, status_code=403)
             response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
             return response
-        if remote_bridge and _remote_filesystem_denied(request):
-            await record_remote_request_failure(actor, 403, "host_filesystem_scope")
+        if (remote_bridge or webrtc_bridge) and _remote_filesystem_denied(request):
+            if remote_bridge:
+                await record_remote_request_failure(actor, 403, "host_filesystem_scope")
             response = JSONResponse({"detail": "remote host filesystem access unavailable"}, status_code=403)
             response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
             return response
-        if managed and protected and not remote_bridge and not native_dispatch:
+        if managed and protected and not remote_bridge and not webrtc_bridge and not native_dispatch:
             browser_login = getattr(request.app.state, 'gateway_browser_login', None)
             desktop_session = getattr(browser_login, 'desktop_local_session', None) if desktop_authenticated else None
             actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(local_session_cookie_name(request.app)) or desktop_session)
             if actor is None and (desktop_authenticated or local_workspace):
                 actor = getattr(gateway_client, 'current_actor', None)
-        if (managed and not desktop_authenticated and actor is not None and request.cookies.get(local_session_cookie_name(request.app))
+        if (managed and not desktop_authenticated and not webrtc_bridge and actor is not None and request.cookies.get(local_session_cookie_name(request.app))
                 and not request.headers.get(LOCAL_SESSION_HEADER) and request.method not in ("GET", "HEAD", "OPTIONS")
                 and not browser_origin_allowed(request)):
             return JSONResponse({"detail": "same-origin request required"}, status_code=403)
-        if (managed and not remote_bridge and not desktop_authenticated and not local_workspace and not remote_access and request.url.path == "/"
+        if (managed and not remote_bridge and not webrtc_bridge and not desktop_authenticated and not local_workspace and not remote_access and request.url.path == "/"
                 and request.query_params.get("gateway_auth") != "cancelled"
                 and getattr(request.app.state, "gateway_browser_login", None) is not None
                 and gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(local_session_cookie_name(request.app))) is None):
             return RedirectResponse("/gateway/login", status_code=303)
         browser_session = managed and actor is not None and actor.project_id is None
-        denied = protected and not native_public_share and (
+        denied = protected and not native_public_share and not webrtc_bridge and (
             (not remote_bridge and not native_dispatch and not remote_access and not browser_session and not local_workspace
              and request.url.path != "/api/gateway-platform/callback"
              and not desktop_request_authenticated(request))
@@ -389,6 +410,18 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             response = JSONResponse(
                 {"detail": "legacy sharing is unavailable in managed mode"}, status_code=403,
             )
+        elif webrtc_bridge and webrtc_actor is not None:
+            context = actor_context(ActorSnapshot(
+                actor_id=webrtc_actor.user_id,
+                user_name=webrtc_actor.display_name or webrtc_actor.username,
+                device_id=webrtc_actor.device_id,
+                device_name=webrtc_actor.device_id,
+                source="remote",
+                username=webrtc_actor.username,
+                access_source="webrtc_p2p",
+            ))
+            with context, native_workspace_context(True):
+                response = await call_next(request)
         else:
             # Native loopback access can outlive the browser login session after
             # a Gateway reconnect. Resolve its authenticated host identity only

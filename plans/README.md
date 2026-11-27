@@ -21,6 +21,7 @@
 - [移动端适配与验收](mobile-adaptation.md) — 已实现的适配及仍待完成的 Safari/Chrome 真机检查；现行尺寸规范见 [统一设计规范](../DESIGN.md)。
 - [助手提示词传输与查看](assistant-prompt-transport.md) — 已接入各入口，保留适配器恢复、指令更新及输入持久化边界。
 - [会话分叉与跨引擎交接](session-forking.md) — 首版已实现，保留交接约束和任意历史消息分叉的后续范围。
+- [WebRTC P2P 远程操作协议适配](webrtc-p2p-remote.md) — 已实现；通用信令/STUN、纯直连强校验与 Daemon/Web DataChannel 协议桥接。
 
 ## 已实现功能的文档入口
 
