@@ -76,3 +76,16 @@ APK 内预览文件的下载按钮遇到同源 WorkStep APK 时，会下载并�
 ### 系统日历
 
 APK 1.0.62 配合最新网页，在数字中枢设置 → 操作授权系统日历；首次授权默认选择本机可写日历，新增会通过原生 Calendar Provider 写入并回读确认。手机系统原有日程在当前月历范围内只读显示，读取在后台执行、最多 200 项，不上传为 WorkStep 记录。明确选择 WorkStep 时仍只保存在内部日历；已有内部日程不自动迁移。权限弹窗、系统实际写入和通知仍需真机验收。
+
+### 启动器图标
+
+品牌源文件沿用 `apps/web/public/favicon.svg`（与官网 `apps/landing/public/favicon.svg` 相同）。复用桌面端的 Electron/Chromium 渲染方式，保留 SVG 箭头与渐变；安装桌面端开发依赖后，在仓库根目录执行：
+
+```bash
+rtk proxy node apps/android/scripts/generate-icons.cjs
+rtk proxy node apps/android/scripts/generate-icons.cjs --check
+```
+
+生成资源随源码提交，Gradle 直接打包，不在 Android 构建时依赖 Electron。Manifest 的普通及圆形入口共用 `@drawable/app_icon`：`drawable-nodpi/app_icon.png` 是普通回退图标，API 26+ 使用 `drawable-anydpi-v26/app_icon.xml` 的白底自适应图标和 `app_icon_foreground.png`。前景为 108dp 图层（432px），完整 SVG 缩放至中央 60dp，箭头尖端均处于 66dp 安全圆内，避免启动器遮罩裁掉箭头。当前没有额外的产品风味或活动别名图标，也未配置单色主题图标。
+
+回归：`LauncherIconTest` 核对打包入口与自适应层引用；生成器 `--check` 核对已提交 PNG 与网站源图的实际渲染一致。安装后仍须检查设备启动器遮罩与图标显示。

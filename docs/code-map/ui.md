@@ -146,3 +146,5 @@ Android App 内文件预览的「新窗口」由 `apps/web/src/utils/filePreview
 原生输入的选择面板由操作系统提供，代码排查未发现本次自定义横排弹层问题；这不代表已完成 iOS／Android 系统面板与软键盘的真机验收。
 
 行为入口：Web `tests/dateTimePicker.test.tsx`（移动只读、桌面输入、取消不提交、滚动锁释放、VisualViewport 高度／偏移、最小日期与分钟／秒确认）；`taskCreatePanel.test.tsx`（空定时禁提交、选择值传至真实 store／模拟 API 响应后回填一致）；既有 `taskDescriptionEditing.test.tsx`、`digitalCalendar.test.tsx`、`scheduledStart.test.ts`、`scheduleRuleEditor.test.tsx`。Gateway `tests/date-range-mobile.test.tsx` 与 `admin-usage.test.tsx` 覆盖移动键盘约束、桌面恢复输入和区间请求语义。后端定时语义沿用 `src/utils/scheduledStart.ts` → `src/api/task.ts` → daemon `api/task.py`，本次不修改后端。
+
+Android 启动器图标由 `apps/android/scripts/generate-icons.cjs` 使用 Chromium 从 `apps/web/public/favicon.svg` 生成，与官网同源外观；普通 PNG、自适应前景和 `drawable-anydpi-v26/app_icon.xml` 归 Android 资源目录持有，Manifest 普通／圆形入口共用 `@drawable/app_icon`。Gradle 直接打包提交资源，无新增 API。回归入口为 `LauncherIconTest` 和生成器 `--check`，生成及遮罩说明见 `apps/android/README.md`。
