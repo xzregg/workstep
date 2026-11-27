@@ -18,7 +18,7 @@ test('file selection controls sit next to the file count', async () => {
   try {
     await act(async () => root.render(<I18nProvider><GitChanges status={state} onRefresh={async () => {}} onDiff={() => {}} /></I18nProvider>))
     const toolbar = container.querySelector<HTMLElement>('.git-file-toolbar')!
-    assert.deepEqual([...toolbar.children].map(child => child.textContent?.trim()), ['文件 0', '全部折叠', '全选', '清空选择'])
+    assert.deepEqual([...toolbar.children].map(child => child.textContent?.trim()), ['文件 0', '全部折叠', '全选', '清空选择', '批量撤销文件修改'])
     assert.equal(window.getComputedStyle(toolbar.querySelector('strong')!).marginRight, '0px')
   } finally {
     await act(async () => root.unmount())

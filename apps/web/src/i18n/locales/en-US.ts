@@ -341,6 +341,9 @@ export const enUS: Messages = {
   gatewayRemote: { reconnecting: '连接中断，正在重连…', sessionExpired: '登录或访问授权已失效，请返回网关平台重新进入。', retryNow: '立即重试', switchDevices: '切换设备', devices: '我的设备', devicesFailed: '设备列表加载失败，请刷新重试。', deviceOffline: '设备离线', switchFailed: '切换设备失败，请检查权限后重试。', refreshDevices: '刷新设备', loading: 'Remote PC', disconnected: 'Disconnected', online: 'Online', back: 'Back to Gateway', backCompact: '返回平台', localOnly: 'Local folders and desktop apps are available only on this PC.' },
   channelBot: { ...zhCN.channelBot, discussionGroups: 'Bind bot', boundButton: 'Bot bound' },
   git: {
+    discardSelected: '批量撤销文件修改',
+    discardSelectedConfirm: '撤销所选 {count} 个文件的修改？已跟踪文件将恢复到当前提交，未提交的修改会丢失；新文件将被删除。此操作无法撤回。',
+    discardSkipped: '未执行（前一文件撤销失败）：{names}',
     recoveryButton: 'Undo / restore',
     recoveryTitle: 'Recover history',
     recoveryChooseHint: 'Choose a merge to undo, or select a restore point in commit history.',

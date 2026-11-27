@@ -487,6 +487,9 @@ export const zhCN = {
     status: { connected: '已连接', connecting: '连接中', reconnecting: '重连中', disabled: '未启用', error: '连接失败' },
   },
   git: {
+    discardSelected: '批量撤销文件修改',
+    discardSelectedConfirm: '撤销所选 {count} 个文件的修改？已跟踪文件将恢复到当前提交，未提交的修改会丢失；新文件将被删除。此操作无法撤回。',
+    discardSkipped: '未执行（前一文件撤销失败）：{names}',
     recoveryButton: '撤销与还原',
     recoveryTitle: '恢复历史',
     recoveryChooseHint: '请选择要撤销的合并，或从提交历史选择还原点。',
