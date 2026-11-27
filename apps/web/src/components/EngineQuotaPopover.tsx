@@ -32,7 +32,7 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
     setAll(tabs[next].all)
     ref.current?.querySelector<HTMLButtonElement>(`[data-quota-tab="${tabs[next].key}"]`)?.focus()
   }
-  const label = primary ? t('chatInput.quotaCompact', {remaining: primary.remaining_percent}) : t('chatInput.quotaTitle')
+  const label = primary ? t('chatInput.quotaCompact', {remaining: primary.remaining_percent}) : t('chatInput.quotaShort')
   useEffect(() => { setAll(false) }, [selectedEngine])
   useLayoutEffect(() => {
     if (!open) return

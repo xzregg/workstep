@@ -1252,6 +1252,7 @@ export const zhTW: Messages = {
     quotaDetail: '額度已用 {used}%，重置時間：{reset}',
     quotaResetUnknown: '未知',
     quotaCompact: '額度 {remaining}%',
+    quotaShort: '額度',
     quotaAll: '全部引擎',
     quotaUnavailable: '暫時無法查詢',
     quotaLastKnown: '顯示上次成功查詢的額度',

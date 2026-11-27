@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "26ca50d12c524fa989c76a8496b544b130bae0034b1c17df7ed045aa9fdce402",
+  "revision": "61ca030ad40555eedaded2120a63b7ac82185360ff6b14079a6a114a598c322a",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -3066,6 +3066,7 @@
     "chatInput.quotaDetail": "额度已用 {used}%，重置时间：{reset}",
     "chatInput.quotaResetUnknown": "未知",
     "chatInput.quotaCompact": "额度 {remaining}%",
+    "chatInput.quotaShort": "额度",
     "chatInput.quotaAll": "全部引擎",
     "chatInput.quotaUnavailable": "暂时无法查询",
     "chatInput.quotaLastKnown": "显示上次成功查询的额度",

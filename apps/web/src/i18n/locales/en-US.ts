@@ -1284,6 +1284,7 @@ export const enUS: Messages = {
     quotaDetail: '{used}% quota used; resets: {reset}',
     quotaResetUnknown: 'Unknown',
     quotaCompact: 'Quota {remaining}%',
+    quotaShort: 'Quota',
     quotaAll: 'All engines',
     quotaUnavailable: 'Temporarily unavailable',
     quotaLastKnown: 'Showing last known quota',

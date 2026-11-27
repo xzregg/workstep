@@ -1245,6 +1245,7 @@ export const jaJP: Messages = {
     quotaDetail: '额度已用 {used}%，重置时间：{reset}',
     quotaResetUnknown: '未知',
     quotaCompact: '额度 {remaining}%',
+    quotaShort: '利用枠',
     quotaAll: 'すべてのエンジン',
     quotaUnavailable: '現在取得できません',
     quotaLastKnown: '前回取得した利用枠を表示',
