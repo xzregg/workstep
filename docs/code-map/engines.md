@@ -2,7 +2,7 @@
 
 额度浮层刷新时间与失败原因：`useEngineQuota.ts` 保留统一响应的 `collected_at`（缓存命中沿用原时间），`EngineQuotaPopover.tsx` 在标题旁显示时间，并将 10080／300 分钟窗口显示为周／5 小时额度。`engines/core/antigravity_quota.py` 跳过原生报告的 `disabled` 窗口，并通过 `query_quota` 返回固定失败原因，不传递原始报告或错误。回归见 `test_antigravity_quota.py`、`chatInputUsage.test.tsx`。
 
-输入框额度按钮在当前引擎缺席或没有可显示的百分比时使用短标签「额度」，不借用其他引擎的百分比；浮层仍可展示其他引擎。行为由 `EngineQuotaPopover.tsx` 持有，回归见 `chatInputUsage.test.tsx`。
+输入框额度按钮只显示明确匹配当前引擎的百分比；未配置引擎、未返回当前引擎或没有可显示的百分比时使用短标签「额度」。浮层仍可展示其他引擎。行为由 `EngineQuotaPopover.tsx` 持有，回归见 `chatInputUsage.test.tsx`。
 
 额度重新进入与失效代次：`ChatWorkspace` 的活跃状态由 `ChatPage` 传到共享输入框，重新激活已挂载窗格时执行普通额度查询；`UnifiedQuotaService` 仅合并同授权范围、同失效代次的在途请求。失效的旧请求仍计入并发预算，但不能写入或返回旧额度，统一接口返回 409，`useEngineQuota.ts` 清除旧快照。回归见 `chatWorkspace.test.tsx`、`test_engine_quota_unified.py`、`chatInputUsage.test.tsx`。
 

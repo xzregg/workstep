@@ -15,10 +15,10 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
   const [position, setPosition] = useState<CSSProperties>()
   const ref = useRef<HTMLSpanElement>(null)
   const uid = useId()
-  const selected = entries.find(entry => entry.engine_id === selectedEngine)
+  const selected = selectedEngine ? entries.find(entry => entry.engine_id === selectedEngine) : undefined
   const focused = selected || (entries.length === 1 ? entries[0] : undefined)
   const visible = all || !focused ? entries : [focused]
-  const triggerPrimary = (selectedEngine ? selected : focused)?.quota?.primary
+  const triggerPrimary = selected?.quota?.primary
   const tabbed = Boolean(focused) && entries.length > 1
   const tabs = focused ? [
     { key: 'focused', all: false, label: focused.name || engineLabel(focused.engine_id, t) },

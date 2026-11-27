@@ -180,7 +180,7 @@ test('Antigravity quota shows each model group and native time window', async ()
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   try {
-    await act(async () => root.render(<I18nProvider><ChatInputUsage compact={false} quota={{
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact={false} selectedEngine="antigravity" quota={{
       engine_id:'antigravity',primary:{used_percent:15,remaining_percent:85},
       groups:[{name:'Gemini Models',windows:[{kind:'weekly',used_percent:15,remaining_percent:85,resets_at:1796181626}]},
         {name:'Claude and GPT models',windows:[{kind:'weekly',used_percent:27,remaining_percent:73},
@@ -204,6 +204,7 @@ test('compact quota uses an icon and percentage while retaining an accessible la
   try {
     const render = (compact: boolean) => <I18nProvider><ChatInputUsage
       compact={compact}
+      selectedEngine="codex_sdk"
       quota={{ engine_id: 'codex_sdk', primary: { used_percent: 25, remaining_percent: 75 } }}
     /></I18nProvider>
     await act(async () => root.render(render(true)))
@@ -352,6 +353,42 @@ test('shared ChatInput exposes the unified quota button for session, task creati
   } finally {
     engineApi.quotas = originalQuotas
     await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('ChatInput without an engine configuration keeps the only returned quota in the dialog', async () => {
+  const { window } = installDomEnvironment()
+  const { default: ChatInput } = await import('../src/components/ChatInput')
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originalQuotas = engineApi.quotas
+  const previousLocale = useLocaleStore.getState().locale
+  engineApi.quotas = async () => ({
+    engines: [{engine_id: 'codex_sdk', supported: true, status: 'ok', quota: {engine_id: 'codex_sdk',
+      primary: {used_percent: 25, remaining_percent: 75}}}],
+    cached: false, collected_at: 1, expires_at: 301,
+  })
+  try {
+    useLocaleStore.getState().setLocale('zh-CN')
+    for (const width of [1440, 390]) {
+      await act(async () => {
+        window.happyDOM.setWindowSize({width, height: 740})
+        root.render(<I18nProvider><ChatInput key={width} value="" onChange={() => {}}
+          onSend={() => {}} projectId="proj-no-engine" sessionId="session-no-engine" /></I18nProvider>)
+      })
+      const trigger = container.querySelector<HTMLButtonElement>('.engine-quota-trigger')!
+      assert.equal(trigger.textContent, '额度')
+      assert.equal(trigger.getAttribute('aria-label'), '额度')
+      assert.equal(Boolean(trigger.querySelector('svg')), width === 390)
+      await act(async () => trigger.click())
+      assert.equal(trigger.getAttribute('aria-expanded'), 'true')
+      assert.equal(container.querySelector('[data-quota-engine="codex_sdk"] [role="progressbar"]')?.getAttribute('aria-valuenow'), '75')
+    }
+  } finally {
+    engineApi.quotas = originalQuotas
+    await act(async () => root.unmount())
+    useLocaleStore.getState().setLocale(previousLocale)
     await window.happyDOM.close()
   }
 })
