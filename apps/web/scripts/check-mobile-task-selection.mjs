@@ -19,22 +19,22 @@ const root=createRoot(container)
 const tasks=Array.from({length:12},(_,i)=>({id:String(i),title:i===0?'模拟任务：任务看板长标题和安全区验证，保持完整内容可读':'模拟任务 '+i,status:'ready',created_at:'2026-11-27T12:00:00Z',updated_at:'2026-11-27T12:00:00Z',steps:[]}))
 const noop=()=>{}
 const actions={canArchive:true,canDelete:true,canCleanWorkspace:true,onArchiveTask:async()=>{},onDeleteTask:async()=>{},onError:noop}
-const css=['index.css','mobile.css','components/MobileTaskSelection.css','components/ConfirmDialog.css'].map(file=>fs.readFileSync(new URL('../src/'+file,import.meta.url),'utf8')).join('\n')
-for(const state of ['normal','selected','archived','selected-en','empty','confirm','busy','desktop']) {
+const css=['index.css','mobile.css','components/MobileTaskSelection.css','components/MobileTaskRow.css','components/TaskCopyButton.css','components/ConfirmDialog.css'].map(file=>fs.readFileSync(new URL('../src/'+file,import.meta.url),'utf8')).join('\n')
+for(const state of ['normal','selected','archived','selected-en','empty','confirm','busy','desktop','menu-active','menu-archived','normal-archived']) {
   await act(async()=>useLocaleStore.setState({locale:state==='selected-en'?'en-US':'zh-CN'}))
-  const archived=state==='archived'
+  const archived=['archived','menu-archived','normal-archived'].includes(state)
   const list=state==='empty'?[]:tasks
   await act(async()=>root.render(React.createElement(I18nProvider,null,
     state==='desktop'?React.createElement(TaskTableView,{...actions,lanes:[{key:'todo',label:'待办',color:'blue'}],tasksByLane:{todo:tasks},showArchived:false,durationNowMs:0,onOpenTask:noop,onAddTask:noop}):
     React.createElement(MobileTaskSelection,{...actions,key:state,tasks:list,showArchived:archived,onArchiveTask:state==='busy'?()=>new Promise(()=>{}):actions.onArchiveTask},
       selection=>React.createElement('div',{className:'mobile-task-list'},list.map(task=>
         React.createElement(MobileTaskRow,{key:task.id,taskId:task.id,title:task.title,status:task.status,archived,
-          canArchive:true,canDelete:true,onOpen:noop,onArchive:noop,onRestore:noop,onDelete:noop,
+          canArchive:true,canDelete:true,canStart:true,onStart:noop,projectId:'demo',onOpen:noop,onArchive:noop,onRestore:noop,onDelete:noop,
           selectionMode:selection.active,selected:selection.selectedIds.includes(task.id),
           onSelect:()=>selection.select(task.id)},
           React.createElement('span',{className:'mobile-task-row-title'},task.title),
           React.createElement('span',{className:'mobile-task-row-meta'},'待办 · 谢钊荣 · 开发',React.createElement('time',null,'11/27 20:00')))))))))
-  if(!['normal','empty','desktop'].includes(state)) {
+  if(!['normal','empty','desktop','menu-active','menu-archived','normal-archived'].includes(state)) {
     const row=container.querySelector('.mobile-task-row')
     await act(async()=>{
       row.dispatchEvent(new window.PointerEvent('pointerdown',{bubbles:true,pointerType:'touch',button:0}))
@@ -43,10 +43,11 @@ for(const state of ['normal','selected','archived','selected-en','empty','confir
     })
     if(state==='confirm'||state==='busy') await act(async()=>container.querySelector('.mobile-task-bulk-actions button').click())
   }
+  if(state.startsWith('menu-')) await act(async()=>container.querySelector('.mobile-task-row-more').click())
   if(state==='busy') await act(async()=>container.querySelector('.confirm-dialog-confirm').click())
   fs.writeFileSync(path.join(dir,state+'.html'),`<!doctype html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>${css}
   .fixture{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
-  </style><div class="fixture">${container.innerHTML}</div>`)
+  </style><div class="fixture">${container.innerHTML}</div>${document.querySelector('.mobile-sheet-backdrop')?.outerHTML || ''}`)
 }
 await act(async()=>root.unmount())
 await window.happyDOM.close()
@@ -78,7 +79,7 @@ const timeout = setTimeout(() => browser.kill(), 30000)
 try {
   const { result: { targetId } } = await call('Target.createTarget', { url: 'about:blank' })
   const { result: { sessionId } } = await call('Target.attachToTarget', { targetId, flatten: true })
-  for (const [state,width,scale] of [['normal',320,1],['normal',390,1],['selected',320,1],['selected',390,1],['selected',1023,1],['archived',320,1],['archived',390,1],['selected',320,1.3],['selected-en',320,1.3],['empty',390,1],['confirm',390,1],['busy',390,1],['desktop',1024,1],['desktop',1440,1]]) {
+  for (const [state,width,scale] of [['menu-active',320,1],['menu-active',390,1],['menu-active',1023,1],['menu-archived',320,1],['menu-archived',390,1],['normal-archived',390,1],['normal',320,1.3],['normal',1023,1],['normal',320,1],['normal',390,1],['selected',320,1],['selected',390,1],['selected',1023,1],['archived',320,1],['archived',390,1],['selected',320,1.3],['selected-en',320,1.3],['empty',390,1],['confirm',390,1],['busy',390,1],['desktop',1024,1],['desktop',1440,1]]) {
     const file=path.join(dir,state+'.html')
     await call('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true},sessionId)
     await call('Page.navigate',{url:`file://${file}`},sessionId)
@@ -93,14 +94,14 @@ try {
       return {overflow:document.documentElement.scrollWidth>innerWidth,
         footer:footer?{...rect(footer),padding:getComputedStyle(footer).paddingBottom}:null,
         last:list?.lastElementChild?rect(list.lastElementChild):null,
-        buttons:[...document.querySelectorAll('.mobile-task-selection-header>button,.mobile-task-bulk-actions>button')]
-        .map(b=>({...rect(b),text:b.textContent,clipped:b.scrollWidth>b.clientWidth,lineHeight:getComputedStyle(b).lineHeight,icon:b.querySelector('svg')?.getBoundingClientRect().width}))};
+        buttons:[...document.querySelectorAll('.mobile-task-selection-header>button,.mobile-task-bulk-actions>button,.mobile-task-row-more,.mobile-task-menu>button')]
+        .map(b=>({...rect(b),text:b.textContent,minimum:b.matches('.mobile-task-menu>button')?32:44,clipped:b.scrollWidth>b.clientWidth,lineHeight:getComputedStyle(b).lineHeight,icon:b.querySelector('svg')?.getBoundingClientRect().width}))};
     })()`},sessionId)
     const measured=result.result.value
     assert.equal(measured.overflow,false)
     for(const button of measured.buttons) {
       assert.ok(button.left>=0 && button.right<=width)
-      assert.ok(button.height>=44)
+      assert.ok(button.height>=button.minimum)
       assert.equal(button.clipped,false)
     }
     if(measured.footer) {

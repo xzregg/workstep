@@ -4,6 +4,7 @@ import MobileSheet from './MobileSheet'
 import Button from './Button'
 import Icon from './Icon'
 import TaskCopyButton from './TaskCopyButton'
+import './MobileTaskRow.css'
 
 export default function MobileTaskRow({ title, status, archived, canArchive, canDelete, onOpen, onArchive, onRestore, onDelete, projectId, taskId, canStart = false, starting = false, readOnly = false, onStart, selectionMode = false, selected = false, selectionDisabled = false, onSelect, children }: {
   selectionMode?: boolean
@@ -62,6 +63,7 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
     callback()
   }
   return <>
+    <div className="mobile-task-row-container">
     <button type="button" className="mobile-task-row" aria-haspopup={onSelect ? undefined : 'dialog'}
       aria-pressed={selectionMode ? selected : undefined}
       aria-disabled={selectionMode && selectionDisabled || undefined}
@@ -92,6 +94,16 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
       </span>}
       {children}
     </button>
+    {onSelect && !selectionMode && <Button
+      variant="ghost" className="mobile-task-row-more"
+      aria-label={t('layout.moreActions')} title={t('layout.moreActions')}
+      aria-haspopup="dialog" aria-expanded={menuOpen}
+      onPointerDown={event => { event.stopPropagation(); cancel() }}
+      onContextMenu={event => event.preventDefault()}
+      onClick={event => { event.stopPropagation(); cancel(); setMenuOpen(true) }}>
+      <Icon name="ellipsis" />
+    </Button>}
+    </div>
     <MobileSheet open={menuOpen} title={title} onClose={() => setMenuOpen(false)}>
       <div className="mobile-task-menu">
         {allowStart && <Button data-task-action="start" disabled={starting} loading={starting} onClick={() => action(onStart!)}>
