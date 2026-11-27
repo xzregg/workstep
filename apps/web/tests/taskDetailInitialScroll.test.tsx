@@ -7,8 +7,10 @@ import { I18nProvider } from '../src/i18n'
 import TaskDetailView from '../src/components/TaskDetailView'
 
 // History can arrive before the task record, while the transcript DOM is absent.
-test('task details follow after delayed mount, reopen and task switch, but preserve manual history browsing', async () => {
+for (const width of [1440, 390, 320]) {
+test(`task details follow after delayed mount, reopen and task switch, but preserve manual history browsing (${width}px)`, async () => {
   const { window } = installDomEnvironment()
+  window.happyDOM.setWindowSize({ width, height: 844 })
   let height = 1500
   const previousObserver = globalThis.ResizeObserver
   const resizeCallbacks = new Set<() => void>()
@@ -57,7 +59,15 @@ test('task details follow after delayed mount, reopen and task switch, but prese
     await act(async () => resizeCallbacks.forEach(callback => callback()))
     await settle()
     assert.equal(viewport().scrollTop, 1800)
-    await act(async () => viewport().dispatchEvent(new window.WheelEvent('wheel', { bubbles: true, deltaY: -100 })))
+    await act(async () => {
+      if (width > 1023) {
+        viewport().dispatchEvent(new window.WheelEvent('wheel', { bubbles: true, deltaY: -100 }))
+      } else {
+        // Finger movement toward the bottom of the screen reveals older messages.
+        viewport().dispatchEvent(new window.TouchEvent('touchstart', { touches: [{ clientY: 100 }] as any }))
+        viewport().dispatchEvent(new window.TouchEvent('touchmove', { touches: [{ clientY: 200 }] as any }))
+      }
+    })
     viewport().scrollTop = 200
     await render('first')
     await act(async () => viewport().dispatchEvent(new window.Event('load')))
@@ -66,6 +76,15 @@ test('task details follow after delayed mount, reopen and task switch, but prese
     await render('second')
     await settle()
     assert.equal(viewport().scrollTop, 1800, 'switching tasks resets following')
+    if (width <= 1023) {
+      const tabs = host.querySelectorAll<HTMLButtonElement>('.mobile-detail-tabs [role=tab]')
+      assert.equal(tabs.length, 3, 'the production mobile layout is active')
+      await act(async () => tabs[1].click())
+      assert.equal(tabs[1].getAttribute('aria-selected'), 'true')
+      await render('third')
+      await act(async () => tabs[0].click())
+      assert.equal(viewport().scrollTop, 1800, 'returning from mobile steps follows the selected task')
+    }
     await render(null, false)
     await render('second')
     await settle()
@@ -82,3 +101,4 @@ test('task details follow after delayed mount, reopen and task switch, but prese
     await window.happyDOM.close()
   }
 })
+}
