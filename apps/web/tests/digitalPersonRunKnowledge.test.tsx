@@ -3,9 +3,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {act} from 'react'
 import {createRoot} from 'react-dom/client'
-import {I18nProvider,useLocaleStore} from '../src/i18n'
+import {I18nProvider,useLocaleStore,zhCNT} from '../src/i18n'
 import DigitalPersonHomeDetails from '../src/components/digital-person/DigitalPersonHomeDetails'
-import {digitalRuntimeApi} from '../src/api/digitalPerson'
+import {digitalPersonApi,digitalRuntimeApi} from '../src/api/digitalPerson'
 import DigitalPersonRunKnowledge,{DigitalPersonRunSummary} from '../src/components/digital-person/DigitalPersonRunKnowledge'
 
 test('one disclosure loads matching memories with the thought and keeps affinity in the list',async t=>{
@@ -14,6 +14,7 @@ test('one disclosure loads matching memories with the thought and keeps affinity
  const originalLocale=useLocaleStore.getState().locale
  useLocaleStore.setState({locale:'zh-CN'})
  t.after(async()=>{await act(async()=>root.unmount());useLocaleStore.setState({locale:originalLocale});await window.happyDOM.close()})
+ t.mock.method(digitalPersonApi,'get',async()=>({enabled:true,reflection_enabled:true}))
  const calls:string[]=[]
  const outcome={sent:0,failed:0,affinity_increased:1,affinity_decreased:0}
  const run={id:'r1',created_at:'2026-11-16T01:00:00Z',summary:'',status:'silent',processing:{messages:4,sessions:2,memories:2},outcome}
@@ -69,7 +70,7 @@ test('one disclosure loads matching memories with the thought and keeps affinity
  await act(async()=>toggle(2).click())
  assert.match(rows[2].querySelector('.digital-person-run-detail')!.textContent!,/历史记录未保存知识关联/)
  assert.equal(rows[2].textContent!.match(/已显示的历史摘要。/g)?.length,1)
- assert.equal(rows[3].textContent!.match(/未完成/g)?.length,1)
+ assert.equal(rows[3].textContent!.split(zhCNT('digitalPerson.homeThoughtIncomplete')).length-1,1)
  assert.ok(rows[3].querySelector('time')?.textContent)
 })
 
