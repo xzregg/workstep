@@ -16,7 +16,7 @@ test('WebRtcP2pSettings loads, toggles pair key visibility, validates URL, saves
     signal_url: '',
     device_id: 'dev-local-1',
     device_name: 'My Mac',
-    pair_key: 'initial-pair-secret',
+    pair_key: 'A'.repeat(32),
     p2p_url: '',
     online: false,
     active_peers: 0,
@@ -53,7 +53,7 @@ test('WebRtcP2pSettings loads, toggles pair key visibility, validates URL, saves
       return new Response(JSON.stringify(stored), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
     if (url.endsWith('/api/webrtc-p2p/rotate-key') && method === 'POST') {
-      stored = { ...stored, pair_key: 'rotated-pair-secret' }
+      stored = { ...stored, pair_key: 'B'.repeat(32) }
       return new Response(JSON.stringify(stored), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
     return new Response('{}', { status: 404 })
@@ -68,7 +68,8 @@ test('WebRtcP2pSettings loads, toggles pair key visibility, validates URL, saves
 
     const keyInput = document.getElementById('webrtc-pair-key') as HTMLInputElement
     assert.equal(keyInput.type, 'password')
-    assert.equal(keyInput.value, 'initial-pair-secret')
+    assert.equal(keyInput.value, 'A'.repeat(32))
+    assert.equal(Boolean(document.querySelector('[data-testid="webrtc-pair-qr"]')), false)
 
     // Reveal and hide pair key
     const toggleBtn = document.querySelector('[data-testid="webrtc-pair-key-toggle"]') as HTMLButtonElement
@@ -104,11 +105,19 @@ test('WebRtcP2pSettings loads, toggles pair key visibility, validates URL, saves
     assert.equal(calls.filter((c) => c === 'POST /api/webrtc-p2p/check').length, 1)
     assert.match(document.querySelector('[data-testid="webrtc-connectivity"]')?.textContent || '', /UDP\/STUN 可用/)
     assert.match(document.querySelector('[data-testid="webrtc-connectivity"]')?.textContent || '', /需手机连接确认/)
+    assert.equal(Boolean(document.querySelector('[data-testid="webrtc-pair-qr"] svg')), true)
+    let copiedLink = ''
+    Object.defineProperty(window.navigator, 'clipboard', { configurable: true, value: {
+      writeText: async (value: string) => { copiedLink = value },
+    } })
+    await act(async () => { (document.querySelector('[data-testid="webrtc-copy-pair-link"]') as HTMLButtonElement).click() })
+    assert.equal(new URL(copiedLink).hash, '#pair_key=' + 'A'.repeat(32))
 
     const checkBtn = document.querySelector('[data-testid="webrtc-check-btn"]') as HTMLButtonElement
     checkResult = { signaling: true, stun: false }
     await act(async () => { checkBtn.click() })
     assert.match(document.querySelector('[data-testid="webrtc-connectivity"]')?.textContent || '', /UDP\/STUN 未响应/)
+    assert.equal(Boolean(document.querySelector('[data-testid="webrtc-pair-qr"]')), false)
     checkResult = { signaling: false, stun: null }
     await act(async () => { checkBtn.click() })
     assert.match(document.querySelector('[data-testid="webrtc-connectivity"]')?.textContent || '', /信令未连接/)
@@ -137,7 +146,9 @@ test('WebRtcP2pSettings loads, toggles pair key visibility, validates URL, saves
     assert.equal(Boolean(document.querySelector('.confirm-dialog-backdrop')), true)
     const confirmBtn = document.querySelector('.confirm-dialog-confirm') as HTMLButtonElement
     await act(async () => { confirmBtn.click() })
-    assert.equal(keyInput.value, 'rotated-pair-secret')
+    assert.equal(keyInput.value, 'B'.repeat(32))
+    await act(async () => { (document.querySelector('[data-testid="webrtc-copy-pair-link"]') as HTMLButtonElement).click() })
+    assert.equal(new URL(copiedLink).hash, '#pair_key=' + 'B'.repeat(32))
   } finally {
     await act(async () => root.unmount())
     globalThis.fetch = originalFetch

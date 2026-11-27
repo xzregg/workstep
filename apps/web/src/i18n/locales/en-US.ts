@@ -3140,6 +3140,10 @@ export const enUS: Messages = {
     "noEscalationHint": "Use only the current sandbox permissions"
 },
   "webrtcP2p": {
+    "qrTitle": "Scan to connect",
+    "qrSecretHint": "This QR code contains your access key. Keep it private.",
+    "copyPairLink": "Copy pairing link",
+    "pairKeyLength": "Use 24–128 letters, numbers, - or _",
     "checkTitle": "Connection check",
     "checkButton": "Check again",
     "checkRunning": "Checking connection",

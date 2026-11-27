@@ -946,6 +946,10 @@ export const ar: Messages = {
     "noEscalationHint": "仅执行当前沙箱允许的操作"
 },
   "webrtcP2p": {
+    "qrTitle": "扫码直连",
+    "qrSecretHint": "二维码含访问密钥，请勿公开分享。",
+    "copyPairLink": "复制扫码链接",
+    "pairKeyLength": "密钥须为 24～128 位字母、数字、- 或 _",
     "checkTitle": "连接检测",
     "checkButton": "重新检测",
     "checkRunning": "正在检测连接",

@@ -21,6 +21,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 from workstep_gateway_protocol.origin import is_private_gateway_hostname
+from workstep_gateway_protocol.webrtc import valid_pair_key
 
 from .peer import WebRtcPeerSession
 from .connectivity import probe_stun
@@ -189,8 +190,8 @@ class WebRtcClientService:
             raw = store.get("webrtc_p2p", {})
             section = dict(raw) if isinstance(raw, dict) else {}
             changed = False
-            if not section.get("pair_key") or not section.get("pair_key_salt") or not section.get("pair_key_verifier"):
-                pair_key = secrets.token_urlsafe(18)
+            if not valid_pair_key(section.get("pair_key")) or not section.get("pair_key_salt") or not section.get("pair_key_verifier"):
+                pair_key = secrets.token_urlsafe(24)
                 salt = secrets.token_hex(16)
                 section["pair_key"] = pair_key
                 section["pair_key_salt"] = salt
@@ -229,7 +230,7 @@ class WebRtcClientService:
         section = self._ensure_section_sync()
         salt = str(section.get("pair_key_salt") or "")
         verifier = str(section.get("pair_key_verifier") or "")
-        if not candidate or not salt or not verifier:
+        if not valid_pair_key(candidate) or not salt or not verifier:
             return False
         import hmac
         return hmac.compare_digest(_hash_pair_key(candidate, salt), verifier)
@@ -296,7 +297,7 @@ class WebRtcClientService:
         def _rotate():
             with self._state_lock:
                 section = self._ensure_section_sync()
-                pair_key = secrets.token_urlsafe(18)
+                pair_key = secrets.token_urlsafe(24)
                 salt = secrets.token_hex(16)
                 section["pair_key"] = pair_key
                 section["pair_key_salt"] = salt

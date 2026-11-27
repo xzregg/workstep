@@ -11,6 +11,8 @@ from urllib.parse import urlsplit
 WEBRTC_PROTOCOL_VERSION = 1
 WEBRTC_PROXY_CHANNEL_LABEL = "workstep-proxy-v1"
 WEBRTC_MAX_SIGNAL_BYTES = 64 * 1024
+PAIR_KEY_MIN_LENGTH = 24
+PAIR_KEY_MAX_LENGTH = 128
 WEBRTC_BINARY_MAGIC = 0x57  # 'W'
 WEBRTC_BINARY_HEADER = struct.Struct("!BBBB")  # magic, version, kind, flags (followed by stream_id_len:1B)
 WEBRTC_BINARY_PREFIX = struct.Struct("!BBBBB")  # magic, version, kind, flags, stream_id_len
@@ -25,6 +27,10 @@ DEFAULT_PUBLIC_STUN_URLS: tuple[str, ...] = (
 
 _RELAY_CANDIDATE_RE = re.compile(r"(?:^|\s)typ\s+relay(?:\s|$)", re.IGNORECASE)
 _HOST_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def valid_pair_key(value: object) -> bool:
+    return isinstance(value, str) and bool(re.fullmatch(r"[A-Za-z0-9_-]{24,128}", value))
 
 
 def _is_valid_stun_host(host: str) -> bool:

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "61a85904f303b6bdc0bb98315dd49b28997f5603ee3f40fd03bc5540ad6b1bc1",
+  "revision": "f737f38bdda6c71bec473fd77e53c33c90866f299818bf984905ad9a0f0568f9",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -4943,6 +4943,10 @@
     "enginePermission.askHint": "执行工具前询问",
     "enginePermission.denyHint": "拒绝工具执行",
     "enginePermission.noEscalationHint": "仅执行当前沙箱允许的操作",
+    "webrtcP2p.qrTitle": "扫码直连",
+    "webrtcP2p.qrSecretHint": "二维码含访问密钥，请勿公开分享。",
+    "webrtcP2p.copyPairLink": "复制扫码链接",
+    "webrtcP2p.pairKeyLength": "密钥须为 24～128 位字母、数字、- 或 _",
     "webrtcP2p.checkTitle": "连接检测",
     "webrtcP2p.checkButton": "重新检测",
     "webrtcP2p.checkRunning": "正在检测连接",

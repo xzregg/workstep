@@ -80,7 +80,7 @@ test('WebRtcRemoteFrame tolerates brief ICE disconnect and preserves workbench D
 
   const { window } = installDomEnvironment()
   window.happyDOM.setURL('https://gateway.example.com/p2p/dev-reconn-1/tasks')
-  sessionStorage.setItem('workstep-webrtc-pair-key:dev-reconn-1', 'local-secret')
+  sessionStorage.setItem('workstep-webrtc-pair-key:dev-reconn-1', 'local-secret-1234567890-abcdef')
 
   const originalFetch = globalThis.fetch
   const originalRtc = globalThis.RTCPeerConnection
@@ -294,7 +294,7 @@ test('WebRtcRemoteFrame shows live millisecond latency matching Gateway and acti
 
   const { window } = installDomEnvironment()
   window.happyDOM.setURL('https://gateway.example.com/p2p/dev-probe-1/tasks')
-  sessionStorage.setItem('workstep-webrtc-pair-key:dev-probe-1', 'local-secret')
+  sessionStorage.setItem('workstep-webrtc-pair-key:dev-probe-1', 'local-secret-1234567890-abcdef')
 
   const originalFetch = globalThis.fetch
   const originalRtc = globalThis.RTCPeerConnection

@@ -157,7 +157,7 @@ test('WebRtcTransportClient bridges streaming fetch, binary upload, abort, and W
 
     const msg = JSON.parse(item)
     if (msg.type === 'p2p.auth') {
-      assert.equal(msg.pair_key, 'local-secret')
+      assert.equal(msg.pair_key, 'local-secret-1234567890-abcdef')
       assert.equal(msg.ticket, 'ticket-abc')
       channel.emitMessage(JSON.stringify({
         type: 'p2p.ready',
@@ -197,7 +197,7 @@ test('WebRtcTransportClient bridges streaming fetch, binary upload, abort, and W
     }
   }
 
-  const ready = await transport.authenticate('ticket-abc', 'local-secret')
+  const ready = await transport.authenticate('ticket-abc', 'local-secret-1234567890-abcdef')
   assert.equal(ready.device_id, 'dev-1')
 
   // 1) Streaming response + window.update credit ack

@@ -10,35 +10,16 @@ import { connectWebRtcDirect, fetchWebRtcDeviceConfig, type WebRtcConnectionHand
 import { installGlobalWebRtcTransport, shouldProxyWebRtcHttp } from './transportAdapter'
 import { formatLatencyDisplay, useWebRtcConnectionStore } from './webrtcConnectionStore'
 import { isWebRtcRemoteBrowser, webrtcDeviceIdFromPath } from './webrtcLocation'
+import { consumeWebRtcPairingLink, loadSessionPairKey, saveSessionPairKey, validWebRtcPairKey, PAIR_KEY_MIN_LENGTH, PAIR_KEY_MAX_LENGTH } from './pairingLink'
 import '../components/GatewayConnectionStatus.css'
 import './WebRtcRemoteFrame.css'
 
-const PAIR_KEY_STORAGE_PREFIX = 'workstep-webrtc-pair-key:'
 const AUTO_RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000] as const
 export const WEBRTC_HEARTBEAT_INTERVAL_MS = 10000
 export const WEBRTC_NET_CHANGE_PROBE_TIMEOUT_MS = 1500
 
 type NetworkConnectionEventTarget = Navigator & {
   connection?: EventTarget
-}
-
-function loadSessionPairKey(deviceId: string): string {
-  if (!deviceId || typeof sessionStorage === 'undefined') return ''
-  try {
-    return sessionStorage.getItem(PAIR_KEY_STORAGE_PREFIX + deviceId) ?? ''
-  } catch {
-    return ''
-  }
-}
-
-function saveSessionPairKey(deviceId: string, key: string): void {
-  if (!deviceId || typeof sessionStorage === 'undefined') return
-  try {
-    if (key) sessionStorage.setItem(PAIR_KEY_STORAGE_PREFIX + deviceId, key)
-    else sessionStorage.removeItem(PAIR_KEY_STORAGE_PREFIX + deviceId)
-  } catch {
-    /* ignore storage failures */
-  }
 }
 
 export default function WebRtcRemoteFrame({ children }: { children: ReactNode }) {
@@ -48,7 +29,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
 
   const [deviceName, setDeviceName] = useState(deviceId)
   const [deviceOnline, setDeviceOnline] = useState<boolean | null>(null)
-  const [pairKey, setPairKey] = useState(() => loadSessionPairKey(deviceId))
+  const [pairKey, setPairKey] = useState(() => { consumeWebRtcPairingLink(); return loadSessionPairKey(deviceId) })
   const [showKey, setShowKey] = useState(false)
   const [phase, setPhase] = useState<'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error'>('idle')
   const [errorText, setErrorText] = useState('')
@@ -104,7 +85,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
   ) => {
     const trimmed = secret.trim()
     const isAutoReconnect = Boolean(options?.isAutoReconnect)
-    if (!deviceId || !trimmed) return
+    if (!deviceId || !validWebRtcPairKey(trimmed)) return
 
     manualDisconnectedRef.current = false
     clearReconnectTimer()
@@ -446,12 +427,13 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
             className="webrtc-pair-form"
             onSubmit={(event) => {
               event.preventDefault()
-              if (pairKey.trim() && phase !== 'connecting') {
+              if (validWebRtcPairKey(pairKey.trim()) && phase !== 'connecting') {
                 void startConnect(pairKey, {})
               }
             }}
           >
-            <Field label={t('webrtcP2p.pairKey')} htmlFor="webrtc-remote-pair-key">
+            <Field label={t('webrtcP2p.pairKey')} htmlFor="webrtc-remote-pair-key"
+              error={pairKey && !validWebRtcPairKey(pairKey.trim()) ? t('webrtcP2p.pairKeyLength') : undefined}>
               <div className="webrtc-secret-group">
                 <Input
                   id="webrtc-remote-pair-key"
@@ -459,6 +441,9 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
                   value={pairKey}
                   disabled={phase === 'connecting'}
                   autoComplete="off"
+                  minLength={PAIR_KEY_MIN_LENGTH}
+                  maxLength={PAIR_KEY_MAX_LENGTH}
+                  pattern="[A-Za-z0-9_-]{24,128}"
                   placeholder={t('webrtcP2p.pairKeyPlaceholder')}
                   onChange={(event) => {
                     setPairKey(event.target.value)
@@ -490,7 +475,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
                 type="submit"
                 variant="primary"
                 loading={phase === 'connecting'}
-                disabled={!pairKey.trim() || phase === 'connecting'}
+                disabled={!validWebRtcPairKey(pairKey.trim()) || phase === 'connecting'}
               >
                 {phase === 'error' ? t('webrtcP2p.retry') : t('webrtcP2p.connect')}
               </Button>

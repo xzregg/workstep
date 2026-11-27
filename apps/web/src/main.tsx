@@ -9,7 +9,9 @@ import { restoreLocalGatewayMode } from './utils/gatewayLocalFallback'
 import { browserDiagnostics, installBrowserDiagnostics } from './utils/browserDiagnostics'
 import { useUserSettingsStore } from './stores/userSettingsStore'
 import { useProjectStore } from './stores/projectStore'
+import { consumeWebRtcPairingLink } from './webrtc/pairingLink'
 
+consumeWebRtcPairingLink()
 browserDiagnostics.setPrivacyContext(() => {
   const user = useUserSettingsStore.getState()
   return { identities: [user.userName, user.gatewayUsername, user.deviceName, user.deviceId,

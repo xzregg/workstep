@@ -25,7 +25,7 @@ async def test_gateway_ticket_cannot_unlock_bridge_without_local_pair_key():
         pass
 
     async def verify(key):
-        return key == "host-only-secret"
+        return key == "host-only-secret-1234567890-abcdef"
 
     bridge = WebRtcDataBridge(
         app=app, device_id="dev-1", expected_ticket="gateway-issued-ticket",
@@ -45,7 +45,7 @@ async def test_gateway_ticket_cannot_unlock_bridge_without_local_pair_key():
             await asyncio.sleep(0)
             assert requests == []
         await bridge.handle_text(json.dumps({
-            "type": "p2p.auth", "ticket": "gateway-issued-ticket", "pair_key": "host-only-secret",
+            "type": "p2p.auth", "ticket": "gateway-issued-ticket", "pair_key": "host-only-secret-1234567890-abcdef",
         }))
         assert messages[-1]["type"] == "p2p.ready"
     finally:

@@ -4,6 +4,7 @@
  */
 
 import { isWebRtcRemoteBrowser } from './webrtcLocation'
+import { validWebRtcPairKey } from './pairingLink'
 import {
   WEBRTC_PROXY_CHANNEL_LABEL,
   WebRtcTransportClient,
@@ -49,7 +50,7 @@ export async function connectWebRtcDirect(options: {
   signal?: AbortSignal
 }): Promise<WebRtcConnectionHandle> {
   const { deviceId, pairKey, signal } = options
-  if (!pairKey.trim()) throw new Error('Device pairing key required')
+  if (!validWebRtcPairKey(pairKey)) throw new Error('Invalid device pairing key length or format')
   const config = await fetchWebRtcDeviceConfig(deviceId)
   if (!config.pair_key_salt) throw new Error('Device pairing configuration unavailable')
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${config.pair_key_salt}:${pairKey}`))

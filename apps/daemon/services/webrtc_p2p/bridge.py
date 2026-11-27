@@ -22,6 +22,7 @@ from workstep_gateway_protocol.webrtc import (
     DataChannelBinaryKind,
     decode_binary_frame,
     encode_binary_frame,
+    valid_pair_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -444,7 +445,7 @@ class WebRtcDataBridge:
                 await self._send_text(json.dumps({"type": "p2p.error", "code": "unauthorized", "message": "Invalid P2P session ticket"}))
                 return
             pair_key = raw.get("pair_key")
-            if not isinstance(pair_key, str) or not pair_key or len(pair_key) > 256 or not await self._verify_pair_key(pair_key):
+            if not valid_pair_key(pair_key) or not await self._verify_pair_key(pair_key):
                 await self._send_text(json.dumps({"type": "p2p.error", "code": "unauthorized", "message": "Invalid device pairing key"}))
                 return
             self._authenticated = True

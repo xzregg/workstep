@@ -149,6 +149,7 @@ async function captureAcrossViewports(page, prefix) {
           && Math.abs(title.top + title.height / 2 - refresh.top - refresh.height / 2) < 1;
       });
       if (!aligned) throw new Error('WebRTC settings actions are not aligned at ' + vp.name);
+      await page.locator('[data-testid="webrtc-pair-qr"]').scrollIntoViewIfNeeded();
     }
     checks.push({ name: `${prefix}-${vp.name}`, ...metrics });
     await page.screenshot({ path: path.join(screenshotDir, `${prefix}-${vp.name}.png`), fullPage: false });
@@ -324,6 +325,21 @@ function waitForGoLine() {
         const check = document.querySelector('[data-testid="webrtc-connectivity"]');
         return check && check.textContent.includes('UDP/STUN 可用');
       }, undefined, { timeout: 15000 });
+      await localPage.waitForSelector('[data-testid="webrtc-pair-qr"] svg');
+      await localPage.evaluate(() => {
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+          writeText: async (value) => { window.__pairingLink = value; },
+        } });
+      });
+      await localPage.click('[data-testid="webrtc-copy-pair-link"]');
+      const linkMatches = await localPage.evaluate(({ url, key }) => {
+        const link = new URL(window.__pairingLink);
+        return link.origin + link.pathname === url && !link.search && new URLSearchParams(link.hash.slice(1)).get('pair_key') === key;
+      }, { url: cfg.p2pUrl, key: cfg.pairKey });
+      if (!linkMatches) throw new Error('QR pairing link does not match this device');
+      if (screenshotDir) {
+        await localPage.locator('[data-testid="webrtc-pair-qr"]').screenshot({ path: path.join(screenshotDir, 'pairing-qr.png') });
+      }
       layoutChecks.push(...(await captureAcrossViewports(localPage, 'local-settings-webrtc')));
       await localPage.close();
     }
@@ -599,9 +615,10 @@ const VIEWPORTS = [
     await page.goto(cfg.p2pUrl, { waitUntil: 'networkidle' });
     await page.waitForSelector('#webrtc-remote-pair-key', { timeout: 15000 });
     if (pairRequests.length !== 0) throw new Error('Gateway account attempted passwordless pairing');
-    await page.fill('#webrtc-remote-pair-key', cfg.pairKey);
-    await page.click('.webrtc-pair-form button[type="submit"]');
+    await page.goto('about:blank');
+    await page.goto(`${cfg.p2pUrl}#pair_key=${encodeURIComponent(cfg.pairKey)}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('[data-webrtc-connected="true"]', { timeout: 25000 });
+    if (new URL(page.url()).hash) throw new Error('Pairing key remained in browser history');
     if (!pairRequests.length || pairRequests.some((body) => body.includes(cfg.pairKey) || JSON.parse(body).pair_key)) {
       throw new Error('Device secret was exposed to signaling');
     }

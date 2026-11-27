@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { QRCode } from 'antd'
 import { useI18n } from '../../i18n'
 import { gatewayFetch } from '../../utils/gatewayWorkspacePath'
 import { isGatewayRemoteBrowser } from '../../utils/gatewayRemote'
 import { isWebRtcRemoteBrowser } from '../../webrtc/webrtcLocation'
+import { buildWebRtcPairingLink } from '../../webrtc/pairingLink'
 import Button from '../Button'
 import ConfirmDialog from '../ConfirmDialog'
 import Field from '../Field'
@@ -63,7 +65,7 @@ export default function WebRtcP2pSettings() {
   const checkRequest = useRef(0)
   const [rotating, setRotating] = useState(false)
   const [confirmRotate, setConfirmRotate] = useState(false)
-  const [copiedField, setCopiedField] = useState<'key' | 'url' | null>(null)
+  const [copiedField, setCopiedField] = useState<'key' | 'url' | 'qr' | null>(null)
   const [error, setError] = useState('')
 
   const loadSettings = useCallback(async () => {
@@ -162,6 +164,7 @@ export default function WebRtcP2pSettings() {
 
   const rotateKey = async () => {
     setRotating(true)
+    setCopiedField(null)
     setError('')
     try {
       const response = await gatewayFetch('/api/webrtc-p2p/rotate-key', { method: 'POST' })
@@ -179,7 +182,7 @@ export default function WebRtcP2pSettings() {
     }
   }
 
-  const copyText = (text: string, field: 'key' | 'url') => {
+  const copyText = (text: string, field: 'key' | 'url' | 'qr') => {
     if (!text) return
     void navigator.clipboard?.writeText(text).then(() => {
       setCopiedField(field)
@@ -188,6 +191,9 @@ export default function WebRtcP2pSettings() {
   }
 
   const badgeStatus = data?.online ? 'completed' : data?.enabled ? 'running' : 'pending'
+  const pairingLink = data?.enabled && enabled === data.enabled && signalUrl === data.signal_url
+    && connectivity?.signaling && connectivity.stun && !checking && !rotating
+    ? buildWebRtcPairingLink(data.p2p_url, data.pair_key) : ''
   const badgeLabel = data?.online
     ? t('webrtcP2p.statusOnline')
     : data?.enabled
@@ -324,6 +330,20 @@ export default function WebRtcP2pSettings() {
 
         {(error || data?.last_error) && (
           <p className="webrtc-p2p-feedback" role="alert">{error || data?.last_error}</p>
+        )}
+
+        {pairingLink && (
+          <Field label={t('webrtcP2p.qrTitle')}>
+            <div className="webrtc-p2p-qr">
+              <div className="webrtc-p2p-qr-code" data-testid="webrtc-pair-qr" role="img" aria-label={t('webrtcP2p.qrTitle')}>
+                <QRCode type="svg" value={pairingLink} size={224} marginSize={4} color="#000000" bgColor="#ffffff" bordered={false} />
+              </div>
+              <span className="webrtc-p2p-check-hint">{t('webrtcP2p.qrSecretHint')}</span>
+              <Button type="button" data-testid="webrtc-copy-pair-link" onClick={() => copyText(pairingLink, 'qr')}>
+                {t(copiedField === 'qr' ? 'common.copied' : 'webrtcP2p.copyPairLink')}
+              </Button>
+            </div>
+          </Field>
         )}
 
         <div className="webrtc-p2p-actions">
