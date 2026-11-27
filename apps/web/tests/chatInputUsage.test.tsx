@@ -109,7 +109,7 @@ test('quota keeps old values on malformed responses but clears them on explicit 
     response = {cached: false, collected_at: 200, expires_at: 500, engines: []}
     await refresh()
     assert.match(status(), emptyMessage)
-    assert.equal(container.querySelector('[role="progressbar"]'), null)
+    assert.ok(!container.querySelector('[role="progressbar"]'), 'an empty catalog must not display a quota meter')
   } finally {
     engineApi.quotas = original
     await act(async () => root.unmount())
