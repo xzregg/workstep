@@ -39,7 +39,7 @@ function parseLocalValue(value: string): Dayjs | null {
   return date.isValid() ? date : null
 }
 
-function MobilePickerPanel({ children, open, onClose, panelRef }: { children: ReactNode; open: boolean; onClose: () => void; panelRef: Ref<HTMLDivElement> }) {
+function MobilePickerPanel({ children, open, panelRef }: { children: ReactNode; open: boolean; panelRef: Ref<HTMLDivElement> }) {
   const { t } = useI18n()
   const [viewport, setViewport] = useState({ height: window.innerHeight, top: 0 })
   useEffect(() => {
@@ -62,7 +62,6 @@ function MobilePickerPanel({ children, open, onClose, panelRef }: { children: Re
   return <div ref={panelRef} className="date-time-picker-mobile-panel" role="dialog" aria-modal="true"
     aria-label={t('taskList.scheduledPickerLabel')}
     style={{ top: viewport.top, maxHeight: viewport.height }}>
-    <div className="date-time-picker-toolbar"><Button type="button" variant="ghost" className="date-time-picker-cancel" onClick={onClose}>{t('common.cancel')}</Button></div>
     {children}
   </div>
 }
@@ -127,7 +126,7 @@ export default function DateTimePicker({ value, min, onChange, disabled, precisi
         open={open}
         onOpenChange={setOpen}
         inputReadOnly={compact}
-        panelRender={compact ? panel => <MobilePickerPanel panelRef={attachPanel} open={open} onClose={() => setOpen(false)}>{panel}</MobilePickerPanel> : undefined}
+        panelRender={compact ? panel => <MobilePickerPanel panelRef={attachPanel} open={open}>{panel}</MobilePickerPanel> : undefined}
         onChange={handleChange}
         minDate={minimum || undefined}
         disabledDate={(current) => Boolean(minimum && current.isBefore(minimum, 'day'))}
@@ -136,18 +135,21 @@ export default function DateTimePicker({ value, min, onChange, disabled, precisi
         locale={antdLocale.DatePicker}
         showNow={false}
         renderExtraFooter={() => (
-          <div className="date-time-picker-presets">
-            {presets.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                onClick={() => handleChange(preset.value)}
-                className="date-time-picker-preset"
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="date-time-picker-presets">
+              {presets.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => handleChange(preset.value)}
+                  className="date-time-picker-preset"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            {compact && <Button type="button" variant="ghost" className="date-time-picker-cancel" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>}
+          </>
         )}
         allowClear
         disabled={disabled}
