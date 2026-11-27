@@ -515,6 +515,7 @@ export const frFR: Messages = {
     scheduledPresetNextMonth: "Le mois prochain",
     scheduledPickerPlaceholder: "Sélectionnez une date et une heure",
     scheduledPickerLabel: "Date et heure prévues",
+    aiApplyToContent: '应用到任务内容',
     aiApply: "Appliquer",
     discard: "Abandonner",
   },

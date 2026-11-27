@@ -1141,6 +1141,10 @@
     min-width: var(--mobile-control-message) !important;
     padding: 0 !important;
   }
+  .chat-message-row .task-draft-apply {
+    width: auto !important;
+    white-space: nowrap;
+  }
   .chat-async-question .chat-message-action {
     width: auto !important;
     height: auto !important;

@@ -72,6 +72,8 @@ export interface AssistantChatEvent {
 }
 
 export interface AssistantChatMessage {
+  /** Validated structured result owned by this reply. */
+  result?: Record<string, unknown>
   proactive?: boolean
   id: string
   role: 'user' | 'assistant'
@@ -760,6 +762,14 @@ export function createAssistantStore(
           && config.resultExtractor
         ) {
           latestResult = config.resultExtractor(customValue(event))
+          if (mid && latestResult) {
+            const index = findIndex(mid)
+            if (index === -1) {
+              messages.push({ id: mid, role: 'assistant', content: '', status: 'running', result: latestResult })
+            } else {
+              messages[index] = { ...messages[index], result: latestResult }
+            }
+          }
         } else if (isCustom(event, CUSTOM.error) || event.type === 'error') {
           running = false
           if (mid) {

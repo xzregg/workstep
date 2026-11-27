@@ -2417,6 +2417,7 @@ export const enUS: Messages = {
     aiGenerateFailed: 'Failed to generate task',
     aiOverwriteTitle: 'Apply AI-generated task content',
     aiOverwriteMessage: 'AI will replace the current description and switch the start step to “{step}”. Apply it?',
+    aiApplyToContent: 'Apply to task content',
     aiApply: 'Apply',
     aiRunningCloseMessage: 'The Task Assistant is still generating. Discard it and close the new task?',
     autoStartTitle: 'The task auto-starts after being created at the “{lane}” step',

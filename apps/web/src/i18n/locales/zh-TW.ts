@@ -2385,6 +2385,7 @@ export const zhTW: Messages = {
     aiGenerateFailed: '生成任務失敗',
     aiOverwriteTitle: '套用 AI 生成的任務內容',
     aiOverwriteMessage: 'AI 將覆蓋目前任務說明，並把起始步驟切換為「{step}」。確定套用？',
+    aiApplyToContent: '应用到任务内容',
     aiApply: '套用',
     aiRunningCloseMessage: '任務助手仍在生成，確定放棄並關閉新建任務？',
     autoStartTitle: '當前任務在“{lane}”建立後自動開始',

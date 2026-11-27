@@ -19,6 +19,7 @@ import { applyTaskQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import AssistantChatPanel from './AssistantChatPanel'
+import Button from './Button'
 import MarkdownMessage from './MarkdownMessage'
 import './TaskDraftPreview.css'
 
@@ -34,7 +35,10 @@ export interface AiTaskCreateChatProps {
   candidateWorkflowIds?: string[]
   /** 挂载后自动发送 initialMessage（headless 预览用），默认不自动发送 */
   autoSend?: boolean
-  onDraft: (draft: TaskDraftResult) => void
+  /** Latest-result callback for automatic preview consumers such as schedules. */
+  onDraft?: (draft: TaskDraftResult) => void
+  /** Enables explicit application of the draft owned by each completed reply. */
+  onApplyDraft?: (draft: TaskDraftResult) => void
   onBusyChange?: (busy: boolean) => void
   onClose?: () => void
 }
@@ -50,6 +54,7 @@ export default function AiTaskCreateChat({
   candidateWorkflowIds,
   autoSend = false,
   onDraft,
+  onApplyDraft,
   onBusyChange,
   onClose,
 }: AiTaskCreateChatProps) {
@@ -102,7 +107,7 @@ export default function AiTaskCreateChat({
   useEffect(() => {
     if (!latestResult || latestResult === deliveredResultRef.current) return
     deliveredResultRef.current = latestResult
-    onDraft(latestResult as TaskDraftResult)
+    onDraft?.(latestResult as TaskDraftResult)
   }, [latestResult, onDraft])
 
   useEffect(() => {
@@ -245,7 +250,13 @@ export default function AiTaskCreateChat({
       onAttachmentError={setSendError}
       onClose={onClose}
       onA2uiAction={handleA2uiAction}
-      afterMessages={latestResult ? (
+      renderMessageActions={onApplyDraft ? (messageId) => {
+        const result = messages.find((message) => message.id === messageId)?.result
+        if (!result || typeof result.description !== 'string' || !result.description.trim()) return null
+        return <Button variant="ghost" size="sm" className="chat-message-action task-draft-apply"
+          onClick={() => onApplyDraft(result as TaskDraftResult)}>{t('taskList.aiApplyToContent')}</Button>
+      } : undefined}
+      afterMessages={!onApplyDraft && latestResult ? (
         <div style={{ marginTop: 2 }}>
           <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, color: 'var(--meta)', margin: '2px 2px 8px' }}>
             {t('taskList.aiDraftTitle')}
