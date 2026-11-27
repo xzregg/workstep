@@ -18,7 +18,7 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
   const selected = entries.find(entry => entry.engine_id === selectedEngine)
   const focused = selected || (entries.length === 1 ? entries[0] : undefined)
   const visible = all || !focused ? entries : [focused]
-  const primary = focused?.quota?.primary
+  const triggerPrimary = (selectedEngine ? selected : focused)?.quota?.primary
   const tabbed = Boolean(focused) && entries.length > 1
   const tabs = focused ? [
     { key: 'focused', all: false, label: focused.name || engineLabel(focused.engine_id, t) },
@@ -32,7 +32,7 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
     setAll(tabs[next].all)
     ref.current?.querySelector<HTMLButtonElement>(`[data-quota-tab="${tabs[next].key}"]`)?.focus()
   }
-  const label = primary ? t('chatInput.quotaCompact', {remaining: primary.remaining_percent}) : t('chatInput.quotaShort')
+  const label = triggerPrimary ? t('chatInput.quotaCompact', {remaining: triggerPrimary.remaining_percent}) : t('chatInput.quotaShort')
   useEffect(() => { setAll(false) }, [selectedEngine])
   useLayoutEffect(() => {
     if (!open) return
@@ -109,7 +109,7 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
     aria-label={label} onClick={event => { if (event.target === event.currentTarget) setOpen(value => !value) }}>
     <button className="engine-quota-trigger" type="button" aria-label={label} aria-expanded={open}
       onClick={() => setOpen(value => !value)}>
-      {compact ? <><Icon name="circle-dollar-sign" size={14} /><span>{primary ? `${primary.remaining_percent}%` : label}</span></> : label}
+      {compact ? <><Icon name="circle-dollar-sign" size={14} /><span>{triggerPrimary ? `${triggerPrimary.remaining_percent}%` : label}</span></> : label}
     </button>
     <span className="chat-input-quota-tip engine-quota-panel" style={position} role="dialog" aria-label={t('chatInput.quotaTitle')}
       hidden={!open} onClick={event => event.stopPropagation()}>

@@ -26,6 +26,14 @@ test('quota trigger uses a short label when the selected engine has no quota', a
       await act(async () => trigger.click())
       assert.equal(container.querySelector('.chat-input-quota-heading > strong')?.textContent, '账户额度')
       await act(async () => trigger.click())
+      await act(async () => root.render(<I18nProvider><EngineQuotaPopover entries={entries.slice(0, 1)}
+        compact={compact} selectedEngine="pydantic_ai" /></I18nProvider>))
+      assert.equal(trigger.textContent, '额度')
+      assert.equal(trigger.getAttribute('aria-label'), '额度')
+      await act(async () => trigger.click())
+      assert.equal(container.querySelector('[data-quota-engine="codex_sdk"] [role="progressbar"]')?.getAttribute('aria-valuenow'), '75')
+      assert.equal(trigger.textContent, '额度')
+      await act(async () => trigger.click())
       await act(async () => root.render(<I18nProvider><EngineQuotaPopover entries={entries}
         compact={compact} selectedEngine="codex_sdk" /></I18nProvider>))
       assert.match(trigger.textContent || '', /75%/)
