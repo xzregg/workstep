@@ -1,5 +1,5 @@
 import { useGitApi, useReadOnlyGit, useGitActionAllowed } from './GitApiContext'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { create } from 'zustand'
 import { type GitStatus, type GitFile } from '../../api/git'
 import { useI18n } from '../../i18n'
@@ -60,10 +60,17 @@ export default function GitChanges({ status, onRefresh, onDiff }: { status: GitS
   const [busy, setBusy] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [notice, setNotice] = useState('')
-  const [discarding, setDiscarding] = useState<GitFile | null>(null)
+  const [discarding, setDiscarding] = useState<{ files: GitFile[]; snapshot: string; bulk: boolean } | null>(null)
+  const discardRunning = useRef(false)
   const available = status.files.filter(f => !f.conflict && !f.submodule)
   useEffect(() => {
-    if (!useDrafts.getState().drafts[status.id]) update(status.id, { message: '', selected: status.files.filter(f => !f.untracked && !f.conflict && !f.submodule).map(f => f.path) })
+    const current = useDrafts.getState().drafts[status.id]
+    const selectable = status.files.filter(f => !f.conflict && !f.submodule)
+    if (!current) update(status.id, { message: '', selected: selectable.filter(f => !f.untracked).map(f => f.path) })
+    else {
+      const remaining = current.selected.filter(path => selectable.some(f => f.path === path))
+      if (remaining.length !== current.selected.length) update(status.id, { ...current, selected: remaining })
+    }
   }, [status.id, status.files, update])
   const selected = available.filter(f => draft.selected.includes(f.path)).map(f => f.path)
   const blocked = !!status.operation || status.files.some(f => f.conflict)
@@ -84,17 +91,43 @@ export default function GitChanges({ status, onRefresh, onDiff }: { status: GitS
     finally { setBusy(false) }
   }
   async function discard() {
-    if (!discarding || busy || writes.busy) return
+    if (!discarding || discardRunning.current || busy || writes.busy || !can('discard')) return
+    discardRunning.current = true
     setBusy(true); setNotice('')
+    const request = discarding
+    const messages: string[] = []
     try {
       await writes.run(async () => {
-        try { await gitApi.discard(status.id, discarding.path, status.snapshot) }
-        finally { await onRefresh() }
+        let snapshot = request.snapshot
+        const succeeded = new Set<string>()
+        try {
+          for (const [index, file] of request.files.entries()) {
+            try {
+              const result = await gitApi.discard(status.id, file.path, snapshot)
+              snapshot = result.snapshot
+              succeeded.add(file.path)
+            } catch (error) {
+              messages.push(`${file.path}: ${error instanceof Error ? error.message : String(error)}`)
+              const skipped = request.files.slice(index + 1).map(f => f.path)
+              if (skipped.length) messages.push(t('git.discardSkipped', { names: skipped.join(', ') }))
+              break
+            }
+          }
+        } finally {
+          const current = useDrafts.getState().drafts[status.id] || draft
+          update(status.id, { ...current, selected: current.selected.filter(path => !succeeded.has(path)) })
+          await onRefresh()
+        }
       })
-      setNotice(t('git.discardSuccess', { name: discarding.path }))
+      if (!request.bulk && !messages.length) messages.push(t('git.discardSuccess', { name: request.files[0].path }))
+    } catch (error) { messages.push(error instanceof Error ? error.message : String(error)) }
+    finally {
+      // Never reuse the confirmation after a partial write or refresh failure.
       setDiscarding(null)
-    } catch (error) { setNotice(String(error instanceof Error ? error.message : error)) }
-    finally { setBusy(false) }
+      setNotice(messages.join('\n'))
+      discardRunning.current = false
+      setBusy(false)
+    }
   }
   async function ignore(file: GitFile) {
     if (busy || writes.busy) return
@@ -119,12 +152,12 @@ export default function GitChanges({ status, onRefresh, onDiff }: { status: GitS
     finally { setGenerating(false) }
   }
   return <div className="git-changes">
-    <fieldset disabled={busy || generating || writes.busy} className="git-files-fieldset"><GitFileList files={status.files} selected={readOnly ? undefined : selected} onToggle={readOnly ? undefined : toggle} onDiff={onDiff} onDiscard={!can('discard') ? undefined : setDiscarding} onIgnore={!can('ignore') ? undefined : file => void ignore(file)} actions={readOnly ? undefined : <><Button size="sm" disabled={busy || generating} onClick={() => update(status.id, { ...draft, selected: available.map(f => f.path) })}>{t('git.selectAll')}</Button><Button size="sm" disabled={busy || generating} onClick={() => update(status.id, { ...draft, selected: [] })}>{t('git.clear')}</Button></>} /></fieldset>
+    <fieldset disabled={busy || generating || writes.busy} className="git-files-fieldset"><GitFileList files={status.files} selected={readOnly ? undefined : selected} onToggle={readOnly ? undefined : toggle} onDiff={onDiff} onDiscard={!can('discard') ? undefined : file => setDiscarding({ files: [file], snapshot: status.snapshot, bulk: false })} onIgnore={!can('ignore') ? undefined : file => void ignore(file)} actions={readOnly ? undefined : <><Button size="sm" disabled={busy || generating} onClick={() => update(status.id, { ...draft, selected: available.map(f => f.path) })}>{t('git.selectAll')}</Button><Button size="sm" disabled={busy || generating} onClick={() => update(status.id, { ...draft, selected: [] })}>{t('git.clear')}</Button>{can('discard') && <Button size="sm" loading={busy && !!discarding?.bulk} disabled={busy || generating || writes.busy || !selected.length} onClick={() => setDiscarding({ files: available.filter(f => selected.includes(f.path)), snapshot: status.snapshot, bulk: true })}>{t('git.discardSelected')}</Button>}</>} /></fieldset>
     {!readOnly && <div className="git-commit-form"><div className="git-message-header"><label htmlFor={`git-message-${status.id}`}>{t('git.message')}</label></div><textarea id={`git-message-${status.id}`} value={draft.message} disabled={busy || generating} placeholder={t('git.messageHint')} onChange={e => update(status.id, { ...draft, message: e.target.value })} />
       <p className="git-commit-hint">{t('git.commitHint')}</p>{blocked && <p className="git-danger">{t('git.blocked')}</p>}
       {notice && <p role="status" className="git-notice">{notice}</p>}
       <div className="git-commit-actions"><Button data-commit variant="primary" loading={busy} disabled={writes.busy || generating || !draft.message.trim() || !selected.length || blocked} onClick={() => void commit()}>{busy ? t('git.committing') : t('git.commit', { count: selected.length })}</Button>{can('generateCommitMessage') && <Button size="sm" loading={generating} disabled={busy || blocked || !selected.length} onClick={() => void generateMessage()}><Icon name="sparkles" size={14} />{generating ? t('git.generatingCommit') : t('git.generateCommit')}</Button>}</div>
     </div>}
-    <ConfirmDialog open={!!discarding} title={t('git.discardTitle')} message={discarding ? t(discarding.untracked ? 'git.discardUntrackedConfirm' : 'git.discardConfirm', { name: discarding.path }) : ''} confirmText={t('git.discard')} danger loading={busy} confirmDisabled={writes.busy} onConfirm={() => void discard()} onCancel={() => !busy && setDiscarding(null)} />
+    <ConfirmDialog open={!!discarding} title={t(discarding?.bulk ? 'git.discardSelected' : 'git.discardTitle')} message={discarding ? discarding.bulk ? t('git.discardSelectedConfirm', { count: discarding.files.length }) : t(discarding.files[0].untracked ? 'git.discardUntrackedConfirm' : 'git.discardConfirm', { name: discarding.files[0].path }) : ''} confirmText={t('git.discard')} danger loading={busy} confirmDisabled={writes.busy || !can('discard')} onConfirm={() => void discard()} onCancel={() => !discardRunning.current && !busy && setDiscarding(null)} />
   </div>
 }

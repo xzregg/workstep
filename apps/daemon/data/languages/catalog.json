@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "26ca50d12c524fa989c76a8496b544b130bae0034b1c17df7ed045aa9fdce402",
+  "revision": "ee017c155795273c1324564d74bae29fc1009752dda0b31122ef9469bca8daa3",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -2169,6 +2169,9 @@
     "channelBot.status.reconnecting": "重连中",
     "channelBot.status.disabled": "未启用",
     "channelBot.status.error": "连接失败",
+    "git.discardSelected": "批量撤销文件修改",
+    "git.discardSelectedConfirm": "撤销所选 {count} 个文件的修改？已跟踪文件将恢复到当前提交，未提交的修改会丢失；新文件将被删除。此操作无法撤回。",
+    "git.discardSkipped": "未执行（前一文件撤销失败）：{names}",
     "git.recoveryButton": "撤销与还原",
     "git.recoveryTitle": "恢复历史",
     "git.recoveryChooseHint": "请选择要撤销的合并，或从提交历史选择还原点。",

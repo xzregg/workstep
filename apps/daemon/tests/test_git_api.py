@@ -757,6 +757,34 @@ async def test_discard_and_ignore_single_files_with_review_tokens(client, layout
     assert '/ignore \\[literal]\\*.txt' in (repo / '.gitignore').read_text()
 
 
+async def test_selected_discards_chain_snapshots_and_preserve_unselected_index(client, layout):
+    http, _ = client
+    _, repo, _ = layout
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    (repo / 'one.txt').write_text('selected change\n')
+    (repo / 'two.txt').write_text('unselected staged change\n')
+    git(repo, 'add', 'two.txt')
+    (repo / 'two.txt').write_text('unselected working change\n')
+    new_file = repo / 'selected [new]*.txt'
+    new_file.write_text('selected new content\n')
+    git(repo, 'add', new_file.name)
+    untouched_index = git(repo, 'show', ':two.txt')
+    state = (await http.get(url + '/status')).json()
+    first = await http.post(url + '/discard', json={'path': 'one.txt', 'snapshot': state['snapshot']})
+    assert first.status_code == 200, first.text
+    assert (repo / 'one.txt').read_text() == 'original\n'
+    stale = await http.post(url + '/discard', json={'path': new_file.name, 'snapshot': state['snapshot']})
+    assert stale.status_code == 409
+    assert new_file.read_text() == 'selected new content\n'
+    second = await http.post(url + '/discard', json={'path': new_file.name, 'snapshot': first.json()['snapshot']})
+    assert second.status_code == 200, second.text
+    assert not new_file.exists()
+    assert (repo / 'two.txt').read_text() == 'unselected working change\n'
+    assert git(repo, 'show', ':two.txt') == untouched_index
+    assert [file['path'] for file in second.json()['files']] == ['two.txt']
+
+
 async def test_save_file_content_uses_reviewed_snapshot_and_preserves_mode(client, layout):
     http, _ = client
     _, repo, _ = layout

@@ -69,7 +69,8 @@
 .git-tabs>span { margin-left:auto; font-size:10px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .git-workspace-content { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; }
 .git-changes { display:flex; flex:1; min-height:0; flex-direction:column; }
-.git-file-toolbar { display:flex; align-items:center; gap:6px; padding:8px 16px; flex-shrink:0; }
+.git-file-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 16px; flex-shrink:0; }
+.git-file-toolbar > * { flex-shrink:0; white-space:nowrap; }
 .git-file-toolbar strong { margin-right:0; font-size:12px; font-weight:500; }
 .git-file-toolbar strong span { color:var(--muted); margin-left:5px; }
 .git-file-browser { display:flex; flex:1; flex-direction:column; min-height:0; }
@@ -102,7 +103,7 @@
 .git-commit-actions { display:flex; align-items:center; gap:8px; }
 .git-commit-form textarea { width:100%; min-height:76px; max-height:180px; resize:vertical; font-size:12px; line-height:1.6; padding:10px; }
 .git-commit-form p { font-size:11px; color:var(--muted); line-height:1.7; margin:8px 0 12px; white-space:pre-wrap; }
-.git-commit-form .git-notice { color:var(--fg); }
+.git-commit-form .git-notice { color:var(--fg); overflow-wrap:anywhere; }
 .git-danger, .git-commit-form .git-danger { color:var(--danger); }
 .git-added { color:var(--success, #349c69); }
 .git-modified { color:var(--accent); }
