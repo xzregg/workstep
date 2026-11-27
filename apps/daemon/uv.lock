@@ -3524,6 +3524,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-timeout" },
+    { name = "workstep-webrtc-signal" },
 ]
 qoder = [
     { name = "qoder-agent-sdk" },
@@ -3564,6 +3565,7 @@ dev = [
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "pytest-timeout", specifier = ">=2.4.0" },
+    { name = "workstep-webrtc-signal", editable = "../../packages/webrtc-signal" },
 ]
 qoder = [{ name = "qoder-agent-sdk", specifier = ">=1.0.11" }]
 
@@ -3590,6 +3592,33 @@ provides-extras = ["http"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.0" }]
+
+[[package]]
+name = "workstep-webrtc-signal"
+version = "0.1.0"
+source = { editable = "../../packages/webrtc-signal" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "pydantic", version = "2.13.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.15'" },
+    { name = "pydantic", version = "2.14.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15'" },
+    { name = "workstep-gateway-protocol" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = ">=43.0" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "workstep-gateway-protocol", editable = "../../packages/gateway-protocol" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+]
 
 [[package]]
 name = "wrapt"
