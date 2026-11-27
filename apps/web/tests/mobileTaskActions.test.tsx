@@ -29,12 +29,17 @@ test('mobile board confirms start, uses the selected project, and exposes failur
   useManagedModeStore.setState({ load: async () => {} })
   const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
   const openMenu = async () => {
-    await act(async () => container.querySelector<HTMLButtonElement>('.mobile-task-row-more')!.click())
+    await act(async () => container.querySelector('.mobile-task-row')!.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
     assert.ok(document.querySelector('.mobile-task-menu'))
     assert.equal(Boolean(container.querySelector('.mobile-task-selection-header')), false)
   }
   try {
     await act(async () => root.render(<MemoryRouter><I18nProvider><TaskList /></I18nProvider></MemoryRouter>))
+    assert.equal(Boolean(container.querySelector('.mobile-task-row-more')), false)
+    assert.equal(Boolean(container.querySelector('.mobile-task-toolbar .mobile-toolbar-icon-button')), true)
+    await act(async () => container.querySelector<HTMLButtonElement>('.mobile-task-toolbar .mobile-toolbar-icon-button')!.click())
+    assert.ok(document.querySelector('.mobile-task-menu select'))
+    await act(async () => document.querySelector<HTMLButtonElement>('.mobile-sheet header button')!.click())
     await openMenu()
     await act(async () => document.querySelector<HTMLButtonElement>('.mobile-task-menu [data-task-action="start"]')!.click())
     assert.ok(document.querySelector('.mobile-task-menu') === null)
