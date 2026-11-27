@@ -128,3 +128,5 @@ Android App 内文件预览的「新窗口」由 `apps/web/src/utils/filePreview
 `useFaceRecognition` 持有每次摄像头打开后首次推理的加载状态，`DigitalPersonCamera` 在桌面面板、移动浮窗和内嵌画面中共用同一状态提示。首帧完成即收起，加载失败显示原有错误，关闭摄像头清除提示。行为回归：`tests/faceSettings.test.tsx`。
 实时预览由 `useFaceRecognition` 把不同视频帧交给 `previewTracking.ts`。同一位置的人脸连续两帧匹配到同一熟人才显示姓名；短时漏识别时，仅在框可唯一关联且当前特征仍接近最近成功帧时保留姓名，最多 1.5 秒，不累计续期。所有框也按采集时间在 1.5 秒后过期，避免输入暂停、冻结视频或慢推理时旧框一直覆盖新画面；迟到结果不产生欢迎识别或刷新已超时的近期发送回退。人脸消失、出现冲突或切换媒体流／人脸库时清除关联。预览发送回退只记录已确认且当帧首次推理匹配成功的 ID。回归：`faceRecognition.test.ts`、`faceSettings.test.tsx`。
 行为测试：daemon `tests/test_face_recognition.py`；Web `tests/faceRecognition.test.ts`（逐帧对照、过期、竞争与换人）、`tests/faceSettings.test.tsx`、`tests/digitalPersonVision.test.tsx`；浏览器验证入口 `tests/fixtures/face-recognition/`，临时截图、日志与性能数据在 `tmp/face-recognition-implementation/` 和 `tmp/face-preview-stability/`。
+
+Android 启动器图标由 `apps/android/scripts/generate-icons.cjs` 使用 Chromium 从 `apps/web/public/favicon.svg` 生成，与官网同源外观；普通 PNG、自适应前景和 `drawable-anydpi-v26/app_icon.xml` 归 Android 资源目录持有，Manifest 普通／圆形入口共用 `@drawable/app_icon`。Gradle 直接打包提交资源，无新增 API。回归入口为 `LauncherIconTest` 和生成器 `--check`，生成及遮罩说明见 `apps/android/README.md`。
