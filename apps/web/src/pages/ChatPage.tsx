@@ -560,6 +560,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
         workflowSkill={!isEmbedded && activeProject.type !== 'remote' && !projectScopedAccess && can('workflow.create') && can('task.create') ? workflowSkill : undefined}
         projectId={activeProject.id}
         sessionId={sessionId}
+        quotaActive={pane?.active !== false}
         headerContext={<ChannelConversationContext projectId={activeProject.id} sessionId={sessionId} />}
         title={sessionTitle || t('chatSession.title')}
         headerDrag={pane?.headerDrag}

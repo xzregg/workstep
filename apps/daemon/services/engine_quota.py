@@ -99,12 +99,15 @@ class _UnifiedCacheEntry:
 class _UnifiedLoopState:
     def __init__(self):
         self.cache: dict[tuple[str, ...], _UnifiedCacheEntry] = {}
-        self.normal_inflight: dict[tuple[str, ...], _Pending] = {}
-        self.refresh_inflight: dict[tuple[str, ...], _Pending] = {}
+        self.normal_inflight: dict[tuple[tuple[str, ...], int], _Pending] = {}
+        self.refresh_inflight: dict[tuple[tuple[str, ...], int], _Pending] = {}
         self.collector_limit = asyncio.Semaphore(2)
         self.seq = 0
         self.invalidated_seq = 0
         self.scope_invalidated_seq: dict[tuple[str, ...], int] = {}
+
+    def generation(self, scope_key: tuple[str, ...]) -> int:
+        return max(self.invalidated_seq, self.scope_invalidated_seq.get(scope_key, 0))
 
 
 def _snapshot(entry: _UnifiedCacheEntry, *, cached: bool) -> dict:
@@ -152,22 +155,18 @@ class UnifiedQuotaService:
     async def get(self, scope_key: tuple[str, ...], collect, *, refresh: bool = False) -> dict:
         state = self._state()
         now_mono = self._clock()
+        generation = state.generation(scope_key)
+        pending_key = (scope_key, generation)
 
         if not refresh:
             cached = state.cache.get(scope_key)
             if cached is not None and now_mono < cached.expires_at_mono:
                 return _snapshot(cached, cached=True)
-            # Reuse any in-flight refresh or normal query for the exact same scope.
-            existing = state.refresh_inflight.get(scope_key) or state.normal_inflight.get(scope_key)
-            if existing is not None:
-                bucket = state.refresh_inflight if state.refresh_inflight.get(scope_key) is existing else state.normal_inflight
-                return await self._await_pending(bucket, scope_key, existing)
-            bucket = state.normal_inflight
-        else:
-            existing = state.refresh_inflight.get(scope_key)
-            if existing is not None:
-                return await self._await_pending(state.refresh_inflight, scope_key, existing)
-            bucket = state.refresh_inflight
+        bucket = state.refresh_inflight if refresh else state.normal_inflight
+        if existing := state.refresh_inflight.get(pending_key):
+            return await self._await_pending(state.refresh_inflight, pending_key, existing)
+        if not refresh and (existing := bucket.get(pending_key)):
+            return await self._await_pending(bucket, pending_key, existing)
 
         if len(state.normal_inflight) + len(state.refresh_inflight) >= _MAX_PENDING_KEYS:
             raise QuotaBusyError()
@@ -186,9 +185,8 @@ class UnifiedQuotaService:
                 expires_at_mono=collected_mono + self.ttl_seconds,
                 seq=started_seq,
             )
-            min_valid_seq = max(state.invalidated_seq, state.scope_invalidated_seq.get(scope_key, 0))
             current = state.cache.get(scope_key)
-            if started_seq > min_valid_seq and (current is None or started_seq >= current.seq):
+            if generation == state.generation(scope_key) and (current is None or started_seq >= current.seq):
                 if scope_key in state.cache:
                     del state.cache[scope_key]
                 state.cache[scope_key] = entry
@@ -198,19 +196,19 @@ class UnifiedQuotaService:
             return _snapshot(entry, cached=False)
 
         pending = _Pending(asyncio.create_task(run_collect()))
-        bucket[scope_key] = pending
-        return await self._await_pending(bucket, scope_key, pending)
+        bucket[pending_key] = pending
+        return await self._await_pending(bucket, pending_key, pending)
 
     @staticmethod
-    async def _await_pending(bucket: dict, scope_key: tuple[str, ...], entry: _Pending) -> dict:
+    async def _await_pending(bucket: dict, pending_key: tuple[tuple[str, ...], int], entry: _Pending) -> dict:
         entry.waiters += 1
         try:
             return await asyncio.shield(entry.task)
         finally:
             entry.waiters -= 1
             if entry.waiters == 0:
-                if bucket.get(scope_key) is entry:
-                    bucket.pop(scope_key, None)
+                if bucket.get(pending_key) is entry:
+                    bucket.pop(pending_key, None)
 
                 async def cleanup():
                     if not entry.task.done():

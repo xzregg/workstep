@@ -161,6 +161,39 @@ async def test_unified_quota_service_invalidation_prevents_stale_inflight_cache_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(('old_refresh', 'new_refresh'), [(False, False), (True, False), (True, True)])
+@pytest.mark.parametrize('global_invalidation', [False, True])
+async def test_unified_quota_invalidation_does_not_join_previous_generation(old_refresh, new_refresh, global_invalidation):
+    from services.engine_quota import UnifiedQuotaService
+
+    service = UnifiedQuotaService()
+    scope = ('host', 'project')
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def before_engine_disabled():
+        started.set()
+        await release.wait()
+        return [{'engine_id': 'codex_sdk'}]
+
+    async def after_engine_disabled():
+        return []
+
+    stale = asyncio.create_task(service.get(scope, before_engine_disabled, refresh=old_refresh))
+    await asyncio.wait_for(started.wait(), 2)
+    try:
+        service.invalidate(None if global_invalidation else scope)
+        fresh = await asyncio.wait_for(service.get(scope, after_engine_disabled, refresh=new_refresh), 1)
+        assert fresh['engines'] == []
+        assert not fresh['cached']
+    finally:
+        release.set()
+        await stale
+    cached = await service.get(scope, before_engine_disabled)
+    assert cached['cached'] and cached['engines'] == []
+
+
+@pytest.mark.asyncio
 async def test_unified_quota_service_isolates_scopes():
     from services.engine_quota import UnifiedQuotaService
 

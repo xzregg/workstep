@@ -11,6 +11,7 @@ interface ChatInputUsageProps {
   projectId?: string
   selectedEngine?: string
   conversationKey?: string
+  active?: boolean
   entries?: QuotaResult[]
   context?: ChatContextUsage | null
   quota?: ChatEngineQuota | null
@@ -21,14 +22,14 @@ interface ChatInputUsageProps {
 
 export default function ChatInputUsage({
   context, quota, onRefreshQuota, quotaRefreshing = false, compact,
-  managed = false, projectId, selectedEngine = '', conversationKey, entries,
+  managed = false, projectId, selectedEngine = '', conversationKey, active = true, entries,
 }: ChatInputUsageProps) {
   const { t, locale } = useI18n()
   const [contextTipOpen, setContextTipOpen] = useState(false)
   const contextRef = useRef<HTMLSpanElement>(null)
   const [contextTipStyle, setContextTipStyle] = useState<CSSProperties | undefined>(undefined)
   const { bound: projectScoped } = useGatewayProjectPermissions(projectId)
-  const quotaFetchEnabled = managed && (!projectScoped || Boolean(projectId))
+  const quotaFetchEnabled = active && managed && (!projectScoped || Boolean(projectId))
   const unified = useEngineQuota(projectId, selectedEngine, conversationKey, quotaFetchEnabled)
 
   useEffect(() => {
@@ -51,7 +52,7 @@ export default function ChatInputUsage({
       <EngineQuotaPopover compact={compact} selectedEngine={selectedEngine}
         entries={managed ? unified.entries : entries ?? (quota ? [{engine_id: quota.engine_id, supported: true, status: 'ok', quota}] : [])}
         alwaysVisible={managed} error={managed && unified.error} collectedAt={managed ? unified.collectedAt : quota?.collected_at}
-        refreshing={managed ? unified.refreshing : quotaRefreshing}
+        refreshing={managed ? quotaFetchEnabled && unified.refreshing : quotaRefreshing}
         onRefresh={managed ? () => { void unified.refresh() } : onRefreshQuota} />
           {context && (
             <span

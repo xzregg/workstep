@@ -39,17 +39,25 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
     const update = () => {
       const rect = ref.current?.getBoundingClientRect()
       if (!rect) return
-      const viewportWidth = window.visualViewport?.width ?? window.innerWidth
-      const viewportHeight = window.visualViewport?.height ?? window.innerHeight
-      const width = Math.min(320, Math.max(240, viewportWidth - 32))
-      const below = rect.top < Math.min(280, viewportHeight / 2)
-      const available = below ? viewportHeight - rect.bottom - 24 : rect.top - 24
+      const viewport = window.visualViewport
+      const viewportLeft = viewport?.offsetLeft ?? 0
+      const viewportTop = viewport?.offsetTop ?? 0
+      const viewportWidth = viewport?.width ?? window.innerWidth
+      const viewportHeight = viewport?.height ?? window.innerHeight
+      const viewportBottom = viewportTop + viewportHeight
+      const width = Math.min(320, Math.max(0, viewportWidth - 32))
+      const belowTop = Math.max(viewportTop + 16, rect.bottom + 8)
+      const aboveBottom = Math.min(viewportBottom - 16, rect.top - 8)
+      const spaceBelow = viewportBottom - 16 - belowTop
+      const spaceAbove = aboveBottom - viewportTop - 16
+      const below = spaceBelow > spaceAbove
       setPosition({
-        left: Math.max(16, Math.min(rect.left, viewportWidth - width - 16)),
+        left: Math.max(viewportLeft + 16, Math.min(rect.left, viewportLeft + viewportWidth - width - 16)),
         width,
+        maxHeight: Math.min(420, Math.max(0, below ? spaceBelow : spaceAbove)),
         ...(below
-          ? { top: rect.bottom + 8, maxHeight: Math.min(420, Math.max(160, available)) }
-          : { bottom: viewportHeight - rect.top + 8, maxHeight: Math.min(420, Math.max(160, available)) }),
+          ? { top: belowTop }
+          : { bottom: window.innerHeight - aboveBottom }),
       })
     }
     const outside = (event: MouseEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false) }

@@ -7,6 +7,29 @@ import ChatInputUsage from '../src/components/ChatInputUsage'
 import { I18nProvider } from '../src/i18n'
 import { engineApi } from '../src/api/client'
 
+test('quota popover remains inside the visible viewport when the keyboard shrinks and offsets it', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setWindowSize({width: 390, height: 740})
+  const viewport = new window.EventTarget()
+  Object.assign(viewport, {width: 390, height: 420, offsetTop: 30, offsetLeft: 0})
+  Object.defineProperty(window, 'visualViewport', {value: viewport, configurable: true})
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact quota={{engine_id: 'codex_sdk',
+      primary: {used_percent: 10, remaining_percent: 90}}} /></I18nProvider>))
+    const wrapper = container.querySelector<HTMLElement>('.chat-input-quota')!
+    wrapper.getBoundingClientRect = () => new window.DOMRect(100, 390, 60, 32)
+    await act(async () => wrapper.querySelector<HTMLButtonElement>('button')!.click())
+    const panel = wrapper.querySelector<HTMLElement>('.engine-quota-panel')!
+    assert.equal(panel.style.bottom, '358px')
+    assert.equal(panel.style.maxHeight, '336px')
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('account quota displays named windows, classified failures, and the server refresh time', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))

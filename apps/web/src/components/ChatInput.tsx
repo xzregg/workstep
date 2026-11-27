@@ -257,6 +257,7 @@ export interface ChatInputProps {
   context?: ChatContextUsage | null
   /** Latest account quota reported by the selected engine. */
   quota?: ChatEngineQuota | null
+  quotaActive?: boolean
   /** Refresh the selected engine's account quota. */
   onRefreshQuota?: () => void
   /** True while an account quota refresh is in flight. */
@@ -306,6 +307,7 @@ function ChatInput({
   enhance,
   context,
   quota,
+  quotaActive,
   onRefreshQuota,
   quotaRefreshing = false,
   plan,
@@ -1287,6 +1289,7 @@ function ChatInput({
             projectId={projectId || imageAttach?.projectId || config?.projectId}
             selectedEngine={effectiveEngine}
             conversationKey={sessionId || taskId || ''}
+            active={quotaActive}
             context={context}
             quota={quota}
             onRefreshQuota={onRefreshQuota}
