@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import Icon from './Icon'
+import EngineQuotaPopover from './EngineQuotaPopover'
+import { useEngineQuota } from '../hooks/useEngineQuota'
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
+import type { QuotaResult } from '../api/client'
 import { useI18n } from '../i18n'
 import type { ChatContextUsage, ChatEngineQuota } from './ChatInput'
 
 interface ChatInputUsageProps {
+  managed?: boolean
+  projectId?: string
+  selectedEngine?: string
+  conversationKey?: string
+  entries?: QuotaResult[]
   context?: ChatContextUsage | null
   quota?: ChatEngineQuota | null
   onRefreshQuota?: () => void
@@ -13,127 +21,38 @@ interface ChatInputUsageProps {
 
 export default function ChatInputUsage({
   context, quota, onRefreshQuota, quotaRefreshing = false, compact,
+  managed = false, projectId, selectedEngine = '', conversationKey, entries,
 }: ChatInputUsageProps) {
   const { t, locale } = useI18n()
   const [contextTipOpen, setContextTipOpen] = useState(false)
   const contextRef = useRef<HTMLSpanElement>(null)
   const [contextTipStyle, setContextTipStyle] = useState<CSSProperties | undefined>(undefined)
-  const [quotaTipOpen, setQuotaTipOpen] = useState(false)
-  const quotaRef = useRef<HTMLSpanElement>(null)
-  const [quotaTipStyle, setQuotaTipStyle] = useState<CSSProperties | undefined>(undefined)
+  const { bound: projectScoped } = useGatewayProjectPermissions(projectId)
+  const quotaFetchEnabled = managed && (!projectScoped || Boolean(projectId))
+  const unified = useEngineQuota(projectId, selectedEngine, conversationKey, quotaFetchEnabled)
 
   useEffect(() => {
-    if (!contextTipOpen && !quotaTipOpen) return
+    if (!contextTipOpen) return
     const handleClickOutside = (e: MouseEvent) => {
       if (contextRef.current && !contextRef.current.contains(e.target as Node)) {
         setContextTipOpen(false)
       }
-      if (quotaRef.current && !quotaRef.current.contains(e.target as Node)) {
-        setQuotaTipOpen(false)
-      }
+
     }
     document.addEventListener('click', handleClickOutside, true)
     return () => document.removeEventListener('click', handleClickOutside, true)
-  }, [contextTipOpen, quotaTipOpen])
+  }, [contextTipOpen])
 
   const formatTokens = (count: number) =>
     new Intl.NumberFormat(locale).format(Math.max(0, Math.round(count)))
 
-  const credits = quota?.credits
-  const creditBalance = credits?.balance != null
-    ? [credits.balance, credits.unit].filter(Boolean).join(' ')
-    : null
-  const hasCredits = Boolean(credits?.unlimited || creditBalance !== null)
-  const quotaLabel = quota?.primary
-    ? t('chatInput.quotaCompact', { remaining: quota.primary.remaining_percent })
-    : t('chatInput.quotaTitle')
-
   return (
     <>
-          {quota && (quota.primary || hasCredits || quota.individual_limit) && (
-            <span
-              ref={quotaRef}
-              className={`chat-input-context chat-input-quota${quotaTipOpen ? ' is-tip-open' : ''}`}
-              tabIndex={0}
-              role="button"
-              aria-label={quotaLabel}
-              onClick={() => {
-                if (compact && quotaRef.current) {
-                  const rect = quotaRef.current.getBoundingClientRect()
-                  setQuotaTipStyle({ bottom: window.innerHeight - rect.top + 8 })
-                } else {
-                  setQuotaTipStyle(undefined)
-                }
-                setQuotaTipOpen((open) => !open)
-              }}
-            >
-              {compact ? <>
-                <Icon name="circle-dollar-sign" size={14} />
-                <span>{quota.primary ? `${quota.primary.remaining_percent}%` : quota.individual_limit ? `${quota.individual_limit.remaining_percent}%` : quotaLabel}</span>
-              </> : quotaLabel}
-              <span className={`chat-input-context-tip chat-input-quota-tip${compact && quotaTipOpen ? ' is-compact-positioned' : ''}`} style={quotaTipStyle}>
-                <span className="chat-input-quota-heading">
-                  <strong>{quota.limit_name || t('chatInput.quotaTitle')}</strong>
-                  {onRefreshQuota && (
-                    <button
-                      type="button"
-                      className="chat-input-quota-refresh"
-                      data-quota-refresh=""
-                      disabled={quotaRefreshing}
-                      aria-label={t('common.refresh')}
-                      title={t('common.refresh')}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        onRefreshQuota()
-                      }}
-                    >
-                      {quotaRefreshing
-                        ? <span className="task-status-spinner" aria-hidden="true" />
-                        : <Icon name="refresh" size={13} strokeWidth={2} />}
-                    </button>
-                  )}
-                </span>
-                {quota.groups?.length ? quota.groups.map(group => <span className="chat-input-quota-group" key={group.name}>
-                  <strong>{group.name}</strong>
-                  {group.windows.map((window, index) => <span key={`${window.kind}-${index}`}>
-                    <span>{t('chatInput.quotaWindow', {
-                      window: window.label || (window.kind === 'weekly' ? t('chatInput.quotaWeekly') : window.kind === 'five-hour' ? t('chatInput.quotaFiveHour') : window.kind || t('chatInput.quotaTitle')),
-                      remaining: window.remaining_percent,
-                    })}</span>
-                    <span>{t('chatInput.quotaReset', { reset: window.resets_at
-                      ? new Date(window.resets_at * 1000).toLocaleString(locale)
-                      : t('chatInput.quotaResetUnknown') })}</span>
-                  </span>)}
-                </span>) : <>{quota.primary && <><span>{t('chatInput.quotaPrimary', {
-                  remaining: quota.primary.remaining_percent,
-                })}</span>
-                <span>{t('chatInput.quotaReset', {
-                  reset: quota.primary.resets_at
-                    ? new Date(quota.primary.resets_at * 1000).toLocaleString(locale)
-                    : t('chatInput.quotaResetUnknown'),
-                })}</span>
-                </>}
-                {quota.secondary && (
-                  <span>{t('chatInput.quotaSecondary', {
-                    remaining: quota.secondary.remaining_percent,
-                  })}</span>
-                )}
-                </>}
-                {hasCredits && (
-                  <span>{credits?.unlimited
-                    ? t('chatInput.quotaCreditsUnlimited')
-                    : t('chatInput.quotaCredits', { balance: creditBalance ?? '' })}</span>
-                )}
-                {quota.individual_limit && (
-                  <span>{t('chatInput.quotaIndividual', {
-                    used: quota.individual_limit.used,
-                    limit: quota.individual_limit.limit,
-                    remaining: quota.individual_limit.remaining_percent,
-                  })}</span>
-                )}
-              </span>
-            </span>
-          )}
+      <EngineQuotaPopover compact={compact} selectedEngine={selectedEngine}
+        entries={managed ? unified.entries : entries ?? (quota ? [{engine_id: quota.engine_id, supported: true, status: 'ok', quota}] : [])}
+        alwaysVisible={managed} error={managed && unified.error}
+        refreshing={managed ? unified.refreshing : quotaRefreshing}
+        onRefresh={managed ? () => { void unified.refresh() } : onRefreshQuota} />
           {context && (
             <span
               ref={contextRef}

@@ -72,9 +72,10 @@ test('mobile task header keeps a plain compact id and moves bot and share to nav
   assert.match(mobileCss, /\.task-detail-header-meta\s*\{[^}]*min-width:\s*0/s)
 })
 
-test('session chat composes engine quota with its shared input', () => {
-  assert.match(chatPage, /useEngineQuota\(\s*activeProject\?\.id, effectiveEngine, running/)
-  assert.match(chatPage, /onRefreshQuota=\{\(\) => \{ void refreshQuota\(\) \}\}/)
-  assert.match(chatPage, /quotaRefreshing=\{quotaRefreshing\}/)
+test('shared chat input composes unified engine quota across every composer', async () => {
+  const usageSource = await readFile(new URL('../src/components/ChatInputUsage.tsx', import.meta.url), 'utf8')
+  assert.match(source, /<ChatInputUsage[\s\S]*managed=\{quota === undefined/)
+  assert.match(usageSource, /useEngineQuota\(projectId, selectedEngine, conversationKey, quotaFetchEnabled\)/)
+  assert.match(usageSource, /<EngineQuotaPopover/)
   assert.match(assistantPanel, /onRefreshQuota=\{onRefreshQuota\}/)
 })

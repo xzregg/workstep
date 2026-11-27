@@ -5,143 +5,57 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { engineApi } from '../src/api/client'
 import { useEngineQuota } from '../src/hooks/useEngineQuota'
-import ChatInputUsage from '../src/components/ChatInputUsage'
-import { I18nProvider } from '../src/i18n'
 
-function QuotaHarness({ engine, running, projectId = 'project-1' }: {
-  engine: string
-  running: boolean
-  projectId?: string
-}) {
-  const { quota, refreshing, refresh } = useEngineQuota(projectId, engine, running)
-  return <div>
-    <span data-quota>{quota?.engine_id ?? ''}</span>
-    <span data-refreshing>{String(refreshing)}</span>
-    <I18nProvider><ChatInputUsage quota={quota} compact onRefreshQuota={() => { void refresh() }} quotaRefreshing={refreshing} /></I18nProvider>
-    <button type="button" onClick={() => { void refresh() }}>刷新</button>
-  </div>
-}
-
-test('unsupported engines hide quota even if the response contains stale data', async () => {
+ test('unified quota follows conversation scope, selects locally and only manual refresh bypasses cache', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
-  const originalQuota = engineApi.quota
-  engineApi.quota = async () => ({
-    engine_id: 'custom', supported: false, status: 'unsupported',
-    quota: { engine_id: 'custom', primary: { used_percent: 20, remaining_percent: 80 } },
-  })
+  const original = engineApi.quotas
+  const calls: Array<[string, boolean]> = []
+  engineApi.quotas = async (project = '', force = false) => {
+    calls.push([project, force])
+    return { engines: ['a', 'b'].map(engine_id => ({ engine_id, supported: true, status: 'ok' as const,
+      quota: {engine_id, primary: {remaining_percent: 80, used_percent: 20}} })), cached: false, collected_at: 1, expires_at: 301 }
+  }
+  function Harness({engine = 'a', session = 'one', project = 'project'}: {engine?: string; session?: string; project?: string}) {
+    const state = useEngineQuota(project, engine, session)
+    return <><span>{state.quota?.engine_id}</span><button onClick={() => void state.refresh()}>refresh</button></>
+  }
   try {
-    await act(async () => root.render(<QuotaHarness engine="custom" running={false} />))
-    assert.ok(
-      container.querySelector('.chat-input-quota') === null,
-      'unsupported engines must hide the quota indicator',
-    )
-    assert.equal(container.querySelector('[data-quota]')?.textContent, '')
+    await act(async () => root.render(<Harness />))
+    assert.deepEqual(calls, [['project', false]])
+    await act(async () => root.render(<Harness engine="b" />))
+    assert.equal(container.querySelector('span')?.textContent, 'b')
+    assert.equal(calls.length, 1)
+    await act(async () => root.render(<Harness engine="b" session="two" />))
+    assert.deepEqual(calls[1], ['project', false])
+    await act(async () => container.querySelector('button')!.click())
+    assert.deepEqual(calls[2], ['project', true])
+    await act(async () => root.render(<Harness project="other" />))
+    assert.deepEqual(calls[3], ['other', false])
   } finally {
-    engineApi.quota = originalQuota
+    engineApi.quotas = original
     await act(async () => root.unmount())
     await window.happyDOM.close()
   }
 })
 
-test('quota ignores stale engine results and refreshes after a run', async () => {
+test('useEngineQuota tolerates responses without an engines array without crashing', async () => {
   const { window } = installDomEnvironment()
-  const container = window.document.body.appendChild(window.document.createElement('div'))
-  const root = createRoot(container as never)
-  const originalQuota = engineApi.quota
-  const requests: Array<{ engine: string; projectId: string; resolve: (value: never) => void }> = []
-  engineApi.quota = (engine, projectId) => new Promise((resolve) => {
-    requests.push({ engine, projectId, resolve })
-  })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const original = engineApi.quotas
+  engineApi.quotas = async () => ({} as never)
+  function Harness() {
+    const state = useEngineQuota('project', 'codex_sdk', 's1')
+    return <span data-count={state.entries.length}>{state.entries.length}</span>
+  }
   try {
-    await act(async () => root.render(<QuotaHarness engine="engine-a" running={false} />))
-    assert.deepEqual(requests.map((request) => request.engine), ['engine-a'])
-    assert.equal(container.querySelector('[data-refreshing]')?.textContent, 'true')
-
-    await act(async () => root.render(<QuotaHarness engine="engine-b" running={false} />))
-    assert.deepEqual(requests.map((request) => request.engine), ['engine-a', 'engine-b'])
-    await act(async () => requests[0].resolve({ quota: { engine_id: 'engine-a' } } as never))
-    assert.equal(container.querySelector('[data-quota]')?.textContent, '')
-    await act(async () => requests[1].resolve({ quota: { engine_id: 'engine-b' } } as never))
-    assert.equal(container.querySelector('[data-quota]')?.textContent, 'engine-b')
-
-    await act(async () => root.render(<QuotaHarness engine="engine-b" projectId="project-2" running={false} />))
-    assert.equal(container.querySelector('[data-quota]')?.textContent, '')
-    assert.equal(requests[2].projectId, 'project-2')
-    await act(async () => requests[2].resolve({ quota: { engine_id: 'engine-b' } } as never))
-
-    await act(async () => root.render(<QuotaHarness engine="engine-b" projectId="project-2" running />))
-    assert.equal(container.querySelector('[data-refreshing]')?.textContent, 'false')
-    assert.equal(requests.length, 3)
-    await act(async () => root.render(<QuotaHarness engine="engine-b" projectId="project-2" running={false} />))
-    assert.equal(requests.length, 4)
-    await act(async () => requests[3].resolve({ quota: { engine_id: 'engine-b' } } as never))
-    assert.equal(container.querySelector('[data-refreshing]')?.textContent, 'false')
+    await act(async () => root.render(<Harness />))
+    assert.equal(container.querySelector('[data-count]')?.textContent, '0')
   } finally {
-    engineApi.quota = originalQuota
+    engineApi.quotas = original
     await act(async () => root.unmount())
     await window.happyDOM.close()
   }
 })
-
-test('quota loads when entering a running conversation and switching its engine', async () => {
-  const { window } = installDomEnvironment()
-  const container = window.document.body.appendChild(window.document.createElement('div'))
-  const root = createRoot(container as never)
-  const originalQuota = engineApi.quota
-  const requests: string[] = []
-  engineApi.quota = async (engine) => {
-    requests.push(engine)
-    return { quota: { engine_id: engine } } as never
-  }
-  try {
-    await act(async () => root.render(<QuotaHarness engine="engine-a" running />))
-    assert.deepEqual(requests, ['engine-a'])
-    assert.equal(container.querySelector('[data-quota]')?.textContent, 'engine-a')
-
-    await act(async () => root.render(<QuotaHarness engine="engine-b" running />))
-    assert.deepEqual(requests, ['engine-a', 'engine-b'])
-    assert.equal(container.querySelector('[data-quota]')?.textContent, 'engine-b')
-  } finally {
-    engineApi.quota = originalQuota
-    await act(async () => root.unmount())
-    await window.happyDOM.close()
-  }
-})
-
-
-for (const url of ['http://localhost/workspace/device-1/chat', 'https://d-device-1.gateway.test/chat']) {
-  test(`mobile gateway quota loads and refreshes in ${url}`, async () => {
-    const { window } = installDomEnvironment()
-    window.happyDOM.setURL(url)
-    window.innerWidth = 390
-    const originalQuota = engineApi.quota
-    const requests: Array<[string, string]> = []
-    engineApi.quota = async (engine, projectId) => {
-      requests.push([engine, projectId])
-      return {
-        engine_id: engine, supported: true,
-        quota: { engine_id: engine, primary: { remaining_percent: requests.length === 1 ? 81 : 75 } },
-      } as never
-    }
-    const container = document.body.appendChild(document.createElement('div'))
-    const root = createRoot(container)
-    try {
-      await act(async () => root.render(<QuotaHarness engine="codex_sdk" running={false} />))
-      assert.deepEqual(requests, [['codex_sdk', 'project-1']])
-      const quota = container.querySelector<HTMLElement>('.chat-input-quota')!
-      assert.ok(quota)
-      assert.match(quota.textContent || '', /81%/)
-      await act(async () => quota.click())
-      assert.ok(quota.classList.contains('is-tip-open'))
-      await act(async () => container.querySelector<HTMLButtonElement>('[data-quota-refresh]')!.click())
-      assert.deepEqual(requests, [['codex_sdk', 'project-1'], ['codex_sdk', 'project-1']])
-      assert.match(quota.textContent || '', /75%/)
-    } finally {
-      await act(async () => root.unmount())
-      engineApi.quota = originalQuota
-      await window.happyDOM.close()
-    }
-  })
-}
