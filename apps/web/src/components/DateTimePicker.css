@@ -25,7 +25,6 @@
     border-radius: var(--radius-sm);
     overflow: hidden;
   }
-  .date-time-picker-toolbar { display: flex; justify-content: flex-end; flex-shrink: 0; }
   .workstep-date-popup .ant-picker-panel-layout { min-height: 0; display: flex; flex-direction: column; }
   .workstep-date-popup .ant-picker-panel-layout > div { min-height: 0; display: flex; flex-direction: column; max-height: 100%; }
   .workstep-date-popup .ant-picker-panel { overflow: auto; min-height: 0; overscroll-behavior: contain; }
@@ -38,8 +37,19 @@
   .workstep-date-popup .ant-picker-time-panel { border-inline-start: 0; border-top: 1px solid var(--border); }
   .workstep-date-popup .ant-picker-time-panel .ant-picker-content { height: calc(3 * var(--mobile-control-touch, 44px)); }
   .workstep-date-popup .ant-picker-time-panel-column { flex: 1; }
-  .workstep-date-popup .ant-picker-footer { flex-shrink: 0; }
-  .workstep-date-popup .ant-picker-ranges { margin-bottom: 0; }
+  .workstep-date-popup .ant-picker-footer {
+    flex-shrink: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+    gap: 4px 8px;
+    padding: 0 12px;
+  }
+  .workstep-date-popup .ant-picker-footer-extra { display: contents; }
+  .workstep-date-popup .date-time-picker-presets { grid-column: 1 / -1; }
+  .workstep-date-popup .date-time-picker-cancel { grid-column: 1; grid-row: 2; justify-self: start; }
+  .workstep-date-popup .ant-picker-ranges { grid-column: 2; grid-row: 2; margin: 0; padding: 0; }
+  .workstep-date-popup .ant-picker-ranges .ant-picker-ok { margin-block: 0; }
   .workstep-date-popup .ant-picker-ok,
   .date-time-picker-cancel,
   .date-time-picker-preset { min-height: var(--mobile-control-touch, 44px); }

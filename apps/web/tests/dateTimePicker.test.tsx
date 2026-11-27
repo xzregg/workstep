@@ -30,6 +30,10 @@ for (const width of [320, 390, 1023, 1024, 1440]) {
       if (width <= 1023) {
         const cancel = document.querySelector<HTMLButtonElement>('.date-time-picker-cancel')!
         assert.equal(Boolean(cancel), true)
+        const confirm = document.querySelector<HTMLButtonElement>('.ant-picker-ok')!
+        assert.equal(Boolean(cancel.closest('.ant-picker-footer')), true)
+        assert.equal(cancel.closest('.ant-picker-footer') === confirm.closest('.ant-picker-footer'), true)
+        assert.equal(Boolean(document.querySelector('.date-time-picker-toolbar')), false)
         assert.equal(document.body.style.overflow, 'hidden')
         await act(async () => {
           Object.assign(viewport, { height: 320, offsetTop: 24 })

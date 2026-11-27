@@ -130,7 +130,7 @@ Android App 内文件预览的「新窗口」由 `apps/web/src/utils/filePreview
 行为测试：daemon `tests/test_face_recognition.py`；Web `tests/faceRecognition.test.ts`（逐帧对照、过期、竞争与换人）、`tests/faceSettings.test.tsx`、`tests/digitalPersonVision.test.tsx`；浏览器验证入口 `tests/fixtures/face-recognition/`，临时截图、日志与性能数据在 `tmp/face-recognition-implementation/` 和 `tmp/face-preview-stability/`。
 ## 日期与时间输入入口
 
-工作台公共 `apps/web/src/components/DateTimePicker.tsx` / `DateTimePicker.css` 持有本地日期时间选择、语言、精度及移动弹层。≤1023px 时输入只读，日历与时间纵向排列，标题取消区和底部确认区常驻，内容区独立滚动；通过 VisualViewport 的高度与偏移避让键盘，安全区由 CSS 处理。弹层复用 `useOverlay` 管理焦点、返回、Escape 和滚动锁；桌面沿用可编辑输入与锚点定位。日期格式、最小日期、快捷项及本地时间转 ISO 的规则不变。
+工作台公共 `apps/web/src/components/DateTimePicker.tsx` / `DateTimePicker.css` 持有本地日期时间选择、语言、精度及移动弹层。≤1023px 时输入只读，日历与时间纵向排列，底部取消／确认同排常驻（取消在左、确认在右，无独占顶部操作行），内容区独立滚动；通过 VisualViewport 的高度与偏移避让键盘，安全区由 CSS 处理。弹层复用 `useOverlay` 管理焦点、返回、Escape 和滚动锁；桌面沿用可编辑输入与锚点定位。日期格式、最小日期、快捷项及本地时间转 ISO 的规则不变。
 
 | 入口（源码路径相对各应用 `src/`） | 实际组件／控件 | 排查结论与修复范围 |
 | --- | --- | --- |
