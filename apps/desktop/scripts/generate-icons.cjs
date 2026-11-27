@@ -21,7 +21,8 @@ if (!process.versions.electron) {
     const data = await window.webContents.executeJavaScript(`(async () => {
       const image = new Image(); image.src = 'data:image/svg+xml;base64,' + ${JSON.stringify(Buffer.from(source).toString('base64'))};
       await image.decode(); const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1024;
-      canvas.getContext('2d').drawImage(image, 0, 0, 1024, 1024); return canvas.toDataURL('image/png');
+      // Keep arrow tips away from native rounded corners and launcher masks.
+      canvas.getContext('2d').drawImage(image, 102.4, 102.4, 819.2, 819.2); return canvas.toDataURL('image/png');
     })()`)
     const image = nativeImage.createFromDataURL(data)
     const build = path.join(desktop, 'build'), pngs = new Map()
@@ -52,6 +53,7 @@ if (!process.versions.electron) {
     })
     const icns = Buffer.alloc(8); icns.write('icns'); icns.writeUInt32BE(8 + chunks.reduce((total, chunk) => total + chunk.length, 0), 4)
     await fs.writeFile(path.join(build, 'icon.icns'), Buffer.concat([icns, ...chunks]))
+    await fs.writeFile(path.join(build, 'icon-manifest.json'), JSON.stringify(require('./check-icons.cjs').iconManifest(), null, 2) + '\n')
     console.log('Desktop icons generated from apps/web/public/favicon.svg')
     app.quit()
   }).catch(error => { console.error(error); app.exit(1) })

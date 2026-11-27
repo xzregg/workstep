@@ -32,3 +32,6 @@ test('app icon is 1024 pixels and opaque', () => {
   assert.equal(bytes.readUInt32BE(20), 1024)
   assert.equal(bytes[25], 2, 'PNG must be RGB without alpha')
 })
+test('iOS icon matches the padded website artwork used by desktop packages', () => {
+  execFileSync('swift', [path.join(root, 'scripts/prepare-icon.swift'), '--check'], { stdio: 'pipe' })
+})

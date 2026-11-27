@@ -1,0 +1,16 @@
+{
+  "source": "c60f7b8293048d986ca6458360232e3ce62440aefeca8c84ae88b389d7ec71df",
+  "files": {
+    "build/app-icon.svg": "c60f7b8293048d986ca6458360232e3ce62440aefeca8c84ae88b389d7ec71df",
+    "build/icon.ico": "df4cd84a2b217bb6998b0263c9ff3e7f294a79ec1eb8566baa6d2e4e4ed6840d",
+    "build/icon.icns": "5023d7595f688b946de9db6800913b029caa62a4cd8d50bce60cedf5b9e0c372",
+    "build/icons/16x16.png": "d98205df3097d9334d6f459b804398a5b886c63a756d77245c8ef2c377b2b59a",
+    "build/icons/32x32.png": "bb035c48ae43c92b9e834d065bb6b716db21456d9869d14f3ae3d42f13560d37",
+    "build/icons/48x48.png": "7d255ee2e17635179494729d39bf4eaabea441ccc70154d6d71d5a757b9ecfff",
+    "build/icons/64x64.png": "ca8bcc7a43bbcfe1f0146e37c0f129e73cfaf1e9af63f2c8ba9f2ac79498089c",
+    "build/icons/128x128.png": "e102c5f15fc99973cb31858666897e8aa6f4ad4f575cdadd71027b7d674cc557",
+    "build/icons/256x256.png": "2e4cd8631ac756cf35a536dce6b31c79d52f2f0543d34c56bff7df2a952c2a8e",
+    "build/icons/512x512.png": "24e2e5ba32918d964c46ac7b6f381e2234d78bd638415c580470737c77eea3a7",
+    "build/icons/1024x1024.png": "13d0604b05b9aeba3ec83307bb75881e6d927c9235a4885e7c280078104dc622"
+  }
+}
