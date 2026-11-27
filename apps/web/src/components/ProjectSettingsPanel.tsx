@@ -226,6 +226,7 @@ function LocalProjectSettingsPanel({
     }
   }
 
+  const concurrencyValid = /^\d+$/.test(concurrencyDraft.maxTasks.trim()) && /^\d+$/.test(concurrencyDraft.maxChats.trim())
   const saveConcurrency = async () => {
     if (!can('project.settings') || !projectId || concurrencySaving) return
     const parseLimit = (value: string): number => {
@@ -492,7 +493,7 @@ function LocalProjectSettingsPanel({
                   </div>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Button variant="primary" loading={concurrencySaving} onClick={() => void saveConcurrency()}>
+                  <Button variant="primary" loading={concurrencySaving} disabled={!concurrencyValid} onClick={() => void saveConcurrency()}>
                     {t('projectSettings.concurrency.save')}
                   </Button>
                   {concurrencySaved && (

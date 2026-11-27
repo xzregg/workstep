@@ -1,3 +1,4 @@
+import { scheduleRuleNumbersValid } from '../utils/numericConfigValidation'
 import type { ScheduleRule } from '../api/client'
 import { useI18n } from '../i18n'
 import Field from './Field'
@@ -46,8 +47,8 @@ export default function ScheduleRuleEditor({ value: rule, onChange }: {
         <option value="cron">Cron</option>
       </Select></Field>}
       {'time' in rule && <Field><Input aria-label={t('schedules.time')} type="time" value={rule.time} onChange={event=>onChange({...rule,time:event.target.value})} /></Field>}
-      {(rule.kind==='minutes' || rule.kind==='interval') && <Field label={rule.kind==='interval' ? t('schedules.intervalHours'):undefined}><Input aria-label={t('schedules.every')} type="number" min={1} max={rule.kind==='minutes' ? 10080:24} value={rule.every} onChange={event=>onChange({...rule,every:Number(event.target.value)})} /></Field>}
-      {rule.kind==='monthly' && <Field><Input aria-label={t('schedules.monthday')} type="number" min={1} max={31} value={rule.monthdays[0]} onChange={event=>onChange({...rule,monthdays:[Number(event.target.value)]})} /></Field>}
+      {(rule.kind==='minutes' || rule.kind==='interval') && <Field label={rule.kind==='interval' ? t('schedules.intervalHours'):undefined}><Input aria-label={t('schedules.every')} type="number" min={1} max={rule.kind==='minutes' ? 10080:24} value={Number.isNaN(rule.every) ? '' : rule.every} aria-invalid={!scheduleRuleNumbersValid(rule) || undefined} onChange={event=>onChange({...rule,every:event.target.valueAsNumber})} /></Field>}
+      {rule.kind==='monthly' && <Field><Input aria-label={t('schedules.monthday')} type="number" min={1} max={31} value={Number.isNaN(rule.monthdays[0]) ? '' : rule.monthdays[0]} aria-invalid={!scheduleRuleNumbersValid(rule) || undefined} onChange={event=>onChange({...rule,monthdays:[event.target.valueAsNumber]})} /></Field>}
       {rule.kind==='cron' && <Field><Input aria-label="Cron" placeholder="0 9 * * 1-5" value={rule.expression} onChange={event=>onChange({...rule,expression:event.target.value})} /></Field>}
       {rule.kind==='once' && <Field className="schedule-rule-wide"><Input aria-label={t('schedules.runAt')} type="datetime-local" value={rule.run_at.slice(0,16)} onChange={event=>onChange({...rule,run_at:event.target.value})} /></Field>}
     </div>

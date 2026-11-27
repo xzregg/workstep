@@ -1361,6 +1361,7 @@ export const jaJP: Messages = {
     stepApplyButton: '選択したステップを適用',
   },
   flow: {
+    numericConfigInvalid: '有効な回数を入力してください。',
     inputArtifacts: '入力成果物',
     addDispatchStep: '+ フローステップ',
     newDispatchStep: 'フローステップ',
@@ -2814,7 +2815,7 @@ export const jaJP: Messages = {
       positiveInteger: '正の整数を入力してください',
       hint: '同時に実行するタスク数とチャット数を制限します。上限を超えたタスクとチャットはキューで待機し、前の完了後に自動的に続行します。',
       projectLevel: 'このプロジェクトの制限',
-      projectLevelHint: '制限値の最小は 1 です。空にするか 0 を入力すると無制限になります。',
+      projectLevelHint: '制限値の最小は 1 です。0 を入力すると無制限になります。',
       taskRetryInterval: '任务异常自动重试间隔（分钟）',
       taskRetryHint: '仅任务生效，不涉及对话。异常失败后按此间隔持续重试，并遵守任务并发限制；0 表示关闭。主动停止和等待审批的任务不会重试。',
       taskRetryInvalid: '请输入 0～10080 的整数分钟数，0 表示关闭。',

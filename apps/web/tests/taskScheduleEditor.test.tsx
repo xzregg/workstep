@@ -52,6 +52,16 @@ test('task form validates and saves a minute instruction without a creation temp
     await app.set('textarea','汇报进度并使用 CLI 发到绑定群')
     await act(async () => new Promise(resolve => setTimeout(resolve,280)))
     assert.equal(dirty,true)
+    const saveButton = document.querySelector<HTMLButtonElement>('.task-schedule-editor > button')!
+    for (const value of ['', '0', '10081', '1.5']) {
+      await app.set('input[type="number"]', value)
+      assert.equal(document.querySelector<HTMLInputElement>('input[type="number"]')!.value, value)
+      assert.equal(saveButton.disabled, true)
+      await act(async () => saveButton.click())
+      assert.equal(saved, undefined)
+    }
+    await app.set('input[type="number"]', '10')
+    await act(async () => new Promise(resolve => setTimeout(resolve,280)))
     await act(async () => document.querySelector<HTMLButtonElement>('.task-schedule-editor > button')!.click())
     assert.equal(saved?.id,'rule')
     assert.equal(payload.target_type,'task')

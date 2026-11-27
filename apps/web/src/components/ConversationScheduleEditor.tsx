@@ -1,3 +1,4 @@
+import { scheduleRuleNumbersValid } from '../utils/numericConfigValidation'
 import { useEffect, useState } from 'react'
 import { scheduleApi, type ProjectSchedule, type SchedulePayload, type ScheduleRule } from '../api/schedule'
 import { useChatListStore } from '../stores/chatSessionStore'
@@ -36,10 +37,12 @@ export default function ConversationScheduleEditor({ projectId, schedule, onSave
   useEffect(() => {
     let active = true
     setPreview([])
+    if (!scheduleRuleNumbersValid(rule)) return
     const timer = window.setTimeout(() => scheduleApi.preview(rule).then(result => { if (active) setPreview(result.next_runs) }).catch(() => { if (active) setPreview([]) }), 250)
     return () => { active = false; window.clearTimeout(timer) }
   }, [rule])
   const save = async () => {
+    if (!scheduleRuleNumbersValid(rule)) return
     setBusy(true); setError('')
     const payload: SchedulePayload = { name: name.trim(), target_type: 'session', target_session_id: sessionId,
       instruction: instruction.trim(), rule, workflow_id: '', task_template: {}, execution_mode: 'workflow', overlap_policy: 'skip' }
@@ -65,6 +68,6 @@ export default function ConversationScheduleEditor({ projectId, schedule, onSave
     <div className="conversation-schedule-lifecycle">{t('schedules.sessionLifecycle')}</div>
     <div className="task-schedule-preview">{t('schedules.nextRuns')}: {preview.slice(0, 3).map(value => new Date(value).toLocaleString()).join(' / ') || '—'}</div>
     {error && <div role="alert" className="task-schedule-error">{localizeErrorDisplay(error)}</div>}
-    <Button variant="primary" data-save-session-schedule loading={busy} disabled={!name.trim() || !selected || !instruction.trim() || !preview.length || loading || Boolean(loadError)} onClick={() => void save()}>{t('common.save')}</Button>
+    <Button variant="primary" data-save-session-schedule loading={busy} disabled={!scheduleRuleNumbersValid(rule) || !name.trim() || !selected || !instruction.trim() || !preview.length || loading || Boolean(loadError)} onClick={() => void save()}>{t('common.save')}</Button>
   </div>
 }

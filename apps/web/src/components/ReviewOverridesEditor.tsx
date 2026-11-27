@@ -1,3 +1,4 @@
+import { reviewOverridesValid } from '../utils/numericConfigValidation'
 import Input from './Input'
 import MarkdownEditor from './MarkdownEditor'
 import { useI18n } from '../i18n'
@@ -39,7 +40,7 @@ export default function ReviewOverridesEditor({ value, onChange, lanes, startSte
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} /><strong style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{label}</strong>{upstream && <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{t('status.skipped')}</span>}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {([['skip', t('flow.reviewSkip')], ['auto', t('flow.autoReview')], ['manual', t('flow.manualReview')]] as const).map(([mode, text]) => <button key={mode} type="button" disabled={upstream} onClick={() => update(key, { mode, auto: mode === 'auto' })} style={{ padding: '2px 8px', fontSize: 'calc(11px * var(--font-scale))', borderRadius: 999, border: cfg.mode === mode ? '1px solid var(--accent)' : '1px solid var(--border)', background: cfg.mode === mode ? 'var(--accent-light)' : 'transparent', color: cfg.mode === mode ? 'var(--accent)' : 'var(--fg-2)' }}>{text}</button>)}
-          {cfg.mode === 'auto' && <label style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.retry')} <Input type="number" min={1} max={5} disabled={upstream} value={cfg.maxRetries} onChange={(event) => update(key, { maxRetries: Math.max(1, Math.min(5, Number(event.target.value) || 1)) })} style={{ width: 42, height: 22 }} /></label>}
+          {cfg.mode === 'auto' && <label style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.retry')} <Input type="number" min={1} max={5} disabled={upstream} value={Number.isNaN(cfg.maxRetries) ? '' : cfg.maxRetries} aria-invalid={!upstream && !reviewOverridesValid({ [key]: cfg }, lanes, startStepKey) || undefined} onChange={(event) => update(key, { maxRetries: event.target.valueAsNumber })} style={{ width: 42, height: 22 }} /></label>}
         </div>
         <MarkdownEditor value={cfg.prompt} onChange={(prompt) => update(key, { prompt })} disabled={upstream} projectId={projectId} placeholder={t('taskList.reviewPromptPlaceholder')} minHeight={28} maxHeight={120} ariaLabel={t('taskList.reviewPromptAria', { label })} />
       </div>

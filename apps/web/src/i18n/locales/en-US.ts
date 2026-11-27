@@ -1400,6 +1400,7 @@ export const enUS: Messages = {
     stepApplyButton: 'Apply selected',
   },
   flow: {
+    numericConfigInvalid: 'Enter a valid count.',
     inputArtifacts: 'Input artifacts',
     addDispatchStep: '+ Workflow step',
     newDispatchStep: 'Workflow step',
@@ -2853,7 +2854,7 @@ export const enUS: Messages = {
       positiveInteger: 'Enter a positive integer',
       hint: 'Limit how many tasks and chats run at the same time; extra tasks and chats queue and continue automatically when earlier ones finish.',
       projectLevel: 'Project-level limits',
-      projectLevelHint: 'The minimum limit is 1; clear the field or enter 0 for Unlimited.',
+      projectLevelHint: 'The minimum limit is 1; enter 0 for Unlimited.',
       taskRetryInterval: 'Failed task retry interval (minutes)',
       taskRetryHint: 'Tasks only; chats are unaffected. Retry execution failures at this interval, respecting task concurrency. Set 0 to disable. Stopped tasks and tasks awaiting approval are excluded.',
       taskRetryInvalid: 'Enter whole minutes from 0 to 10080; 0 disables automatic retries.',

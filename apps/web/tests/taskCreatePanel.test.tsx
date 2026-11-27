@@ -4,7 +4,7 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Project } from '../src/api/client'
-import { I18nProvider } from '../src/i18n'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { useTaskStore } from '../src/stores/taskStore'
 import TaskCreatePanel from '../src/components/TaskCreatePanel'
 
@@ -78,6 +78,47 @@ test('discard confirmation stays with a changed task creation form', async () =>
   } finally {
     await act(async () => root.unmount())
     container.remove()
+    await window.happyDOM.close()
+  }
+})
+
+
+test('task creation blocks invalid review counts even when submitted from the title', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const originalCreate = useTaskStore.getState().createTask, previousFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json({ providers: [], buttons: [], assistants: [] })
+  const calls: unknown[][] = []
+  useTaskStore.setState({ createTask: async (...args) => { calls.push(args); return { id: 'new' } as any } })
+  const project = { id: 'project', path: '/project', name: 'Project', workflows: [],
+    steps: { nodes: [{ id: 'write', type: 'write', title: '撰写', review: { mode: 'auto', maxRetries: 2 } }] } } as Project
+  const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
+  const set = (input: HTMLInputElement, value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+  })
+  const tab = (value: string) => act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent === value)!.click())
+  try {
+    await act(async () => root.render(<I18nProvider><TaskCreatePanel project={project} workflowId="workflow" lanes={[{ key: 'write', label: '撰写' }]} onClose={() => {}} /></I18nProvider>))
+    await set(container.querySelector('#new-task-title')!, '输入修复')
+    const create = container.querySelector<HTMLButtonElement>('.task-create-primary')!
+    await tab('审核配置')
+    for (const value of ['', '0', '6', '1.5']) {
+      await set(container.querySelector('input[type="number"]')!, value)
+      assert.equal(create.disabled, true)
+    }
+    await tab('任务内容')
+    const title = container.querySelector<HTMLInputElement>('#new-task-title')!
+    await act(async () => title.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    assert.equal(calls.length, 0)
+    await tab('审核配置')
+    await set(container.querySelector('input[type="number"]')!, '4')
+    await act(async () => create.click())
+    assert.equal(calls.length, 1)
+    assert.equal((calls[0][5] as any).write.maxRetries, 4)
+  } finally {
+    await act(async () => root.unmount()); container.remove()
+    useTaskStore.setState({ createTask: originalCreate }); globalThis.fetch = previousFetch
     await window.happyDOM.close()
   }
 })

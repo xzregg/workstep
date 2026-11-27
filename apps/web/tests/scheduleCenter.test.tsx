@@ -497,3 +497,39 @@ test('digital person schedule entry starts new rules as conversation schedules',
     assert.equal(app.container.querySelector<HTMLButtonElement>('[data-save-session-schedule]')!.disabled, true)
   } finally { globalThis.fetch = originalFetch; await app.cleanup() }
 })
+
+
+test('agent schedule retry counts can be cleared and only valid integers are saved', async () => {
+  const app = await setup()
+  let item = { ...schedule('a'), task_template: { mode: 'agent' as const, instruction: '生成任务', retry_count: 2 } }
+  scheduleApi.list = async () => ({ schedules: [item] })
+  const writes: number[] = []
+  scheduleApi.update = async (_projectId, _id, payload) => {
+    writes.push(payload.task_template.retry_count!)
+    item = { ...item, ...payload } as typeof item
+    return item
+  }
+  const set = (value: string) => act(async () => {
+    const input = document.querySelector<HTMLInputElement>('[aria-label="重试次数"]')!
+    Object.getOwnPropertyDescriptor(app.window.HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+    input.dispatchEvent(new app.window.Event('input', { bubbles: true }))
+  })
+  try {
+    await app.render(); await app.click('定时任务')
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    await act(async () => new Promise(resolve => setTimeout(resolve, 280)))
+    const save = app.button('保存')
+    for (const value of ['', '-1', '11', '1.5']) {
+      await set(value)
+      assert.equal(document.querySelector<HTMLInputElement>('[aria-label="重试次数"]')!.value, value)
+      assert.equal(save.disabled, true)
+      await act(async () => save.click())
+      assert.equal(writes.length, 0)
+    }
+    await set('0'); assert.equal(save.disabled, false)
+    await set('4'); await act(async () => save.click())
+    assert.deepEqual(writes, [4])
+    await act(async () => document.querySelector<HTMLButtonElement>('.schedule-list-item')!.click())
+    assert.equal(document.querySelector<HTMLInputElement>('[aria-label="重试次数"]')!.value, '4')
+  } finally { await app.cleanup() }
+})

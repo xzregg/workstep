@@ -1546,6 +1546,7 @@ export const zhCN = {
     stepApplyButton: '应用所选步骤',
   },
   flow: {
+    numericConfigInvalid: '请填写有效的次数',
     inputArtifacts: '输入产物',
     addDispatchStep: '+ 流程步骤',
     newDispatchStep: '流程步骤',
@@ -3009,7 +3010,7 @@ export const zhCN = {
       positiveInteger: '请输入正整数',
       hint: '限制同时执行的任务数与对话数；超过上限的任务与对话会排队等待，前面的完成后自动继续。',
       projectLevel: '本项目限制',
-      projectLevelHint: '限制值最小为 1；清空或输入 0 表示不限制。',
+      projectLevelHint: '限制值最小为 1；输入 0 表示不限制。',
       taskRetryInterval: '任务异常自动重试间隔（分钟）',
       taskRetryHint: '仅任务生效，不涉及对话。异常失败后按此间隔持续重试，并遵守任务并发限制；0 表示关闭。主动停止和等待审批的任务不会重试。',
       taskRetryInvalid: '请输入 0～10080 的整数分钟数，0 表示关闭。',

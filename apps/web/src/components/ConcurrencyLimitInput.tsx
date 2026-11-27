@@ -14,7 +14,7 @@ export default function ConcurrencyLimitInput({
   unlimitedLabel,
   onValueChange,
 }: ConcurrencyLimitInputProps) {
-  const displayValue = value === '0' || value === '' ? unlimitedLabel : value
+  const displayValue = value === '0' ? unlimitedLabel : value
 
   return (
     <Input
@@ -29,7 +29,7 @@ export default function ConcurrencyLimitInput({
       }}
       onChange={(event) => {
         const next = event.target.value
-        if (next === '' || next === '0') onValueChange('0')
+        if (next === '' || next === '0') onValueChange(next)
         else if (/^[1-9]\d*$/.test(next)) onValueChange(next)
       }}
     />
