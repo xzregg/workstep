@@ -206,3 +206,37 @@ test('shared ChatInput exposes the unified quota button for session, task creati
     await window.happyDOM.close()
   }
 })
+
+test('quota engine filter is an accessible tablist with roving focus, arrow keys and a linked panel', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const entries = [
+    { engine_id: 'codex_sdk', supported: true, status: 'ok' as const, quota: { engine_id: 'codex_sdk', primary: { remaining_percent: 82, used_percent: 18 } } },
+    { engine_id: 'antigravity', supported: true, status: 'ok' as const, quota: { engine_id: 'antigravity', primary: { remaining_percent: 61, used_percent: 39 } } },
+  ]
+  try {
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact={false} selectedEngine="codex_sdk" entries={entries} /></I18nProvider>))
+    await act(async () => (container.querySelector('.engine-quota-trigger') as HTMLButtonElement).click())
+    const list = container.querySelector('[role="tablist"].engine-quota-tabs') as HTMLElement
+    assert.ok(list)
+    const tabs = [...list.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+    assert.equal(tabs.length, 2)
+    assert.deepEqual(tabs.map(tab => tab.getAttribute('aria-selected')), ['true', 'false'])
+    assert.deepEqual(tabs.map(tab => tab.tabIndex), [0, -1])
+    assert.ok(list.querySelector('[aria-pressed]') === null)
+    const panel = container.querySelector('.engine-quota-cards') as HTMLElement
+    assert.equal(panel.getAttribute('role'), 'tabpanel')
+    assert.equal(tabs[0].getAttribute('aria-controls'), panel.id)
+    assert.equal(panel.getAttribute('aria-labelledby'), tabs[0].id)
+
+    await act(async () => { tabs[0].dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
+    const after = [...container.querySelectorAll<HTMLButtonElement>('.engine-quota-tabs [role="tab"]')]
+    assert.deepEqual(after.map(tab => tab.getAttribute('aria-selected')), ['false', 'true'])
+    assert.equal(container.querySelectorAll('[data-quota-engine]').length, 2)
+    assert.equal(panel.getAttribute('aria-labelledby'), after[1].id)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

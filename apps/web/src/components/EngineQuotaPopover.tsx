@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import Icon from './Icon'
 import { useI18n } from '../i18n'
 import { engineLabel } from '../engineMeta'
@@ -14,10 +14,24 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
   const [all, setAll] = useState(false)
   const [position, setPosition] = useState<CSSProperties>()
   const ref = useRef<HTMLSpanElement>(null)
+  const uid = useId()
   const selected = entries.find(entry => entry.engine_id === selectedEngine)
   const focused = selected || (entries.length === 1 ? entries[0] : undefined)
   const visible = all || !focused ? entries : [focused]
   const primary = focused?.quota?.primary
+  const tabbed = Boolean(focused) && entries.length > 1
+  const tabs = focused ? [
+    { key: 'focused', all: false, label: focused.name || engineLabel(focused.engine_id, t) },
+    { key: 'all', all: true, label: t('chatInput.quotaAll') },
+  ] : []
+  const moveTab = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+      : (index + (event.key === 'ArrowLeft' ? tabs.length - 1 : 1)) % tabs.length
+    setAll(tabs[next].all)
+    ref.current?.querySelector<HTMLButtonElement>(`[data-quota-tab="${tabs[next].key}"]`)?.focus()
+  }
   const label = primary ? t('chatInput.quotaCompact', {remaining: primary.remaining_percent}) : t('chatInput.quotaTitle')
   useEffect(() => { setAll(false) }, [selectedEngine])
   useEffect(() => {
@@ -27,15 +41,15 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
       if (!rect) return
       const viewportWidth = window.visualViewport?.width ?? window.innerWidth
       const viewportHeight = window.visualViewport?.height ?? window.innerHeight
-      const width = Math.min(400, Math.max(240, viewportWidth - 32))
+      const width = Math.min(320, Math.max(240, viewportWidth - 32))
       const below = rect.top < Math.min(280, viewportHeight / 2)
       const available = below ? viewportHeight - rect.bottom - 24 : rect.top - 24
       setPosition({
         left: Math.max(16, Math.min(rect.left, viewportWidth - width - 16)),
         width,
         ...(below
-          ? { top: rect.bottom + 8, maxHeight: Math.min(560, Math.max(160, available)) }
-          : { bottom: viewportHeight - rect.top + 8, maxHeight: Math.min(560, Math.max(160, available)) }),
+          ? { top: rect.bottom + 8, maxHeight: Math.min(420, Math.max(160, available)) }
+          : { bottom: viewportHeight - rect.top + 8, maxHeight: Math.min(420, Math.max(160, available)) }),
       })
     }
     const outside = (event: MouseEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false) }
@@ -85,11 +99,13 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
           {refreshing ? <span className="task-status-spinner" aria-hidden="true" /> : <Icon name="refresh" size={14} />}
         </button>}
       </span>
-      {focused && entries.length > 1 && <span className="engine-quota-filters">
-        <button type="button" aria-pressed={!all} onClick={() => setAll(false)}>{focused.name || engineLabel(focused.engine_id, t)}</button>
-        <button type="button" data-quota-all="" aria-pressed={all} onClick={() => setAll(true)}>{t('chatInput.quotaAll')}</button>
+      {tabbed && <span className="engine-quota-tabs" role="tablist" aria-label={t('chatInput.quotaTitle')}>
+        {tabs.map((tab, index) => <button key={tab.key} id={`${uid}-${tab.key}`} type="button" role="tab" title={tab.label}
+          aria-selected={all === tab.all} aria-controls={`${uid}-panel`} tabIndex={all === tab.all ? 0 : -1}
+          data-quota-tab={tab.key} {...(tab.all ? { 'data-quota-all': '' } : {})}
+          onClick={() => setAll(tab.all)} onKeyDown={event => moveTab(event, index)}>{tab.label}</button>)}
       </span>}
-      <span className="engine-quota-cards">
+      <span className="engine-quota-cards" id={`${uid}-panel`} {...(tabbed ? { role: 'tabpanel', 'aria-labelledby': `${uid}-${all ? 'all' : 'focused'}` } : {})}>
         {error && <span className="engine-quota-status" role="status">{t('chatInput.quotaUnavailable')}</span>}
         {!entries.length && <span className="engine-quota-status" role="status">{refreshing
           ? <><span className="task-status-spinner" />{t('chatInput.quotaLoading')}</> : !error ? t('chatInput.quotaEmpty') : null}</span>}
