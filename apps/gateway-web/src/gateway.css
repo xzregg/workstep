@@ -733,24 +733,32 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-usage-date-range { width: 100%; min-width: 0; }
 .gateway-usage-filters .gateway-usage-date-range input { height: auto; padding: 0; border: 0; background: transparent; border-radius: 0; box-shadow: none; }
 .gateway-usage-date-popup button { padding: 0; }
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .gateway-usage-date-field { grid-column: 1 / -1; }
   .gateway-usage-date-popup { max-width: calc(100vw - 16px); }
   .gateway-usage-date-popup .ant-picker-panel-container { max-width: calc(100vw - 16px); overflow-x: auto; }
 }
 
-@media (max-width: 767px) {
-  .gateway-usage-date-popup.ant-picker-dropdown { position: fixed; inset: auto 8px 8px 8px !important; width: calc(100vw - 16px); min-width: 0 !important; }
+@media (max-width: 1023px) {
+  .gateway-usage-date-popup.ant-picker-dropdown { position: fixed !important; inset: max(var(--gateway-picker-top, 8px), env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) auto max(8px, env(safe-area-inset-left)) !important; width: auto; min-width: 0 !important; padding: 0; }
   .gateway-usage-date-popup .ant-picker-range-arrow { display: none; }
-  .gateway-usage-date-popup .ant-picker-panel-container { width: 100%; max-height: 70vh; overflow: auto; }
+  .gateway-usage-date-popup .ant-picker-panel-container { width: 100%; max-height: calc(var(--gateway-picker-height, calc(100dvh - 16px)) - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow: hidden; display: flex; flex-direction: column; }
+  .gateway-usage-date-popup .ant-picker-panels,
   .gateway-usage-date-popup .ant-picker-panel-layout,
   .gateway-usage-date-popup .ant-picker-datetime-panel { flex-direction: column; }
+  .gateway-usage-date-popup .ant-picker-panels { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  .gateway-usage-date-popup .ant-picker-panels .ant-picker-panel { flex-shrink: 0; overflow: visible; }
+  .gateway-usage-date-popup .ant-picker-panel-layout { min-height: 0; }
+  .gateway-usage-date-popup .ant-picker-panel-layout > div:not(.ant-picker-presets) { min-height: 0; display: flex; flex-direction: column; }
+  .gateway-usage-date-popup .ant-picker-panel { min-height: 0; overflow: auto; overscroll-behavior: contain; }
   .gateway-usage-date-popup .ant-picker-presets { width: 100%; max-width: none; min-height: 0; flex: none; box-sizing: border-box; display: block; }
   .gateway-usage-date-popup .ant-picker-presets ul { display: flex; flex-wrap: wrap; gap: 4px; height: auto !important; flex: none; overflow: visible !important; }
   .gateway-usage-date-popup .ant-picker-date-panel,
   .gateway-usage-date-popup .ant-picker-time-panel { width: 100%; }
   .gateway-usage-date-popup .ant-picker-time-panel-column { height: 100px; }
-  .gateway-usage-date-popup .ant-picker-time-panel .ant-picker-content { justify-content: center; }
+  .gateway-usage-date-popup .ant-picker-time-panel .ant-picker-content { justify-content: center; height: 132px; }
+  .gateway-usage-date-popup .ant-picker-footer { flex-shrink: 0; background: #fff; }
+  .gateway-usage-date-popup .ant-picker-ok { min-height: 44px; }
 }
 
 .gateway-tree-selection-hint { margin: 8px 0; color: #64748b; font-size: 12px; line-height: 1.6; }
