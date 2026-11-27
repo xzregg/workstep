@@ -131,15 +131,18 @@ export default function EngineQuotaPopover({ entries, selectedEngine = '', compa
           onClick={() => setAll(tab.all)} onKeyDown={event => moveTab(event, index)}>{tab.label}</button>)}
       </span>}
       <span className="engine-quota-cards" id={`${uid}-panel`} {...(tabbed ? { role: 'tabpanel', 'aria-labelledby': `${uid}-${all ? 'all' : 'focused'}` } : {})}>
-        {error && <span className="engine-quota-status" role="status">{t('chatInput.quotaUnavailable')}</span>}
-        {!entries.length && <span className="engine-quota-status" role="status">{refreshing
-          ? <><span className="task-status-spinner" />{t('chatInput.quotaLoading')}</> : !error ? t('chatInput.quotaEmpty') : null}</span>}
+        {error && <span className="engine-quota-status" role="status">{t('chatInput.quotaUnavailable')}
+          {visible.some(entry => entry.quota) && <> · {t('chatInput.quotaLastKnown')}</>}</span>}
+        {!entries.length && (refreshing || !error) && <span className="engine-quota-status" role="status">{refreshing
+          ? <><span className="task-status-spinner" />{t('chatInput.quotaLoading')}</> : t('chatInput.quotaEmpty')}</span>}
         {visible.map(entry => {
           const title = entry.name || engineLabel(entry.engine_id, t)
           return <span className="engine-quota-card" data-quota-engine={entry.engine_id} key={entry.engine_id}>
           <span className="engine-quota-card-heading"><strong>{title}</strong>
             {entry.quota?.plan_type && <span className="engine-quota-plan">{entry.quota.plan_type}</span>}</span>
-          {entry.status !== 'ok' || !entry.quota ? <span className="engine-quota-status">{failureText(entry)}</span> : <>
+          {(entry.status !== 'ok' || !entry.quota) && <span className="engine-quota-status">{failureText(entry)}
+            {entry.quota && <> · {t('chatInput.quotaLastKnown')}</>}</span>}
+          {entry.quota && <>
             {entry.quota.limit_name && entry.quota.limit_name !== title && <span className="engine-quota-limit-name">{entry.quota.limit_name}</span>}
             {(entry.quota.groups?.length ? entry.quota.groups : [{name: '', windows: [
               entry.quota.primary, entry.quota.secondary,

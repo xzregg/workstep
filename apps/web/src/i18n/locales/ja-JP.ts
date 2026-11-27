@@ -1247,6 +1247,7 @@ export const jaJP: Messages = {
     quotaCompact: '额度 {remaining}%',
     quotaAll: 'すべてのエンジン',
     quotaUnavailable: '現在取得できません',
+    quotaLastKnown: '前回取得した利用枠を表示',
     quotaLogin: 'ログインしてください',
     quotaTimeout: '取得がタイムアウトしました。再試行してください。',
     quotaCommandFailed: '取得コマンドに失敗しました',

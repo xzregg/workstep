@@ -1254,6 +1254,7 @@ export const zhTW: Messages = {
     quotaCompact: '額度 {remaining}%',
     quotaAll: '全部引擎',
     quotaUnavailable: '暫時無法查詢',
+    quotaLastKnown: '顯示上次成功查詢的額度',
     quotaLogin: '請先登入',
     quotaTimeout: '額度查詢逾時，可重試',
     quotaCommandFailed: '額度查詢命令執行失敗',

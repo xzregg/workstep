@@ -1432,6 +1432,7 @@ export const zhCN = {
     quotaCompact: '额度 {remaining}%',
     quotaAll: '全部引擎',
     quotaUnavailable: '暂时无法查询',
+    quotaLastKnown: '显示上次成功查询的额度',
     quotaLogin: '请先登录',
     quotaTimeout: '额度查询超时，可重试',
     quotaCommandFailed: '额度查询命令执行失败',

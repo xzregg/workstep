@@ -176,17 +176,22 @@ class UnifiedQuotaService:
 
         async def run_collect() -> dict:
             engines = await collect()
+            current_generation = generation == state.generation(scope_key)
+            current = state.cache.get(scope_key) if current_generation else None
+            previous_quotas = {item["engine_id"]: item["quota"] for item in current.engines
+                               if item.get("quota") is not None} if current else {}
             collected_mono = self._clock()
             collected_wall = self._wall_clock()
             entry = _UnifiedCacheEntry(
-                engines=list(engines),
+                engines=[{**item, "quota": previous_quotas[item["engine_id"]]}
+                         if item.get("status") == "unavailable" and item.get("quota") is None
+                         and item["engine_id"] in previous_quotas else item for item in engines],
                 collected_at=collected_wall,
                 expires_at_wall=collected_wall + self.ttl_seconds,
                 expires_at_mono=collected_mono + self.ttl_seconds,
                 seq=started_seq,
             )
-            current = state.cache.get(scope_key)
-            if generation == state.generation(scope_key) and (current is None or started_seq >= current.seq):
+            if current_generation and (current is None or started_seq >= current.seq):
                 if scope_key in state.cache:
                     del state.cache[scope_key]
                 state.cache[scope_key] = entry

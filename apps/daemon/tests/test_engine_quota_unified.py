@@ -14,6 +14,43 @@ from workstep_gateway_protocol import FrameType, ProxyFrame
 
 
 @pytest.mark.asyncio
+async def test_unified_quota_keeps_last_success_only_for_transient_failures_in_current_scope():
+    from services.engine_quota import UnifiedQuotaService
+
+    clock = [1000.0]
+    service = UnifiedQuotaService(clock=lambda: clock[0], wall_clock=lambda: clock[0])
+    scope = ("host", "alice")
+    good = {"engine_id": "codex", "status": "ok", "quota": {"collected_at": 990, "remaining_percent": 75}}
+    failed = {"engine_id": "codex", "status": "unavailable", "reason": "timeout", "quota": None}
+    other = {"engine_id": "other", "status": "ok", "quota": {"remaining_percent": 80}}
+    targets = [good, other]
+
+    async def collect():
+        return targets
+
+    await service.get(scope, collect)
+    clock[0] += 300
+    targets = [failed, other]
+    fallback = {**failed, "quota": good["quota"]}
+    expired = await service.get(scope, collect)
+    assert expired["engines"] == [fallback, other]
+    assert expired["collected_at"] == 1300
+    assert (await service.get(scope, collect))["cached"] is True
+    assert (await service.get(scope, collect, refresh=True))["engines"] == [fallback, other]
+    assert (await service.get(("host", "bob"), collect))["engines"] == [failed, other]
+
+    targets = [{**failed, "status": "unauthenticated"}]
+    assert (await service.get(scope, collect, refresh=True))["engines"] == targets
+    targets = [failed]
+    assert (await service.get(scope, collect, refresh=True))["engines"] == targets
+    targets = [good]
+    assert (await service.get(scope, collect, refresh=True))["engines"] == targets
+    targets = [failed]
+    service.invalidate(scope)
+    assert (await service.get(scope, collect, refresh=True))["engines"] == targets
+
+
+@pytest.mark.asyncio
 async def test_unified_quota_service_caches_5_minutes_refreshes_and_deduplicates():
     from services.engine_quota import UnifiedQuotaService
 

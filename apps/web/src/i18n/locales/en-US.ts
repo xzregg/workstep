@@ -1286,6 +1286,7 @@ export const enUS: Messages = {
     quotaCompact: 'Quota {remaining}%',
     quotaAll: 'All engines',
     quotaUnavailable: 'Temporarily unavailable',
+    quotaLastKnown: 'Showing last known quota',
     quotaLogin: 'Sign in required',
     quotaTimeout: 'Quota check timed out. Try again.',
     quotaCommandFailed: 'Quota command failed',

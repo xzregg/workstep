@@ -38,7 +38,8 @@ test('account quota displays named windows, classified failures, and the server 
   const collectedAt = 1795737600
   engineApi.quotas = async (_project, refresh) => ({
     engines: [
-      {engine_id: 'codex_sdk', supported: true, status: 'ok', quota: {engine_id: 'codex_sdk',
+      {engine_id: 'codex_sdk', supported: true, status: refresh ? 'unavailable' : 'ok',
+        reason: refresh ? 'timeout' : undefined, quota: {engine_id: 'codex_sdk',
         primary: {window_duration_mins: 10080, used_percent: 0, remaining_percent: 100},
         secondary: {window_duration_mins: 300, used_percent: 5, remaining_percent: 95}}},
       {engine_id: 'antigravity', supported: true, status: 'unavailable', reason: 'invalid_report', quota: null},
@@ -61,6 +62,11 @@ test('account quota displays named windows, classified failures, and the server 
     assert.match(container.querySelector('[data-quota-engine="antigravity"]')?.textContent || '', /report.*format|报告格式/i)
     await act(async () => container.querySelector<HTMLButtonElement>('[data-quota-refresh]')!.click())
     assert.equal(refreshTime(), new Date((collectedAt + 60) * 1000).toISOString())
+    const codex = container.querySelector('[data-quota-engine="codex_sdk"]')!
+    assert.match(codex.textContent || '', /timed out|超时/i)
+    assert.match(codex.textContent || '', /last known quota|上次成功查询的额度/i)
+    assert.equal(codex.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'), '100')
+    assert.doesNotMatch(container.querySelector('[data-quota-engine="antigravity"]')?.textContent || '', /last known quota|上次成功查询的额度/i)
   } finally {
     engineApi.quotas = original
     await act(async () => root.unmount())

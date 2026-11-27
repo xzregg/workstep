@@ -1110,6 +1110,8 @@ Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多�
 
 `GET /api/engine/quota`（支持 `project_id` 与 `refresh=1`）是统一多引擎额度查询入口，保留宿主／项目范围授权，按注册目录动态发现所有已启用、已安装且声明 `supports_quota` 的引擎并发采集并返回 `{ engines, cached, collected_at, expires_at }`；单个引擎失败（`unauthenticated` / `unavailable`）不影响其他引擎返回。`services/engine_quota.py::UnifiedQuotaService` 按授权范围（宿主／项目／身份／设备）维护 5 分钟内存缓存并合并并发在途查询；`refresh=1` 绕过缓存真实采集并重置有效期；引擎启停、配置、登录、二进制路径及自定义引擎变更时失效缓存并阻止旧在途结果回写。单引擎兼容路由 `GET /api/engine/{id}/quota` 保留原契约，通过 `query_quota` 返回 `supported/status/quota`：unsupported、ok、unauthenticated、unavailable。支持的引擎返回 None、超时、错误或畸形数据均为 unavailable；需登录时抛 `QuotaAuthenticationRequired`。公共查询默认限时 20 秒，传播调用方取消，不返回原始异常及未知字段。引擎使用异步 I/O，负责在取消／超时时回收自有客户端和进程。
 
+统一接口中，仍符合查询条件的引擎返回 `unavailable` 时，若同授权范围、同配置代次内有上次成功的 `quota`，则保留该额度及原 `quota.collected_at`，同时返回本次失败的 `status` 和 `reason`。没有历史值或引擎明确要求登录时，`quota` 仍为空。浮层将保留值标为上次成功查询的额度；批次 `collected_at` 仍表示最近一次采集完成时间。
+
 现有 Codex SDK 和 Antigravity 分别在其引擎内调用原生额度接口／命令，其他符合能力的内置或自定义引擎声明 `SUPPORTS_QUOTA=True` 后自动纳入统一查询范围。前端所有共用 `ChatInput` 的消息输入框（会话、任务创建、任务详情、AI 流程、原型助手、数字中枢等；公开分享路由除外）均通过 `ChatInputUsage` + `EngineQuotaPopover` 展示额度按钮与浮层：按选中引擎默认展示对应引擎额度并提供「全部引擎」切换与手动刷新；桌面与移动端浮层均可滚动且受视口边界约束。余额单独存在也可展示。
 
 额度性能保护由 `services/engine_quota.py::QuotaRequests` 管理：授权后按项目／引擎合并并发查询，全宿主同时最多 2 项采集、最多 32 个不同查询键，排队与查询总预算 25 秒（超时后的自有资源清理仍须完成）。额度失败不阻塞聊天；前端沿用短时缓存，无固定轮询。注册扫描、SDK import／初始化及报告解析在线程运行；取消扫描时等其退出后再释放额度并发槽，避免反复刷新堆积线程。Codex 独立额度客户端等待原生启动线程后复用现有进程树／读取线程回收；Antigravity stdout 最多 256 KiB，stderr 丢弃，超限终止自有子进程。慢初始化、并发合并／上限、取消清理及超长报告回归见 `test_engine_quota_io.py`。
