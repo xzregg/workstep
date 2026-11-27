@@ -25,6 +25,13 @@ test('conversation timer validates, follows channel and saves only the selected 
   await set('[aria-label="标题"]','检查进展');await set('[aria-label="关联对话"]','s');await set('textarea','检查最新情况')
   await act(async()=>new Promise(resolve=>setTimeout(resolve,280)))
   assert.match(document.body.textContent!,/研发机器人/);assert.match(document.body.textContent!,/自动回传/);assert.equal(dirty,true)
+  for (const value of ['', '0', '10081', '1.5']) {
+   await set('input[type="number"]',value)
+   assert.equal(document.querySelector<HTMLInputElement>('input[type="number"]')!.value,value)
+   assert.equal(document.querySelector<HTMLButtonElement>('[data-save-session-schedule]')!.disabled,true)
+  }
+  await set('input[type="number"]','12')
+  await act(async()=>new Promise(resolve=>setTimeout(resolve,280)))
   await act(async()=>document.querySelector<HTMLButtonElement>('[data-save-session-schedule]')!.click())
   assert.equal(payload.target_type,'session');assert.equal(payload.target_session_id,'s');assert.equal(payload.instruction,'检查最新情况');assert.equal(payload.notification,undefined);assert.deepEqual(payload.task_template,{})
  }finally{await act(async()=>root.unmount());Object.assign(scheduleApi,original);chatSessionApi.list=list;await window.happyDOM.close()}

@@ -6,7 +6,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { taskApi, type Project } from '../src/api/client'
 import { utcToLocalDateTime } from '../src/utils/scheduledStart'
-import { I18nProvider } from '../src/i18n'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { useTaskStore } from '../src/stores/taskStore'
 import TaskCreatePanel from '../src/components/TaskCreatePanel'
 
@@ -136,3 +136,82 @@ test('scheduled creation submits the selected local time as the same ISO instant
     await window.happyDOM.close()
   }
 })
+
+
+test('task creation blocks invalid review counts even when submitted from the title', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const originalCreate = useTaskStore.getState().createTask, previousFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json({ providers: [], buttons: [], assistants: [] })
+  const calls: unknown[][] = []
+  useTaskStore.setState({ createTask: async (...args) => { calls.push(args); return { id: 'new' } as any } })
+  const project = { id: 'project', path: '/project', name: 'Project', workflows: [],
+    steps: { nodes: [{ id: 'write', type: 'write', title: '撰写', review: { mode: 'auto', maxRetries: 2 } }] } } as Project
+  const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
+  const set = (input: HTMLInputElement, value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+  })
+  const tab = (value: string) => act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent === value)!.click())
+  try {
+    await act(async () => root.render(<I18nProvider><TaskCreatePanel project={project} workflowId="workflow" lanes={[{ key: 'write', label: '撰写' }]} onClose={() => {}} /></I18nProvider>))
+    await set(container.querySelector('#new-task-title')!, '输入修复')
+    const create = container.querySelector<HTMLButtonElement>('.task-create-primary')!
+    await tab('审核配置')
+    for (const value of ['', '0', '6', '1.5']) {
+      await set(container.querySelector('input[type="number"]')!, value)
+      assert.equal(create.disabled, true)
+    }
+    await tab('任务内容')
+    const title = container.querySelector<HTMLInputElement>('#new-task-title')!
+    await act(async () => title.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    assert.equal(calls.length, 0)
+    await tab('审核配置')
+    await set(container.querySelector('input[type="number"]')!, '4')
+    await act(async () => create.click())
+    assert.equal(calls.length, 1)
+    assert.equal((calls[0][5] as any).write.maxRetries, 4)
+  } finally {
+    await act(async () => root.unmount()); container.remove()
+    useTaskStore.setState({ createTask: originalCreate }); globalThis.fetch = previousFetch
+    await window.happyDOM.close()
+  }
+})
+
+for (const mode of ['manual', 'skip'] as const) {
+  test(`task creation ignores an empty hidden retry draft in ${mode} mode`, async () => {
+    const { window } = installDomEnvironment()
+    useLocaleStore.setState({ locale: 'zh-CN' })
+    const originalCreate = useTaskStore.getState().createTask, previousFetch = globalThis.fetch
+    globalThis.fetch = async () => Response.json({ providers: [], buttons: [], assistants: [] })
+    const calls: unknown[][] = []
+    useTaskStore.setState({ createTask: async (...args) => { calls.push(args); return { id: 'new' } as any } })
+    const project = { id: 'project', path: '/project', name: 'Project', workflows: [], steps: { nodes: [{ id: 'write', type: 'write', title: '撰写', review: { mode: 'auto', maxRetries: 4 } }] } } as Project
+    const container = document.body.appendChild(document.createElement('div')), root = createRoot(container)
+    const set = (input: HTMLInputElement, value: string) => act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+      input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    const button = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === label)!
+    try {
+      await act(async () => root.render(<I18nProvider><TaskCreatePanel project={project} workflowId="workflow" lanes={[{ key: 'write', label: '撰写' }]} onClose={() => {}} /></I18nProvider>))
+      await set(container.querySelector('#new-task-title')!, '隐藏次数草稿')
+      await act(async () => button('审核配置').click())
+      await set(container.querySelector('input[type="number"]')!, '')
+      const create = container.querySelector<HTMLButtonElement>('.task-create-primary')!
+      assert.equal(create.disabled, true)
+      await act(async () => button(mode === 'manual' ? '人工审核' : '跳过审核').click())
+      assert.equal(container.querySelector('input[type="number"]') === null, true)
+      assert.equal(create.disabled, false)
+      await act(async () => create.click())
+      assert.equal(calls.length, 1)
+      const submitted = (calls[0][5] as any).write
+      assert.equal(submitted.mode, mode)
+      assert.equal(submitted.maxRetries, 4, 'submit retains the original legal count')
+    } finally {
+      await act(async () => root.unmount()); container.remove()
+      useTaskStore.setState({ createTask: originalCreate }); globalThis.fetch = previousFetch
+      await window.happyDOM.close()
+    }
+  })
+}

@@ -101,7 +101,10 @@ test('global concurrency settings load and save task and chat limits', async () 
       setNativeValue(window, taskInput!, '')
       taskInput!.dispatchEvent(new Event('input', { bubbles: true }))
     })
-    assert.equal(taskInput?.value, '不限制')
+    assert.equal(taskInput?.value, '')
+    assert.equal(saveButton.disabled, true)
+    await act(async () => saveButton.click())
+    assert.equal(saved.length, 1)
 
     await act(async () => {
       setNativeValue(window, taskInput!, '0')

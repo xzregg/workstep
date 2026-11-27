@@ -1381,6 +1381,7 @@ export const zhTW: Messages = {
     stepApplyButton: '套用所選步驟',
   },
   flow: {
+    numericConfigInvalid: '請填寫有效的次數',
     inputArtifacts: '輸入產物',
     addDispatchStep: '+ 流程步驟',
     newDispatchStep: '流程步驟',
@@ -2834,7 +2835,7 @@ export const zhTW: Messages = {
       positiveInteger: '請輸入正整數',
       hint: '限制同時執行的任務數與對話數；超過上限的任務與對話會排隊等待，前面的完成後自動繼續。',
       projectLevel: '本專案限制',
-      projectLevelHint: '限制值最小為 1；清空或輸入 0 表示不限制。',
+      projectLevelHint: '限制值最小為 1；輸入 0 表示不限制。',
       taskRetryInterval: '任务异常自动重试间隔（分钟）',
       taskRetryHint: '仅任务生效，不涉及对话。异常失败后按此间隔持续重试，并遵守任务并发限制；0 表示关闭。主动停止和等待审批的任务不会重试。',
       taskRetryInvalid: '请输入 0～10080 的整数分钟数，0 表示关闭。',

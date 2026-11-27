@@ -187,6 +187,12 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
     assert.equal(chatLimit?.value, '不限制')
     assert.equal(taskLimit?.type, 'text')
     assert.ok(taskLimit?.list === null)
+    await act(async () => {
+      setNativeValue(window, taskLimit!, '')
+      taskLimit!.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    assert.equal(taskLimit?.value, '')
+    assert.equal([...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === '保存')!.disabled, true)
 
     await act(async () => {
       setNativeValue(window, taskLimit!, '0')

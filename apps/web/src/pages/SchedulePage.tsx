@@ -1,3 +1,4 @@
+import { reviewOverridesForSubmit, reviewOverridesValid, scheduleRuleNumbersValid } from '../utils/numericConfigValidation'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -215,13 +216,19 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
     return { kind: 'cron', expression: cron, timezone, ...effectiveRange }
   }, [kind, at, timezone, clock, weekdays, monthday, intervalEvery, cron, startDate, endDate])
 
+  const numericConfigValid = scheduleRuleNumbersValid(buildRule()) && (generation === 'agent'
+    ? Number.isInteger(retryCount) && retryCount >= 0 && retryCount <= 10
+    : reviewOverridesValid(reviewOverrides, steps, startStep))
+
   useEffect(() => {
+    if (!scheduleRuleNumbersValid(buildRule())) { setPreview({ cron: null, next: [] }); return }
+    let active = true
     const timer = window.setTimeout(() => {
       scheduleApi.preview(buildRule())
-        .then((result) => setPreview({ cron: result.cron_expression, next: result.next_runs }))
-        .catch(() => setPreview({ cron: null, next: [] }))
+        .then((result) => { if (active) setPreview({ cron: result.cron_expression, next: result.next_runs }) })
+        .catch(() => { if (active) setPreview({ cron: null, next: [] }) })
     }, 250)
-    return () => window.clearTimeout(timer)
+    return () => { active = false; window.clearTimeout(timer) }
   }, [buildRule])
 
   const closeTest = useCallback(() => {
@@ -319,7 +326,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
 
   const save = async () => {
     const agentMode = generation === 'agent'
-    if (preview.next.length === 0 || !notification.valid) return
+    if (!numericConfigValid || preview.next.length === 0 || !notification.valid) return
     if (agentMode ? !instruction.trim() : !workflowId) return
     const derivedTitle = title.trim() || `${description.trim().slice(0, 10)}...`
     const payload: SchedulePayload = {
@@ -337,7 +344,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
           }
         : {
             title: derivedTitle, description: description.trim() || undefined,
-            start_step_key: startStep || undefined, review_overrides: reviewOverrides,
+            start_step_key: startStep || undefined, review_overrides: reviewOverridesForSubmit(reviewOverrides, selected?.task_template.review_overrides as Record<string, ReviewOverride> | undefined),
           },
       notification: notification.value, rule: buildRule(), execution_mode: execution, overlap_policy: overlap,
     }
@@ -497,7 +504,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
                   </Field>
                   <div className="schedule-form-grid schedule-form-grid--spaced">
                     <Field label={t('schedules.referenceTitle')} help={t('schedules.referenceTitleHelp')}><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
-                    <Field label={t('schedules.retryCount')} help={t('schedules.retryCountHelp')}><Input type="number" min={0} max={10} value={retryCount} onChange={(event) => setRetryCount(Math.max(0, Number(event.target.value)))} /></Field>
+                    <Field label={t('schedules.retryCount')} help={t('schedules.retryCountHelp')}><Input aria-label={t('schedules.retryCount')} type="number" min={0} max={10} value={Number.isNaN(retryCount) ? '' : retryCount} aria-invalid={!Number.isInteger(retryCount) || retryCount < 0 || retryCount > 10 || undefined} onChange={(event) => setRetryCount(event.target.valueAsNumber)} /></Field>
                   </div>
                   <div style={{ marginTop: 12 }}>
                     <Field label={t('schedules.candidateWorkflows')} help={t('schedules.candidateWorkflowsHelp')}>
@@ -552,7 +559,7 @@ export default function SchedulePage({ onClose, onCountChange, project, headerTa
 
           <ScheduleNotificationEditor key={`${projectId}:${selectedId || 'new'}`} projectId={projectId} initialValue={selected?.notification}
             onChange={(state, automatic) => { if (automatic) acceptDefaults('notification', state.value); setNotification(state) }} />
-          {canManage && <div className="schedule-save-row">{selected && <ScheduleRunNowButton key={`${projectId}:${selected.id}`} projectId={projectId} scheduleId={selected.id} disabled={saving || selected.status === 'invalid'} running={runs.some(run => run.schedule_id === selected.id && (run.status === 'queued' || run.status === 'running'))} onStarted={refreshRuns} />}<Button variant="primary" loading={saving} disabled={!notification.valid || preview.next.length === 0 || (generation === 'agent' ? !instruction.trim() : !workflowId)} onClick={() => void save()}>{t('common.save')}</Button></div>}
+          {canManage && <div className="schedule-save-row">{selected && <ScheduleRunNowButton key={`${projectId}:${selected.id}`} projectId={projectId} scheduleId={selected.id} disabled={saving || selected.status === 'invalid'} running={runs.some(run => run.schedule_id === selected.id && (run.status === 'queued' || run.status === 'running'))} onStarted={refreshRuns} />}<Button variant="primary" loading={saving} disabled={!numericConfigValid || !notification.valid || preview.next.length === 0 || (generation === 'agent' ? !instruction.trim() : !workflowId)} onClick={() => void save()}>{t('common.save')}</Button></div>}
           </>}
           </fieldset>)}
         </main>

@@ -5,7 +5,7 @@ import { engineLabel } from '../engineMeta'
 import { initialStepConfig } from '../utils/stepConfig'
 import { useI18n } from '../i18n'
 import ArtifactOutputsEditor from './ArtifactOutputsEditor'
-import { STEP_TYPE_PATTERN, randomStepColor, normalizeMaxReturnRounds, emptyReview, syncOutputs, DEFAULT_MAX_RETURN_ROUNDS, MAX_CONFIGURED_RETURN_ROUNDS, type InputField, type ReviewConfig, type StepNodeData } from './flowCanvasData'
+import { STEP_TYPE_PATTERN, randomStepColor, emptyReview, syncOutputs, DEFAULT_MAX_RETURN_ROUNDS, MAX_CONFIGURED_RETURN_ROUNDS, type InputField, type ReviewConfig, type StepNodeData } from './flowCanvasData'
 import Button from './Button'
 import Input from './Input'
 import Combobox from './Combobox'
@@ -119,10 +119,6 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
         ? t('flow.keyDuplicate', { key: normalizedKey })
         : ''
 
-  useEffect(() => {
-    onValidationChange(keyError)
-  }, [keyError, onValidationChange])
-
   const selectableEngines = engines.filter(
     (engine) => engine.installed && engine.configured
   )
@@ -132,8 +128,19 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
   )
   const review: ReviewConfig = draft.review || emptyReview()
   const updateReview = (field: keyof ReviewConfig, value: string | number | boolean | Record<string, string>) => {
-    updateDraft('review', { ...review, [field]: value })
+    const updated = { ...review, [field]: value }
+    if (field === 'mode' && value !== 'auto' && !(Number.isInteger(updated.maxRetries) && updated.maxRetries >= 0)) {
+      const original = node.review?.maxRetries
+      updated.maxRetries = original !== undefined && Number.isInteger(original) && original >= 0 ? original : emptyReview().maxRetries
+    }
+    updateDraft('review', updated)
   }
+  const roundsValid = Number.isInteger(draft.maxReturnRounds) && draft.maxReturnRounds >= 1 && draft.maxReturnRounds <= MAX_CONFIGURED_RETURN_ROUNDS
+  const retriesValid = review.mode !== 'auto' || (Number.isInteger(review.maxRetries) && review.maxRetries >= 0)
+  const configError = keyError || (draft.kind !== 'task_dispatch' && (!roundsValid || !retriesValid) ? t('flow.numericConfigInvalid') : '')
+  useEffect(() => {
+    onValidationChange(configError)
+  }, [configError, onValidationChange])
   const reviewEngine = review.engine || effectiveStepEngine
 
   const engineConfigById = (engineId: string) =>
@@ -286,7 +293,7 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
           <Button
             variant="primary"
             style={{ fontSize: 'calc(13px * var(--font-scale))', padding: '4px 12px' }}
-            disabled={Boolean(keyError)}
+            disabled={Boolean(configError)}
             onClick={() => onSave({ ...draft, key: normalizedKey })}
           >
             {t('flow.stash')}
@@ -350,7 +357,7 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
                 onChange={(e) => {
                   const updated = { ...draft, autoStart: e.target.checked }
                   setDraft(updated)
-                  onSave({ ...updated, key: normalizedKey })
+                  if (!configError) onSave({ ...updated, key: normalizedKey })
                 }}
                 />
                 {t('flow.autoStart')}
@@ -491,10 +498,11 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
               min={1}
               max={MAX_CONFIGURED_RETURN_ROUNDS}
               step={1}
-              value={draft.maxReturnRounds}
+              value={Number.isNaN(draft.maxReturnRounds) ? '' : draft.maxReturnRounds}
+              aria-invalid={!roundsValid || undefined}
               onChange={(event) => updateDraft(
                 'maxReturnRounds',
-                normalizeMaxReturnRounds(event.target.value),
+                event.target.valueAsNumber,
               )}
               style={{ width: 72, height: 32, fontVariantNumeric: 'tabular-nums' }}
             />
@@ -538,10 +546,12 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
                       type="number"
                       min={0}
                       step={1}
-                      value={review.maxRetries}
+                      value={Number.isNaN(review.maxRetries) ? '' : review.maxRetries}
+                      aria-label={t('flow.retry')}
+                      aria-invalid={!retriesValid || undefined}
                       onChange={(e) => updateReview(
                         'maxRetries',
-                        Math.max(0, Number.parseInt(e.target.value || '0', 10)),
+                        e.target.valueAsNumber,
                       )}
                       style={{ width: 48, height: 24, fontSize: 'calc(13px * var(--font-scale))', padding: '0 6px' }}
                     />

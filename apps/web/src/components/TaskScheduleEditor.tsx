@@ -1,3 +1,4 @@
+import { scheduleRuleNumbersValid } from '../utils/numericConfigValidation'
 import { useEffect, useState } from 'react'
 import { scheduleApi, taskApi, type ProjectSchedule, type SchedulePayload, type ScheduleRule, type Task } from '../api/client'
 import { useScheduleDraftState, type ScheduleEditorState } from '../hooks/useScheduleDraftState'
@@ -46,6 +47,7 @@ export default function TaskScheduleEditor({ projectId, schedule, workflows = []
   useEffect(() => {
     let active = true
     setPreview([])
+    if (!scheduleRuleNumbersValid(rule)) return
     const timer = window.setTimeout(() => scheduleApi.preview(rule).then(result => {
       if (active) setPreview(result.next_runs)
     }).catch(() => { if (active) setPreview([]) }), 250)
@@ -58,6 +60,7 @@ export default function TaskScheduleEditor({ projectId, schedule, workflows = []
     if (workflowId && tasks.find(task => task.id === taskId)?.workflow_id !== workflowId) setTaskId('')
   }
   const save = async () => {
+    if (!scheduleRuleNumbersValid(rule)) return
     setBusy(true); setError('')
     const payload: SchedulePayload = { name: name.trim(), target_type: 'task', target_task_id: taskId,
       instruction: instruction.trim(), stop_condition: stop, rule, notification: notification.value, workflow_id: '', task_template: {},
@@ -86,6 +89,6 @@ export default function TaskScheduleEditor({ projectId, schedule, workflows = []
       onChange={(state, automatic) => { if (automatic) acceptDefaults('notification', state.value); setNotification(state) }} />
     <div className="task-schedule-preview">{t('schedules.nextRuns')}: {preview.slice(0,3).map(value => new Date(value).toLocaleString()).join(' · ') || '—'}</div>
     {error && <div role="alert" className="task-schedule-error">{localizeErrorDisplay(error)}</div>}
-    <Button variant="primary" loading={busy} disabled={!name.trim() || !taskId || !instruction.trim() || !preview.length || !notification.valid} onClick={() => void save()}>{t('common.save')}</Button>
+    <Button variant="primary" loading={busy} disabled={!scheduleRuleNumbersValid(rule) || !name.trim() || !taskId || !instruction.trim() || !preview.length || !notification.valid} onClick={() => void save()}>{t('common.save')}</Button>
   </div>
 }

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "c9aea6fd5ce6e848d459dd5152899b5efc4e3cc512e5a7e9e1bcd905349e5b4e",
+  "revision": "f4660383e5000694ade8a482ad0205f127f0c12e3ec40a2c657d6b42e0470308",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -3189,6 +3189,7 @@
     "aiFlow.dismissPreview": "收起预演",
     "aiFlow.previewPreviousTitle": "原：{title}",
     "aiFlow.stepApplyButton": "应用所选步骤",
+    "flow.numericConfigInvalid": "请填写有效的次数",
     "flow.inputArtifacts": "输入产物",
     "flow.addDispatchStep": "+ 流程步骤",
     "flow.newDispatchStep": "流程步骤",
@@ -4682,7 +4683,7 @@
     "projectSettings.concurrency.positiveInteger": "请输入正整数",
     "projectSettings.concurrency.hint": "限制同时执行的任务数与对话数；超过上限的任务与对话会排队等待，前面的完成后自动继续。",
     "projectSettings.concurrency.projectLevel": "本项目限制",
-    "projectSettings.concurrency.projectLevelHint": "限制值最小为 1；清空或输入 0 表示不限制。",
+    "projectSettings.concurrency.projectLevelHint": "限制值最小为 1；输入 0 表示不限制。",
     "projectSettings.concurrency.taskRetryInterval": "任务异常自动重试间隔（分钟）",
     "projectSettings.concurrency.taskRetryHint": "仅任务生效，不涉及对话。异常失败后按此间隔持续重试，并遵守任务并发限制；0 表示关闭。主动停止和等待审批的任务不会重试。",
     "projectSettings.concurrency.taskRetryInvalid": "请输入 0～10080 的整数分钟数，0 表示关闭。",

@@ -1,3 +1,4 @@
+import { reviewOverridesForSubmit, reviewOverridesValid } from '../utils/numericConfigValidation'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import React, { useCallback, useRef, useState } from 'react'
 import type { Project } from '../api/client'
@@ -85,8 +86,9 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
   })
   const taskCreationErrors = resolveTaskCreationErrors('', createError)
 
+  const reviewsValid = !can('task.config') || reviewOverridesValid(reviewOverrides, lanes, createLane?.key)
   const handleCreate = async () => {
-    if (!can('task.create') || !newTitle.trim() || taskAiBusy || creating
+    if (!reviewsValid || !can('task.create') || !newTitle.trim() || taskAiBusy || creating
       || (newStartMode === 'scheduled' && !localDateTimeToIso(newScheduledStart))) return
     setCreating(true)
     try {
@@ -96,7 +98,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
         project.id,
         newDesc.trim() || undefined,
         createLane?.key,
-        can('task.config') && Object.keys(reviewOverrides).length > 0 ? reviewOverrides : undefined,
+        can('task.config') && Object.keys(reviewOverrides).length > 0 ? reviewOverridesForSubmit(reviewOverrides, initialOverrides) : undefined,
         workflowId,
         can('task.start_on_create') && newStartMode === 'immediate',
         can('task.schedule_start') && newStartMode === 'scheduled' ? localDateTimeToIso(newScheduledStart) : null,
@@ -334,7 +336,7 @@ export default function TaskCreatePanel({ project, workflowId, lanes, initialSte
           <Button
             variant="primary"
             className="task-create-primary"
-            disabled={!newTitle.trim() || taskAiBusy || creating || (newStartMode === 'scheduled' && !localDateTimeToIso(newScheduledStart))}
+            disabled={!reviewsValid || !newTitle.trim() || taskAiBusy || creating || (newStartMode === 'scheduled' && !localDateTimeToIso(newScheduledStart))}
             onClick={handleCreate}
           >
             <Icon name="plus" size={16} />
