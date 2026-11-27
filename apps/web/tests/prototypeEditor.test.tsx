@@ -54,6 +54,8 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
   unrelatedStatus.hidden = true
   unrelatedStatus.setAttribute('role', 'status')
   unrelatedStatus.textContent = '暂时无法查询'
+  const unrelatedRefresh = unrelatedStatus.appendChild(document.createElement('button'))
+  unrelatedRefresh.setAttribute('aria-label', '刷新')
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   const click = async (text:string) => {
@@ -222,7 +224,7 @@ test('prototype editor selects exact nodes, posts versioned edits, switches docu
     await act(async()=>undo.dispatchEvent(undoKey()))
     assert.equal(calls.filter(call=>call.path.endsWith('/undo')).length,count,'exhausted shortcut does not request undo')
     inspectionOnly=true
-    await act(async()=>document.querySelector<HTMLButtonElement>('button[aria-label="刷新"]')!.click())
+    await act(async()=>document.querySelector<HTMLButtonElement>('.prototype-toolbar button[aria-label="刷新"]')!.click())
     assert.match(document.querySelector('.prototype-recovery[role="status"]')!.textContent!,/动态渲染页面/)
     assert.equal(unrelatedStatus.isConnected,true,'unrelated status remains mounted')
     const runtimeFrame=document.querySelector('iframe')!
