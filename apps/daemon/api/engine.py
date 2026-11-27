@@ -136,6 +136,7 @@ class EngineVisibilityRequest(BaseModel):
 
 @router.put("/{engine_id}/visibility")
 async def set_engine_visibility(engine_id: str, request: EngineVisibilityRequest):
+    from services import engine_quota as engine_quota_service
     require_catalog_project("")
 
     def update():
@@ -144,14 +145,18 @@ async def set_engine_visibility(engine_id: str, request: EngineVisibilityRequest
         config_store.set_engine_enabled(engine_id, request.enabled)
         return {"engines": _refresh_and_summaries()}
 
-    return await asyncio.to_thread(update)
+    result = await asyncio.to_thread(update)
+    engine_quota_service.unified_quota_service.invalidate()
+    return result
 
 
 @router.post("/refresh")
 async def refresh_engines():
     """Re-scan the host for supported execution engines."""
+    from services import engine_quota as engine_quota_service
     require_catalog_project("")
     engines = await asyncio.to_thread(_refresh_and_summaries)
+    engine_quota_service.unified_quota_service.invalidate()
     return {"engines": engines}
 
 
@@ -408,6 +413,86 @@ async def inspect_engine(
     return result
 
 
+@router.get("/quota")
+async def get_all_engine_quotas(project_id: str = "", refresh: bool = False):
+    """Query account quotas for all enabled, installed engines that support quota."""
+    from contextlib import suppress
+    from engines.core.process_cleanup import finish_cleanup
+    from engines.core.quota import query_quota
+    from services import engine_quota as engine_quota_service
+
+    require_catalog_project(project_id)
+    normalized_project = project_id.strip()
+    scope_key = engine_quota_service.quota_scope_key(normalized_project)
+    service = engine_quota_service.unified_quota_service
+
+    async def collect() -> list[dict]:
+        def resolve_targets():
+            refresh_registry(invalidate_scan=False)
+            project = (
+                project_manager.get_project_by_id(normalized_project)
+                if normalized_project else None
+            )
+            cwd = str(project.path) if project else str(Path.cwd())
+            targets: list[tuple[str, str | None, BaseLLMEngine | None]] = []
+            for item in get_available_engines():
+                if not item.get("enabled", True):
+                    continue
+                if item.get("disabled"):
+                    continue
+                if not item.get("installed"):
+                    continue
+                if not item.get("supports_quota"):
+                    continue
+                try:
+                    engine = create_engine(item["id"])
+                    if engine is not None and not engine.supports_quota:
+                        continue
+                except Exception:
+                    engine = None
+                name = str(item.get("name") or "").strip() or None
+                targets.append((item["id"], name, engine))
+            return cwd, targets
+
+        preparing = asyncio.create_task(asyncio.to_thread(resolve_targets))
+        try:
+            cwd, targets = await asyncio.shield(preparing)
+        except asyncio.CancelledError:
+            with suppress(Exception):
+                await finish_cleanup(preparing)
+            raise
+
+        if not targets:
+            return []
+
+        semaphore = service.collector_semaphore()
+
+        async def collect_one(engine_id: str, name: str | None, engine: BaseLLMEngine | None) -> dict:
+            result = {"engine_id": engine_id, "supported": True, "status": "unavailable", "quota": None}
+            if engine is not None:
+                try:
+                    async with asyncio.timeout(25):
+                        async with semaphore:
+                            result = await query_quota(engine, cwd)
+                except Exception:
+                    pass
+            if name and "name" not in result:
+                result["name"] = name
+            return result
+
+        return list(await asyncio.gather(*(
+            collect_one(engine_id, name, engine)
+            for engine_id, name, engine in targets
+        )))
+
+    try:
+        return await service.get(scope_key, collect, refresh=refresh)
+    except engine_quota_service.QuotaInvalidatedError:
+        raise HTTPException(status_code=409, detail="Engine quota query invalidated") from None
+    except (engine_quota_service.QuotaBusyError, TimeoutError):
+        raise HTTPException(status_code=503, detail="Engine quota temporarily unavailable")
+
+
 @router.get("/{engine_id}/quota")
 async def get_engine_quota(engine_id: str, project_id: str = ""):
     """Read the engine-owned account quota through the shared contract."""
@@ -609,6 +694,8 @@ async def set_binary_path(engine_id: str, req: BinaryPathRequest):
         return _engine_info(engine_id)
 
     engine_info = await asyncio.to_thread(save_binary_path)
+    from services import engine_quota as engine_quota_service
+    engine_quota_service.unified_quota_service.invalidate()
     return {
         "engine_id": engine_id,
         "saved": True,
@@ -669,6 +756,8 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
         return _engine_config_response(engine_id, engine), _engine_info(engine_id)
 
     response, info = await asyncio.to_thread(finish_save)
+    from services import engine_quota as engine_quota_service
+    engine_quota_service.unified_quota_service.invalidate()
     response.update({"saved": True, "message": "配置已保存"})
     if info is not None:
         response["engine"] = info

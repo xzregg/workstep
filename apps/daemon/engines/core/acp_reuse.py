@@ -52,6 +52,24 @@ class SessionAgent:
     async def resume_session(self, **kwargs):
         return await self._restore('resume_session', **kwargs)
 
+    async def _flush_notifications(self):
+        """Wait for ACP notifications received before an RPC result to reach handler.updates."""
+        conn = getattr(self.value.client, '_conn', None)
+        if conn is None or getattr(conn, '_closed', False):
+            return
+        queue = getattr(conn, '_queue', None)
+        dispatcher = getattr(conn, '_dispatcher', None)
+        dispatcher_task = getattr(dispatcher, '_task', None)
+        if queue is not None and dispatcher_task is not None and not dispatcher_task.done():
+            await queue.join()
+        supervisor = getattr(conn, '_tasks', None)
+        tasks = [
+            task for task in list(getattr(supervisor, '_tasks', ()))
+            if task.get_name() == 'acp.Dispatcher.notification' and not task.done()
+        ]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
     async def prompt(self, **kwargs):
         self.tasks.add(asyncio.current_task())
         self.success = False
@@ -59,10 +77,12 @@ class SessionAgent:
             # ACP dispatches notifications as tasks. Keep restore filtering
             # enabled through session setup, then flush already-ready callbacks
             # before sending this turn's first prompt.
+            await self._flush_notifications()
             await asyncio.sleep(0)
             self.value.handler.suppress_history = False
             self._history_phase = False
         response = await self.value.client.prompt(**kwargs)
+        await self._flush_notifications()
         self.success = str(getattr(response, 'stop_reason', 'end_turn')) == 'end_turn'
         return response
 
@@ -83,7 +103,9 @@ async def pooled_acp_process(engine, handler, cmd, *, cwd, env, session_id, sett
         process = None
         snapshot = None
         try:
-            async with acp.spawn_agent_process(handler, cmd[0], *cmd[1:], cwd=cwd, env=env) as (client, process):
+            async with acp.spawn_agent_process(
+                handler, cmd[0], *cmd[1:], cwd=cwd, env=env, use_unstable_protocol=True,
+            ) as (client, process):
                 try:
                     yield SimpleNamespace(client=client, process=process, handler=handler,
                                           initialized=False, response=None)

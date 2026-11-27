@@ -84,6 +84,7 @@ async def test_slow_codex_construction_does_not_block_event_loop(monkeypatch):
 @pytest.mark.asyncio
 async def test_quota_subprocess_output_is_bounded_and_reaped(monkeypatch, tmp_path):
     import engines.core.antigravity_quota as native
+    from engines.core.quota import QuotaUnavailable
     original = asyncio.create_subprocess_exec
     processes, parsed = [], []
     async def start(*args, **kwargs):
@@ -93,8 +94,8 @@ async def test_quota_subprocess_output_is_bounded_and_reaped(monkeypatch, tmp_pa
         return process
     monkeypatch.setattr(asyncio, 'create_subprocess_exec', start)
     monkeypatch.setattr(native, 'parse_quota', lambda value: parsed.append(len(value)))
-    result = await native.read_quota('agy', str(tmp_path), .5)
-    assert result is None
+    with pytest.raises(QuotaUnavailable, match='invalid_report'):
+        await native.read_quota('agy', str(tmp_path), .5)
     assert parsed == []
     assert processes[0].returncode is not None
 

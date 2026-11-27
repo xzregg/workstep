@@ -489,6 +489,9 @@
     background: var(--bg) !important;
   }
   .task-detail-composer .chat-input-root { padding: 2px; }
+  .task-create-panel {
+    --task-create-description-min-height: clamp(102px, calc(var(--app-viewport-height, 100dvh) - 400px), calc(8lh + 18px));
+  }
   .task-create-panel[inert] { visibility: hidden; }
   .task-create-panel .panel-header { padding: 8px 16px; }
   .task-create-panel .panel-footer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }

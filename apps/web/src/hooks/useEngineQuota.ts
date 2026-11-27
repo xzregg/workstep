@@ -1,52 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { engineApi, type EngineQuota } from '../api/client'
+import { ApiError, engineApi, type UnifiedQuotaResult } from '../api/client'
 
-/** Owns the quota request for the selected project and engine. */
-export function useEngineQuota(projectId: string | undefined, engine: string, running: boolean) {
-  const [snapshot, setSnapshot] = useState<{
-    projectId: string
-    engine: string
-    quota: EngineQuota | null
-  } | null>(null)
+/** All engines share the daemon cache; engine selection is a local projection. */
+export function useEngineQuota(projectId: string | undefined, engine: string, conversationKey = '', enabled = true) {
+  const [snapshot, setSnapshot] = useState<{ projectId: string; result: UnifiedQuotaResult } | null>(null)
   const [refreshing, setRefreshing] = useState(false)
-  const requestIdRef = useRef(0)
-  const previous = useRef({ projectId, engine, running })
-
+  const [error, setError] = useState(false)
+  const requestId = useRef(0)
+  const scope = projectId || ''
   const refresh = useCallback(async (force = true) => {
-    if (!projectId) return
-    const requestId = ++requestIdRef.current
+    if (!enabled) return
+    const id = ++requestId.current
     setRefreshing(true)
+    setError(false)
     try {
-      const result = await engineApi.quota(engine, projectId, force)
-      if (requestIdRef.current === requestId) {
-        setSnapshot({ projectId, engine, quota: result.supported === false || (result.status && result.status !== 'ok') ? null : result.quota })
-      }
-    } catch {
-      if (requestIdRef.current === requestId) {
-        setSnapshot({ projectId, engine, quota: null })
+      const result = await engineApi.quotas(scope, force)
+      if (!Array.isArray(result?.engines)) throw new Error('Invalid quota response')
+      if (requestId.current === id) setSnapshot({projectId: scope, result})
+    } catch (failure) {
+      if (requestId.current === id) {
+        if (failure instanceof ApiError && failure.status === 409) setSnapshot(null)
+        setError(true)
       }
     } finally {
-      if (requestIdRef.current === requestId) setRefreshing(false)
+      if (requestId.current === id) setRefreshing(false)
     }
-  }, [engine, projectId])
-
+  }, [scope, enabled])
   useEffect(() => {
-    if (!projectId) {
-      requestIdRef.current += 1
-      setRefreshing(false)
-      return
-    }
-    const before = previous.current
-    const completed = before.projectId === projectId && before.engine === engine && before.running && !running
-    const started = before.projectId === projectId && before.engine === engine && !before.running && running
-    previous.current = { projectId, engine, running }
-    if (!started) void refresh(completed)
-  }, [running, projectId, engine, refresh])
-
-  useEffect(() => () => { requestIdRef.current += 1 }, [projectId, engine])
-
-  const quota = snapshot && snapshot.projectId === projectId && snapshot.engine === engine
-    ? snapshot.quota
-    : null
-  return { quota, refreshing, refresh }
+    void refresh(false)
+    return () => { requestId.current += 1 }
+  }, [refresh, conversationKey])
+  const result = snapshot?.projectId === scope ? snapshot.result : null
+  const entries = result?.engines.filter(entry => entry.supported) ?? []
+  const selected = entries.find(entry => entry.engine_id === engine)
+  return {entries, collectedAt: result?.collected_at, quota: selected?.status === 'ok' ? selected.quota : null, refreshing, refresh, error}
 }

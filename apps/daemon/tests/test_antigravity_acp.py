@@ -341,3 +341,61 @@ def test_antigravity_maps_invoke_subagent_and_update_steps_events():
         {"content": "Wire events", "priority": "medium", "status": "in_progress"},
         {"content": "Run tests", "priority": "medium", "status": "pending"},
     ]
+
+
+@pytest.mark.parametrize("raw_text,expected", [
+    (
+        "\n⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h4m13s.\n",
+        "Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h4m13s.",
+    ),
+    (
+        "\n⚠ Third-party quota reached. Please switch to Gemini models or upgrade your subscription to increase your limits. Resets in 47m27s.\n",
+        "Third-party quota reached. Please switch to Gemini models or upgrade your subscription to increase your limits. Resets in 47m27s.",
+    ),
+    (
+        "⚠ Model quota exceeded. Resets in 10m.",
+        "Model quota exceeded. Resets in 10m.",
+    ),
+])
+def test_antigravity_maps_inline_quota_warning_chunks_to_error_events(raw_text, expected):
+    from acp import schema
+
+    engine = AntigravityEngine()
+    event = engine._map_notification(schema.AgentMessageChunk(
+        sessionUpdate="agent_message_chunk",
+        content=schema.TextContentBlock(type="text", text=raw_text),
+    ))
+    assert event is not None
+    assert event.type == "error"
+    assert event.data["message"] == expected
+
+
+@pytest.mark.parametrize("normal_text", [
+    " ⚠",
+    " ⚠️",
+    "\n⚠ 注意：请先备份数据库\n",
+    "已完成代码修改，日志中出现过 Individual quota reached 报错。",
+    "\n⚠ Individual quota reached.\n第二行正文\n",
+])
+def test_antigravity_keeps_normal_warning_prose_as_message_chunks(normal_text):
+    from acp import schema
+
+    engine = AntigravityEngine()
+    event = engine._map_notification(schema.AgentMessageChunk(
+        sessionUpdate="agent_message_chunk",
+        content=schema.TextContentBlock(type="text", text=normal_text),
+    ))
+    assert event is not None
+    assert event.type == "agent_message_chunk"
+    assert event.data["content"]["text"] == normal_text
+
+
+def test_antigravity_skips_immediate_retry_for_quota_errors():
+    engine = AntigravityEngine()
+    assert engine._execution_retry_delays(
+        "Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h4m13s."
+    ) == ()
+    assert engine._execution_retry_delays(
+        "Third-party quota reached. Please switch to Gemini models or upgrade your subscription to increase your limits. Resets in 47m27s."
+    ) == ()
+    assert engine._execution_retry_delays("transient transport failure") == (0,)

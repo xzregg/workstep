@@ -257,6 +257,7 @@ export interface ChatInputProps {
   context?: ChatContextUsage | null
   /** Latest account quota reported by the selected engine. */
   quota?: ChatEngineQuota | null
+  quotaActive?: boolean
   /** Refresh the selected engine's account quota. */
   onRefreshQuota?: () => void
   /** True while an account quota refresh is in flight. */
@@ -306,6 +307,7 @@ function ChatInput({
   enhance,
   context,
   quota,
+  quotaActive,
   onRefreshQuota,
   quotaRefreshing = false,
   plan,
@@ -1282,7 +1284,18 @@ function ChatInput({
             </button>
           )}
           <div className="chat-input-toolbar-spacer" />
-          <ChatInputUsage context={context} quota={quota} onRefreshQuota={onRefreshQuota} quotaRefreshing={quotaRefreshing} compact={isCompact} />
+          <ChatInputUsage
+            managed={quota === undefined && !(projectId || imageAttach?.projectId || config?.projectId || '').startsWith('share:')}
+            projectId={projectId || imageAttach?.projectId || config?.projectId}
+            selectedEngine={effectiveEngine}
+            conversationKey={sessionId || taskId || ''}
+            active={quotaActive}
+            context={context}
+            quota={quota}
+            onRefreshQuota={onRefreshQuota}
+            quotaRefreshing={quotaRefreshing}
+            compact={isCompact}
+          />
           {config && (
             <div className="chat-input-config-anchor">
               <button

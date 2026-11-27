@@ -250,3 +250,102 @@ async def test_antigravity_mid_run_live_message_interrupts_and_delivers(engine_c
     assert any(e.type == 'status' and e.data.get('status') == 'done' for e in events)
     rows = [json.loads(line) for line in (root / 'wire.jsonl').read_text().splitlines()]
     assert any(r.get('method') == 'session/cancel' for r in rows)
+
+
+@pytest.mark.anyio
+async def test_acp_real_transport_handles_form_elicitation_and_returns_answers(engine_config):
+    cls, root = engine_config
+    engine = cls()
+    ready = asyncio.Queue()
+    output = []
+
+    async def run():
+        async for event in engine.spawn('ask_question', str(root)):
+            output.append(event)
+            if event.type == 'interaction_request':
+                await ready.put(event)
+
+    task = asyncio.create_task(run())
+    try:
+        event = await asyncio.wait_for(ready.get(), 5)
+        assert event.data['method'] == 'elicitation/create'
+        assert event.data['message'] == '请选择部署形态'
+        props = event.data['requested_schema']['properties']
+        assert props['q1']['oneOf'] == [
+            {'const': 'standalone', 'title': '独立极简服务'},
+            {'const': 'gateway', 'title': '集成到 Gateway'},
+        ]
+        assert props['q2']['items']['anyOf'] == [
+            {'const': 'stun', 'title': 'STUN'},
+            {'const': 'turn', 'title': 'TURN'},
+        ]
+        delivered = await engine.respond_interaction(event.data, {
+            'action': 'accept',
+            'content': {'q1': 'standalone', 'q2': ['stun', 'turn']},
+        })
+        assert delivered is True
+        await asyncio.wait_for(task, 5)
+    finally:
+        if not task.done():
+            await engine.stop()
+        await asyncio.gather(task, return_exceptions=True)
+
+    assert json.loads(text(output)) == {
+        'action': 'accept',
+        'content': {'q1': 'standalone', 'q2': ['stun', 'turn']},
+    }
+    assert any(e.type == 'elicitation_completed' for e in output)
+    # Session remains healthy and reusable after an elicitation turn.
+    assert text(await collect(engine_config, 'follow-up', sid(output))) == 'follow-up'
+
+
+@pytest.mark.anyio
+async def test_antigravity_bypass_permissions_still_surfaces_ask_question_elicitation(engine_config):
+    cls, root = engine_config
+    if cls is not AntigravityEngine:
+        pytest.skip('Antigravity bypassPermissions elicitation contract')
+    from engines.core.permissions import encode_permission_selection
+
+    engine = cls()
+    await engine.set_permission_mode(encode_permission_selection('antigravity', {'permission_mode': 'bypassPermissions'}))
+    ready = asyncio.Queue()
+    output = []
+
+    async def run():
+        async for event in engine.spawn('ask_question', str(root)):
+            output.append(event)
+            if event.type == 'interaction_request':
+                await ready.put(event)
+
+    task = asyncio.create_task(run())
+    try:
+        event = await asyncio.wait_for(ready.get(), 5)
+        assert event.data['method'] == 'elicitation/create'
+        delivered = await engine.respond_interaction(event.data, {'action': 'cancel'})
+        assert delivered is True
+        await asyncio.wait_for(task, 5)
+    finally:
+        if not task.done():
+            await engine.stop()
+        await asyncio.gather(task, return_exceptions=True)
+
+    assert json.loads(text(output)) == {'action': 'cancel'}
+
+
+@pytest.mark.anyio
+async def test_antigravity_inline_quota_warning_ends_turn_with_error_not_body(engine_config):
+    cls, root = engine_config
+    if cls is not AntigravityEngine:
+        pytest.skip('Antigravity inline quota warning contract')
+    events = [e async for e in cls().spawn_with_retry(prompt='quota_after_body', cwd=str(root))]
+    assert text(events) == '已完成代码修改。'
+    errors = [e for e in events if e.type == 'error']
+    assert len(errors) == 1
+    assert errors[0].data['message'] == (
+        'Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h4m13s.'
+    )
+    assert not any(e.type == 'status' and e.data.get('status') in {'done', 'retrying'} for e in events)
+    pool = get_session_pool(cls.ENGINE_ID)
+    assert not pool._entries
+    rows = [json.loads(line) for line in (root / 'wire.jsonl').read_text().splitlines()]
+    assert sum(r.get('method') == 'session/prompt' for r in rows) == 1

@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { taskApi, type ReviewRun } from '../api/client'
 import type { ReviewDecisionAction } from '../components/ReviewDecisionActions'
 import { useI18n } from '../i18n'
+import { manualReviewInitialComment } from '../pages/taskReviewRules'
 
 type PendingCompletion =
   | { kind: 'review'; review: ReviewRun; stepKey: string }
   | { kind: 'execution'; messageId: string; artifactRound: number }
 
 interface Options {
+  historyMessages?: Parameters<typeof manualReviewInitialComment>[2]
   snapshot?: ReviewRun[]
   taskId: string
   projectId: string
@@ -20,14 +22,24 @@ interface Options {
 
 /** Owns review decisions and failed-execution completion, including the downstream choice. */
 export function useTaskReviewActions({
-  taskId, projectId, updatedAt, reviewEventSignal, fetchTasks, refreshTask, onError, snapshot,
+  taskId, projectId, updatedAt, reviewEventSignal, fetchTasks, refreshTask, onError, snapshot, historyMessages = [],
 }: Options) {
   const { t } = useI18n()
   const [reviews, setReviews] = useState<ReviewRun[]>([])
   const [pending, setPending] = useState(false)
   const busyRef = useRef(false)
   const [pendingCompletion, setPendingCompletion] = useState<PendingCompletion | null>(null)
-  const [reviewComment, setReviewComment] = useState('')
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
+  const selectedReview = reviews[0]
+  const commentKey = useCallback((review?: ReviewRun) =>
+    JSON.stringify([projectId, taskId, review?.id ?? '']), [projectId, taskId])
+  const commentFor = useCallback((review?: ReviewRun) => commentDrafts[commentKey(review)]
+    ?? manualReviewInitialComment(review, reviews, historyMessages),
+    [commentDrafts, commentKey, reviews, historyMessages])
+  const reviewComment = commentFor(selectedReview)
+  const setReviewComment = (value: string, review = selectedReview) => {
+    setCommentDrafts((current) => ({ ...current, [commentKey(review)]: value }))
+  }
 
   const loadReviews = useCallback(async () => {
     if (!taskId || !projectId) {
@@ -57,8 +69,8 @@ export function useTaskReviewActions({
     setPending(true)
     try {
       await taskApi.decideReview(taskId, stepKey, review.id, decision, projectId,
-        reviewComment.trim() || undefined, scheduleDownstream)
-      setReviewComment('')
+        commentFor(review).trim() || undefined, scheduleDownstream)
+      setCommentDrafts((current) => ({ ...current, [commentKey(review)]: '' }))
       const [result] = await Promise.all([
         taskApi.reviews(taskId, projectId), fetchTasks(projectId), refreshTask(taskId, projectId),
       ])
@@ -70,7 +82,7 @@ export function useTaskReviewActions({
       busyRef.current = false
       setPending(false)
     }
-  }, [taskId, projectId, reviewComment, fetchTasks, refreshTask, onError, t])
+  }, [taskId, projectId, commentFor, commentKey, fetchTasks, refreshTask, onError, t])
 
   const requestFailedExecutionComplete = useCallback((messageId: string, artifactRound: number) => {
     setPendingCompletion({ kind: 'execution', messageId, artifactRound })
@@ -109,7 +121,7 @@ export function useTaskReviewActions({
   }, [])
 
   return {
-    reviews, pending, pendingCompletion, reviewComment, setReviewComment,
+    reviews, pending, pendingCompletion, reviewComment, setReviewComment, getReviewComment: commentFor,
     decideReview, requestFailedExecutionComplete, confirmCompletion, cancelCompletion,
   }
 }

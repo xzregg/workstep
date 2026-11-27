@@ -45,6 +45,21 @@ def test_workspace_catalog_is_project_bound(path):
 
 
 @pytest.mark.parametrize('level', ['read', 'edit'])
+def test_unified_engine_quota_route_is_project_bound_and_supports_refresh(level):
+    allowed = project_http_route_allowed
+    path = '/api/engine/quota'
+    assert allowed('GET', path, [('project_id', 'visible')], 'visible', access_level=level)
+    for flag in ('1', '0', 'true', 'false', 'True', 'False'):
+        assert allowed('GET', path, [('project_id', 'visible'), ('refresh', flag)], 'visible', access_level=level)
+    for invalid in ([], [('project_id', 'private')], [('project_id', 'visible'), ('project_id', 'visible')],
+                    [('project_id', 'visible'), ('refresh', 'yes')],
+                    [('project_id', 'visible'), ('refresh', '1'), ('refresh', '1')],
+                    [('project_id', 'visible'), ('extra', '1')]):
+        assert not allowed('GET', path, invalid, 'visible', access_level=level)
+    assert not allowed('POST', path, [('project_id', 'visible')], 'visible', access_level='edit')
+
+
+@pytest.mark.parametrize('level', ['read', 'edit'])
 def test_project_session_history_allows_pagination(level):
     allowed = project_http_route_allowed
     query = [('project_id', 'visible'), ('limit', '300'), ('offset', '0')]

@@ -298,6 +298,11 @@ def project_http_route_allowed(method: str, path: str,
     if _NOTIFICATION_HOOKS.fullmatch(path) or _NOTIFICATION_HISTORY.fullmatch(path):
         return (access_level == 'edit' and len(query_pairs) == len(dict(query_pairs))
                 and all(key in ({'project_id','offset'} if _NOTIFICATION_HISTORY.fullmatch(path) else {'project_id'}) for key,_ in query_pairs))
+    if path == "/api/engine/quota":
+        return (len(query_pairs) == len(dict(query_pairs))
+                and all(key in ("project_id", "refresh") for key, _ in query_pairs)
+                and all(value in ("true", "True", "1", "false", "False", "0")
+                        for key, value in query_pairs if key == "refresh"))
     if _ENGINE_QUOTA.fullmatch(path):
         return len(query_pairs) == 1
     if path in ("/api/engine/list", "/api/engine/execution/config",

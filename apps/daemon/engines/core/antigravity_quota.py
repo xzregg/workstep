@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 
 from engines.core.process_cleanup import close_subprocess, finish_cleanup
+from engines.core.quota import QuotaAuthenticationRequired, QuotaUnavailable
 
 _WINDOWS = {'Weekly Limit Remaining': ('weekly', 10080), 'Five Hour Limit Remaining': ('five-hour', 300)}
 MAX_REPORT_BYTES = 256 * 1024
@@ -19,7 +20,11 @@ def parse_quota(report: str) -> dict | None:
         if len(columns) != 4:
             return None
         name, label, percent, reset = (part.strip() for part in columns)
-        if not name or label not in _WINDOWS or not re.fullmatch(r'\d+(?:\.\d+)?%', percent):
+        if not name or label not in _WINDOWS:
+            return None
+        if percent == 'disabled' and not reset:
+            continue
+        if not re.fullmatch(r'\d+(?:\.\d+)?%', percent):
             return None
         remaining = float(percent[:-1])
         if not 0 <= remaining <= 100:
@@ -42,7 +47,7 @@ def parse_quota(report: str) -> dict | None:
             'groups': list(groups.values())}
 
 
-async def read_quota(binary: str, cwd: str, timeout: float) -> dict | None:
+async def read_quota(binary: str, cwd: str, timeout: float) -> dict:
     process = None
     launching = asyncio.create_task(asyncio.create_subprocess_exec(
         binary, '-p', '/usage', '--print-timeout', f'{timeout}s', cwd=cwd or None,
@@ -55,14 +60,22 @@ async def read_quota(binary: str, cwd: str, timeout: float) -> dict | None:
             while chunk := await process.stdout.read(65536):
                 size += len(chunk)
                 if size > MAX_REPORT_BYTES:
-                    return None
+                    raise QuotaUnavailable('invalid_report')
                 chunks.append(chunk)
             await process.wait()
+            report = b''.join(chunks).decode('utf-8', errors='replace')
+            if report.strip().casefold() == 'authentication required':
+                raise QuotaAuthenticationRequired()
             if process.returncode != 0:
-                return None
-            return await asyncio.to_thread(parse_quota, b''.join(chunks).decode('utf-8', errors='replace'))
-    except (OSError, TimeoutError):
-        return None
+                raise QuotaUnavailable('command_failed')
+            quota = await asyncio.to_thread(parse_quota, report)
+            if quota is None:
+                raise QuotaUnavailable('invalid_report')
+            return quota
+    except TimeoutError as error:
+        raise QuotaUnavailable('timeout') from error
+    except OSError as error:
+        raise QuotaUnavailable('command_failed') from error
     finally:
         async def cleanup():
             nonlocal process

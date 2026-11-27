@@ -12,8 +12,17 @@ import { chatRoleApi } from '../src/api/chatRoles'
 const role = { id: 'architect', name: '架构专家', category: 'engineering', description: '架构评审', prompt: '专业架构提示词', builtin: true, source: null, revision: 'a', updated_at: '' }
 const team = { id: 'reviewers', name: '评审团', description: '综合评审', prompt: '团队约定', members: [{ role_id: role.id, duty: '先评估结构' }], revision: 'b', updated_at: '' }
 
+function installHiddenDialog() {
+  const dialog = document.body.appendChild(document.createElement('div'))
+  dialog.setAttribute('role', 'dialog')
+  dialog.hidden = true
+  dialog.textContent = '其他浮层内容'
+  return dialog
+}
+
 test('plus menu loads a role, keeps it across session switches and removes only its own binding', async () => {
   const { window } = installDomEnvironment()
+  const otherDialog = installHiddenDialog()
   useLocaleStore.setState({ locale: 'zh-CN', language: null })
   const oldRoles = { ...roleCenterApi }, oldChat = { ...chatRoleApi }
   const bindings = new Map<string, { binding: { kind: 'role' | 'team'; id: string } | null; name: string; missing: boolean }>()
@@ -46,7 +55,8 @@ test('plus menu loads a role, keeps it across session switches and removes only 
     assert.match(document.body.textContent!, /专业架构提示词/)
     await click('加载到对话')
     assert.deepEqual(bindings.get('one')!.binding, { kind: 'role', id: 'architect' })
-    assert.ok(document.querySelector('[role="dialog"]') === null)
+    assert.ok(document.querySelector('.chat-role-picker[role="dialog"]') === null)
+    assert.equal(otherDialog.isConnected, true)
     const boundRole = document.querySelector('[aria-label="查看已加载角色：架构专家"]')
     assert.ok(boundRole)
     assert.ok(boundRole.closest('.chat-input-editor'), '已加载角色应嵌入消息输入区域')
@@ -62,6 +72,7 @@ test('plus menu loads a role, keeps it across session switches and removes only 
     assert.equal(bindings.get('one')!.binding, null)
   } finally {
     await act(async () => root.unmount())
+    otherDialog.remove()
     Object.assign(roleCenterApi, oldRoles); Object.assign(chatRoleApi, oldChat)
     await window.happyDOM.close()
   }
@@ -69,6 +80,7 @@ test('plus menu loads a role, keeps it across session switches and removes only 
 
 test('binding save failure retains selection, team preview includes member duties, disabled surfaces make no requests', async () => {
   const { window } = installDomEnvironment()
+  const otherDialog = installHiddenDialog()
   useLocaleStore.setState({ locale: 'zh-CN', language: null })
   const oldRoles = { ...roleCenterApi }, oldChat = { ...chatRoleApi }
   let gets = 0, failed = true
@@ -95,12 +107,14 @@ test('binding save failure retains selection, team preview includes member dutie
     await click('选择专家团：评审团')
     assert.match(document.body.textContent!, /先评估结构/)
     await click('加载到对话')
-    assert.match(document.querySelector('[role="dialog"]')!.textContent!, /保存失败/)
+    assert.match(document.querySelector('.chat-role-picker [role="alert"]')!.textContent!, /保存失败/)
     assert.equal((document.querySelector('textarea') as HTMLTextAreaElement).value, '草稿')
     failed = false; await click('加载到对话')
-    assert.ok(document.querySelector('[role="dialog"]') === null)
+    assert.ok(document.querySelector('.chat-role-picker[role="dialog"]') === null)
+    assert.equal(otherDialog.isConnected, true)
   } finally {
     await act(async () => root.unmount())
+    otherDialog.remove()
     Object.assign(roleCenterApi, oldRoles); Object.assign(chatRoleApi, oldChat)
     await window.happyDOM.close()
   }

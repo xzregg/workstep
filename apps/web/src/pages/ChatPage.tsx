@@ -48,7 +48,6 @@ import {
 } from '../stores/engineAvailabilityStore'
 import { useProjectStore } from '../stores/projectStore'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
-import { useEngineQuota } from '../hooks/useEngineQuota'
 import { useChatSessionTransitions } from '../hooks/useChatSessionTransitions'
 import { useChatSessionActions } from '../hooks/useChatSessionActions'
 import { useWorkflowDesignSkill } from '../hooks/useWorkflowDesignSkill'
@@ -237,9 +236,6 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
     onError: setSendError,
     errorMessage: t('chatSession.enhanceFailed'),
   })
-  const { quota: visibleQuota, refreshing: quotaRefreshing, refresh: refreshQuota } = useEngineQuota(
-    activeProject?.id, effectiveEngine, running,
-  )
   const {
     openFork, requestEngineHandoff, requestProviderHandoff, requestResetHandoff, handingOff, dialogs: transitionDialogs,
   } = useChatSessionTransitions({
@@ -564,6 +560,7 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
         workflowSkill={!isEmbedded && activeProject.type !== 'remote' && !projectScopedAccess && can('workflow.create') && can('task.create') ? workflowSkill : undefined}
         projectId={activeProject.id}
         sessionId={sessionId}
+        quotaActive={pane?.active !== false}
         headerContext={<ChannelConversationContext projectId={activeProject.id} sessionId={sessionId} />}
         title={sessionTitle || t('chatSession.title')}
         headerDrag={pane?.headerDrag}
@@ -720,9 +717,6 @@ export default function ChatPage({ embedded, pane, companionProfile }: { compani
         } : undefined}
         enhance={enhance}
         context={context}
-        quota={visibleQuota}
-        onRefreshQuota={() => { void refreshQuota() }}
-        quotaRefreshing={quotaRefreshing}
       />}
       </ChatRoleBinding>
       </DigitalPersonCamera>

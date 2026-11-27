@@ -30,7 +30,7 @@ test('review settings own their draft and save the selected step without droppin
     assert.equal(auto.getAttribute('aria-pressed'), 'true')
     const retry = container.querySelector<HTMLInputElement>('.task-review-config-retry-input')!
     await act(async () => {
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(retry, '9')
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(retry, '5')
       retry.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await act(async () => container.querySelector<HTMLButtonElement>('.task-review-config-save')!.click())
@@ -122,3 +122,51 @@ for (const scenario of [
     }
   })
 }
+
+
+test('review count keeps an empty or invalid draft, saves only integers 1–5, and reopens saved values', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const original = useTaskStore.getState().updateTaskDescription
+  const calls: any[][] = []
+  useTaskStore.setState({ updateTaskDescription: async (...args) => { calls.push(args); return {} as never } })
+  const workflowReview = { mode: 'auto', maxRetries: 3 }
+  const render = (key = 'initial', reviewOverrides: any = null) => root.render(<I18nProvider>
+    <TaskReviewConfigPanel key={key} taskId="task-1" projectId="project-1" stepKey="build"
+      workflowReview={workflowReview} reviewOverrides={reviewOverrides} />
+  </I18nProvider>)
+  try {
+    await act(async () => render())
+    await act(async () => container.querySelector<HTMLButtonElement>('.task-review-config-toggle')!.click())
+    const input = container.querySelector<HTMLInputElement>('input[type="number"]')!
+    const save = container.querySelector<HTMLButtonElement>('.task-review-config-save')!
+    const fill = async (value: string) => act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    for (const value of ['', '0', '6', '-1', '1.5']) {
+      await fill(value)
+      assert.equal(input.value, value)
+      assert.equal(save.disabled, true)
+      await act(async () => save.click())
+      assert.equal(calls.length, 0)
+    }
+    await fill('2')
+    assert.equal(save.disabled, false)
+    await fill('')
+    assert.equal(input.value, '')
+    await fill('4')
+    assert.equal(input.value, '4')
+    await act(async () => save.click())
+    assert.equal(calls[0][3].build.maxRetries, 4)
+    await act(async () => render('reopened', calls[0][3]))
+    await act(async () => container.querySelector<HTMLButtonElement>('.task-review-config-toggle')!.click())
+    assert.equal(container.querySelector<HTMLInputElement>('input[type="number"]')!.value, '4')
+  } finally {
+    await act(async () => root.unmount())
+    useTaskStore.setState({ updateTaskDescription: original })
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
