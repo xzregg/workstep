@@ -8,6 +8,11 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import MobileTaskSelection from '../src/components/MobileTaskSelection.tsx'
 import MobileTaskRow from '../src/components/MobileTaskRow.tsx'
+import { MemoryRouter } from 'react-router-dom'
+import TaskList from '../src/pages/TaskList.tsx'
+import { useProjectStore } from '../src/stores/projectStore.ts'
+import { useManagedModeStore } from '../src/stores/managedModeStore.ts'
+import { scheduleApi } from '../src/api/client.ts'
 import { useTaskStore } from '../src/stores/taskStore.ts'
 import TaskTableView from '../src/components/TaskTableView.tsx'
 import { I18nProvider, useLocaleStore } from '../src/i18n/index.tsx'
@@ -20,13 +25,21 @@ const root=createRoot(container)
 const tasks=Array.from({length:12},(_,i)=>({id:String(i),title:i===0?'模拟任务：任务看板长标题和安全区验证，保持完整内容可读':'模拟任务 '+i,status:'ready',created_at:'2026-11-27T12:00:00Z',updated_at:'2026-11-27T12:00:00Z',steps:[]}))
 const noop=()=>{}
 const actions={canArchive:true,canDelete:true,canCleanWorkspace:true,onArchiveTask:async()=>{},onDeleteTask:async()=>{},onError:noop}
-const css=['index.css','mobile.css','components/MobileTaskSelection.css','components/MobileTaskRow.css','components/TaskCopyButton.css','components/ConfirmDialog.css'].map(file=>fs.readFileSync(new URL('../src/'+file,import.meta.url),'utf8')).join('\n')
-for(const state of ['normal','selected','archived','selected-en','empty','confirm','busy','desktop','menu-active','menu-archived','normal-archived','copy-busy','copy-error','multiple']) {
+const css=['index.css','mobile.css','components/MobileTaskSelection.css','components/TaskCopyButton.css','components/ConfirmDialog.css'].map(file=>fs.readFileSync(new URL('../src/'+file,import.meta.url),'utf8')).join('\n')
+for(const state of ['normal','selected','archived','selected-en','empty','confirm','busy','desktop','menu-active','menu-archived','normal-archived','copy-busy','copy-error','multiple','none-selected','page']) {
   await act(async()=>useLocaleStore.setState({locale:state==='selected-en'?'en-US':'zh-CN'}))
   useTaskStore.setState({copyTask:state==='copy-error'?async()=>{throw new Error('模拟复制失败')}:()=>new Promise(()=>{})})
   const archived=['archived','menu-archived','normal-archived'].includes(state)
   const list=state==='empty'?[]:tasks
+  if(state==='page') {
+    window.matchMedia=()=>({matches:true,addEventListener(){},removeEventListener(){}})
+    scheduleApi.list=async()=>({schedules:[]})
+    useProjectStore.setState({activeProject:{id:'demo',name:'模拟项目',path:'/demo',steps:{},workflows:[{id:'flow',name:'任务看板'}]},activeWorkflowId:'flow'})
+    useTaskStore.setState({tasks:tasks.map(t=>({...t,workflow_id:'flow'})),loading:false,listQuery:{projectId:'demo',workflowId:'flow',archived:false},fetchTasks:async()=>{}})
+    useManagedModeStore.setState({load:async()=>{}})
+  }
   await act(async()=>root.render(React.createElement(I18nProvider,null,
+    state==='page'?React.createElement(MemoryRouter,null,React.createElement(TaskList)):
     state==='desktop'?React.createElement(TaskTableView,{...actions,lanes:[{key:'todo',label:'待办',color:'blue'}],tasksByLane:{todo:tasks},showArchived:false,durationNowMs:0,onOpenTask:noop,onAddTask:noop}):
     React.createElement(MobileTaskSelection,{...actions,key:state,projectId:'demo',tasks:list,showArchived:archived,onArchiveTask:state==='busy'?()=>new Promise(()=>{}):actions.onArchiveTask},
       selection=>React.createElement('div',{className:'mobile-task-list'},list.map(task=>
@@ -36,7 +49,7 @@ for(const state of ['normal','selected','archived','selected-en','empty','confir
           onSelect:()=>selection.select(task.id)},
           React.createElement('span',{className:'mobile-task-row-title'},task.title),
           React.createElement('span',{className:'mobile-task-row-meta'},'待办 · 谢钊荣 · 开发',React.createElement('time',null,'11/27 20:00')))))))))
-  if(!['normal','empty','desktop','menu-active','menu-archived','normal-archived'].includes(state)) {
+  if(!['normal','empty','desktop','menu-active','menu-archived','normal-archived','page'].includes(state)) {
     const row=container.querySelector('.mobile-task-row')
     await act(async()=>{
       row.dispatchEvent(new window.PointerEvent('pointerdown',{bubbles:true,pointerType:'touch',button:0}))
@@ -45,9 +58,10 @@ for(const state of ['normal','selected','archived','selected-en','empty','confir
     })
     if(state==='confirm'||state==='busy') await act(async()=>container.querySelector('.mobile-task-bulk-actions [data-task-action="archive"]').click())
   }
+  if(state==='none-selected') await act(async()=>container.querySelector('.mobile-task-row').click())
   if(state==='multiple') await act(async()=>container.querySelectorAll('.mobile-task-row')[1].click())
   if(state.startsWith('copy-')) await act(async()=>container.querySelector('.mobile-task-bulk-actions [data-task-action="copy"]').click())
-  if(state.startsWith('menu-')) await act(async()=>container.querySelector('.mobile-task-row-more').click())
+  if(state.startsWith('menu-')) await act(async()=>container.querySelector('.mobile-task-row').dispatchEvent(new window.MouseEvent('contextmenu',{bubbles:true,cancelable:true})))
   if(state==='busy') await act(async()=>container.querySelector('.confirm-dialog-confirm').click())
   fs.writeFileSync(path.join(dir,state+'.html'),`<!doctype html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>${css}
   .fixture{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
@@ -83,7 +97,7 @@ const timeout = setTimeout(() => browser.kill(), 30000)
 try {
   const { result: { targetId } } = await call('Target.createTarget', { url: 'about:blank' })
   const { result: { sessionId } } = await call('Target.attachToTarget', { targetId, flatten: true })
-  for (const [state,width,scale] of [['copy-busy',320,1],['copy-error',390,1],['multiple',320,1],['menu-active',320,1],['menu-active',390,1],['menu-active',1023,1],['menu-archived',320,1],['menu-archived',390,1],['normal-archived',390,1],['normal',320,1.3],['normal',1023,1],['normal',320,1],['normal',390,1],['selected',320,1],['selected',390,1],['selected',1023,1],['archived',320,1],['archived',390,1],['selected',320,1.3],['selected-en',320,1.3],['empty',390,1],['confirm',390,1],['busy',390,1],['desktop',1024,1],['desktop',1440,1]]) {
+  for (const [state,width,scale] of [['none-selected',390,1],['page',320,1],['page',390,1],['page',1023,1],['copy-busy',320,1],['copy-error',390,1],['multiple',320,1],['menu-active',320,1],['menu-active',390,1],['menu-active',1023,1],['menu-archived',320,1],['menu-archived',390,1],['normal-archived',390,1],['normal',320,1.3],['normal',1023,1],['normal',320,1],['normal',390,1],['selected',320,1],['selected',390,1],['selected',1023,1],['archived',320,1],['archived',390,1],['selected',320,1.3],['selected-en',320,1.3],['empty',390,1],['confirm',390,1],['busy',390,1],['desktop',1024,1],['desktop',1440,1]]) {
     const file=path.join(dir,state+'.html')
     await call('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true},sessionId)
     await call('Page.navigate',{url:`file://${file}`},sessionId)
@@ -96,7 +110,7 @@ try {
       const footer=document.querySelector('.mobile-task-bulk-actions');
       const rect=el=>{const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,height:r.height}};
       return {overflow:document.documentElement.scrollWidth>innerWidth,
-        visibleMore:[...document.querySelectorAll('.mobile-task-row-more')].filter(b=>getComputedStyle(b).visibility!=='hidden').length,
+        rowMore:document.querySelectorAll('.mobile-task-row-more').length,topMore:document.querySelectorAll('.mobile-task-toolbar .mobile-toolbar-icon-button').length,
         footer:footer?{...rect(footer),padding:getComputedStyle(footer).paddingBottom}:null,
         last:list?.lastElementChild?rect(list.lastElementChild):null,
         buttons:[...document.querySelectorAll('.mobile-task-selection-header>button,.mobile-task-bulk-actions>button,.mobile-task-row-more,.mobile-task-menu>button')]
@@ -118,7 +132,8 @@ try {
     })()`},sessionId)
     const measured=result.result.value
     assert.equal(measured.overflow,false)
-    if(state.startsWith('menu-')) assert.equal(measured.visibleMore,0)
+    assert.equal(measured.rowMore,0)
+    if(state==='page') assert.equal(measured.topMore,1)
     for(const button of measured.buttons) {
       assert.ok(button.left>=0 && button.right<=width)
       if(button.compact) {

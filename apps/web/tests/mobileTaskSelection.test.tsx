@@ -126,7 +126,7 @@ test('archive/delete permissions, confirmation cancellation, failures and in-fli
 })
 
 
-test('board composition retains single-task menus with onSelect, including start, copy and archived restore', async () => {
+test('board has no row more buttons, preserves context menus and long-press selection', async () => {
   const { window } = installDomEnvironment()
   Object.assign(globalThis, { history: window.history })
   useLocaleStore.setState({ locale: 'zh-CN' })
@@ -152,9 +152,9 @@ test('board composition retains single-task menus with onSelect, including start
   })
   try {
     await render()
-    assert.equal(Boolean(document.querySelector('.mobile-task-row button')), false, 'more is a sibling, not a nested button')
+    assert.equal(Boolean(document.querySelector('.mobile-task-row-more')), false)
     for (const [label, expected] of [['开始任务', 'start'], ['复制任务', 'copy:one'], ['归档任务', 'archive'], ['删除', 'delete']]) {
-      await click('.mobile-task-row-more')
+      await act(async () => document.querySelector('.mobile-task-row')!.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
       assert.equal(Boolean(document.querySelector('[role="dialog"]')), true)
       assert.equal(Boolean(document.querySelector('.mobile-task-selection-header')), false)
       await menuAction(label)
@@ -163,12 +163,12 @@ test('board composition retains single-task menus with onSelect, including start
     }
     assert.equal(calls.includes('open'), false)
     await render(true)
-    await click('.mobile-task-row-more')
+    await act(async () => document.querySelector('.mobile-task-row')!.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
     assert.equal(Boolean(document.querySelector('[data-task-action="start"]')), false)
     await menuAction('恢复到看板')
     assert.equal(calls.at(-1), 'restore')
     await render(true, false)
-    await click('.mobile-task-row-more')
+    await act(async () => document.querySelector('.mobile-task-row')!.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
     assert.equal(document.querySelector('.mobile-task-menu')!.textContent!.includes('恢复到看板'), false)
     await act(async () => document.querySelector<HTMLButtonElement>('.mobile-sheet header button')!.click())
     await render()
@@ -182,9 +182,13 @@ test('board composition retains single-task menus with onSelect, including start
     assert.equal(Boolean(document.querySelector('[role="dialog"]')), false)
     assert.equal(row.getAttribute('aria-pressed'), 'true')
     await click('.mobile-task-selection-header button')
+    await act(async () => row.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true })))
+    assert.equal(Boolean(document.querySelector('[role="dialog"]')), true)
+    await menuAction('开始任务')
+    assert.equal(calls.at(-1), 'start')
     await click('.mobile-task-row')
     assert.equal(calls.at(-1), 'open')
-    assert.equal(Boolean(document.querySelector('.mobile-task-row-more')), true)
+    assert.equal(Boolean(document.querySelector('.mobile-task-row-more')), false)
   } finally {
     useTaskStore.setState({ copyTask: originalCopy })
     await act(async () => root.unmount())

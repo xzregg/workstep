@@ -4,7 +4,6 @@ import MobileSheet from './MobileSheet'
 import Button from './Button'
 import Icon from './Icon'
 import TaskCopyButton from './TaskCopyButton'
-import './MobileTaskRow.css'
 
 export default function MobileTaskRow({ title, status, archived, canArchive, canDelete, onOpen, onArchive, onRestore, onDelete, projectId, taskId, canStart = false, starting = false, readOnly = false, onStart, selectionMode = false, selected = false, selectionDisabled = false, onSelect, children }: {
   selectionMode?: boolean
@@ -58,17 +57,27 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
       }, 500),
     }
   }
-  const action = (callback: () => void) => {
+  const closeMenu = () => {
+    suppressClick.current = false
     setMenuOpen(false)
+  }
+  const action = (callback: () => void) => {
+    closeMenu()
     callback()
   }
   return <>
-    <div className="mobile-task-row-container">
     <button type="button" className="mobile-task-row" aria-haspopup={onSelect ? undefined : 'dialog'}
       aria-pressed={selectionMode ? selected : undefined}
       aria-disabled={selectionMode && selectionDisabled || undefined}
       data-selecting={selectionMode || undefined}
       data-selected={selected || undefined} data-board-task-id={taskId}
+      onKeyDown={event => {
+        if (!selectionMode && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
+          event.preventDefault()
+          cancel()
+          setMenuOpen(true)
+        }
+      }}
       onPointerDown={start}
       onPointerMove={event => {
         if (pending.current && Math.hypot(event.clientX - pending.current.x, event.clientY - pending.current.y) > 10) cancel()
@@ -82,7 +91,11 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
           suppressClick.current = true
           onSelect()
         }
-        if (!onSelect) { suppressClick.current = true; setMenuOpen(true) }
+        const pointerType = (event.nativeEvent as MouseEvent & { pointerType?: string }).pointerType
+        if (!onSelect || (!selectionMode && !heldTouch && !suppressClick.current && pointerType !== 'touch')) {
+          suppressClick.current = true
+          setMenuOpen(true)
+        }
       }}
       onClick={() => {
         if (suppressClick.current) { suppressClick.current = false; return }
@@ -94,17 +107,7 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
       </span>}
       {children}
     </button>
-    {onSelect && !selectionMode && <Button
-      variant="ghost" className="mobile-task-row-more"
-      aria-label={t('layout.moreActions')} title={t('layout.moreActions')}
-      aria-haspopup="dialog" aria-expanded={menuOpen}
-      onPointerDown={event => { event.stopPropagation(); cancel() }}
-      onContextMenu={event => event.preventDefault()}
-      onClick={event => { event.stopPropagation(); cancel(); setMenuOpen(true) }}>
-      <Icon name="ellipsis" />
-    </Button>}
-    </div>
-    <MobileSheet open={menuOpen} title={title} onClose={() => setMenuOpen(false)}>
+    <MobileSheet open={menuOpen} title={title} onClose={closeMenu}>
       <div className="mobile-task-menu">
         {allowStart && <Button data-task-action="start" disabled={starting} loading={starting} onClick={() => action(onStart!)}>
           <Icon name="play" size={16} />{t('taskList.startTask')}
@@ -112,7 +115,7 @@ export default function MobileTaskRow({ title, status, archived, canArchive, can
         <Button onClick={() => action(onOpen)}>
           <Icon name={readOnly ? 'eye' : 'pencil'} size={16} />{t(readOnly ? 'common.view' : 'common.edit')}
         </Button>
-        {projectId && taskId && <TaskCopyButton taskId={taskId} projectId={projectId} title={title} presentation="menu" onCopied={() => setMenuOpen(false)} />}
+        {projectId && taskId && <TaskCopyButton taskId={taskId} projectId={projectId} title={title} presentation="menu" onCopied={closeMenu} />}
         {allowArchive && <Button onClick={() => action(archived ? onRestore : onArchive)}>
           <Icon name={archived ? 'rotate-ccw' : 'archive'} size={16} />{t(archived ? 'taskList.restoreToBoard' : 'taskList.archiveTask')}
         </Button>}
