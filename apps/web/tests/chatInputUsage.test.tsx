@@ -4,8 +4,46 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import ChatInputUsage from '../src/components/ChatInputUsage'
-import { I18nProvider } from '../src/i18n'
+import EngineQuotaPopover from '../src/components/EngineQuotaPopover'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { ApiError, engineApi } from '../src/api/client'
+
+test('quota trigger uses a short label when the selected engine has no quota', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const previousLocale = useLocaleStore.getState().locale
+  const entries = [{engine_id: 'codex_sdk', supported: true, quota: {engine_id: 'codex_sdk',
+    primary: {used_percent: 25, remaining_percent: 75}}}, {engine_id: 'antigravity', supported: true, quota: null}]
+  try {
+    useLocaleStore.getState().setLocale('zh-CN')
+    for (const compact of [false, true]) {
+      await act(async () => root.render(<I18nProvider><EngineQuotaPopover entries={entries}
+        compact={compact} selectedEngine="antigravity" /></I18nProvider>))
+      const trigger = container.querySelector<HTMLButtonElement>('.engine-quota-trigger')!
+      assert.equal(trigger.textContent, '额度')
+      assert.equal(trigger.getAttribute('aria-label'), '额度')
+      await act(async () => trigger.click())
+      assert.equal(container.querySelector('.chat-input-quota-heading > strong')?.textContent, '账户额度')
+      await act(async () => trigger.click())
+      await act(async () => root.render(<I18nProvider><EngineQuotaPopover entries={entries.slice(0, 1)}
+        compact={compact} selectedEngine="pydantic_ai" /></I18nProvider>))
+      assert.equal(trigger.textContent, '额度')
+      assert.equal(trigger.getAttribute('aria-label'), '额度')
+      await act(async () => trigger.click())
+      assert.equal(container.querySelector('[data-quota-engine="codex_sdk"] [role="progressbar"]')?.getAttribute('aria-valuenow'), '75')
+      assert.equal(trigger.textContent, '额度')
+      await act(async () => trigger.click())
+      await act(async () => root.render(<I18nProvider><EngineQuotaPopover entries={entries}
+        compact={compact} selectedEngine="codex_sdk" /></I18nProvider>))
+      assert.match(trigger.textContent || '', /75%/)
+    }
+  } finally {
+    await act(async () => root.unmount())
+    useLocaleStore.getState().setLocale(previousLocale)
+    await window.happyDOM.close()
+  }
+})
 
 test('quota popover remains inside the visible viewport when the keyboard shrinks and offsets it', async () => {
   const { window } = installDomEnvironment()
@@ -142,7 +180,7 @@ test('Antigravity quota shows each model group and native time window', async ()
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   try {
-    await act(async () => root.render(<I18nProvider><ChatInputUsage compact={false} quota={{
+    await act(async () => root.render(<I18nProvider><ChatInputUsage compact={false} selectedEngine="antigravity" quota={{
       engine_id:'antigravity',primary:{used_percent:15,remaining_percent:85},
       groups:[{name:'Gemini Models',windows:[{kind:'weekly',used_percent:15,remaining_percent:85,resets_at:1796181626}]},
         {name:'Claude and GPT models',windows:[{kind:'weekly',used_percent:27,remaining_percent:73},
@@ -166,6 +204,7 @@ test('compact quota uses an icon and percentage while retaining an accessible la
   try {
     const render = (compact: boolean) => <I18nProvider><ChatInputUsage
       compact={compact}
+      selectedEngine="codex_sdk"
       quota={{ engine_id: 'codex_sdk', primary: { used_percent: 25, remaining_percent: 75 } }}
     /></I18nProvider>
     await act(async () => root.render(render(true)))
@@ -314,6 +353,42 @@ test('shared ChatInput exposes the unified quota button for session, task creati
   } finally {
     engineApi.quotas = originalQuotas
     await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('ChatInput without an engine configuration keeps the only returned quota in the dialog', async () => {
+  const { window } = installDomEnvironment()
+  const { default: ChatInput } = await import('../src/components/ChatInput')
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originalQuotas = engineApi.quotas
+  const previousLocale = useLocaleStore.getState().locale
+  engineApi.quotas = async () => ({
+    engines: [{engine_id: 'codex_sdk', supported: true, status: 'ok', quota: {engine_id: 'codex_sdk',
+      primary: {used_percent: 25, remaining_percent: 75}}}],
+    cached: false, collected_at: 1, expires_at: 301,
+  })
+  try {
+    useLocaleStore.getState().setLocale('zh-CN')
+    for (const width of [1440, 390]) {
+      await act(async () => {
+        window.happyDOM.setWindowSize({width, height: 740})
+        root.render(<I18nProvider><ChatInput key={width} value="" onChange={() => {}}
+          onSend={() => {}} projectId="proj-no-engine" sessionId="session-no-engine" /></I18nProvider>)
+      })
+      const trigger = container.querySelector<HTMLButtonElement>('.engine-quota-trigger')!
+      assert.equal(trigger.textContent, '额度')
+      assert.equal(trigger.getAttribute('aria-label'), '额度')
+      assert.equal(Boolean(trigger.querySelector('svg')), width === 390)
+      await act(async () => trigger.click())
+      assert.equal(trigger.getAttribute('aria-expanded'), 'true')
+      assert.equal(container.querySelector('[data-quota-engine="codex_sdk"] [role="progressbar"]')?.getAttribute('aria-valuenow'), '75')
+    }
+  } finally {
+    engineApi.quotas = originalQuotas
+    await act(async () => root.unmount())
+    useLocaleStore.getState().setLocale(previousLocale)
     await window.happyDOM.close()
   }
 })
