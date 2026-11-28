@@ -96,19 +96,19 @@ export default function MarkdownEditor({
     return { marker: snippet, cursor: start + separator.length }
   }
 
-  const replaceUploadMarker = (marker: string, replacement: string, cursor: number) => {
+  const replaceUploadMarker = (marker: string, replacement: string, cursor: number, fromImagePicker: boolean) => {
     const current = valueRef.current
     const markerIndex = current.indexOf(marker, cursor)
     if (markerIndex < 0) return
     const trailing = current.slice(markerIndex + marker.length)
-    const separator = replacement && trailing && !trailing.startsWith('\n') ? '\n' : ''
+    const separator = fromImagePicker && replacement && trailing && !trailing.startsWith('\n') ? '\n' : ''
     replaceValue(
       current.slice(0, markerIndex) + replacement + separator + trailing,
       markerIndex + replacement.length,
     )
   }
 
-  const handleAttachments = async (files: File[]) => {
+  const handleAttachments = async (files: File[], fromImagePicker = false) => {
     if (!files.length || !projectId || uploading || disabled || !canUpload) return
     setUploadError('')
     setUploading(true)
@@ -137,7 +137,7 @@ export default function MarkdownEditor({
           setUploadError(t('md.uploadFailed'))
         }
       }
-      replaceUploadMarker(insertion.marker, attachments.join('\n'), insertion.cursor)
+      replaceUploadMarker(insertion.marker, attachments.join('\n'), insertion.cursor, fromImagePicker)
     } finally {
       setUploading(false)
     }
@@ -147,9 +147,11 @@ export default function MarkdownEditor({
     const input = event.currentTarget
     const files = Array.from(input.files ?? [])
     input.value = ''
-    void handleAttachments(input === imageInputRef.current
-      ? files.filter(file => file.type.startsWith('image/'))
-      : files)
+    const fromImagePicker = input === imageInputRef.current
+    void handleAttachments(
+      fromImagePicker ? files.filter(file => file.type.startsWith('image/')) : files,
+      fromImagePicker,
+    )
   }
 
   const handlePaste = (event: React.ClipboardEvent<HTMLElement>) => {

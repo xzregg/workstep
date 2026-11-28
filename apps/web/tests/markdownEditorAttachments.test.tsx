@@ -106,7 +106,7 @@ test('image picker follows the existing project, permission and editor restricti
   assert.equal(upload.mock.callCount(), 0)
 })
 
-test('generic attachment selection, paste and drop still use their existing upload paths', async (t) => {
+test('generic attachment selection, paste and drop preserve trailing text when inserting mid-line', async (t) => {
   const uploadFile = t.mock.method(fsApi, 'uploadFile', async () => ({ url: '.workstep/uploads/notes.txt' }))
   const uploadImage = t.mock.method(fsApi, 'uploadImage', async () => ({ url: '.workstep/uploads/picture.png' }))
   const ui = await setup()
@@ -115,21 +115,33 @@ test('generic attachment selection, paste and drop still use their existing uplo
     const picker = t.mock.method(generic, 'click', () => {})
     await act(async () => ui.actions.querySelector<HTMLButtonElement>('button[aria-label="上传附件"]')!.click())
     assert.equal(picker.mock.callCount(), 1)
+    const textarea = ui.host.querySelector('textarea')!
+    const attachment = '[notes.txt](.workstep/uploads/notes.txt)'
+    const image = '![picture.png](.workstep/uploads/picture.png)'
+    const moveCaretBeforeText = () => {
+      const position = ui.draft.indexOf('正文')
+      textarea.setSelectionRange(position, position)
+    }
+
+    moveCaretBeforeText()
     await selectFiles(generic, [textFile])
+    assert.equal(ui.draft, `# \n${attachment}正文`)
 
     const paste = new window.Event('paste', { bubbles: true, cancelable: true })
     Object.defineProperty(paste, 'clipboardData', {
       value: { items: [{ kind: 'file', getAsFile: () => imageFile }] },
     })
-    await act(async () => ui.host.querySelector('textarea')!.dispatchEvent(paste))
+    moveCaretBeforeText()
+    await act(async () => textarea.dispatchEvent(paste))
+    assert.equal(ui.draft, `# \n${attachment}\n${image}正文`)
     const drop = new window.Event('drop', { bubbles: true, cancelable: true })
     Object.defineProperty(drop, 'dataTransfer', { value: { files: [textFile] } })
+    moveCaretBeforeText()
     await act(async () => ui.host.querySelector('.markdown-editor-shell')!.dispatchEvent(drop))
+    assert.equal(ui.draft, `# \n${attachment}\n${image}\n${attachment}正文`)
     assert.equal(uploadFile.mock.callCount(), 2)
     assert.equal(uploadImage.mock.callCount(), 1)
     assert.equal(paste.defaultPrevented, true)
     assert.equal(drop.defaultPrevented, true)
-    assert.match(ui.draft, /!\[picture\.png\]\(\.workstep\/uploads\/picture\.png\)/)
-    assert.match(ui.draft, /\[notes\.txt\]\(\.workstep\/uploads\/notes\.txt\)/)
   } finally { await ui.close() }
 })
