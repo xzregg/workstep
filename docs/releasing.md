@@ -70,6 +70,14 @@ bundle identity/version and ad-hoc signature-integrity verification before repla
 the bundle after exit. These checks do not provide Developer ID authentication or
 bypass operating-system security prompts. Publishing the draft is an explicit release step.
 
+When packaging an existing application tag through `workflow_dispatch`, the image
+acceptance script is loaded from the immutable `github.workflow_sha` revision.
+The application checkout remains the requested tag. This allows corrections to
+release verification without moving an application tag or including later dev
+changes. Image acceptance separately checks the host workbench assets and the
+signaling-only P2P bootstrap JS, CSS and worker, then retains the existing STUN,
+health, shared-import and persistence checks.
+
 macOS builds use a native runner matrix (`macos-15` arm64 and `macos-15-intel`
 x64), with an explicit matching CPython request and architecture checks. Each DMG
 must pass `scripts/macos-desktop-acceptance.cjs` before its artifact is uploaded:

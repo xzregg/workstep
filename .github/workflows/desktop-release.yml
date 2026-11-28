@@ -34,6 +34,12 @@ jobs:
         with: { ref: "${{ inputs.tag || github.ref }}" }
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Load image acceptance from the immutable workflow revision
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          git fetch --no-tags origin "$WORKFLOW_SHA"
+          git show "$WORKFLOW_SHA:scripts/verify-shared-image.py" > "$RUNNER_TEMP/verify-shared-image.py"
       - name: Publish immutable sandbox image
         id: image
         env:
@@ -62,7 +68,7 @@ jobs:
           # Refuse to ship a desktop that cannot anonymously fetch its image.
           docker buildx imagetools inspect "$repository@$digest" > /dev/null
           # Verify daemon, Gateway and assets with an isolated empty HOME on every release.
-          sudo python3 scripts/verify-shared-image.py "$repository@$digest"
+          sudo python3 "$RUNNER_TEMP/verify-shared-image.py" "$repository@$digest"
           if [ "$IMAGE_ONLY" = true ]; then
             printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
             docker buildx imagetools create --tag "$repository:latest" "$repository@$digest"

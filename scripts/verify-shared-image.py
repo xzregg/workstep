@@ -14,6 +14,16 @@ def docker(*args, check=True):
     return subprocess.run(["docker", *args], check=check, text=True, capture_output=True)
 
 
+def verify_p2p_bootstrap(page, fetch):
+    required = {'/p2p-bootstrap/bootstrap.js', '/p2p-bootstrap/style.css'}
+    assets = set(re.findall(r'(?:src|href)="(/p2p-bootstrap/[^\"]+)"', page))
+    assert required <= assets, 'P2P connection bootstrap assets missing'
+    assert '/workspace-assets/' not in page, 'Signaling must not embed the host workbench'
+    for asset in sorted(required | {'/p2p/rtc-worker.js'}):
+        body = fetch(asset)
+        assert body.strip() and not body.lstrip().startswith('<'), f'Invalid P2P asset: {asset}'
+
+
 def verify(image):
     previous_key = None
     with tempfile.TemporaryDirectory(prefix="workstep-image-home-") as home:
@@ -50,7 +60,9 @@ def verify(image):
                 ))
                 if app == "gateway.app:app":
                     viewer = docker("exec", name, "cat", "/app/apps/web/dist-gateway-share/index.html").stdout
-                    for asset in re.findall(r'(?:src|href)="(/workspace-assets/[^\"]+)"', viewer):
+                    workspace_assets = re.findall(r'(?:src|href)="(/workspace-assets/[^\"]+)"', viewer)
+                    assert workspace_assets, 'Host workbench assets missing'
+                    for asset in workspace_assets:
                         docker("exec", name, "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8765" + asset)
                     webrtc_cfg = json.loads(
                         docker("exec", name, "curl", "-fsS", "http://127.0.0.1:8765/api/webrtc/config").stdout
@@ -58,7 +70,8 @@ def verify(image):
                     assert webrtc_cfg.get("direct_only") is True, webrtc_cfg
                     assert webrtc_cfg.get("stun_urls"), webrtc_cfg
                     p2p_page = docker("exec", name, "curl", "-fsS", "http://127.0.0.1:8765/p2p/smoke-device/").stdout
-                    assert "/workspace-assets/" in p2p_page, "P2P workbench assets missing"
+                    verify_p2p_bootstrap(p2p_page, lambda asset: docker(
+                        'exec', name, 'curl', '-fsS', 'http://127.0.0.1:8765' + asset).stdout)
                     stun_probe = (
                         "import os, socket, struct; "
                         "tx=os.urandom(12); "
