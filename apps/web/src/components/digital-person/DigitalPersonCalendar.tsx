@@ -17,6 +17,13 @@ import {useNativeCalendarStore,openDigitalCalendar} from '../../stores/nativeCal
 const sameDay=(a:Date,b:Date)=>a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate()
 const dayKey=(date:Date)=>`${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 
+function calendarTimeRange(event:CalendarEvent,locale:string){
+ const start=new Date(event.starts_at),end=new Date(start.getTime()+(event.duration_minutes??30)*60000)
+ const clock=(date:Date)=>date.toLocaleTimeString(locale,{hour:'2-digit',minute:'2-digit',hour12:false})
+ if(event.system_readonly&&event.duration_minutes==null)return clock(start)
+ return `${clock(start)} – ${sameDay(start,end)?'':end.toLocaleDateString(locale,{month:'numeric',day:'numeric'})+' '}${clock(end)}`
+}
+
 /** One calendar owns desktop hover and touch panel disclosure, editing and deletion. */
 export default function DigitalPersonCalendar({active,projectId,canEdit,presentation='home'}:{active:boolean;projectId:string;canEdit:boolean;presentation?:'home'|'panel'}){
  const {t,locale}=useI18n(),compact=useCompactLayout(),root=useRef<HTMLDivElement>(null),popover=useRef<HTMLDivElement>(null)
@@ -84,7 +91,7 @@ export default function DigitalPersonCalendar({active,projectId,canEdit,presenta
  }
  const changeMonth=(delta:number)=>{hide();const next=new Date(month.getFullYear(),month.getMonth()+delta,1);setMonth(next);setSelected(next)}
  const entries=(date:Date)=>(groups.get(dayKey(date))??[]).length?(groups.get(dayKey(date))??[]).map(event=><section key={event.id} className="digital-calendar-entry">
-  <header><time>{event.all_day?t('nativeCalendar.allDay'):new Date(event.starts_at).toLocaleTimeString(locale,{hour:'2-digit',minute:'2-digit',hour12:false})}</time><span>{event.system_readonly?t('nativeCalendar.readOnly'):event.reminder_status==='system'?'':event.reminder_status==='notified'?t('digitalCalendar.notified'):event.reminder_status==='retry'?t('digitalCalendar.retrying'):''}</span>{canEdit&&!event.system_readonly&&<div><Button variant={compact?'ghost':'icon'} className="digital-calendar-edit" aria-label={t('digitalCalendar.edit')} disabled={!!busy} onClick={()=>open(date,event)}><Icon name="pencil"/>{compact&&<span>{t('common.edit')}</span>}</Button><Button variant="icon" aria-label={t('digitalCalendar.delete')} loading={busy===event.id} disabled={!!busy} onClick={()=>void remove(event)}><Icon name="trash" size={14}/></Button></div>}</header>
+  <header><time>{event.all_day?t('nativeCalendar.allDay'):calendarTimeRange(event,locale)}</time><span>{event.system_readonly?t('nativeCalendar.readOnly'):event.reminder_status==='system'?'':event.reminder_status==='notified'?t('digitalCalendar.notified'):event.reminder_status==='retry'?t('digitalCalendar.retrying'):''}</span>{canEdit&&!event.system_readonly&&<div><Button variant={compact?'ghost':'icon'} className="digital-calendar-edit" aria-label={t('digitalCalendar.edit')} disabled={!!busy} onClick={()=>open(date,event)}><Icon name="pencil"/>{compact&&<span>{t('common.edit')}</span>}</Button><Button variant="icon" aria-label={t('digitalCalendar.delete')} loading={busy===event.id} disabled={!!busy} onClick={()=>void remove(event)}><Icon name="trash" size={14}/></Button></div>}</header>
   <MarkdownMessage content={event.content} projectId={projectId} reveal="off"/>
  </section>):<p className="digital-calendar-empty">{t('digitalCalendar.empty')}</p>
  return <>

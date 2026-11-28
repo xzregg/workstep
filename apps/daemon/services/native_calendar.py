@@ -169,7 +169,7 @@ class CalendarApplication:
                 'items':[{k:v for k,v in item.items() if k not in ('system_id','calendar_id')} for item in op['items']]}
 
     def _drafts(self,body):
-        if 'schedule' not in body:return [calendar.CalendarDraft.model_validate({k:body[k] for k in ('content','starts_at','timezone_name','reminder_minutes') if k in body})]
+        if 'schedule' not in body:return [calendar.CalendarDraft.model_validate({k:body[k] for k in ('content','starts_at','timezone_name','reminder_minutes','duration_minutes') if k in body})]
         schedule=body['schedule'];start=date.fromisoformat(schedule['start_date']);end=date.fromisoformat(schedule['end_date'])
         if not 0<=(end-start).days<100:raise ValueError('Calendar batch must contain 1 to 100 dates')
         clock=time.fromisoformat(schedule['time'])
@@ -219,7 +219,7 @@ class CalendarApplication:
             op.update(origin_project_id=body.get('origin_project_id'),origin_session_id=body.get('origin_session_id'))
             if action=='create':
                 for draft in self._drafts(body):
-                    op['items'].append({'id':new_id(),'event_id':new_id(),'status':'queued','draft':draft.model_dump(mode='json'),'duration_minutes':duration})
+                    op['items'].append({'id':new_id(),'event_id':new_id(),'status':'queued','draft':draft.model_dump(mode='json',exclude_none=True),'duration_minutes':duration})
             else:
                 event_ids=body.get('event_ids',[])
                 if body.get('event_id'):event_ids=[body['event_id']]
@@ -241,9 +241,12 @@ class CalendarApplication:
                     link=db.execute('SELECT * FROM calendar_links WHERE event_id=? AND owner=? AND target_id=?',(event_id,self.owner,target_id)).fetchone()
                     if target_id!='internal' and link is None:raise KeyError('Linked calendar event not found')
                     if body.get('revision') and body['revision']!=event['revision']:raise ValueError('Calendar event changed; refresh first')
-                    draft=calendar.CalendarDraft.model_validate(body['draft']).model_dump(mode='json') if action=='update' else {k:event[k] for k in ('content','starts_at','timezone_name','reminder_minutes')}
+                    draft=calendar.CalendarDraft.model_validate(body['draft']).model_dump(mode='json',exclude_none=True) if action=='update' else {k:event[k] for k in ('content','starts_at','timezone_name','reminder_minutes')}
+                    item_duration=body.get('duration_minutes',draft.get('duration_minutes',event.get('duration_minutes',30)))
+                    calendar.CalendarDraft.model_validate({**draft,'duration_minutes':item_duration})
+                    if action=='update':draft['duration_minutes']=item_duration
                     op['items'].append({'id':new_id(),'event_id':event_id,'revision':event['revision'],'system_id':link['system_id'] if link else event_id,
-                                        'status':'queued','draft':draft,'duration_minutes':int(body.get('duration_minutes',event.get('duration_minutes',30))),**({'system_revision':event['system_revision']} if event.get('system_revision') else {})})
+                                        'status':'queued','draft':draft,'duration_minutes':item_duration,**({'system_revision':event['system_revision']} if event.get('system_revision') else {})})
             if not op['items']:op['status']='succeeded'
             if len(json.dumps(op,ensure_ascii=False).encode())>1048576:raise ValueError('Calendar batch exceeds 1 MiB; reduce its content or item count')
             count=db.execute("SELECT COUNT(*) FROM calendar_operations WHERE owner=? AND device_id=? AND status IN ('queued','executing','needs_permission','needs_calendar','needs_device','unknown')",(self.owner,op['device_id'])).fetchone()[0]
@@ -314,19 +317,19 @@ class CalendarApplication:
                     item['revision']=event['revision']
                 else:
                     event=calendar._read(db,item['event_id'],deleted=True)
-                    before={key:event.get(key) for key in ('content','starts_at','deleted_at','reminder_minutes','timezone_name')}
+                    before={key:event.get(key) for key in ('content','starts_at','deleted_at','reminder_minutes','timezone_name','duration_minutes')}
                     if event['revision']!=item['revision']:raise ValueError('Calendar mirror changed during execution; reconcile first')
                     if action=='delete' or verification=='absent':event['deleted_at']=stamp()
                     elif action=='update':
                         rescheduled=any(event[key]!=item['draft'][key] for key in ('starts_at','reminder_minutes'))
-                        event.update(item['draft'])
+                        event.update(item['draft'],duration_minutes=item['duration_minutes'])
                         if rescheduled:
                             event.update(early_reminder_status='pending',early_deliveries=[],notification_key=new_id())
                             if not device_id:event.update(reminder_status='pending',deliveries=[])
                         event['reminder_at']=(datetime.fromisoformat(event['starts_at'])-timedelta(minutes=event['reminder_minutes'])).isoformat()
                         db.execute('UPDATE calendar_links SET local_date=? WHERE event_id=?',(datetime.fromisoformat(event['starts_at']).astimezone(ZoneInfo(event['timezone_name'])).date().isoformat(),event['id']))
                     elif action=='query' and isinstance(receipt.get('event'),dict):
-                        actual=calendar.CalendarDraft.model_validate(receipt['event']).model_dump(mode='json')
+                        actual=calendar.CalendarDraft.model_validate(receipt['event']).model_dump(mode='json',exclude_none=True)
                         event.update(actual)
                         if any(event.get(key)!=before[key] for key in ('starts_at','reminder_minutes')):
                             event.update(early_reminder_status='pending',early_deliveries=[],notification_key=new_id())

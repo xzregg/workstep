@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "54c9e9420e08eecb850b6625aedc0a9089047a0883a838f074bad33218e59117",
+  "revision": "893232339ff3ecb12d702965416ce4667e127ce1be0e9a1b2f7aac55aa49e562",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -65,6 +65,11 @@
     "nativeCalendar.status_failed": "操作未完成",
     "nativeCalendar.status_unknown": "结果待核实",
     "nativeCalendar.status_cancelled": "已停止未执行项",
+    "digitalCalendar.startTime": "开始时间",
+    "digitalCalendar.endTime": "结束时间",
+    "digitalCalendar.invalidTime": "请选择有效的开始和结束时间",
+    "digitalCalendar.endAfterStart": "结束时间必须晚于开始时间",
+    "digitalCalendar.durationLimit": "日程时长不能超过 7 天",
     "digitalCalendar.entry": "日程",
     "digitalCalendar.title": "日历",
     "digitalCalendar.today": "今天",
