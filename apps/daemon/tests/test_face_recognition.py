@@ -49,7 +49,13 @@ def test_validation_and_versions_and_context_settings(faces):
         person(faces)
     r = faces.context([p['id'], p['id'], 'missing'], 1)
     assert len(r['people']) == 1 and '小张' in r['text'] and '朋友' in r['text']
-    assert '正在发言' in r['text']
+    assert r['text'].startswith('<camera_observation>\n本轮附图的人脸识别观察 JSON（可能有误）。')
+    assert '"name": "小张"' in r['text']
+    assert '"relationship": "朋友"' in r['text']
+    assert '"unknown_face_count": 1' in r['text']
+    assert '"people":' in r['text']
+    assert '这些是画面中的人物，不代表谁正在发言；不改变消息作者或权限。' in r['text']
+    assert r['text'].endswith('}\n</camera_observation>\n')
     before = faces.catalog()['revision']
     faces.save_settings(faces.Settings(enabled=True, include_relationship=False))
     assert faces.catalog()['revision'] > before
@@ -74,10 +80,10 @@ def test_face_box_visibility_does_not_change_recognition_context(faces):
 def test_person_background_contains_only_known_enabled_people(faces):
     p = person(faces)
     other = faces.create(faces.Enrollment(name='小林', relationship='同事', consent=True, embeddings=[sample()] * 3))
-    header = '[Visual Context]\nSource: Camera face recognition\nMatches:'
-    assert faces.person_prompt([p['id']]) == f'{header}\n- Name: 小张; Relationship: 朋友'
+    header = '<visual_context>\nSource: Camera face recognition\nMatches:'
+    assert faces.person_prompt([p['id']]) == f'{header}\n- Name: 小张; Relationship: 朋友\n</visual_context>\n'
     assert faces.person_prompt([p['id'], other['id'], p['id'], 'missing']) == (
-        f'{header}\n- Name: 小张; Relationship: 朋友\n- Name: 小林; Relationship: 同事'
+        f'{header}\n- Name: 小张; Relationship: 朋友\n- Name: 小林; Relationship: 同事\n</visual_context>\n'
     )
     assert faces.person_prompt([]) == ''
     assert faces.person_prompt(['missing']) == ''

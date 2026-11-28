@@ -1,11 +1,14 @@
+import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Window } from 'happy-dom'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import TaskStepConfigController from '../src/components/TaskStepConfigController'
-import { I18nProvider } from '../src/i18n'
-import { taskApi, type StepExecutionConfig } from '../src/api/client'
+import ChatInput from '../src/components/ChatInput'
+import TaskDetailWindow from '../src/components/TaskDetailWindow'
+import { I18nProvider, useLocaleStore, zhCNT } from '../src/i18n'
+import { engineApi, invalidateEngineModels, taskApi, type StepExecutionConfig } from '../src/api/client'
 
 const engine = (id: string) => ({
   id,
@@ -57,6 +60,7 @@ function installDom() {
     HTMLElement: window.HTMLElement,
     IS_REACT_ACT_ENVIRONMENT: true,
   })
+  useLocaleStore.setState({ locale: 'zh-CN', language: null })
   return window
 }
 
@@ -224,6 +228,98 @@ test('switching a step with history confirms smart handoff before saving', async
   }
 })
 
+test('mobile step settings use shared rows and give way to engine or provider handoff', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN', language: null })
+  Object.assign(globalThis, { history: window.history })
+  window.happyDOM.setWindowSize({ width: 390, height: 844 })
+  const originals = { get: taskApi.stepExecutionConfig, models: engineApi.models, update: taskApi.updateStepExecutionConfig }
+  const available_engines = [{
+    ...engine('engine-a'),
+    supports_provider: true,
+    config: {
+      fields: [],
+      step_fields: [
+        { key: 'provider_id', label: '供应商', type: 'select', placeholder: '沿用默认', options: [{ value: 'provider-b', label: 'Provider B' }] },
+        { key: 'sandbox', label: '沙箱模式', type: 'select', category: 'mode', options: [{ value: 'read-only', label: '只读' }] },
+      ],
+    },
+  }, engine('engine-b')]
+  taskApi.stepExecutionConfig = async () => ({ ...detail, available_engines })
+  engineApi.models = async (engineId, providerId) => ({
+    engine_id: engineId,
+    models: providerId === 'provider-b'
+      ? [{ id: 'model-b', label: 'Model B', description: null }]
+      : [{ id: 'flow-model', label: 'Flow Model', description: null }],
+    default_model: '',
+    error: null,
+  })
+  let saves = 0
+  taskApi.updateStepExecutionConfig = async (_task, _step, _project, selection) => {
+    saves++
+    return { ...detail, available_engines, resolved: selection }
+  }
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const click = async (selector: string, label?: string) => {
+    const control = [...document.querySelectorAll<HTMLElement>(selector)]
+      .find((node) => label === undefined || node.textContent?.trim() === label)
+    assert.ok(control, label ?? selector)
+    await act(async () => control.click())
+  }
+  const select = async (field: string, option: string) => {
+    await click('.chat-input-config-row', field)
+    await click('.mobile-sheet .chat-input-menu-item', option)
+  }
+  try {
+    await act(async () => root.render(<I18nProvider>
+      <TaskDetailWindow title="模拟任务" onClose={() => {}}>
+        {() => <TaskStepConfigController projectId="p" taskId="t" stepKey="do" running={false}>
+          {({ inputConfig }) => <ChatInput value="" onChange={() => {}} onSend={() => {}} config={inputConfig ?? undefined} />}
+        </TaskStepConfigController>}
+      </TaskDetailWindow>
+    </I18nProvider>))
+    await click('[data-kind="config"]')
+    const rows = [...document.querySelectorAll('.mobile-sheet .coordinator-config-label')]
+    assert.deepEqual(rows.map((row) => row.textContent), [
+      zhCNT('coord.engine'), '供应商', zhCNT('coord.reasoning'), '沙箱模式',
+    ])
+
+    for (const [field, option] of [
+      [zhCNT('coord.engine') + 'engine-a', 'engine-b'],
+      ['供应商沿用默认', 'Provider B'],
+    ]) {
+      await select(field, option)
+      assert.equal(document.querySelectorAll('.mobile-sheet').length, 0)
+      assert.equal(document.body.querySelector(':scope > .confirm-dialog-backdrop') !== null, true)
+      assert.equal(saves, 0)
+      await click('.confirm-dialog-footer button', zhCNT('common.cancel'))
+      assert.equal(document.querySelector('.confirm-dialog-backdrop') === null, true)
+      assert.equal(document.querySelectorAll('.mobile-sheet').length, 1)
+    }
+
+    await select('沙箱模式' + zhCNT('chatSession.permissionDefault'), '只读')
+    assert.equal(saves, 1)
+    assert.equal(document.querySelectorAll('.mobile-sheet').length, 1)
+
+    await select('供应商沿用默认', 'Provider B')
+    await click('.confirm-dialog-confirm')
+    await click('.chat-input-config-row', zhCNT('coord.reasoning') + zhCNT('coord.reasoningDefault'))
+    const models = [...document.querySelectorAll('.mobile-sheet .chat-input-menu-item')]
+    assert.deepEqual(models.map((option) => option.textContent?.trim()), [
+      zhCNT('coord.reasoningDefault'), 'Model B',
+    ])
+    await click('.mobile-sheet .chat-input-menu-item', 'Model B')
+    assert.equal(saves, 3)
+  } finally {
+    taskApi.stepExecutionConfig = originals.get
+    engineApi.models = originals.models
+    invalidateEngineModels('engine-a')
+    taskApi.updateStepExecutionConfig = originals.update
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('switching a step provider with history confirms handoff even without a reusable session', async () => {
   const window = installDom()
   const originals = {
@@ -327,11 +423,11 @@ test('step provider returns to its original selection without another handoff be
     })
     for (const provider of ['provider-b', 'provider-c']) {
       await act(async () => { (container.querySelector(`[data-provider="${provider}"]`) as HTMLButtonElement).click() })
-      assert.ok(container.querySelector('[role="dialog"]'))
-      await act(async () => { (container.querySelector('.btn-primary') as HTMLButtonElement).click() })
+      assert.ok(document.querySelector('[role="dialog"]'))
+      await act(async () => { (document.querySelector('.confirm-dialog-confirm') as HTMLButtonElement).click() })
     }
     await act(async () => { (container.querySelector('[data-provider="provider-a"]') as HTMLButtonElement).click() })
-    assert.ok(container.querySelector('[role="dialog"]') === null)
+    assert.ok(document.querySelector('[role="dialog"]') === null)
     assert.deepEqual(saved, [
       { provider: 'provider-b', mode: 'smart' },
       { provider: 'provider-c', mode: 'smart' },

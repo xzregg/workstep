@@ -29,6 +29,7 @@ from engines.codex_visualize import (
     convert_visualize_markers,
 )
 from engines.core.registry import COORDINATOR_FALLBACK_ORDER, create_engine
+from services.prompt_sections import prompt_section
 from models.base import db_proxy
 from models.chat_session import ChatMessage, ChatSession, ProjectSetting
 from models.fields import utc_now
@@ -1267,7 +1268,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         parts = self._digital_person_prompt_parts(session)
         if parts:
             session.extra['digital_person_each_turn'] = True
-        return '\n\n'.join(parts.values())
+        return '\n'.join(parts.values())
 
     def _digital_person_prompt_parts(self, session) -> dict:
         from services.digital_person import prompt_parts_for_project
@@ -1283,7 +1284,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         project = self._project_manager.get_project_by_id(session.project_id)
         parts = prompt_parts_for_project(project)
         if not parts and project is not None and is_default_workspace(project) and config_store.get('digital_person'):
-            parts['identity'] = '[WorkStep digital hub] Digital hub mode is disabled. The previous digital hub identity and duties no longer apply.'
+            parts['identity'] = prompt_section('digital_hub_disabled', 'Digital hub mode is disabled. The previous digital hub identity and duties no longer apply.')
         return parts
 
     def _digital_person_session_kind(self, project_id: str, session_id: str) -> str:
@@ -1329,24 +1330,28 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         context = extra.get('digital_person_context')
         if context is not None:
             parts = self._digital_person_prompt_parts(session)
-            if parts.get('identity', '').startswith('[WorkStep digital hub]\n'):
+            if parts.get('identity', '').startswith('<digital_hub_identity>\n'):
                 from services.digital_calendar import CHAT_RULES
                 parts['calendar'] = CHAT_RULES
-            if self._config.name == 'chat_session' and parts.get('identity', '').startswith('[WorkStep digital hub]\n'):
+            if self._config.name == 'chat_session' and parts.get('identity', '').startswith('<digital_hub_identity>\n'):
                 from services.digital_person import COMPANION_UI_PROMPT
                 parts['companion_ui'] = COMPANION_UI_PROMPT
                 if context.get('is_main_session'):
                     from services.digital_person import identity_setup_prompt
                     parts['identity_setup'] = identity_setup_prompt()
-            parts.update(global_rules=self.get_system_prompt(session.project_id), role=self._role_system_prompt(session),
-                         memory=extra.get('memory_context_prompt'), camera=extra.get('camera_frame_prompt'))
+            global_rules = self.get_system_prompt(session.project_id)
+            memory = extra.get('memory_context_prompt')
+            parts.update(global_rules=prompt_section('global_rules', global_rules) if global_rules else '',
+                         role=self._role_system_prompt(session),
+                         memory=prompt_section('project_memory', memory) if memory else '',
+                         camera=extra.get('camera_frame_prompt'))
             if parts.get('identity') or context.get('delegation_list') or context.get('notices') or context.get('pending'):
-                parts['conversation_reference'] = (
+                parts['conversation_reference'] = prompt_section('conversation_reference',
                     "Resolve references from the user's explicit wording and recent dialogue first, then recent relevant notifications. "
                     'Persistent task snapshots do not establish the current topic or recency; use them to identify a matched task and check its state. Ask if still ambiguous.'
                 )
             if context.get('delegation_list'):
-                parts['delegation_rules'] = (
+                parts['delegation_rules'] = prompt_section('delegation_rules',
                     'Act on tasks only when the user asks. '
                     'The background service handles delegation review and notifications; workflow task progress comes from its actual task state.'
                 )
@@ -1355,16 +1360,15 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             context['parts'] = {key: value for key, value in parts.items() if value}
             context['fingerprints'] = {key: hashlib.sha256(value.encode()).hexdigest() for key, value in context['parts'].items()}
             pending = context['pending']
-            lines = ['[WorkStep conversation history]',
-                     'Already delivered notifications, newest first; times use the current local timezone. Do not resend. '
+            lines = ['Already delivered notifications, newest first; times use the current local timezone. Do not resend. '
                      "After matching the topic from recent dialogue, use the relevant notice's Source; do not choose by delegation list order. "
                      'If only delegation_id is given, look it up. If the source is missing or ambiguous, ask instead of using another notice\'s IDs.'] if pending else []
             for index, notice in enumerate(reversed(pending)):
-                latest = '[Latest notification] ' if index == 0 else ''
+                notice_lines = []
                 created_at = notice.get('created_at', '')
                 if parsed := _from_iso(created_at):
                     created_at = (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).astimezone().isoformat(timespec='seconds')
-                lines.append(f"- {latest}{created_at}\n  " + str(notice['content']).replace('\n', '\n  '))
+                notice_lines.append(f"Time: {created_at}\n" + str(notice['content']))
                 references = set()
                 for source in notice.get('sources', []):
                     if source.get('delegation_id'):
@@ -1375,13 +1379,20 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                         continue
                     if reference not in references:
                         references.add(reference)
-                        lines.append('  Source: ' + reference)
-            context['notice_prompt'] = '\n'.join(lines)
-            return '\n\n'.join(filter(None, (*context['parts'].values(), context['notice_prompt'])))
-        return "\n\n".join(part for part in (
-            self._digital_person_prompt(session), self.get_system_prompt(session.project_id), self._role_system_prompt(session),
-            extra.get('memory_context_prompt'), extra.get('camera_frame_prompt'), *self._turn_source_prompt_parts(session).values(),
-        ) if part)
+                        notice_lines.append('Source: ' + reference)
+                lines.append(prompt_section('latest_notification' if index == 0 else 'notification', '\n'.join(notice_lines)))
+            context['notice_prompt'] = prompt_section('conversation_notifications', '\n\n'.join(line.rstrip('\n') for line in lines)) if lines else ''
+            return '\n\n'.join(part.rstrip('\n') for part in (*context['parts'].values(), context['notice_prompt']) if part) + '\n'
+        global_rules = self.get_system_prompt(session.project_id)
+        memory = extra.get('memory_context_prompt')
+        sections = [part for part in (
+            self._digital_person_prompt(session),
+            prompt_section('global_rules', global_rules) if global_rules else '',
+            self._role_system_prompt(session),
+            prompt_section('project_memory', memory) if memory else '',
+            extra.get('camera_frame_prompt'), *self._turn_source_prompt_parts(session).values(),
+        ) if part]
+        return "\n\n".join(part.rstrip("\n") for part in sections) + ("\n" if sections else "")
 
     def _turn_system_prompt_kwargs(self, session, system_prompt, *, rebuilding=False):
         context = session.extra.get('digital_person_context')
@@ -1400,7 +1411,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         if changed and session.engine == 'codex_sdk' and previous is not None and not rebuilding:
             updates = [value for key, value in context['parts'].items() if previous.get(key) != context['fingerprints'][key]]
             if not previous.keys() - context['parts'].keys():
-                system_prompt = '\n\n'.join(filter(None, (*updates, context['notice_prompt'])))
+                system_prompt = '\n\n'.join(part.rstrip('\n') for part in (*updates, context['notice_prompt']) if part) + '\n'
         kwargs = {'system_prompt': system_prompt} if system_prompt else {}
         if changed:
             kwargs['system_prompt_each_turn'] = True
@@ -1539,7 +1550,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             )
             return "\n\n".join(
                 part
-                for part in (prompt, handoff_prompt, f"Current request:\n{user_message}")
+                for part in (prompt, handoff_prompt, prompt_section("current_request", user_message))
                 if part
             )
         engine = create_engine(session.engine)
@@ -1560,7 +1571,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             self._history_line(item)
             for item in turns
         )
-        tail = f"Conversation history:\n{history}\n\nContinue."
+        tail = prompt_section("conversation_history", history) + "\nContinue."
         return f"{prompt}\n\n{tail}" if prompt else tail
 
     def _build_rebuild_prompt(self, session) -> str:
@@ -1572,7 +1583,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 self._history_line(item)
                 for item in turns
             )
-            tail = f"Conversation history:\n{history}\n\nContinue."
+            tail = prompt_section("conversation_history", history) + "\nContinue."
             prompt = (
                 f"{self._prompt_system_instruction(session)}\n\n{tail}"
                 if self._prompt_system_instruction(session)
@@ -1699,7 +1710,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
                 provider=provider_snapshot, usage=usage or None,
             )
             return result
-        enhance_input = f"{ENHANCE_SYSTEM_PROMPT}\n\nUser prompt:\n{prompt}"
+        enhance_input = ENHANCE_SYSTEM_PROMPT + "\n\n" + prompt_section("user_prompt", prompt)
         usage_details: dict = {}
         try:
             from engines.pydantic_ai import PydanticAIEngine

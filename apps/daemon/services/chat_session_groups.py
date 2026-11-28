@@ -32,25 +32,56 @@ def _save(project_id, groups):
                               value_json=payload, updated_at=utc_now())
 
 
+def _validate_group_parent(by_id, parent_id, source, group_id=None):
+    visited = {group_id}
+    while parent_id is not None:
+        if parent_id in visited:
+            raise ValueError("A group cannot be moved inside itself or its descendants")
+        visited.add(parent_id)
+        parent = by_id.get(parent_id)
+        if parent is None:
+            raise ValueError("Group not found")
+        if parent.get("source", "chat") != source:
+            raise ValueError("Group types do not match")
+        parent_id = parent.get("parent_id")
+
+
+def _remove_group(groups, group):
+    # Preserve subgroups and their conversations when removing only this group.
+    for child in groups:
+        if child.get("parent_id") == group["id"]:
+            child["parent_id"] = group.get("parent_id")
+    groups.remove(group)
+
+
 def mutate_group(project_id, req, module):
     groups = list_groups()
     removed, skipped = [], []
-    group = next((item for item in groups if item["id"] == req.group_id), None)
+    by_id = {item["id"]: item for item in groups}
+    group = by_id.get(req.group_id)
     if req.action == "create":
         name = req.name.strip()
         if not name or len(name) > 80:
             raise ValueError("Group name must contain 1–80 characters")
-        groups.append({"id": str(uuid4()), "name": name, "source": req.source, "session_ids": []})
-    elif req.action == "reorder":
-        target = next((item for item in groups if item["id"] == req.target_group_id), None)
-        if not group or not target:
+        _validate_group_parent(by_id, req.parent_id, req.source)
+        groups.append({"id": str(uuid4()), "name": name, "source": req.source,
+                       "session_ids": [], "parent_id": req.parent_id})
+    elif req.action in {"reorder", "move_group"}:
+        target = by_id.get(req.target_group_id) if req.action == "reorder" else None
+        if not group or (req.action == "reorder" and not target):
             raise ValueError("Group not found")
-        if group.get("source", "chat") != target.get("source", "chat"):
+        source = group.get("source", "chat")
+        if target and source != target.get("source", "chat"):
             raise ValueError("Group types do not match")
         if group != target:
+            parent_id = target.get("parent_id") if target else req.parent_id
+            _validate_group_parent(by_id, parent_id, source, group["id"])
+            group["parent_id"] = parent_id
             groups.remove(group)
-            index = groups.index(target) + (0 if req.before else 1)
-            groups.insert(index, group)
+            if target:
+                groups.insert(groups.index(target) + (0 if req.before else 1), group)
+            else:
+                groups.append(group)
     elif req.action == "move":
         if req.group_id and not group:
             raise ValueError("Group not found")
@@ -69,7 +100,7 @@ def mutate_group(project_id, req, module):
     elif req.action == "dissolve" or (req.action == "delete" and not req.delete_sessions):
         if not group:
             raise ValueError("Group not found")
-        groups.remove(group)
+        _remove_group(groups, group)
     else:
         if not group:
             raise ValueError("Group not found")
@@ -91,7 +122,7 @@ def mutate_group(project_id, req, module):
                 skipped.append(sid)
         group["session_ids"] = skipped
         if not skipped:
-            groups.remove(group)
+            _remove_group(groups, group)
     with db_proxy.atomic():
         _save(project_id, groups)
     return {"groups": groups, "removed": removed, "skipped": skipped}

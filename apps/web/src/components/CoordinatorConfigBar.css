@@ -10,6 +10,9 @@
 .coordinator-config-chevron { color: var(--meta); opacity: .6; flex-shrink: 0; }
 .chat-input-config-row { cursor: pointer; }
 .chat-input-config-row[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+@media (max-width: 1023px) {
+  .coordinator-config--menu .chat-input-config-row { min-height: var(--mobile-control-touch); }
+}
 .coordinator-config-status { font-size: calc(11px * var(--font-scale)); color: var(--meta); }
 .coordinator-config--menu .coordinator-config-status { margin-top: 2px; }
 .coordinator-config-status--error { color: var(--danger); }

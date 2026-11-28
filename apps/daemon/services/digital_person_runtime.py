@@ -9,6 +9,7 @@ import json
 import re
 import uuid
 from datetime import datetime, timezone
+from services.prompt_sections import prompt_section
 from models.chat_session import ChatSession, ChatMessage, ProjectSetting
 from models.fields import utc_now
 from services import customization_workspace, digital_person
@@ -830,7 +831,7 @@ class DigitalPersonRuntime:
             # This old built-in default was a task-notification template, not an
             # intentional personal preference. Preserve config but stop re-injecting it.
             if extra and extra != digital_person.LEGACY_PROACTIVE_INSTRUCTION:
-                prompt += '\nAdditional preferences for this assessment:\n' + extra
+                prompt += '\n\n' + prompt_section('assessment_preferences', extra)
             accepted = checker.submit_internal_event(home.id, row['id'], 'digital_person.reflection', prompt, str(uuid.uuid4()),
                                               schedule=False, reset_context=reset_context)
             return row, accepted

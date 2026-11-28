@@ -56,7 +56,7 @@ async def test_camera_context_reaches_engine_system_prompt_and_clears_next_turn(
     assert '小谢' not in calls[0][0]
     assert image in calls[0][0]
     assert calls[0][1]['system_prompt_each_turn'] is True
-    expected_prompt = '[Visual Context]\nSource: Camera face recognition\nMatches:\n- Name: 小谢; Relationship: 主人'
+    expected_prompt = '<visual_context>\nSource: Camera face recognition\nMatches:\n- Name: 小谢; Relationship: 主人\n</visual_context>\n'
     assert expected_prompt in calls[0][1]['system_prompt']
     assert 'Camera observation' not in calls[0][1]['system_prompt']
     recent_prompt = calls[4][1]['system_prompt']
@@ -64,7 +64,7 @@ async def test_camera_context_reaches_engine_system_prompt_and_clears_next_turn(
     assert 'Seen shortly before capture' not in recent_prompt and '小谢' not in calls[4][0]
     for _, options in calls[1:4] + calls[5:]:
         system = options.get('system_prompt', '')
-        assert all(text not in system for text in ['[Visual Context]', 'Camera observation', '小谢', 'No camera observation', 'unknown_face_count'])
+        assert all(text not in system for text in ['<visual_context>', 'Camera observation', '小谢', 'No camera observation', 'unknown_face_count'])
     assert calls[1][1]['system_prompt_each_turn'] is True
     detail = await manager.run_db(project.id, lambda _: module.get_session(project.id, sid))
     assert [m['content'] for m in detail['messages'] if m['role'] == 'user'] == messages

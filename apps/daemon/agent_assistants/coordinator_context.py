@@ -1,5 +1,6 @@
 """Coordinator task context and artifact discovery inside a project DB unit."""
 
+from services.prompt_sections import prompt_context
 import json
 from pathlib import Path
 
@@ -268,10 +269,10 @@ def assemble_context(
             "to locate current records, then read details as needed."
         )
     if separate_instructions:
-        return f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}", instructions, artifacts
+        return prompt_context(context, description="Current project, task, steps and conversation snapshot as JSON."), instructions, artifacts
     prompt = (
         f"{instructions}\n\n"
-        f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}"
+        + prompt_context(context, description="Current project, task, steps and conversation snapshot as JSON.")
     )
     return prompt, artifacts
 

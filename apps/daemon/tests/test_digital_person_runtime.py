@@ -296,7 +296,7 @@ async def test_main_chat_injects_pending_reflections_and_only_changed_rules(runt
             release.set()
         assert await _wait_turn(module, turn) == 'completed'
         instruction = calls[-1][1]
-        history = instruction.split('[WorkStep conversation history]',1)[1]
+        history = instruction.split('<conversation_notifications>',1)[1]
         assert history.index('主动消息 2') < history.index('主动消息 1') < history.index('主动消息 0')
         assert 'project_id=' not in history and 'session_id=' not in history and 'message_id=' not in history
         assert '"role":' not in history
@@ -1034,7 +1034,7 @@ async def test_digital_chat_skips_statistics_and_relationship_reads(runtime, mon
         accepted=await runtime.projects.run_db(project.id,lambda _:runtime.chats.submit_message(project.id,main['id'],"你的状态是什么？",f"status-{index}",schedule=False))
         runtime.chats.start_queued_turn(accepted.turn_id)
         await runtime.chats.await_turn(accepted.turn_id,timeout=5)
-    assert len(calls) == 2 and '## Memory retrieval' in calls[0]
+    assert len(calls) == 2 and '<memory_retrieval>' in calls[0]
     assert reads == []
     for prompt in calls:
         assert 'Level:' not in prompt and 'Experience:' not in prompt
@@ -1115,9 +1115,11 @@ async def test_bound_channel_injects_only_changed_digital_person_context(runtime
         assert calls[-1][2] == ''
 
         from services import digital_person
-        monkeypatch.setattr(digital_person, 'PROJECT_DELEGATION_PROMPT', 'Updated delegation instructions')
+        from services.prompt_sections import prompt_section
+        delegation_rules = prompt_section('project_delegation', 'Updated delegation instructions')
+        monkeypatch.setattr(digital_person, 'PROJECT_DELEGATION_PROMPT', delegation_rules)
         await send(4, 'bob')
-        assert calls[-1][2] == 'Updated delegation instructions'
+        assert calls[-1][2] == delegation_rules
 
         store.set('digital_person', {'enabled': True, 'name': '新人设'})
         await send(5, 'bob')
@@ -1133,7 +1135,7 @@ async def test_bound_channel_injects_only_changed_digital_person_context(runtime
         ))
         assert len(rows) == 12
         assert all(row['content'] == ('你好' if row['role'] == 'user' else '收到') for row in rows)
-        source_updates = [row['prompt'] for row in rows if 'Current channel source' in (row['prompt'] or '')]
+        source_updates = [row['prompt'] for row in rows if '<current_channel_source>' in (row['prompt'] or '')]
         assert len(source_updates) == 2
         for snapshot in source_updates:
             instructions, body = snapshot.split('### 正文（user）', 1)
@@ -1514,7 +1516,7 @@ async def test_reflection_prompt_centers_companion_life_and_keeps_preferences_ad
     assert 'background assessment' in system
     assert 'Step 2: Extract useful durable memories' in system
     assert 'summary must be empty when silent' in system
-    assert 'Additional preferences' in prompt and '多关注我最近的学习感受' in prompt
+    assert '<assessment_preferences>\n' in prompt and '多关注我最近的学习感受' in prompt
     assert 'Start this background assessment' in prompt
     assert 'Begin with CLI' not in prompt
     assert 'assess affinity changes' not in prompt

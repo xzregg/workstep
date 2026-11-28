@@ -97,7 +97,7 @@ async def test_channel_source_is_persisted_and_applied_to_current_turn_after_res
             assert f'"sender_id": "user-{index}"' in instruction
             assert 'must-not-reach-engine' not in instruction
             if mode != 'body':
-                assert 'Channel request background' not in call['prompt']
+                assert '<channel_request_background>' not in call['prompt']
             from agent_assistants.coordinator_context import COORDINATOR_ROLE_RULES
             assert call['prompt'].count(COORDINATOR_ROLE_RULES) == (1 if mode == 'body' else 0)
             if mode == 'developer':

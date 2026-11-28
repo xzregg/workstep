@@ -254,7 +254,7 @@ async def test_rejected_verifier_reworks_upstream_with_feedback(tmp_path):
 
         # The producer's second prompt carries the verifier's feedback.
         assert len(producer_calls) == 2
-        assert "## Previous review feedback" in producer_calls[1]
+        assert "<previous_review_feedback>" in producer_calls[1]
         assert "接口返回错误" in producer_calls[1]
     finally:
         ENGINE_REGISTRY.clear()

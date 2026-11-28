@@ -4,6 +4,7 @@ import asyncio
 import uuid
 from collections import defaultdict
 
+from services.prompt_sections import prompt_section
 from models.chat_session import ChatMessage, ChatSession
 from models.fields import utc_now
 from services.chat_read_state import TERMINAL
@@ -46,7 +47,7 @@ def _inline_text(text, limit):
 def render_delegation_list(items):
     if not items:
         return ''
-    lines = ['## Delegations']
+    lines = []
     for item in items:
         question = item['question']
         followup = item.get('followup_state')
@@ -67,7 +68,10 @@ def render_delegation_list(items):
             lines.append('  ' + _inline_text(question['title'], 120))
         target = f"task_id={item['task_id']} workflow_id={item.get('workflow_id', '')}" if item.get('task_id') else f"session_id={item['session_id']}"
         lines.append(f"  project_id={item['project_id']} {target} origin_session_id={item['origin_session_id']}")
-    return '\n'.join(lines)
+        updated = timestamp(item.get('updated_at')) or timestamp(item.get('created_at'))
+        if updated:
+            lines.append(f"  updated_at={updated.astimezone().isoformat(timespec='seconds')}")
+    return prompt_section('delegations', '\n'.join(lines))
 
 
 class NoDelegationProgress(ValueError):

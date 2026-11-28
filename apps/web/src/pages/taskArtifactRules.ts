@@ -3,6 +3,7 @@ import { collapseDirectoryArtifactChildren } from '../utils/artifactListing'
 export interface ArtifactRoundChoice {
   step_key: string
   round: number
+  global?: boolean | null
   is_latest: boolean
   is_selected: boolean
   logical_name?: string | null
@@ -21,9 +22,8 @@ export function artifactsForStepRoundOutputs<
   stepKey: string,
   round: number | undefined,
 ): T[] {
-  if (round === undefined) return []
   const matching = artifacts.filter((artifact) => (
-    artifact.step_key === stepKey && artifact.round === round
+    artifact.step_key === stepKey && (artifact.global || artifact.round === round)
   ))
   const collapsed = collapseDirectoryArtifactChildren(matching)
   const preferred = collapsed.filter((artifact) => (
@@ -36,13 +36,13 @@ export function artifactsForStepRoundOutputs<
 }
 
 export function groupStepOutputsByInput<
-  T extends { name: string; logical_name?: string | null; artifact_type?: string | null; is_dir?: boolean; output_port?: number | null },
+  T extends { name: string; logical_name?: string | null; artifact_type?: string | null; is_dir?: boolean; output_port?: number | null; global?: boolean | null },
 >(
-  inputs: readonly { outputs?: readonly { name: string; type: string }[] }[],
-  outputs: readonly { name: string; type: string }[],
+  inputs: readonly { outputs?: readonly { name: string; type: string; global?: boolean }[] }[],
+  outputs: readonly { name: string; type: string; global?: boolean }[],
   produced: readonly T[],
 ) {
-  const groups: Array<Array<{ name: string; type: string; outputIndex: number; artifact?: T }>> =
+  const groups: Array<Array<{ name: string; type: string; outputIndex: number; artifact?: T; global?: boolean }>> =
     inputs.map(() => [])
   const hasNestedOutputs = inputs.some((input) => input.outputs?.length)
   let outputIndex = 0
@@ -59,10 +59,12 @@ export function groupStepOutputsByInput<
   const result = inputs.map(() => [] as typeof groups[number])
   produced.forEach((artifact) => {
     const name = artifact.logical_name || artifact.name
-    const portMatchIndex = artifact.output_port == null ? -1 :
-      available.findIndex(({ output }) => output.outputIndex === artifact.output_port)
+    const sameScope = (output: typeof groups[number][number]) => Boolean(output.global) === Boolean(artifact.global)
+    const portMatchIndex = artifact.output_port == null || artifact.global ? -1 :
+      available.findIndex(({ output }) => sameScope(output) && output.outputIndex === artifact.output_port)
     const matchIndex = portMatchIndex >= 0 ? portMatchIndex :
-      available.findIndex(({ output }) => output.name === name)
+      available.findIndex(({ output }) => sameScope(output) && output.name === name)
+    if (artifact.global && matchIndex < 0) return
     const match = matchIndex >= 0 ? available.splice(matchIndex, 1)[0] : undefined
     const inputIndex = match?.inputIndex ?? 0
     result[inputIndex].push({
@@ -70,8 +72,12 @@ export function groupStepOutputsByInput<
       type: artifact.artifact_type || (artifact.is_dir ? 'directory' : 'file'),
       outputIndex: match?.output.outputIndex ?? -1,
       artifact,
+      ...(artifact.global ? { global: true } : {}),
     })
   })
+  for (const { output, inputIndex } of available) {
+    if (output.global) result[inputIndex].push(output)
+  }
   return result
 }
 
@@ -162,8 +168,8 @@ export function findStepRoundInputArtifact<
 
 interface StepIoContractChoice {
   key: string
-  inputs?: Array<{ name?: string; type?: string; outputs?: Array<{ name?: string; type?: string }> }>
-  outputs?: Array<{ name?: string; type?: string }>
+  inputs?: Array<{ name?: string; type?: string; outputs?: Array<{ name?: string; type?: string; global?: boolean }> }>
+  outputs?: Array<{ name?: string; type?: string; global?: boolean }>
 }
 
 function normalizedIoContract(step: StepIoContractChoice | Record<string, any>) {
@@ -171,10 +177,11 @@ function normalizedIoContract(step: StepIoContractChoice | Record<string, any>) 
   const outputs = Array.isArray(step.outputs)
     ? step.outputs
     : (Array.isArray(inputs[0]?.outputs) ? inputs[0].outputs : [])
-  const normalizePorts = (ports: Array<{ name?: string; type?: string }>) => (
+  const normalizePorts = (ports: Array<{ name?: string; type?: string; global?: boolean }>) => (
     ports.map((port) => ({
       name: String(port?.name ?? '').trim(),
       type: String(port?.type ?? 'any').trim().toLocaleLowerCase(),
+      ...(port?.global === true ? { global: true } : {}),
     }))
   )
   return {

@@ -1,6 +1,6 @@
 import {setProactiveSpeechContext} from './digitalPersonProactive'
 import {useCallback,useEffect,useEffectEvent,useLayoutEffect,useMemo,useRef,useState,type ReactNode} from 'react'
-import {useNavigate} from 'react-router-dom'
+import {useLocation,useNavigate} from 'react-router-dom'
 import type {DigitalActivity,DigitalPersonProfile} from '../../api/digitalPerson'
 import {identitySetupGreetingKey} from './identitySetupGreeting'
 import type {AssistantChatMessage} from '../../stores/assistantStore'
@@ -38,6 +38,7 @@ import {useDigitalPersonUiActions} from './useDigitalPersonUiActions'
 import {primeSpeechOutput,speechText} from '../../utils/speechOutput'
 import {pendingInteractionItems} from '../../utils/interaction'
 import {useFaceWelcome} from './useFaceWelcome'
+import {useProjectStore} from '../../stores/projectStore'
 import './DigitalPersonHome.css'
 
 interface Props{
@@ -61,6 +62,7 @@ export default function DigitalPersonHome(props:Props){
  const {can}=useGatewayProjectPermissions(projectId)
  const canCompose=active&&!props.composerDisabled&&can('session.chat')
  const {t}=useI18n(),navigate=useNavigate(),compact=useCompactLayout()
+ const {state:locationState}=useLocation()
  const [outputFrame,setOutput]=useState<DigitalOutputFrame>({projectId,sessionId,playing:false,level:0,busy:false}),[keyboardShown,setKeyboardShown]=useState(false),[chatShown,setChatShown]=useState(false)
  const output=active&&outputFrame.projectId===projectId&&outputFrame.sessionId===sessionId?outputFrame:{playing:false,level:0,busy:false,readingId:undefined,source:undefined,text:undefined}
  const speech=useRef<DigitalPersonSpeechControls>(null)
@@ -227,7 +229,17 @@ export default function DigitalPersonHome(props:Props){
   if(!running||!pending.queueEnabled||!voiceBuffer.current.length)return
   voiceBuffer.current.splice(0).forEach(content=>void pending.queueContent(content))
  },[running,pending.queueEnabled,pending.queueContent])
- const returnWorkbench=()=>navigate(`/chat?project=${encodeURIComponent(projectName)}&session=${encodeURIComponent(sessionId)}`)
+ const returnWorkbench=()=>{
+  const previous=(locationState as {companionReturnTo?:{path:string;projectId?:string}}|null)?.companionReturnTo
+  if(previous){
+   const store=useProjectStore.getState()
+   const project=store.projects.find(item=>item.id===previous.projectId)
+   if(project)store.setActiveProject(project)
+   navigate(previous.path,{replace:true})
+   return
+  }
+  navigate(`/chat?project=${encodeURIComponent(projectName)}&session=${encodeURIComponent(sessionId)}`)
+ }
  const liveText=voiceActive?dialogue.text:''
  const voiceCaption=hasVoiceDraft?[dialogue.draft,liveText].filter(Boolean).join(' '):liveText
  const microphonePending=voicePhase==='requesting'||voicePhase==='preparing'||voicePhase==='finishing'?voicePhase:undefined

@@ -163,7 +163,7 @@ def _task_artifacts(project, task_id: str) -> list[tuple[dict, Path]]:
             "step_key", "round", "is_latest", "is_selected", "manifest_status",
             "eligible_for_downstream", "name", "logical_name", "artifact_type",
             "output_port", "declared_output", "relative_path", "size", "updated_at",
-            "unchanged_from_round", "round_unchanged_from",
+            "unchanged_from_round", "round_unchanged_from", "global",
             "is_dir",
         )}
         public["id"] = artifact_id

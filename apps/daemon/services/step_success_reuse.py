@@ -11,6 +11,7 @@ from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.base import db_proxy
 from models.fields import utc_now
 from services.artifact_rounds import select_upstream_round
+from services.global_artifacts import GLOBAL_DIRECTORY
 from services.artifact_routing import source_for_connection
 from services.pipeline import Step
 
@@ -61,6 +62,11 @@ def reuse_successful_step(
     for port, output in enumerate(step.outputs):
         value = source_for_connection({"fromPort": port}, selected, output, allow_artifact_remap=True)
         if value is None:
+            if output.get("global") and any(
+                item.get("port") == port and item.get("global") and item.get("nonempty")
+                for item in (selected.manifest or {}).get("outputs", []) if isinstance(item, dict)
+            ):
+                raise ValueError("Existing successful artifacts are missing or empty. Please directly trigger this step to regenerate.")
             continue
         declared = next((item for item in selected.manifest.get("outputs", [])
                          if isinstance(item, dict) and item.get("port") == port), None)
@@ -69,7 +75,8 @@ def reuse_successful_step(
         ):
             raise ValueError("Existing successful artifacts are inconsistent with the current output configuration. Please directly trigger this step to regenerate.")
         path = Path(value["path"])
-        if path.is_symlink() or not path.resolve().is_relative_to(selected.path.resolve()):
+        allowed_root = selected.path.parent / GLOBAL_DIRECTORY if value.get("global") else selected.path
+        if path.is_symlink() or not path.resolve().is_relative_to(allowed_root.resolve()):
             raise ValueError("The path to the existing successful artifact is unavailable. Please directly trigger this step to regenerate.")
         nonempty = (
             path.is_file() and path.stat().st_size > 0

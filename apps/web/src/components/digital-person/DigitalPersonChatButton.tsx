@@ -6,11 +6,11 @@ import { useI18n, localizeErrorDisplay } from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
 
-export default function DigitalPersonChatButton({ workspace, onClose, label, sidebar = false, rail = false }: { workspace?: Project; onClose: () => void; label?: string; sidebar?: boolean; rail?: boolean }) {
+export default function DigitalPersonChatButton({ workspace, onClose, label, sidebar = false, rail = false, header = false }: { workspace?: Project; onClose: () => void; label?: string; sidebar?: boolean; rail?: boolean; header?: boolean }) {
   const { t } = useI18n(), navigate = useNavigate()
   const location = useLocation()
   const companionOpen = location.pathname === '/companion'
-  const railLabel = companionOpen ? t('digitalPerson.homeBack') : label || t('digitalPerson.chat')
+  const navigationLabel = companionOpen ? t('digitalPerson.homeBack') : label || t('digitalPerson.chat')
   const [opening, setOpening] = useState(false), [error, setError] = useState('')
   const active = useRef(true), busy = useRef(false)
   useEffect(() => { active.current = true; return () => { active.current = false } }, [])
@@ -37,11 +37,12 @@ export default function DigitalPersonChatButton({ workspace, onClose, label, sid
       if (active.current) setOpening(false)
     }
   }
-  if (rail) return <Button variant="ghost" className="layout-sidebar-nav-button layout-sidebar-external-only"
-    aria-label={railLabel} aria-current={companionOpen ? 'page' : undefined}
+  if (rail || header) return <Button type="button" variant="ghost"
+    className={header ? 'gateway-mobile-header-control' : 'layout-sidebar-nav-button layout-sidebar-external-only'}
+    aria-label={header ? label : navigationLabel} aria-current={companionOpen ? 'page' : undefined}
     disabled={!workspace} loading={opening} onClick={() => void open()}>
-    <Icon name="bot" size={17} strokeWidth={2} />
-    <span className="layout-sidebar-action-label">{railLabel}</span>
+    <Icon name="bot" size={header ? undefined : 17} />
+    {!header && <span className="layout-sidebar-action-label">{navigationLabel}</span>}
   </Button>
   return <div className={`digital-person-chat-action${sidebar ? ' digital-person-sidebar-entry' : ''}`}>
     <Button variant={sidebar ? 'ghost' : 'primary'} disabled={!workspace} loading={opening} onClick={() => void open()}>

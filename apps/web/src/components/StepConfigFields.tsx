@@ -1,4 +1,6 @@
+import type { ReactNode } from 'react'
 import type { EngineConfigField } from '../api/client'
+import type { FloatingMenuOption } from './FloatingMenu'
 import Input from './Input'
 import Select from './Select'
 import Textarea from './Textarea'
@@ -12,6 +14,8 @@ export interface StepConfigFieldsProps {
   fields: EngineConfigField[]
   values: Record<string, string>
   onChange: (key: string, value: string) => void
+  disabled?: boolean
+  renderSelect?: (field: EngineConfigField, value: string, options: FloatingMenuOption[]) => ReactNode
 }
 
 /**
@@ -24,24 +28,36 @@ const StepConfigFields = ({
   fields,
   values,
   onChange,
+  disabled,
+  renderSelect,
 }: StepConfigFieldsProps) => {
   const { t } = useI18n()
   if (!fields.length) return null
+  const inheritLabel = renderSelect ? t('enginePermission.inherit') : ''
 
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-        gap: 12,
-      }}
-    >
+    <div className={renderSelect ? 'step-config-fields--menu' : 'step-config-fields'}>
       {visiblePermissionFields(engineId, fields).map((field) => {
         const value = values[field.key] ?? ''
         const isSelect = field.type === 'select'
         const isCheckbox = field.type === 'checkbox'
         const isTextarea = field.type === 'textarea'
-        const options = field.options || []
+        const options: FloatingMenuOption[] = isSelect ? [
+          {
+            value: '',
+            label: field.category === 'mode'
+              ? t('chatSession.permissionDefault')
+              : field.placeholder || (field.required ? t('engineForm.selectPlaceholder') : inheritLabel),
+          },
+          ...(field.options ?? []).map((option) => ({
+            value: option.value,
+            label: engineConfigOptionLabel(field, option, t, engineId),
+            description: engineConfigOptionDescription(field, option, t, engineId),
+          })),
+        ] : []
+        if (isSelect && renderSelect) {
+          return <div key={field.key}>{renderSelect(field, value, options)}</div>
+        }
         return (
           <div
             key={field.key}
@@ -59,15 +75,13 @@ const StepConfigFields = ({
               <Select
                 id={`step-config-${engineId}-${field.key}`}
                 value={value}
+                disabled={disabled}
                 onChange={(event) => onChange(field.key, event.target.value)}
               >
-                <option value="">
-                  {field.category === 'mode' ? t('chatSession.permissionDefault') : field.placeholder || (field.required ? t('engineForm.selectPlaceholder') : '')}
-                </option>
                 {options.map((option) => (
                   <option key={option.value} value={option.value}
-                    data-description={engineConfigOptionDescription(field, option, t, engineId)}>
-                    {engineConfigOptionLabel(field, option, t, engineId)}
+                    data-description={option.description}>
+                    {option.label}
                   </option>
                 ))}
               </Select>
@@ -77,6 +91,7 @@ const StepConfigFields = ({
                   id={`step-config-${engineId}-${field.key}`}
                   type="checkbox"
                   checked={value === 'true'}
+                  disabled={disabled}
                   onChange={(event) => onChange(
                     field.key,
                     event.target.checked ? 'true' : 'false',
@@ -94,6 +109,7 @@ const StepConfigFields = ({
               <Textarea
                 id={`step-config-${engineId}-${field.key}`}
                 value={value}
+                readOnly={disabled}
                 onChange={(event) => onChange(field.key, event.target.value)}
                 placeholder={field.placeholder}
                 rows={2}
@@ -104,6 +120,7 @@ const StepConfigFields = ({
                 id={`step-config-${engineId}-${field.key}`}
                 type={field.type === 'number' ? 'number' : 'text'}
                 value={value}
+                readOnly={disabled}
                 onChange={(event) => onChange(field.key, event.target.value)}
                 placeholder={field.placeholder}
               />

@@ -774,11 +774,13 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
                 monkeypatch.setattr(manager._store, "get", original_get)
         assert len(calls) == 2
         assert [call[1] for call in calls] == [None, "engine-session"]
-        for prompt, _, instruction in calls:
+        for index, (prompt, _, instruction) in enumerate(calls):
             assert "group:123" in instruction and "研发群" in instruction
             assert prompt == "你好"
             assert "研发机器人" in instruction and "dingtalk" in instruction
             assert "小王" in instruction
+            assert f'"sender_id": "u{index + 1}"' in instruction
+            assert f'"sender_name": "{("小王", "小李")[index]}"' in instruction
             assert "never-inject-secret" not in prompt + instruction
         assert "Project role" in calls[0][2]
         assert ("Project role" in calls[1][2]) == (engine_id != "codex_sdk")

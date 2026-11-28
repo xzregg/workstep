@@ -1,5 +1,6 @@
 """Reviewable task archive experience drafts and their live lifecycle."""
 
+from services.prompt_sections import prompt_context
 from services.output_language import output_language_instruction, experience_limits
 
 import asyncio
@@ -184,10 +185,10 @@ class ArchiveExperienceDraftService:
             "Return exactly one <experience>...</experience> block containing only lesson lines, "
             "or <no_experience /> when nothing qualifies. No JSON, code fences or commentary."
         )
-        prompt = json.dumps({
+        prompt = prompt_context({
             "project_id": project_id, "task_id": task_id,
             "memory_path": loaded["memory_path"],
-        }, ensure_ascii=False)
+        }, description="Project and task IDs and the memory path for archive experience extraction, as JSON.")
         run_key = self._archive_experience_run_key(
             project_id,
             task_id,

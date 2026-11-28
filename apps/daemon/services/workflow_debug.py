@@ -13,6 +13,7 @@ from services.artifact_rounds import (
     update_round_manifest_status, write_round_manifest,
 )
 from services.artifact_routing import source_for_connection
+from services.global_artifacts import GLOBAL_DIRECTORY, prepare_global_artifacts
 from services.pipeline import DAGScheduler, Step
 from services.project_workflows import ProjectWorkflowService
 from services.prompt import _artifact_extension, _output_path
@@ -99,7 +100,12 @@ def write_samples(project, workflow_id, task_id, scheduler, required, samples):
     artifacts = project.workstep_dir / "artifacts"
     rounds = {}
     created = []
+    shared_samples = []
     try:
+        prepare_global_artifacts(
+            artifacts, workflow_id, task_id,
+            [scheduler.steps[key] for key in grouped if any(required[key, port].get("global") for port, _ in grouped[key])],
+        )
         for step_key, entries in grouped.items():
             outputs = scheduler.steps[step_key].outputs
             task_root = task_artifact_root(project.workstep_dir, workflow_id, task_id)
@@ -111,14 +117,17 @@ def write_samples(project, workflow_id, task_id, scheduler, required, samples):
             created.append(directory)
             for port, content in entries:
                 spec = required[(step_key, port)]
+                destination = directory.parent / GLOBAL_DIRECTORY if spec.get("global") else directory
                 _, output = _output_path(
-                    str(directory), str(spec.get("name") or f"产物{port + 1}"), str(spec.get("type") or "file"),
+                    str(destination), str(spec.get("name") or f"产物{port + 1}"), str(spec.get("type") or "file"),
                 )
                 path = Path(output).resolve()
-                if path.name == "manifest.json" or path == directory.resolve() or not path.is_relative_to(directory.resolve()):
+                if path.name == "manifest.json" or path == destination.resolve() or not path.is_relative_to(destination.resolve()):
                     raise ValueError("Invalid sample artifact path")
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with path.open("x", encoding="utf-8") as file:
+                    if spec.get("global"):
+                        shared_samples.append(path)
                     file.write(content)
             manifest = write_round_manifest(
                 artifacts_root=artifacts, workflow_id=workflow_id, task_id=task_id, step_key=step_key,
@@ -129,6 +138,8 @@ def write_samples(project, workflow_id, task_id, scheduler, required, samples):
                 raise ValueError("Sample does not match the declared output")
             rounds[step_key] = number
     except Exception:
+        for path in shared_samples:
+            path.unlink(missing_ok=True)
         for directory in created:
             shutil.rmtree(directory)
         raise

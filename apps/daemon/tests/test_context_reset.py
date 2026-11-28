@@ -1,4 +1,5 @@
 """Context reset keeps application identity and discards model history."""
+from tests.prompt_xml import read_context
 import pytest
 import asyncio
 import threading
@@ -122,7 +123,7 @@ async def test_task_reset_command_keeps_task_and_starts_fresh_engine(api_context
     await send('fresh question', 'next')
     assert ResumeCoordinatorFakeEngine.calls[-1]['session_id'] is None
     assert ResumeCoordinatorFakeEngine.calls[-1]['message_history'] is None
-    context = json.loads(ResumeCoordinatorFakeEngine.calls[-1]['prompt'].split('Context:\n', 1)[1])
+    context = read_context(ResumeCoordinatorFakeEngine.calls[-1]['prompt'])
     assert 'old question' not in json.dumps(context['recent_coordinator_messages'])
     assert context['coordinator_summary'] is None
     assert context['task']['id'] == tid

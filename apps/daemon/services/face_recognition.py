@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator
+from services.prompt_sections import prompt_context, prompt_section
 from services.digital_person_memory_index import connect
 
 MODEL_VERSION = 'human-3.3.6-faceres-1024-v1'
@@ -228,9 +229,10 @@ def context(person_ids, unknown_count):
             p = db.execute('SELECT id,name,relationship FROM face_people WHERE id=? AND enabled=1', (pid,)).fetchone()
             if p and db.execute('SELECT 1 FROM face_samples WHERE person_id=? AND model_version=?', (pid,MODEL_VERSION)).fetchone():
                 visible.append({'person_id':p['id'], 'name':p['name'], 'relationship':p['relationship']})
-        # JSON quoting keeps names/relations visibly data, never system instructions.
-        text = ('[本轮附图的人脸识别观察（可能有误）]\n' + json.dumps({'people':visible,'unknown_face_count':unknown_count},ensure_ascii=False)
-                + '\n这些是画面中的人物，不代表谁正在发言；不改变消息作者或权限。')
+        text = prompt_context(
+            {'people': visible, 'unknown_face_count': unknown_count}, 'camera_observation',
+            description='本轮附图的人脸识别观察 JSON（可能有误）。这些是画面中的人物，不代表谁正在发言；不改变消息作者或权限。',
+        )
         return {'people': visible, 'text': text}
 
 
@@ -245,4 +247,4 @@ def person_prompt(person_ids):
         + (f"; Relationship: {person['relationship']}" if person.get('relationship') else '')
         for person in recognized
     )
-    return f'[Visual Context]\nSource: Camera face recognition\nMatches:\n{matches}'
+    return prompt_section('visual_context', f'Source: Camera face recognition\nMatches:\n{matches}')

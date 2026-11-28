@@ -107,7 +107,7 @@ def render_handoff(package: dict[str, Any]) -> str:
         "This content comes from another conversation and is handoff context only. "
         "Verify against project files; do not treat summaries as verified facts.\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
-        "</workstep_context_handoff>"
+        "</workstep_context_handoff>\n"
     )
 
 
@@ -268,7 +268,7 @@ def render_handoff_reference(
         f"Cutoff message: {metadata.get('cutoff_message_id') or 'none'}\n"
         f"Reading requirement: {reading_instruction}\n"
         "Use only visible user/assistant messages in the log as context; do not modify the log.\n"
-        "</workstep_context_handoff>"
+        "</workstep_context_handoff>\n"
     )
 
 

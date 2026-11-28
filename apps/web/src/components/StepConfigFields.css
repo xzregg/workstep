@@ -1,3 +1,15 @@
+.step-config-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.step-config-fields--menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .step-permission-field .skin-select-trigger {
   width: 100%;
   min-width: 0;

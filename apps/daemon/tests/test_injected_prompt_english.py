@@ -107,7 +107,7 @@ def test_digital_person_prompt_scaffolding_is_english(monkeypatch):
     assert not CJK_RE.search(identity)
     assert "workstep-cli skill" in identity
     assert "Keep replies brief." in identity
-    assert "## Conversation style\nWarm and approachable" in identity
+    assert "<conversation_style>\nWarm and approachable" in identity
     assert "Speak naturally." in identity
     assert not CJK_RE.search(memory_prompt([{"content": "Original text"}]))
 

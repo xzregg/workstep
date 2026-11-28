@@ -42,3 +42,28 @@ test('round tabs start at the right edge and preserve manual scrolling until ano
     await window.happyDOM.close()
   }
 })
+
+test('global output appears once above the step groups and opens without a round', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const open: unknown[][] = []
+  const path = 'flow/task/design/Global/board.md'
+  const shared = { step_key: 'design', round: 0, name: 'board.md', path, global: true } as TaskArtifact
+  const regular = { step_key: 'design', round: 1, name: 'draft.md', path: 'flow/task/design/1/draft.md' } as TaskArtifact
+  try {
+    await act(async () => root.render(<I18nProvider><TaskArtifactBrowser artifacts={[regular, shared]}
+      steps={[{ key: 'design', label: '设计' }]} onOpenArtifact={(...value) => open.push(value)} /></I18nProvider>))
+    const groups = container.querySelectorAll('.task-artifact-step-section')
+    assert.equal(groups.length, 2)
+    assert.equal(groups[0].querySelectorAll('[role="tab"]').length, 0)
+    assert.equal(groups[0].querySelectorAll('.task-artifact-file-row').length, 1)
+    assert.equal(groups[1].querySelectorAll('[role="tab"]').length, 1)
+    await act(async () => groups[0].querySelector<HTMLButtonElement>('.task-artifact-file-row')!.click())
+    assert.deepEqual(open, [['board.md', 'design', undefined, path]])
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

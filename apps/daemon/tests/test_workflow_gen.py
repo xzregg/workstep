@@ -1454,9 +1454,10 @@ async def test_current_canvas_json_is_injected_into_prompt(gen_module, monkeypat
 
     assert seen, "expected _invoke to be called"
     _cwd, prompt = seen[0]
-    assert "Current flow title: 发布流程" in prompt
-    assert "Current canvas JSON" in prompt
+    assert "<flow_title>\n发布流程\n</flow_title>" in prompt
+    assert "<current_canvas>" in prompt
     assert '"type": "req"' in prompt
+    assert '<type>' not in prompt
 
     # Unchanged canvas → no repeated title or canvas section.
     seen.clear()
@@ -1470,8 +1471,8 @@ async def test_current_canvas_json_is_injected_into_prompt(gen_module, monkeypat
     status = await _wait_turn(module, follow.turn_id)
     assert status == "completed"
     assert seen
-    assert "Current canvas JSON" not in seen[0][1]
-    assert "Current flow title" not in seen[0][1]
+    assert "<current_canvas>" not in seen[0][1]
+    assert "<flow_title>" not in seen[0][1]
 
     # Changed live canvas → inject the new unsaved snapshot without the title.
     changed_steps = {"nodes": [], "connections": []}
@@ -1485,8 +1486,8 @@ async def test_current_canvas_json_is_injected_into_prompt(gen_module, monkeypat
         context_mode="canvas_updated",
     )
     assert await _wait_turn(module, changed.turn_id) == "completed"
-    assert "Current canvas updated" in seen[0][1]
-    assert "Current flow title" not in seen[0][1]
+    assert "<current_canvas_updated>" in seen[0][1]
+    assert "<flow_title>" not in seen[0][1]
 
     session = module._sessions[(project.id, accepted.session_id)]
     assert session.steps == changed_steps
@@ -2282,7 +2283,7 @@ async def test_build_prompt_omits_history_for_resume_engines(gen_module, monkeyp
         workflow_id="wf-resume",
     )
     assert await _wait_turn(module, first.turn_id) == "completed"
-    assert "Conversation history" not in seen[0]
+    assert "<conversation_history>" not in seen[0]
     assert "帮我设计发布流程" in seen[0]
     assert "WorkStep workflow design assistant" not in seen[0]
 
@@ -2295,7 +2296,7 @@ async def test_build_prompt_omits_history_for_resume_engines(gen_module, monkeyp
     )
     assert await _wait_turn(module, follow.turn_id) == "completed"
     # 续轮：历史与系统提示都不再拼入，只发当前画布与用户消息。
-    assert "Conversation history" not in seen[1]
+    assert "<conversation_history>" not in seen[1]
     assert "帮我设计发布流程" not in seen[1]
     assert "去掉测试阶段" in seen[1]
     assert "WorkStep workflow design assistant" not in seen[1]
@@ -2547,7 +2548,7 @@ async def test_default_assistant_prompt_omits_history_for_resume_engines(
     )
     prompt = runtime._build_prompt(session)
     assert "系统提示" in prompt
-    assert "Conversation history" not in prompt
+    assert "<conversation_history>" not in prompt
     assert "第一问" not in prompt
     assert "第二问" in prompt
 
@@ -2567,7 +2568,7 @@ async def test_default_assistant_prompt_omits_history_for_resume_engines(
         assistant_base, "create_engine", lambda engine_id: StatelessEngine()
     )
     prompt = runtime._build_prompt(session)
-    assert "Conversation history" in prompt
+    assert "<conversation_history>" in prompt
     assert "第一问" in prompt
 
 
@@ -2768,7 +2769,7 @@ async def test_workflow_actual_input_native_and_fallback(gen_module, monkeypatch
     for index, reply in enumerate(replies):
         assert calls[index]["prompt"] in reply["prompt"]
         assert f"问题{index}" in reply["prompt"]
-        assert "Current canvas updated" in calls[index]["prompt"]
+        assert "<current_canvas_updated>" in calls[index]["prompt"]
         if transport == "body":
             assert SYSTEM_PROMPT in calls[index]["prompt"]
             assert "独立指令" not in reply["prompt"]

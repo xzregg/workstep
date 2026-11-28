@@ -59,7 +59,7 @@ async def test_group_lifecycle_and_running_members(chat_module, monkeypatch):
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("operation", ["create", "new_session", "reorder"])
+@pytest.mark.parametrize("operation", ["create", "new_session", "reorder", "move_group"])
 async def test_group_slow_sql_keeps_health_responsive(chat_module, monkeypatch, operation):
     import main
     module, _, manager, project, _ = chat_module
@@ -82,6 +82,8 @@ async def test_group_slow_sql_keeps_health_responsive(chat_module, monkeypatch, 
         payload = {"project_id": project.id, "group_id": group["groups"][0]["id"]} if operation == "new_session" else {"action": "create", "name": "分组"}
         if operation == "reorder":
             payload = {"action": "reorder", "group_id": group["groups"][0]["id"], "target_group_id": target["groups"][1]["id"], "before": False}
+        if operation == "move_group":
+            payload = {"action": operation, "group_id": group["groups"][0]["id"], "parent_id": target["groups"][1]["id"]}
         pending = asyncio.create_task(client.post(url, json=payload))
         try:
             assert await asyncio.to_thread(entered.wait, 1)
@@ -167,3 +169,51 @@ async def test_group_reorder_persists_and_rejects_other_types(chat_module, monke
         assert [g["id"] for g in (await client.get(url)).json()["groups"]] == [second["id"], first["id"], channel["id"]]
         assert (await client.post(url, json={**payload, "target_group_id": channel["id"]})).status_code == 400
         assert (await client.post(url, json={**payload, "group_id": "foreign"})).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_group_nesting_persists_rejects_cycles_and_preserves_children(chat_module, monkeypatch):
+    import main
+    module, _, manager, project, _ = chat_module
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    url = f"/api/chat-sessions/groups?project_id={project.id}"
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        async def create(name, **fields):
+            result = await client.post(url, json={"action": "create", "name": name, **fields})
+            assert result.status_code == 200, result.text
+            return next(group["id"] for group in result.json()["groups"] if group["name"] == name)
+
+        parent = await create("parent")
+        child = await create("child", parent_id=parent)
+        other = await create("other")
+        channel = await create("channel", source="channel")
+        assert (await client.post(url, json={"action": "create", "name": "invalid", "parent_id": channel})).status_code == 400
+        assert (await client.post(url, json={"action": "create", "name": "missing", "parent_id": "foreign"})).status_code == 404
+        session = await client.post("/api/chat-sessions", json={"project_id": project.id, "group_id": child})
+        assert session.status_code == 200
+
+        async def move(group, destination):
+            return await client.post(url, json={"action": "move_group", "group_id": group, "parent_id": destination})
+
+        assert (await move(other, child)).status_code == 200
+        assert (await move(parent, other)).status_code == 400
+        assert (await move(child, child)).status_code == 400
+        assert (await move(other, channel)).status_code == 400
+        groups = {group["id"]: group for group in (await client.get(url)).json()["groups"]}
+        assert groups[child]["parent_id"] == parent
+        assert groups[other]["parent_id"] == child
+
+        reorder = {"action": "reorder", "group_id": parent, "target_group_id": other}
+        assert (await client.post(url, json=reorder)).status_code == 400
+        reordered = await client.post(url, json={**reorder, "group_id": other, "target_group_id": parent})
+        assert reordered.status_code == 200
+        assert reordered.json()["groups"][0]["id"] == other
+        assert reordered.json()["groups"][0].get("parent_id") is None
+        assert (await move(other, child)).status_code == 200
+
+        dissolved = await client.post(url, json={"action": "dissolve", "group_id": parent})
+        groups = {group["id"]: group for group in dissolved.json()["groups"]}
+        assert groups[child].get("parent_id") is None
+        assert groups[other]["parent_id"] == child
+        assert groups[child]["session_ids"] == [session.json()["id"]]

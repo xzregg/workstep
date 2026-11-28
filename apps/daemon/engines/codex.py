@@ -518,9 +518,8 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                 else:
                     # 会话尚未建立（thread.started 未到达）：无法 resume，
                     # 用「原提示词 + 插入消息」重启新会话，避免丢失上下文。
-                    run_prompt = (
-                        f"{run_prompt}\n\n[Inserted user message]\n{restart_content}"
-                    )
+                    from services.prompt_sections import prompt_section
+                    run_prompt = f"{run_prompt}\n\n" + prompt_section("inserted_user_message", restart_content)
                 continue
 
             exit_code = await self._process.wait()

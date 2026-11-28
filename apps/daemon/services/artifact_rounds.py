@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+from services.global_artifacts import GLOBAL_DIRECTORY, global_filename, global_output_path, read_global_index
+
 ROUND_DIR_RE = re.compile(r"^[1-9][0-9]*$")
 MANIFEST_NAME = "manifest.json"
 
@@ -92,8 +94,9 @@ def _read_manifest(path: Path) -> dict | None:
 def _legacy_has_artifacts(step_dir: Path) -> bool:
     if not step_dir.is_dir():
         return False
+    has_global = read_global_index(step_dir / GLOBAL_DIRECTORY) is not None
     for child in step_dir.iterdir():
-        if child.name.startswith("."):
+        if child.name.startswith(".") or (has_global and child.name == GLOBAL_DIRECTORY):
             continue
         if child.name == MANIFEST_NAME and child.is_file():
             return True
@@ -212,7 +215,10 @@ def list_round_files(round_dir: Path) -> list[Path]:
     if not root.is_dir():
         return []
     files: list[Path] = []
+    has_global = read_global_index(root / GLOBAL_DIRECTORY) is not None
     for path in sorted(root.rglob("*")):
+        if has_global and path.relative_to(root).parts[0] == GLOBAL_DIRECTORY:
+            continue
         if not path.is_file() or path.name == MANIFEST_NAME:
             continue
         if path.is_symlink():
@@ -237,6 +243,8 @@ def _declared_entries(round_dir: Path, outputs: Iterable[dict] | None) -> dict[P
 
     result: dict[Path, dict] = {}
     for index, output in enumerate(outputs):
+        if output.get("global") is True:
+            continue
         name = str(output.get("name") or f"产物{index + 1}")
         output_type = str(output.get("type") or "file")
         _label, value = _output_path(str(round_dir), name, output_type)
@@ -378,6 +386,7 @@ def write_round_manifest(
     status: str,
     eligible_for_downstream: bool,
     outputs: Iterable[dict] | None = None,
+    active_global_ports: set[int] | None = None,
 ) -> dict:
     """Scan one round directory and atomically write its system manifest."""
     round_dir = step_round_dir(
@@ -398,6 +407,7 @@ def write_round_manifest(
         default=None,
     )
     previous_round = previous.round if previous else None
+    outputs = tuple(outputs or ())
     declared = _declared_entries(round_dir, outputs)
 
     entries: dict[Path, dict] = {}
@@ -434,6 +444,19 @@ def write_round_manifest(
             ),
         }
 
+    output_statuses = _declared_output_statuses(round_dir, declared)
+    shared_directory = round_dir.parent / GLOBAL_DIRECTORY
+    if any(output.get("global") is True for output in outputs) and read_global_index(shared_directory) is not None:
+        for port, output in enumerate(outputs):
+            if output.get("global") is not True or (active_global_ports is not None and port not in active_global_ports):
+                continue
+            path = global_output_path(shared_directory, global_filename(output))
+            if path is None:
+                continue
+            records = _declared_output_statuses(shared_directory, {path: {
+                "port": port, "name": output["name"], "type": output.get("type") or "file",
+            }})
+            output_statuses.extend({**record, "global": True} for record in records)
     manifest = {
         "version": 1,
         "workflow": workflow_id or "default",
@@ -449,7 +472,7 @@ def write_round_manifest(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "directory_paths": None if has_symlinks else directory_paths,
         "content_comparison": comparison,
-        "outputs": _declared_output_statuses(round_dir, declared),
+        "outputs": sorted(output_statuses, key=lambda item: item["port"]),
         "artifacts": sorted(entries.values(), key=lambda item: str(item["path"])),
     }
     path = manifest_path(round_dir)

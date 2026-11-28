@@ -46,7 +46,7 @@ function InputEditor({ inputs, onChange, sourceInputs, allowAppendOutputs = true
               <Button variant="icon" disabled={Boolean(sourceInputs)} onClick={() => removeInput(i)}>×</Button>
             </div>
             {/* Sub-outputs */}
-            <ArtifactOutputsEditor outputs={inp.outputs} sourceOutputs={sourceInputs?.[i]?.outputs} protectedCount={sourceInputs?.[i]?.outputs.length || 0}
+            <ArtifactOutputsEditor nested outputs={inp.outputs} sourceOutputs={sourceInputs?.[i]?.outputs} protectedCount={sourceInputs?.[i]?.outputs.length || 0}
               appendDisabled={Boolean(sourceInputs) && (!allowAppendOutputs || i !== inputs.length - 1)}
               onChange={(outputs) => onChange(inputs.map((input, index) => index === i ? { ...input, outputs } : input))} />
           </div>
@@ -359,7 +359,7 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
                   if (!configError) onSave({ ...updated, key: normalizedKey })
                 }}
                 />
-                {t('flow.autoStart')}
+                <span>{t('flow.autoStart')}</span>
               </label>
             </div>
             <div
@@ -375,7 +375,7 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
                   checked={draft.reuseSuccess === true}
                   onChange={(event) => updateDraft('reuseSuccess', event.target.checked)}
                   aria-describedby="step-reuse-success-help" />
-                {t('flow.reuseSuccess')}
+                <span>{t('flow.reuseSuccess')}</span>
               </label>
             <div id="step-reuse-success-help" className="node-step-reuse-help">（{t('flow.reuseSuccessHint')}）</div>
           </div>
@@ -400,8 +400,10 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
             allowAppendOutputs={!lockedSource || JSON.stringify(lockedSource.inputs.flatMap((input) => input.outputs)) === JSON.stringify(lockedSource.outputs)}
             onChange={(inputs) => updateDraft('inputs', inputs)}
           />
-          {lockedSource && (!lockedSource.inputs.length || JSON.stringify(lockedSource.inputs.flatMap((input) => input.outputs)) !== JSON.stringify(lockedSource.outputs)) &&
-            <ArtifactOutputsEditor outputs={draft.outputs} sourceOutputs={lockedSource.outputs} protectedCount={lockedSource.outputs.length}
+          {(lockedSource
+            ? !lockedSource.inputs.length || JSON.stringify(lockedSource.inputs.flatMap((input) => input.outputs)) !== JSON.stringify(lockedSource.outputs)
+            : !draft.inputs.length && draft.outputs.length > 0) &&
+            <ArtifactOutputsEditor outputs={draft.outputs} sourceOutputs={lockedSource?.outputs} protectedCount={lockedSource?.outputs.length}
               onChange={(outputs) => updateDraft('outputs', outputs)} />}
           </div>
           <div className="flow-node-config-section flow-node-config-section--engine">

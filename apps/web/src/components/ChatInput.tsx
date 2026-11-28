@@ -119,7 +119,7 @@ export interface ChatInputEngineConfig {
   /** Step mode exposes the selected engine's non-sensitive workflow fields. */
   stepFields?: EngineConfigField[]
   stepValues?: Record<string, string>
-  onStepFieldChange?: (key: string, value: string) => void
+  onStepFieldChange?: (key: string, value: string) => boolean | void
   requireCoordinator?: boolean
   allowDefault?: boolean
   /** Reset all selections back to the defaults. */
@@ -1359,7 +1359,9 @@ function ChatInput({
                       serviceTier={config.serviceTier}
                       onServiceTierChange={config.onServiceTierChange}
                       stepValues={config.stepValues}
-                      onStepFieldChange={config.onStepFieldChange}
+                      onStepFieldChange={config.onStepFieldChange && ((key, value) => {
+                        if (config.onStepFieldChange?.(key, value) === false) setConfigOpen(false)
+                      })}
                       requireCoordinator={config.requireCoordinator}
                       allowDefault={config.allowDefault}
                       onEngineChange={(id) => {

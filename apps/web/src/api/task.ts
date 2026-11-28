@@ -203,6 +203,7 @@ export interface TaskExecutionReport {
 export interface TaskArtifact {
   /** Share-safe path relative to the artifact root, for matching recorded edits. */
   source_path?: string
+  global?: boolean | null
   step_key: string
   round: number
   is_latest: boolean

@@ -1,7 +1,7 @@
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import MobileSheet from './MobileSheet'
 import FlowBookmark, { BookmarkContext, loadBookmarks, saveBookmarks } from './FlowBookmark'
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react'
 import { createPortal } from 'react-dom'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
@@ -45,8 +45,8 @@ import { layoutProposalNodes } from '../utils/flowProposalPreview'
 function MenuItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
     <button
+      className="flow-canvas-dropdown-item"
       onClick={onClick}
-      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', fontSize: 'calc(13px * var(--font-scale))', border: 'none', background: 'transparent', color: 'var(--fg)', cursor: 'pointer', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-body)', whiteSpace: 'nowrap' }}
     >
       {children}
     </button>
@@ -55,38 +55,45 @@ function MenuItem({ onClick, children }: { onClick: () => void; children: React.
 
 function DropdownMenu({ label, children }: { label: string; children: (close: () => void) => React.ReactNode }) {
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const close = useCallback(() => setOpen(false), [])
+
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current || !menuRef.current) return
+    const anchor = triggerRef.current.getBoundingClientRect()
+    const menu = menuRef.current.getBoundingClientRect()
+    const edge = 8
+    const gap = 4
+    const below = anchor.bottom + gap
+    const above = anchor.top - menu.height - gap
+    const maxTop = window.innerHeight - menu.height - edge
+    setPosition({
+      left: Math.max(edge, Math.min(anchor.right - menu.width, window.innerWidth - menu.width - edge)),
+      top: Math.max(edge, Math.min(below > maxTop && above >= edge ? above : below, maxTop)),
+    })
+  }, [open, label])
 
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as HTMLElement)) setOpen(false)
+      const target = e.target as HTMLElement | null
+      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) close()
     }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      window.removeEventListener('resize', close)
+    }
+  }, [open, close])
 
   return (
     <>
-      <Button variant="ghost" onClick={(e) => {
-        if (!open) {
-          const rect = e.currentTarget.getBoundingClientRect()
-          setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
-        }
-        setOpen((s) => !s)
-      }}>{label}</Button>
-      {open && pos && createPortal(
-        <div
-          ref={menuRef}
-          style={{
-            position: 'fixed', top: pos.top, right: pos.right, zIndex: 1000,
-            background: 'var(--bg)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)',
-            padding: 4, minWidth: 160, maxHeight: '60vh', overflowY: 'auto',
-          }}
-        >
+      <Button ref={triggerRef} variant="ghost" aria-expanded={open} onClick={() => setOpen(value => !value)}>{label}</Button>
+      {open && createPortal(
+        <div ref={menuRef} className="flow-canvas-dropdown" style={position}>
           {children(close)}
         </div>,
         document.body,
@@ -441,7 +448,7 @@ function FlowCanvasInner({
     const newNode: Node = {
       id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
-      data: { nodeId, key: `step_${id}`, label: t('flow.newStep'), kind: 'llm', autoStart: false, engine: '', model: '', color: randomStepColor(), prompt: '', maxReturnRounds: DEFAULT_MAX_RETURN_ROUNDS, review: { mode: 'manual', auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
+      data: { nodeId, key: `step_${id}`, label: t('flow.newStep'), kind: 'llm', autoStart: true, engine: '', model: '', color: randomStepColor(), prompt: '', maxReturnRounds: DEFAULT_MAX_RETURN_ROUNDS, review: { mode: 'manual', auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
   }
@@ -454,7 +461,7 @@ function FlowCanvasInner({
       id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
       data: {
-        nodeId, key: `handoff_${id}`, label: t('flow.newDispatchStep'), kind: 'task_dispatch', color: '#eb6c36', engine: '', model: '', prompt: '', maxReturnRounds: DEFAULT_MAX_RETURN_ROUNDS,
+        nodeId, key: `handoff_${id}`, label: t('flow.newDispatchStep'), kind: 'task_dispatch', autoStart: true, color: '#eb6c36', engine: '', model: '', prompt: '', maxReturnRounds: DEFAULT_MAX_RETURN_ROUNDS,
         inputs: [{ name: t('flow.upstreamInputs'), type: DEFAULT_OUTPUT_TYPE, outputs: [] }], outputs: [], config: {},
         dispatch: { targetProjectId: '', targetWorkflowId: '', targetStartStepKey: '', startMode: 'inherit' },
       } as StepNodeData,
@@ -580,6 +587,11 @@ function FlowCanvasInner({
       return data.kind === 'task_dispatch' && (!data.dispatch?.targetProjectId || !data.dispatch.targetWorkflowId || !data.dispatch.targetStartStepKey)
     })
     if (missingDispatch) return t('flow.dispatchConfigRequired')
+    const stepsById = new Map(candidateNodes.map(node => [node.id, node.data as StepNodeData]))
+    if (edges.some(edge => edge.data?.kind === 'dashed' &&
+      stepsById.get(edge.source)?.outputs?.[Number(edge.sourceHandle?.replace('out-', '') ?? 0)]?.global)) {
+      return t('flow.globalReturnConnection')
+    }
     const invalidType = stepTypes.find((step) => !STEP_TYPE_PATTERN.test(step.value))
     if (invalidType) {
       return t('flow.stepTypeInvalid', { label: invalidType.label })

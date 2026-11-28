@@ -3,7 +3,7 @@ import type { ChatQuickButton } from '../api/client'
 import { DEFAULT_OUTPUT_TYPE } from '../config/outputTypes'
 import { normalizeStepConfig } from '../utils/stepConfig'
 
-export interface SubOutput { name: string; type: string; template?: string }
+export interface SubOutput { name: string; type: string; template?: string; global?: boolean }
 export interface InputField { name: string; type: string; outputs: SubOutput[] }
 export interface OutputField extends SubOutput {}
 export const DEFAULT_MAX_RETURN_ROUNDS = 3
@@ -138,6 +138,7 @@ export function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connect
       name: typeof output === 'string' ? output : String(output?.name || ''),
       type: typeof output === 'object' && output?.type ? String(output.type) : DEFAULT_OUTPUT_TYPE,
       ...(typeof output?.template === 'string' ? { template: output.template } : {}),
+      ...(output?.global === true ? { global: true } : {}),
     })
     const nodes: StepNodeData[] = rawNodes.map((n: any, index: number) => {
       const key = String(n.type || n.key || n.id || '')
@@ -222,9 +223,9 @@ export function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connect
       review: { ...(s.review || emptyReview()), config: normalizeStepConfig(s.review?.config) },
       inputs: (s.inputs || []).map((inp: any) => ({
         name: inp.name || inp, type: inp.type || 'document',
-        outputs: (inp.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || DEFAULT_OUTPUT_TYPE, ...(typeof o.template === 'string' ? { template: o.template } : {}) })),
+        outputs: (inp.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || DEFAULT_OUTPUT_TYPE, ...(typeof o.template === 'string' ? { template: o.template } : {}), ...(o.global === true ? { global: true } : {}) })),
       })),
-      outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'markdown', ...(typeof o.template === 'string' ? { template: o.template } : {}) })),
+      outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'markdown', ...(typeof o.template === 'string' ? { template: o.template } : {}), ...(o.global === true ? { global: true } : {}) })),
       maxReturnRounds: normalizeMaxReturnRounds(s.maxReturnRounds),
       reuseSuccess: s.reuseSuccess === true,
       kind: s.kind === 'task_dispatch' ? 'task_dispatch' : 'llm',

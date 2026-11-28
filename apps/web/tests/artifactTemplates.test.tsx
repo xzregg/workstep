@@ -146,3 +146,28 @@ test('root step without input ports still exposes its output template', async ()
     assert.ok(document.querySelector('.artifact-template-dialog'))
   } finally { await act(async () => root.unmount()); container.remove(); await window.happyDOM.close() }
 })
+
+test('global output is editable per row and retained in nested and flat canvas data', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const output = { name: 'board', type: 'md', global: true }
+  const { nodes } = loadCanvasData({ nodes: [{ id: 1, type: 'plan', outputs: [output],
+    inputs: [{ name: 'request', outputs: [output] }] }], connections: [] })
+  assert.equal(nodes[0].outputs[0].global, true)
+  assert.equal(nodes[0].inputs[0].outputs[0].global, true)
+  const changes: unknown[] = []
+  try {
+    await act(async () => root.render(<I18nProvider><ArtifactOutputsEditor outputs={[output]}
+      nested onChange={value => changes.push(value)} /></I18nProvider>))
+    const field = container.querySelector<HTMLInputElement>('.artifact-output-global input')!
+    assert.equal(field.checked, true)
+    await act(async () => field.click())
+    assert.deepEqual(changes, [[{ name: 'board', type: 'md' }]])
+    assert.equal(container.querySelector('.artifact-outputs-editor')?.classList.contains('artifact-outputs-editor--nested'), true)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

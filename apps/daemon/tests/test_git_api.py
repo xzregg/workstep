@@ -888,6 +888,13 @@ async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected
     assert 'Conventional Commits' in calls[0][2][0]['content']
     assert 'fixed behavior' in calls[0][2][1]['content']
     assert 'new behavior' in calls[0][2][1]['content']
+    context = calls[0][2][1]['content']
+    assert context.startswith('<selected_file_statuses>\n')
+    assert '</selected_file_statuses>\n' in context
+    assert '<git_diff>\n' in context
+    assert '</git_diff>\n' in context
+    assert '<new_file>\n' in context
+    assert context.endswith('</new_file>\n')
     assert 'two.txt' not in calls[0][2][1]['content']
     assert calls[0][3]['thinking'] == 'disabled'
     assert calls[0][3]['protocol'] == 'openai_chat_completions'

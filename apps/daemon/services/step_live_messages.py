@@ -12,6 +12,7 @@ from models.fields import utc_now
 from services.intervention import intervention_manager
 from services.messages import StepEventProgress, create_task_message, new_message_id
 from services.pipeline import Step
+from services.prompt_sections import prompt_section
 
 logger = logging.getLogger(__name__)
 ENGINE_STOP_TIMEOUT_SECONDS = 10.0
@@ -337,7 +338,8 @@ class StepLiveMessages:
             )
             trigger_name = message.author_name or task.creator_name or ""
             injected_content = (
-                f"## Triggered by\n{trigger_name}\n\n## User message\n{normalized}"
+                prompt_section("triggered_by", trigger_name)
+                + "\n" + prompt_section("user_message", normalized)
                 if trigger_name else normalized
             )
             if as_guidance:

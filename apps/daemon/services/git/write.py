@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from services.output_language import output_language_instruction
+from services.prompt_sections import prompt_section
 from .command import text
 from pathlib import Path
 
@@ -17,12 +18,14 @@ from .command import GitError
 from .query import read_file, safe_file
 
 COMMIT_MESSAGE_SYSTEM_PROMPT = """You generate accurate, concise Conventional Commits messages from selected file statuses and diffs.
-Requirements:
+<requirements>
 1. The first line must be <type>(optional scope): brief summary; type must be feat, fix, refactor, perf, docs, test, build, ci, chore, style, or revert.
 2. Aim for at most 72 characters on the first line. Use imperative wording describing behavior and purpose rather than listing filenames.
 3. For complex changes, add a blank line and a concise bulleted body; for simple changes, output only the first line.
 4. Use only the supplied evidence. Do not invent features, issue numbers, or impact.
-5. Return only the commit message, without Markdown fences, explanations, or alternatives."""
+5. Return only the commit message, without Markdown fences, explanations, or alternatives.
+</requirements>
+"""
 
 
 def normalize_commit_message(value):
@@ -431,15 +434,23 @@ class GitWrites:
                 continue
             data, truncated = await asyncio.to_thread(read_file, root, path)
             if b'\0' in data:
-                untracked_parts.append(f"### New binary file {path}")
+                untracked_parts.append(("new_binary_file", path))
             else:
                 body = text(data[:20000])
                 suffix = '\n[Content truncated]' if truncated or len(data) > 20000 else ''
-                untracked_parts.append(f"### New file {path}\n{body}{suffix}")
-        context = 'Selected file statuses:\n' + '\n'.join(status_lines) + '\n\nGit diff:\n' + (patch or '[No tracked-file diff]')
-        if untracked_parts:
-            context += '\n\n' + '\n\n'.join(untracked_parts)
-        context = context[:120000]
+                untracked_parts.append(("new_file", f"{path}\n{body}{suffix}"))
+        # Bound content before wrapping so truncation cannot cut a closing tag.
+        context = ''
+        for tag, body in [
+            ('selected_file_statuses', '\n'.join(status_lines)),
+            ('git_diff', patch or '[No tracked-file diff]'),
+            *untracked_parts,
+        ]:
+            separator = '\n' if context else ''
+            remaining = 120000 - len(context) - len(separator) - len(prompt_section(tag, '')) - 1
+            if remaining <= 0:
+                break
+            context += separator + prompt_section(tag, body[:remaining])
         from services.config import config_store
         from services import providers as provider_service
         from services.gateway_client.usage import snapshot_usage_provider

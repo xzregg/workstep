@@ -11,7 +11,7 @@ import ctypes
 from pathlib import Path
 
 from models import Task
-from services.artifact_rounds import select_upstream_round
+from services.artifact_rounds import list_round_files, select_upstream_round
 from services.task import TaskService
 from services.workflow_definition import WorkflowDefinition
 from services.remote_project import REMOTE_REQUEST_BODY_LIMIT, RemoteHttpRequest
@@ -256,15 +256,14 @@ class TaskDispatchService:
             if selected is None:
                 continue
             source_root = selected.path
-            for source in sorted(source_root.rglob("*")):
-                if source.is_file() and source.name != "manifest.json":
-                    files.append({
-                        "source_step_key": source_step_key,
-                        "source_round": selected.round,
-                        "name": source.name,
-                        "relative_path": str(source.relative_to(source_root)),
-                        "content_b64": base64.b64encode(source.read_bytes()).decode(),
-                    })
+            for source in list_round_files(source_root):
+                files.append({
+                    "source_step_key": source_step_key,
+                    "source_round": selected.round,
+                    "name": source.name,
+                    "relative_path": str(source.relative_to(source_root.resolve())),
+                    "content_b64": base64.b64encode(source.read_bytes()).decode(),
+                })
         return files
 
     @staticmethod
@@ -305,10 +304,8 @@ class TaskDispatchService:
             if selected is None:
                 continue
             source_root = selected.path
-            for source in sorted(source_root.rglob("*")):
-                if not source.is_file() or source.name == "manifest.json":
-                    continue
-                relative = source.relative_to(source_root)
+            for source in list_round_files(source_root):
+                relative = source.relative_to(source_root.resolve())
                 destination = target_root / step_key / relative
                 _copy_local_artifact(source, destination)
                 manifest.append({

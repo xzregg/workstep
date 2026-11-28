@@ -26,6 +26,30 @@ def role_library(tmp_path, monkeypatch):
     return library, a, b
 
 
+def test_team_xml_wrapping_keeps_the_existing_content_budget(role_library):
+    from agent_assistants.chat_roles import resolve_binding
+
+    library, _, _ = role_library
+    role = library.save_role(RoleWrite(name='R', category='engineering', prompt='x'))
+    team = library.save_team(TeamWrite(name='T', prompt='', members=[
+        {'role_id': role['id'], 'duty': 'Review'},
+    ]))
+    legacy_overhead = len('\n\n'.join([
+        '### Expert team: T', '',
+        'Use the following perspectives in this conversation. Member order is guidance, not separate agent execution.',
+        f"### 1. R\nRole reference: {role['id']}\n\nAssignment: Review",
+    ]))
+    role = library.save_role(RoleWrite(name='R', category='engineering',
+        prompt='x' * (200_000 - legacy_overhead), expected_revision=role['revision']), role['id'])
+    _, rendered = resolve_binding({'kind': 'team', 'id': team['id']})
+    assert rendered.startswith('<expert_team>\n')
+    assert len(rendered) > 200_000
+    library.save_role(RoleWrite(name='R', category='engineering',
+        prompt=role['prompt'] + 'x', expected_revision=role['revision']), role['id'])
+    with pytest.raises(ValueError, match='200,000'):
+        resolve_binding({'kind': 'team', 'id': team['id']})
+
+
 def install_engine(module, monkeypatch, *, resume=True):
     monkeypatch.setattr(FakeEngine, 'supports_resume', resume)
     calls, behavior = [], {'fail': False, 'compact': False, 'thread': 'engine-context-A'}
@@ -450,3 +474,16 @@ async def test_slow_role_system_instruction_read_keeps_loop_responsive(chat_modu
     finally:
         release.set()
     assert await pending == 'completed'
+
+
+def test_role_xml_preserves_internal_markdown(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from agent_assistants import chat_roles
+    original = '## 职责\n解释 <role> 标签'
+    monkeypatch.setattr(chat_roles, 'role_center', SimpleNamespace(
+        _lock=nullcontext(), get_role=lambda _: {'name': '审阅', 'prompt': original},
+    ))
+    name, prompt = chat_roles.resolve_binding({'kind': 'role', 'id': 'reviewer'})
+    assert name == '审阅'
+    assert prompt == '<role>\nName: 审阅\n' + original + '\n</role>\n'

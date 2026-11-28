@@ -15,9 +15,11 @@ from engines.core.registry import create_engine
 from agent_assistants.prompt_input import format_prompt_input
 from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
+from services.global_artifacts import GLOBAL_DIRECTORY, global_filename, global_output_path, read_global_index
 from services.artifact_rounds import step_round_dir, update_round_manifest_status
 from services.config import config_store
 from services.pipeline import Step
+from services.prompt_sections import prompt_context, prompt_section
 
 
 _REVIEW_ROLE = "You are the WorkStep step review agent. Inspect results only; never modify files."
@@ -368,31 +370,32 @@ class ReviewGate:
             if out_dir.exists()
             else []
         )
+        global_dir = artifacts_dir / wf_name / task.id / step.key / GLOBAL_DIRECTORY
+        if read_global_index(global_dir) is not None:
+            for output in step.outputs:
+                if output.get("global") is not True:
+                    continue
+                shared = global_output_path(global_dir, global_filename(output))
+                if shared is not None and (shared.is_file() or shared.is_dir()):
+                    files.append(Path(os.path.relpath(shared, start=prompt_cwd)).as_posix())
         contract_section = ""
         if execution_prompt:
-            contract_section = f"## Execution contract\n{execution_prompt}"
+            contract_section = prompt_section("execution_contract", execution_prompt)
         else:
-            contract_section = (
-                "## Execution contract\n"
+            contract_section = prompt_section("execution_contract",
                 f"- Step: {step.label or step.key}\n"
                 f"- Requirement: {step.prompt}\n"
                 f"- Outputs: {json.dumps(step.outputs, ensure_ascii=False)}"
             )
-        return f"""{_REVIEW_ROLE}
-
-{contract_section}
-
-## Execution result
-{execution_output}
-
-## Artifact files
-{json.dumps(files, ensure_ascii=False, indent=2)}
-
-## Review requirements
-{review_prompt or "Check completeness, correctness, and compliance with the step requirements."}
-
-{_REVIEW_OUTPUT}
-"""
+        return "\n\n".join(part.rstrip("\n") for part in (
+            _REVIEW_ROLE,
+            contract_section,
+            prompt_section("execution_result", execution_output),
+            prompt_context(files, "artifact_files", description="Artifact file paths available for this review, as a JSON array."),
+            prompt_section("review_requirements", review_prompt or
+                           "Check completeness, correctness, and compliance with the step requirements."),
+            _REVIEW_OUTPUT,
+        )) + "\n"
 
     @staticmethod
     def _split_prompt(prompt: str) -> tuple[str, str]:
@@ -403,7 +406,7 @@ class ReviewGate:
             body = body[len(role):].lstrip()
         if body.endswith(output):
             body = body[:-len(output)].rstrip()
-        return role + "\n\n" + output, body
+        return role + "\n\n" + output, body + "\n" if body else body
 
     @staticmethod
     def _parse_report(response: str) -> dict:

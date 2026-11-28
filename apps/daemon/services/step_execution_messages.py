@@ -26,6 +26,7 @@ from services.prompt import (
     render_step_prompt,
     step_worktrees_prompt_path,
 )
+from services.prompt_sections import prompt_section
 from services.task_step_start import StartedStepState
 
 
@@ -69,6 +70,7 @@ class StepExecutionMessages:
         user_input: str, input_snapshot: dict,
         state: StartedStepState, review_feedback: str,
         engine: AcpEngineBase | None, resolved_model: str | None,
+        global_artifacts: list[tuple[str, Path]] | None = None,
     ) -> StartedExecution:
         step_key = step.key
         capture_input = callable(getattr(engine, "spawn_with_retry", None))
@@ -80,6 +82,7 @@ class StepExecutionMessages:
         )
         context_kwargs = dict(
             separate_instructions=capture_input,
+            global_artifacts=global_artifacts,
             previous_context_hashes=previous_context_hashes,
             context_hashes=context_hashes,
         )
@@ -138,19 +141,18 @@ class StepExecutionMessages:
                 artifacts_dir.parent,
             )
             if handoff_reference:
-                prompt = f"{handoff_reference}\n\n{prompt}"
+                prompt = handoff_reference.rstrip("\n") + "\n\n" + prompt
         if review_results:
             worktrees_path = await asyncio.to_thread(
                 step_worktrees_prompt_path, task, artifacts_dir
             )
-            prompt += (
-                "\n\n## Previous review feedback\n"
-                + "\n\n".join(
+            prompt = prompt.rstrip("\n") + (
+                "\n\n" + prompt_section("previous_review_feedback", "\n\n".join(
                     render_step_prompt(value, task, step, worktrees_path, trigger_name)
                     for value in review_results
-                )
+                ))
             )
-            prompt += (
+            prompt = prompt.rstrip("\n") + (
                 "\n\nRevise the affected work and preserve correct results. "
                 "Write generated artifacts using the declared names, types, "
                 "and current-round paths."

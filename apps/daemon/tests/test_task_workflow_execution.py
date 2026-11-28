@@ -24,8 +24,8 @@ from tests.test_api_contracts import api_context  # Shared isolated real applica
 
 def output_paths(prompt, cwd):
     paths = re.findall(r"output path: `([^`]+)`", prompt)
-    if "## Current outputs" in prompt:
-        paths += re.findall(r"^- .+?: `([^`]+)`$", prompt.split("## Current outputs", 1)[1], re.M)
+    if "<current_outputs>" in prompt:
+        paths += re.findall(r"^- .+?: `([^`]+)`$", prompt.split("<current_outputs>", 1)[1], re.M)
     return list(dict.fromkeys((Path(cwd) / value).resolve() for value in paths))
 
 

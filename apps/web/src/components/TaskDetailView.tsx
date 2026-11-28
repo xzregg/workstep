@@ -118,9 +118,9 @@ export interface StepData {
   inputs: Array<{
     name: string
     type: string
-    outputs?: Array<{ name: string; type: string; template?: string }>
+    outputs?: Array<{ name: string; type: string; template?: string; global?: boolean }>
   }>
-  outputs: Array<{ name: string; type: string; template?: string }>
+  outputs: Array<{ name: string; type: string; template?: string; global?: boolean }>
 }
 
 export interface StepProgress extends Partial<TaskStepState> {

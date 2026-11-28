@@ -5493,7 +5493,7 @@ async def test_review_flow_end_to_end_via_api(api_context, monkeypatch):
         assert task["status"] == "waiting"
         assert len(step_prompts) == 5
         assert "缺少验收记录" in step_prompts[4]
-        assert "## Previous review feedback" in step_prompts[4]
+        assert "<previous_review_feedback>" in step_prompts[4]
 
         # 3) 审核通过 → verify 完成，任务 ready
         reviews = (await client.get(

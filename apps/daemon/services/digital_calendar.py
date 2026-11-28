@@ -7,9 +7,10 @@ import uuid
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from services.prompt_sections import prompt_section
 from services import digital_person_memory_index as index
 
-CHAT_RULES = ('Calendar: use digital-hub calendar or the calendar tools to create, list, update or delete reminders on user request. '
+CHAT_RULES = prompt_section('calendar', 'Calendar: use digital-hub calendar or the calendar tools to create, list, update or delete reminders on user request. '
               'Content is Markdown, with no separate title; start times have minute precision. Resolve relative dates using the current clock and timezone; ask if time is missing or ambiguous. '
               'Only confirm after successful persistence. List before identifying an event to change/delete; use its id and revision. '
               'For system calendars, list calendar targets then use --target, create-batch or delete-occurrences through the operation tools; never invent target ids. '

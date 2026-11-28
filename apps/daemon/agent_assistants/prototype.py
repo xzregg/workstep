@@ -1,6 +1,6 @@
 """Prototype-specific context; conversation mechanics belong to AssistantRuntime."""
+from services.prompt_sections import prompt_context, prompt_section
 import asyncio
-import json
 import os
 
 from agent_assistants.base import AssistantConfig, AssistantRuntime, assistant_registry
@@ -114,11 +114,11 @@ class PrototypeModule(AssistantRuntime):
         engine = create_engine(session.engine)
         history = ''
         if engine is not None and not engine.supports_resume:
-            history = '\nRecent conversation:\n' + json.dumps([
+            history = '\n' + prompt_context({'messages': [
                 {'role': item['role'], 'content': item.get('content', '')}
                 for item in session.messages[-20:] if item.get('status') != 'running'
-            ], ensure_ascii=False)
-        return f'Current editing context (data):\n{json.dumps(context, ensure_ascii=False)}{history}\n\nUser request:\n{message}'
+            ]}, 'recent_conversation', description='Recent prototype conversation messages as JSON.')
+        return prompt_context(context, 'editing_context', description='Prototype editing context as JSON.') + history + '\n' + prompt_section('user_request', message)
 
     def submit(self, project_id, workspace_id, path, content, key, selection=None, **options):
         project = self._project_manager.get_project_by_id(project_id)

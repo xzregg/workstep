@@ -34,7 +34,7 @@ def test_commit_guidance_is_shared_and_does_not_request_automatic_commits():
     assert 'Only commit when' in guidance
     assert 'git -c user.name=' in guidance
     assert 'Keep the existing email and Git identity configuration.' in guidance
-    assert 'latest delivered "Triggered by" name to that command only' in guidance
+    assert 'latest delivered <triggered_by> name to that command only' in guidance
     assert 'GIT_AUTHOR_NAME or GIT_COMMITTER_NAME' in guidance
     assert 'as literal data' in guidance
     assert 'Without a trigger name, keep the existing identity.' in guidance
@@ -51,7 +51,7 @@ def test_every_execution_prompt_carries_current_person(task_context, kind):
         prompt = assemble_followup_prompt(task, step, artifacts, 'continue', trigger_name=name)
     else:
         prompt = assemble_retry_prompt(task, step, artifacts, {}, trigger_name=name)
-    assert f'## Triggered by\n{name}' in prompt
+    assert f'<triggered_by>\n{name}' in prompt
 
 
 def test_saved_run_identity_beats_creator_and_old_messages(task_context):

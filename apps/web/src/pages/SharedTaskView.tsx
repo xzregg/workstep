@@ -120,6 +120,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
         outputs: (node.outputs || []).map((output: any) => ({
           name: output.name,
           type: output.type,
+          global: output.global === true,
         })),
       }))
     }

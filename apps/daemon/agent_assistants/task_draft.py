@@ -5,6 +5,7 @@ context, but it never creates a Task row.  A task exists only after the user
 accepts the generated description and submits the ordinary create-task form.
 """
 
+from services.prompt_sections import prompt_context, prompt_section
 import asyncio
 import json
 import re
@@ -354,7 +355,7 @@ class TaskDraftModule(AssistantRuntime):
             }
 
     def _build_prompt(self, session) -> str:
-        context = json.dumps(self._context(session), ensure_ascii=False, default=str)
+        context = prompt_context(self._context(session), "current_context", description="Current project and task draft context as JSON.")
         user_message = next(
             (
                 str(item.get("content") or "")
@@ -365,16 +366,16 @@ class TaskDraftModule(AssistantRuntime):
         )
         engine = create_engine(session.engine)
         if engine is not None and engine.supports_resume:
-            prompt = f"Current context:\n{context}\n\nUser: {user_message}"
+            prompt = context + "\n" + prompt_section("user_request", user_message)
         else:
             turns = session.messages[-(MAX_HISTORY_TURNS * 2):]
             history = "\n\n".join(
-                f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
+                prompt_section("user" if item["role"] == "user" else "assistant", str(item["content"])).rstrip("\n")
                 for item in turns
             )
             prompt = (
-                f"Current context:\n{context}"
-                f"\n\nConversation history:\n{history}\n\nContinue."
+                context
+                + "\n" + prompt_section("conversation_history", history) + "\nContinue."
             )
         return prompt
 
@@ -481,9 +482,8 @@ class TaskDraftModule(AssistantRuntime):
                 "Preserve all requested tasks and valid task creation parameters, including scheduled_start_at with timezone. "
                 "Preserve an empty task_drafts list when no tasks meet the instruction; never invent tasks. "
                 "Return JSON only.",
-                f"Valid workflow ids: {allowed_ids}\n\n"
-                f"Valid step keys: {sorted(valid_keys)}\n\n"
-                f"{raw}"
+                prompt_context({"valid_workflow_ids": allowed_ids, "valid_step_keys": sorted(valid_keys)}, description="Valid workflow IDs and step keys for repairing the draft, as JSON.")
+                + "\n" + prompt_section("response_to_repair", raw)
             )
         title_field = (
             '"title":"generated task title",'
@@ -495,8 +495,8 @@ class TaskDraftModule(AssistantRuntime):
             f'{{"reply":"...","task_draft":{{{title_field}"description":"...",'
             '"start_step_key":"valid workflow step key"}}}. '
             "Use task_draft:null when clarification is required. Return JSON only.",
-            f"Valid step keys: {sorted(valid_keys)}\n\n"
-            f"{raw}"
+            prompt_context({"valid_step_keys": sorted(valid_keys)}, description="Valid step keys for repairing the draft, as JSON.")
+            + "\n" + prompt_section("response_to_repair", raw)
         )
 
     def _schedule_valid_step_keys(self, session) -> set[str]:

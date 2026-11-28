@@ -13,6 +13,7 @@ restarts through ``WorkflowGenSession``); create-mode chats (no workflow)
 stay memory-only and start fresh.
 """
 
+from services.prompt_sections import prompt_context, prompt_section
 import json
 import re
 import uuid
@@ -347,17 +348,14 @@ class WorkflowGenModule(AssistantRuntime):
         context_mode = session.extra.get("context_mode", "none")
         if context_mode == "initial":
             workflow_name = session.extra.get("workflow_name") or "未命名流程"
-            canvas_json = (
-                f"\n\nCurrent flow title: {workflow_name}"
-                "\nCurrent canvas JSON (the workflow the user is editing; edit or "
-                "reorder it instead of starting over; keep node id/type when possible):\n"
-                f"{json.dumps(steps, ensure_ascii=False)}"
+            canvas_json = prompt_section("flow_title", workflow_name) + "\n" + prompt_context(
+                steps, "current_canvas",
+                description="Current workflow canvas as JSON. Edit or reorder it instead of starting over; keep node id/type when possible.",
             )
         elif context_mode == "canvas_updated":
-            canvas_json = (
-                "\n\nCurrent canvas updated (it may contain unsaved changes; treat "
-                "this version as authoritative):\n"
-                f"{json.dumps(steps, ensure_ascii=False)}"
+            canvas_json = prompt_context(
+                steps, "current_canvas_updated",
+                description="Updated workflow canvas as JSON. It may contain unsaved changes; treat this version as authoritative.",
             )
         engine = create_engine(session.engine)
         if engine is not None and engine.supports_resume:
@@ -375,11 +373,11 @@ class WorkflowGenModule(AssistantRuntime):
         # 否则多轮对话将完全失去上下文。
         turns = session.messages[-(MAX_HISTORY_TURNS * 2):]
         history = "\n\n".join(
-            f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
+            prompt_section("user" if item["role"] == "user" else "assistant", str(item["content"])).rstrip("\n")
             for item in turns
         )
         return (
-            f"{canvas_json}\n\nConversation history:\n{history}\n\nContinue."
+            f"{canvas_json}\n{prompt_section('conversation_history', history)}\nContinue."
         )
 
     # ── response parsing & proposal publishing ─────────────────────────
@@ -595,7 +593,7 @@ class WorkflowGenModule(AssistantRuntime):
                 session.engine,
                 session.fast_model,
                 session.cwd,
-                f"Validation error: {first_error}\n\nProposals:\n{json.dumps(proposals, ensure_ascii=False)}",
+                prompt_section("validation_error", first_error) + "\n" + prompt_context({"proposals": proposals}, description="Workflow proposals to repair after validation, as JSON."),
                 None,
                 system_prompt=repair_system_prompt,
             )

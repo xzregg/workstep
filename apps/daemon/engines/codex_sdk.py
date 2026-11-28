@@ -11,6 +11,7 @@ import tomllib
 import uuid
 from contextlib import aclosing
 from typing import Any, AsyncIterator
+from services.prompt_sections import prompt_section
 
 from engines.codex_compaction import compact_codex_thread
 from engines.codex_sdk_events import CodexSDKNotificationMapper
@@ -607,7 +608,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             if system_prompt and not session_id:
                 rules = self._combined_developer_instructions(sdk_config, system_prompt)
                 thread_kwargs["developer_instructions"] = (
-                    f"<workstep_system_rules>\n{rules}\n</workstep_system_rules>"
+                    prompt_section("workstep_system_rules", rules)
                 )
         if approval_mode is not None:
             # thread_start 的 approval_mode 不接受 None（默认 auto_review）
@@ -793,7 +794,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                             "threadId": str(thread.id),
                             "items": [{"type": "message", "role": "developer", "content": [{
                                 "type": "input_text",
-                                "text": f"<workstep_system_rules>\n{rules}\n</workstep_system_rules>",
+                                "text": prompt_section("workstep_system_rules", rules),
                             }]}],
                         }, response_model=ThreadInjectItemsResponse)
                     await event_queue.put(InternalEvent(

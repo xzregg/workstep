@@ -31,6 +31,29 @@ def setup(tmp_path, monkeypatch):
     return app, service
 
 
+def test_bound_role_xml_wrapping_does_not_reduce_the_profile_budget(setup, tmp_path, monkeypatch):
+    from schemas.role_center import RoleWrite
+    from services import customization_workspace
+    from services.role_center import RoleCenter
+
+    _, service = setup
+    library = RoleCenter(tmp_path / 'roles')
+    monkeypatch.setattr('agent_assistants.chat_roles.role_center', library)
+    monkeypatch.setattr(customization_workspace, 'is_default_workspace', lambda project: project.id == 'home')
+    role = library.save_role(RoleWrite(name='R', category='engineering', prompt='x' * 7988))
+    profile = service.DigitalPersonProfile(enabled=True, role_binding={'kind': 'role', 'id': role['id']})
+    assert service.save_profile(profile).role_binding.id == role['id']
+    assert role['prompt'] in service.prompt_parts_for_project(SimpleNamespace(id='home'))['identity']
+    # Saving another setting on a previously valid profile remains possible.
+    assert service.save_profile(profile.model_copy(update={'name': 'Updated'})).name == 'Updated'
+    library.save_role(RoleWrite(name='R', category='engineering', prompt='x' * 7989,
+                               expected_revision=role['revision']), role['id'])
+    with pytest.raises(ValueError, match='budget'):
+        service.save_profile(profile)
+    with pytest.raises(ValueError, match='budget'):
+        service.prompt_parts_for_project(SimpleNamespace(id='home'))
+
+
 async def test_profile_roundtrip_validation_and_restart(setup):
     app, service = setup
     async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
@@ -164,9 +187,9 @@ def test_person_prompt_only_in_fixed_workspace_and_when_enabled(setup, monkeypat
     service.save_profile(profile)
     prompt = service.prompt_for_project(home)
     assert "复查证据" in prompt
-    assert "\n\n## Memory retrieval\nBefore answering or acting" in prompt
-    assert "\n\n## Everyday conversation\nAnswer everyday requests directly" in prompt
-    assert "\n\n## Project delegation\nHARD BOUNDARY: Never modify code" in prompt
+    assert "<memory_retrieval>\nBefore answering or acting" in prompt
+    assert "<everyday_conversation>\nAnswer everyday requests directly" in prompt
+    assert "<project_delegation>\nHARD BOUNDARY: Never modify code" in prompt
     assert "workstep-cli skill" in prompt
     assert 'historical recall or stored knowledge missing from context' in prompt
     assert 'references/memory.md' in prompt and 'references/transport.md' in prompt
@@ -181,7 +204,7 @@ def test_person_prompt_only_in_fixed_workspace_and_when_enabled(setup, monkeypat
     assert 'workstep-cli digital-person' not in prompt
     assert 'workstep-cli schedule' not in prompt
     assert 'digital-hub info' in prompt
-    assert '[WorkStep digital hub]' in prompt
+    assert '<digital_hub_identity>' in prompt
     assert 'digital-hub remember' in prompt and 'schedule create' in prompt
     assert 'For overviews, omit --with-sources' in prompt
     assert "first list the current message sender's saved preferences" in prompt
@@ -460,7 +483,7 @@ async def test_live_role_reference_updates_without_copying_profile(chat_module,m
     monkeypatch.setattr(digital_person,'config_store',store)
     monkeypatch.setattr(customization_workspace,'is_default_workspace',lambda p:True)
     role={'name':'研发','prompt':'先确认需求'}
-    monkeypatch.setattr('agent_assistants.chat_roles.resolve_binding',lambda _: (role['name'],role['prompt']))
+    monkeypatch.setattr('agent_assistants.chat_roles.resolve_binding',lambda _, **kwargs: (role['name'],role['prompt']))
     digital_person.save_profile(digital_person.DigitalPersonProfile(enabled=True,role_binding={'kind':'role','id':'rd'}))
     assert '先确认需求' in digital_person.prompt_for_project(project)
     role['prompt']='先核对验收标准'
@@ -481,7 +504,8 @@ def test_channel_digital_identity_replaces_legacy_assistant_prompt(chat_module, 
     monkeypatch.setattr(ordinary, "get_system_prompt", lambda _: "项目自定义规则")
     monkeypatch.setattr(module, "_role_system_prompt", lambda _: "会话角色规则")
     monkeypatch.setattr(ordinary, "_role_system_prompt", lambda _: "会话角色规则")
-    monkeypatch.setattr("agent_assistants.channel_chat.build_channel_background", lambda _: "Current sender: Alice")
+    source = "<current_channel_source>\n<sender_name>\nAlice\n</sender_name>\n</current_channel_source>\n"
+    monkeypatch.setattr("agent_assistants.channel_chat.build_channel_background", lambda _: source)
     session=SimpleNamespace(project_id=project.id, session_id="source-session", engine="fake-chat",
         resolved_session_id="native", extra={}, messages=[{"role":"user","content":"你好"}])
     rules=module._engine_system_prompt(session)
@@ -491,14 +515,14 @@ def test_channel_digital_identity_replaces_legacy_assistant_prompt(chat_module, 
         assert "Avoid complex formatting" not in rules
         assert "渠道交互" not in rules
         assert "workstep_bind_channel_group" not in rules
-        assert rules == ordinary._engine_system_prompt(session) + "\n\nCurrent sender: Alice"
+        assert rules == ordinary._engine_system_prompt(session).rstrip("\n") + "\n\n" + source
         assert module._session_system_prompt_each_turn(session) is True
     assert "WorkStep channel chat assistant" not in rules
-    assert rules == ordinary._engine_system_prompt(session) + "\n\nCurrent sender: Alice"
+    assert rules == ordinary._engine_system_prompt(session).rstrip("\n") + "\n\n" + source
     assert "项目自定义规则" in rules
     assert module._system_prompt_for_display(session)==rules
     for prompt in (module._build_prompt(session),module._build_rebuild_prompt(session)):
-        assert "Current sender: Alice" not in prompt
+        assert source not in prompt
         assert "Name: 小研" not in prompt
 
 
@@ -569,7 +593,7 @@ async def test_markdown_identity_roundtrip_and_prompt_uses_documents(setup, monk
         assert payload['persona_markdown'] in text and payload['duties'] in text
         assert payload['conversation_rules'] in text and 'HARD BOUNDARY' in text
         assert 'Duties: ##' not in text and 'Conversation rules: ##' not in text
-        assert '\n\n'+payload['duties']+'\n\n' in text
+        assert '<duties>\n'+payload['duties']+'\n</duties>\n' in text
         from services.digital_person_assessment import instruction
         background=instruction(service.get_profile())
         assert payload['persona_markdown'] in background and payload['conversation_rules'] in background
@@ -596,3 +620,22 @@ def test_prompt_omits_only_previous_generated_boundary_and_preserves_custom_mark
     custom=old.replace(boundary.split('\n')[-1],'不得发布未经核验的结果。')
     service.save_profile(DigitalPersonProfile(enabled=True,persona_markdown='## 身份\n助理',duties=custom))
     assert custom in service.prompt_for_project(SimpleNamespace(id='home'))
+
+
+def test_identity_xml_sections_preserve_user_markdown():
+    from services.digital_person import DigitalPersonProfile, profile_documents
+    from services.digital_person_assessment import instruction
+    profile = DigitalPersonProfile(
+        persona_markdown='## 身份\n讨论 <task> 标签',
+        duties='## 职责\n跟进事项', conversation_rules='## 回复规则\n简短',
+    )
+    documents = profile_documents(profile)
+    for tag, content in [('persona', profile.persona_markdown), ('duties', profile.duties),
+                         ('conversation_rules', profile.conversation_rules)]:
+        assert f'<{tag}>\n{content}\n</{tag}>\n' in documents
+    assessment = instruction(profile)
+    assert assessment.startswith('<digital_hub_identity>\n')
+    assert '</digital_hub_identity>\n' in assessment
+    assert '<background_assessment>\n' in assessment
+    assert assessment.endswith('</background_assessment>\n')
+    assert '<json>{"decision":"silent","summary":"","source_ids":[]}</json>' in assessment

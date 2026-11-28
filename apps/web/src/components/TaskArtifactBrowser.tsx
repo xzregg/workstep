@@ -32,7 +32,7 @@ export function buildArtifactStepGroups(
   const stepDefinitions = new Map(steps.map((step, index) => [step.key, { ...step, index }]))
   const grouped = new Map<string, Map<number, TaskArtifact[]>>()
 
-  collapseDirectoryArtifactChildren(artifacts).forEach((artifact) => {
+  collapseDirectoryArtifactChildren(artifacts.filter(artifact => !artifact.global)).forEach((artifact) => {
     const stepRounds = grouped.get(artifact.step_key) || new Map<number, TaskArtifact[]>()
     const round = artifact.round || 1
     const roundArtifacts = stepRounds.get(round) || []
@@ -70,7 +70,7 @@ function parentDirectory(path: string) {
   return parent === path ? '' : parent
 }
 
-export function artifactDirectories(artifact: Pick<TaskArtifact, 'path' | 'relative_path' | 'round'> & Partial<Pick<TaskArtifact, 'source_path' | 'step_key'>>) {
+export function artifactDirectories(artifact: Pick<TaskArtifact, 'path' | 'relative_path' | 'round'> & Partial<Pick<TaskArtifact, 'source_path' | 'step_key' | 'global'>>) {
   if (artifact.source_path && artifact.step_key && artifact.path.endsWith(artifact.source_path)) {
     const task = artifact.path.slice(0, -artifact.source_path.length) + artifact.source_path.split('/').slice(0, 2).join('/')
     return { task, step: `${task}/${artifact.step_key}` }
@@ -81,7 +81,7 @@ export function artifactDirectories(artifact: Pick<TaskArtifact, 'path' | 'relat
   for (const _part of relativeParts) roundDirectory = parentDirectory(roundDirectory)
   if (!roundDirectory) return null
   const roundName = roundDirectory.split(/[\\/]/).pop()
-  const step = roundName === String(artifact.round)
+  const step = artifact.global || roundName === String(artifact.round)
     ? parentDirectory(roundDirectory)
     : roundDirectory
   const task = parentDirectory(step)
@@ -149,11 +149,59 @@ export default function TaskArtifactBrowser({
     () => buildArtifactStepGroups(artifacts, steps),
     [artifacts, steps],
   )
+  const globalArtifacts = useMemo(
+    () => artifacts.filter(artifact => artifact.global), [artifacts],
+  )
   const [selectedRounds, setSelectedRounds] = useState<Record<string, number>>({})
   const [openDirectory, setOpenDirectory] = useState<{ path: string; title: string } | null>(null)
   const taskDirectory = artifactDirectory || artifacts.map(artifactDirectories).find(Boolean)?.task || ''
 
-  if (!stepGroups.length) {
+  const renderFile = (artifact: TaskArtifact) => {
+    const artifactUpdatedAt = formatUpdatedAt(artifact.updated_at, locale)
+    const relativePath = artifact.relative_path || artifact.name
+    return (
+      <button
+        key={`${artifact.step_key}:${artifact.round}:${artifact.path}`}
+        type="button"
+        className="task-artifact-file-row"
+        onClick={() => onOpenArtifact(
+          artifact.name,
+          artifact.step_key,
+          artifact.global ? undefined : artifact.round,
+          artifact.path,
+        )}
+        aria-label={t('taskDetail.openOutputAria', {
+          name: `${artifact.logical_name || artifact.name} (${relativePath})`,
+        })}
+      >
+        <span className="task-artifact-file-main">
+          <Icon name={artifact.is_dir ? 'folder' : 'file'} size={16} />
+          <span className="task-artifact-file-label">
+            <span className="task-artifact-file-name">{artifact.logical_name || artifact.name}</span>
+            <span className="task-artifact-file-relative-path" title={relativePath}>
+              {relativePath}
+            </span>
+          </span>
+        </span>
+        {artifactUpdatedAt && (
+          <time
+            className="task-artifact-file-updated-at"
+            dateTime={artifact.updated_at || undefined}
+            title={t('taskDetail.artifactModifiedAt', { time: artifactUpdatedAt })}
+          >
+            {artifactUpdatedAt}
+          </time>
+        )}
+        {!artifact.global && artifact.unchanged_from_round ? (
+          <ArtifactUnchangedBadge fromRound={artifact.unchanged_from_round} />
+        ) : null}
+        <span className="task-artifact-file-status">{t('taskDetail.outputDone')}</span>
+        <span className="task-artifact-file-open">{t('common.open')}</span>
+      </button>
+    )
+  }
+
+  if (!stepGroups.length && !globalArtifacts.length) {
     return <div className="task-detail-artifacts task-artifact-browser-empty">{t('mobile.noArtifacts')}</div>
   }
 
@@ -172,6 +220,12 @@ export default function TaskArtifactBrowser({
         </div>
       )}
       <div className="task-artifact-browser">
+        {globalArtifacts.length > 0 && <section className="task-artifact-step-section">
+          <div className="task-artifact-step-heading">
+            <strong className="task-artifact-step-title">{t('taskDetail.globalArtifacts')}</strong>
+          </div>
+          <div className="task-artifact-file-list">{globalArtifacts.map(renderFile)}</div>
+        </section>}
         {stepGroups.map((step) => {
           const activeRoundNumber = resolveArtifactRound(
             step.rounds.map((item) => item.round),
@@ -241,50 +295,7 @@ export default function TaskArtifactBrowser({
               </div>
 
               <div className="task-artifact-file-list">
-                {activeRound.artifacts.map((artifact) => {
-                  const artifactUpdatedAt = formatUpdatedAt(artifact.updated_at, locale)
-                  const relativePath = artifact.relative_path || artifact.name
-                  return (
-                    <button
-                      key={`${artifact.step_key}:${artifact.round}:${artifact.path}`}
-                      type="button"
-                      className="task-artifact-file-row"
-                      onClick={() => onOpenArtifact(
-                        artifact.name,
-                        artifact.step_key,
-                        artifact.round,
-                        artifact.path,
-                      )}
-                      aria-label={t('taskDetail.openOutputAria', {
-                        name: `${artifact.logical_name || artifact.name} (${relativePath})`,
-                      })}
-                    >
-                      <span className="task-artifact-file-main">
-                        <Icon name={artifact.is_dir ? 'folder' : 'file'} size={16} />
-                        <span className="task-artifact-file-label">
-                          <span className="task-artifact-file-name">{artifact.logical_name || artifact.name}</span>
-                          <span className="task-artifact-file-relative-path" title={relativePath}>
-                            {relativePath}
-                          </span>
-                        </span>
-                      </span>
-                      {artifactUpdatedAt && (
-                        <time
-                          className="task-artifact-file-updated-at"
-                          dateTime={artifact.updated_at || undefined}
-                          title={t('taskDetail.artifactModifiedAt', { time: artifactUpdatedAt })}
-                        >
-                          {artifactUpdatedAt}
-                        </time>
-                      )}
-                      {artifact.unchanged_from_round ? (
-                        <ArtifactUnchangedBadge fromRound={artifact.unchanged_from_round} />
-                      ) : null}
-                      <span className="task-artifact-file-status">{t('taskDetail.outputDone')}</span>
-                      <span className="task-artifact-file-open">{t('common.open')}</span>
-                    </button>
-                  )
-                })}
+                {activeRound.artifacts.map(renderFile)}
               </div>
             </section>
           )

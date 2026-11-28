@@ -20,7 +20,27 @@ import {outputStatus} from './fixtures/speechOutput'
 import {getProactiveSpeechContext} from '../src/components/digital-person/digitalPersonProactive'
 import {DIGITAL_OUTPUT_FRAME,STOP_DIGITAL_SPEECH} from '../src/components/digital-person/digitalPersonVoiceEvents'
 import {clearDraft,saveDraft} from '../src/utils/chatDraft'
+import {useProjectStore} from '../src/stores/projectStore'
 const profile={enabled:true,name:'小研',role:'研发伙伴',personality:'直接',duties:'跟进工作',avatar:'robot' as const,greeting:'今天想做什么？'}
+
+test('return to workbench restores the conversation that opened the Digital Hub',async()=>{
+ const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)
+ const store=useProjectStore.getState()
+ const previous={id:'previous-project',name:'Previous',workflows:[]} as (typeof store.projects)[number]
+ const path='/chat?project=Previous&session=previous-chat#message-1'
+ useProjectStore.setState({projects:[previous]})
+ function Location(){const {pathname,search,hash}=useLocation();return <output>{pathname+search+hash}</output>}
+ try{
+  await act(async()=>root.render(<MemoryRouter initialEntries={[{pathname:'/companion',state:{companionReturnTo:{path,projectId:previous.id}}}]}>
+   <I18nProvider><Location/><DigitalPersonHome profile={profile} activity={null} projectId="p" projectName="默认工作区"
+    sessionId="main" messages={[]} inputValue="" onDraft={()=>{}} running={false} active={false}
+    onSend={async()=>true} onStop={async()=>true}/></I18nProvider>
+  </MemoryRouter>))
+  await act(async()=>host.querySelector<HTMLButtonElement>('.digital-home-back')!.click())
+  assert.equal(host.querySelector('output')?.textContent,path)
+  assert.equal(useProjectStore.getState().activeProject?.id,previous.id)
+ }finally{await act(async()=>root.unmount());useProjectStore.setState(store);await window.happyDOM.close()}
+})
 
 test('conversation entry precedes face settings at every width and keeps the existing transcript action',async()=>{
  const {window}=installDomEnvironment(),host=document.body.appendChild(document.createElement('div')),root=createRoot(host)

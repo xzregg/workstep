@@ -7,10 +7,62 @@ import GatewayRemoteFrame from '../src/components/GatewayRemoteFrame'
 import GatewayDeviceTabs from '../src/components/GatewayDeviceTabs'
 import GatewayWorkspaceLocation from '../src/components/GatewayWorkspaceLocation'
 import { readWorkspaceLocation, rememberWorkspaceLocation } from '../src/utils/gatewayWorkspaceLocation'
-import { MemoryRouter, useNavigate } from 'react-router-dom'
-import { I18nProvider } from '../src/i18n'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
 import { useProjectStore } from '../src/stores/projectStore'
+import ResponsiveNavigation from '../src/components/ResponsiveNavigation'
+import type { Project } from '../src/api/project'
+
+test('the compact device header adds a robot button that opens the Digital Hub', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('http://d-device-1.localhost:8700/')
+  window.innerWidth = 390
+  const previousLocale = useLocaleStore.getState().locale
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const originalObserver = globalThis.ResizeObserver
+  globalThis.ResizeObserver = window.ResizeObserver as unknown as typeof ResizeObserver
+  const oldFetch = globalThis.fetch
+  const oldProjects = useProjectStore.getState()
+  const workspace = { id: 'home', name: '工作区', is_default_workspace: true, workflows: [] } as Project
+  useProjectStore.setState({ projects: [workspace], activeProject: null })
+  useGatewaySessionStore.setState({ session: null, error: '', errorStatus: null, loading: false })
+  globalThis.fetch = async input => {
+    const path = String(input)
+    if (path === '/api/remote/session') return Response.json({ device_id: 'device-1', gateway_url: 'http://localhost:8700/', host_project_id: null })
+    if (path === '/api/remote/devices') return Response.json({ devices: [] })
+    if (path === '/api/digital-person') return Response.json({ name: '小研', enabled: true })
+    throw new Error(`Unexpected ${path}`)
+  }
+  function WorkspaceHeader() {
+    const { pathname } = useLocation()
+    return <ResponsiveNavigation title="Demo" onNew={() => {}}>
+      <output>{pathname}</output>
+    </ResponsiveNavigation>
+  }
+  const element = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(element)
+  try {
+    await act(async () => root.render(<MemoryRouter initialEntries={['/chat']}><I18nProvider>
+      <GatewayRemoteFrame><WorkspaceHeader /></GatewayRemoteFrame>
+    </I18nProvider></MemoryRouter>))
+    const trigger = element.querySelector('.gateway-mobile-device-trigger')
+    const hub = trigger?.nextElementSibling as HTMLButtonElement | null
+    assert.equal(hub?.getAttribute('aria-label'), '数字中枢')
+    assert.ok(Boolean(hub?.querySelector('svg.lucide-bot')))
+    await act(async () => hub?.click())
+    assert.equal(element.querySelector('output')?.textContent, '/companion')
+    assert.equal(useProjectStore.getState().activeProject?.id, 'home')
+  } finally {
+    await act(async () => root.unmount())
+    useProjectStore.setState(oldProjects)
+    useGatewaySessionStore.setState({ session: null, error: '', errorStatus: null, loading: false })
+    useLocaleStore.setState({ locale: previousLocale })
+    globalThis.fetch = oldFetch
+    globalThis.ResizeObserver = originalObserver
+    await window.happyDOM.close()
+  }
+})
 
 test('workspace waits for its session and project, then removes content after session loss', async () => {
   const { window } = installDomEnvironment()

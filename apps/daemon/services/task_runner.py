@@ -17,13 +17,14 @@ from models import (
 )
 from models.fields import utc_now
 from models.base import db_proxy
+from services.global_artifacts import prepare_global_artifacts
 from services.artifact_rounds import (
     discard_artifact_round,
     write_round_manifest,
 )
 from services.messages import StepEventProgress
 from services.pipeline import DAGScheduler, Step
-from services.prompt import assemble_step_system_prompt
+from services.prompt import _active_output_ports, assemble_step_system_prompt
 from agent_assistants.prompt_input import format_prompt_input
 from services.task_step_start import StepProviderHandoffRequired, start_step_state
 from services.step_execution_messages import StepExecutionMessages
@@ -121,6 +122,7 @@ class TaskRunner:
         retry_message_ids: dict[str, str] | None = None,
         project_manager=None,
     ):
+        self._global_artifacts: list[tuple[str, Path]] = []
         self._event_bus = event_bus
         self._dispatch_service = dispatch_service
         self._source_project_id = source_project_id
@@ -221,6 +223,9 @@ class TaskRunner:
                 raise ValueError('Empty flow cannot be started, please add steps first')
 
             scheduler = DAGScheduler(step_list)
+            self._global_artifacts = await asyncio.to_thread(
+                prepare_global_artifacts, artifacts_dir, task.workflow_id, task.id, step_list,
+            )
 
             def initialize_pipeline_state() -> tuple[set[str], set[str], str | None]:
                 # Ensure task_steps exist for all steps.
@@ -969,7 +974,7 @@ class TaskRunner:
             task=task, step=step, artifacts_dir=artifacts_dir,
             user_input=user_input, input_snapshot=input_snapshot,
             state=started_state, review_feedback=review_feedback,
-            engine=engine, resolved_model=resolved_model,
+            engine=engine, resolved_model=resolved_model, global_artifacts=self._global_artifacts,
         )
         prompt, msg_id, engine_session_id, journal_ref = execution
 
@@ -1517,6 +1522,9 @@ class TaskRunner:
                 status=status,
                 eligible_for_downstream=status == "passed",
                 outputs=step.outputs,
+                active_global_ports=set(_active_output_ports(
+                    step, json.loads(step_run.input_snapshot_json) if step_run.input_snapshot_json else None,
+                )) if any(output.get("global") is True for output in step.outputs) else None,
             )
         )
 

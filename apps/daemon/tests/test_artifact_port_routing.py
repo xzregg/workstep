@@ -526,7 +526,7 @@ async def test_nonempty_feedback_output_reworks_target_before_forward_branch(tmp
         assert "PRD.md" in calls["develop"][1]
         assert "Bug列表.md" in calls["develop"][1]
         assert "Execution reason:" not in calls["develop"][1]
-        assert "## Previous outputs" in calls["develop"][1]
+        assert "<previous_outputs>" in calls["develop"][1]
         assert "测试报告.md" in calls["publish"][0]
         assert "Bug列表.md" not in calls["publish"][0]
         run = WorkflowRun.get_by_id(run.id)
@@ -1182,7 +1182,7 @@ async def test_manual_approval_of_feedback_artifact_resumes_target_rework(tmp_pa
         assert len(calls["test"]) == 2
         assert "Bug列表.md" in calls["develop"][1]
         assert "Execution reason:" not in calls["develop"][1]
-        assert "## Previous outputs" in calls["develop"][1]
+        assert "<previous_outputs>" in calls["develop"][1]
         second_review = (
             ReviewRun.select()
             .where((ReviewRun.task == task) & (ReviewRun.status == "pending"))
@@ -1420,7 +1420,7 @@ async def test_manual_approval_reworks_both_feedback_targets_outside_saved_scope
             assert "后端BUG列表.md" in calls["backend"][1]
         if input_case == "missing_with_baseline":
             assert "SPEC.md" not in calls["backend"][1]
-            assert "## Previous outputs" in calls["backend"][1]
+            assert "<previous_outputs>" in calls["backend"][1]
             assert "后端结果.md" in calls["frontend"][1]
         frontend_runs = list(StepRun.select().where(
             (StepRun.run == run) & (StepRun.step_key == "frontend")

@@ -65,11 +65,13 @@ def test_review_prompt_uses_step_as_the_product_term(tmp_path):
     )
 
     assert prompt.startswith("You are the WorkStep step review agent.")
-    assert "## Execution contract" in prompt
+    assert "<execution_contract>" in prompt
     assert "step requirements" in prompt.lower()
     assert prompt.count("完成构建") == 1
     assert "declared outputs" not in prompt
     assert not re.search(r"\bstage\b", prompt, re.IGNORECASE)
+    _, transmitted_body = ReviewGate._split_prompt(prompt)
+    assert transmitted_body.endswith('</review_requirements>\n')
 
 
 def test_review_config_task_override_and_invalid_metadata():
@@ -928,15 +930,15 @@ async def test_automatic_review_retries_with_feedback(tmp_path):
         assert "第 2 轮" not in calls[0]
         # This workflow declares no output ports, so its execution prompts do
         # not include output paths. Round-specific storage is asserted above.
-        assert "## Step requirements\n完成构建" in calls[0]
-        assert "## Step requirements\n完成构建" in calls[2]
+        assert "<step_requirements>\n完成构建" in calls[0]
+        assert "<step_requirements>\n完成构建" in calls[2]
         reviews = list(
             ReviewRun.select()
             .where(ReviewRun.workflow_run == workflow_run)
             .order_by(ReviewRun.started_at, ReviewRun.id)
         )
         assert sorted(review.status for review in reviews) == ["passed", "rejected"]
-        assert "## Previous review feedback" in calls[2]
+        assert "<previous_review_feedback>" in calls[2]
         assert '"score": 60' in calls[2]
         assert '"category": "requirement_gap"' in calls[2]
         assert "缺少验收标准" in calls[2]
@@ -1312,7 +1314,7 @@ async def test_review_engine_error_waits_for_manual_review_without_rerunning_ste
         )
         assert "审核失败" in review_message.content
         assert "审核结果：未通过" not in review_message.content
-        assert "## Previous review feedback" not in FailingReviewEngine.calls[0]
+        assert "<previous_review_feedback>" not in FailingReviewEngine.calls[0]
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
@@ -1467,7 +1469,7 @@ async def test_manual_reject_injects_feedback_into_next_attempt(tmp_path):
 
         # 阶段被自动重跑，第二次提示词包含人工驳回原因
         assert len(calls) == 2
-        assert "## Previous review feedback" in calls[1]
+        assert "<previous_review_feedback>" in calls[1]
         assert f"请检查 .workstep/artifacts/default/{task.id}/.worktrees 和 构建，保留 {{custom_value}}" in calls[1]
         assert "{worktrees}" not in calls[1]
         task_step = TaskStep.get(
@@ -2426,8 +2428,8 @@ async def test_review_session_isolated_and_reused_per_step(tmp_path):
     assert review_sessions == [None, "review-session"]
     assert "完成构建" in step_prompts[0]
     assert "完成构建" not in step_prompts[1]
-    assert "## Step execution update" in step_prompts[1]
-    assert "## Previous review feedback" in step_prompts[1]
+    assert "<step_execution_update>" in step_prompts[1]
+    assert "<previous_review_feedback>" in step_prompts[1]
     assert "缺少验收内容" in step_prompts[1]
     # The second review receives the incremental execution contract too.
     assert "完成构建" not in review_prompts[1]

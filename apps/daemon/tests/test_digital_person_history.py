@@ -56,7 +56,7 @@ async def test_channel_receipts_supply_missing_notice_history_and_acknowledge_on
     monkeypatch.setattr(module, 'get_system_prompt', lambda _: '')
     monkeypatch.setattr(module, '_turn_source_prompt_parts', lambda _: {})
     prompt = module._chat_system_prompt(session)
-    assert '[WorkStep conversation history]' in prompt
+    assert '<conversation_notifications>' in prompt
     assert runs[0]['summary'] in prompt
     assert 'delegation_id=task' in prompt
     assert 'project_id=' not in prompt and 'session_id=' not in prompt and 'message_id=' not in prompt
@@ -137,7 +137,9 @@ async def test_proactive_history_contains_message_location_and_execution_referen
     history=context['pending']
     assert '"role":' not in prompt
     assert '"sources":' not in prompt
-    assert '- ' in context['notice_prompt']
+    assert '<conversation_notifications>\n' in context['notice_prompt']
+    assert '<latest_notification>\n' in context['notice_prompt']
+    assert context['notice_prompt'].endswith('</conversation_notifications>\n')
     assert '空表已补验通过。' in prompt
     assert 'delegation_id=delegation' in prompt
     assert 'project_id=' not in prompt and 'session_id=' not in prompt and 'message_id=' not in prompt
@@ -213,7 +215,7 @@ async def test_latest_notice_is_explicit_and_keeps_its_own_open_target(runtime, 
          'sources': [{'project_id': 'engine-project', 'session_id': 'engine-session'}]},
     ]
     session = SimpleNamespace(project_id=home.id, session_id='main', extra={'digital_person_context': {
-        'pending': notices, 'delegation_list': '## Delegations\n- older-task: 排查快捷按钮'}})
+        'pending': notices, 'delegation_list': '<delegations>\n- older-task: 排查快捷按钮\n</delegations>\n'}})
     monkeypatch.setattr(module, '_digital_person_prompt_parts', lambda _: {})
     monkeypatch.setattr(module, '_role_system_prompt', lambda _: '')
     monkeypatch.setattr(module, 'get_system_prompt', lambda _: '')
@@ -228,8 +230,8 @@ async def test_latest_notice_is_explicit_and_keeps_its_own_open_target(runtime, 
             prompt = module._chat_system_prompt(session)
     finally:
         time.tzset()
-    assert prompt.count('[Latest notification]') == 1
-    latest = prompt.split('[Latest notification]', 1)[1].split('\n- ', 1)[0]
+    assert prompt.count('<latest_notification>') == 1
+    latest = prompt.split('<latest_notification>\n', 1)[1].split('\n</latest_notification>', 1)[0]
     assert '自定义引擎包 tau' in latest
     assert 'Source: project_id=engine-project session_id=engine-session' in latest
     assert 'older-task' not in latest
@@ -243,4 +245,4 @@ async def test_latest_notice_is_explicit_and_keeps_its_own_open_target(runtime, 
     session.extra['digital_person_context']['pending'] = []
     followup_prompt = module._chat_system_prompt(session)
     assert 'recent dialogue first, then recent relevant notifications' in followup_prompt
-    assert '[WorkStep conversation history]' not in followup_prompt
+    assert '<conversation_notifications>' not in followup_prompt

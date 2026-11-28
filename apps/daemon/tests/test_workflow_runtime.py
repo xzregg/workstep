@@ -489,7 +489,7 @@ async def test_runtime_persists_selected_entry_with_two_boundary_inputs(tmp_path
         await runtime.run(project.id, task.id, "")
 
         assert len(prompts) == 1
-        assert "## Task\nDirect C\nDeploy the approved build" in prompts[0]
+        assert "<task>\nDirect C\nDeploy the approved build\n</task>\n" in prompts[0]
         assert prompts[0].count(
             "Use the task title, description, dispatched inputs"
         ) == 2

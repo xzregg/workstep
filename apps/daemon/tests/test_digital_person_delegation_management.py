@@ -112,7 +112,7 @@ async def test_chat_reads_delegation_background_without_performing_followup(runt
     assert len(prompts) == 1
     prompt, system = prompts[0]
     assert '之前的委派完成了吗？' in prompt
-    assert '## Delegations' not in prompt
+    assert '<delegations>' not in prompt
     assert '- `work` · 核对构建 · **Follow-up pending**' in system
     assert '真实执行结果' not in system
     assert 'delegation_actions' not in system
@@ -183,7 +183,7 @@ async def test_channel_reply_reads_only_its_own_delegation_regardless_of_binding
     result = await wait_for_status(service, home.id, accepted.assistant_message_id)
     assert result.status == 'succeeded', result.content
     assert len(prompts) == 1
-    assert '## Delegations' not in prompts[0][0]
+    assert '<delegations>' not in prompts[0][0]
     if bound:
         assert '<delegation_actions>' in result.content
         assert 'delegation_actions' not in prompts[0][1]
@@ -249,13 +249,46 @@ async def test_system_delegation_list_is_recent_bounded_and_shows_confirmation(r
     assert '不在状态列表展示的正文' not in listing
 
 
+@pytest.mark.parametrize('updated,created,expected', [
+    ('2026-11-28T12:34:56+00:00', '2026-11-27T01:00:00+00:00', '2026-11-28T20:34:56+08:00'),
+    (None, '2026-11-27T01:00:00', '2026-11-27T09:00:00+08:00'),
+    ('invalid', '2026-11-27T01:00:00+00:00', '2026-11-27T09:00:00+08:00'),
+    (None, None, None),
+])
+def test_delegation_prompt_shows_latest_update_in_local_timezone(monkeypatch, updated, created, expected):
+    import os
+    import time
+    from services.digital_person_delegations import render_delegation_list
+    if not hasattr(time, 'tzset'):
+        pytest.skip('Requires local timezone switching')
+    previous = os.environ.get('TZ')
+    monkeypatch.setenv('TZ', 'Asia/Shanghai')
+    time.tzset()
+    try:
+        item = {'id': 'task', 'title': 'Review build', 'status': 'completed', 'question': None,
+                'project_id': 'project', 'session_id': 'execution', 'origin_session_id': 'main',
+                'updated_at': updated, 'created_at': created}
+        rendered = render_delegation_list([item])
+        if expected:
+            assert f'updated_at={expected}' in rendered
+        else:
+            assert 'updated_at=' not in rendered
+        assert rendered.startswith('<delegations>\n') and rendered.endswith('</delegations>\n')
+    finally:
+        if previous is None:
+            os.environ.pop('TZ', None)
+        else:
+            os.environ['TZ'] = previous
+        time.tzset()
+
+
 async def test_resumed_codex_delegation_status_update_sends_only_list(runtime, monkeypatch):
     from types import SimpleNamespace
 
     service, home, _ = runtime
     chat = service.chats
     monkeypatch.setattr(chat, '_role_system_prompt', lambda _: '')
-    context = {'delegation_list': '## Delegations\n- `work` · 核对构建 · **Queued**',
+    context = {'delegation_list': '<delegations>\n- `work` · 核对构建 · **Queued**\n</delegations>\n',
                'delegation_candidates': [{'id': 'work'}], 'pending': [], 'previous': None}
     session = SimpleNamespace(extra={'digital_person_context': context}, project_id=home.id,
                               session_id='origin', engine='codex_sdk')
@@ -263,7 +296,7 @@ async def test_resumed_codex_delegation_status_update_sends_only_list(runtime, m
     assert 'background' in first.lower()
     assert '<delegation_actions>' not in first
     context['previous'] = context['fingerprints']
-    context['delegation_list'] = '## Delegations\n- `work` · 核对构建 · **Running**'
+    context['delegation_list'] = '<delegations>\n- `work` · 核对构建 · **Running**\n</delegations>\n'
     updated = chat._chat_system_prompt(session)
     assert chat._turn_system_prompt_kwargs(session, updated) == {
         'system_prompt': context['delegation_list'], 'system_prompt_each_turn': True}

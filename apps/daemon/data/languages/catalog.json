@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "f0cc52a53e7a4b60f0357fd56af389e728609c787b7154fa5f27caea96bdecca",
+  "revision": "13c878ae57e36a7e9f3ebf74245fd188ad5019e5db46ee1674c7e60c9a0b9e63",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -3211,6 +3211,8 @@
     "flow.dispatchConfigRequired": "请先完成流程步骤的目标配置",
     "flow.name": "名称",
     "flow.type": "类型",
+    "flow.globalOutput": "全局",
+    "flow.globalReturnConnection": "全局产物不能连接返回线，请使用普通产物。",
     "flow.outputName": "输出名称",
     "flow.addSubOutput": "+ 对应输出",
     "flow.addInput": "+ 添加输入",
@@ -4369,6 +4371,7 @@
     "taskDetail.runRound": "流程第 {round} 次运行",
     "taskDetail.runRoundShort": "{round} 轮",
     "taskDetail.artifactRound": "第 {round} 轮",
+    "taskDetail.globalArtifacts": "全局产物",
     "taskDetail.artifactRoundTab": "{round} 轮",
     "taskDetail.artifactSameAsRound": "同第{round}轮",
     "taskDetail.artifactSameAsRoundTitle": "内容与第{round}轮一致；不代表本轮未执行",

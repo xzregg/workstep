@@ -77,7 +77,7 @@
 .gateway-direct-device-tabs > p { margin: 0; padding: 8px 16px; }
 
 .gateway-remote-frame { position: relative; }
-.gateway-mobile-device-trigger { padding: 0; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg); color: var(--fg); }
+.gateway-mobile-header-control { padding: 0; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg); color: var(--fg); }
 .gateway-mobile-picker-backdrop { position: absolute; inset: 0; z-index: 1300; padding: 0; border: 0; border-radius: 0; background: rgb(0 0 0 / 25%); }
 .gateway-mobile-picker { position: absolute; z-index: 1301; top: calc(56px + env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); max-height: calc(100% - 72px); overflow: auto; padding: 12px; border: 1px solid var(--border-soft); border-radius: 16px; background: var(--bg); box-shadow: 0 8px 28px rgb(0 0 0 / 12%); }
 .gateway-mobile-picker[hidden] { display: none; }

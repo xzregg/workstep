@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import EngineSelect, { isEngineSelectable } from './EngineSelect'
 import Select from './Select'
 import Icon from './Icon'
-import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
+import FloatingMenu, { useFloatingMenu, type FloatingMenuProps } from './FloatingMenu'
 import {
   fetchEngineModels,
   getCachedEngineModels,
@@ -77,22 +77,15 @@ export interface CoordinatorConfigBarProps {
   allowDefault?: boolean
 }
 
-interface MenuOption {
-  value: string
-  label: string
-  description?: string
-  disabled?: boolean
-}
-
 interface MenuFieldProps {
   label: string
   title?: string
   value: string
   placeholder: string
   disabled?: boolean
-  options: MenuOption[]
+  options: FloatingMenuProps['options']
   onChange: (value: string) => void
-  icon: 'terminal' | 'sparkles' | 'sliders-horizontal' | 'image' | 'zap'
+  icon: NonNullable<FloatingMenuProps['icon']>
   autoOpen?: boolean
 }
 
@@ -256,6 +249,33 @@ export default function CoordinatorConfigBar({
       thinkingEffortLabel(effectiveThinkingEffort, t, thinkingOptions)
     }）`
     : t('coord.thinkingEffortDefault')
+
+  const renderStepFields = (fields: EngineConfigField[] | undefined) => {
+    if (!fields?.length || !onStepFieldChange) return null
+    return (
+      <StepConfigFields
+        engineId={engineId}
+        fields={fields}
+        values={stepValues}
+        onChange={onStepFieldChange}
+        disabled={disabled}
+        renderSelect={(field, value, options) => (
+          <MenuField
+            label={field.label}
+            value={value}
+            placeholder={value || t('engineForm.selectPlaceholder')}
+            disabled={disabled}
+            options={options}
+            icon={field.key === 'provider_id' ? 'terminal' : field.category === 'mode' ? 'shield' : 'sliders-horizontal'}
+            onChange={(next) => {
+              if (next !== value) onStepFieldChange(field.key, next)
+            }}
+          />
+        )}
+      />
+    )
+  }
+
   return (
     <div className={`coordinator-config coordinator-config--${isMenu ? 'menu' : 'bar'}`}>
       {!isMenu && (
@@ -301,6 +321,7 @@ export default function CoordinatorConfigBar({
               ]}
             />
           )}
+          {renderStepFields(stepFields?.filter((field) => field.key === 'provider_id'))}
           <MenuField
             autoOpen={autoOpenField === 'model'}
             label={t('coord.reasoning')}
@@ -362,14 +383,7 @@ export default function CoordinatorConfigBar({
               ]}
             />
           )}
-          {stepFields && onStepFieldChange && (
-            <StepConfigFields
-              engineId={engineId}
-              fields={stepFields}
-              values={stepValues}
-              onChange={onStepFieldChange}
-            />
-          )}
+          {renderStepFields(stepFields?.filter((field) => field.key !== 'provider_id'))}
           {showSpeed && (
             <MenuField
               label={t('coord.speed')}

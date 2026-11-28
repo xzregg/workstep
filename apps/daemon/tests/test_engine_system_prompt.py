@@ -2,6 +2,18 @@
 
 import pytest
 
+
+@pytest.mark.parametrize('mode', ['body', 'system', 'developer'])
+def test_prompt_transport_preserves_xml_boundary_newlines(mode):
+    engine = RecordingEngine()
+    engine.SYSTEM_PROMPT_MODE = mode
+    instruction = '<global_rules>\n## User heading\nOriginal content\n</global_rules>\n'
+    prepared = engine._prepare_system_prompt({'prompt': 'Question'}, instruction)
+    if mode == 'body':
+        assert prepared['prompt'] == instruction + '\nQuestion'
+    else:
+        assert prepared['system_prompt'] == instruction
+
 from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent
 
@@ -286,7 +298,7 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
             assert "developer_instructions" not in call["config"]
         else:
             assert snapshot["system_prompt"] == "channel role"
-            expected="<workstep_system_rules>\nexisting rules\n\nchannel role\n</workstep_system_rules>"
+            expected="<workstep_system_rules>\nexisting rules\n\nchannel role\n</workstep_system_rules>\n"
             if snapshot["session_id"]:
                 assert "developer_instructions" not in call
                 assert captured["history_updates"] == [("thread/inject_items",{

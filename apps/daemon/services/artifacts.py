@@ -11,6 +11,9 @@ from services.artifact_rounds import (
 )
 
 
+from services.global_artifacts import GLOBAL_DIRECTORY, global_output_path, read_global_index
+
+
 def _mtime_iso(path: Path) -> str:
     return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
 
@@ -71,6 +74,29 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
             if step_dir.name.startswith(".") or not step_dir.is_dir():
                 continue
 
+            global_dir = step_dir / GLOBAL_DIRECTORY
+            global_index = read_global_index(global_dir)
+            for filename, metadata in (global_index or {}).items():
+                if not isinstance(metadata, dict):
+                    continue
+                path = global_output_path(global_dir, filename)
+                if path is None or not (path.is_file() or path.is_dir()):
+                    continue
+                try:
+                    is_dir = path.is_dir()
+                    stat = path.stat()
+                except FileNotFoundError:
+                    continue
+                artifacts.append({
+                    "step_key": step_dir.name, "round": 0, "global": True,
+                    "is_latest": True, "is_selected": True, "manifest_status": None,
+                    "eligible_for_downstream": False, "name": filename, "path": str(path),
+                    "logical_name": metadata.get("name"), "artifact_type": metadata.get("type"),
+                    "output_port": metadata.get("port"), "declared_output": True,
+                    "relative_path": filename + ("/" if is_dir else ""),
+                    "size": None if is_dir else stat.st_size, "is_dir": is_dir,
+                    "updated_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                })
             rounds = iter_artifact_rounds(
                 artifacts_root,
                 workflow_dir.name,
@@ -97,7 +123,10 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                 manifest_entries: dict[Path, dict] = {}
                 manifest = artifact_round.manifest or {}
                 for entry in manifest.get("artifacts", []):
-                    artifact_path = (round_dir / str(entry.get("path", ""))).resolve()
+                    relative = Path(str(entry.get("path", "")))
+                    if artifact_round.legacy and global_index is not None and relative.parts[:1] == (GLOBAL_DIRECTORY,):
+                        continue
+                    artifact_path = (round_dir / relative).resolve()
                     try:
                         artifact_path.relative_to(round_dir.resolve())
                     except ValueError:
@@ -106,7 +135,7 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
 
                 output_ports: dict[Path, int] = {}
                 for output in manifest.get("outputs", []):
-                    if not isinstance(output, dict) or not isinstance(output.get("port"), int):
+                    if not isinstance(output, dict) or output.get("global") or not isinstance(output.get("port"), int):
                         continue
                     output_path = (round_dir / str(output.get("path", ""))).resolve()
                     if output_path.is_relative_to(round_dir.resolve()):
@@ -117,7 +146,7 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                     if manifest_path_entry.is_dir():
                         directory_entries.setdefault(manifest_path_entry, manifest_entry)
                 for child in sorted(round_dir.iterdir()):
-                    if artifact_round.legacy and is_round_child_name(child.name):
+                    if artifact_round.legacy and (is_round_child_name(child.name) or (global_index is not None and child.name == GLOBAL_DIRECTORY)):
                         continue
                     if child.is_dir() and not child.name.startswith("."):
                         directory_entries.setdefault(child, {})
@@ -132,7 +161,7 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                     if (
                         artifact_round.legacy
                         and relative.parts
-                        and is_round_child_name(relative.parts[0])
+                        and (is_round_child_name(relative.parts[0]) or (global_index is not None and relative.parts[0] == GLOBAL_DIRECTORY))
                     ):
                         continue
                     relative_name = relative.as_posix()

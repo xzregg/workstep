@@ -1,3 +1,4 @@
+from tests.prompt_xml import read_context
 """Tests for the ephemeral AI task-creation assistant."""
 
 import asyncio
@@ -182,7 +183,7 @@ async def test_task_draft_publishes_description_without_creating_task(
     assert "新增 AI 创建" in prompts[0]
     assert "现有草稿" in prompts[0]
     assert "只使用简体中文" in prompts[0]
-    assert '"start_step_key": "req"' in prompts[0]
+    assert read_context(prompts[0], 'current_context')['task_draft']['start_step_key'] == 'req'
     with project.db.bind_ctx([Task]):
         assert Task.select().count() == 0
 
@@ -216,9 +217,9 @@ async def test_task_draft_memory_links_never_include_outside_content(
     )
     assert await _wait_turn(module, accepted.turn_id) == "completed"
     if outside:
-        assert '"memory": ""' in prompts[0]
+        assert read_context(prompts[0], 'current_context')['project']['memory'] == ''
     else:
-        assert "合法链接约定\\n第二行\\n第三行" in prompts[0]
+        assert "合法链接约定\n第二行\n第三行" in read_context(prompts[0], "current_context")["project"]["memory"]
     assert "OUTSIDE_PRIVATE_CONTENT" not in "".join(prompts)
 
 

@@ -146,13 +146,13 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
               steps, workflowConnections, currentStep.key, output.outputIndex,
             )
             const routeLabels = downstream.map((target) => `→ ${target.stepLabel}: ${target.inputName}`)
-            const outputArtifact = output.artifact ?? findPreferredArtifact(
-              artifacts, output.name, currentStep.key, activeRound,
-            )
+            const outputArtifact = output.artifact ?? (output.global ? undefined : findPreferredArtifact(
+              artifacts.filter(artifact => !artifact.global), output.name, currentStep.key, activeRound,
+            ))
             const outputUpdatedAt = dateText(outputArtifact?.updated_at)
             const outputReady = Boolean(outputArtifact)
             const openOutput = () => onOpenArtifact(
-              outputArtifact?.name ?? output.name, currentStep.key, activeRound, outputArtifact?.path,
+              outputArtifact?.name ?? output.name, currentStep.key, output.global ? undefined : activeRound, outputArtifact?.path,
             )
             return <div className="task-step-io-output" data-openable={outputReady}
               key={outputIndex} role={outputReady ? 'button' : undefined}
@@ -174,6 +174,7 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
                   onClick={event => { event.stopPropagation(); setTemplateOutput({ stepKey: currentStep.key,
                     index: output.outputIndex, name: output.name, value: currentStep.outputs[output.outputIndex]?.template || '' }) }}
                   onKeyDown={event => event.stopPropagation()}><Icon name="file" size={14} /></Button>}
+                {output.global && <span className="task-step-io-type">{t('flow.globalOutput')}</span>}
                 <span className="task-step-io-type">{output.type}</span>
               </span>
               {downstream.length > 0 && <MarqueeText className="step-output-route-marquee"

@@ -1063,7 +1063,7 @@ async def test_chat_global_prompt_is_separate_and_view_records_actual_input(
 
     assert [prompt.rsplit("\n\n", 1)[-1] for prompt in sent_prompts] == ["第一次", "第二次"]
     assert sent_prompts == ["第一次", "第二次"]
-    assert sent_instructions == [custom_system, custom_system]
+    assert sent_instructions == [f"<global_rules>\n{custom_system}\n</global_rules>\n"] * 2
     visible_prompt = module.get_session(project.id, session["id"])["messages"][-1]["prompt"]
     assert custom_system in visible_prompt
     assert "### 独立指令（developer）" in visible_prompt
@@ -4878,13 +4878,13 @@ async def test_chat_global_rules_transport_and_slow_read_keep_api_responsive(
     assert [item["content"] for item in detail["messages"] if item["role"] == "user"] == ["第一次", "第二次"]
     assert [call[1] for call in calls] == [None, "thread"]
     if transport == "body":
-        assert calls[0][0].startswith("固定全局规则\n\n")
+        assert calls[0][0].startswith("<global_rules>\n固定全局规则\n</global_rules>\n")
         assert [call[0].rsplit("\n\n", 1)[-1] for call in calls] == ["第一次", "第二次"]
         assert all("system_prompt" not in call[2] for call in calls)
         assert "固定全局规则" not in detail["messages"][-1]["prompt"]
     else:
         assert [call[0].rsplit("\n\n", 1)[-1] for call in calls] == ["第一次", "第二次"]
-        assert [call[2]["system_prompt"] for call in calls] == ["固定全局规则", "固定全局规则"]
+        assert [call[2]["system_prompt"] for call in calls] == ["<global_rules>\n固定全局规则\n</global_rules>\n"] * 2
         assert "固定全局规则" in detail["messages"][-1]["prompt"]
     assert "原始调用记录" not in detail["messages"][-1]["prompt"]
     assert "### 正文（user）" in detail["messages"][-1]["prompt"]

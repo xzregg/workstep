@@ -1,3 +1,4 @@
+from tests.prompt_xml import read_context
 import asyncio
 from pathlib import Path
 import time
@@ -132,9 +133,9 @@ async def test_selected_element_is_visible_in_history_and_exact_in_engine_contex
     selected = {'node_id':'n1','version':version,'tag':'p','text':'08','classes':'stat-value'}
     seen = []
     async def invoke(engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs):
-        context = json.JSONDecoder().raw_decode(prompt.split('Current editing context (data):\n',1)[1])[0]
+        context = read_context(prompt, 'editing_context')
         seen.append(context)
-        assert prompt.endswith('User request:\n改成9')
+        assert prompt.endswith('<user_request>\n改成9\n</user_request>\n')
         assert '> `index.html:1`' not in prompt
         assert context['selection']['source_location']['source'] == '<p>08</p>'
         await asyncio.to_thread((Path(cwd) / 'index.html').write_text, '<p>9</p>\n<p>本周新增 2 个</p>')
@@ -170,7 +171,7 @@ async def test_prompt_includes_only_current_page_dependencies_and_compact_locati
     session = SimpleNamespace(project_id=project.id, engine='claude', messages=[{'role':'user','content':'改成9'}],
         extra={'workspace_id':work.id,'path':'pages/sample.html','selection':selected})
     prompt = await asyncio.to_thread(module._prototype_prompt, session)
-    context = json.JSONDecoder().raw_decode(prompt.split('Current editing context (data):\n',1)[1])[0]
+    context = read_context(prompt, 'editing_context')
     assert context['current_file'] == 'sample.html'
     assert set(context['related_files']) == {'../shared.css','../colors.css'}
     assert context['selection']['source_location'] == {'line':2,'source':'<p>08</p>'}
@@ -181,7 +182,7 @@ async def test_prompt_includes_only_current_page_dependencies_and_compact_locati
     assert prompt.count('改成9') == 1
     assert 'rect' not in context['selection']
     assert 'version' not in context['selection']
-    assert len(prompt) < 500
+    assert len(prompt) < 900
 
 
 async def test_minimal_prompt_without_selection_keeps_existing_session_untouched(prototype):
@@ -194,7 +195,7 @@ async def test_minimal_prompt_without_selection_keeps_existing_session_untouched
         extra={'workspace_id':work.id,'path':'index.html'})
     before=json.dumps(messages,ensure_ascii=False)
     prompt=await asyncio.to_thread(module._prototype_prompt,session)
-    context=json.JSONDecoder().raw_decode(prompt.split('Current editing context (data):\n',1)[1])[0]
+    context=read_context(prompt, 'editing_context')
     assert context=={'current_file':'index.html'}
     assert len(prompt)<150
     assert session.resolved_session_id=='existing-engine'
@@ -210,7 +211,7 @@ async def test_nested_frame_context_keeps_actual_file_and_short_frame_location(p
     selected={'node_id':'n1','version':version,'frame_path':[{'file':'index.html','selector':'iframe#content'}]}
     session=SimpleNamespace(project_id=project.id,engine='claude',messages=[{'role':'user','content':'改子页面'}],extra={'workspace_id':work.id,'path':'other.html','selection':selected})
     prompt=await asyncio.to_thread(module._prototype_prompt,session)
-    context=json.JSONDecoder().raw_decode(prompt.split('Current editing context (data):\n',1)[1])[0]
+    context=read_context(prompt, 'editing_context')
     assert context['current_file']=='other.html'
     assert context['selection']['frame_path']==[{'file':'index.html','selector':'iframe#content'}]
     assert context['selection']['source_location']['source']=='<p>Other</p>'

@@ -10,13 +10,16 @@
   min-width: 0;
 }
 
-.node-execution-settings-toggle {
+.flow-node-config-panel label.node-execution-settings-toggle {
   display: flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
   color: var(--fg-2);
   font-size: calc(13px * var(--font-scale));
+  font-weight: 500;
+  line-height: 1.4;
+  margin: 0;
   white-space: nowrap;
 }
 

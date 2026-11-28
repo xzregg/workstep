@@ -500,7 +500,11 @@ async def public_share_artifacts(token: str, request: Request):
         round_directory = Path(first["path"])
         for _ in Path(first["relative_path"]).parts:
             round_directory = round_directory.parent
-        step_directory = round_directory.parent if round_directory.name == str(first["round"]) else round_directory
+        step_directory = (
+            round_directory.parent
+            if first.get("global") or round_directory.name == str(first["round"])
+            else round_directory
+        )
         artifact_directory = str(step_directory.parent)
     from services.artifacts import list_task_artifact_input_snapshots
     snapshots = await project_manager.run_db(ctx['project_id'], lambda _: list_task_artifact_input_snapshots(ctx['task_id']))

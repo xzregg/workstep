@@ -1,5 +1,6 @@
 """Coordinator conversation, engine switching, and action tests."""
 
+from tests.prompt_xml import read_context
 import asyncio
 import json
 import threading
@@ -1897,8 +1898,7 @@ def test_assemble_context_includes_review_mode(tmp_path):
 
     prompt, _ = assemble_context(StubProject(), task, turn)
     try:
-        context_json = prompt.split("Context:\n", 1)[1]
-        context = json.loads(context_json)
+        context = read_context(prompt)
         by_key = {step["step_key"]: step for step in context["steps"]}
         # 工作流 auto:true 被任务级覆盖为 manual
         assert by_key["build"]["review_mode"] == "manual"
@@ -2050,7 +2050,7 @@ def test_assemble_context_includes_coordinator_root_dir(tmp_path):
 
     prompt, _ = assemble_context(StubProject(), task, turn)
     try:
-        context = json.loads(prompt.split("Context:\n", 1)[1])
+        context = read_context(prompt)
         assert context["coordinator_root_dir"] == str(tmp_path)
         assert "workstep-cli" in COORDINATOR_CONFIG.system_prompt
         assert "inspect the workstep-cli skill" in COORDINATOR_CONFIG.system_prompt
@@ -2198,7 +2198,7 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
             lambda engine_id: ResumeEngine(),
         )
         prompt, _ = assemble_context(StubProject(), task, turn)
-        context = json.loads(prompt.split("Context:\n", 1)[1])
+        context = read_context(prompt)
         assert [
             m["content"] for m in context["recent_coordinator_messages"]
         ] == ["现在呢"]
@@ -2216,7 +2216,7 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
             sequence=5, created_at=1,
         )
         queued_prompt, _ = assemble_context(StubProject(), task, turn)
-        queued_context = json.loads(queued_prompt.split("Context:\n", 1)[1])
+        queued_context = read_context(queued_prompt)
         assert queued_context["recent_coordinator_messages"] == [
             {"role": "user", "content": "现在呢"}
         ]
@@ -2228,7 +2228,7 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
             lambda engine_id: StatelessEngine(),
         )
         prompt, _ = assemble_context(StubProject(), task, turn)
-        context = json.loads(prompt.split("Context:\n", 1)[1])
+        context = read_context(prompt)
         assert [
             m["content"] for m in context["recent_coordinator_messages"]
         ] == ["第一问", "第一答", "现在呢"]
@@ -2314,7 +2314,7 @@ async def test_coordinator_sends_project_memory_only_when_needed(
         assert accepted.status_code == 200, accepted.text
         reply = await _wait_for_reply(client, project_id, task_id, accepted.json()["assistant_message_id"])
         assert reply["run_status"] == "succeeded"
-        return json.loads(MemoryEngine.calls[-1]["prompt"].split("Context:\n", 1)[1])
+        return read_context(MemoryEngine.calls[-1]["prompt"])
 
     first = "项目记忆：先检查现有流程。"
     assert (await send(memory=first))["project_memory"] == first
@@ -2368,9 +2368,7 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     )
 
     assert ResumeCoordinatorFakeEngine.calls[0]["message_history"] is None
-    first_context = json.loads(
-        ResumeCoordinatorFakeEngine.calls[0]["prompt"].split("Context:\n", 1)[1]
-    )
+    first_context = read_context(ResumeCoordinatorFakeEngine.calls[0]["prompt"])
     assert [
         m["content"] for m in first_context["recent_coordinator_messages"]
     ] == ["第一问"]
@@ -2406,7 +2404,7 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     # 第二轮：引擎状态被传回，会话 id 保持稳定，prompt 依旧只带当前用户消息。
     assert ResumeCoordinatorFakeEngine.calls[1]["message_history"] == {"round": 1}
     assert ResumeCoordinatorFakeEngine.calls[1]["session_id"] == "engine-session-1"
-    resumed_context = json.loads(ResumeCoordinatorFakeEngine.calls[1]["prompt"].split("Context:\n", 1)[1])
+    resumed_context = read_context(ResumeCoordinatorFakeEngine.calls[1]["prompt"])
     assert [m["content"] for m in resumed_context["recent_coordinator_messages"]] == ["第二问"]
     assert resumed_context["task"]["id"] == task_id
     assert resumed_context["project_memory"] == "项目约定\n先检查现有流程。"
@@ -2429,7 +2427,7 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     assert ResumeCoordinatorFakeEngine.calls[2]["session_id"] is None
     assert ResumeCoordinatorFakeEngine.calls[2]["message_history"] is None
     reset_prompt = ResumeCoordinatorFakeEngine.calls[2]["prompt"]
-    reset_context = json.loads(reset_prompt.split("Context:\n", 1)[1])
+    reset_context = read_context(reset_prompt)
     assert reset_context["task"]["id"] == task_id
     assert reset_context["project_id"] == project_id
     assert reset_context["project_memory"] == "更新后的项目约定"
@@ -2489,7 +2487,7 @@ async def test_chat_calls_selected_engine_without_starting_workflow(
         assistant = await _wait_for_reply(client, project_id, task_id)
         assert assistant["content"] == "协调回复"
         assert assistant["prompt"]
-        assert "Context:" in assistant["prompt"]
+        assert "<context>" in assistant["prompt"]
         assert assistant["usage"] == {
             "input_tokens": 120,
             "output_tokens": 30,
@@ -3718,7 +3716,7 @@ async def test_confirmed_rerun_can_inject_optional_step_prompt(
 
         for _ in range(100):
             if any(
-                "## User-confirmed step supplements" in call["prompt"]
+                "<user_confirmed_step_supplements>" in call["prompt"]
                 and injected_prompt in call["prompt"]
                 for call in CoordinatorFakeEngine.calls
             ):
@@ -4406,7 +4404,7 @@ async def test_scheduled_turn_runs_beside_main_session_and_preserves_it(api_cont
         async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
             if "独立定时指令" in prompt:
                 assert session_id is None
-                assert json.loads(prompt.split("Context:\n", 1)[1])["project_memory"] == project_memory
+                assert read_context(prompt)["project_memory"] == project_memory
                 scheduled_started.set()
                 await release.wait()
             async for event in super().spawn(prompt, cwd, model, session_id, **kwargs):

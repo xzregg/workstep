@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { taskApi, type StepExecutionConfig, type StepExecutionSelection } from '../api/client'
 import { useEngineRevision } from '../stores/engineAvailabilityStore'
 import { initialStepConfig } from '../utils/stepConfig'
@@ -38,6 +39,12 @@ export default function TaskStepConfigController({
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [handoffTarget, setHandoffTarget] = useState<StepExecutionSelection | null>(null)
+  const [reopenSignal, setReopenSignal] = useState(0)
+
+  const closeHandoff = () => {
+    setHandoffTarget(null)
+    setReopenSignal((signal) => signal + 1)
+  }
 
   // 步骤/任务切换时丢弃旧详情（引擎可用性变化时保留，避免下拉闪一下空白）。
   useEffect(() => {
@@ -131,6 +138,7 @@ export default function TaskStepConfigController({
       error,
       notice,
       hint: t('taskDetail.stepConfigHint'),
+      reopenSignal,
       onEngineChange: (engine) => {
         if (!engine || engine === selection.engine) return
         const target = detail.available_engines.find((item) => item.id === engine)
@@ -141,9 +149,9 @@ export default function TaskStepConfigController({
         }
         if (detail.has_history && engine !== detail.session_engine) {
           setHandoffTarget(next)
-        } else {
-          void save(next)
+          return false
         }
+        void save(next)
       },
       onModelChange: (model) => void save({ ...selection, model }),
       onFastModelChange: () => undefined,
@@ -160,7 +168,7 @@ export default function TaskStepConfigController({
           && sourceProvider !== value
         ) {
           setHandoffTarget(next)
-          return
+          return false
         }
         void save(next)
       },
@@ -179,7 +187,7 @@ export default function TaskStepConfigController({
           .finally(() => setSaving(false))
       },
     }
-  }, [detail, error, notice, projectId, running, save, saving, selection, sourceProvider, stepFields, stepKey, t, taskId])
+  }, [detail, error, notice, projectId, reopenSignal, running, save, saving, selection, sourceProvider, stepFields, stepKey, t, taskId])
 
   return (
     <>
@@ -189,31 +197,30 @@ export default function TaskStepConfigController({
         loading,
         error,
       })}
-      <ChatEngineHandoffDialog
-        open={handoffTarget !== null}
+      {handoffTarget && createPortal(<ChatEngineHandoffDialog
+        open
         projectId={projectId}
         source={{
           engine: detail?.session_engine || selection?.engine || '',
           providerId: sourceProvider,
         }}
         target={{
-          engine: handoffTarget?.engine || '',
-          providerId: handoffTarget?.config.provider_id || '',
+          engine: handoffTarget.engine,
+          providerId: handoffTarget.config.provider_id || '',
         }}
         sourceProviderLabel={providerOptionLabel(sourceProvider)}
-        targetProviderLabel={providerOptionLabel(handoffTarget?.config.provider_id ?? '')}
+        targetProviderLabel={providerOptionLabel(handoffTarget.config.provider_id ?? '')}
         messageCount={detail?.message_count || 0}
         permissionMode=""
         loading={saving}
         error={error}
-        onCancel={() => setHandoffTarget(null)}
+        onCancel={() => { if (!saving) closeHandoff() }}
         onConfirm={(input) => {
-          if (!handoffTarget) return
           void save(handoffTarget, input.context_mode).then((saved) => {
-            if (saved) setHandoffTarget(null)
+            if (saved) closeHandoff()
           })
         }}
-      />
+      />, document.body)}
     </>
   )
 }

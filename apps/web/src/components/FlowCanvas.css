@@ -11,6 +11,37 @@
 }
 .flow-standalone-output-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.flow-canvas-dropdown {
+  position: fixed;
+  z-index: 1000;
+  width: max-content;
+  min-width: min(160px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: 60dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--elev-raised);
+}
+
+.flow-canvas-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: calc(13px * var(--font-scale));
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
 .flow-canvas-debug-menu-action.btn {
   display: flex;
   width: 100%;

@@ -11,6 +11,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from services.global_artifacts import global_filename
 from services.config import resolve_execution_engine
 from services.quick_buttons import normalize_quick_buttons
 from services.workflow_limits import (
@@ -87,13 +88,33 @@ class WorkflowDefinition:
                         f"{collection_name}[{index}].quickButtons: {exc}"
                     ) from exc
         for item in items:
-            outputs = list(item.get("outputs", []))
-            for port in item.get("inputs", []):
-                if isinstance(port, dict):
-                    outputs.extend(port.get("outputs", []))
-            for output in outputs:
-                if isinstance(output, dict) and "template" in output and not isinstance(output["template"], str):
-                    raise WorkflowValidationError("The artifact template must be text")
+            output_groups = [item.get("outputs", [])]
+            for edge in item.get("outgoingConnections", []):
+                port = edge.get("fromPort", 0)
+                if edge.get("kind") == "dashed" and isinstance(port, int) and 0 <= port < len(output_groups[0]):
+                    source = output_groups[0][port]
+                    if isinstance(source, dict) and source.get("global") is True:
+                        raise WorkflowValidationError("Global outputs cannot be used for return connections")
+            output_groups.extend(
+                port.get("outputs", []) for port in item.get("inputs", []) if isinstance(port, dict)
+            )
+            for outputs in output_groups:
+                global_paths = set()
+                for output in outputs:
+                    if not isinstance(output, dict):
+                        continue
+                    if "template" in output and not isinstance(output["template"], str):
+                        raise WorkflowValidationError("The artifact template must be text")
+                    if "global" in output and not isinstance(output["global"], bool):
+                        raise WorkflowValidationError("The global output flag must be a boolean")
+                    if output.get("global"):
+                        try:
+                            path = global_filename(output).casefold()
+                        except (TypeError, ValueError) as exc:
+                            raise WorkflowValidationError(str(exc)) from exc
+                        if path in global_paths:
+                            raise WorkflowValidationError("Duplicate global output path")
+                        global_paths.add(path)
         seen_keys: dict[str, int] = {}
         for index, item in enumerate(items):
             key = item.get("key", item.get("type", item.get("id", "")))
@@ -179,6 +200,12 @@ class WorkflowDefinition:
                             f"connections[{index}].{port_field}: port {port} "
                             f"does not exist on node '{node_id}'"
                         )
+                source_outputs = nodes_by_id[connection["from"]].get("outputs", [])
+                source_port = connection.get("fromPort", 0)
+                if kind == "dashed" and source_port < len(source_outputs):
+                    output = source_outputs[source_port]
+                    if isinstance(output, dict) and output.get("global"):
+                        raise WorkflowValidationError("Global outputs cannot be used for return connections")
             key_by_id = {
                 node.get("id"): node.get(
                     "key", node.get("type", node.get("id", ""))

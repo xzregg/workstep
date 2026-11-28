@@ -447,6 +447,7 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
             name: output.name,
             type: output.type,
             template: output.template,
+            global: output.global === true,
           })),
         }
       })
@@ -473,6 +474,7 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
         name: o.name || o,
         type: o.type || 'any',
         template: o.template,
+        global: o.global === true,
       })),
     }))
     return []

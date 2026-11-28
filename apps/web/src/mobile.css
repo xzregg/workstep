@@ -118,6 +118,7 @@
     min-height: var(--mobile-toolbar-control-height);
     flex-shrink: 1;
   }
+  .flow-canvas-dropdown-item { min-height: var(--mobile-control-touch); }
   .flow-node-config-panel {
     position: absolute;
     inset: 0;

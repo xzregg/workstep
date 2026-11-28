@@ -301,7 +301,7 @@ async def test_runner_sends_compact_prompt_for_resumed_step_followup(tmp_path):
 
         prompt = ResumablePromptFakeEngine.prompts[0]
         assert "只更新摘要" in prompt
-        assert "## Triggered by\n阶段触发人" in prompt
+        assert "<triggered_by>\n阶段触发人" in prompt
         assert "结果.md" in prompt
         assert "## 阶段要求\nwork" not in prompt
         assert "WorkStep 工作流中的一个执行阶段" not in prompt

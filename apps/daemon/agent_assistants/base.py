@@ -11,6 +11,7 @@ Adding a new assistant only requires registering an ``AssistantConfig``
 ``assistant_registry``; no new session or turn machinery is needed.
 """
 
+from services.prompt_sections import prompt_section
 import asyncio
 from copy import deepcopy
 import inspect
@@ -1292,12 +1293,12 @@ class AssistantRuntime:
             if not (item.get("role") == "assistant" and item.get("status") == "running")
         ][-self._config.max_history_turns * 2:]
         history = "\n\n".join(
-            f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
+            prompt_section("user" if item["role"] == "user" else "assistant", str(item["content"])).rstrip("\n")
             for item in turns
         )
         return (
             f"{'' if self._config.system_prompt_transport else self._config.system_prompt}"
-            f"\n\nConversation history:\n{history}\n\nContinue."
+            f"\n\n{prompt_section('conversation_history', history)}\nContinue."
         )
 
     def _system_prompt_for_display(self, session: AssistantSession) -> str:
@@ -2486,12 +2487,12 @@ class AssistantRuntime:
             )
         ][-self._config.max_history_turns * 2:]
         history = "\n\n".join(
-            f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
+            prompt_section("user" if item["role"] == "user" else "assistant", str(item["content"])).rstrip("\n")
             for item in turns
         )
         return (
             f"{'' if self._config.system_prompt_transport else self._config.system_prompt}"
-            f"\n\nConversation history:\n{history}\n\nContinue."
+            f"\n\n{prompt_section('conversation_history', history)}\nContinue."
         )
 
     async def _publish(

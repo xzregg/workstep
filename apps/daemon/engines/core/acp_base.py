@@ -288,13 +288,14 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
 
     def _prepare_system_prompt(self, kwargs: dict, system_prompt: str | None, *, each_turn: bool = False) -> dict:
         kwargs = dict(kwargs)
-        instruction = (system_prompt or "").strip()
-        if not instruction or str(kwargs.get("prompt") or "").strip() == "/compact":
+        instruction = system_prompt or ""
+        if not instruction.strip() or str(kwargs.get("prompt") or "").strip() == "/compact":
             return kwargs
         if self.SYSTEM_PROMPT_MODE != "body":
             kwargs["system_prompt"] = instruction
         elif each_turn or not (kwargs.get("session_id") and self.supports_resume):
-            kwargs["prompt"] = f"{instruction}\n\n{kwargs.get('prompt') or ''}"
+            separator = "\n" if instruction.endswith("\n") else "\n\n"
+            kwargs["prompt"] = f"{instruction}{separator}{kwargs.get('prompt') or ''}"
         return kwargs
 
     async def _prepare_prompt_input(self, kwargs: dict, system_prompt: str | None, *, each_turn: bool = False) -> dict:

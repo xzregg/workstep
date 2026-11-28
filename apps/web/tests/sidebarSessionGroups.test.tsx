@@ -42,7 +42,7 @@ test('groups collapse, accept same-project drops, and require confirmation for b
     }
     assert.deepEqual(calls, [{ action: 'move', group_id: 'g1', session_id: 's2' }])
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="分组操作"]')!.click())
-    assert.equal([...document.querySelectorAll('.sidebar-action-item')].some(item => item.textContent === '创建分组'), false)
+    assert.equal([...document.querySelectorAll('.sidebar-action-item')].some(item => item.textContent === '创建分组'), true)
     const remove = [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '删除分组')!
     await act(async () => remove.click())
     assert.equal(calls.length, 1)
@@ -158,7 +158,7 @@ test('group archive confirms before acting and cleans up only successful members
 })
 
 
-test('group menu creates once in its own group without a standalone plus and expands after success', async () => {
+test('group menu creates a conversation once in its own group and expands after success', async () => {
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   const original = chatGroupApi.list
@@ -169,7 +169,6 @@ test('group menu creates once in its own group without a standalone plus and exp
     await act(async () => root.render(<I18nProvider><SidebarSessionGroups projectId="plus-test" source="chat" canManage sessions={[]}
       renderSession={() => null} onCreateSession={groupId => { calls.push(groupId); return new Promise(resolve => { finish = resolve }) }} /></I18nProvider>))
     await act(async () => document.querySelector<HTMLButtonElement>('.sidebar-session-group-toggle')!.click())
-    assert.equal(document.querySelector('.sidebar-session-group-header .sidebar-add-button') === null, true)
     await act(async () => document.querySelector<HTMLButtonElement>('.sidebar-session-group-more')!.click())
     const add = document.querySelector<SVGElement>('.sidebar-action-menu .lucide-plus')!.closest('button')!
     await act(async () => { add.click(); add.click() })
@@ -226,6 +225,65 @@ test('group running indicator survives collapse and group drag persists order wi
     assert.ok(document.querySelector('.task-status-spinner') === null)
   } finally {
     Object.assign(chatGroupApi,original)
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('the group menu creates a child and center drops move groups into it without stealing session drops', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setWindowSize({ width: 1600, height: 1000 })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = { ...chatGroupApi }
+  const parent = { id: 'parent', name: '父分组', source: 'chat' as const, session_ids: [] }
+  const child = { ...parent, id: 'child', name: '子分组', parent_id: parent.id }
+  const other = { ...parent, id: 'other', name: '待移动分组' }
+  const calls: unknown[] = []
+  chatGroupApi.list = async () => ({ groups: [parent, other] })
+  chatGroupApi.mutate = async (_pid, request) => {
+    calls.push(request)
+    return {
+      groups: [parent, child, request.action === 'create' ? other : { ...other, parent_id: child.id }],
+      removed: [], skipped: [],
+    }
+  }
+  const header = (id: string) => document.querySelector(`[data-session-group="${id}"] > .sidebar-session-group-header`)!
+  const drag = (target: Element, type: string, transfer: DataTransfer) => {
+    const event = new window.MouseEvent(type, { bubbles: true, cancelable: true, clientY: 15 })
+    Object.defineProperty(event, 'dataTransfer', { value: transfer })
+    target.dispatchEvent(event)
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><SidebarSessionGroups projectId="nested" source="chat" canManage
+      sessions={[{ id: 's1', title: '会话一' }] as never} renderSession={s => <div key={s.id}>{s.title}</div>} /></I18nProvider>))
+    await act(async () => header(parent.id).querySelector<HTMLButtonElement>('.sidebar-session-group-toggle')!.click())
+    assert.equal(header(parent.id).querySelector('.sidebar-add-button') === null, true)
+    await act(async () => header(parent.id).querySelector<HTMLButtonElement>('.sidebar-session-group-more')!.click())
+    const create = [...document.querySelectorAll<HTMLButtonElement>('.sidebar-action-item')].find(item => item.textContent === '创建分组')!
+    await act(async () => create.click())
+    const input = document.querySelector<HTMLInputElement>('[aria-label="分组名"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, '子分组')
+      input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    await act(async () => document.querySelector<HTMLButtonElement>('.confirm-dialog-confirm')!.click())
+    assert.deepEqual(calls[0], { action: 'create', name: '子分组', source: 'chat', parent_id: parent.id })
+    assert.ok(document.querySelector('[data-session-group="parent"] [data-session-group="child"]'))
+    const target = header(child.id)
+    target.getBoundingClientRect = () => new window.DOMRect(0, 0, 220, 30) as unknown as DOMRect
+    const groupDrag = new window.DataTransfer() as unknown as DataTransfer
+    await act(async () => drag(header(other.id), 'dragstart', groupDrag))
+    await act(async () => drag(target, 'dragover', groupDrag))
+    assert.equal(target.getAttribute('data-reorder-position'), 'inside')
+    await act(async () => drag(target, 'drop', groupDrag))
+    assert.deepEqual(calls[1], { action: 'move_group', group_id: other.id, parent_id: child.id })
+    assert.ok(document.querySelector('[data-session-group="child"] [data-session-group="other"]'))
+    const sessionDrag = new window.DataTransfer() as unknown as DataTransfer
+    writeChatSessionDrag(sessionDrag, 'nested', 's1')
+    await act(async () => drag(header(other.id), 'drop', sessionDrag))
+    assert.deepEqual(calls[2], { action: 'move', group_id: other.id, session_id: 's1' })
+  } finally {
+    Object.assign(chatGroupApi, original)
     await act(async () => root.unmount())
     await window.happyDOM.close()
   }

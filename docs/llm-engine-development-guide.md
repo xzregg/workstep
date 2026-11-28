@@ -137,6 +137,39 @@ AcpEngineBase(BaseLLMEngine)              # 通用 ACP 协议调用（所有引�
 > 上层与前端不得根据底层传输类型分叉。`_is_acp_native` 只说明是否直接连接
 > ACP 服务端，不决定该引擎能否用于执行步骤、Agent 助手或聊天协调器。
 
+## 提示词分段规范
+
+程序生成并注入模型的规则、记忆、任务、阶段要求、历史、渠道来源和工具背景使用固定的 XML 风格成对标签。标签名为有语义的英文小写下划线名称，如 `project_memory`、`task`、`step_requirements`、`conversation_history`。同一含义复用同一名称，不再以 Markdown 标题、中括号或冒号作为外层分段边界。段内的 Markdown 标题、列表和步骤编号可以保留。
+
+使用 `services.prompt_sections.prompt_section(name, content)` 生成文本。开始与结束标签各占一行，结束标签后换行，相邻分段之间空一行：
+
+```text
+<project_memory>
+## 回复规则
+保留用户填写的原始内容。
+</project_memory>
+
+<task>
+当前任务内容。
+</task>
+```
+
+标签仅用于模型阅读，不要求正文满足严格 XML 语法；不转义、改写用户 Markdown，不生成随机后缀，不增加标签碰撞处理，也不将长正文改成 JSON 字符串。原始消息、配置和持久化数据仍沿用各自的数据格式，程序不要反向解析展示文本来替代已有结构化字段。统一的是外层分段边界，不是内部数据格式。原有 JSON 对象／数组保持完整 JSON，通过 `prompt_context(values, name, description=...)` 在外层包一对 XML 标签，并用一句话说明这段 JSON 的用途；禁止把 JSON 字段逐个改成 XML，保留字段名、数组、空值、布尔值和字符串类型。
+
+例如协调助手的任务快照保留为：
+
+```text
+<context>
+Current project and task snapshot as JSON.
+
+{"project_id": "demo", "task": {"status": "completed", "status_reason": null}, "steps": []}
+</context>
+```
+
+修改分段时同步提示词内对具体标题／标签的引用，以及程序中按旧标题或前缀识别内容的逻辑。旧历史的读取保留兼容：先按应用外层边界识别旧 Markdown 或新 XML 布局，再读取对应分段，不能让旧正文中的 XML 示例抢占应用标题；不重写已经保存的实际输入。新增标签开销不得收紧原有角色／专家团的内容长度预算。摘要比较继续基于原始内容，不改变会话恢复、增量更新、清空通知和每轮注入策略。输出格式协议（如 `<json>`、`<experience>`、`<workstep-affect>`、A2UI 和界面代码围栏）独立维护，不随输入标签改名。
+
+system/developer/user 的传输边界和指令优先级由已有引擎入口负责；标签不创建新的授权。实际输入查看显示本轮真实发送的标签文本，不另造展示版本。回归至少覆盖用户正文含标题／标签、边界换行、更新与清空、旧历史恢复、角色识别及既有输出协议。
+
 ## 1. 引擎在系统中的位置
 
 ```text

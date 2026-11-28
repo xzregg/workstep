@@ -16,6 +16,7 @@ import { useOverlay } from '../hooks/useOverlay'
 import { initializeAppearancePreferences } from '../utils/appearancePreferences'
 import GatewayConnectionProblem from './GatewayConnectionProblem'
 import { GATEWAY_RETRY_LIMIT, useGatewayRecoveryStore } from '../stores/gatewayRecoveryStore'
+import DigitalPersonSidebarEntry from './digital-person/DigitalPersonSidebarEntry'
 
 export default function GatewayRemoteFrame({ children }: { children: ReactNode }) {
   const { t } = useI18n()
@@ -31,6 +32,7 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
   const sessionErrorStatus = useGatewaySessionStore(state => state.errorStatus)
   const loading = useGatewaySessionStore(state => state.loading)
   const load = useGatewaySessionStore(state => state.load)
+  const workspace = useProjectStore(state => state.projects.find(project => project.is_default_workspace && project.type !== 'remote'))
   const paused = useGatewayRecoveryStore(state => state.paused)
   const retryRevision = useGatewayRecoveryStore(state => state.retryRevision)
   const [ready, setReady] = useState(false)
@@ -116,10 +118,12 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
     }
   }, [gatewayUrl, load, paused, retryRevision])
 
-  const deviceTrigger = compact && !embedded ? <button type="button" className="gateway-mobile-device-trigger" aria-label={t('gatewayRemote.switchDevices')}
+  const headerActions = compact && !embedded ? <><button type="button" className="gateway-mobile-device-trigger gateway-mobile-header-control" aria-label={t('gatewayRemote.switchDevices')}
         title={displayContext?.device_name} aria-expanded={pickerOpen} aria-controls="gateway-device-picker" onClick={() => setPickerOpen(value => !value)}>
         <Icon name="layers" size={18}/>
-      </button> : null
+      </button>
+      {workspace && <DigitalPersonSidebarEntry project={workspace} header />}
+    </> : null
 
   if (!gatewayUrl) return <>{children}</>
   return <div key={JSON.stringify([displayContext?.user_id, displayContext?.device_id])} className={`gateway-remote-frame${compact && !embedded ? ' gateway-remote-frame--mobile' : ''}`}>
@@ -139,7 +143,7 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
       {disconnected && <span>{t('gatewayRemote.disconnected')}</span>}
     </div>}
     <div className="gateway-remote-body">
-      <div className="gateway-remote-content">{ready && context ? <NavigationHeaderContext.Provider value={deviceTrigger}>{children}</NavigationHeaderContext.Provider> : <div className="gateway-remote-loading" role="status">
+      <div className="gateway-remote-content">{ready && context ? <NavigationHeaderContext.Provider value={headerActions}>{children}</NavigationHeaderContext.Provider> : <div className="gateway-remote-loading" role="status">
       {!paused && (!requiresEntry || loading) && <Spinner size={16} />}
       {!paused && <span>{requiresEntry ? t('gatewayRemote.sessionExpired') : disconnected ? t('gatewayRemote.reconnecting') : t('gatewayRemote.loading')}</span>}
       <div className="gateway-recovery-actions">

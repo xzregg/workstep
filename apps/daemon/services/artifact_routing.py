@@ -11,8 +11,9 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
-from services.artifact_rounds import ArtifactRound, select_upstream_round
+from services.artifact_rounds import ArtifactRound, list_round_files, select_upstream_round
 from services.pipeline import Step
+from services.global_artifacts import GLOBAL_DIRECTORY, global_output_path, read_global_index
 
 
 def empty_routing_state() -> dict:
@@ -101,14 +102,34 @@ def _manifest_output(
             and output.get("port") == output_port
             and output.get("nonempty") is True
         ):
-            path = round_.path / str(output.get("path") or "")
+            shared = output.get("global") is True
+            if shared:
+                directory = round_.path.parent / GLOBAL_DIRECTORY
+                filename = str(output.get("path") or "")
+                index = read_global_index(directory)
+                path = global_output_path(directory, filename)
+                if index is None or filename not in index or path is None:
+                    return None
+                try:
+                    size = path.stat().st_size if path.is_file() else sum(
+                        child.stat().st_size for child in list_round_files(path)
+                    )
+                except OSError:
+                    return None
+                if size <= 0:
+                    return None
+            else:
+                path = round_.path / str(output.get("path") or "")
             output_type = str(output.get("type") or "")
             result = {
                 "round": round_.round,
                 "name": str(output.get("name") or ""),
                 "path": str(path),
-                "size": int(output.get("size") or 0),
+                "size": size if shared else int(output.get("size") or 0),
             }
+            if shared:
+                result["global"] = True
+                result["round"] = 0
             if output_type.lower() == "directory" or path.is_dir():
                 result["type"] = "directory"
                 result["is_dir"] = True

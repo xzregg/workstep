@@ -74,7 +74,7 @@ async def test_private_channel_uses_actual_main_runtime_and_switches_back_withou
         source = json.loads(messages[0].context_json)['channel_source']
         assert source['bot_id'] == bot['id'] and source['sender_id'] == 'owner'
         assert messages[0].author_id == 'channel:wecom:owner'
-        assert 'Current channel source' in calls[-1]['system_prompt']
+        assert '<current_channel_source>' in calls[-1]['system_prompt']
         assert '问题 shared' not in calls[-1]['system_prompt']
         assert await current.projects.run_db(home.id, lambda _: channel_session_source(main)) == {'source': 'chat'}
         # Another contact on the same bot does not inherit this route.
@@ -87,7 +87,7 @@ async def test_private_channel_uses_actual_main_runtime_and_switches_back_withou
         accepted = await current.projects.run_db(home.id, browser_turn)
         current.chats.start_queued_turn(accepted.turn_id)
         assert await _wait_turn(current.chats, accepted.turn_id) == 'completed'
-        assert 'Current channel source' not in calls[-1]['system_prompt']
+        assert '<current_channel_source>' not in calls[-1]['system_prompt']
         await set_mode(False)
         await send('separate-again')
         assert (await manager._load())['sessions'][route] == independent

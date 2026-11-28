@@ -175,9 +175,10 @@ async def _run_db(project_id: str, operation):
 
 class ChatSessionGroupRequest(BaseSchema):
     target_group_id: str | None = None
+    parent_id: str | None = None
     before: bool = True
     delete_sessions: bool = False
-    action: Literal["create", "move", "archive", "delete", "dissolve", "reorder"]
+    action: Literal["create", "move", "move_group", "archive", "delete", "dissolve", "reorder"]
     name: str = ""
     source: Literal["chat", "channel"] = "chat"
     group_id: str | None = None

@@ -4,9 +4,10 @@
 .sidebar-session-group-count { color: var(--text-muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .sidebar-session-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-session-group-more { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: inherit; flex-shrink: 0; }
-.sidebar-session-group-members { padding-left: 12px; }
+.sidebar-session-group-members, .sidebar-session-subgroups { padding-inline-start: var(--space-3); }
+.sidebar-session-group-toggle > svg { flex-shrink: 0; }
 .sidebar-session-group-ungrouped:empty { min-height: 12px; }
-.sidebar-session-group-header[data-drop-target="true"], .sidebar-session-group-ungrouped[data-drop-target="true"] { background: var(--accent-light); outline: 0.5px solid var(--accent); }
+.sidebar-session-group-header[data-reorder-position="inside"], .sidebar-session-group-header[data-drop-target="true"], .sidebar-session-group-ungrouped[data-drop-target="true"] { background: var(--accent-light); outline: 0.5px solid var(--accent); }
 .sidebar-session-group-status, .sidebar-session-group-error { padding: 4px 6px; font-size: 12px; }
 .sidebar-session-group-error { color: var(--danger); overflow-wrap: anywhere; }
 .sidebar-session-group-create { padding: 4px 6px; border: 0; background: transparent; color: var(--text-muted); font-size: 12px; }

@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from services.prompt_sections import prompt_section
 from agent_assistants.chat_row_persistence import _load_json
 from engines.core.registry import create_engine
 from models.chat_session import ChatMessage, ChatSession
@@ -23,7 +24,7 @@ class RoleBinding(BaseModel):
     id: str = Field(pattern=r'^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$')
 
 
-def resolve_binding(binding: dict | None) -> tuple[str, str]:
+def resolve_binding(binding: dict | None, *, max_length: int | None = None) -> tuple[str, str]:
     if binding is None:
         return '', ''
     ref = RoleBinding.model_validate(binding)
@@ -31,17 +32,28 @@ def resolve_binding(binding: dict | None) -> tuple[str, str]:
     with role_center._lock:
         if ref.kind == 'role':
             role = role_center.get_role(ref.id)
-            return role['name'], f"### Role: {role['name']}\n{role['prompt']}"
+            # Preserve the pre-XML content budget; formatting must not reject
+            # an existing binding that fitted the same limit before migration.
+            legacy_length = len(f"### Role: {role['name']}\n{role['prompt']}")
+            if max_length is not None and legacy_length > max_length:
+                raise ValueError('Role prompt exceeds the digital human budget, please simplify')
+            return role['name'], prompt_section("role", f"Name: {role['name']}\n{role['prompt']}")
         team = role_center.get_team(ref.id)
-        parts = [f"### Expert team: {team['name']}", team['prompt'],
+        legacy_parts = [f"### Expert team: {team['name']}", team['prompt'],
+                        'Use the following perspectives in this conversation. Member order is guidance, not separate agent execution.']
+        parts = [f"Name: {team['name']}", team['prompt'],
                  'Use the following perspectives in this conversation. Member order is guidance, not separate agent execution.']
         for index, member in enumerate(team['members'], 1):
             role = role_center.get_role(member['role_id'])
-            parts.append(f"### {index}. {role['name']}\nRole reference: {member['role_id']}\n{role['prompt']}\nAssignment: {member['duty'] or 'Apply your expertise to the current request.'}")
-        text = '\n\n'.join(parts)
-        if len(text) > 200_000:
+            legacy_parts.append(f"### {index}. {role['name']}\nRole reference: {member['role_id']}\n{role['prompt']}\nAssignment: {member['duty'] or 'Apply your expertise to the current request.'}")
+            parts.append(prompt_section("team_member", f"Order: {index}\nName: {role['name']}\nRole reference: {member['role_id']}\n{role['prompt']}\nAssignment: {member['duty'] or 'Apply your expertise to the current request.'}"))
+        text = '\n\n'.join(part.rstrip('\n') for part in parts)
+        legacy_length = len('\n\n'.join(legacy_parts))
+        if legacy_length > 200_000:
             raise ValueError('The total length of the expert team\'s prompt cannot exceed 200,000 characters. Please refine it before use:')
-        return team['name'], text
+        if max_length is not None and legacy_length > max_length:
+            raise ValueError('Role prompt exceeds the digital human budget, please simplify')
+        return team['name'], prompt_section('expert_team', text)
 
 
 class ChatRoleBindings:
@@ -115,8 +127,7 @@ class ChatRoleBindings:
                 **current, 'epoch': session.extra.get('role_context_epoch', 0),
             }
         instruction = body or 'The previously loaded role/team instructions no longer apply. Continue without an assigned expert role.'
-        return ('## Current conversation role instructions\n'
-                'This block replaces any previously assigned expert identity. Follow existing project rules and permissions.\n'
+        return prompt_section('conversation_role_instructions', 'This block replaces any previously assigned expert identity. Follow existing project rules and permissions.\n'
                 + instruction)
 
     async def _on_context_compacted(self, session) -> None:

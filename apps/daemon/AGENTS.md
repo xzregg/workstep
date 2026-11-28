@@ -46,6 +46,8 @@ uv run --no-sync pytest
 - 新增或扩展助手必须复用 `AssistantConfig` / `AssistantRuntime`，不得复制会话、流式、停止及审批基础设施；修改前必须阅读[助手开发约束](../../docs/architecture.md#助手开发约束)，覆盖会话隔离和既有助手回归。
 - **渠道来源的注入边界**：所有渠道的项目聊天与任务协调助手，都必须通过统一的 `system_prompt` 参数传递渠道背景（平台、会话、发送者等）。助手、渠道适配器和消息持久化层不得把来源拼进用户正文，也不得按平台或引擎在业务层另设正文路径。原生指令传输与仅支持正文的兼容降级由引擎层负责。修改相关链路时，运行 `test_channel_prompt.py` 和 `test_channel_coordinator_source.py`。
 
+- **提示词标签**：程序注入分段统一调用 `services.prompt_sections.prompt_section`，使用固定的英文小写下划线 XML 风格成对标签，标签独立成行且结束后换行；只统一外层边界：原有 JSON 通过 `prompt_context` 整体包裹并说明用途，不逐字段转 XML；纯文本保留原始正文，不通过修改用户标题避免冲突。同步修改标签引用及依赖旧标题／前缀的程序判断，读取旧历史时保留兼容；不得改变 system/developer/user 传输边界、增量注入策略或输出解析协议。详细规则见[提示词分段规范](../../docs/llm-engine-development-guide.md#提示词分段规范)。
+
 ## 项目与流程
 
 - **命名**：新建/重命名项目与工作流时禁止空白字符，前端即时校验，后端 schema 同步强制。

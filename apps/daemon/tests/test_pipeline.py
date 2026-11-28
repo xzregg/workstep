@@ -337,12 +337,12 @@ def test_assemble_prompt_basic(tmp_path):
     assert "MEMORY" not in SYSTEM_PROMPT
     assert "You are" in SYSTEM_PROMPT
     assert all(ord(char) < 128 for char in SYSTEM_PROMPT)
-    assert "## Task\nTest\nCurrent task context" in prompt
+    assert "<task>\nTest\nCurrent task context" in prompt
     assert "You are executing one step in a WorkStep workflow." in prompt
-    assert "## Step requirements\nWrite a PRD" in prompt
+    assert "<step_requirements>\nWrite a PRD" in prompt
     assert not re.search(r"\bstage\b", prompt, re.IGNORECASE)
     assert "Write a PRD" in prompt
-    assert "## Artifact output directory" not in prompt
+    assert "<artifact_output_directory>" not in prompt
     db.close()
 
 
@@ -364,9 +364,9 @@ def test_step_without_inputs_or_outputs_has_no_artifact_prompt(tmp_path, prompt_
         else:
             prompt = assemble_followup_prompt(task, step, artifacts, "继续", artifact_round=2)
 
-        assert "## Artifact output directory" not in prompt
-        assert "## Outputs" not in prompt
-        assert "## Output specification" not in prompt
+        assert "<artifact_output_directory>" not in prompt
+        assert "<outputs>" not in prompt
+        assert "<output_specification>" not in prompt
         assert ".workstep/artifacts/" not in prompt
     finally:
         db.close()
@@ -409,23 +409,23 @@ def test_previous_outputs_are_available_to_new_and_resumed_sessions(tmp_path):
     )
     expected = f".workstep/artifacts/flow/{task.id}/a/1/"
     for prompt in (fresh, resumed, followup):
-        assert f"## Previous outputs\n`{expected}`" in prompt
+        assert f"<previous_outputs>\n`{expected}`" in prompt
         assert "copy the file verbatim from the previous round" in prompt
         assert "write the revised full file (not a diff)" in prompt
         assert "do not create empty/placeholder files" in prompt
         assert "Never modify files in the previous round directory." in prompt
         assert "must be self-contained" in prompt
-        assert "plan.md" not in prompt.split("## Previous outputs", 1)[1].split("\n\n", 1)[0]
+        assert "plan.md" not in prompt.split("<previous_outputs>", 1)[1].split("\n\n", 1)[0]
         assert "Execution reason:" not in prompt
         assert "Source step:" not in prompt
         assert "Source round:" not in prompt
         assert "Artifact: feedback" not in prompt
     assert "feedback.md" in fresh
     assert "feedback.md" in resumed
-    assert "## User message\nContinue" in followup
-    assert "## Inputs\n- Review feedback: `feedback.md`" in followup
+    assert "<user_message>\nContinue" in followup
+    assert "<inputs>\n- Review feedback: `feedback.md`" in followup
     assert "Use this feedback to revise the affected outputs." in followup
-    assert "## Previous outputs" not in first
+    assert "<previous_outputs>" not in first
     db.close()
 
 
@@ -479,7 +479,7 @@ def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
         task, Step(key="build", label="Build", prompt="Edit code"), artifacts, snapshot,
         previous_prompt=unchanged_body, separate_instructions=True,
     )
-    assert "Task Git workspace" not in retry
+    assert "<updated_task_git_workspace>" not in retry
     # Old DB snapshots may still have the workspace path. Do not report it as
     # a changed workspace just because new bodies omit that stable information.
     legacy_retry = assemble_retry_prompt(
@@ -488,7 +488,7 @@ def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
             "Attached repositories:", f"Workspace directory: .workstep/worktrees/{task.id}. Attached repositories:",
         ), separate_instructions=True,
     )
-    assert "Task Git workspace" not in legacy_retry
+    assert "<updated_task_git_workspace>" not in legacy_retry
     (workspace / "D").mkdir()
     (workspace / "D" / ".git").write_text("gitdir: elsewhere")
     changed_retry = assemble_retry_prompt(
@@ -564,7 +564,7 @@ def test_assemble_prompt_injects_project_memory(tmp_path):
     )
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Project memory\n# 项目记忆" in prompt
+    assert "<project_memory>\n# 项目记忆" in prompt
     assert "使用中文注释" in prompt
     assert "Please view" not in prompt
     db.close()
@@ -588,7 +588,7 @@ def test_assemble_prompt_with_upstream(tmp_path):
     step = Step(key="ui", label="UI", prompt="Design UI", depends_on=["req"])
     prompt = assemble_prompt(task, step, artifacts_dir)
 
-    assert "Upstream artifacts" in prompt
+    assert "<upstream_artifacts>" in prompt
     assert "prd.md" in prompt
     assert "Design UI" in prompt
     db.close()
@@ -667,7 +667,7 @@ def test_assemble_prompt_honours_explicit_upstream_round(tmp_path):
     assert "req (round 1)" in prompt
     assert "req/1/manifest.json" in prompt
     assert "req/2/manifest.json" not in prompt
-    assert "## Artifact output directory" not in prompt
+    assert "<artifact_output_directory>" not in prompt
     db.close()
 
 
@@ -744,7 +744,7 @@ def test_assemble_prompt_renders_dynamic_input_port_snapshot(tmp_path):
         input_snapshot=snapshot,
     )
 
-    assert "## Inputs" in prompt
+    assert "<inputs>" in prompt
     assert "Execution reason:" not in prompt
     assert "- PRD: `prd.md`" in prompt
     assert "- Bug列表: `bugs.md`" in prompt
@@ -876,10 +876,10 @@ def test_assemble_prompt_with_only_inactive_input_has_no_artifact_contract(tmp_p
 
     prompt = assemble_prompt(task, step, tmp_path / "artifacts", input_snapshot=snapshot)
 
-    assert "## Inputs" not in prompt
-    assert "## Outputs" not in prompt
-    assert "## Artifact output directory" not in prompt
-    assert "## Step requirements\n处理任务" in prompt
+    assert "<inputs>" not in prompt
+    assert "<outputs>" not in prompt
+    assert "<artifact_output_directory>" not in prompt
+    assert "<step_requirements>\n处理任务" in prompt
     db.close()
 
 
@@ -988,13 +988,13 @@ def test_assemble_followup_prompt_only_contains_message_and_output_requirements(
     )
 
     assert "只修改结论部分" in prompt
-    assert "## Triggered by\n小李" in prompt
+    assert "<triggered_by>\n小李" in prompt
     assert "旧任务说明不应重复发送" not in prompt
     assert "旧阶段要求不应重复发送" not in prompt
     assert SYSTEM_PROMPT not in prompt
     assert "交付文档.md" in prompt
     assert "必须生成或更新" not in prompt
-    assert "## Current outputs" in prompt
+    assert "<current_outputs>" in prompt
     db.close()
 
 
@@ -1037,7 +1037,7 @@ def test_assemble_retry_prompt_only_contains_current_inputs_and_output_contract(
         task, step, tmp_path / "artifacts", snapshot, artifact_round=3
     )
 
-    assert "## Step execution update" in prompt
+    assert "<step_execution_update>" in prompt
     assert "Execution reason:" not in prompt
     assert "- 修改意见: `feedback.md`" in prompt
     assert "交付文档.md" in prompt
@@ -1068,7 +1068,7 @@ def test_retry_prompt_recognizes_task_in_legacy_saved_prompt(tmp_path):
         {"execution_type": "feedback", "ports": []},
         previous_prompt=previous_prompt,
     )
-    assert "## Updated Task" not in unchanged
+    assert "<updated_task>" not in unchanged
 
     task.description = "Revised description"
     changed = assemble_retry_prompt(
@@ -1076,7 +1076,7 @@ def test_retry_prompt_recognizes_task_in_legacy_saved_prompt(tmp_path):
         {"execution_type": "feedback", "ports": []},
         previous_prompt=previous_prompt,
     )
-    assert "## Updated Task\nOriginal title\nRevised description" in changed
+    assert "<updated_task>\nOriginal title\nRevised description" in changed
     db.close()
 
 
@@ -1097,7 +1097,7 @@ def test_assemble_prompt_unknown_output_type_uses_default_constraint(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Outputs" in prompt
+    assert "<outputs>" in prompt
     assert "mystery" in prompt
     assert "Generic UTF-8 text" in prompt
     db.close()
@@ -1122,7 +1122,7 @@ def test_assemble_prompt_empty_constraints_does_not_crash(tmp_path, monkeypatch)
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Outputs" in prompt
+    assert "<outputs>" in prompt
     db.close()
 
 
@@ -1144,7 +1144,7 @@ def test_assemble_prompt_multi_output_avoids_generic_delegation_noise(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Outputs" in prompt
+    assert "<outputs>" in prompt
     assert "b1" in prompt and "b2" in prompt
     assert "subagent" not in prompt
     assert "Delegation" not in prompt
@@ -1228,8 +1228,8 @@ def test_assemble_prompt_formats_dispatched_inputs_once_without_source_ids(tmp_p
 
     prompt = assemble_prompt(task, step, tmp_path / "artifacts")
 
-    assert "## Task\nChild\n原始任务说明" in prompt
-    assert "## Upstream task inputs" in prompt
+    assert "<task>\nChild\n原始任务说明" in prompt
+    assert "<upstream_task_inputs>" in prompt
     assert "brief.md" in prompt
     assert "Source step:" not in prompt
     assert "Source round:" not in prompt
@@ -1258,7 +1258,7 @@ def test_assemble_prompt_single_output_no_subagent_section(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Outputs" in prompt
+    assert "<outputs>" in prompt
     assert "subagent" not in prompt
     db.close()
 
@@ -1287,7 +1287,7 @@ def test_assemble_prompt_file_output_uses_single_file_path(tmp_path):
     data_path = f"artifacts/default/{task.id}/do/数据.json"
     assert prompt.count(doc_path) == 1
     assert prompt.count(data_path) == 1
-    assert "## Artifact output directory" not in prompt
+    assert "<artifact_output_directory>" not in prompt
     assert ".workstep/artifacts/<workflow>/<task>/<stage>/<round>/" not in prompt
     assert "Write generated artifacts to the matching paths" not in prompt
     assert "one file" in prompt
@@ -1319,7 +1319,7 @@ def test_assemble_prompt_directory_output_allows_multiple_files(tmp_path):
     assert "multiple files and subdirectories" in prompt
     assert "do not merge everything into one file" in prompt
     assert prompt.count(output_path) == 1
-    assert "## Artifact output directory" not in prompt
+    assert "<artifact_output_directory>" not in prompt
     assert "Write generated artifacts to the matching paths" not in prompt
     db.close()
 
@@ -1854,14 +1854,14 @@ async def test_task_runner_persists_usage_json(tmp_path):
         assert received_prompts[0] in persisted_prompt
         assert "### 正文（user，包含指令正文降级）" in persisted_prompt
         assert received_prompts[0].startswith("You are executing one step")
-        assert "## Project memory\n统一使用公开消息边界" in persisted_prompt
-        assert "## Task\n" in persisted_prompt
+        assert "<project_memory>\n统一使用公开消息边界" in persisted_prompt
+        assert "<task>\n" in persisted_prompt
         assert "实现完整提示词展示" in persisted_prompt
         raw_input = _json.loads(msg.prompt_json)["input_prompt"]
-        assert raw_input.endswith("## Step requirements\nDo A")
-        assert "## Artifact output directory" not in raw_input
+        assert raw_input.endswith("<step_requirements>\nDo A\n</step_requirements>\n")
+        assert "<artifact_output_directory>" not in raw_input
         assert "### 正文" not in raw_input
-        assert "## Step requirements\nDo A" in persisted_prompt
+        assert "<step_requirements>\nDo A" in persisted_prompt
         assert msg.usage_json is not None
         usage = _json.loads(msg.usage_json)
         assert usage["input_tokens"] == 300
@@ -3004,7 +3004,7 @@ async def test_resumed_normal_starts_only_inject_changed_task_background(tmp_pat
             await runner.close()
     try:
         await run()
-        assert "## Task\nOriginal task" in prompts[0]
+        assert "<task>\nOriginal task" in prompts[0]
         assert "stable project memory" in prompts[0]
         assert "Attached repositories: repo-a." in prompts[0]
         # Upgrade from an old message with only raw input, without rewriting
@@ -3112,7 +3112,7 @@ def test_task_changes_reach_followup_and_review_retry_without_other_background(t
     ):
         checkpoint = {}
         prompt = build(checkpoint)
-        assert "## Updated Task\nTask\nAfter" in prompt
+        assert "<updated_task>\nTask\nAfter" in prompt
         assert "stable memory" not in prompt
         assert checkpoint["Project memory"] == hashes["Project memory"]
         assert checkpoint["Task"] != hashes["Task"]
