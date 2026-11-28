@@ -9,12 +9,40 @@ import subprocess
 import tempfile
 import tomllib
 import unittest
+import importlib.util
+from unittest.mock import Mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class SharedImageTests(unittest.TestCase):
+    def image_checker(self):
+        spec = importlib.util.spec_from_file_location('image_checker', ROOT / 'scripts/verify-shared-image.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_p2p_bootstrap_requires_and_fetches_actual_connection_assets(self):
+        fetch = Mock(return_value='/* connection asset */')
+        page = '<link href="/p2p-bootstrap/style.css"><script src="/p2p-bootstrap/bootstrap.js"></script>'
+        self.image_checker().verify_p2p_bootstrap(page, fetch)
+        self.assertEqual(set(call.args[0] for call in fetch.call_args_list), {
+            '/p2p-bootstrap/style.css', '/p2p-bootstrap/bootstrap.js', '/p2p/rtc-worker.js'})
+
+    def test_p2p_bootstrap_rejects_missing_assets_and_workbench_fallback(self):
+        check = self.image_checker().verify_p2p_bootstrap
+        page = '<link href="/p2p-bootstrap/style.css"><script src="/p2p-bootstrap/bootstrap.js"></script>'
+        for invalid in ('', page.replace('/p2p-bootstrap/style.css', '/missing.css'),
+                        page + '<script src="/workspace-assets/index.js"></script>'):
+            with self.subTest(page=invalid), self.assertRaises(AssertionError):
+                check(invalid, Mock(return_value='asset'))
+        for body in ('', '<!doctype html><div id="root"></div>'):
+            with self.subTest(body=body), self.assertRaises(AssertionError):
+                check(page, Mock(return_value=body))
+        with self.assertRaises(FileNotFoundError):
+            check(page, Mock(side_effect=FileNotFoundError('asset missing')))
+
     def test_default_build_includes_browser_without_external_runtime(self):
         dockerfile = (ROOT / "Dockerfile").read_text()
         stages = re.split(r"(?m)^FROM ", dockerfile)[1:]
@@ -40,14 +68,16 @@ class SharedImageTests(unittest.TestCase):
             job = workflow.split(f"\n  {name}:\n", 1)[1].split("\n  ", 1)[0]
             self.assertIn("if: ${{ !inputs.image_only }}", job)
         self.assertIn('build_tag="build-${GITHUB_SHA}"', workflow)
-        self.assertIn('sudo python3 scripts/verify-shared-image.py "$repository@$digest"', workflow)
-        smoke = workflow.index('python3 scripts/verify-shared-image.py "$repository@$digest"')
+        self.assertIn('sudo python3 "$RUNNER_TEMP/verify-shared-image.py" "$repository@$digest"', workflow)
+        smoke = workflow.index('python3 "$RUNNER_TEMP/verify-shared-image.py" "$repository@$digest"')
         promote = workflow.index('docker buildx imagetools create --tag "$repository:latest" "$repository@$digest"')
         self.assertLess(smoke, promote)
 
     def test_tagged_images_also_run_isolated_runtime_acceptance(self):
         workflow = (ROOT / ".github/workflows/desktop-release.yml").read_text()
-        self.assertIn('\n          sudo python3 scripts/verify-shared-image.py "$repository@$digest"\n', workflow)
+        self.assertIn('\n          sudo python3 "$RUNNER_TEMP/verify-shared-image.py" "$repository@$digest"\n', workflow)
+        self.assertIn('WORKFLOW_SHA: ${{ github.workflow_sha }}', workflow)
+        self.assertIn('git show "$WORKFLOW_SHA:scripts/verify-shared-image.py"', workflow)
 
     def test_system_git_points_to_image_managed_git(self):
         self.assertIn("RUN ln -sf /root/.workstep/runtime/base/git/bin/git /usr/bin/git",
