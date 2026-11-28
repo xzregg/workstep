@@ -97,5 +97,5 @@
 @media(max-width:1023px){
  .digital-calendar-time-range .ant-picker-input>input{color:transparent;caret-color:transparent}
  .digital-calendar-time-range .ant-picker-clear,.digital-calendar-time-range .ant-picker-suffix{display:none}
- .digital-calendar-time-preview{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;font-size:var(--text-body);line-height:1.4;font-variant-numeric:tabular-nums}
+ .digital-calendar-time-preview{position:absolute;inset:0;display:flex;flex-wrap:wrap;align-content:center;align-items:center;justify-content:center;column-gap:var(--space-1);padding-inline:var(--space-1);box-sizing:border-box;white-space:nowrap;pointer-events:none;font-size:var(--text-body);line-height:1.4;font-variant-numeric:tabular-nums}
 }
