@@ -145,7 +145,7 @@ export function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connect
         nodeId: nodeIds[index],
         key,
         label: String(n.title || n.label || n.name || key || `Step ${index + 1}`),
-        autoStart: Boolean(n.autoStart),
+        autoStart: n.autoStart === undefined ? true : Boolean(n.autoStart),
         reuseSuccess: n.reuseSuccess === true,
         engine: n.engine === undefined || n.engine === null
           ? ''

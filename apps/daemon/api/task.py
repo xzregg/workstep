@@ -417,6 +417,22 @@ async def reset_step_execution_config(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.post("/{task_id}/step/{step_key}/start")
+async def start_waiting_step(task_id: str, step_key: str, pid: str = Query(..., alias="project_id")):
+    from main import workflow_runtime
+    from services.remote_access import has_project_edit_scope
+    if not has_project_edit_scope(pid):
+        raise HTTPException(status_code=403, detail="Project edit access required")
+    await _require_scoped_task(pid, task_id)
+    _project(pid)
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    try:
+        return await workflow_runtime.start_waiting_step(pid, task_id, step_key)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.post("/{task_id}/step/{step_key}/cancel")
 async def cancel_step(
     task_id: str,

@@ -9,6 +9,26 @@ import GatewayPlatformSettings from '../src/pages/GatewayPlatformSettings.tsx'
 import { useGatewayConnectionStore } from '../src/stores/gatewayConnectionStore.ts'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
 import { useWebSocketConnectionStore } from '../src/stores/webSocketConnectionStore'
+import { useUserSettingsStore } from '../src/stores/userSettingsStore'
+
+test('disconnecting an offline gateway reloads the name editability', async () => {
+  const { window } = installDomEnvironment()
+  const originalFetch = globalThis.fetch
+  const originalLoad = useUserSettingsStore.getState().load
+  let loads = 0
+  useUserSettingsStore.setState({ load: async () => { loads++ } })
+  useGatewayConnectionStore.setState({ status: { enabled:true, authenticated:false } as never })
+  globalThis.fetch = async () => Response.json({ enabled:false, authenticated:false })
+  try {
+    await useGatewayConnectionStore.getState().refresh()
+    assert.equal(loads, 1)
+  } finally {
+    globalThis.fetch = originalFetch
+    useUserSettingsStore.setState({ load: originalLoad })
+    useGatewayConnectionStore.setState({ status:null })
+    await window.happyDOM.close()
+  }
+})
 
 test('remote sidebar shows WebSocket latency without adding requests and hides stale samples', async () => {
   const { window } = installDomEnvironment()

@@ -67,6 +67,7 @@ _ADDITIVE_COLUMNS = {
         "author_source": "TEXT",
     },
     "message": {
+        "initiated_by_name": "TEXT",
         "schedule_run_id": "TEXT",
         "author_id": "TEXT",
         "author_username": "TEXT",
@@ -84,6 +85,7 @@ _ADDITIVE_COLUMNS = {
         "artifact_round": "INTEGER",
     },
     "chat_messages": {
+        "initiated_by_name": "TEXT",
         "context_json": "TEXT",
         "restart_pending": "INTEGER NOT NULL DEFAULT 0",
         "author_id": "TEXT",

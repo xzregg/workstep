@@ -41,7 +41,7 @@ test('step execution settings save reuse success explicitly, with direct-trigger
     assert.ok(checkbox)
     const keyRow = container.querySelector('#step-type')?.parentElement
     assert.ok(keyRow && !keyRow.contains(checkbox), 'reuse success has its own row below the step identifier help')
-    assert.match(keyRow.textContent || '', /创建后自动开始/)
+    assert.match(keyRow.textContent || '', /自动开始/)
     const reuseRow = checkbox.closest('.node-step-reuse-setting')
     assert.ok(reuseRow)
     const help = reuseRow.querySelector<HTMLElement>('#step-reuse-success-help')
@@ -61,6 +61,15 @@ test('step execution settings save reuse success explicitly, with direct-trigger
     await act(async () => checkbox.click())
     await act(async () => save.click())
     assert.equal(saved.at(-1)?.reuseSuccess, false)
+    await act(async () => root.render(<I18nProvider><NodeConfigPanel node={node} lockedSource={node}
+      unavailableKeys={[]} engines={[]} enginesLoading={false} enginesError="" defaultExecutionEngine=""
+      onValidationChange={noop} onDraftChange={noop} onDirtyChange={noop}
+      onSave={(value) => saved.push(value)} onRequestDelete={noop} onClose={noop} /></I18nProvider>))
+    const automatic = container.querySelector<HTMLInputElement>('.node-execution-settings-toggle input')!
+    assert.equal(automatic.disabled, false, 'task-local automatic start is editable while identity remains protected')
+    assert.equal(container.querySelector<HTMLInputElement>('#step-type')?.disabled, true)
+    await act(async () => automatic.click())
+    assert.equal(saved.at(-1)?.autoStart, false)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

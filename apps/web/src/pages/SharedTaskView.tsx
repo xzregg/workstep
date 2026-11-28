@@ -161,6 +161,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
       else if (step?.waiting_reason === 'user_input') visualState = 'user_input'
       else if (status === 'reviewing') visualState = 'reviewing'
       else if (status === 'awaiting_review') visualState = 'awaiting_review'
+      else if (status === 'awaiting_start') visualState = 'awaiting_start'
       else if (status === 'retrying') visualState = 'retrying'
       else if (status === 'rework') visualState = 'rework'
       else if (status === 'rework_waiting') visualState = 'rework_waiting'
@@ -179,6 +180,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
         'current',
         'reviewing',
         'awaiting_review',
+        'awaiting_start',
         'retrying',
         'rework',
         'rework_waiting',
@@ -211,6 +213,7 @@ export default function SharedTaskView({ api = shareApi }: { api?: SharedTaskApi
       [
         'reviewing',
         'awaiting_review',
+        'awaiting_start',
         'retrying',
         'rework',
         'rework_waiting',

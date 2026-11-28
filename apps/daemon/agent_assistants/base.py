@@ -466,6 +466,7 @@ class AssistantRuntime:
                         "author_name": stored_actor.user_name,
                         "initiated_by_user_id": stored_actor.actor_id,
                         "initiated_by_username": stored_actor.username or stored_actor.user_name,
+                        "initiated_by_name": stored_actor.user_name,
                         "author_device_id": stored_actor.device_id,
                         "author_device_name": stored_actor.device_name,
                     }
@@ -499,6 +500,7 @@ class AssistantRuntime:
                     (stored_actor.username or stored_actor.user_name)
                     if stored_actor else stored_author_name or None
                 ),
+                "initiated_by_name": stored_actor.user_name if stored_actor else stored_author_name or None,
                 "status": "running",
                 "created_at": started_at,
                 "events": [],
@@ -846,6 +848,7 @@ class AssistantRuntime:
                     "author_type": "user",
                     "initiated_by_user_id": actor.actor_id,
                     "initiated_by_username": actor.username or actor.user_name,
+                    "initiated_by_name": actor.user_name,
                     "author_device_id": actor.device_id,
                     "author_device_name": actor.device_name,
                 }
@@ -1779,6 +1782,7 @@ class AssistantRuntime:
                                         "initiated_by_username": (
                                             inserted.get("author_username") if inserted else None
                                         ),
+                                        "initiated_by_name": inserted.get("author_name") if inserted else None,
                                         "status": "running",
                                         "created_at": next_started_at,
                                         "events": [],

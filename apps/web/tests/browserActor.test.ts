@@ -49,6 +49,19 @@ test('legacy v1 browser identity is ignored', () => {
   assert.deepEqual(browserActorHeaders(loadBrowserActor(storage)), {})
 })
 
+test('gateway names replace local residue without sending a claimed gateway identity', () => {
+  const storage = memoryStorage()
+  saveBrowserActor('旧名字', {id:'browser', deviceId:'device', deviceName:'Chrome'}, storage)
+  saveBrowserActor('谢钊荣', {gateway:true}, storage)
+  const connected = loadBrowserActor(storage)
+  assert.equal(connected?.name, '谢钊荣')
+  assert.deepEqual(browserActorHeaders(connected), {})
+  saveBrowserActor('谢钊荣', {gateway:false}, storage)
+  const disconnected = loadBrowserActor(storage)
+  assert.equal(disconnected?.name, '谢钊荣')
+  assert.equal(browserActorHeaders(disconnected)['X-WorkStep-Actor-Id'], 'browser')
+})
+
 test('task API requests carry the browser identity headers', async () => {
   const storage = memoryStorage()
   const actor = saveBrowserActor('Alice', { deviceId: 'device-1', deviceName: 'Firefox' }, storage)

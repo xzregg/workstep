@@ -1,5 +1,13 @@
 {
   "zh-TW": {
+    "errors.manualTaskNotWaiting": "任務目前沒有可手動開始的步驟",
+    "errors.manualStepNotWaiting": "步驟尚未到達或無須手動開始",
+    "errors.manualRunOwned": "任務正由另一個執行實例執行，請稍後重試",
+    "errors.manualRuntimeStopping": "服務正在停止，請稍後重試",
+    "errors.manualProjectEdit": "需要專案編輯權限",
+    "errors.manualStepMissing": "步驟不存在",
+    "errors.manualAutoStartInvalid": "自動開始設定無效：{p0}",
+    "errors.gatewayLoginRequired": "請先登入閘道",
     "errors.identitySetupPaused": "身分引導已暫停，請明確繼續後再修改。",
     "errors.identitySetupAnswerMode": "請批次提交身分資訊或修改單一欄位，不要混用。",
     "errors.identitySetupChanged": "身分設定進度已變更，請先讀取目前進度再繼續。",
@@ -1771,6 +1779,14 @@
     "errors.message1313231b74ff": "預設主題無法覆蓋"
   },
   "ja-JP": {
+    "errors.manualTaskNotWaiting": "現在、手動で開始できるステップはありません",
+    "errors.manualStepNotWaiting": "ステップはまだ到達していないか、手動開始は不要です",
+    "errors.manualRunOwned": "別の実行インスタンスが処理中です。しばらくしてから再試行してください",
+    "errors.manualRuntimeStopping": "サービスを停止中です。しばらくしてから再試行してください",
+    "errors.manualProjectEdit": "プロジェクトの編集権限が必要です",
+    "errors.manualStepMissing": "ステップが存在しません",
+    "errors.manualAutoStartInvalid": "自動開始の設定が無効です：{p0}",
+    "errors.gatewayLoginRequired": "先にゲートウェイにログインしてください",
     "errors.identitySetupPaused": "設定は一時停止中です。続行を明示してから変更してください。",
     "errors.identitySetupAnswerMode": "複数の回答か単一の項目のどちらかを指定してください。",
     "errors.identitySetupChanged": "設定の進行状況が変わりました。現在の状態を確認してください。",
@@ -3542,6 +3558,14 @@
     "errors.message1313231b74ff": "デフォルトのスキンは上書きできません"
   },
   "fr-FR": {
+    "errors.manualTaskNotWaiting": "Aucune étape de cette tâche n’attend un démarrage manuel.",
+    "errors.manualStepNotWaiting": "Cette étape n’est pas prête ou ne nécessite pas de démarrage manuel.",
+    "errors.manualRunOwned": "Une autre instance exécute cette tâche. Réessayez plus tard.",
+    "errors.manualRuntimeStopping": "Le service est en cours d’arrêt. Réessayez plus tard.",
+    "errors.manualProjectEdit": "L’autorisation de modifier le projet est requise.",
+    "errors.manualStepMissing": "L’étape n’existe pas.",
+    "errors.manualAutoStartInvalid": "Paramètre de démarrage automatique invalide : {p0}",
+    "errors.gatewayLoginRequired": "Connectez-vous à la passerelle",
     "errors.identitySetupPaused": "La configuration est en pause. Demandez explicitement sa reprise.",
     "errors.identitySetupAnswerMode": "Fournissez plusieurs réponses ou un seul champ, sans les mélanger.",
     "errors.identitySetupChanged": "La configuration a changé. Consultez son état actuel avant de continuer.",
@@ -5313,6 +5337,14 @@
     "errors.message82c6293bb9d8": "Tous les fichiers source Python doivent figurer dans files"
   },
   "de-DE": {
+    "errors.manualTaskNotWaiting": "Für diese Aufgabe wartet kein Schritt auf einen manuellen Start.",
+    "errors.manualStepNotWaiting": "Dieser Schritt ist noch nicht bereit oder erfordert keinen manuellen Start.",
+    "errors.manualRunOwned": "Eine andere Instanz führt diese Aufgabe aus. Versuchen Sie es später erneut.",
+    "errors.manualRuntimeStopping": "Der Dienst wird beendet. Versuchen Sie es später erneut.",
+    "errors.manualProjectEdit": "Die Bearbeitungsberechtigung für das Projekt ist erforderlich.",
+    "errors.manualStepMissing": "Der Schritt existiert nicht.",
+    "errors.manualAutoStartInvalid": "Ungültige Einstellung für den automatischen Start: {p0}",
+    "errors.gatewayLoginRequired": "Bitte zuerst am Gateway anmelden",
     "errors.identitySetupPaused": "Die Einrichtung ist pausiert. Setzen Sie sie ausdrücklich fort.",
     "errors.identitySetupAnswerMode": "Übermitteln Sie entweder mehrere Antworten oder ein einzelnes Feld.",
     "errors.identitySetupChanged": "Die Einrichtung hat sich geändert. Lesen Sie zuerst den aktuellen Stand.",
@@ -7084,6 +7116,14 @@
     "errors.messageb1583b9ba332": "Nicht festgeschriebene Änderungen im Zielarbeitsverzeichnis überschneiden sich mit dem Merge-Ergebnis. Sie wurden beibehalten. Bearbeiten Sie zuerst die betroffenen Dateien.\n"
   },
   "ar": {
+    "errors.manualTaskNotWaiting": "لا توجد خطوة في هذه المهمة تنتظر البدء اليدوي.",
+    "errors.manualStepNotWaiting": "لم تصل المهمة إلى هذه الخطوة أو لا تتطلب بدءًا يدويًا.",
+    "errors.manualRunOwned": "تُنفّذ المهمة بواسطة نسخة تشغيل أخرى. حاول لاحقًا.",
+    "errors.manualRuntimeStopping": "جارٍ إيقاف الخدمة. حاول لاحقًا.",
+    "errors.manualProjectEdit": "يلزم إذن تعديل المشروع.",
+    "errors.manualStepMissing": "الخطوة غير موجودة.",
+    "errors.manualAutoStartInvalid": "إعداد البدء التلقائي غير صالح: {p0}",
+    "errors.gatewayLoginRequired": "يرجى تسجيل الدخول إلى البوابة أولاً",
     "errors.identitySetupPaused": "تم إيقاف الإعداد مؤقتاً. اطلب استئنافه صراحة قبل المتابعة.",
     "errors.identitySetupAnswerMode": "قدّم مجموعة إجابات أو حقلاً واحداً، دون الجمع بينهما.",
     "errors.identitySetupChanged": "تغير إعداد الهوية. اقرأ الحالة الحالية قبل المتابعة.",

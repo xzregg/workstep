@@ -388,6 +388,8 @@ Git 合并、拉取与推送表单共用 `src/components/git/GitActionPanel.tsx`
 
 业务统计趋势由 `pages/StatisticsPage.tsx::TrendChart` 持有：Token 消耗按日期显示浅色柱状图，悬停或键盘聚焦时高亮柱条并显示精确用量；运行成功／失败保留双折线。样式位于 `src/index.css`，复用 `/api/statistics/overview` 趋势数据。行为测试为 `tests/statisticsTrendChart.test.tsx`（比例、零值、单日、空数据、键盘提示与运行趋势回归）。
 
+调用统计与任务执行报告的发起人名称由 daemon `services/actor_names.py` 统一解析：继续按稳定用户 ID 聚合，优先使用同一 ID 已保存的显示名，缺失时回退登录名或渠道标识；不借用当前宿主身份，不按同名合并账号。`Message` / `ChatMessage.initiated_by_name` 独立保存发起人显示名，`services/messages.py`、助手 `base.py` 和聊天持久化／分叉链路负责传递；旧记录按同一 ID 从用户消息、任务创建者及工作流运行快照解析，无需改写历史用量或重建聚合表。入口为 `/api/statistics/overview` 和任务执行报告；行为测试见 daemon `test_statistics.py`（含慢 SQL 健康检查）、`test_message_attribution.py`、`test_chat_session.py`、`test_task_execution_report.py` 与 `test_migrations.py`。
+
 
 | 通用控件与移动样式 | `src/components/Button.tsx`、`Input.tsx`、`Select.tsx`、`Textarea.tsx`、`src/index.css`、`src/mobile.css` | — | `DESIGN.md`、`tests/mobileButtonSizing.test.mjs` |
 | 定时规则编译、时区校验与下次运行预览 | `src/pages/SchedulePage.tsx` 提供规则编辑入口 | `services/schedule_rules.py` 持有纯规则计算，`services/schedule.py` 保留兼容导入并负责持久化与调度 | `apps/daemon/tests/test_schedule.py` |

@@ -67,6 +67,7 @@ class ChatMessage(BaseModel):
     author_type = pw.TextField(null=True)
     initiated_by_user_id = pw.TextField(null=True)
     initiated_by_username = pw.TextField(null=True)
+    initiated_by_name = pw.TextField(null=True)
     author_device_id = pw.TextField(null=True)
     author_device_name = pw.TextField(null=True)
     restart_pending = pw.BooleanField(default=False)

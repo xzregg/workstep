@@ -397,6 +397,10 @@ class WorkflowDefinition:
             "condition": step.get("condition", ""),
             "reworkUpstream": list(step.get("reworkUpstream", [])),
         }
+        if "autoStart" in step:
+            if not isinstance(step["autoStart"], bool):
+                raise WorkflowValidationError(f"step '{normalized['key']}'.autoStart: expected a boolean")
+            normalized["autoStart"] = step["autoStart"]
         if "reuseSuccess" in step:
             if not isinstance(step["reuseSuccess"], bool):
                 raise WorkflowValidationError(f"step '{normalized['key']}'.reuseSuccess: expected a boolean")

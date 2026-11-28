@@ -375,6 +375,7 @@ def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(t
         "author_type",
         "initiated_by_user_id",
         "initiated_by_username",
+        "initiated_by_name",
     }
     assert expected.issubset({column.name for column in db.get_columns("message")})
     assert {

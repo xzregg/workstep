@@ -407,6 +407,7 @@ class ActionRuntime:
                     author_type="assistant",
                     initiated_by_user_id=actor_fields.get("initiated_by_user_id"),
                     initiated_by_username=actor_fields.get("initiated_by_username"),
+                    initiated_by_name=actor_fields.get("initiated_by_name"),
                     author_device_id=actor_fields.get("author_device_id"),
                     author_device_name=actor_fields.get("author_device_name"),
                 )

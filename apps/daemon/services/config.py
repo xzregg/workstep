@@ -293,6 +293,18 @@ class ConfigStore:
         user["name"] = name.strip()
         self.set("user", user)
 
+    def sync_gateway_user(self, *, name: str, username: str, gateway_id: str, origin: str) -> None:
+        """Persist a verified host account's name, including across disconnects."""
+        with self._lock:
+            user = self.get('user', {})
+            user = dict(user) if isinstance(user, dict) else {}
+            user.update(name=name.strip(), gateway={
+                'id': gateway_id, 'origin': origin, 'username': username,
+                'name': name.strip(),
+            })
+            if user != self.get('user', {}):
+                self.set('user', user)
+
     def get_open_mode(self) -> bool:
         return self.get("open_mode", False) is True
 

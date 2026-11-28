@@ -58,7 +58,7 @@ export interface TaskStepState {
   waiting_reason?: string | null
   in_workflow?: boolean
   step_key: string
-  status: 'pending' | 'running' | 'reviewing' | 'awaiting_review' | 'retrying' | 'rework' | 'rework_waiting' | 'passed' | 'rejected' | 'failed' | 'cancelled' | 'skipped'
+  status: 'pending' | 'ready' | 'awaiting_start' | 'running' | 'reviewing' | 'awaiting_review' | 'retrying' | 'rework' | 'rework_waiting' | 'passed' | 'rejected' | 'failed' | 'cancelled' | 'skipped'
   engine: string | null
   session_id?: string | null
   started_at: string | null
@@ -448,6 +448,11 @@ export const taskApi = {
         method: 'POST',
         body: JSON.stringify({ content, as_guidance: asGuidance }),
       },
+    ),
+  startStep: (taskId: string, stepKey: string, projectId: string) =>
+    request<{ step_key: string; run_id: string; status: string }>(
+      `/task/${encodeURIComponent(taskId)}/step/${encodeURIComponent(stepKey)}/start?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'POST' },
     ),
   cancelStep: (taskId: string, stepKey: string, projectId: string) =>
     request<{ cancelled: boolean }>(

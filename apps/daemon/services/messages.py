@@ -54,6 +54,7 @@ def current_actor_message_fields() -> dict[str, str]:
         "author_type": "user",
         "initiated_by_user_id": actor.actor_id,
         "initiated_by_username": actor.username or actor.user_name,
+        "initiated_by_name": actor.user_name,
         "author_device_id": actor.device_id,
         "author_device_name": actor.device_name,
     }
@@ -85,6 +86,7 @@ def _message_author_fields(message: Message | None) -> dict[str, str]:
     return {key: value for key, value in {
         "initiated_by_user_id": user_id,
         "initiated_by_username": username,
+        "initiated_by_name": message.initiated_by_name if automated else message.author_name,
         "author_device_id": message.author_device_id,
         "author_device_name": message.author_device_name,
     }.items() if value}
@@ -154,6 +156,7 @@ def attributed_actor_message_fields(
         run_fields = {key: value for key, value in {
             "initiated_by_user_id": run.initiated_by_user_id,
             "initiated_by_username": run.initiated_by_username,
+            "initiated_by_name": run.initiated_by_name,
             "author_device_id": run.initiated_by_device_id,
             "author_device_name": run.initiated_by_device_name,
         }.items() if value}
@@ -165,6 +168,7 @@ def attributed_actor_message_fields(
     return {
         "initiated_by_user_id": task.creator_id,
         "initiated_by_username": task.creator_username or task.creator_name,
+        "initiated_by_name": task.creator_name,
         "author_device_id": task.creator_device_id,
         "author_device_name": task.creator_device_name,
     } if task.creator_name else {}
@@ -278,6 +282,7 @@ def create_task_message(
         fields.setdefault("author_type", "user")
         fields.setdefault("initiated_by_user_id", fields.get("author_id"))
         fields.setdefault("initiated_by_username", fields.get("author_username"))
+        fields.setdefault("initiated_by_name", fields.get("author_name"))
     elif fields.get("author_type") == "system":
         actor_fields = attributed_actor_message_fields(
             task,
@@ -285,7 +290,7 @@ def create_task_message(
             channel=channel,
             step_key=fields.get("step_key"),
         )
-        for key in ("initiated_by_user_id", "initiated_by_username"):
+        for key in ("initiated_by_user_id", "initiated_by_username", "initiated_by_name"):
             if actor_fields.get(key):
                 fields.setdefault(key, actor_fields[key])
         fields.update(

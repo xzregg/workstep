@@ -25,6 +25,7 @@ def settle_interrupted_run(task_id, run_id, error, *, stopped=False):
         active = ['running', 'reviewing', 'retrying', 'rework', 'rework_waiting']
         if stopped:
             active.append('awaiting_review')
+            active.extend(['awaiting_start', 'ready'])
         TaskStep.update(
             status='cancelled' if stopped else 'failed', error=error,
             ended_at=now, waiting_interactions_json=None,

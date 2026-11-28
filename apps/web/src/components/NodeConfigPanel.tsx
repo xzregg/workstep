@@ -352,7 +352,6 @@ export default function NodeConfigPanel({ node, lockedSource, unavailableKeys, e
               <label className="node-execution-settings-toggle">
                 <input
                 type="checkbox"
-                disabled={Boolean(lockedSource)}
                 checked={Boolean(draft.autoStart)}
                 onChange={(e) => {
                   const updated = { ...draft, autoStart: e.target.checked }

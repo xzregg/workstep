@@ -269,6 +269,9 @@ def create_restart_run(
             (TaskStep.task == task)
             & (TaskStep.step_key.in_(execution_keys - preserved))
         ).execute()
+        TaskStep.update(status='ready').where(
+            (TaskStep.task == task) & (TaskStep.step_key == step_key)
+        ).execute()
         if reset_session_step_key:
             TaskStep.update(
                 session_id=None,

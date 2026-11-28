@@ -53,6 +53,7 @@ def coordinator_message_fields(task, turn_id: str) -> dict:
         "reply_to_message_id": turn.assistant_message_id,
         "initiated_by_user_id": user.initiated_by_user_id or user.author_id,
         "initiated_by_username": user.initiated_by_username or user.author_username,
+        "initiated_by_name": user.initiated_by_name or user.author_name,
         "author_device_id": user.author_device_id,
         "author_device_name": user.author_device_name,
     }
@@ -65,4 +66,5 @@ def message_actor(message) -> dict:
             "device_id": message.author_device_id, "device_name": message.author_device_name,
             "initiated_by_user_id": message.initiated_by_user_id,
             "initiated_by_username": message.initiated_by_username,
+            "initiated_by_name": message.initiated_by_name,
             "source_message_id": message.reply_to_message_id}

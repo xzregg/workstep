@@ -7,6 +7,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
+import copy
+import json
 
 
 @pytest.fixture
@@ -49,3 +51,26 @@ def _isolate_workstep_config(tmp_path_factory):
         config_mod.CONFIG_DIR = orig_dir
         config_mod.CONFIG_FILE = orig_file
         config_mod.config_store._cache = orig_cache
+
+
+@pytest.fixture(autouse=True)
+def _isolate_test_config(_isolate_workstep_config, tmp_path_factory):
+    """Keep persisted account/bot settings from leaking into later tests.
+
+    The session fixture remains the safe base for module/session fixtures;
+    each test receives its own copy, including any higher-scope setup.
+    """
+    import services.config as config_mod
+    store = config_mod.config_store
+    initial = copy.deepcopy(store._load())
+    previous = (config_mod.CONFIG_DIR, config_mod.CONFIG_FILE, store._cache,
+                store._managed_gateway_id, store._managed_provider_guard)
+    directory = tmp_path_factory.mktemp('test-config')
+    path = directory / 'config.json'
+    path.write_text(json.dumps(initial), encoding='utf-8')
+    config_mod.CONFIG_DIR, config_mod.CONFIG_FILE, store._cache = directory, path, None
+    try:
+        yield
+    finally:
+        (config_mod.CONFIG_DIR, config_mod.CONFIG_FILE, store._cache,
+         store._managed_gateway_id, store._managed_provider_guard) = previous

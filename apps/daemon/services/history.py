@@ -243,6 +243,7 @@ def message_author_snapshot(msg: Message) -> dict:
         "author_type": msg.author_type,
         "initiated_by_user_id": msg.initiated_by_user_id,
         "initiated_by_username": msg.initiated_by_username,
+        "initiated_by_name": msg.initiated_by_name,
         "author_device_id": msg.author_device_id,
         "author_device_name": msg.author_device_name,
     }

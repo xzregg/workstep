@@ -28,6 +28,8 @@ def summarize_task_state(status, steps, *, reason=None, settled=False):
         key, state = _value(step, 'step_key'), _value(step, 'status')
         if state == 'awaiting_review':
             pending.append({'step_key': key, 'reason': 'manual_review'})
+        elif state == 'awaiting_start':
+            pending.append({'step_key': key, 'reason': 'manual_start'})
         elif state in {'running', 'reviewing'}:
             interactions = waiting_interactions(step)
             pending.extend({'step_key': key, 'reason': value, 'interaction_id': identity}
@@ -60,6 +62,10 @@ def summarize_task_state(status, steps, *, reason=None, settled=False):
         pass
     elif pending:
         status, reason = 'waiting', pending[0]['reason']
+    elif settled and any(_value(step, 'status') == 'ready' for step in steps):
+        # An accepted start may be queued behind the retiring parallel batch.
+        # It no longer needs user confirmation and must not settle as failed.
+        status, reason = 'waiting', 'manual_continue'
     elif any(_value(step, 'status') == 'cancelled' for step in steps) or reason == 'user_stop':
         status, reason = 'stopped', 'user_stop'
     elif settled and steps and all(_value(step, 'status') in {'passed', 'skipped'} for step in steps):

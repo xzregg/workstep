@@ -12,7 +12,7 @@ import type { TaskDetailViewProps, StepData } from './TaskDetailView'
 const STATUS_LABEL_KEYS: Record<string, TKey> = {
   ready: 'status.ready', running: 'status.running', paused: 'status.paused',
   stopped: 'status.stopped', done: 'status.done', completed: 'status.done',
-  reviewing: 'status.reviewing', awaiting_review: 'status.awaiting_review',
+  reviewing: 'status.reviewing', awaiting_review: 'status.awaiting_review', awaiting_start: 'status.awaiting_start',
   retrying: 'status.retrying', rejected: 'status.rejected', queued: 'status.queued',
   waiting: 'status.waiting', failed: 'status.failed', tool_approval: 'status.tool_approval', user_input: 'status.user_input',
 }

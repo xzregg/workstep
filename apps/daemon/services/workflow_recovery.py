@@ -186,7 +186,7 @@ def prepare_project_recovery(
                 ts.status = "reviewing"
                 ts.save()
                 continue
-            ts.status = "pending"
+            ts.status = "ready"  # This interrupted attempt was already authorized.
             ts.ended_at = None
             ts.error = None
             ts.save()
@@ -281,6 +281,7 @@ def prepare_project_recovery(
                 review_message.author_type = "system"
                 review_message.initiated_by_user_id = workflow_run.initiated_by_user_id
                 review_message.initiated_by_username = workflow_run.initiated_by_username
+                review_message.initiated_by_name = workflow_run.initiated_by_name
                 review_message.author_device_id = None
                 review_message.author_device_name = None
                 review_message.ended_at = now

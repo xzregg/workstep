@@ -149,8 +149,12 @@ async def test_gateway_service_records_completed_message_to_durable_outbox(tmp_p
 
 
 @pytest.mark.asyncio
-async def test_gateway_service_records_one_shot_usage_without_saving_prompt(tmp_path):
+async def test_gateway_service_records_one_shot_usage_without_saving_prompt(tmp_path, monkeypatch):
     from types import SimpleNamespace
+    from services.config import config_store
+    monkeypatch.setattr(config_store, 'get_user_name', lambda: '旧本地名称')
+    monkeypatch.setattr(config_store, 'get_device_identity', lambda: {
+        'device_id': 'local-device', 'device_name': 'Local PC'})
 
     service = GatewayClientService()
     service.managed_config = SimpleNamespace(gateway_id="gateway-test")

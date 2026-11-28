@@ -2931,6 +2931,7 @@ async def test_submit_publishes_user_message_live_event_with_actor(chat_module, 
     assert assistant_message["author_type"] == "assistant"
     assert assistant_message["initiated_by_user_id"] == user_message["author_id"]
     assert assistant_message["initiated_by_username"] == "本地用户"
+    assert assistant_message["initiated_by_name"] == "本地用户"
     assert assistant_message["author_device_id"] == "device-a"
 
     def persisted_snapshot():
@@ -2952,7 +2953,7 @@ async def test_submit_publishes_user_message_live_event_with_actor(chat_module, 
 async def test_managed_chat_preserves_account_username_and_display_name(chat_module, monkeypatch):
     from services.remote_access import ActorSnapshot, actor_context
 
-    module, _bus, _manager, project, _config = chat_module
+    module, _bus, manager, project, _config = chat_module
 
     async def fake_invoke(*_args, **_kwargs):
         return "回复", [], None
@@ -2974,6 +2975,20 @@ async def test_managed_chat_preserves_account_username_and_display_name(chat_mod
             assistant_message["initiated_by_username"]) == (
                 "assistant", "user-1", "alice",
             )
+    assert assistant_message['initiated_by_name'] == 'Alice Display'
+    assert user_message['initiated_by_name'] == 'Alice Display'
+
+    def saved_name(_project):
+        return ChatMessage.get_by_id(assistant_message['id']).initiated_by_name
+
+    assert await manager.run_db(project.id, saved_name) == 'Alice Display'
+    # Force history to be read from persisted rows rather than the live session.
+    module._sessions.clear()
+    reloaded = module.get_session(project.id, session['id'])['messages']
+    assert reloaded[1]['initiated_by_name'] == 'Alice Display'
+    forked = await module.fork_session(project.id, session['id'], title='身份分叉',
+                                       engine='pydantic_ai', context_mode='smart')
+    assert forked['messages'][1]['initiated_by_name'] == 'Alice Display'
 
 
 @pytest.mark.anyio

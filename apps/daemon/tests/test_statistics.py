@@ -21,6 +21,117 @@ from services.project import DEFAULT_STEPS, ProjectManager
 from services.statistics import StatisticsModule, StatisticsQuery
 
 
+@pytest.mark.parametrize('source', ['gateway', 'local', 'channel'])
+def test_statistics_uses_saved_display_name_for_legacy_calls(statistics_fixture, source):
+    manager, project, _, base = statistics_fixture
+    actor_id = {'gateway': 'gateway-user', 'local': 'device-user',
+                'channel': 'channel:dingtalk:staff-user'}[source]
+    with manager.activate_project_by_id(project.id):
+        task = Task.get_by_id('task-success')
+        Message.create(id='named-user', task=task, step_key='requirements',
+                       channel='execution', role='user', author_type='user',
+                       author_id=actor_id, author_username='login-or-channel-id',
+                       author_name='谢钊荣', position=100, created_at=base)
+        Message.update(author_type='assistant', author_id='codex', author_name='Codex',
+                       initiated_by_user_id=actor_id,
+                       initiated_by_username='login-or-channel-id').where(Message.role == 'assistant').execute()
+        # A scheduler label must never overwrite the person's display name.
+        Message.create(id='schedule-label', task=task, step_key='requirements',
+                       channel='execution', role='user', author_type='scheduler',
+                       author_id=actor_id, author_name='定时任务', position=101,
+                       created_at=base + timedelta(hours=1))
+        Message.create(id='name-unavailable', task=task, step_key='requirements',
+                       channel='execution', role='user', author_type='user', position=102,
+                       author_id=actor_id, author_name='login-or-channel-id',
+                       author_username='login-or-channel-id', created_at=base + timedelta(hours=2))
+    report = StatisticsModule(manager).overview(StatisticsQuery(
+        project_id=project.id, range_key='all', now=base + timedelta(days=2)))
+    row = next(row for row in report['users'] if row['author_id'] == actor_id)
+    assert row['author_name'] == '谢钊荣'
+
+
+@pytest.mark.parametrize('source', ['snapshot', 'legacy', 'missing'])
+def test_statistics_chat_name_snapshot_and_unresolved_fallback(statistics_fixture, source):
+    manager, project, _, base = statistics_fixture
+    name = '谢钊荣' if source == 'snapshot' else None
+    with manager.activate_project_by_id(project.id):
+        session = ChatSession.create(id='named-chat', project_id=project.id,
+                                     workflow_id='', engine='codex', created_at=base, updated_at=base)
+        ChatMessage.create(id='named-call', session=session, role='assistant',
+                           author_id='codex', author_name='Codex', author_type='assistant',
+                           initiated_by_user_id='gateway-user', initiated_by_username='login',
+                           initiated_by_name=name, status='succeeded',
+                           usage_json=json.dumps({'total_tokens': 10}), created_at=base)
+        # Equal names cannot link a different actor to this call.
+        ChatMessage.create(id='other-person', session=session, role='user',
+                           author_id='unrelated-user', author_name='另一个人', created_at=base)
+        if source == 'legacy':
+            ChatMessage.create(id='original-user', session=session, role='user',
+                               author_id='gateway-user', author_name='谢钊荣', created_at=base)
+    report = StatisticsModule(manager).overview(StatisticsQuery(
+        project_id=project.id, range_key='all', now=base + timedelta(days=2)))
+    row = next(row for row in report['users'] if row['author_id'] == 'gateway-user')
+    assert row['author_name'] == ('login' if source == 'missing' else '谢钊荣')
+    assert row['call_count'] == 1
+    assert row['total_tokens'] == 10
+
+
+@pytest.mark.anyio
+async def test_statistics_name_queries_do_not_block_health(statistics_fixture, monkeypatch):
+    import asyncio
+    import threading
+    import peewee
+    from fastapi import FastAPI
+    import api.statistics as statistics_api
+
+    manager, project, _, _ = statistics_fixture
+    monkeypatch.setattr(statistics_api, 'project_manager', manager)
+    started, release = threading.Event(), threading.Event()
+    original = peewee.SqliteDatabase.execute_sql
+
+    def slow_names(db, sql, params=None, **kwargs):
+        if sql.startswith('SELECT') and '"author_name"' in sql and '"author_id"' in sql:
+            started.set()
+            assert release.wait(3), 'name query blocked the event loop'
+        return original(db, sql, params, **kwargs)
+
+    monkeypatch.setattr(peewee.SqliteDatabase, 'execute_sql', slow_names)
+    app = FastAPI()
+    app.include_router(statistics_api.router)
+
+    @app.get('/api/health')
+    async def health():
+        return {'status': 'ok'}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+        request = asyncio.create_task(client.get('/api/statistics/overview',
+                                     params={'project_id': project.id, 'range': 'all'}))
+        try:
+            assert await asyncio.to_thread(started.wait, 2)
+            response = await asyncio.wait_for(client.get('/api/health'), .5)
+            assert response.json() == {'status': 'ok'}
+        finally:
+            release.set()
+        assert (await request).status_code == 200
+
+
+@pytest.mark.parametrize('reverse', [False, True])
+def test_global_statistics_never_overwrites_display_name_with_login(statistics_fixture, monkeypatch, reverse):
+    manager, project, other, base = statistics_fixture
+    for current in (project, other):
+        with manager.activate_project_by_id(current.id):
+            Message.update(author_type='assistant', initiated_by_user_id='same-user',
+                           initiated_by_username='login',
+                           initiated_by_name='谢钊荣' if current is project else None).where(
+                               Message.role == 'assistant').execute()
+    projects = [other, project] if reverse else [project, other]
+    monkeypatch.setattr(manager, 'iter_projects', lambda: iter(projects))
+    report = StatisticsModule(manager).overview(StatisticsQuery(
+        range_key='all', now=base + timedelta(days=2)))
+    assert next(row for row in report['users'] if row['author_id'] == 'same-user')['author_name'] == '谢钊荣'
+    assert all('_name_priority' not in row for row in report['users'])
+
+
 class MemoryConfigStore:
     def __init__(self):
         self.values: dict[str, object] = {}

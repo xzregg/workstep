@@ -13,7 +13,7 @@ _TASK_STEP_CONFIG = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/config\Z")
 _TASK_STEP_ACTION = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/"
-    r"(?:cancel|resume|restart)\Z")
+    r"(?:cancel|resume|restart|start)\Z")
 _TASK_MESSAGE_ACTION = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/messages/[A-Za-z0-9_-]{1,128}/"
     r"(?:retry|set-complete)\Z")

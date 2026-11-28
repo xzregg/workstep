@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "c9d911335cfc3b466193ba1f7c7d241a0cfc55ec4c800fffa1b18046ccfab5b3",
+  "revision": "f0cc52a53e7a4b60f0357fd56af389e728609c787b7154fa5f27caea96bdecca",
   "required_keys": [
     "common.confirm",
     "common.cancel",
@@ -2684,6 +2684,7 @@
     "status.pending": "待处理",
     "status.reviewing": "审核中",
     "status.awaiting_review": "等待审核",
+    "status.awaiting_start": "待手动开始",
     "status.retrying": "自动重跑",
     "status.rework": "返工中",
     "status.rework_waiting": "等待返工",
@@ -3223,7 +3224,7 @@
     "flow.randomColor": "随机颜色",
     "flow.random": "随机",
     "flow.stepKey": "步骤标识（type）",
-    "flow.autoStart": "创建后自动开始",
+    "flow.autoStart": "自动开始",
     "flow.keyHelp": "步骤 key，用于状态和依赖引用，流程内唯一",
     "flow.prompt": "提示词",
     "flow.promptPlaceholder": "描述这个步骤要做什么...",
@@ -4991,6 +4992,13 @@
     "webrtcP2p.directConnected": "P2P 直连",
     "webrtcP2p.disconnected": "直连已断开",
     "webrtcP2p.relayRejected": "无法建立 P2P 直连",
+    "errors.manualTaskNotWaiting": "任务当前没有可手动开始的步骤",
+    "errors.manualStepNotWaiting": "步骤尚未到达或无需手动开始",
+    "errors.manualRunOwned": "任务正由另一个运行实例执行，请稍后重试",
+    "errors.manualRuntimeStopping": "服务正在停止，请稍后重试",
+    "errors.manualProjectEdit": "需要项目编辑权限",
+    "errors.manualStepMissing": "步骤不存在",
+    "errors.manualAutoStartInvalid": "自动开始设置无效：{p0}",
     "errors.identitySetupPaused": "身份引导已暂停，请明确继续后再修改。",
     "errors.identitySetupAnswerMode": "请批量提交身份信息或修改单个字段，不要混用。",
     "errors.identitySetupChanged": "身份设定进度已变化，请先读取当前进度再继续。",
@@ -6761,6 +6769,7 @@
     "errors.messageaf4a6e1a6e95": "默认皮肤不可删除",
     "errors.message739eb37bf1d0": "默认皮肤不可导出",
     "errors.message1313231b74ff": "默认皮肤不可覆盖",
-    "errors.message_webrtc_stun_invalid": "STUN 服务器地址无效，请每行填写一个域名:端口或 stun:域名:端口（最多 16 个）。"
+    "errors.message_webrtc_stun_invalid": "STUN 服务器地址无效，请每行填写一个域名:端口或 stun:域名:端口（最多 16 个）。",
+    "errors.gatewayLoginRequired": "请先登录网关"
   }
 }

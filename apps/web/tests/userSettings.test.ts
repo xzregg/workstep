@@ -40,13 +40,12 @@ test('failed settings reads can retry and restore saved developer mode', async (
   } finally { globalThis.fetch = originalFetch }
 })
 
-test('gateway account overrides the local name without overwriting local identity', async () => {
+test('gateway account replaces the saved local name and keeps it after disconnect', async () => {
   resetStore()
   const originalFetch = globalThis.fetch
   const originalWindow = globalThis.window
   const storage = memoryStorage()
   storage.setItem(BROWSER_ACTOR_STORAGE_KEY, JSON.stringify({ id:'local', name:'本地名字', deviceId:'local', deviceName:'WorkStep' }))
-  const before = storage.getItem(BROWSER_ACTOR_STORAGE_KEY)
   Object.defineProperty(globalThis, 'window', { configurable:true, value:{ localStorage:storage, location: new URL('http://localhost:8765/'), workstepDesktop:{} } })
   let calls = 0
   globalThis.fetch = async () => { calls++; return Response.json({ user_name:'网关用户', identity_source:'gateway', gateway_username:'alice', open_mode:false }) }
@@ -56,7 +55,16 @@ test('gateway account overrides the local name without overwriting local identit
     assert.equal(useUserSettingsStore.getState().identitySource, 'gateway')
     assert.equal(await useUserSettingsStore.getState().saveUserName('fake'), false)
     assert.equal(calls, 1)
-    assert.equal(storage.getItem(BROWSER_ACTOR_STORAGE_KEY), before)
+    assert.equal(loadBrowserActor(storage)?.name, '网关用户')
+    globalThis.fetch = async () => { throw new Error('Gateway reconnecting') }
+    await useUserSettingsStore.getState().load(true)
+    assert.equal(useUserSettingsStore.getState().identitySource, 'gateway')
+    assert.equal(useUserSettingsStore.getState().userName, '网关用户')
+    assert.equal(await useUserSettingsStore.getState().saveUserName('fake'), false)
+    globalThis.fetch = async () => Response.json({ user_name:'网关用户', identity_source:'local', open_mode:false })
+    await useUserSettingsStore.getState().load(true)
+    assert.equal(useUserSettingsStore.getState().identitySource, 'local')
+    assert.equal(useUserSettingsStore.getState().userName, '网关用户')
   } finally {
     globalThis.fetch = originalFetch
     Object.defineProperty(globalThis, 'window', { configurable:true, value:originalWindow })
@@ -82,6 +90,28 @@ test('loading user settings does not inherit the host user name into a browser',
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+for (const operation of ['load', 'saveOpenMode'] as const) test(`gateway disconnect during pending ${operation} reloads the final identity mode`, async () => {
+  resetStore()
+  const originalFetch = globalThis.fetch
+  let calls = 0
+  let finish: (response: Response) => void = () => { throw new Error('No pending read') }
+  globalThis.fetch = async () => {
+    calls++
+    if (calls === 1) return new Promise<Response>(resolve => { finish = resolve })
+    return Response.json({ user_name:'网关用户', identity_source:'local', open_mode:false })
+  }
+  try {
+    const pending = operation === 'load'
+      ? useUserSettingsStore.getState().load()
+      : useUserSettingsStore.getState().saveOpenMode(true)
+    await useUserSettingsStore.getState().load(true)
+    finish(Response.json({ user_name:'网关用户', identity_source:'gateway', open_mode:false }))
+    await pending
+    assert.equal(calls, 2)
+    assert.equal(useUserSettingsStore.getState().identitySource, 'local')
+  } finally { globalThis.fetch = originalFetch }
 })
 
 test('loading user settings ignores a legacy v1 browser identity', async () => {

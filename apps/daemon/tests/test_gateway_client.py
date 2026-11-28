@@ -24,7 +24,7 @@ async def test_unconfigured_gateway_client_does_not_connect(monkeypatch):
 @pytest.mark.asyncio
 async def test_managed_usage_initialization_and_actor_reads_do_not_block(monkeypatch, tmp_path):
     import services.gateway_client.service as service
-    import services.remote_project as remote_project
+    from services.remote_access import ActorSnapshot, actor_context
     monkeypatch.setenv('WORKSTEP_MANAGED_BUNDLE_DIR', str(tmp_path))
     monkeypatch.setattr(service, 'load_managed_config', lambda *_: SimpleNamespace(
         gateway_id='gateway', gateway_origin='https://gateway.test',
@@ -33,23 +33,19 @@ async def test_managed_usage_initialization_and_actor_reads_do_not_block(monkeyp
         time.sleep(.15)
         return object()
     monkeypatch.setattr(service, 'UsageOutbox', slow_outbox)
-    def slow_actor():
-        time.sleep(.15)
-        return SimpleNamespace(actor_id='initiator')
-    monkeypatch.setattr(remote_project, 'get_effective_actor', slow_actor)
     client = GatewayClientService()
     captured = []
     async def capture(**kwargs):
         captured.append(kwargs)
     monkeypatch.setattr(client, 'record_message_usage', capture)
     try:
-        for operation in (client.start, lambda: client.record_one_shot_usage(
-                project_id='project', model='model', provider=None, usage=None)):
-            task = asyncio.create_task(operation())
-            await asyncio.sleep(.02)
-            assert not task.done()
-            await asyncio.wait_for(asyncio.sleep(.01), timeout=.05)
-            await task
+        task = asyncio.create_task(client.start())
+        await asyncio.sleep(.02)
+        assert not task.done()
+        await asyncio.wait_for(asyncio.sleep(.01), timeout=.05)
+        await task
+        with actor_context(ActorSnapshot('initiator', 'Caller', 'device', 'Device', 'managed')):
+            await client.record_one_shot_usage(project_id='project', model='model', provider=None, usage=None)
         assert captured[0]['user_id'] == 'initiator'
     finally:
         await client.close()

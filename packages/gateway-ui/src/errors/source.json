@@ -1,4 +1,11 @@
 [
+  ["manualTaskNotWaiting", "Task is not waiting for a step to start", "任务当前没有可手动开始的步骤"],
+  ["manualStepNotWaiting", "Step is not waiting for manual start", "步骤尚未到达或无需手动开始"],
+  ["manualRunOwned", "Execution round is owned by another runtime", "任务正由另一个运行实例执行，请稍后重试"],
+  ["manualRuntimeStopping", "Workflow runtime is stopping", "服务正在停止，请稍后重试"],
+  ["manualProjectEdit", "Project edit access required", "需要项目编辑权限"],
+  ["manualStepMissing", "Step does not exist", "步骤不存在"],
+  ["manualAutoStartInvalid", "Invalid automatic start setting: {p0}", "自动开始设置无效：{p0}"],
   ["identitySetupPaused", "Identity setup is paused. Resume it explicitly before continuing.", "身份引导已暂停，请明确继续后再修改。"],
   ["identitySetupAnswerMode", "Provide identity answers or one field, not both.", "请批量提交身份信息或修改单个字段，不要混用。"],
   ["identitySetupChanged", "Identity setup changed. Read its current status before continuing.", "身份设定进度已变化，请先读取当前进度再继续。"],
@@ -1769,5 +1776,6 @@
   ["messageaf4a6e1a6e95", "Default skin cannot be deleted", "默认皮肤不可删除"],
   ["message739eb37bf1d0", "Default skin cannot be exported", "默认皮肤不可导出"],
   ["message1313231b74ff", "Default skin cannot be overridden", "默认皮肤不可覆盖"],
-  ["message_webrtc_stun_invalid", "Invalid STUN server address. Enter up to 16 host:port or stun:host:port lines.", "STUN 服务器地址无效，请每行填写一个域名:端口或 stun:域名:端口（最多 16 个）。"]
+  ["message_webrtc_stun_invalid", "Invalid STUN server address. Enter up to 16 host:port or stun:host:port lines.", "STUN 服务器地址无效，请每行填写一个域名:端口或 stun:域名:端口（最多 16 个）。"],
+  ["gatewayLoginRequired", "Gateway login required", "请先登录网关"]
 ]

@@ -481,6 +481,7 @@ class CoordinatorModule:
                     "author_type": "assistant",
                     "initiated_by_user_id": actor_fields.get("author_id"),
                     "initiated_by_username": actor_fields.get("author_username"),
+                    "initiated_by_name": actor_fields.get("author_name"),
                     "author_device_id": actor_fields.get("author_device_id"),
                     "author_device_name": actor_fields.get("author_device_name"),
                 }

@@ -2,7 +2,7 @@ import type { Task } from '../api/task'
 import { useI18n, type TKey } from '../i18n'
 
 const REASONS: Record<string, TKey> = {
-  manual_review: 'status.awaiting_review', tool_approval: 'status.tool_approval', user_input: 'status.user_input',
+  manual_start: 'status.awaiting_start', manual_review: 'status.awaiting_review', tool_approval: 'status.tool_approval', user_input: 'status.user_input',
 }
 
 /** Parallel execution can continue while another branch needs a decision. */

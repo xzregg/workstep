@@ -17,7 +17,7 @@ export function taskDisplayStatus(
   reason?: string | null,
 ) {
   const current = steps.filter((step) => step.in_workflow !== false)
-  const waiting = reason === 'manual_review' ? 'awaiting_review' : ['tool_approval', 'user_input'].includes(reason || '') ? reason! : 'waiting'
+  const waiting = reason === 'manual_start' ? 'awaiting_start' : reason === 'manual_review' ? 'awaiting_review' : ['tool_approval', 'user_input'].includes(reason || '') ? reason! : 'waiting'
   if (status === 'waiting') return { stepStatus: waiting, displayStatus: waiting }
   if (status === 'failed' || status === 'stopped' || status === 'queued') {
     return { stepStatus: undefined, displayStatus: status }
@@ -28,7 +28,8 @@ export function taskDisplayStatus(
     const state = reason === 'auto_review' ? 'reviewing' : reason === 'rework' ? 'retrying' : active?.status || 'running'
     return { stepStatus: state === 'running' ? undefined : state, displayStatus: state }
   }
-  const stepStatus = current.some((step) => step.status === 'awaiting_review') ? 'awaiting_review'
+  const stepStatus = current.some(step => step.status === 'awaiting_start') ? 'awaiting_start'
+    : current.some((step) => step.status === 'awaiting_review') ? 'awaiting_review'
     : current.find((step) => step.waiting_reason)?.waiting_reason || undefined
   return { stepStatus, displayStatus: stepStatus || (status === 'paused' ? 'failed' : status) || 'ready' }
 }

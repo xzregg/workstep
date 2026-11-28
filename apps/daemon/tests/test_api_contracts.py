@@ -1169,7 +1169,7 @@ async def test_managed_task_creation_uses_live_signed_policy(api_context, monkey
     policy = ManagedPolicy("gateway-test", "device-1", "user-1", 0, now, now + 600,
                            frozenset(), frozenset(), False, False, False, False, False)
     main.gateway_client.policy_cache.apply(policy)
-    headers = {"X-WorkStep-Desktop-Token": "desktop-secret",
+    headers = {**TEST_ACTOR_HEADERS, "X-WorkStep-Desktop-Token": "desktop-secret",
                "X-WorkStep-Local-Session": session}
     body = {"title": "Managed task", "cwd": str(project_dir), "workflow_id": workflow_id}
     denied = await client.post(f"/api/task/create?project_id={project_id}", json=body, headers=headers)
@@ -1191,6 +1191,8 @@ async def test_managed_task_creation_uses_live_signed_policy(api_context, monkey
     main.gateway_client.policy_cache.apply(replace(policy, task_create=True))
     allowed = await client.post(f"/api/task/create?project_id={project_id}", json=body, headers=headers)
     assert allowed.status_code == 200, allowed.text
+    assert allowed.json()['creator_id'] == 'user-1'
+    assert allowed.json()['creator_name'] == 'alice'
     main.gateway_client.policy_cache.clear()
 
 
@@ -1286,6 +1288,13 @@ async def test_native_browser_task_creation_without_gateway_session(api_context,
     body = {"title": "Native browser task", "workflow_id": workflow_id, "auto_start": False}
     async with AsyncClient(transport=transport, base_url=origin) as browser:
         created = await browser.post(f"/api/task/create?project_id={pid}", json=body, headers=headers)
+        if access == 'loopback':
+            # Gateway mode may not silently fall back to the host browser's
+            # stale profile while its verified account is unavailable.
+            assert created.status_code == 401, created.text
+            assert created.headers['X-WorkStep-Gateway-Login'] == '/gateway/login'
+            gateway.policy_cache.clear()
+            return
         assert created.status_code == 200, created.text
         assert created.json()["creator_id"] == TEST_ACTOR_HEADERS["X-WorkStep-Actor-Id"]
         copied = await browser.post(f"/api/task/copy?project_id={pid}", headers=headers,

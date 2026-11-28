@@ -31,14 +31,20 @@ async def test_restart_restores_control_credentials_and_signed_account(tmp_path,
     config = SimpleNamespace(gateway_id='g1', gateway_origin='https://gateway.test', gateway_public_key_fingerprint='pin')
     first = module.GatewayClientService(Control)
     first.managed_config = config; first.verifier = Verifier()
+    token, _ = await first.bootstrap('authorization', 'proof', 'private', 'public', 'delegation')
+    assert module.config_store.get_user_name() == '网关用户'
+    from dataclasses import replace
+    actor = replace(actor, display_name='更新的网关名称')
     await first.bootstrap('authorization', 'proof', 'private', 'public', 'delegation')
+    assert first.local_sessions.resolve(token).display_name == '更新的网关名称'
     await first.control_client.persist('renewed-token')
     await first.close()
+    assert module.config_store.get_user_name() == '更新的网关名称'
     second = module.GatewayClientService(Control)
     second.managed_config = config; second.verifier = Verifier()
     await second.restore_connection()
     assert starts[-1][1] == 'renewed-token'
-    assert second.current_actor.display_name == '网关用户'
+    assert second.current_actor.display_name == '更新的网关名称'
     assert second.policy_cache.current is None  # Reconnect does not restore old permissions.
     assert (tmp_path / 'gateway-connections').stat().st_mode & 0o777 == 0o700
     assert next((tmp_path / 'gateway-connections').glob('*.json')).stat().st_mode & 0o777 == 0o600
@@ -65,6 +71,33 @@ async def test_slow_credential_disk_does_not_block_event_loop(tmp_path, monkeypa
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://localhost') as client:
         assert (await asyncio.wait_for(client.get('/api/health'), timeout=.1)).json() == {'status':'ok'}
     await pending
+
+
+@pytest.mark.asyncio
+async def test_gateway_name_sync_does_not_block_health(monkeypatch):
+    from fastapi import FastAPI
+    import httpx
+    entered, release = threading.Event(), threading.Event()
+    def slow_sync(**_kwargs):
+        entered.set()
+        assert release.wait(2)
+    monkeypatch.setattr(module.config_store, 'sync_gateway_user', slow_sync)
+    service = module.GatewayClientService()
+    service.managed_config = SimpleNamespace(gateway_id='gateway', gateway_origin='https://gateway.test')
+    pending = asyncio.create_task(service._sync_account_name(
+        ManagedActor('user', 'alice', 'device', 'instance', 1, display_name='网关用户')))
+    app = FastAPI()
+    @app.get('/api/health')
+    async def health():
+        return {'status':'ok'}
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://localhost') as client:
+            response = await asyncio.wait_for(client.get('/api/health'), .1)
+            assert response.json() == {'status':'ok'}
+    finally:
+        release.set()
+        await pending
 
 
 @pytest.mark.asyncio

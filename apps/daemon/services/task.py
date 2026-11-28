@@ -301,6 +301,7 @@ class TaskService:
                 "reply_to_message_id": msg.reply_to_message_id,
                 "initiated_by_user_id": msg.initiated_by_user_id,
                 "initiated_by_username": msg.initiated_by_username,
+                "initiated_by_name": msg.initiated_by_name,
                 "author_device_id": msg.author_device_id,
                 "author_device_name": msg.author_device_name,
                 "step_key": msg.step_key,

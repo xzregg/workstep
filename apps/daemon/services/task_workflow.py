@@ -13,7 +13,7 @@ class WorkflowConflict(WorkflowValidationError):
 
 NODE_FIELDS = {
     "title", "color", "position", "prompt", "engine", "model", "config",
-    "review", "maxReturnRounds", "inputs", "outputs", "reuseSuccess",
+    "review", "maxReturnRounds", "inputs", "outputs", "reuseSuccess", "autoStart",
 }
 PATCH_FIELDS = (NODE_FIELDS - {"inputs", "outputs"}) | {"append_outputs", "append_input_outputs", "output_templates"}
 
@@ -46,13 +46,14 @@ def canonical_workflow(raw: dict) -> dict:
             "title": item.get("label") or item.get("name") or key,
             "color": "var(--meta)", "engine": "", "model": "", "prompt": "",
             "config": {}, "inputs": [], "outputs": [], "kind": "llm",
-            "maxReturnRounds": 3, "autoStart": False, "quickButtons": [],
+            "maxReturnRounds": 3, "autoStart": True, "quickButtons": [],
             "position": {"x": 100 + index * 320, "y": 100},
         }.items():
             node.setdefault(field, deepcopy(default))
         node["engine"] = node["engine"] or ""
         node["model"] = node["model"] or ""
-        node["autoStart"] = bool(node.get("autoStart"))
+        if not isinstance(node["autoStart"], bool):
+            raise WorkflowConflict(f"Invalid automatic start setting: {key}")
         node.pop("label", None)
         node.pop("name", None)
         for field in ("inputs", "outputs"):
@@ -150,7 +151,7 @@ def _check_extension(base: dict, edited: dict) -> None:
         raise WorkflowConflict(f"Cannot modify the original stage type: {key}")
     if base.get("dispatch") != edited.get("dispatch"):
         raise WorkflowConflict(f"Cannot modify the target of the original handover phase: {key}")
-    for field in ("autoStart", "quickButtons", "condition"):
+    for field in ("quickButtons", "condition"):
         if field in edited and edited.get(field) != base.get(field):
             raise WorkflowConflict(f"Cannot modify the original stage field {field}: {key}")
     old_ports, new_ports = base.get("inputs", []), edited.get("inputs", [])

@@ -94,6 +94,7 @@ export default function TaskDetailPage({
     onSendPrompt: can('task.chat') ? viewProps.onSendPrompt : undefined,
     onStop: can('task.stop') ? viewProps.onStop : undefined,
     onStopStep: can('task.stop') ? viewProps.onStopStep : undefined,
+    onStartStep: can('task.run') ? viewProps.onStartStep : undefined,
     onOpenPromptEditor: can('workflow.edit') ? viewProps.onOpenPromptEditor : undefined,
     onRestartStepWithFreshSession: can('task.restart') ? viewProps.onRestartStepWithFreshSession : undefined,
     onRetryFailedMessage: can('task.restart') ? viewProps.onRetryFailedMessage : undefined,

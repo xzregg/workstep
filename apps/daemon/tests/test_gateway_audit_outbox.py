@@ -12,14 +12,18 @@ async def test_gateway_audit_outbox_replays_and_marks_acknowledgments(tmp_path):
     from models import ProjectAuditEvent
     from services.gateway_client.audit_outbox import ProjectAuditOutbox
     from services.project_audit import record_project_audit
+    from services.remote_access import replayed_actor_context
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
-    await manager.run_db(project.id, lambda _project: record_project_audit(
-        project_id=project.id, task_id="task-1", action="task.start",
-        result="succeeded", event_id="audit-1",
-        metadata={"source": "manual"},
-    ))
+    # Explicitly create a system event; a preceding Gateway login may have
+    # legitimately synchronized a local user name in the shared test config.
+    with replayed_actor_context(None):
+        await manager.run_db(project.id, lambda _project: record_project_audit(
+            project_id=project.id, task_id="task-1", action="task.start",
+            result="succeeded", event_id="audit-1",
+            metadata={"source": "manual"},
+        ))
     outbox = ProjectAuditOutbox(manager)
     first = await outbox.pending(device_id="host-1")
     assert first is not None

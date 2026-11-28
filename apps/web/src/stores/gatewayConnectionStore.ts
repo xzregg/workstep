@@ -40,7 +40,9 @@ export const useGatewayConnectionStore = create<{
       if (current === generation) {
         const previous = useGatewayConnectionStore.getState().status
         set({ status: data, error: false })
-        if (previous && previous.authenticated !== data.authenticated) void useUserSettingsStore.getState().load(true)
+        if (previous && (previous.authenticated !== data.authenticated || previous.enabled !== data.enabled)) {
+          void useUserSettingsStore.getState().load(true)
+        }
       }
       return data
     }).catch(error => {

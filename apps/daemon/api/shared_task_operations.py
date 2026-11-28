@@ -71,7 +71,7 @@ async def dispatch_shared_task_operation(request: Request, project_id: str, task
             or (suffix == '/coordinator-config' and method in {'GET', 'PATCH'})
             or (suffix == '/scheduled-start' and method == 'PATCH')
             or (suffix in {'/chat', '/coordinator/stop'} and method == 'POST')
-            or bool(re.fullmatch(r'/step/[A-Za-z0-9_-]+/(?:message|resume|cancel|restart)', suffix) and method == 'POST')
+            or bool(re.fullmatch(r'/step/[A-Za-z0-9_-]+/(?:message|resume|cancel|restart|start)', suffix) and method == 'POST')
             or bool(re.fullmatch(r'/step/[A-Za-z0-9_-]+/config', suffix) and method in {'GET', 'PATCH', 'DELETE'})
             or bool(re.fullmatch(r'/messages/[A-Za-z0-9_-]+/(?:retry|set-complete)', suffix) and method == 'POST')
             or bool(re.fullmatch(r'/messages/[A-Za-z0-9_-]+/events', suffix) and method == 'GET')

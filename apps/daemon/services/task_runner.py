@@ -276,6 +276,8 @@ class TaskRunner:
                             "failed",
                             "awaiting_review",
                             "reviewing",
+                            "awaiting_start",
+                            "ready",
                         }:
                             continue
                         reviews = list(
@@ -439,6 +441,18 @@ class TaskRunner:
             active_edges=self._artifact_routes.active_edges,
             task_context_edges=self._artifact_routes.task_context_edges(scheduler),
         )
+        manual = [step for step in ready if not step.auto_start]
+        if manual:
+            from services.manual_step_start import gate_ready_steps
+            waiting = await self._run_db(lambda: gate_ready_steps(task.id, manual))
+            for key in waiting:
+                await self._publish(task.id, key, {
+                    "type": "status", "data": {
+                        "task_id": task.id, "step_key": key, "status": "awaiting_start",
+                    },
+                })
+            failed.update(waiting)  # Block this visit without blocking sibling branches.
+            ready = [step for step in ready if step.key not in waiting]
         if not ready:
             skipped = scheduler.get_skippable_steps(
                 completed,

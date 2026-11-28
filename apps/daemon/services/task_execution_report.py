@@ -8,6 +8,7 @@ from typing import Any
 
 from models import Message, ReviewRun, StepRun, Task, WorkflowRun
 from services.usage_accounting import parse_usage, usage_cost
+from services.actor_names import message_initiator, project_actor_names
 
 
 REPORT_CHANNELS = {"execution", "review"}
@@ -134,6 +135,7 @@ def build_task_execution_report(
         return None
 
     now = now or datetime.now(timezone.utc)
+    actor_names = project_actor_names()
     runs = list(
         WorkflowRun.select()
         .where(WorkflowRun.task == task)
@@ -212,12 +214,9 @@ def build_task_execution_report(
             bucket["sources"].add(source)
         bucket["cost"] += cost
         bucket["message_count"] += 1
-        if message.author_type in {"assistant", "system", "scheduler"}:
-            author_id = str(message.initiated_by_user_id or "").strip()
-            author_name = str(message.initiated_by_username or "").strip() or "未知用户"
-        else:
-            author_id = str(message.author_id or "").strip()
-            author_name = str(message.author_name or "").strip() or "未知用户"
+        actor_id, actor_name = message_initiator(message, actor_names)
+        author_id = str(actor_id or "").strip()
+        author_name = str(actor_name or "").strip() or "未知用户"
         user_key = author_id or f"name:{author_name}"
         user_bucket = usage_by_user.setdefault(user_key, {
             "author_id": author_id,

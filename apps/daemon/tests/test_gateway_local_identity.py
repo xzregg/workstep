@@ -11,6 +11,22 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from services.gateway_client.identity import ManagedAuthorizationVerifier, ManagedLocalSessions
 
 
+def test_refreshing_account_names_preserves_existing_session_scope():
+    from dataclasses import replace
+    from services.gateway_client.identity import ManagedActor
+    actor = ManagedActor('user', 'alice', 'device', 'instance', 1,
+                         project_id='project', project_access_level='read', display_name='旧名称')
+    sessions = ManagedLocalSessions()
+    token = sessions.create(actor)
+    sessions.refresh_identity(replace(actor, project_id=None, project_access_level='edit',
+                                      remote_task_create=True, display_name='新名称'))
+    saved = sessions.resolve(token)
+    assert saved.display_name == '新名称'
+    assert saved.project_id == 'project'
+    assert saved.project_access_level == 'read'
+    assert saved.remote_task_create is False
+
+
 def _b64(value):
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
 

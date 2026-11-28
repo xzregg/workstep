@@ -79,6 +79,7 @@ type StepVisualState =
   | 'current'
   | 'reviewing'
   | 'awaiting_review'
+  | 'awaiting_start'
   | 'tool_approval'
   | 'user_input'
   | 'retrying'
@@ -499,6 +500,7 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
       else if (taskStep?.waiting_reason === 'user_input') visualState = 'user_input'
       else if (status === 'reviewing') visualState = 'reviewing'
       else if (status === 'awaiting_review') visualState = 'awaiting_review'
+      else if (status === 'awaiting_start') visualState = 'awaiting_start'
       else if (status === 'retrying') visualState = 'retrying'
       else if (status === 'rework') visualState = 'rework'
       else if (status === 'rework_waiting') visualState = 'rework_waiting'
@@ -989,6 +991,11 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
         onResetStepChange={setResetStep}
         onStopStep={handleStopStep}
         onRestartStepWithFreshSession={handleRestartStepWithFreshSession}
+        onStartStep={async (stepKey) => {
+          if (!projectId) return
+          await taskApi.startStep(taskId, stepKey, projectId)
+          await refreshTask(taskId, projectId)
+        }}
         restartingStepKeys={restartingStepKeys}
         onRetryFailedMessage={handleRetryFailedMessage}
         onSetFailedExecutionComplete={requestFailedExecutionComplete}

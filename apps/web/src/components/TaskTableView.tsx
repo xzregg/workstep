@@ -39,7 +39,7 @@ const STATUS_LABEL_KEYS: Record<string, TKey> = {
   ready: 'status.ready', running: 'status.running', paused: 'status.paused', stopped: 'status.stopped',
   waiting: 'status.waiting', failed: 'status.failed', tool_approval: 'status.tool_approval', user_input: 'status.user_input',
   queued: 'status.queued', done: 'status.done', completed: 'status.done', reviewing: 'status.reviewing',
-  awaiting_review: 'status.awaiting_review', retrying: 'status.retrying', rejected: 'status.rejected',
+  awaiting_review: 'status.awaiting_review', awaiting_start: 'status.awaiting_start', retrying: 'status.retrying', rejected: 'status.rejected',
   cancelled: 'status.cancelled', rework: 'status.rework', rework_waiting: 'status.rework_waiting',
 }
 
@@ -47,7 +47,7 @@ const STATUS_COLORS: Record<string, string> = {
   ready: 'var(--status-ready)', running: 'var(--status-running)', paused: 'var(--status-paused)',
   stopped: 'var(--status-stopped)', queued: '#a16207', done: 'var(--status-done)', completed: 'var(--status-done)',
   passed: 'var(--status-done)', failed: 'var(--status-failed)', reviewing: 'var(--accent)',
-  awaiting_review: 'var(--status-paused)', retrying: 'var(--warn)', rejected: 'var(--status-failed)',
+  awaiting_review: 'var(--status-paused)', awaiting_start: 'var(--status-paused)', retrying: 'var(--warn)', rejected: 'var(--status-failed)',
   cancelled: '#d97706', rework: 'var(--warn)', rework_waiting: 'var(--warn)',
 }
 

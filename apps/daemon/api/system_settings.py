@@ -121,14 +121,21 @@ async def get_system_settings(request: Request):
     actor = getattr(request.state, 'managed_actor', None)
     gateway = getattr(request.app.state, 'gateway_client', None)
     gateway_mode = bool(gateway and gateway.managed_config)
-    from api.desktop_security import local_gateway_fallback_allowed
-    host_workspace = local_gateway_fallback_allowed(request)
+    from api.desktop_security import desktop_runtime_authenticated, local_gateway_fallback_allowed
+    host_workspace = desktop_runtime_authenticated(request) or local_gateway_fallback_allowed(request)
     def load() -> dict:
         # Gateway configuration belongs to the host. Native LAN visitors
         # still supply their own browser profile unless they actually log in.
         platform_identity = host_workspace and (gateway_mode or _configured_gateway_mode())
+        user = config_store.get('user', {})
+        saved_account = user.get('gateway', {}) if isinstance(user, dict) else {}
+        if not isinstance(saved_account, dict):
+            saved_account = {}
+        origin = (getattr(gateway.managed_config, 'gateway_origin', None) if gateway_mode
+                  else config_store.get('gateway_platform', {}).get('url'))
+        saved_name = saved_account.get('name', '') if saved_account.get('origin') == origin else ''
         return {
-            "user_name": (actor.display_name or actor.username) if actor else ('' if platform_identity else config_store.get_user_name()),
+            "user_name": (actor.display_name or actor.username) if actor else (saved_name if platform_identity else config_store.get_user_name()),
             "identity_source": 'gateway' if actor or platform_identity else 'local',
             "gateway_username": actor.username if actor else '',
             "open_mode": config_store.get_open_mode(),

@@ -31,6 +31,7 @@ class Step:
     kind: str = "llm"
     dispatch: dict = field(default_factory=dict)
     reuse_success: bool = False
+    auto_start: bool = True  # Missing legacy fields retain automatic execution.
 
     @classmethod
     def from_dict(cls, d: dict) -> "Step":
@@ -54,6 +55,7 @@ class Step:
             kind=d.get("kind", "llm"),
             dispatch=dict(d.get("dispatch") or {}),
             reuse_success=d.get("reuseSuccess") is True,
+            auto_start=d.get("autoStart", True),
         )
 
 

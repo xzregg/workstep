@@ -19,6 +19,7 @@ from engines.core.events import InternalEvent
 from models import CoordinatorTurn, Message, StepSupplement, Task, TaskStep, init_db
 from models.fields import utc_now
 from streaming.bus import EventBus
+from services.remote_access import replayed_actor_context
 
 
 # --- Fake subprocess plumbing ---
@@ -361,7 +362,8 @@ async def test_runner_delivers_live_message_to_running_step(tmp_path):
             runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
         )
         await _wait_for_running_engine(runner, task.id, "do")
-        accepted = await runner.send_live_message(task.id, "do", "停下！")
+        with replayed_actor_context(None):
+            accepted = await runner.send_live_message(task.id, "do", "停下！")
         assert accepted["status"] == "queued"
         assert isinstance(accepted["sequence"], int)
         assert accepted["created_at"]
@@ -393,9 +395,10 @@ async def test_runner_as_guidance_persists_step_supplement(tmp_path):
             runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
         )
         await _wait_for_running_engine(runner, task.id, "do")
-        accepted = await runner.send_live_message(
-            task.id, "do", "请改用中文输出", as_guidance=True
-        )
+        with replayed_actor_context(None):
+            accepted = await runner.send_live_message(
+                task.id, "do", "请改用中文输出", as_guidance=True
+            )
         assert accepted["status"] == "queued"
         await pipeline
 

@@ -1063,10 +1063,31 @@ class WorkflowRuntime:
         if decision_data is None:
             return None
         task, workflow_run, steps_config = decision_data
+        return await self._resume_or_defer(project_id, task, workflow_run, steps_config)
+
+    async def start_waiting_step(self, project_id: str, task_id: str, step_key: str):
+        from services.manual_step_start import authorize_manual_step
+
+        lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
+        async with lock:
+            if self._graceful_shutdown:
+                raise RuntimeError('Workflow runtime is stopping')
+            previous_runner = self._runners.get(task_id)
+            task, run, config, changed = await self._run_db(project_id, lambda project: authorize_manual_step(
+                project, task_id, step_key, current_workflow_steps=self._current_workflow_steps,
+                instance_id=self._leases.instance_id, active_runner=previous_runner is not None,
+            ))
+            if changed:
+                await self._publish_persisted_task_status(project_id, task_id, include_steps=True)
+                await self._resume_or_defer(project_id, task, run, config, previous_runner=previous_runner)
+            return {'step_key': step_key, 'run_id': run.id, 'status': 'accepted'}
+
+    async def _resume_or_defer(self, project_id, task, workflow_run, steps_config, *, previous_runner=None):
+        """Continue a persisted decision once the current parallel batch retires."""
         pending = self._review_resumes.get(task.id)
         if pending is not None and not pending._completion.done():
             return pending
-        runner = self._runners.get(task.id)
+        runner = self._runners.get(task.id) or previous_runner
         if runner is None:
             project = await self._run_db(project_id, lambda project: project)
             return await self._resume_in_project_locked(
@@ -1843,6 +1864,19 @@ class WorkflowRuntime:
             if project is not None:
                 if await self.cancel_queued(project.id, task_id, action=action):
                     return True
+
+                lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
+                async with lock:
+                    runner = self._runners.get(task_id)
+                    if runner is not None:
+                        return await runner.cancel_task(task_id, action=action)
+                    from services.manual_step_start import stop_manual_wait
+                    stopped = await self._run_db(project.id, lambda project: stop_manual_wait(
+                        project, task_id, instance_id=self._leases.instance_id, action=action,
+                    ))
+                    if stopped:
+                        await self._publish_persisted_task_status(project.id, task_id, include_steps=True)
+                        return True
 
                 active_step_keys = await self._run_db(
                     project.id,

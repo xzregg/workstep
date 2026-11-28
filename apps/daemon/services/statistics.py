@@ -13,6 +13,7 @@ from models import ChatMessage, ChatSession, Message, ReviewRun, StepRun, Task, 
 from models.fields import utc_now
 from services.config import config_store
 from services.usage_accounting import parse_usage, usage_cost
+from services.actor_names import AUTOMATED_AUTHORS, message_initiator, project_actor_names
 
 
 RANGE_DAYS = {"7d": 7, "30d": 30, "90d": 90}
@@ -160,6 +161,7 @@ class StatisticsModule:
                 workflow_buckets[(project.id, workflow["id"])] = MetricBucket()
 
             with self._project_manager.activate_project_by_id(project.id):
+                actor_names = project_actor_names()
                 from services.task_queries import formal_tasks
                 tasks = list(formal_tasks())
                 task_by_id = {task.id: task for task in tasks}
@@ -304,12 +306,11 @@ class StatisticsModule:
                     engine["cost"] += cost
                     _add_user_usage(
                         user_buckets,
-                        (message.initiated_by_user_id if message.author_type in
-                         {"assistant", "system", "scheduler"} else message.author_id),
-                        (message.initiated_by_username if message.author_type in
-                         {"assistant", "system", "scheduler"} else message.author_name),
+                        *message_initiator(message, actor_names),
                         usage,
                         cost,
+                        username=(message.initiated_by_username if message.author_type in
+                                  AUTOMATED_AUTHORS else message.author_username),
                     )
 
                     if query.workflow_id is not None and message.channel in {"execution", "review"}:
@@ -376,12 +377,11 @@ class StatisticsModule:
                     engine["cost"] += cost
                     _add_user_usage(
                         user_buckets,
-                        (message.initiated_by_user_id if message.author_type in
-                         {"assistant", "system", "scheduler"} else message.author_id),
-                        (message.initiated_by_username if message.author_type in
-                         {"assistant", "system", "scheduler"} else message.author_name),
+                        *message_initiator(message, actor_names),
                         usage,
                         cost,
+                        username=(message.initiated_by_username if message.author_type in
+                                  AUTOMATED_AUTHORS else message.author_username),
                     )
 
         if query.range_key == "all":
@@ -482,7 +482,7 @@ class StatisticsModule:
         if query.actor_id is None:
             return True
         author_id = (message.initiated_by_user_id if message.author_type in
-                     {"assistant", "system", "scheduler"} else message.author_id)
+                     AUTOMATED_AUTHORS else message.author_id)
         return author_id == query.actor_id
 
     def _resolve_projects(self, query: StatisticsQuery) -> list[Any]:
@@ -751,13 +751,17 @@ def _add_user_usage(
     author_name: str | None,
     usage: dict[str, Any],
     cost: float,
+    *,
+    username: str | None = None,
 ) -> None:
     normalized_name = str(author_name or "").strip() or "未知用户"
     normalized_id = str(author_id or "").strip()
     key = normalized_id or f"name:{normalized_name}"
+    priority = int(normalized_name not in {"未知用户", normalized_id, str(username or "").strip()})
     bucket = buckets.setdefault(key, {
         "author_id": normalized_id,
         "author_name": normalized_name,
+        "_name_priority": priority,
         "call_count": 0,
         "input_tokens": 0,
         "output_tokens": 0,
@@ -766,8 +770,9 @@ def _add_user_usage(
         "total_tokens": 0,
         "cost": 0.0,
     })
-    if normalized_name != "未知用户":
+    if normalized_name != "未知用户" and priority >= bucket["_name_priority"]:
         bucket["author_name"] = normalized_name
+        bucket["_name_priority"] = priority
     bucket["call_count"] += 1
     _add_usage_to_dict(bucket, usage)
     bucket["cost"] += cost
@@ -777,6 +782,7 @@ def _user_reports(buckets: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     reports = []
     for bucket in buckets.values():
         report = dict(bucket)
+        report.pop("_name_priority")
         report["cost"] = round(report["cost"], 6)
         reports.append(report)
     return sorted(

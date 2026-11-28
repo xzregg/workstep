@@ -106,7 +106,7 @@ def snapshot_archive_initiator(task_id: str, progress_message_id: str):
     _archive_draft_message(task_id, progress_message_id)
     actor = current_actor_message_fields()
     return {key: actor[key] for key in (
-        "initiated_by_user_id", "initiated_by_username",
+        "initiated_by_user_id", "initiated_by_username", "initiated_by_name",
         "author_device_id", "author_device_name",
     ) if actor.get(key)}
 

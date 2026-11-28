@@ -14,6 +14,7 @@ from services.remote_access import (
 )
 from api.desktop_security import (
     desktop_runtime_authenticated, LOCAL_SESSION_HEADER, webrtc_bridge_authenticated,
+    local_gateway_fallback_allowed,
 )
 from services.gateway_client.browser_login import local_session_cookie_name
 
@@ -45,6 +46,19 @@ class BrowserActorMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if get_current_actor() is not None:
             return await call_next(request)
+        # A host that still uses Gateway must not silently create work under a
+        # leftover browser profile while verified identity is being restored.
+        gateway = getattr(request.app.state, 'gateway_client', None)
+        from workstep_gateway_protocol.hooks import HOOK_PATH
+        host_workspace = desktop_runtime_authenticated(request) or local_gateway_fallback_allowed(request)
+        if (gateway is not None and host_workspace
+                and request.url.path.startswith('/api/') and not HOOK_PATH.fullmatch(request.url.path)):
+            from api.system_settings import _configured_gateway_mode
+            enabled = bool(getattr(gateway, 'managed_config', None)) or await asyncio.to_thread(_configured_gateway_mode)
+            if enabled:
+                from services.remote_access import replayed_actor_context
+                with replayed_actor_context(None):
+                    return await call_next(request)
         from services.project_audit import _remote_browser_request
         # Container port forwarding changes the peer address of local Electron requests.
         remote = (not desktop_runtime_authenticated(request)

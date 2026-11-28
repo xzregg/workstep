@@ -396,6 +396,29 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
              and not desktop_request_authenticated(request))
             or (managed and not remote_bridge and not native_dispatch and not desktop_authenticated and not local_workspace and not remote_access and request.url.path not in ("/api/managed/bootstrap", "/api/health", "/api/gateway-platform/settings", "/api/gateway-platform/login", "/api/gateway-platform/local-workspace", "/api/gateway-platform/callback") and actor is None)
         )
+        # BrowserActorMiddleware runs outside this middleware. Only reject a
+        # missing Gateway identity after resolving authenticated sessions and
+        # native host access, so a valid signed-in request is never rejected.
+        if (not denied and actor is None and managed and protected and remote_access
+                and not native_dispatch and local_gateway_fallback_allowed(request)):
+            actor = getattr(gateway_client, 'current_actor', None)
+        pending_identity = False
+        identity_operation = any(request.url.path == prefix or request.url.path.startswith(prefix + '/')
+            for prefix in ('/api/task', '/api/tasks', '/api/task-draft', '/api/chat-sessions',
+                           '/api/schedule', '/api/pending-message-inserts',
+                           '/api/workflow/generate', '/api/prototype',
+                           '/api/digital-person/delegate', '/api/digital-person/check',
+                           '/api/project-actions/sessions'))
+        # Waiting for account recovery must not prevent native owners from
+        # stopping work or managing host resources under their existing grants.
+        if request.url.path.rsplit('/', 1)[-1] in {'stop', 'cancel', 'pause', 'terminate'}:
+            identity_operation = False
+        if (not denied and actor is None and not webrtc_bridge and not native_dispatch
+                and identity_operation and request.method not in ('GET', 'HEAD', 'OPTIONS')
+                and (desktop_authenticated or local_gateway_fallback_allowed(request))
+                ):
+            from api.system_settings import _configured_gateway_mode
+            pending_identity = managed or await asyncio.to_thread(_configured_gateway_mode)
         if denied:
             response = JSONResponse(
                 {"detail": "desktop authentication required"}, status_code=401,
@@ -404,6 +427,9 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 response.headers["X-WorkStep-Gateway-Login"] = "/gateway/login"
             if managed and protected and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)):
                 response.headers["X-WorkStep-Managed-Session-Expired"] = "1"
+        elif pending_identity:
+            response = JSONResponse({'detail': 'Gateway login required'}, status_code=401,
+                                    headers={'X-WorkStep-Gateway-Login': '/gateway/login'})
         elif (managed and request.url.path.startswith('/api/task-share/')
               and not await _remote_task_share_management(request)
               and not native_public_share):
@@ -423,12 +449,6 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             with context, native_workspace_context(True):
                 response = await call_next(request)
         else:
-            # Native loopback access can outlive the browser login session after
-            # a Gateway reconnect. Resolve its authenticated host identity only
-            # after the existing access checks, never for a LAN visitor or RPC.
-            if (actor is None and managed and protected and remote_access
-                    and not native_dispatch and local_gateway_fallback_allowed(request)):
-                actor = getattr(gateway_client, 'current_actor', None)
             if actor is not None:
                 request.state.managed_actor = actor
             context = actor_context(ActorSnapshot(

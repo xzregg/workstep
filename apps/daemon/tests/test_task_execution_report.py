@@ -280,6 +280,21 @@ def test_execution_report_groups_rounds_segments_usage_and_milestones(execution_
     assert report["milestones"][0]["at"] == "2026-09-20T02:18:00+00:00"
 
 
+def test_execution_report_resolves_legacy_initiator_display_name(execution_report_fixture):
+    from services.project import ProjectContext
+    project, _ = execution_report_fixture
+    with ProjectContext(project):
+        task = Task.get_by_id('task-analysis')
+        task.creator_id, task.creator_name = 'user-a', '谢钊荣'
+        task.save()
+        Message.update(author_type='assistant', initiated_by_user_id='user-a',
+                       initiated_by_username='xiezhaorong').execute()
+        report = build_task_execution_report(task.id, pricing={
+            'currency': 'USD', 'usd_to_cny_rate': 7.2, 'prices': [],
+        }, project=project)
+    assert {row['author_name'] for row in report['user_breakdown']} == {'谢钊荣'}
+
+
 def test_execution_report_returns_none_for_unknown_task(tmp_path):
     manager = ProjectManager()
     project_path = tmp_path / "missing"

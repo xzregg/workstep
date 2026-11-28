@@ -647,6 +647,7 @@ export function resolveStepDisplayStatus(
 }
 
 const ACTIVE_STAGE_PROGRESS_STATUSES = new Set([
+  'awaiting_start',
   'running',
   'reviewing',
   'awaiting_review',

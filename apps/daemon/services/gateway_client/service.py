@@ -114,6 +114,8 @@ class GatewayClientService:
         await self._connect_actor(actor, saved)
 
     async def _connect_actor(self, actor, saved):
+        await self._sync_account_name(actor)
+        self.local_sessions.refresh_identity(actor)
         self.device_id = actor.device_id
         self.current_user_id = actor.user_id
         self.current_actor = actor
@@ -145,6 +147,11 @@ class GatewayClientService:
         else:
             self.control_client.start(*args)
 
+    async def _sync_account_name(self, actor):
+        await asyncio.to_thread(config_store.sync_gateway_user,
+            name=actor.display_name or actor.username, username=actor.username,
+            gateway_id=self.managed_config.gateway_id, origin=self.managed_config.gateway_origin)
+
     async def bootstrap(self, authorization: str, proof: str, control_private_key_pem: str,
                         control_public_key_pem: str, delegation_signature: str):
         if self.managed_config is None or self.verifier is None:
@@ -159,8 +166,11 @@ class GatewayClientService:
             previous.user_id, previous.device_id, previous.app_instance_id, previous.project_id,
         ) == (actor.user_id, actor.device_id, actor.app_instance_id, actor.project_id))
         if (same_identity and self.control_client is not None
+                and previous.username == actor.username and previous.display_name == actor.display_name
                 and not self.authorization_required
                 and not self.control_client.authorization_required):
+            await self._sync_account_name(actor)
+            self.current_actor = actor
             return self.local_sessions.create(actor), actor
         if not same_identity:
             self.local_sessions.clear()
@@ -195,9 +205,11 @@ class GatewayClientService:
                                     usage: dict | None) -> None:
         if self.managed_config is None:
             return
-        from services.remote_project import get_effective_actor
+        from services.remote_access import get_current_actor
 
-        actor = await asyncio.to_thread(get_effective_actor)
+        # A configured local name is not a Gateway account. Background calls
+        # without an explicit caller belong to the authenticated connection.
+        actor = get_current_actor()
         request_id = uuid4().hex
         await self.record_message_usage(
             project_id=project_id, task_id=None, message_id=request_id,
@@ -205,7 +217,7 @@ class GatewayClientService:
             provider=provider,
             provider_id=provider.get("id") if provider else None,
             usage_json=json.dumps(usage) if usage else None,
-            user_id=actor.actor_id if actor else None,
+            user_id=actor.actor_id if actor else self.current_user_id,
         )
 
     async def publish_project(self, project_id: str, *, published: bool) -> dict:

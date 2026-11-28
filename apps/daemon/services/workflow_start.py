@@ -133,6 +133,12 @@ def prepare_start_in_project(
     if not steps_config['steps']:
         raise ValueError('Empty flow cannot be started, please add steps first')
     entry_step_key, execution_scope = infer_entry_scope(task, steps_config)
+    # An explicit task start authorizes its entry, not every downstream step.
+    authorized_entry = entry_step_key or steps_config['steps'][0]['key']
+    TaskStep.update(status='ready').where(
+        (TaskStep.task == task) & (TaskStep.step_key == authorized_entry)
+        & TaskStep.status.in_(['pending', 'awaiting_start'])
+    ).execute()
     routing_state = empty_routing_state()
     routing_state["configuration_current"] = True
     routing_state["entry_step_key"] = entry_step_key
@@ -148,7 +154,7 @@ def prepare_start_in_project(
             key: value for key, value in saved_actor.items()
             if key in {
                 "author_id", "author_username", "author_name", "author_type",
-                "initiated_by_user_id", "initiated_by_username",
+                "initiated_by_user_id", "initiated_by_username", "initiated_by_name",
                 "author_device_id", "author_device_name",
             } and isinstance(value, str) and value
         } if isinstance(saved_actor, dict) else {}
@@ -207,6 +213,7 @@ def prepare_start_in_project(
                 "author_type": "scheduler",
                 "initiated_by_user_id": task.creator_id,
                 "initiated_by_username": task.creator_username or task.creator_name,
+                "initiated_by_name": task.creator_name,
                 "author_device_id": task.creator_device_id,
                 "author_device_name": task.creator_device_name,
             }
@@ -326,6 +333,9 @@ def prepare_start_from_step_without_parent(
         task.updated_at = utc_now()
         task.save()
 
+    TaskStep.update(status='ready').where(
+        (TaskStep.task == task) & (TaskStep.step_key == step_key)
+    ).execute()
     prepared = prepare_start_in_project(
         project, task.id, "",
         instance_id=instance_id,

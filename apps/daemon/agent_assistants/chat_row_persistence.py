@@ -110,6 +110,7 @@ class ChatRowPersistence(PersistenceAdapter):
                     author_type=item.author_type,
                     initiated_by_user_id=item.initiated_by_user_id,
                     initiated_by_username=item.initiated_by_username,
+                    initiated_by_name=item.initiated_by_name,
                     author_device_id=item.author_device_id,
                     author_device_name=item.author_device_name,
                 )
@@ -223,6 +224,7 @@ class ChatRowPersistence(PersistenceAdapter):
                 "author_type": item.get("author_type"),
                 "initiated_by_user_id": item.get("initiated_by_user_id"),
                 "initiated_by_username": item.get("initiated_by_username"),
+                "initiated_by_name": item.get("initiated_by_name"),
                 "author_device_id": item.get("author_device_id"),
                 "author_device_name": item.get("author_device_name"),
                 "status": item.get("status") or (

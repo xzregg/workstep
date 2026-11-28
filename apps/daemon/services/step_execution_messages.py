@@ -198,7 +198,7 @@ class StepExecutionMessages:
                 message.author_username = step.engine
                 message.author_name = step.engine
                 message.author_type = "assistant"
-                for key in ("initiated_by_user_id", "initiated_by_username",
+                for key in ("initiated_by_user_id", "initiated_by_username", "initiated_by_name",
                             "author_device_id", "author_device_name"):
                     setattr(message, key, actor_fields.get(key))
                 message.engine = step.engine

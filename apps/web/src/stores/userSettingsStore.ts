@@ -25,6 +25,16 @@ interface UserSettingsState {
   saveOpenMode: (enabled: boolean) => Promise<boolean>
 }
 
+let reloadAfterLoad = false
+
+async function finishSettingsOperation() {
+  useUserSettingsStore.setState({ loading: false })
+  if (reloadAfterLoad) {
+    reloadAfterLoad = false
+    await useUserSettingsStore.getState().load(true)
+  }
+}
+
 export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
   messageHistoryPageSize: DEFAULT_MESSAGE_HISTORY_PAGE_SIZE,
   saveMessageHistoryPageSize: async (size) => {
@@ -58,19 +68,28 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
   loading: false,
   error: '',
   load: async (force = false) => {
-    if ((get().loaded && !get().error && !force) || get().loading) return
+    if (get().loading) {
+      reloadAfterLoad ||= force
+      return
+    }
+    if (get().loaded && !get().error && !force) return
     set({ loading: true, error: '' })
     const actor = loadBrowserActor()
     try {
       let settings = await systemSettingsApi.get()
       let restoredActor = actor
       const gatewayIdentity = settings.identity_source === 'gateway'
+      if (gatewayIdentity && settings.user_name) {
+        restoredActor = saveBrowserActor(settings.user_name, { gateway: true })
+      } else if (!gatewayIdentity && actor?.gateway) {
+        restoredActor = saveBrowserActor(actor.name, { gateway: false })
+      }
       if (!gatewayIdentity && typeof window !== 'undefined' && window.workstepDesktop) {
         // Desktop ports can change across launches; config belongs to the
         // active native/sandbox Home, unlike origin-scoped browser storage.
         if (!settings.user_name && actor?.name) settings = await systemSettingsApi.updateUserName(actor.name)
         if (settings.user_name) restoredActor = saveBrowserActor(settings.user_name, {
-          id: settings.device_id, deviceId: settings.device_id, deviceName: settings.device_name,
+          id: settings.device_id, deviceId: settings.device_id, deviceName: settings.device_name, gateway: false,
         })
       }
       set({
@@ -90,13 +109,14 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
     } catch (reason) {
       set({
         userName: actor?.name || '',
+        identitySource: actor?.gateway || get().identitySource === 'gateway' ? 'gateway' : 'local',
         deviceId: actor?.deviceId || '',
         deviceName: actor?.deviceName || '',
         loaded: true,
         error: reason instanceof Error ? reason.message : String(reason),
       })
     } finally {
-      set({ loading: false })
+      await finishSettingsOperation()
     }
   },
   saveUserName: async (name) => {
@@ -108,6 +128,7 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
       const settings = typeof window !== 'undefined' && window.workstepDesktop
         ? await systemSettingsApi.updateUserName(userName) : null
       const next = saveBrowserActor(settings?.user_name || userName, {
+        gateway: false,
         id: settings?.device_id, deviceId: settings?.device_id || get().deviceId,
         deviceName: settings?.device_name || get().deviceName,
       })
@@ -118,7 +139,7 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
       set({ error: reason instanceof Error ? reason.message : String(reason) })
       return false
     } finally {
-      set({ loading: false })
+      await finishSettingsOperation()
     }
   },
   saveOpenMode: async (enabled) => {
@@ -131,7 +152,7 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
       set({ error: reason instanceof Error ? reason.message : String(reason) })
       return false
     } finally {
-      set({ loading: false })
+      await finishSettingsOperation()
     }
   },
 }))

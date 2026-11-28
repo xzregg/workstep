@@ -161,6 +161,9 @@ async def create_project_task(
                 and definition.auto_start_enabled(start_step_key)
             )
         )
+        if execution_mode == 'immediate' or scheduled_start_at is not None:
+            from services.manual_step_start import authorize_creation_entry
+            authorize_creation_entry(created['id'], workflow['steps'], start_step_key)
         if on_persisted is not None:
             on_persisted(created)
         return created, should_start

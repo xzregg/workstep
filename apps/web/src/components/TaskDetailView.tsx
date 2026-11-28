@@ -52,6 +52,7 @@ import ProcessTrace from './ProcessTrace'
 import Icon from './Icon'
 import PendingMessageInserts from './PendingMessageInserts'
 import TaskStepProgressGraph from './TaskStepProgressGraph'
+import TaskManualStartControls from './TaskManualStartControls'
 import TaskStepIoPanel from './TaskStepIoPanel'
 import TaskDetailHeader from './TaskDetailHeader'
 import TaskDetailDescription from './TaskDetailDescription'
@@ -85,6 +86,7 @@ export type StepVisualState =
   | 'current'
   | 'reviewing'
   | 'awaiting_review'
+  | 'awaiting_start'
   | 'tool_approval'
   | 'user_input'
   | 'retrying'
@@ -242,6 +244,7 @@ export interface TaskDetailViewProps {
   onStopStep?: (stepKey: string) => void
   /** 引擎会话丢失时，清空会话并用完整步骤提示词重跑。 */
   onRestartStepWithFreshSession?: (stepKey: string) => void
+  onStartStep?: (stepKey: string) => Promise<void>
   /** 正在重建会话重跑的步骤 key，用于禁用重复点击。 */
   restartingStepKeys?: string[]
   onRetryFailedMessage?: (messageId: string) => void
@@ -401,6 +404,7 @@ export default function TaskDetailView({
   onResetStepChange,
   onStopStep,
   onRestartStepWithFreshSession,
+  onStartStep,
   restartingStepKeys,
   onRetryFailedMessage,
   onSetFailedExecutionComplete,
@@ -634,7 +638,11 @@ export default function TaskDetailView({
           durationNowMs={durationNowMs}
           onStepClick={handleStepClick}
         />
-        {workflowTools}
+        <div className="task-step-toolbar">
+          {workflowTools}
+          <TaskManualStartControls steps={steps} stepProgress={stepProgress}
+            onStart={['waiting', 'running'].includes(task.status) ? onStartStep : undefined} />
+        </div>
 
         <TaskStepIoPanel currentStep={currentStep} steps={steps}
           taskId={task.id} projectId={projectId} templateConfiguration={templateConfiguration}

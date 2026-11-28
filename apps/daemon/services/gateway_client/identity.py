@@ -5,7 +5,7 @@ import hashlib
 import json
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import httpx
 from cryptography.exceptions import InvalidSignature
@@ -151,3 +151,11 @@ class ManagedLocalSessions:
 
     def clear(self) -> None:
         self._sessions.clear()
+
+    def refresh_identity(self, actor: ManagedActor) -> None:
+        """Update names on existing sessions without changing their grants."""
+        for key, (saved, expires_at) in self._sessions.items():
+            if (saved.user_id, saved.device_id, saved.app_instance_id) == (
+                    actor.user_id, actor.device_id, actor.app_instance_id):
+                self._sessions[key] = (replace(saved, username=actor.username,
+                    display_name=actor.display_name), expires_at)

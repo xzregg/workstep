@@ -605,7 +605,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         ) as string
         const stepKey = event.step_key || value.step_key as string | undefined
         const isStepStatus = [
-          'pending', 'running', 'reviewing', 'awaiting_review', 'retrying',
+          'pending', 'ready', 'awaiting_start', 'running', 'reviewing', 'awaiting_review', 'retrying',
           'passed', 'rejected', 'failed', 'cancelled', 'skipped',
           'rework', 'rework_waiting',
         ].includes(status)
@@ -616,6 +616,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             ? (task.steps || []).map((step) =>
                 step.step_key === stepKey ? {
                   ...step, status: stepStatus,
+                  waiting_reason: status === 'awaiting_start' ? 'manual_start' : null,
                   error: status === 'failed' || status === 'cancelled'
                     ? String(event.error ?? value.error ?? step.error ?? '') || null
                     : null,
@@ -641,8 +642,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             const updated = updateTaskStep(task)
             const steps = (updated.steps || []).filter((step) => step.in_workflow !== false)
             const active = steps.find((step) => ['running', 'reviewing', 'retrying', 'rework'].includes(step.status) && !step.waiting_reason)
-            const pending = steps.filter((step) => step.status === 'awaiting_review' || step.waiting_reason)
-              .map((step) => ({ step_key: step.step_key, reason: step.waiting_reason || 'manual_review' }))
+            const pending = steps.filter((step) => step.status === 'awaiting_review' || step.status === 'awaiting_start' || step.waiting_reason)
+              .map((step) => ({ step_key: step.step_key, reason: step.waiting_reason || (step.status === 'awaiting_start' ? 'manual_start' : 'manual_review') }))
             const state = active ? 'running' : pending.length ? 'waiting'
               : steps.some((step) => ['failed', 'rejected'].includes(step.status)) ? 'failed'
               : status === 'cancelled' ? 'stopped' : task.status

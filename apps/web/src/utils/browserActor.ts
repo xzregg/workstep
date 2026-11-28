@@ -5,6 +5,7 @@ export interface BrowserActor {
   name: string
   deviceId: string
   deviceName: string
+  gateway?: boolean
 }
 
 interface StorageLike {
@@ -44,7 +45,7 @@ export function loadBrowserActor(target: StorageLike | null = storage()): Browse
     const deviceId = typeof value.deviceId === 'string' ? value.deviceId.trim() : ''
     const deviceName = typeof value.deviceName === 'string' ? value.deviceName.trim() : ''
     if (!id || !name || !deviceId || !deviceName) return null
-    return { id, name, deviceId, deviceName }
+    return { id, name, deviceId, deviceName, ...(value.gateway === true ? { gateway: true } : {}) }
   } catch {
     return null
   }
@@ -52,7 +53,7 @@ export function loadBrowserActor(target: StorageLike | null = storage()): Browse
 
 export function saveBrowserActor(
   name: string,
-  device?: { id?: string; deviceId?: string; deviceName?: string },
+  device?: { id?: string; deviceId?: string; deviceName?: string; gateway?: boolean },
   target: StorageLike | null = storage(),
 ): BrowserActor | null {
   const normalized = name.trim()
@@ -63,6 +64,7 @@ export function saveBrowserActor(
     name: normalized,
     deviceId: device?.deviceId?.trim() || existing?.deviceId || randomId(),
     deviceName: device?.deviceName?.trim() || existing?.deviceName || defaultDeviceName(),
+    ...((device?.gateway ?? existing?.gateway) ? { gateway: true } : {}),
   }
   target.setItem(BROWSER_ACTOR_STORAGE_KEY, JSON.stringify(actor))
   return actor
@@ -71,7 +73,7 @@ export function saveBrowserActor(
 export function browserActorHeaders(
   actor: BrowserActor | null = loadBrowserActor(),
 ): Record<string, string> {
-  if (!actor) return {}
+  if (!actor || actor.gateway) return {}
   return {
     'X-WorkStep-Actor-Id': encodeURIComponent(actor.id),
     'X-WorkStep-Actor-Name': encodeURIComponent(actor.name),

@@ -114,6 +114,8 @@ def test_user_task_message_snapshots_current_actor_and_initiator(tmp_path):
         history = TaskService(EventBus()).get_task_history(task.id)
         assert history[0]["author_type"] == "user"
         assert history[0]["author_username"] == "alice"
+        assert message.initiated_by_name == "Alice Display"
+        assert history[0]["initiated_by_name"] == "Alice Display"
     finally:
         db.close()
 
@@ -146,6 +148,7 @@ def test_assistant_message_keeps_own_author_and_inherits_initiator(tmp_path):
                 first.initiated_by_username) == (
                     "assistant", "assistant", "creator-1", "任务创建人",
                 )
+        assert first.initiated_by_name == "任务创建人"
 
         create_task_message(
             task=task,
