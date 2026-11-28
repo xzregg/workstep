@@ -1621,7 +1621,8 @@
       {
         "title": "Schedules and system calendars",
         "steps": [
-          "Open Schedules on the digital-hub home and select a date to view its agenda; an empty date opens creation. Content supports Markdown. Connect and authorize a native calendar in digital-hub settings → Operations, then select a writable calendar. With sync enabled, new entries use that system calendar; otherwise they remain in WorkStep. Existing synced entries are not moved or deleted automatically. Browsers support the internal calendar; native execution requires a supported macOS or Android app online. After failure or an unknown result, verify the original record before continuing unfinished items to avoid duplicates."
+          "Open Schedules on the digital-hub home and select a date to view its agenda; an empty date opens creation. Content supports Markdown. Connect and authorize a native calendar in digital-hub settings → Operations, then select a writable calendar. With sync enabled, new entries use that system calendar; otherwise they remain in WorkStep. Existing synced entries are not moved or deleted automatically. Browsers support the internal calendar; native execution requires a supported macOS or Android app online. After failure or an unknown result, verify the original record before continuing unfinished items to avoid duplicates.",
+          "When adding or editing an event, set the start and end dates and times separately. Check the time range before saving."
         ],
         "screenshot": {
           "id": "native-calendar",

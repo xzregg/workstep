@@ -78,6 +78,27 @@ class BrowserActorMiddleware(BaseHTTPMiddleware):
             _remote_browser_request.reset(remote_token)
 
 
+def remote_access_authorized(request: Request | WebSocket, access_service: RemoteAccessService) -> bool:
+    """Shared HTTP/WebSocket/native unlock decision; run password I/O off-loop."""
+    if (authenticated_remote_dispatch() is not None
+            or _gateway_bridge_authenticated(request) or webrtc_bridge_authenticated(request)
+            or desktop_runtime_authenticated(request)
+            or gateway_browser_authenticated(request)):
+        return True
+    if _is_loopback(_client_host(request.headers, request.client)):
+        return True
+    if not access_service.access_password_required():
+        return True
+    token = request.cookies.get(ACCESS_COOKIE_NAME)
+    if not token:
+        header = request.headers.get("x-workstep-access")
+        token = header.strip() if header else None
+    if not token and isinstance(request, WebSocket):
+        token = str(request.query_params.get('access') or '').strip() or None
+    return access_service.verify_access_token(token)
+
+
+
 class RemoteAccessGuardMiddleware(BaseHTTPMiddleware):
     """Require the access password for every non-local browser request.
 
@@ -91,27 +112,11 @@ class RemoteAccessGuardMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._service = access_service
 
-    def _authorized(self, request: Request) -> bool:
-        if (authenticated_remote_dispatch() is not None
-                or _gateway_bridge_authenticated(request) or webrtc_bridge_authenticated(request)
-                or desktop_runtime_authenticated(request)
-                or gateway_browser_authenticated(request)):
-            return True
-        if _is_loopback(_client_host(request.headers, request.client)):
-            return True
-        if not self._service.access_password_required():
-            return True
-        token = request.cookies.get(ACCESS_COOKIE_NAME)
-        if not token:
-            header = request.headers.get("x-workstep-access")
-            token = header.strip() if header else None
-        return self._service.verify_access_token(token)
-
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if _guard_exempt(path, request.method):
             return await call_next(request)
-        if await asyncio.to_thread(self._authorized, request):
+        if await asyncio.to_thread(remote_access_authorized, request, self._service):
             return await call_next(request)
         return JSONResponse(
             {"detail": "需要远程访问密钥", "code": "remote_access_locked"},
@@ -119,17 +124,5 @@ class RemoteAccessGuardMiddleware(BaseHTTPMiddleware):
         )
 
 
-def websocket_access_allowed(ws: WebSocket, access_service: "RemoteAccessService") -> bool:
-    """Mirror ``RemoteAccessGuardMiddleware`` for the main WebSocket feed."""
-    if (_gateway_bridge_authenticated(ws) or webrtc_bridge_authenticated(ws)
-            or desktop_runtime_authenticated(ws)
-            or gateway_browser_authenticated(ws)):
-        return True
-    if _is_loopback(_client_host(ws.headers, ws.client)):
-        return True
-    if not access_service.access_password_required():
-        return True
-    token = ws.cookies.get(ACCESS_COOKIE_NAME)
-    if not token:
-        token = str(ws.query_params.get("access") or "").strip() or None
-    return access_service.verify_access_token(token)
+def websocket_access_allowed(ws: WebSocket, access_service: RemoteAccessService) -> bool:
+    return remote_access_authorized(ws, access_service)

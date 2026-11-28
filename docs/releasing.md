@@ -94,6 +94,20 @@ macOS 验收的失败清理增加有时限的自有子进程终止，避免启�
 
 ## Release payload hygiene
 
+### Android APK
+
+The tagged release also includes `WorkStep-android-unsigned.apk`. The Android job
+runs release unit tests, release lint and `assembleRelease`, verifies the package
+identity and refuses a signed substitute. The APK is covered by `SHA256SUMS.txt`.
+It is deliberately **unsigned and cannot be installed until the downloader signs
+it**. Subsequent upgrades require the same signing key; it cannot replace an
+existing installation signed with another key. Do not publish a debug APK as a
+formal release or generate disposable signing identities. Android currently keeps
+its existing independent app version and increasing version code; the GitHub
+Release tag identifies the source snapshot, not the APK's versionName.
+APK compilation and JVM tests do not replace real-device installation, WebView,
+camera, microphone, notifications or P2P connectivity acceptance.
+
 Never copy the repository root into an installer or image. Keep only application
 runtime files, compiled frontend assets, required packaged data, licenses and SBOM.
 Repository `plans/`, test fixtures, temporary files, caches, logs, source maps,

@@ -121,9 +121,8 @@ async def get_system_settings(request: Request):
     actor = getattr(request.state, 'managed_actor', None)
     gateway = getattr(request.app.state, 'gateway_client', None)
     gateway_mode = bool(gateway and gateway.managed_config)
-    from api.desktop_security import desktop_runtime_authenticated, local_gateway_fallback_allowed, webrtc_device_owner
-    host_workspace = (desktop_runtime_authenticated(request) or local_gateway_fallback_allowed(request)
-                      or webrtc_device_owner(request))
+    from api.workspace_access import host_identity_request
+    host_workspace = host_identity_request(request)
     def load() -> dict:
         # Gateway configuration belongs to the host. Native LAN visitors
         # still supply their own browser profile unless they actually log in.

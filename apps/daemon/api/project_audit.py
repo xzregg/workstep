@@ -1,10 +1,9 @@
 """Read-only project operation audit API."""
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from api.desktop_security import desktop_runtime_authenticated
+from api.workspace_access import require_workspace_access
 
-from services.project_audit import list_project_audit, remote_audit_source
-from services.remote_access import get_current_actor, _client_host, _is_loopback
+from services.project_audit import list_project_audit
 
 
 router = APIRouter(prefix="/api/project-audit", tags=["操作审计"])
@@ -23,12 +22,7 @@ async def get_project_audit(
 ):
     from main import project_manager
 
-    actor = get_current_actor()
-    local = desktop_runtime_authenticated(request) or _is_loopback(_client_host(request.headers, request.client))
-    if not local or remote_audit_source() or request.scope.get("gateway_remote_actor") is not None or (
-        actor is not None and actor.source == "remote"
-    ):
-        raise HTTPException(403, "Operation audit is only viewable on the device where the project resides")
+    await require_workspace_access(request, 'local', detail='Operation audit is only viewable on the device where the project resides')
     if project_manager.get_project_by_id(project_id) is None:
         raise HTTPException(404, "Project not found")
     try:

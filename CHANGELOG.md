@@ -7,6 +7,9 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 ## 1.0.27
 
 - Add direct WebRTC remote access with connectivity checks, host-key QR pairing, scoped authorization and reconnection status.
+- Add Android P2P device pairing, encrypted local pairing-key storage and device-specific page restoration.
+- Publish an explicitly unsigned Android APK; sign it yourself before installation. Use the same signing key for subsequent upgrades. Its Android app version remains 1.0.70 (version code 71), independently of this desktop release tag.
+- Support editable calendar start and end times with compact mobile date and time controls.
 - Add per-step manual-start checkpoints, preserving parallel work, restart recovery and explicit task-level overrides.
 - Add shared global task outputs with stable paths, dedicated browsing and existing routing and review safeguards.
 - Add nested conversation groups and refine mobile digital-hub navigation and task-detail scrolling.

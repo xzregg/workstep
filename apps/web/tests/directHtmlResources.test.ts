@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { installDomEnvironment } from './helpers/domEnv'
 import { DirectHtmlResources } from '../src/webrtc/directHtmlResources'
+import { fsApi } from '../src/api/client'
 
 test('direct HTML resolves only ticket resources, including CSS fonts and child frames', async () => {
   const {window} = installDomEnvironment()
@@ -54,4 +55,37 @@ test('editing keeps the host nonce policy and does not load page scripts or esca
     assert.ok(!html.includes('https://other.example'))
     await assert.rejects(resources.document(root+'../private.html'),/denied/)
   }finally{resources.dispose();globalThis.fetch=previous;await window.happyDOM.close()}
+})
+
+
+test('nested prototype entries preserve their directory when loading linked resources', async () => {
+  const { window } = installDomEnvironment()
+  window.happyDOM.setURL('http://localhost/p2p/device/')
+  const root = 'http://localhost/api/fs/html-resource/project/ticket/'
+  const previous = globalThis.fetch
+  const requests: string[] = []
+  const responses = new Map([
+    ['plans/应用 设计/architecture.html', '<link rel="stylesheet" href="styles.css"><script src="diagrams.js"></script><h1>Architecture</h1>'],
+    ['plans/应用 设计/styles.css', 'h1{color:red}'],
+    ['plans/应用 设计/diagrams.js', 'document.body.dataset.loaded="yes"'],
+  ])
+  globalThis.fetch = async input => {
+    const url = new URL(String(input), window.location.href)
+    const resource = decodeURIComponent(url.pathname.slice(new URL(root).pathname.length))
+    requests.push(resource)
+    const body = responses.get(resource)
+    return new Response(body || 'missing', {status:body ? 200 : 404})
+  }
+  const resources = new DirectHtmlResources(root)
+  try {
+    const entry = fsApi.htmlPreviewUrl({token:'ticket',entry:'plans/应用 设计/architecture.html'}, 'project')
+    const html = await resources.document(new URL(entry, window.location.href).href)
+    assert.ok(html.includes('data:text/css'))
+    assert.ok(html.includes('data:text/javascript'))
+    assert.deepEqual(requests, ['plans/应用 设计/architecture.html', 'plans/应用 设计/styles.css', 'plans/应用 设计/diagrams.js'])
+  } finally {
+    resources.dispose()
+    globalThis.fetch = previous
+    await window.happyDOM.close()
+  }
 })

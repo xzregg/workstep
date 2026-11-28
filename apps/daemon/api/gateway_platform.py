@@ -1,8 +1,5 @@
 """Browser settings and callback for desktop and mobile Gateway configuration."""
-import asyncio
 import httpx
-import os
-import hmac
 from urllib.parse import urlsplit
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
@@ -10,7 +7,9 @@ from pydantic import BaseModel, Field, field_validator
 from services.gateway_client.browser_login import GatewayLoginError, local_session_cookie_name, normalize_origin
 from api.desktop_security import (browser_origin_allowed, local_gateway_fallback_allowed,
     gateway_workspace_access_allowed, local_gateway_workspace_active, set_local_gateway_workspace_cookie,
-    gateway_device_owner)
+    )
+from api.workspace_access import require_workspace_access, require_same_origin, desktop_login_handoff
+from api.workspace_access import is_desktop_client as _desktop
 
 router = APIRouter()
 
@@ -56,43 +55,14 @@ def _login_error(exc):
 
 
 async def _settings_service(request: Request, mutation=False, configure=False):
-    actor = request.scope.get('gateway_remote_actor')
-    if request.scope.get('gateway_share_scope') is not None or (actor is not None and actor.project_id is not None):
-        raise HTTPException(status_code=403, detail='Gateway settings require host access')
-    if mutation and not browser_origin_allowed(request):
-        raise HTTPException(status_code=403, detail='Same-origin request required')
-    gateway = getattr(request.app.state, 'gateway_client', None)
-    local = actor is None and request.client and request.client.host in ('127.0.0.1', '::1', 'localhost') and request.url.hostname in ('127.0.0.1', '::1', 'localhost')
-    if configure and gateway is not None and gateway.managed_config is not None and not local and not _desktop(request) and not gateway_device_owner(request):
-        actor = actor or gateway.local_sessions.resolve(request.headers.get('x-workstep-local-session') or request.cookies.get(local_session_cookie_name(request.app)))
-        access = getattr(request.app.state, 'remote_access_service', None)
-        def native_access_allowed():
-            if access is None or not access.settings().get('enabled'):
-                return False
-            if not access.access_password_required():
-                return True
-            from services.remote_access import ACCESS_COOKIE_NAME
-            token = request.cookies.get(ACCESS_COOKIE_NAME) or request.headers.get('x-workstep-access')
-            return access.verify_access_token(token)
-        native_access = request.scope.get('gateway_remote_actor') is None and await asyncio.to_thread(native_access_allowed)
-        if not native_access and (actor is None or actor.user_id != gateway.current_user_id):
-            raise HTTPException(status_code=403, detail='Gateway settings require the device owner session')
+    await require_workspace_access(request, 'gateway_configuration' if configure else 'scope', detail='Gateway settings require host access')
+    if mutation:
+        require_same_origin(request)
     return request.app.state.gateway_browser_login
 
 
-def _desktop(request: Request) -> bool:
-    expected = os.environ.get('WORKSTEP_DESKTOP_TOKEN')
-    return bool(os.environ.get('WORKSTEP_DESKTOP_RUNTIME') == '1' and expected and
-        hmac.compare_digest(request.headers.get('x-workstep-desktop-token', ''), expected))
-
-
 def _desktop_login_handoff(request: Request) -> bool:
-    """Use the app handoff for Electron's authenticated UI or its local browser."""
-    if _desktop(request):
-        return True
-    loopback = ('127.0.0.1', '::1', 'localhost')
-    return bool(os.environ.get('WORKSTEP_DESKTOP_RUNTIME') == '1' and request.client
-        and request.client.host in loopback and request.url.hostname in loopback)
+    return desktop_login_handoff(request)
 
 
 def _browser_callback_origin(request: Request, service=None) -> str:

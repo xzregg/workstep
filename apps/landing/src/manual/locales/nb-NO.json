@@ -1621,7 +1621,8 @@
       {
         "title": "Planlegging og systemkalendere",
         "steps": [
-          "Åpne planleggingen på den digitale hubens startside og velg en dato. En tom dato åpner oppretting; innhold støtter Markdown. Koble til og godkjenn en innebygd kalender under Innstillinger → Handlinger og velg en skrivbar kalender. Med synkronisering lagres nye oppføringer der, ellers bare i WorkStep. Eksisterende synkroniserte oppføringer flyttes eller slettes ikke automatisk. Nettleseren støtter den interne kalenderen; innebygde handlinger krever en støttet macOS- eller Android-app på nett. Ved feil eller ukjent resultat må originaloppføringen kontrolleres før ufullførte handlinger fortsettes, slik at duplikater unngås."
+          "Åpne planleggingen på den digitale hubens startside og velg en dato. En tom dato åpner oppretting; innhold støtter Markdown. Koble til og godkjenn en innebygd kalender under Innstillinger → Handlinger og velg en skrivbar kalender. Med synkronisering lagres nye oppføringer der, ellers bare i WorkStep. Eksisterende synkroniserte oppføringer flyttes eller slettes ikke automatisk. Nettleseren støtter den interne kalenderen; innebygde handlinger krever en støttet macOS- eller Android-app på nett. Ved feil eller ukjent resultat må originaloppføringen kontrolleres før ufullførte handlinger fortsettes, slik at duplikater unngås.",
+          "Når du legger til eller redigerer en hendelse, angir du start- og sluttdato og klokkeslett hver for seg. Kontroller tidsrommet før du lagrer."
         ],
         "screenshot": {
           "id": "native-calendar",

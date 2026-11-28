@@ -102,6 +102,23 @@ async function runFunctional(page,cfg,screenshotDir,files) {
     }
     return {interfaces:paths.length,pages:7};
   });
+  await check('手机系统统计整页、刷新与直连重连',async()=>{
+    await page.setViewportSize({width:390,height:844});
+    await navigate('statistics',{tab:'system'});
+    await page.locator('.system-host-card').first().waitFor({timeout:15000});
+    const before=await request('/statistics/system');
+    if(before.status!=='ok'||!before.sample)throw new Error('System sampler unavailable '+before.status);
+    await page.locator('.system-button-icon').click();
+    await page.waitForFunction(()=>!document.querySelector('.system-button-icon')?.disabled);
+    await page.evaluate(()=>{window.rtcClosedPeer=window.__workstepDirect.handle;window.rtcClosedPeer.peerConnection.close();});
+    await page.waitForFunction(()=>window.__workstepDirect?.handle!==window.rtcClosedPeer&&window.__workstepDirect?.handle.transport.isOpen,null,{timeout:45000});
+    await page.locator('.system-button-icon').click();
+    await page.waitForFunction(()=>document.querySelector('.system-live')?.getAttribute('data-state')==='live',null,{timeout:10000});
+    if(await page.locator('.system-host-card').count()!==4)throw new Error('System cards missing');
+    if(screenshotDir)await page.screenshot({path:path.join(screenshotDir,'system-statistics-390.png')});
+    await page.setViewportSize({width:1440,height:900});
+    return {status:before.status,cards:4,pid:before.sample.daemon.pid,reconnected:true};
+  });
   await runBusinessChecks({page,cfg,screenshotDir,check,request,navigate,scope,upload,download,digest,report});
   await navigate('',{});
   await page.waitForSelector('[data-webrtc-connected="true"]');
@@ -214,8 +231,8 @@ async function runBusinessChecks(context){
     return {saved:!!saved};
   });
   await check('真实通道关闭后原位重连和文件读取',async()=>{
-    await page.evaluate(()=>window.__workstepDirect.handle.peerConnection.close());
-    await page.waitForFunction(()=>window.__workstepDirect?.handle.transport.isOpen,null,{timeout:20000});
+    await page.evaluate(()=>{window.rtcClosedPeer=window.__workstepDirect.handle;window.rtcClosedPeer.peerConnection.close();});
+    await page.waitForFunction(()=>window.__workstepDirect?.handle!==window.rtcClosedPeer&&window.__workstepDirect?.handle.transport.isOpen,null,{timeout:45000});
     await request('/project/list');
     const file=await request('/fs/preview'+scope+'&path=rtc-preview.html');
     if(!file.content.includes('rtc-script.js'))throw new Error('File read after reconnect failed');

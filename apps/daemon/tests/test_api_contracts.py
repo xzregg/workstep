@@ -1577,18 +1577,24 @@ async def test_project_proxy_files_stay_inside_project_and_slow_upload_does_not_
     assert (await call_bridge("POST", "/api/fs/browser-upload", upload_query, level="edit",
                               body={**browser_upload, "project_id": "other-project"}))[0].payload["status"] == 403
 
-    original_write = Path.write_bytes
+    from api import fs as fs_api
+    original_write = fs_api._persist_upload_bytes
     entered = threading.Event()
-    def slow_upload(path, data):
+    release_upload = threading.Event()
+    def slow_upload(path, data, *, retryable):
         if ".workstep/uploads" in str(path):
             entered.set()
-            time.sleep(0.25)
-        return original_write(path, data)
-    monkeypatch.setattr(Path, "write_bytes", slow_upload)
+            release_upload.wait(5)
+        return original_write(path, data, retryable=retryable)
+    monkeypatch.setattr(fs_api, "_persist_upload_bytes", slow_upload)
     pending = asyncio.create_task(call_bridge("POST", "/api/fs/upload/image", upload_query,
                                               level="edit", body=upload_body))
-    assert await asyncio.to_thread(entered.wait, 1)
-    assert (await asyncio.wait_for(client.get("/api/health"), timeout=0.15)).status_code == 200
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert (await asyncio.wait_for(client.get("/api/health"), timeout=0.5)).status_code == 200
+        assert not pending.done()
+    finally:
+        release_upload.set()
     assert (await pending)[0].payload["status"] == 200
 
     entry = {"project_id": project_id, "parent": str(project_dir),
@@ -2343,17 +2349,18 @@ async def test_slow_filesystem_write_does_not_block_health_check(
     project_dir.mkdir()
     initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
     project_id = initialized.json()["id"]
-    original_write_bytes = Path.write_bytes
+    from api import fs as fs_api
+    original_write_bytes = fs_api._persist_upload_bytes
     write_started = threading.Event()
     release_write = threading.Event()
 
-    def slow_upload(path, content):
+    def slow_upload(path, content, *, retryable):
         if path.parent.name == "uploads":
             write_started.set()
             release_write.wait(5)
-        return original_write_bytes(path, content)
+        return original_write_bytes(path, content, retryable=retryable)
 
-    monkeypatch.setattr(Path, "write_bytes", slow_upload)
+    monkeypatch.setattr(fs_api, "_persist_upload_bytes", slow_upload)
     upload = asyncio.create_task(client.post(
         "/api/fs/upload/file",
         params={"project_id": project_id},
@@ -4211,7 +4218,9 @@ async def test_file_browser_and_preview_cover_text_image_binary_and_size_limit(
     binary_file = tmp_path / "payload.bin"
     binary_file.write_bytes(b"\xff\xfe\x00\x01")
     large_file = tmp_path / "large.txt"
-    large_file.write_bytes(b"x" * (1024 * 1024 + 1))
+    from services.html_preview import MAX_PREVIEW_BYTES
+    with large_file.open('wb') as stream:
+        stream.truncate(MAX_PREVIEW_BYTES + 1)
 
     browsed = await client.get("/api/fs/browse", params={"path": str(tmp_path)})
     assert browsed.status_code == 200

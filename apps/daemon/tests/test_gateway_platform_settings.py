@@ -540,7 +540,7 @@ async def test_mobile_cannot_change_managed_gateway_without_device_owner_session
     from api.gateway_platform import router
     class Login:
         async def save_settings(self, url, enabled): return {'url':url,'enabled':enabled}
-    owner = SimpleNamespace(user_id='owner')
+    owner = SimpleNamespace(user_id='owner', project_id=None)
     gateway = SimpleNamespace(managed_config=object(),current_user_id='owner',
         local_sessions=SimpleNamespace(resolve=lambda token: owner if token=='owner-session' else None))
     app=FastAPI();app.include_router(router);app.state.gateway_browser_login=Login();app.state.gateway_client=gateway

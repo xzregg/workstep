@@ -45,6 +45,10 @@ class SharedImageTests(unittest.TestCase):
         promote = workflow.index('docker buildx imagetools create --tag "$repository:latest" "$repository@$digest"')
         self.assertLess(smoke, promote)
 
+    def test_tagged_images_also_run_isolated_runtime_acceptance(self):
+        workflow = (ROOT / ".github/workflows/desktop-release.yml").read_text()
+        self.assertIn('\n          sudo python3 scripts/verify-shared-image.py "$repository@$digest"\n', workflow)
+
     def test_system_git_points_to_image_managed_git(self):
         self.assertIn("RUN ln -sf /root/.workstep/runtime/base/git/bin/git /usr/bin/git",
                       (ROOT / "Dockerfile").read_text())

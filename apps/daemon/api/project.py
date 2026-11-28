@@ -210,10 +210,8 @@ class ProjectStorageRequest(BaseModel):
 
 @router.get("/{project_id}/storage")
 async def get_project_storage(project_id: str, request: Request):
-    from services.remote_access import get_current_actor
-    actor = get_current_actor()
-    if request.scope.get("gateway_remote_actor") or (actor and (actor.project_id is not None or actor.source == "remote")):
-        raise HTTPException(403, "The data storage location can only be managed by the local machine")
+    from api.workspace_access import require_workspace_access
+    await require_workspace_access(request, 'local', detail='The data storage location can only be managed by the local machine')
     project = project_manager.get_project_by_id(project_id)
     if project is None:
         raise HTTPException(404, "Project not found")
@@ -222,10 +220,8 @@ async def get_project_storage(project_id: str, request: Request):
 
 @router.put("/{project_id}/storage")
 async def set_project_storage(project_id: str, req: ProjectStorageRequest, request: Request):
-    from services.remote_access import get_current_actor
-    actor = get_current_actor()
-    if request.scope.get("gateway_remote_actor") or (actor and (actor.project_id is not None or actor.source == "remote")):
-        raise HTTPException(403, "The data storage location can only be managed by the local machine")
+    from api.workspace_access import require_workspace_access
+    await require_workspace_access(request, 'local', detail='The data storage location can only be managed by the local machine')
     try:
         return await project_manager.set_storage(project_id, req.follow_project)
     except ValueError as exc:

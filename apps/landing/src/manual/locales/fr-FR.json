@@ -1621,7 +1621,8 @@
       {
         "title": "Planning et calendriers système",
         "steps": [
-          "Ouvrez le planning depuis l’accueil du centre numérique et choisissez une date. Une date vide permet de créer une entrée dont le contenu accepte Markdown. Connectez et autorisez un calendrier natif dans Paramètres → Opérations, puis choisissez un calendrier modifiable. La synchronisation active y enregistre les nouvelles entrées ; sinon elles restent dans WorkStep. Les entrées synchronisées existantes ne sont ni déplacées ni supprimées automatiquement. Le navigateur propose le calendrier interne ; les opérations natives nécessitent une application macOS ou Android compatible en ligne. En cas d’échec ou de résultat inconnu, vérifiez l’entrée originale avant de reprendre les éléments inachevés."
+          "Ouvrez le planning depuis l’accueil du centre numérique et choisissez une date. Une date vide permet de créer une entrée dont le contenu accepte Markdown. Connectez et autorisez un calendrier natif dans Paramètres → Opérations, puis choisissez un calendrier modifiable. La synchronisation active y enregistre les nouvelles entrées ; sinon elles restent dans WorkStep. Les entrées synchronisées existantes ne sont ni déplacées ni supprimées automatiquement. Le navigateur propose le calendrier interne ; les opérations natives nécessitent une application macOS ou Android compatible en ligne. En cas d’échec ou de résultat inconnu, vérifiez l’entrée originale avant de reprendre les éléments inachevés.",
+          "Lors de l’ajout ou de la modification d’un événement, réglez séparément les dates et heures de début et de fin. Vérifiez la période avant d’enregistrer."
         ],
         "screenshot": {
           "id": "native-calendar",

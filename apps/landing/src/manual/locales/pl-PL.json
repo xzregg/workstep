@@ -1621,7 +1621,8 @@
       {
         "title": "Terminarz i kalendarze systemowe",
         "steps": [
-          "Otwórz terminarz na stronie głównej centrum cyfrowego i wybierz datę. Pusta data pozwala utworzyć wpis obsługujący Markdown. Połącz i autoryzuj kalendarz natywny w Ustawieniach → Operacje, a następnie wybierz kalendarz z prawem zapisu. Przy włączonej synchronizacji nowe wpisy trafiają tam, w przeciwnym razie tylko do WorkStep. Istniejące zsynchronizowane wpisy nie są automatycznie przenoszone ani usuwane. Przeglądarka obsługuje kalendarz wewnętrzny; operacje natywne wymagają zgodnej aplikacji macOS lub Android online. Po błędzie lub nieznanym wyniku sprawdź oryginalny wpis przed wznowieniem niedokończonych działań, aby uniknąć duplikatów."
+          "Otwórz terminarz na stronie głównej centrum cyfrowego i wybierz datę. Pusta data pozwala utworzyć wpis obsługujący Markdown. Połącz i autoryzuj kalendarz natywny w Ustawieniach → Operacje, a następnie wybierz kalendarz z prawem zapisu. Przy włączonej synchronizacji nowe wpisy trafiają tam, w przeciwnym razie tylko do WorkStep. Istniejące zsynchronizowane wpisy nie są automatycznie przenoszone ani usuwane. Przeglądarka obsługuje kalendarz wewnętrzny; operacje natywne wymagają zgodnej aplikacji macOS lub Android online. Po błędzie lub nieznanym wyniku sprawdź oryginalny wpis przed wznowieniem niedokończonych działań, aby uniknąć duplikatów.",
+          "Podczas dodawania lub edycji wydarzenia ustaw oddzielnie daty i godziny rozpoczęcia oraz zakończenia. Przed zapisaniem sprawdź zakres czasu."
         ],
         "screenshot": {
           "id": "native-calendar",

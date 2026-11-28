@@ -11,9 +11,10 @@ router = APIRouter(prefix="/api/managed")
 async def managed_mode(request: Request):
     service = getattr(request.app.state, "gateway_client", None)
     result = {"managed": bool(service is not None and service.managed_config is not None)}
-    if request.scope.get('gateway_remote_actor') is not None:
-        from api.desktop_security import gateway_device_owner
-        result['can_manage_remote_projects'] = gateway_device_owner(request)
+    from api.workspace_access import remote_workspace_owner
+    owner = remote_workspace_owner(request)
+    if owner is not None:
+        result['can_manage_remote_projects'] = owner
     return result
 
 

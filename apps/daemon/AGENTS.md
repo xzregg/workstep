@@ -52,3 +52,9 @@ uv run --no-sync pytest
 
 - **命名**：新建/重命名项目与工作流时禁止空白字符，前端即时校验，后端 schema 同步强制。
 - **流程与模板**：新项目默认没有流程，初始化和重新打开时均不自动创建默认流程；已有流程原样恢复。新流程默认空画布，模板由用户主动选择。模板以 `~/.workstep/data/templates/*.json` 为准；启动时从 `apps/daemon/data/templates/` 复制缺失文件但不覆盖。模板含 `id/name/description/steps`；内置模板标记 `default: true` 且不可删除。
+
+## 统一访问权限
+
+- HTTP／WebSocket 身份验证由 `api/desktop_security.py` 与 `api/remote_access_guard.py` 拥有；宿主访问策略唯一入口为 `api/workspace_access.py`。新增宿主专属接口使用 `Depends(require_host_workspace)`，仅本机操作使用 `require_local_device`／`local_credentials`；已有项目及记录读写权限继续复用 `services/project_scope.py` 和领域服务。
+- 功能 API 禁止自行根据 `actor.source`、直连／网关 scope 标记、客户端 IP 或设备所有者标记放行／拒绝；不得逐接口增加 WebRTC 特例。传输身份只由上述边界模块识别，功能只声明公共策略；浏览器同源校验复用 `require_same_origin`。业务署名、记录归属和项目读写范围仍属领域数据语义，不能因统一入口而删除。
+- 修改公共策略须运行 `tests/test_workspace_access.py` 的权限矩阵与边界归属检查，覆盖本机、验证后的直连、网关宿主、项目身份、分享身份、伪造通道及仅本机凭据操作；涉及传输时补 HTTP／WebSocket 及真实直连回归。策略与契约见 [网关开发文档](../../docs/gateway-development.md#统一宿主访问策略)。

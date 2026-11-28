@@ -107,7 +107,7 @@ SHARE_COORDINATOR_WRITE = re.compile(r"/api/platform-share/actions/[A-Za-z0-9_-]
 
 def gateway_device_owner(request: Request) -> bool:
     actor = request.scope.get('gateway_remote_actor')
-    return bool(actor is not None and actor.project_id is None
+    return bool(actor is not None and getattr(actor, 'project_id', False) is None
                 and request.scope.get('gateway_device_owner') is True)
 
 
@@ -239,16 +239,8 @@ async def gateway_workspace_access_allowed(request: Request | WebSocket) -> bool
         return False
     # LAN browsers retain their existing native access-password boundary.
     # A temporary cookie alone never grants access from another machine.
-    service = getattr(request.app.state, 'remote_access_service', None)
-    def native_access():
-        if service is None or not service.settings().get('enabled'):
-            return False
-        if not service.access_password_required():
-            return True
-        from services.remote_access import ACCESS_COOKIE_NAME
-        return service.verify_access_token(request.cookies.get(ACCESS_COOKIE_NAME)
-                                           or request.headers.get('x-workstep-access'))
-    return await asyncio.to_thread(native_access)
+    from api.workspace_access import native_browser_access
+    return await asyncio.to_thread(native_browser_access, request)
 
 
 async def local_gateway_workspace_active(request: Request | WebSocket) -> bool:

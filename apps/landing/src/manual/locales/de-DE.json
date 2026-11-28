@@ -1621,7 +1621,8 @@
       {
         "title": "Termine und Systemkalender",
         "steps": [
-          "Öffnen Sie Termine auf der Digital-Hub-Startseite und wählen Sie ein Datum. Ein leerer Tag öffnet die Erstellung; Inhalte unterstützen Markdown. Verbinden und autorisieren Sie den nativen Kalender unter Einstellungen → Aktionen und wählen Sie einen beschreibbaren Kalender. Mit Synchronisierung werden neue Einträge dort gespeichert, sonst nur in WorkStep. Bestehende synchronisierte Einträge werden nicht automatisch verschoben oder gelöscht. Browser unterstützen den internen Kalender; native Vorgänge benötigen eine unterstützte macOS- oder Android-App online. Prüfen Sie bei Fehlern oder unklarem Ergebnis zuerst den ursprünglichen Eintrag und setzen Sie nur offene Vorgänge fort."
+          "Öffnen Sie Termine auf der Digital-Hub-Startseite und wählen Sie ein Datum. Ein leerer Tag öffnet die Erstellung; Inhalte unterstützen Markdown. Verbinden und autorisieren Sie den nativen Kalender unter Einstellungen → Aktionen und wählen Sie einen beschreibbaren Kalender. Mit Synchronisierung werden neue Einträge dort gespeichert, sonst nur in WorkStep. Bestehende synchronisierte Einträge werden nicht automatisch verschoben oder gelöscht. Browser unterstützen den internen Kalender; native Vorgänge benötigen eine unterstützte macOS- oder Android-App online. Prüfen Sie bei Fehlern oder unklarem Ergebnis zuerst den ursprünglichen Eintrag und setzen Sie nur offene Vorgänge fort.",
+          "Beim Hinzufügen oder Bearbeiten eines Termins lassen sich Start- und Enddatum sowie Uhrzeit getrennt einstellen. Prüfen Sie den Zeitraum vor dem Speichern."
         ],
         "screenshot": {
           "id": "native-calendar",

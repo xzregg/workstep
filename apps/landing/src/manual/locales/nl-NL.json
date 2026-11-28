@@ -1621,7 +1621,8 @@
       {
         "title": "Agenda en systeemkalenders",
         "steps": [
-          "Open de agenda op de startpagina van de digitale hub en kies een datum. Een lege datum opent het aanmaken; inhoud ondersteunt Markdown. Verbind en autoriseer een native kalender via Instellingen → Acties en kies een beschrijfbare kalender. Met synchronisatie komen nieuwe items daarin, anders alleen in WorkStep. Bestaande gesynchroniseerde items worden niet automatisch verplaatst of verwijderd. Browsers ondersteunen de interne kalender; native acties vereisen een ondersteunde macOS- of Android-app online. Controleer bij fouten of een onbekend resultaat eerst het oorspronkelijke item en hervat alleen onvoltooide acties om duplicaten te voorkomen."
+          "Open de agenda op de startpagina van de digitale hub en kies een datum. Een lege datum opent het aanmaken; inhoud ondersteunt Markdown. Verbind en autoriseer een native kalender via Instellingen → Acties en kies een beschrijfbare kalender. Met synchronisatie komen nieuwe items daarin, anders alleen in WorkStep. Bestaande gesynchroniseerde items worden niet automatisch verplaatst of verwijderd. Browsers ondersteunen de interne kalender; native acties vereisen een ondersteunde macOS- of Android-app online. Controleer bij fouten of een onbekend resultaat eerst het oorspronkelijke item en hervat alleen onvoltooide acties om duplicaten te voorkomen.",
+          "Stel bij het toevoegen of bewerken van een afspraak de begin- en einddatum en -tijd afzonderlijk in. Controleer het tijdvak voordat u opslaat."
         ],
         "screenshot": {
           "id": "native-calendar",

@@ -61,9 +61,9 @@ jobs:
           docker logout ghcr.io
           # Refuse to ship a desktop that cannot anonymously fetch its image.
           docker buildx imagetools inspect "$repository@$digest" > /dev/null
+          # Verify daemon, Gateway and assets with an isolated empty HOME on every release.
+          sudo python3 scripts/verify-shared-image.py "$repository@$digest"
           if [ "$IMAGE_ONLY" = true ]; then
-            # The Linux container owns its isolated HOME as root (including 0600 keys).
-            sudo python3 scripts/verify-shared-image.py "$repository@$digest"
             printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
             docker buildx imagetools create --tag "$repository:latest" "$repository@$digest"
             docker logout ghcr.io
@@ -339,9 +339,42 @@ jobs:
             apps/desktop/dist/*-sbom.cdx.json
           if-no-files-found: error
 
+  android:
+    if: ${{ !inputs.image_only }}
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { ref: "${{ inputs.tag || github.ref }}" }
+      - name: Test and build unsigned Android release APK
+        working-directory: apps/android
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+          ./gradlew --no-daemon --max-workers=2 testReleaseUnitTest lintRelease assembleRelease
+          apk=app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$apk"
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          "$tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/android-package.txt"
+          grep -q "package: name='com.workstep.android'" "$RUNNER_TEMP/android-package.txt"
+          if "$tools/apksigner" verify "$apk" > "$RUNNER_TEMP/android-signature.txt" 2>&1; then
+            echo "Expected an unsigned APK; refusing to publish a signed substitute." >&2
+            exit 1
+          fi
+          mkdir -p release
+          cp "$apk" release/WorkStep-android-unsigned.apk
+      - name: Upload unsigned Android APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: desktop-android
+          path: apps/android/release/WorkStep-android-unsigned.apk
+          if-no-files-found: error
+
   publish-draft:
     if: ${{ !inputs.image_only }}
-    needs: [macos, windows, linux]
+    needs: [macos, windows, linux, android]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

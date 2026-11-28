@@ -3,8 +3,7 @@ import asyncio
 from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from api.desktop_security import browser_origin_allowed, desktop_runtime_authenticated
-from services.remote_access import authenticated_remote_dispatch
+from api.workspace_access import require_workspace_access, require_same_origin
 
 router = APIRouter(prefix='/api/gateway-task-shares')
 
@@ -23,13 +22,9 @@ async def _call(request: Request, project_id: str, action: str, payload: dict):
     gateway = getattr(request.app.state, 'gateway_client', None)
     if gateway is None or gateway.managed_config is None or gateway.control_client is None:
         raise HTTPException(503, 'Gateway connection unavailable, please connect to the gateway and retry.')
-    actor = getattr(request.state, 'managed_actor', None)
-    owner_session = actor is not None and actor.project_id is None and actor.user_id == gateway.current_user_id
-    if (request.scope.get('gateway_remote_actor') is not None or authenticated_remote_dispatch() is not None
-            or not (desktop_runtime_authenticated(request) or owner_session)):
-        raise HTTPException(403, 'Please log in with the gateway account of the current device to manage sharing.')
-    if request.method != 'GET' and not browser_origin_allowed(request):
-        raise HTTPException(403, 'Share management requires same-origin requests')
+    await require_workspace_access(request, 'owner_session', detail='Please log in with the gateway account of the current device to manage sharing.')
+    if request.method != 'GET':
+        require_same_origin(request, detail='Share management requires same-origin requests')
     try:
         return await gateway.control_client.manage_task_share(gateway.device_id, project_id, action, payload)
     except PermissionError as exc:

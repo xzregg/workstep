@@ -33,6 +33,8 @@ Android 应用通过 HTTP 或 HTTPS 加载现有 WorkStep 移动端网页。第�
 
 生成的调试包在 `app/build/outputs/apk/debug/app-debug.apk`。发布包需要另行配置签名；不要分发调试包作为正式版本。
 
+GitHub 的标签发布提供 `WorkStep-android-unsigned.apk`，由 `testReleaseUnitTest lintRelease assembleRelease` 构建并附 SHA-256 校验值。这是未签名的 release APK，须自行签名后才能安装；以后覆盖升级必须使用同一签名密钥，不能直接覆盖其他密钥签名的已安装版本。APK 暂沿用独立版本 1.0.70（versionCode 71），GitHub 总版本标签表示对应源码快照，不替代 APK 内部版本号。编译、单元测试和 lint 不代表真机功能已验收。
+
 长按悬浮球打开「运行诊断」，可筛选安卓主进程、WebView、通知进程和崩溃日志。连接失败页也可打开。性能页可录制 15 秒，开始录制后返回原页面复现，随后从同一入口查看或提前停止。点选慢帧、长任务、消息渲染或慢请求，可联查附近的日志。消息阶段数据由新版 WorkStep 网页提供，旧服务仍可记录通用页面性能。可复制或导出完整的脱敏 JSON 报告，报告由用户主动分享。调试 APK 可通过 USB 从 Chrome 的 `chrome://inspect` 检查 WebView，正式 APK 关闭此能力。
 
 ### 网关页面加载失败的恢复

@@ -1621,7 +1621,8 @@
       {
         "title": "Agenda y calendarios del sistema",
         "steps": [
-          "Abra la agenda en el inicio del centro digital y elija una fecha; una fecha vacía permite crear una entrada con Markdown. Conecte y autorice un calendario nativo en Ajustes → Operaciones y seleccione uno editable. Con la sincronización activa, las nuevas entradas se guardan allí; de lo contrario, solo en WorkStep. Las entradas sincronizadas existentes no se mueven ni eliminan automáticamente. El navegador admite el calendario interno; las operaciones nativas requieren una aplicación macOS o Android compatible conectada. Ante un fallo o resultado desconocido, compruebe el registro original antes de continuar los elementos pendientes para evitar duplicados."
+          "Abra la agenda en el inicio del centro digital y elija una fecha; una fecha vacía permite crear una entrada con Markdown. Conecte y autorice un calendario nativo en Ajustes → Operaciones y seleccione uno editable. Con la sincronización activa, las nuevas entradas se guardan allí; de lo contrario, solo en WorkStep. Las entradas sincronizadas existentes no se mueven ni eliminan automáticamente. El navegador admite el calendario interno; las operaciones nativas requieren una aplicación macOS o Android compatible conectada. Ante un fallo o resultado desconocido, compruebe el registro original antes de continuar los elementos pendientes para evitar duplicados.",
+          "Al añadir o editar un evento, configure por separado las fechas y horas de inicio y fin. Compruebe el intervalo antes de guardar."
         ],
         "screenshot": {
           "id": "native-calendar",

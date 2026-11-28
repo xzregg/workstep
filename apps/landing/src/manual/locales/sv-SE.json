@@ -1621,7 +1621,8 @@
       {
         "title": "Schema och systemkalendrar",
         "steps": [
-          "Öppna schemat på den digitala hubbens startsida och välj ett datum. Ett tomt datum öppnar skapandet; innehållet stöder Markdown. Anslut och godkänn en inbyggd kalender under Inställningar → Åtgärder och välj en skrivbar kalender. Med synkronisering sparas nya poster där, annars bara i WorkStep. Befintliga synkroniserade poster flyttas eller tas inte bort automatiskt. Webbläsaren stöder den interna kalendern; inbyggda åtgärder kräver en kompatibel macOS- eller Android-app online. Vid fel eller okänt resultat ska originalposten kontrolleras innan ofärdiga åtgärder återupptas för att undvika dubbletter."
+          "Öppna schemat på den digitala hubbens startsida och välj ett datum. Ett tomt datum öppnar skapandet; innehållet stöder Markdown. Anslut och godkänn en inbyggd kalender under Inställningar → Åtgärder och välj en skrivbar kalender. Med synkronisering sparas nya poster där, annars bara i WorkStep. Befintliga synkroniserade poster flyttas eller tas inte bort automatiskt. Webbläsaren stöder den interna kalendern; inbyggda åtgärder kräver en kompatibel macOS- eller Android-app online. Vid fel eller okänt resultat ska originalposten kontrolleras innan ofärdiga åtgärder återupptas för att undvika dubbletter.",
+          "När du lägger till eller redigerar en händelse anger du start- och slutdatum och tid separat. Kontrollera tidsintervallet innan du sparar."
         ],
         "screenshot": {
           "id": "native-calendar",

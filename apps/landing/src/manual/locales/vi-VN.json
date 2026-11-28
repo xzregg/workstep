@@ -1621,7 +1621,8 @@
       {
         "title": "Lịch trình và lịch hệ thống",
         "steps": [
-          "Mở lịch trình trên trang chủ trung tâm số rồi chọn ngày. Ngày trống cho phép tạo mục mới với nội dung Markdown. Kết nối và cấp quyền lịch gốc trong Cài đặt → Thao tác, sau đó chọn lịch có thể ghi. Khi bật đồng bộ, mục mới được lưu vào đó; nếu tắt, chỉ lưu trong WorkStep. Các mục đã đồng bộ không tự di chuyển hoặc xóa. Trình duyệt hỗ trợ lịch nội bộ; thao tác gốc cần ứng dụng macOS hoặc Android tương thích đang trực tuyến. Khi thất bại hoặc kết quả chưa rõ, kiểm tra bản ghi gốc trước khi tiếp tục các mục chưa xong để tránh trùng lặp."
+          "Mở lịch trình trên trang chủ trung tâm số rồi chọn ngày. Ngày trống cho phép tạo mục mới với nội dung Markdown. Kết nối và cấp quyền lịch gốc trong Cài đặt → Thao tác, sau đó chọn lịch có thể ghi. Khi bật đồng bộ, mục mới được lưu vào đó; nếu tắt, chỉ lưu trong WorkStep. Các mục đã đồng bộ không tự di chuyển hoặc xóa. Trình duyệt hỗ trợ lịch nội bộ; thao tác gốc cần ứng dụng macOS hoặc Android tương thích đang trực tuyến. Khi thất bại hoặc kết quả chưa rõ, kiểm tra bản ghi gốc trước khi tiếp tục các mục chưa xong để tránh trùng lặp.",
+          "Khi thêm hoặc sửa sự kiện, hãy đặt riêng ngày giờ bắt đầu và kết thúc. Kiểm tra khoảng thời gian trước khi lưu."
         ],
         "screenshot": {
           "id": "native-calendar",

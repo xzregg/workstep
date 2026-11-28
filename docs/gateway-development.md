@@ -235,3 +235,25 @@ Gateway 的 `ProjectAccessGrant.ui_permissions_json` 保存可空的 `{allow, de
 Web 的 `build` 和 `build:gateway-share` 自动生成独立的 `rtc-bootstrap/`；独立信令部署只需把该子目录放在配置的 Web 目录下，不需要复制完整工作台。HTTPS（或本机安全地址）与支持 Service Worker 的浏览器是该加载方式的前提。`/p2p/rtc-worker.js` 的作用域限定为 `/p2p/`，资源按当前客户端的设备映射，通过页面拥有的已认证通道读取；工作台接管现有连接，不重新配对。只缓存带内容哈希的静态资源，并按设备隔离；入口每次从设备读取，所以桌面端更新构建后刷新即可读取新版本，无需为工作台样式更新而重启网关。浏览器存储不可用时直接读取设备，通道失败不回退网关资源。
 
 真实回归在 daemon `tests/test_webrtc_browser_e2e.py`：信令和 Gateway 测试目录都只保留引导页，移除完整工作台，验证页面、延迟模块及上传下载仍可用，同时检查单条已建立的连接被接管。路由测试为独立信令 `test_signal_app.py`、Gateway `test_webrtc_gateway_integration.py`，浏览器资源映射为 Web `webrtcBootstrap.test.ts`。
+
+
+## 统一宿主访问策略
+
+连接认证和功能授权分开维护。`api/desktop_security.py` 验证可信桥接及 Electron 凭据，`api/remote_access_guard.py::remote_access_authorized` 为 HTTP、WebSocket 和访问密钥状态接口提供同一认证判定。浏览器请求头不能制造内部 bridge token 或设备所有者身份。
+
+功能层的宿主授权统一由 `apps/daemon/api/workspace_access.py` 拥有：
+
+| 公共策略 | 用途与边界 |
+| --- | --- |
+| `host`／`require_host_workspace` | 本机、已验证的直连宿主、网关宿主，以及通过现有访问密钥验证的原生浏览器；拒绝项目、分享和项目 RPC 身份。新增宿主专属功能使用此依赖。 |
+| `local`／`require_local_device` | 物理宿主上的操作；拒绝所有桥接、分享及远程身份。用于项目存储位置、设备操作审计。 |
+| `local_credentials` | 在 `local` 基础上，未使用原生桌面凭据时还要求请求目标是回环地址。用于读取和轮换直连配对密钥等本机凭据配置。 |
+| `owner_session` | 本机原生桌面凭据或当前设备的网关所有者会话；用于既有本机网关分享管理，不能由桥接身份替代。 |
+| `gateway_configuration` | 网关连接设置的所有者授权，复用宿主及设备所有者会话判定，保留原有非托管启动配置流程。 |
+| `scope` | 已经过统一认证入口的既有设置读取／登录流程，仅核对宿主范围；不能代替连接认证。 |
+
+业务接口不得复制“来源是远程就拒绝”或“直连额外放行”的分支。`statistics.system_report`、直连配置、项目存储、操作审计、网关配置和分享管理只声明策略。系统身份展示与 `/managed/mode` 也复用该模块对宿主身份的投影。项目级可见范围与 read/edit 权限仍归 `services/project_scope.py`，记录所有权仍由领域服务检查；本次收敛不退役这些边界，也不恢复历史 capability 门槛。
+
+`require_same_origin` 统一维护变更请求的 Origin 约束。已认证桥接不依赖浏览器环境 Cookie，因此没有 Origin 时使用桥接授权；明确提供错误 Origin 仍拒绝。配置和密码的同步读取进入 I/O 执行器。
+
+`tests/test_workspace_access.py` 用一组新注册的示例功能证明新增接口可直接复用公共策略，并覆盖身份矩阵、伪造桥、同源限制、慢密码读取 canary 和 HTTP／WebSocket 一致性。其 AST 检查禁止功能 API 再次读取底层传输授权标记或直接比较远程／本机来源，防止后续开发重新散落权限特例。真实端到端验证由 `test_webrtc_functional_e2e.py` 与 `test_webrtc_browser_e2e.py` 覆盖。

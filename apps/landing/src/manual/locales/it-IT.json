@@ -1621,7 +1621,8 @@
       {
         "title": "Agenda e calendari di sistema",
         "steps": [
-          "Apri l’agenda nella pagina iniziale del centro digitale e scegli una data; una data vuota consente di creare una voce con Markdown. Collega e autorizza un calendario nativo in Impostazioni → Operazioni, quindi scegli un calendario modificabile. Con la sincronizzazione attiva, le nuove voci vengono salvate lì; altrimenti restano solo in WorkStep. Le voci già sincronizzate non vengono spostate o eliminate automaticamente. Il browser supporta il calendario interno; le operazioni native richiedono un’app macOS o Android compatibile online. In caso di errore o risultato sconosciuto, verifica la voce originale prima di riprendere gli elementi incompleti."
+          "Apri l’agenda nella pagina iniziale del centro digitale e scegli una data; una data vuota consente di creare una voce con Markdown. Collega e autorizza un calendario nativo in Impostazioni → Operazioni, quindi scegli un calendario modificabile. Con la sincronizzazione attiva, le nuove voci vengono salvate lì; altrimenti restano solo in WorkStep. Le voci già sincronizzate non vengono spostate o eliminate automaticamente. Il browser supporta il calendario interno; le operazioni native richiedono un’app macOS o Android compatibile online. In caso di errore o risultato sconosciuto, verifica la voce originale prima di riprendere gli elementi incompleti.",
+          "Quando aggiungi o modifichi un evento, imposta separatamente date e orari di inizio e fine. Controlla l’intervallo prima di salvare."
         ],
         "screenshot": {
           "id": "native-calendar",

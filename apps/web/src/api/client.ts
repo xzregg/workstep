@@ -307,7 +307,7 @@ export interface FileSearchResult {
 
 export const fsApi = {
   htmlPreviewUrl: (grant: { token: string; entry: string }, projectId?: string) =>
-    `${BASE}/fs/html-resource/${encodeURIComponent(projectId || '_')}/${encodeURIComponent(grant.token)}/${encodeURIComponent(grant.entry)}`,
+    `${BASE}/fs/html-resource/${encodeURIComponent(projectId || '_')}/${encodeURIComponent(grant.token)}/${grant.entry.split('/').map(encodeURIComponent).join('/')}`,
   readMemory: (projectId: string) =>
     request<{ path: string; content: string }>(
       `/fs/memory?project_id=${encodeURIComponent(projectId)}`

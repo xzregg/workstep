@@ -1621,7 +1621,8 @@
       {
         "title": "Planlægning og systemkalendere",
         "steps": [
-          "Åbn planlægningen på den digitale hubs startside, og vælg en dato. En tom dato åbner oprettelse; indhold understøtter Markdown. Tilslut og godkend en indbygget kalender under Indstillinger → Handlinger, og vælg en skrivbar kalender. Med synkronisering gemmes nye poster dér, ellers kun i WorkStep. Eksisterende synkroniserede poster flyttes eller slettes ikke automatisk. Browseren understøtter den interne kalender; indbyggede handlinger kræver en understøttet macOS- eller Android-app online. Ved fejl eller ukendt resultat skal den oprindelige post kontrolleres, før uafsluttede handlinger fortsættes, så dubletter undgås."
+          "Åbn planlægningen på den digitale hubs startside, og vælg en dato. En tom dato åbner oprettelse; indhold understøtter Markdown. Tilslut og godkend en indbygget kalender under Indstillinger → Handlinger, og vælg en skrivbar kalender. Med synkronisering gemmes nye poster dér, ellers kun i WorkStep. Eksisterende synkroniserede poster flyttes eller slettes ikke automatisk. Browseren understøtter den interne kalender; indbyggede handlinger kræver en understøttet macOS- eller Android-app online. Ved fejl eller ukendt resultat skal den oprindelige post kontrolleres, før uafsluttede handlinger fortsættes, så dubletter undgås.",
+          "Når du tilføjer eller redigerer en begivenhed, kan start- og slutdato og -tid indstilles hver for sig. Kontrollér tidsintervallet før du gemmer."
         ],
         "screenshot": {
           "id": "native-calendar",

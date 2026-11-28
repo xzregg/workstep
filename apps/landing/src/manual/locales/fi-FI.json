@@ -1621,7 +1621,8 @@
       {
         "title": "Aikataulut ja järjestelmäkalenterit",
         "steps": [
-          "Avaa aikataulut digitaalikeskuksen etusivulta ja valitse päivämäärä. Tyhjä päivä avaa uuden merkinnän; sisältö tukee Markdownia. Yhdistä ja valtuuta natiivikalenteri kohdassa Asetukset → Toiminnot ja valitse kirjoitettava kalenteri. Synkronoinnin ollessa käytössä uudet merkinnät tallennetaan sinne, muuten vain WorkStepiin. Aiempia synkronoituja merkintöjä ei siirretä tai poisteta automaattisesti. Selain tukee sisäistä kalenteria; natiivitoiminnot vaativat tuetun macOS- tai Android-sovelluksen verkossa. Virheen tai tuntemattoman tuloksen jälkeen tarkista alkuperäinen merkintä ennen keskeneräisten toimintojen jatkamista, jotta kaksoiskappaleita ei synny."
+          "Avaa aikataulut digitaalikeskuksen etusivulta ja valitse päivämäärä. Tyhjä päivä avaa uuden merkinnän; sisältö tukee Markdownia. Yhdistä ja valtuuta natiivikalenteri kohdassa Asetukset → Toiminnot ja valitse kirjoitettava kalenteri. Synkronoinnin ollessa käytössä uudet merkinnät tallennetaan sinne, muuten vain WorkStepiin. Aiempia synkronoituja merkintöjä ei siirretä tai poisteta automaattisesti. Selain tukee sisäistä kalenteria; natiivitoiminnot vaativat tuetun macOS- tai Android-sovelluksen verkossa. Virheen tai tuntemattoman tuloksen jälkeen tarkista alkuperäinen merkintä ennen keskeneräisten toimintojen jatkamista, jotta kaksoiskappaleita ei synny.",
+          "Kun lisäät tai muokkaat tapahtumaa, määritä alkamis- ja päättymispäivä sekä kellonaika erikseen. Tarkista aikaväli ennen tallentamista."
         ],
         "screenshot": {
           "id": "native-calendar",

@@ -411,7 +411,7 @@ function waitForGoLine() {
     await close;
 
     const previewUrl = new URL('file-preview', cfg.p2pUrl);
-    previewUrl.search = new URLSearchParams({ path: 'p2p-preview.html', project_id: cfg.projectId, preview_return: '1' });
+    previewUrl.search = new URLSearchParams({ path: 'prototype/设计 方案/p2p-preview.html', project_id: cfg.projectId, preview_return: '1' });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.route('**/api/webrtc/config?device_id=*', async (route) => {
       const elapsed = page.locator('.webrtc-stage-list [aria-current="step"] > :last-child');
@@ -439,7 +439,7 @@ function waitForGoLine() {
     await textField.blur();
     await page.waitForFunction(()=>!document.querySelector('.prototype-status--busy'));
     const saved=await page.evaluate(async projectId=>{
-      const response=await fetch('/api/fs/file?'+new URLSearchParams({project_id:projectId,path:'p2p-preview.html'}));
+      const response=await fetch('/api/fs/file?'+new URLSearchParams({project_id:projectId,path:'prototype/设计 方案/p2p-preview.html'}));
       return response.text();
     },cfg.projectId);
     if(!saved.includes('Direct edit saved'))throw new Error('Prototype edit was not saved to the project');
@@ -712,12 +712,14 @@ async def test_chromium_direct_webrtc_p2p_e2e(tmp_path, monkeypatch, caplog, don
         skin_manager = SkinManager(tmp_path / "skin-runtime")
         monkeypatch.setattr(skins_api, "manager", skin_manager)
         await skin_manager.register(str(skin_root))
-        (proj_dir / "p2p-preview.html").write_text(
+        prototype_dir = proj_dir / 'prototype' / '设计 方案'
+        prototype_dir.mkdir(parents=True)
+        (prototype_dir / "p2p-preview.html").write_text(
             '<!doctype html><link rel="stylesheet" href="p2p-preview.css"><button onclick="this.textContent=\'Preview script ran\'">P2P HTML preview</button><script src="p2p-preview.js"></script>',
             encoding="utf-8",
         )
-        (proj_dir / "p2p-preview.css").write_text('button{color:rgb(1,2,3)}')
-        (proj_dir / "p2p-preview.js").write_text('document.body.dataset.external="loaded"')
+        (prototype_dir / "p2p-preview.css").write_text('button{color:rgb(1,2,3)}')
+        (prototype_dir / "p2p-preview.js").write_text('document.body.dataset.external="loaded"')
 
         async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
             sys_resp = await client.put(

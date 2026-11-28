@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field, IPvAnyAddress
 
 from api.desktop_security import (
     desktop_request_authenticated,
-    desktop_runtime_authenticated,
 )
 
 from services.config import config_store
@@ -18,8 +17,6 @@ from services.remote_project import (
     ACCESS_COOKIE_NAME,
     RemoteAccessService,
     RemoteProjectRegistry,
-    _client_host,
-    _is_loopback,
 )
 
 router = APIRouter(prefix="/api/remote-project")
@@ -116,16 +113,11 @@ async def update_remote_access_settings(req: RemoteAccessSettingsRequest, reques
 
 @router.get("/access/status")
 async def remote_access_status(request: Request):
-    from api.remote_access_guard import gateway_browser_authenticated
+    from api.remote_access_guard import remote_access_authorized
+    from api.workspace_access import local_client
     required = await asyncio.to_thread(remote_access_service.access_password_required)
-    local = (
-        desktop_runtime_authenticated(request)
-        or _is_loopback(_client_host(request.headers, request.client))
-    )
-    token = request.cookies.get(ACCESS_COOKIE_NAME)
-    authorized = (local or not required
-        or await asyncio.to_thread(gateway_browser_authenticated, request)
-        or await asyncio.to_thread(remote_access_service.verify_access_token, token))
+    local = local_client(request)
+    authorized = await asyncio.to_thread(remote_access_authorized, request, remote_access_service)
     gateway = getattr(request.app.state, 'gateway_client', None)
     return {"required": required, "local": local, "authorized": bool(authorized),
             "gateway_login_available": bool(gateway and gateway.managed_config is not None)}

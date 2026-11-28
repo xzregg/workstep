@@ -7,8 +7,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from api.desktop_security import browser_origin_allowed, desktop_runtime_authenticated
-from services.remote_access import _is_loopback, get_current_actor
+from api.workspace_access import require_workspace_access, require_same_origin
 
 router = APIRouter(prefix="/api/webrtc-p2p", tags=["WebRTC P2P"])
 
@@ -19,19 +18,9 @@ class WebRtcSettingsInput(BaseModel):
 
 
 async def _require_host_manager(request: Request, *, mutation: bool = False):
-    if request.scope.get("webrtc_remote_actor") is not None:
-        raise HTTPException(status_code=403, detail="WebRTC settings require direct host access")
-    if request.scope.get("gateway_remote_actor") is not None or request.scope.get("gateway_share_scope") is not None:
-        raise HTTPException(status_code=403, detail="WebRTC settings require direct host access")
-    current = get_current_actor()
-    if current is not None and (current.project_id is not None or current.source == "remote"):
-        raise HTTPException(status_code=403, detail="WebRTC settings require host access")
-    local = (request.client is not None and _is_loopback(request.client.host)
-             and _is_loopback(request.url.hostname or ""))
-    if not desktop_runtime_authenticated(request) and not local:
-        raise HTTPException(status_code=403, detail="WebRTC settings require direct host access")
-    if mutation and request.headers.get("origin") and not browser_origin_allowed(request):
-        raise HTTPException(status_code=403, detail="Same-origin request required")
+    await require_workspace_access(request, 'local_credentials', detail='WebRTC settings require direct host access')
+    if mutation:
+        require_same_origin(request, optional=True)
 
     service = getattr(request.app.state, "webrtc_client", None)
     if service is None:

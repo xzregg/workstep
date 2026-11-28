@@ -164,3 +164,11 @@ WebRTC 工作台启动资源：`apps/web/src/webrtc/bootstrap/main.ts` 是独立
 
 
 直连功能回归：`apps/daemon/tests/test_webrtc_functional_e2e.py` 复用真实 Chromium／独立信令／宿主 UDP 通道，场景在 `tests/fixtures/webrtc/functional.cjs`，包含多兆普通文件、真实本机 APK（存在构建时）、超出 20 MiB 预览上限后的原文件下载哈希、WAV／MP3／M4A／WebM 播放与下载、HTML 相对 CSS／JS／图片／字体／子页面／音频、聊天流式消息及本机署名、文件和流程修改、任务归档恢复、定时任务、供应商配置以及真实通道关闭恢复。模型调用使用隔离测试引擎，不验证外部模型或手机系统安装器。`ImagePreview.tsx` 保存原图片时复用 `downloadFile.ts` 的原生下载；生成图片、皮肤 ZIP 和语言 ZIP 共用 `downloadWebRtcBlob`，皮肤及语言导出的响应体纳入有界断流重试。回归入口为 `imagePreviewCopy.test.tsx`、`webrtcTransferRetry.test.ts`。
+
+
+嵌套目录原型直连：`apps/web/src/api/client.ts::fsApi.htmlPreviewUrl` 按路径段编码预览入口，保留目录分隔符，避免 `DirectHtmlResources` 将同目录 CSS／JS 错误解析到票据根目录后整页 404。项目标识和票据仍完整编码，资源访问边界沿用宿主票据校验。回归：`apps/web/tests/directHtmlResources.test.ts` 的中文／空格嵌套目录，以及 `apps/daemon/tests/test_webrtc_browser_e2e.py` 的嵌套 HTML 样式、脚本、原型点选、编辑及源码保存。
+
+系统统计直连整页回归位于 `tests/fixtures/webrtc/functional.cjs`：390px 手机视口加载四张系统资源卡片，核对真实采样状态，刷新并关闭真实 Peer 后等待新连接，验证系统页恢复。授权回归由 `test_system_statistics.py` 保证本机密钥验证后的宿主可访问、项目身份及伪造桥拒绝；进程必须加载对应后台代码，单独刷新网页不会更新 Python 路由。
+
+
+统一宿主授权的职责所有者为 `apps/daemon/api/workspace_access.py`，功能路由仅声明 host／local／local_credentials／owner_session 等公共策略；系统统计、直连配置、项目存储、操作审计、网关设置与分享管理均复用该入口。系统设置身份及托管模式的宿主权限投影也从此处读取。传输凭据仍由 `desktop_security.py` 验证，HTTP／WebSocket／解锁状态共用 `remote_access_guard.py::remote_access_authorized`。项目／记录授权不变。测试入口 `tests/test_workspace_access.py` 包含新功能权限矩阵、慢 I/O canary、同源和 HTTP／WebSocket 一致性以及禁止 API 再次出现传输权限判断的 AST 检查；开发契约见 `docs/gateway-development.md` 的统一宿主访问策略。

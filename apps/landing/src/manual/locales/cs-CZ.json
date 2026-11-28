@@ -1621,7 +1621,8 @@
       {
         "title": "Plánování a systémové kalendáře",
         "steps": [
-          "Otevřete plánování na domovské stránce digitálního centra a vyberte datum. Prázdný den otevře vytvoření záznamu s podporou Markdown. Připojte a povolte nativní kalendář v Nastavení → Operace a vyberte zapisovatelný kalendář. Při zapnuté synchronizaci se nové záznamy ukládají tam, jinak pouze do WorkStep. Existující synchronizované záznamy se automaticky nepřesouvají ani nemažou. Prohlížeč podporuje interní kalendář; nativní operace vyžadují podporovanou aplikaci macOS nebo Android online. Při chybě či neznámém výsledku ověřte původní záznam před pokračováním nedokončených operací, abyste zabránili duplicitám."
+          "Otevřete plánování na domovské stránce digitálního centra a vyberte datum. Prázdný den otevře vytvoření záznamu s podporou Markdown. Připojte a povolte nativní kalendář v Nastavení → Operace a vyberte zapisovatelný kalendář. Při zapnuté synchronizaci se nové záznamy ukládají tam, jinak pouze do WorkStep. Existující synchronizované záznamy se automaticky nepřesouvají ani nemažou. Prohlížeč podporuje interní kalendář; nativní operace vyžadují podporovanou aplikaci macOS nebo Android online. Při chybě či neznámém výsledku ověřte původní záznam před pokračováním nedokončených operací, abyste zabránili duplicitám.",
+          "Při přidávání nebo úpravě události nastavte datum a čas začátku a konce samostatně. Před uložením zkontrolujte časový rozsah."
         ],
         "screenshot": {
           "id": "native-calendar",
