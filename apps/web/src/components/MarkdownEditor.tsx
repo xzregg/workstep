@@ -66,6 +66,7 @@ export default function MarkdownEditor({
   const [uploadError, setUploadError] = useState('')
   const [expanded, setExpanded] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const valueRef = useRef(value)
 
@@ -95,50 +96,62 @@ export default function MarkdownEditor({
     return { marker: snippet, cursor: start + separator.length }
   }
 
-  const replaceUploadMarker = (marker: string, replacement: string, cursor: number) => {
+  const replaceUploadMarker = (marker: string, replacement: string, cursor: number, fromImagePicker: boolean) => {
     const current = valueRef.current
     const markerIndex = current.indexOf(marker, cursor)
     if (markerIndex < 0) return
+    const trailing = current.slice(markerIndex + marker.length)
+    const separator = fromImagePicker && replacement && trailing && !trailing.startsWith('\n') ? '\n' : ''
     replaceValue(
-      current.slice(0, markerIndex) + replacement + current.slice(markerIndex + marker.length),
+      current.slice(0, markerIndex) + replacement + separator + trailing,
       markerIndex + replacement.length,
     )
   }
 
-  const handleAttachment = async (file: File) => {
-    if (!projectId || uploading || disabled || !canUpload) return
+  const handleAttachments = async (files: File[], fromImagePicker = false) => {
+    if (!files.length || !projectId || uploading || disabled || !canUpload) return
     setUploadError('')
     setUploading(true)
-    const marker = `[${t('md.uploading')} ${file.name}]`
+    const names = files.map(file => file.name).join(', ')
+    const marker = `[${t('md.uploading')} ${names}]`
     const insertion = insertAtCursor(marker)
+    const attachments: string[] = []
     try {
-      const uploaded = file.type.startsWith('image/')
-        ? await fsApi.uploadImage(file, projectId, imagePrefix)
-        : await fsApi.uploadFile(file, projectId, imagePrefix)
-      replaceUploadMarker(
-        insertion.marker,
-        formatMarkdownAttachment(file, uploaded.url),
-        insertion.cursor,
-      )
-    } catch {
-      if (file.type.startsWith('image/')) {
+      for (const file of files) {
+        const isImage = file.type.startsWith('image/')
         try {
-          const dataUrl = await readAsDataUrl(file)
-          replaceUploadMarker(
-            insertion.marker,
-            formatMarkdownAttachment(file, dataUrl),
-            insertion.cursor,
-          )
-          return
+          const uploaded = isImage
+            ? await fsApi.uploadImage(file, projectId, imagePrefix)
+            : await fsApi.uploadFile(file, projectId, imagePrefix)
+          attachments.push(formatMarkdownAttachment(file, uploaded.url))
         } catch {
-          // Fall through to the shared error state.
+          if (isImage) {
+            try {
+              const dataUrl = await readAsDataUrl(file)
+              attachments.push(formatMarkdownAttachment(file, dataUrl))
+              continue
+            } catch {
+              // Fall through to the shared error state.
+            }
+          }
+          setUploadError(t('md.uploadFailed'))
         }
       }
-      replaceUploadMarker(insertion.marker, '', insertion.cursor)
-      setUploadError(t('md.uploadFailed'))
+      replaceUploadMarker(insertion.marker, attachments.join('\n'), insertion.cursor, fromImagePicker)
     } finally {
       setUploading(false)
     }
+  }
+
+  const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    const files = Array.from(input.files ?? [])
+    input.value = ''
+    const fromImagePicker = input === imageInputRef.current
+    void handleAttachments(
+      fromImagePicker ? files.filter(file => file.type.startsWith('image/')) : files,
+      fromImagePicker,
+    )
   }
 
   const handlePaste = (event: React.ClipboardEvent<HTMLElement>) => {
@@ -147,7 +160,7 @@ export default function MarkdownEditor({
     const file = fileItem?.getAsFile()
     if (!file || !projectId) return
     event.preventDefault()
-    void handleAttachment(file)
+    void handleAttachments([file])
   }
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
@@ -156,9 +169,10 @@ export default function MarkdownEditor({
     if (!file) return
     event.preventDefault()
     setDragActive(false)
-    void handleAttachment(file)
+    void handleAttachments([file])
   }
 
+  const uploadDisabled = !projectId || disabled || uploading
   const capabilityText = dragActive
     ? t('md.dropHint')
     : uploading
@@ -224,17 +238,32 @@ export default function MarkdownEditor({
             ref={fileInputRef}
             type="file"
             hidden
-            disabled={!projectId || disabled || uploading}
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) void handleAttachment(file)
-              event.target.value = ''
-            }}
+            disabled={uploadDisabled}
+            onChange={handleFileSelection}
+          />}
+          {canUpload && <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            disabled={uploadDisabled}
+            onChange={handleFileSelection}
           />}
           {canUpload && <button
             type="button"
             className="markdown-editor-action"
-            disabled={!projectId || disabled || uploading}
+            disabled={uploadDisabled}
+            aria-label={t('chatInput.attachImage')}
+            title={projectId ? t('chatInput.attachImage') : t('md.needProject')}
+            onClick={() => imageInputRef.current?.click()}
+          >
+            <Icon name="image" size={14} strokeWidth={1.8} />
+          </button>}
+          {canUpload && <button
+            type="button"
+            className="markdown-editor-action"
+            disabled={uploadDisabled}
             aria-label={t('md.uploadAttachment')}
             title={projectId ? t('md.uploadAttachment') : t('md.needProject')}
             onClick={() => fileInputRef.current?.click()}
