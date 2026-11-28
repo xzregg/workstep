@@ -83,3 +83,19 @@
  .digital-calendar-editor footer>.btn-ghost{border:0;color:var(--text-muted)}
  .digital-calendar-editor .ant-picker,.digital-calendar-editor select{min-height:var(--mobile-control-touch)}
 }
+
+.digital-calendar-time-range{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2)}
+.digital-calendar-time-range .digital-calendar-field{min-width:0}
+.digital-calendar-time-range .date-time-picker{width:100%;min-width:0}
+.digital-calendar-time-range .ant-picker-input{min-width:0}
+.digital-calendar-time-control{position:relative}
+.digital-calendar-entry>header>time{overflow-wrap:anywhere}
+@media(max-width:600px){
+ .digital-calendar-time-range .ant-picker{padding-inline:var(--space-1)}
+}
+
+@media(max-width:1023px){
+ .digital-calendar-time-range .ant-picker-input>input{color:transparent;caret-color:transparent}
+ .digital-calendar-time-range .ant-picker-clear,.digital-calendar-time-range .ant-picker-suffix{display:none}
+ .digital-calendar-time-preview{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;font-size:var(--text-body);line-height:1.4;font-variant-numeric:tabular-nums}
+}

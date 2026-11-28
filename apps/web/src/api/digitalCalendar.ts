@@ -1,7 +1,7 @@
 import {request} from './transport'
 
 export const CALENDAR_CHANGED='workstep:digital-calendar-changed'
-export interface CalendarDraft {content:string;starts_at:string;timezone_name:string;reminder_minutes:number}
+export interface CalendarDraft {content:string;starts_at:string;timezone_name:string;reminder_minutes:number;duration_minutes?:number}
 export interface CalendarEvent extends CalendarDraft {
  id:string;revision:string;created_at:string;updated_at:string;reminder_at:string
  reminder_status:'pending'|'retry'|'notified'|'system';deleted_at?:string

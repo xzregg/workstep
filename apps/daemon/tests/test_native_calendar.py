@@ -159,3 +159,29 @@ async def test_native_cancelled_request_keeps_io_slot_until_worker_stops():
         assert maximum==2
     finally:
         release.set();await asyncio.gather(*tasks,return_exceptions=True)
+
+
+def test_native_duration_reaches_device_and_verified_mirror(calendar_store):
+    from services.native_calendar import CalendarApplication
+    app=CalendarApplication('owner');target=register(app)
+    op=app.submit({'action':'create','target_id':target['id'],'request_id':'duration-create','content':'跨日',
+                   'starts_at':'2030-01-01T23:45:00+08:00','duration_minutes':95})
+    def complete(op):
+        claimed=app.claim(op['id'],'phone','k'*40);item=claimed['items'][0]
+        app.receipt(op['id'],'phone','k'*40,claimed['token'],{'item_id':item['id'],'status':'succeeded',
+                    'verification':'present','system_id':item.get('system_id','native-id')})
+        return calendar_store.get(item['event_id'])
+    assert op['items'][0]['duration_minutes']==95
+    event=complete(op)
+    assert event['duration_minutes']==95
+    changed=app.submit({'action':'update','target_id':target['id'],'request_id':'duration-update',
+                       'event_id':event['id'],'revision':event['revision'],
+                       'draft':{'content':'修改结束','starts_at':event['starts_at'],'duration_minutes':125},'duration_minutes':125})
+    assert changed['items'][0]['duration_minutes']==125
+    event=complete(changed)
+    assert event['duration_minutes']==125
+    # Old clients omit the nested duration; the explicit operation duration still wins.
+    changed=app.submit({'action':'update','target_id':target['id'],'request_id':'duration-legacy',
+                       'event_id':event['id'],'revision':event['revision'],
+                       'draft':{'content':'旧客户端','starts_at':event['starts_at']},'duration_minutes':180})
+    assert complete(changed)['duration_minutes']==180

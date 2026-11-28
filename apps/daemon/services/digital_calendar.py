@@ -28,6 +28,7 @@ class CalendarDraft(BaseModel):
     model_config = ConfigDict(extra='forbid')
     content: str = Field(min_length=1, max_length=20000)
     starts_at: datetime
+    duration_minutes: int | None = Field(default=None, ge=1, le=10080)
     timezone_name: str = Field(default='UTC', max_length=100)
     reminder_minutes: int = Field(default=0, ge=0, le=10080)
 
@@ -102,7 +103,7 @@ def list_events(*, since=None, before=None, limit=200, offset=0):
 
 
 def create(draft, request_id=None):
-    values = draft.model_dump(mode='json')
+    values = draft.model_dump(mode='json',exclude_none=True)
     with connection() as db:
         if request_id:
             row = db.execute('SELECT value_json FROM digital_calendar WHERE request_id=?',(request_id,)).fetchone()
@@ -138,7 +139,7 @@ def update(event_id, draft, revision):
             raise ValueError('System calendar events require a device operation')
         if event.get('deleted_at'):
             raise KeyError('Calendar event was deleted')
-        values = draft.model_dump(mode='json')
+        values = draft.model_dump(mode='json',exclude_none=True)
         rescheduled = any(event[key] != values[key] for key in ('starts_at','reminder_minutes'))
         event.update(values, reminder_at=(draft.starts_at-timedelta(minutes=draft.reminder_minutes)).isoformat())
         if rescheduled:

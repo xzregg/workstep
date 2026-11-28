@@ -177,9 +177,18 @@ async def test_calendar_api_is_host_scoped_and_slow_storage_does_not_block_loop(
         assert not request.done()
         assert (await asyncio.wait_for(client.get('/api/digital-person/identity'), .1)).status_code == 200
         assert (await request).status_code == 200
-        created = await client.post('/api/digital-person/calendar',json={'content':'**日程**','starts_at':'2030-01-01T10:00:00+08:00','timezone_name':'Asia/Shanghai'})
+        created = await client.post('/api/digital-person/calendar',json={'content':'**日程**','starts_at':'2030-01-01T10:00:00+08:00','timezone_name':'Asia/Shanghai','duration_minutes':95})
         assert created.status_code == 200
         event = created.json()
+        endpoint='/api/digital-person/calendar/'+event['id']
+        assert (await client.get(endpoint)).json()['duration_minutes']==95
+        changed=await client.put(endpoint,json={'content':'修改结束时间','starts_at':event['starts_at'],'duration_minutes':125,'revision':event['revision']})
+        assert changed.status_code==200
+        event=changed.json()
+        assert (await client.get(endpoint)).json()['duration_minutes']==125
+        for duration in (0,-1,1.5,10081):
+            assert (await client.put(endpoint,json={'content':'无效时长','starts_at':event['starts_at'],'duration_minutes':duration,'revision':event['revision']})).status_code==422
+        assert (await client.get(endpoint)).json()['duration_minutes']==125
         assert (await client.delete('/api/digital-person/calendar/'+event['id'],params={'revision':event['revision']})).status_code == 200
     app.dependency_overrides.clear()
     from api.project_scope import require_catalog_project
@@ -370,3 +379,23 @@ async def test_digital_hub_messages_expose_calendar_tools_and_persist_create_del
             assert response.status_code==200,response.text
             assert await _wait_turn(rt.chats,response.json()['turn_id'])=='completed'
     assert len(calls)==2
+
+
+def test_calendar_duration_persists_and_legacy_edits_preserve_it(calendar_store):
+    c=calendar_store
+    body=c.CalendarDraft(content='跨日',starts_at='2030-01-01T23:45:00+08:00',duration_minutes=95)
+    event=c.create(body,'duration')
+    assert c.get(event['id'])['duration_minutes']==95
+    key=event['notification_key']
+    edited=c.update(event['id'],body.model_copy(update={'duration_minutes':120}),event['revision'])
+    assert edited['duration_minutes']==120
+    assert edited['notification_key']==key
+    legacy=c.CalendarDraft(content='旧客户端',starts_at=body.starts_at)
+    assert c.update(event['id'],legacy,edited['revision'])['duration_minutes']==120
+    assert c.create(legacy).get('duration_minutes',30)==30
+
+
+@pytest.mark.parametrize('duration',[0,-1,1.5,10081])
+def test_calendar_rejects_invalid_duration(calendar_store,duration):
+    with pytest.raises(ValidationError):
+        draft(calendar_store,duration_minutes=duration)
