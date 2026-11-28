@@ -237,6 +237,12 @@ Web 的 `build` 和 `build:gateway-share` 自动生成独立的 `rtc-bootstrap/`
 真实回归在 daemon `tests/test_webrtc_browser_e2e.py`：信令和 Gateway 测试目录都只保留引导页，移除完整工作台，验证页面、延迟模块及上传下载仍可用，同时检查单条已建立的连接被接管。路由测试为独立信令 `test_signal_app.py`、Gateway `test_webrtc_gateway_integration.py`，浏览器资源映射为 Web `webrtcBootstrap.test.ts`。
 
 
+### 连接失败诊断
+
+连接引导页与工作台重连共用 `ConnectionDiagnostics`，区分配置读取、配对、信令套接字、桌面应答、ICE 网络探测、DTLS 加密、数据通道和密钥验证。连接详情显示不含查询票据的信令地址、候选类型数量、探测请求／响应和握手状态；失败时自动展开，保留清理前的快照。浏览器不支持统计时保留事件状态，不把缺失的统计当成零响应。
+
+信令成功和收到桌面应答不代表 UDP 路径已经可用。两端地址存在而 ICE 未连通只能定位到网络路径，不能单凭超时判定是运营商 NAT、UDP 策略还是桌面防火墙；单台 STUN 服务器报错也不等于所有地址收集失败。ICE 连通后的 DTLS 和数据通道失败单独显示，避免统称打洞失败。测试入口见 Code Map 的直连建连诊断。
+
 ## 统一宿主访问策略
 
 连接认证和功能授权分开维护。`api/desktop_security.py` 验证可信桥接及 Electron 凭据，`api/remote_access_guard.py::remote_access_authorized` 为 HTTP、WebSocket 和访问密钥状态接口提供同一认证判定。浏览器请求头不能制造内部 bridge token 或设备所有者身份。

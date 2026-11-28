@@ -1,3 +1,4 @@
+import ts from 'typescript'
 import { build, type Plugin, type ResolvedConfig } from 'vite'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -9,7 +10,11 @@ export function rtcBootstrapPlugin(): Plugin {
     name:'workstep-rtc-bootstrap',
     configResolved(value){config=value},
     async generateBundle(){
-      const result=await build({configFile:false,root:config.root,publicDir:false,logLevel:'warn',
+      // Embed only connection labels; the entry page must not import React/i18n.
+      const source=await readFile(new URL('../src/i18n/locales/zh-CN.ts',import.meta.url),'utf8')
+      const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText
+      const {zhCN}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'))
+      const result=await build({configFile:false,root:config.root,publicDir:false,logLevel:'warn',define:{__WORKSTEP_RTC_MESSAGES__:JSON.stringify(zhCN.webrtcP2p)},
         build:{write:false,minify:true,cssTarget:['chrome80','safari13'],lib:{entry:fileURLToPath(new URL('../src/webrtc/bootstrap/main.ts',import.meta.url)),formats:['es'],fileName:()=> 'bootstrap.js',cssFileName:'style'},
           rolldownOptions:{output:{inlineDynamicImports:true,assetFileNames:'[name][extname]'}}}})
       const bundles=Array.isArray(result)?result:[result]

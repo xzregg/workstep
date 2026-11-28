@@ -3309,6 +3309,7 @@ export const zhCN = {
     "noEscalationHint": "仅执行当前沙箱允许的操作"
 },
   "webrtcP2p": {
+    diagnostics: {"title": "连接详情", "signal": "信令地址", "local": "当前设备候选地址", "remote": "桌面候选地址", "probes": "网络探测", "ice": "网络路径", "dtls": "加密连接", "channel": "数据通道", "stunErrors": "STUN 错误", "candidateCount": "本地 {local} · 映射 {mapped}", "probeCount": "发送 {sent} · 收到响应 {received}", "unavailable": "尚无探测记录", "states": {"new": "未开始", "connecting": "连接中", "checking": "检测中", "connected": "已连通", "completed": "已连通", "failed": "失败", "closed": "已关闭", "disconnected": "已断开", "open": "已打开", "closing": "关闭中"}, "failures": {"configuration": "读取网关配置失败，请检查网关地址和网络。", "pairing": "网关配对请求未完成，请重试。", "signal_connect": "无法建立到网关的信令连接，请检查网络或代理。", "signal_ready": "已连接网关，但未收到信令确认，请重试。", "signal_lost": "交换连接信息时，网关信令连接已断开，请检查网络后重试。", "answer": "桌面端未及时返回连接信息，请检查桌面端的联网状态。", "local_candidates": "当前设备未收集到可用网络地址，请检查网络或切换网络重试。", "remote_candidates": "未收到桌面端的可用网络地址，请检查桌面端网络。", "ice_path": "两端地址已交换，但网络路径未打通。可能涉及 UDP、NAT 或防火墙限制，可切换网络重试。", "dtls": "网络路径已连通，但加密握手未完成，请重试。", "datachannel": "加密连接已建立，但数据通道未就绪，请重试。", "authentication": "设备密钥验证未完成，请检查密钥后重试。"}},
     "qrTitle": "扫码直连",
     "qrSecretHint": "二维码含访问密钥，请勿公开分享。",
     "copyPairLink": "复制扫码链接",
@@ -3351,7 +3352,7 @@ export const zhCN = {
     "reconnect": "重连",
     "disconnect": "断开",
     "timings": "连接耗时",
-    "steps": {"signaling": "连接信令", "exchange": "交换连接信息", "channel": "打洞并建立通道", "authentication": "验证密钥"},
+    "steps": {"configuration": "读取网关配置", "pairing": "请求设备配对", "signaling": "建立信令连接", "exchange": "等待桌面应答", "ice": "检测网络直连", "dtls": "建立加密连接", "channel": "打开数据通道", "authentication": "验证设备密钥"},
     "directConnected": "直连",
     "disconnected": "直连已断开",
     "relayRejected": "无法建立 P2P 直连"

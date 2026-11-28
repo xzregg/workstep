@@ -172,3 +172,5 @@ WebRTC 工作台启动资源：`apps/web/src/webrtc/bootstrap/main.ts` 是独立
 
 
 统一宿主授权的职责所有者为 `apps/daemon/api/workspace_access.py`，功能路由仅声明 host／local／local_credentials／owner_session 等公共策略；系统统计、直连配置、项目存储、操作审计、网关设置与分享管理均复用该入口。系统设置身份及托管模式的宿主权限投影也从此处读取。传输凭据仍由 `desktop_security.py` 验证，HTTP／WebSocket／解锁状态共用 `remote_access_guard.py::remote_access_authorized`。项目／记录授权不变。测试入口 `tests/test_workspace_access.py` 包含新功能权限矩阵、慢 I/O canary、同源和 HTTP／WebSocket 一致性以及禁止 API 再次出现传输权限判断的 AST 检查；开发契约见 `docs/gateway-development.md` 的统一宿主访问策略。
+
+直连建连诊断：`apps/web/src/webrtc/connectionDiagnostics.ts` 统一收集信令状态、两端候选地址数量、ICE 探测请求／响应、DTLS 与数据通道状态及 STUN 错误；`peerClient.ts` 同时供独立引导页和工作台重连使用。`diagnosticPresentation.ts` 统一失败归因与显示数据，`WebRtcDiagnostics.tsx` 和 `bootstrap/main.ts` 渲染连接详情，失败后自动展开并保留关闭连接前的快照。阶段拆分为配置、配对、信令、桌面应答、网络路径、加密、数据通道与密钥验证；候选原文、IP、SDP、票据和密钥不进入诊断快照。中文文案由 `rtcBootstrapPlugin.ts` 构建时注入引导页，避免重复词典或加载工作台。回归：Web `webrtcDiagnostics.test.ts`、`webrtcDiagnosticsLifecycle.test.ts`；daemon `test_webrtc_diagnostics_e2e.py` 真实 Chromium 正常链路和无候选地址受控失败，覆盖 320／390px 详情和操作按钮可达性。

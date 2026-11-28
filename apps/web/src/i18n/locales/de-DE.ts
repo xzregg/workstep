@@ -951,6 +951,7 @@ export const deDE: Messages = {
     "noEscalationHint": "仅执行当前沙箱允许的操作"
 },
   "webrtcP2p": {
+    diagnostics: zhCN.webrtcP2p.diagnostics,
     "qrTitle": "扫码直连",
     "qrSecretHint": "二维码含访问密钥，请勿公开分享。",
     "copyPairLink": "复制扫码链接",
@@ -993,7 +994,7 @@ export const deDE: Messages = {
     "reconnect": "Neu verbinden",
     "disconnect": "Trennen",
     "timings": "Verbindungsdauer",
-    "steps": {"signaling": "Signalisierung verbinden", "exchange": "Verbindungsdaten austauschen", "channel": "Direkten Kanal aufbauen", "authentication": "Kopplungsschlüssel prüfen"},
+    "steps": {"configuration": "读取网关配置", "pairing": "请求设备配对", "signaling": "建立信令连接", "exchange": "等待桌面应答", "ice": "检测网络直连", "dtls": "建立加密连接", "channel": "打开数据通道", "authentication": "验证设备密钥"},
     "directConnected": "Direkt",
     "disconnected": "Direktverbindung getrennt",
     "relayRejected": "P2P-Direktverbindung fehlgeschlagen (Relay unzulässig)"

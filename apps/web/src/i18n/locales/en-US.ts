@@ -3153,6 +3153,7 @@ export const enUS: Messages = {
     "noEscalationHint": "Use only the current sandbox permissions"
 },
   "webrtcP2p": {
+    diagnostics: zhCN.webrtcP2p.diagnostics,
     "qrTitle": "Scan to connect",
     "qrSecretHint": "This QR code contains your access key. Keep it private.",
     "copyPairLink": "Copy pairing link",
@@ -3195,7 +3196,7 @@ export const enUS: Messages = {
     "reconnect": "Reconnect",
     "disconnect": "Disconnect",
     "timings": "Connection timings",
-    "steps": {"signaling": "Connect to signaling", "exchange": "Exchange connection details", "channel": "Establish direct channel", "authentication": "Verify pairing key"},
+    "steps": {"configuration": "Read gateway configuration", "pairing": "Pair device", "signaling": "Connect signaling", "exchange": "Wait for desktop answer", "ice": "Check direct network path", "dtls": "Establish encryption", "channel": "Open data channel", "authentication": "Verify device key"},
     "directConnected": "Direct",
     "disconnected": "Direct connection closed",
     "relayRejected": "Direct P2P connection failed (relay disallowed)"

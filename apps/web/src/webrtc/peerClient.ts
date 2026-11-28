@@ -13,9 +13,8 @@ import {
 } from './transportAdapter'
 
 export const ICE_DISCONNECT_GRACE_MS = 4000
-export const WEBRTC_CONNECTION_STAGES = ['signaling', 'exchange', 'channel', 'authentication'] as const
-export type WebRtcConnectionStage = typeof WEBRTC_CONNECTION_STAGES[number]
-export type WebRtcStageTiming = { stage: WebRtcConnectionStage; durationMs: number }
+import { ConnectionDiagnostics, WebRtcConnectionError, type ConnectionSnapshot, type WebRtcConnectionStage } from './connectionDiagnostics'
+export { WEBRTC_CONNECTION_STAGES, type WebRtcConnectionStage, type WebRtcStageTiming } from './connectionDiagnostics'
 
 export interface WebRtcConfigSummary {
   online: boolean
@@ -53,28 +52,34 @@ export async function connectWebRtcDirect(options: {
   pairKey: string
   signal?: AbortSignal
   onStage?: (stage: WebRtcConnectionStage) => void
+  onDiagnostics?: (snapshot: ConnectionSnapshot) => void
   onDeviceConfig?: (config: WebRtcConfigSummary) => void
 }): Promise<WebRtcConnectionHandle> {
   const { deviceId, pairKey, signal, onStage, onDeviceConfig } = options
   if (!validWebRtcPairKey(pairKey)) throw new Error('Invalid device pairing key length or format')
-  onStage?.('signaling')
-  const config = await fetchWebRtcDeviceConfig(deviceId, signal)
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const signalingUrl = `${protocol}//${window.location.host}/ws/webrtc/client`
+  const diagnostics = new ConnectionDiagnostics(signalingUrl, options.onDiagnostics, onStage)
+  diagnostics.advance('configuration')
+  const earlyFailure = (error: unknown): never => { const snapshot = diagnostics.snapshot(); diagnostics.stop(); throw new WebRtcConnectionError(error instanceof Error ? error.message : String(error), snapshot) }
+  const config = await fetchWebRtcDeviceConfig(deviceId, signal).catch(earlyFailure)
   onDeviceConfig?.(config)
-  if (!config.pair_key_salt) throw new Error('Device pairing configuration unavailable')
+  if (!config.pair_key_salt) earlyFailure(new Error('Device pairing configuration unavailable'))
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${config.pair_key_salt}:${pairKey}`))
   const proof = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
+  diagnostics.advance('pairing')
   const pairResponse = await fetch('/api/webrtc/pair', {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ device_id: deviceId, pair_proof: proof }),
     signal,
-  })
+  }).catch(earlyFailure)
   if (!pairResponse.ok) {
     const errBody = await pairResponse.json().catch(() => ({}))
-    throw new Error(String((errBody as { detail?: string }).detail || `Pairing failed (${pairResponse.status})`))
+    earlyFailure(new Error(String((errBody as { detail?: string }).detail || `Pairing failed (${pairResponse.status})`)))
   }
-  const pairData = await pairResponse.json() as {
+  const pairData = await pairResponse.json().catch(earlyFailure) as {
     session_id: string
     session_token: string
     p2p_ticket: string
@@ -90,9 +95,16 @@ export async function connectWebRtcDirect(options: {
   })
   const channel = pc.createDataChannel(WEBRTC_PROXY_CHANNEL_LABEL, { ordered: true })
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const wsUrl = `${protocol}//${window.location.host}/ws/webrtc/client?device_id=${encodeURIComponent(deviceId)}&token=${encodeURIComponent(pairData.session_token)}`
+  diagnostics.attach(pc, channel)
+  diagnostics.advance('signaling')
   const sigWs = new WebSocket(wsUrl)
+  const diagnosticTimer = window.setInterval(() => { void diagnostics.sample() }, 500)
+  const observeDiagnostics = () => diagnostics.observe()
+  pc.onicegatheringstatechange = observeDiagnostics
+  pc.onconnectionstatechange = observeDiagnostics
+  pc.onicecandidateerror = event => diagnostics.stunError(event.url || '', event.errorCode || 0)
+  const stopDiagnostics = () => { window.clearInterval(diagnosticTimer); diagnostics.stop(); pc.onicegatheringstatechange = null; pc.onconnectionstatechange = null; pc.onicecandidateerror = null; pc.sctp?.transport.removeEventListener('statechange', observeDiagnostics) }
 
   let closed = false
   let disconnectTimer: number | null = null
@@ -111,6 +123,7 @@ export async function connectWebRtcDirect(options: {
     clearDisconnectTimer()
     if (closed) return
     closed = true
+    stopDiagnostics()
     try { sigWs.close() } catch { /* ignore */ }
     try { channel.close() } catch { /* ignore */ }
     try { pc.close() } catch { /* ignore */ }
@@ -121,6 +134,7 @@ export async function connectWebRtcDirect(options: {
 
   try {
     await new Promise<void>((resolve, reject) => {
+      sigWs.onopen = () => diagnostics.socketOpened()
       const timer = window.setTimeout(() => reject(new Error('Signaling connection timed out')), 10000)
       sigWs.onmessage = (event) => {
         try {
@@ -141,13 +155,16 @@ export async function connectWebRtcDirect(options: {
         reject(new Error('Signaling WebSocket error'))
       }
       sigWs.onclose = () => {
+        diagnostics.socketClosed()
         window.clearTimeout(timer)
         reject(new Error('Signaling WebSocket closed'))
       }
     })
 
-    onStage?.('exchange')
+    diagnostics.advance('exchange')
     const signalFailurePromise = new Promise<never>((_resolve, reject) => {
+      sigWs.onerror = () => { if (diagnostics.snapshot().stage === 'exchange') reject(new Error('Signaling WebSocket error')) }
+      sigWs.onclose = () => { diagnostics.socketClosed(); if (diagnostics.snapshot().stage === 'exchange') reject(new Error('Signaling WebSocket closed')) }
       let remoteDescriptionReady = Promise.resolve()
       sigWs.onmessage = (event) => {
         let msg: Record<string, unknown>
@@ -157,10 +174,12 @@ export async function connectWebRtcDirect(options: {
           return
         }
         if (msg.type === 'answer' && typeof msg.sdp === 'string') {
+          diagnostics.remoteSdp(msg.sdp)
           remoteDescriptionReady = pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp })
-            .then(() => { if (!closed) onStage?.('channel') }, reject)
+            .then(() => { if (!closed) { diagnostics.advance('ice'); diagnostics.observe() } }, reject)
         } else if (msg.type === 'ice_candidate') {
           const cand = typeof msg.candidate === 'string' ? msg.candidate : ''
+          diagnostics.candidate('remote', cand)
           if (/\btyp\s+relay\b/i.test(cand)) {
             reject(new Error('Relay candidate rejected in direct-only mode'))
             return
@@ -179,6 +198,8 @@ export async function connectWebRtcDirect(options: {
     const channelOpenPromise = new Promise<void>((resolve, reject) => {
       const timeout = window.setTimeout(() => reject(new Error('WebRTC direct connection timed out')), 20000)
       channel.onopen = () => {
+        diagnostics.observe()
+        diagnostics.advance('channel')
         window.clearTimeout(timeout)
         resolve()
       }
@@ -187,6 +208,7 @@ export async function connectWebRtcDirect(options: {
         reject(new Error('WebRTC DataChannel failed'))
       }
       pc.oniceconnectionstatechange = () => {
+        diagnostics.observe()
         if (pc.iceConnectionState === 'failed') {
           window.clearTimeout(timeout)
           reject(new Error('ICE direct hole-punching failed (no non-relay path available)'))
@@ -206,6 +228,8 @@ export async function connectWebRtcDirect(options: {
       }))
     }
     pc.onicecandidate = (event) => {
+      if (event.candidate?.candidate) diagnostics.candidate('local', event.candidate.candidate)
+      diagnostics.observe()
       if (event.candidate?.candidate && /\btyp\s+relay\b/i.test(event.candidate.candidate)) {
         cleanup('relay_not_allowed')
         return
@@ -219,6 +243,7 @@ export async function connectWebRtcDirect(options: {
 
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
+    pc.sctp?.transport.addEventListener('statechange', observeDiagnostics)
 
     const localSdp = pc.localDescription?.sdp || offer.sdp || ''
     if (/\btyp\s+relay\b/i.test(localSdp)) {
@@ -248,10 +273,11 @@ export async function connectWebRtcDirect(options: {
       throw new Error('Unable to verify direct non-relay ICE candidate pair')
     }
 
-    onStage?.('authentication')
+    diagnostics.advance('authentication')
     const transport = new WebRtcTransportClient(channel)
     await transport.authenticate(pairData.p2p_ticket, pairKey)
 
+    stopDiagnostics()
     // Signaling can be closed once the direct peer connection is authenticated.
     try { sigWs.close() } catch { /* ignore */ }
 
@@ -300,8 +326,10 @@ export async function connectWebRtcDirect(options: {
       waitClosed,
     }
   } catch (err) {
+    diagnostics.observe()
+    const snapshot = diagnostics.snapshot()
     cleanup('error')
-    throw err
+    throw new WebRtcConnectionError(err instanceof Error ? err.message : String(err), snapshot)
   }
 }
 

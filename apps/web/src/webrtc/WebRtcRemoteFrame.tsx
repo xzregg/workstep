@@ -1,3 +1,7 @@
+import { WebRtcDiagnostics } from './WebRtcDiagnostics'
+import { WebRtcConnectionError, type ConnectionSnapshot } from './connectionDiagnostics'
+import { connectionFailureMessage, translatedDiagnosticLabels } from './diagnosticPresentation'
+import type { TKey } from '../i18n'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useI18n } from '../i18n'
 import Button from '../components/Button'
@@ -39,6 +43,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
   const [showKey, setShowKey] = useState(false)
   const [phase, setPhase] = useState<'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error'>('idle')
   const [errorText, setErrorText] = useState('')
+  const [diagnostics, setDiagnostics] = useState<ConnectionSnapshot | null>(null)
   const [progress, setProgress] = useState<{ timings: WebRtcStageTiming[]; startedAt: number } | null>(null)
   const [handle, setHandle] = useState<WebRtcConnectionHandle | null>(null)
   const latencyMs = useWebRtcConnectionStore((state) => state.latencyMs)
@@ -135,6 +140,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       deviceName: prev.deviceName,
     }))
     setErrorText('')
+    setDiagnostics(null)
     let timings: WebRtcStageTiming[] = []
     let stageStartedAt = performance.now()
     const finishStage = (now: number) => {
@@ -171,6 +177,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
     try {
       const nextHandle = takeBootstrapConnection(deviceId) ?? await connectWebRtcDirect({
         deviceId, pairKey: trimmed, signal: connectionAbort.signal,
+        onDiagnostics: snapshot => { if (mountedRef.current && attempt === connectAttemptRef.current) setDiagnostics(snapshot) },
         onDeviceConfig: (config) => {
           if (!mountedRef.current || attempt !== connectAttemptRef.current) return
           setDeviceOnline(config.online)
@@ -238,7 +245,9 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
     } catch (err) {
       if (!mountedRef.current || attempt !== connectAttemptRef.current) return
       isConnectingRef.current = false
-      const msg = err instanceof Error ? err.message : String(err)
+      const original = err instanceof Error ? err.message : String(err)
+      const msg = err instanceof WebRtcConnectionError ? connectionFailureMessage(err.diagnostics, original, translatedDiagnosticLabels(key => translate.current(key as TKey))) : original
+      if (err instanceof WebRtcConnectionError) setDiagnostics(err.diagnostics)
       if (isAutoReconnect && !/relay/i.test(msg) && loadSessionPairKey(deviceId)
         && autoRetryCountRef.current < AUTO_RECONNECT_DELAYS_MS.length) {
         releaseConnection()
@@ -548,6 +557,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
               </div>
             </Field>
             {progress && <WebRtcConnectionTimings timings={progress.timings} startedAt={progress.startedAt} failed={phase === 'error'} />}
+            {diagnostics && <WebRtcDiagnostics snapshot={diagnostics} failed={phase === 'error'} />}
             {errorText && (
               <p className="webrtc-pair-error" role="alert">{errorText}</p>
             )}

@@ -3114,6 +3114,7 @@ export const jaJP: Messages = {
     "noEscalationHint": "仅执行当前沙箱允许的操作"
 },
   "webrtcP2p": {
+    diagnostics: zhCN.webrtcP2p.diagnostics,
     "qrTitle": "扫码直连",
     "qrSecretHint": "二维码含访问密钥，请勿公开分享。",
     "copyPairLink": "复制扫码链接",
@@ -3156,7 +3157,7 @@ export const jaJP: Messages = {
     "reconnect": "再接続",
     "disconnect": "切断",
     "timings": "接続時間",
-    "steps": {"signaling": "シグナリングに接続", "exchange": "接続情報を交換", "channel": "直接接続チャネルを確立", "authentication": "ペアリングキーを確認"},
+    "steps": {"configuration": "读取网关配置", "pairing": "请求设备配对", "signaling": "建立信令连接", "exchange": "等待桌面应答", "ice": "检测网络直连", "dtls": "建立加密连接", "channel": "打开数据通道", "authentication": "验证设备密钥"},
     "directConnected": "直接接続",
     "disconnected": "直接接続が切断されました",
     "relayRejected": "P2P 直接接続に失敗しました"

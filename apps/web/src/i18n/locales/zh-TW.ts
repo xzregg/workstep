@@ -3121,6 +3121,7 @@ export const zhTW: Messages = {
     "noEscalationHint": "仅执行当前沙箱允许的操作"
 },
   "webrtcP2p": {
+    diagnostics: zhCN.webrtcP2p.diagnostics,
     "qrTitle": "扫码直连",
     "qrSecretHint": "二维码含访问密钥，请勿公开分享。",
     "copyPairLink": "复制扫码链接",
@@ -3163,7 +3164,7 @@ export const zhTW: Messages = {
     "reconnect": "重新連線",
     "disconnect": "斷開",
     "timings": "連線耗時",
-    "steps": {"signaling": "連線至信令伺服器", "exchange": "交換連線資訊", "channel": "建立直連通道", "authentication": "驗證金鑰"},
+    "steps": {"configuration": "读取网关配置", "pairing": "请求设备配对", "signaling": "建立信令连接", "exchange": "等待桌面应答", "ice": "检测网络直连", "dtls": "建立加密连接", "channel": "打开数据通道", "authentication": "验证设备密钥"},
     "directConnected": "直連",
     "disconnected": "直連已斷開",
     "relayRejected": "無法建立 P2P 直連"

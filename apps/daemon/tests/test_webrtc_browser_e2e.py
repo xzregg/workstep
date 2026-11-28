@@ -284,7 +284,7 @@ function waitForGoLine() {
       await action.waitFor();
       if (await page.locator('.webrtc-pair-card .spinner').count() !== 1) throw new Error('Duplicate pairing progress indicators');
       await page.locator('.webrtc-stage-list [aria-current="step"]').waitFor();
-      if (await page.locator('.webrtc-stage-list li:visible').count() !== 5) throw new Error('Connection steps missing while pairing');
+      if (await page.locator('.webrtc-stage-list li:visible').count() !== 9) throw new Error('Connection steps missing while pairing');
       layoutChecks.push(...(await captureAcrossViewports(page, 'p2p-pair-connecting')));
       await route.continue();
     }, { times: 1 });
