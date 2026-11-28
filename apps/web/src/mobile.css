@@ -162,6 +162,8 @@
   .chat-history-scroll { min-height: 0; overscroll-behavior-y: contain; overflow-x: clip; }
   .chat-history-content { max-width: 100%; padding-inline: 12px !important; }
   .chat-message-row { max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
+  .markdown-editor-shell { --markdown-editor-action-size: var(--mobile-control-regular); }
+  .markdown-editor-action { -webkit-tap-highlight-color: transparent; }
   .chat-composer-resize-handle { display: none; }
   .chat-input-root { flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom); }
   .chat-input-editor { min-height: var(--mobile-composer-editor-min-height) !important; max-height: min(180px, 28dvh) !important; height: auto !important; overflow-y: auto; padding: 8px 12px; }
@@ -515,7 +517,7 @@
   }
   .review-overrides-editor .markdown-editor-shell textarea.markdown-editor-input,
   .review-overrides-editor .markdown-editor-preview {
-    /* Reserve room for all three controls in the shared right-side toolbar. */
+    /* Keep multiline review prompts readable on narrow screens. */
     min-height: calc(3 * var(--mobile-control-regular) + 14px) !important;
   }
   .review-overrides-editor .markdown-editor-shell[data-expanded="true"] textarea.markdown-editor-input,

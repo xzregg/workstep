@@ -3883,8 +3883,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 
 .markdown-editor-shell {
+  --markdown-editor-action-size: 25px;
+  --markdown-editor-action-inset: 5px;
   position: relative;
   width: 100%;
+  padding-top: calc(var(--markdown-editor-action-size) + var(--markdown-editor-action-inset));
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
@@ -3905,7 +3908,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .markdown-editor-shell textarea.markdown-editor-input {
   display: block;
   width: 100%;
-  padding: 9px 40px 9px 10px;
+  padding: 9px 10px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -3942,7 +3945,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 
 .markdown-editor-preview {
-  padding: 9px 40px 9px 10px;
+  padding: 9px 10px;
   overflow-y: auto;
   border-radius: 8px;
   box-sizing: border-box;
@@ -3959,18 +3962,17 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .markdown-editor-actions {
   position: absolute;
   z-index: 2;
-  top: 5px;
-  right: 5px;
+  top: var(--markdown-editor-action-inset);
+  right: var(--markdown-editor-action-inset);
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 2px;
 }
 
 .markdown-editor-action {
   display: inline-flex;
-  width: 25px;
-  height: 25px;
+  width: var(--markdown-editor-action-size);
+  height: var(--markdown-editor-action-size);
   padding: 0;
   border: 0;
   border-radius: 6px;
