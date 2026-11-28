@@ -63,10 +63,11 @@ try{
   await choose(end,'2030-01-02','01','20')
   const geometry=await page.locator('.digital-calendar-time-range').evaluate(row=>{
    const boxes=[...row.querySelectorAll('.ant-picker')].map(el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})
-   return {boxes,overflow:row.scrollWidth>row.clientWidth,viewport:document.documentElement.scrollWidth>innerWidth}
+   return {boxes,previewLines:[...row.querySelectorAll('.digital-calendar-time-preview')].map(el=>[...el.children].map(child=>child.getBoundingClientRect().y)),overflow:row.scrollWidth>row.clientWidth,viewport:document.documentElement.scrollWidth>innerWidth}
   })
   assert.equal(geometry.boxes[0].y,geometry.boxes[1].y)
   assert.equal(geometry.overflow,false);assert.equal(geometry.viewport,false)
+  for(const [dateY,timeY] of geometry.previewLines)assert.equal(dateY,timeY,'mobile date and time share one line when they fit')
   await page.screenshot({path:path.join(artifacts,`editor-${width}.png`)})
   await editor.getByRole('button',{name:'添加',exact:true}).click()
   await editor.waitFor({state:'detached'})
