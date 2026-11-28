@@ -3,6 +3,8 @@ import { compileSkin, resolvedSkinLayout, type SkinDocument } from '../skins/con
 import { useI18n } from '../i18n'
 import './SkinStudioPreview.css'
 import {composerSendMarkup} from '../skins/composerSendGlyphs'
+import { isWebRtcRemoteBrowser } from '../webrtc/webrtcLocation'
+import { SkinResources } from '../skins/resources'
 
 const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!))
 
@@ -51,8 +53,22 @@ export default function SkinStudioPreview({ skin, compact, scene = 'chat', varia
       ${css.replaceAll('<', '\\3c ')}
       </style></head><body><div class="preview-chrome"><i></i><i></i><i></i><span>WorkStep · 我的工作台</span></div><div class="preview-workspace" data-ui="workspace">${menus('top')}${menus('left')}<div class="app-shell" data-ui="app-shell"><aside class="layout-sidebar" data-ui="navigation"><b>W WorkStep</b><p>我的项目</p><p>项目对话</p><p>工作流程</p></aside><main class="app-main" data-ui="main"><strong>${escape(t(scene === 'chat' ? 'skins.studioSampleTitle' : `skins.scene_${scene}`))}</strong>${content}</main></div>${menus('right')}${menus('bottom')}</div></body></html>`.replace(/font-size:(\d+)px/g, 'font-size:calc($1px * var(--preview-font-scale))')
   }, [skin, compact, scene, variant, t])
+  const [resolved, setResolved] = useState<{ source: string; html: string } | null>(null)
+  const direct = isWebRtcRemoteBrowser()
+  useEffect(() => {
+    if (!direct) return
+    const resources = new SkinResources()
+    let active = true
+    void resources.css(source).then(html => {
+      if (active) setResolved({ source, html })
+    }).catch(() => undefined)
+    return () => { active = false; resources.dispose() }
+  }, [source, direct])
+  const previewSource = direct
+    ? resolved?.source === source ? resolved.html : source.replace(/url\("[^"]*\/api\/skins\/(?:files|assets)\/[^"]+"\)/g, 'url("data:,")')
+    : source
   const viewportWidth = compact ? 390 : 1024
   const height = compact ? 620 : variant === 'center' ? 500 : 680
   const scale = (compact ? Math.min(width, viewportWidth) : width) / viewportWidth
-  return <div ref={ref} className="skin-studio-preview-container"><div className={`skin-studio-preview-frame${compact ? ' is-phone' : ''}`} style={{ width: viewportWidth * scale, height: height * scale }}><iframe title={t('skins.studioPreview')} className="skin-studio-preview" style={{ width: viewportWidth, height, transform: `scale(${scale})` }} sandbox="allow-same-origin" srcDoc={source} /></div></div>
+  return <div ref={ref} className="skin-studio-preview-container"><div className={`skin-studio-preview-frame${compact ? ' is-phone' : ''}`} style={{ width: viewportWidth * scale, height: height * scale }}><iframe title={t('skins.studioPreview')} className="skin-studio-preview" style={{ width: viewportWidth, height, transform: `scale(${scale})` }} sandbox="allow-same-origin" srcDoc={previewSource} /></div></div>
 }

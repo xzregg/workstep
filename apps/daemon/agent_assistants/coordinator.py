@@ -1,5 +1,6 @@
 """Engine-backed task coordinator conversation module."""
 
+from services.business_ids import new_id
 from services.prompt_sections import prompt_context, prompt_section
 import asyncio
 import hashlib
@@ -59,7 +60,6 @@ from services.config import (
 from services.messages import (
     allocate_message_sequences,
     current_actor_message_fields,
-    new_message_id,
 )
 from services.pending_message_inserts import (
     delete_pending_insert_batch,
@@ -407,9 +407,9 @@ class CoordinatorModule:
             engine, model, _, _ = self._resolve_engine_models(task)
             context_step_key = self._single_active_step(task)
             now = utc_now()
-            turn_id = str(uuid.uuid4())
-            user_message_id = new_message_id()
-            assistant_message_id = new_message_id()
+            turn_id = new_id(project_id)
+            user_message_id = new_id(project_id)
+            assistant_message_id = new_id(project_id)
             journal_ref = self._event_journal.start(
                 project.workstep_dir,
                 f"task-{task.id}",
@@ -452,9 +452,8 @@ class CoordinatorModule:
                 actor_fields = current_actor_message_fields()
                 if schedule_run_id:
                     actor_fields.update(author_type="scheduler", author_name=author_name or "定时任务")
-                if author_name.strip():
-                    if author_name.strip() != actor_fields.get("author_name"):
-                        actor_fields = {"author_name": author_name.strip()}
+                if author_name.strip() and not actor_fields:
+                    actor_fields = {"author_name": author_name.strip()}
                 user_message = Message.create(
                     id=user_message_id,
                     task=current,
@@ -483,6 +482,8 @@ class CoordinatorModule:
                     "initiated_by_user_id": actor_fields.get("author_id"),
                     "initiated_by_username": actor_fields.get("author_username"),
                     "initiated_by_name": actor_fields.get("author_name"),
+                    "identity_source": actor_fields.get("identity_source"),
+                    "access_source": actor_fields.get("access_source"),
                     "author_device_id": actor_fields.get("author_device_id"),
                     "author_device_name": actor_fields.get("author_device_name"),
                 }
@@ -1099,7 +1100,7 @@ class CoordinatorModule:
                     run_id=turn_id, model=turn_model, occurred_at=assistant.ended_at,
                     provider=usage_provider, provider_id=provider_id or None,
                     usage_json=extract_usage_json(events),
-                    user_id=prepared["creator_id"], session_id=session_id,
+                    user_id=assistant.initiated_by_user_id, session_id=session_id,
                 )
 
                 await self._publish_message_event(

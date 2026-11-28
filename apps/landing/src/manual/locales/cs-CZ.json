@@ -381,11 +381,7 @@
           "Maximální návratnost řídí přerušovaná návratová spojení a je oddělena od opakování po neúspěšné kontrole.",
           "Deklarace výstupního portu nevytvoří soubor. Vyžadujte skutečné dodávky ve výzvě a poté je zkontrolujte."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Vstupní artefakty a odpovídající výstupy v editoru uzlů",
-          "caption": "Vstup deklaruje požadavky úlohy s plánem provádění jako odpovídajícím výstupem. Nastavení počtu vrácených položek se nezobrazují."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Vstupní artefakty a odpovídající výstupy v editoru uzlů","caption":"Aktuální nastavení pevného demonstračního prostředí; nebyla spuštěna úloha, model ani párování a nebyly zveřejněny přihlašovací údaje."}
       },
       {
         "title": "Nastavte kontrolu a automatické spuštění",
@@ -393,7 +389,7 @@
           "V části Step review v editoru vyberte Ruční recenzi, Automatickou kontrolu nebo Přeskočit recenzi. Zpočátku se doporučuje ruční kontrola.",
           "Ruční kontrola se po provedení pozastaví pro vaše rozhodnutí. Pro automatickou kontrolu napište ověřitelná kritéria a volitelně vyberte motor a model.",
           "Nastavení opakování poté, co automatická kontrola odmítne výsledek. Chyby v samotném revizním agentovi přejdou na ruční manipulaci.",
-          "Podle potřeby nastavte Spustit automaticky po vytvoření a poté uložte. Pro počáteční procvičení jej deaktivujte, abyste si mohli úkol před zahájením prohlédnout."
+          "V nastavení kroku vyberte postupně engine, poskytovatele a model. Bez automatického spuštění klikněte po splnění závislostí na Spustit u kroku v detailu úlohy. Spuštění úlohy povoluje jen vstup, nikoli další ruční kroky. Globální výstup sdílí pevnou cestu Global. Ověřte soubory a kontroly; nepoužívejte jej ve zpětných propojeních."
         ],
         "tips": [
           "Nainstalujte a nakonfigurujte motory SDK před jejich použitím pro spuštění nebo kontrolu."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "Ve frontě obvykle znamená, že kapacita souběžného provozu je plná. Čekání na kontrolu vyžaduje potvrzení; neznamená to, že se aplikace zasekla.",
-          "Mazání se liší od archivace. Před trvalým smazáním si přečtěte potvrzení."
+          "Mazání se liší od archivace. Před trvalým smazáním si přečtěte potvrzení.", "Na mobilu podržte úlohu pro vícenásobný výběr. Před archivací či odstraněním ověřte rozsah a potvrzení. Kopírování je dostupné jen pro jednu úlohu; omezení běžících úloh zůstávají."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Otevřete archiv a klikněte na nadpis pro rozbalení poslední otázky a odpovědi jen ke čtení. Prohlížení neobnoví relaci ani nenačte všechny detaily provádění. Chcete-li pokračovat, výslovně ji obnovte."
         ],
         "tips": [
-          "Archivace zachová obsah; mazání konverzací a zpráv má větší dopad. Nerozaměňujte rozpuštění skupiny se současným smazáním obsahu."
+          "Archivace zachová obsah; mazání konverzací a zpráv má větší dopad. Nerozaměňujte rozpuštění skupiny se současným smazáním obsahu.", "Nabídka skupiny v bočním panelu vytváří podskupiny; před přetažením ověřte cíl. Kliknutím na kvótu u vstupu zobrazíte více enginů. Při chybě sběru zůstávají staré hodnoty: ověřte čas aktualizace, nejde o fakturu. Tlačítko obrázku Markdown nahraje soubor a vloží cestu; před uložením zkontrolujte náhled."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Nabídka skupin v postranním panelu a archivní náhled jen ke čtení",
-          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Nabídka skupin v postranním panelu a archivní náhled jen ke čtení","caption":"Aktuální nastavení pevného demonstračního prostředí; nebyla spuštěna úloha, model ani párování a nebyly zveřejněny přihlašovací údaje."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Vzdálené záznamy uložené v mezipaměti nejsou aktuální. Synchronizace může být zablokována, když jsou aktivní projektové úkoly nebo chaty.",
-          "Nejprve znovu připojte offline nebo neautorizované vzdálené projekty. Prohlížeč nekopíruje hostitelská úložiště do vašeho počítače. Čtení vyžaduje oprávnění Git-view; akce potvrzení, větvení, sloučení a synchronizace mají samostatná oprávnění. Pokud tlačítka chybí, zkontrolujte oprávnění."
+          "Nejprve znovu připojte offline nebo neautorizované vzdálené projekty. Prohlížeč nekopíruje hostitelská úložiště do vašeho počítače. Čtení vyžaduje oprávnění Git-view; akce potvrzení, větvení, sloučení a synchronizace mají samostatná oprávnění. Pokud tlačítka chybí, zkontrolujte oprávnění.", "Vyberte soubory v seznamu změn Git pro společné zahození. Před potvrzením ověřte rozdíly: necommitovaný obsah nemusí jít obnovit. Zahození není záloha."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "Je vybrán interaktivní režim a heslo je prázdné. Nebyl vytvořen žádný odkaz na sdílení."
         }
       },
+      {"title":"Připojení a párování WebRTC","steps":["V Nastavení → Vzdálený přístup → WebRTC uložte adresu signalizace. Párovací QR se zobrazí až po úspěšných kontrolách signalizace a UDP. Hostitel musí být online a běžná oprávnění stále platí. Kód obsahuje tajný údaj: nezveřejňujte jej. Při chybě ověřte síť; úspěšné kontroly nezaručují spojení mezi sítěmi."],"screenshot":{"id":"webrtc-pairing","alt":"Připojení a párování WebRTC","caption":"Aktuální nastavení pevného demonstračního prostředí; nebyla spuštěna úloha, model ani párování a nebyly zveřejněny přihlašovací údaje."}},
       {
         "title": "Nakonfigurujte přístup k hostiteli a pozvěte zařízení",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "Výchozí interval je 5 minut. Povolení proaktivního kontaktu neznamená zprávu při každém kole; bez čekajících událostí může skončit tiše. Volání modelu může být placené a souhrn není úplný myšlenkový řetězec.",
-          "Název delegace má nejvýše 60 znaků a nenahrazuje úplný pokyn. Pokračování jej může převzít, stávající chaty se nepřejmenovávají. Počet přidaných vzpomínek otevře souhrny, pravá šipka úplný záznam. Nula je skrytá; tiché ukončení není chyba doručení."
+          "Název delegace má nejvýše 60 znaků a nenahrazuje úplný pokyn. Pokračování jej může převzít, stávající chaty se nepřejmenovávají. Počet přidaných vzpomínek otevře souhrny, pravá šipka úplný záznam. Nula je skrytá; tiché ukončení není chyba doručení.", "Automatické proaktivní přemýšlení se vypne po třech chybách za sebou. Před opětovným zapnutím zkontrolujte historii a opravte příčinu. Zpět v mobilním digitálním centru otevře předchozí stránku."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Nastavení přemýšlení a samostatně stránkovaná historie",
-          "caption": "Skutečné čínské rozhraní stálého demonstračního prostředí. Zobrazuje nastavení, vstupy nebo prázdné seznamy; při tomto snímání nebyl volán model ani odeslána zpráva."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Nastavení přemýšlení a samostatně stránkovaná historie","caption":"Aktuální nastavení pevného demonstračního prostředí; nebyla spuštěna úloha, model ani párování a nebyly zveřejněny přihlašovací údaje."}
       },
       {
         "title": "Propojení obsluhy kanálů a oznámení",

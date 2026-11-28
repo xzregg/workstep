@@ -11,6 +11,26 @@ import { defaultSkin } from '../src/skins/contract'
 import { skinsApi } from '../src/api/skins'
 import { languagesApi } from '../src/api/languages'
 import { languageCatalog, validateLanguage } from '../src/i18n/languagePack'
+import { useWebRtcConnectionStore } from '../src/webrtc/webrtcConnectionStore'
+
+test('direct appearance startup waits for the authenticated transport', async () => {
+  const {window} = installDomEnvironment()
+  window.happyDOM.setURL('http://localhost/p2p/device/')
+  const previous = globalThis.fetch
+  let calls=0
+  globalThis.fetch=async()=>{calls++;return Response.json({scope:null,preferences:null})}
+  useWebRtcConnectionStore.setState({connected:false})
+  try {
+    await initializeAppearancePreferences()
+    assert.equal(calls,0)
+    assert.equal(appearanceSyncState().status,'local')
+    useWebRtcConnectionStore.setState({connected:true})
+    await initializeAppearancePreferences()
+    assert.equal(calls,1)
+  } finally {
+    stopAppearancePreferences(); globalThis.fetch=previous;useWebRtcConnectionStore.setState({connected:false});await window.happyDOM.close()
+  }
+})
 
 test('shared skin selection follows the user across browsers; previews and old public caches do not sync', async () => {
   const { window } = installDomEnvironment()

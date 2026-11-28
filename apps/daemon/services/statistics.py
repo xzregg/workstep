@@ -309,6 +309,7 @@ class StatisticsModule:
                         *message_initiator(message, actor_names),
                         usage,
                         cost,
+                        identity_source=message.identity_source, access_source=message.access_source,
                         username=(message.initiated_by_username if message.author_type in
                                   AUTOMATED_AUTHORS else message.author_username),
                     )
@@ -380,6 +381,7 @@ class StatisticsModule:
                         *message_initiator(message, actor_names),
                         usage,
                         cost,
+                        identity_source=message.identity_source, access_source=message.access_source,
                         username=(message.initiated_by_username if message.author_type in
                                   AUTOMATED_AUTHORS else message.author_username),
                     )
@@ -753,6 +755,8 @@ def _add_user_usage(
     cost: float,
     *,
     username: str | None = None,
+    identity_source: str | None = None,
+    access_source: str | None = None,
 ) -> None:
     normalized_name = str(author_name or "").strip() or "未知用户"
     normalized_id = str(author_id or "").strip()
@@ -762,6 +766,8 @@ def _add_user_usage(
         "author_id": normalized_id,
         "author_name": normalized_name,
         "_name_priority": priority,
+        "identity_sources": set(),
+        "access_sources": set(),
         "call_count": 0,
         "input_tokens": 0,
         "output_tokens": 0,
@@ -774,6 +780,10 @@ def _add_user_usage(
         bucket["author_name"] = normalized_name
         bucket["_name_priority"] = priority
     bucket["call_count"] += 1
+    if identity_source:
+        bucket['identity_sources'].add(identity_source)
+    if access_source:
+        bucket['access_sources'].add(access_source)
     _add_usage_to_dict(bucket, usage)
     bucket["cost"] += cost
 
@@ -783,6 +793,10 @@ def _user_reports(buckets: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     for bucket in buckets.values():
         report = dict(bucket)
         report.pop("_name_priority")
+        for key in ('identity_sources', 'access_sources'):
+            values = report.pop(key)
+            if values:
+                report[key] = sorted(values)
         report["cost"] = round(report["cost"], 6)
         reports.append(report)
     return sorted(

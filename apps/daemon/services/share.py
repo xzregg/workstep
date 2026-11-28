@@ -10,9 +10,9 @@ import hmac
 import logging
 import secrets
 import threading
-import uuid
 from datetime import datetime, timedelta, timezone
 
+from services.business_ids import new_id
 from models import Task, TaskShare, Workflow
 from models.fields import utc_now
 
@@ -79,6 +79,7 @@ def create_share(
     title: str | None = None,
     mode: str = "read_only",
     expires_at: datetime | None = None,
+    *, project_id: str | None = None,
 ) -> dict:
     """Create or replace a share link for a task.
 
@@ -114,7 +115,7 @@ def create_share(
         password_hash = None
 
     share = TaskShare.create(
-        id=str(uuid.uuid4()),
+        id=new_id(project_id),
         task=task_id,
         token=_generate_token(),
         title=title or None,

@@ -12,6 +12,7 @@ from .command import GitError, text
 
 
 ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+WORKSPACE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 
 
 class TaskGitWorkspace:
@@ -29,7 +30,7 @@ class TaskGitWorkspace:
 
     @staticmethod
     def root(project_path: str | Path, task_id: str, workflow_id: str | None = None) -> Path:
-        if not re.fullmatch(r"[A-Za-z0-9-]{1,80}", task_id):
+        if not WORKSPACE_ID.fullmatch(task_id):
             raise GitError("Invalid task ID.")
         project = Path(project_path).resolve()
         workstep = data_directory(project)
@@ -41,7 +42,7 @@ class TaskGitWorkspace:
             raise GitError("The task workspace directory cannot be a symbolic link.", 409)
         if workflow_id is None or (legacy.is_dir() and any(legacy.iterdir())):
             return legacy
-        if not re.fullmatch(r"[A-Za-z0-9-]{1,80}", workflow_id):
+        if not WORKSPACE_ID.fullmatch(workflow_id):
             raise GitError("Invalid process ID.")
         artifacts = workstep / "artifacts"
         workflow_root = artifacts / workflow_id

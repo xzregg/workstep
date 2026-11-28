@@ -11,6 +11,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     private var mediaGeneration = 0
     private var requestingMedia = false
     private var server: ServerAddress?
+    private var activeP2p: P2pConnection?
     private var policy: NavigationPolicy?
     private var webView: WKWebView?
     private var urlObservation: NSKeyValueObservation?
@@ -37,7 +38,9 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         downloads.onError = { [weak self] in self?.showMessage("Could not save the file. Try again and save one file at a time.") }
         notifications.currentPage = { [weak self] in self?.webView?.url }
         notifications.onOpen = { [weak self] url in self?.openNotification(url) }
-        if let raw = defaults.string(forKey: "server"), let server = try? ServerAddress(raw) { connect(server) }
+        let p2pURL = defaults.string(forKey: "p2p_active_url")
+        if let item = P2pStore().load().first(where: { $0.entryURL.absoluteString == p2pURL }) { connect(item.server, p2p: item) }
+        else if let raw = defaults.string(forKey: "server"), let server = try? ServerAddress(raw) { connect(server) }
         else { setStatus("连接你的 WorkStep 服务", loading: false) }
     }
     override func viewDidAppear(_ animated: Bool) {
@@ -117,8 +120,9 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     }
     @objc private func showSetup() {
         guard presentedViewController == nil else { return }
-        let setup = ServiceSetupViewController(initial: server?.origin ?? "")
+        let setup = ServiceSetupViewController(initial: activeP2p == nil ? server?.origin ?? "" : "", activeP2p: activeP2p)
         setup.onConnect = { [weak self] server in self?.connect(server) }
+        setup.onP2pConnect = { [weak self] item in self?.connect(item.server, p2p: item) }
         setup.onDeleteActive = { [weak self] in self?.disconnect() }
         present(UINavigationController(rootViewController: setup), animated: true)
     }
@@ -131,10 +135,12 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         webView?.removeFromSuperview(); webView = nil; urlObservation = nil
         pendingNotification = nil; openingNotification = false
         server = nil; policy = nil; notifications.server = nil; downloads.server = nil
+        activeP2p = nil
         defaults.removeObject(forKey: "server")
+        defaults.removeObject(forKey: "p2p_active_url")
         setStatus("连接你的 WorkStep 服务", loading: false)
     }
-    private func connect(_ server: ServerAddress) {
+    private func connect(_ server: ServerAddress, p2p: P2pConnection? = nil) {
         invalidateMedia()
         navigationDeadline?.cancel(); renderCheck?.cancel(); downloads.cancel()
         checkingPage = false
@@ -142,12 +148,18 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         webView?.stopLoading(); webView?.configuration.userContentController.removeScriptMessageHandler(forName: "workstep")
         webView?.removeFromSuperview(); urlObservation = nil
         pendingNotification = nil; openingNotification = false
-        self.server = server; policy = NavigationPolicy(server: server)
-        notifications.server = server; downloads.server = server
-        defaults.set(server.origin, forKey: "server")
-        var book = ServerAddressBook(stored: defaults.stringArray(forKey: "servers") ?? [], active: nil)
-        _ = try? book.add(server.origin)
-        defaults.set(book.origins, forKey: "servers")
+        self.server = server; activeP2p = p2p; policy = NavigationPolicy(server: server)
+        notifications.server = p2p == nil ? server : nil; downloads.server = server
+        if let p2p {
+            defaults.set(p2p.entryURL.absoluteString, forKey: "p2p_active_url")
+            defaults.removeObject(forKey: "server")
+        } else {
+            defaults.removeObject(forKey: "p2p_active_url")
+            defaults.set(server.origin, forKey: "server")
+            var book = ServerAddressBook(stored: defaults.stringArray(forKey: "servers") ?? [], active: nil)
+            _ = try? book.add(server.origin)
+            defaults.set(book.origins, forKey: "servers")
+        }
         recoveredCrash = false
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default(); configuration.allowsInlineMediaPlayback = true
@@ -173,18 +185,20 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
             self.defaults.set(url.absoluteString, forKey: "page:" + server.origin)
         }
         let remembered = defaults.string(forKey: "page:" + server.origin).flatMap(URL.init(string:))
-        web.load(URLRequest(url: remembered.flatMap { server.shouldRemember($0) ? $0 : nil } ?? server.root))
+        web.load(URLRequest(url: p2p?.pairingURL ?? remembered.flatMap { server.shouldRemember($0) ? $0 : nil } ?? server.root))
         notifications.requestPermission()
     }
     @objc private func reload() {
         guard let server else { showSetup(); return }
         recoveredCrash = false
-        if webView?.url == nil { webView?.load(URLRequest(url: server.root)) } else { webView?.reload() }
+        if let activeP2p { webView?.load(URLRequest(url: activeP2p.pairingURL)) }
+        else if webView?.url == nil { webView?.load(URLRequest(url: server.root)) }
+        else { webView?.reload() }
     }
     @objc private func openDevices() {
         guard let server else { return }
         policy = NavigationPolicy(server: server)
-        webView?.load(URLRequest(url: server.root.appendingPathComponent("devices")))
+        webView?.load(URLRequest(url: (activeP2p?.entryURL ?? server.root).appendingPathComponent("devices")))
     }
     private func clearCache() {
         let types: Set<String> = [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache]
@@ -279,7 +293,11 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         invalidateMedia()
         diagnostics.record("网页进程退出")
-        if !recoveredCrash { recoveredCrash = true; webView.reload() }
+        if !recoveredCrash {
+            recoveredCrash = true
+            if let activeP2p { webView.load(URLRequest(url: activeP2p.pairingURL)) }
+            else { webView.reload() }
+        }
         else { setStatus("The web process closed. Reload the page.", loading: false) }
     }
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {

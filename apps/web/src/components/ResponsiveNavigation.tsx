@@ -10,6 +10,8 @@ import { NavigationHeaderContext } from './NavigationHeaderContext'
 import { BrandIcon } from './BrandIcon'
 import { NavigationDismissContext } from './NavigationDismissContext'
 import { MobileHeaderActionsSlot } from './MobileHeaderActions'
+import { useProjectStore } from '../stores/projectStore'
+import DigitalPersonSidebarEntry from './digital-person/DigitalPersonSidebarEntry'
 
 export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, newLoading = false, showNew = true, headerRight, showBrandIcon = true, onVisibilityChange }: {
   children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; newLoading?: boolean; showNew?: boolean; headerRight?: ReactNode; showBrandIcon?: boolean; onVisibilityChange?: (visible: boolean) => void
@@ -17,6 +19,7 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
   const { t } = useI18n()
   const compact = useCompactLayout()
   const headerLeft = useContext(NavigationHeaderContext)
+  const workspace = useProjectStore(state => state.projects.find(project => project.is_default_workspace && project.type !== 'remote'))
   const displayTitle = showBrandIcon && /^workstep$/i.test(title) ? 'WorkStep' : title
   const [open, setOpen] = useState(false)
   const visibilityCallback = useRef(onVisibilityChange)
@@ -61,6 +64,7 @@ export default function ResponsiveNavigation({ children, title, onNew, style, cl
       <div className="mobile-header-left">
       <button aria-label={t('mobile.openNavigation')} aria-expanded={open} aria-controls="workstep-navigation" onClick={() => setOpen(true)}><Icon name="menu" size={21} /></button>
       {headerLeft}
+      {compact && workspace && <DigitalPersonSidebarEntry project={workspace} header />}
       </div>
       <span className="mobile-header-title" title={displayTitle}>{showBrandIcon && displayTitle === 'WorkStep' && <BrandIcon size={18}/>}<span>{displayTitle}</span></span>
       <div className="mobile-header-actions">

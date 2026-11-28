@@ -14,7 +14,7 @@ import time
 
 TTL_SECONDS = 3600
 MAX_TICKETS = 256
-MAX_RESOURCE_BYTES = 25 * 1024 * 1024
+MAX_PREVIEW_BYTES = 20 * 1024 * 1024
 RESOURCE_EXTENSIONS = frozenset('.html .htm .css .js .mjs .json .txt .csv .svg .png .jpg .jpeg .gif .webp .avif .ico .woff .woff2 .ttf .otf .mp3 .mp4 .wav .webm .ogg .pdf .wasm'.split())
 
 
@@ -65,7 +65,7 @@ def prepare_editor_html(token: str, content: str, resource_path: str | None = No
     broker = ''
     navigation = ''
     if ticket.prototype and resource_path is not None:
-        config = {'token': token, 'path': resource_path, 'editing': ticket.editor, 'document': {
+        config = {'token': token, 'path': resource_path, 'resource_base': frame_source, 'editing': ticket.editor, 'document': {
             'version': document.version, 'inspection_only': ticket.inspection_only,
             'nodes': {key: {name: value for name, value in document.context(key).items() if name != 'source'} for key in document.nodes},
             'html_preview': {'token': token, 'entry': resource_path}}}
@@ -112,7 +112,7 @@ def resource_file(token: str, project_id: str | None, path: str) -> Path:
         raise HtmlPreviewError(status_code=403, detail='Preview resource denied')
     if not target.is_file():
         raise HtmlPreviewError(status_code=404, detail='Preview resource unavailable')
-    if target.stat().st_size > MAX_RESOURCE_BYTES:
+    if target.stat().st_size > MAX_PREVIEW_BYTES:
         raise HtmlPreviewError(status_code=413, detail='Preview resource too large')
     return target
 

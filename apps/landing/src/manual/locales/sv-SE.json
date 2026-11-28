@@ -381,11 +381,7 @@
           "Maximal avkastning styr streckade returanslutningar och är separat från återförsök efter misslyckad granskning.",
           "Att deklarera en utport skapar inte en fil. Kräv faktiska leveranser i prompten och inspektera dem efteråt."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Inmatningsartefakter och motsvarande utdata i nodredigeraren",
-          "caption": "Ingången deklarerar uppgiftskrav med utförandeplan som motsvarande utdata. Inställningar för returräkning visas inte."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Inmatningsartefakter och motsvarande utdata i nodredigeraren","caption":"Aktuell konfiguration i den fasta demonstrationsmiljön; ingen uppgift, modell eller parkoppling kördes och inga autentiseringsuppgifter publicerades."}
       },
       {
         "title": "Ställ in granskning och automatisk start",
@@ -393,7 +389,7 @@
           "Under Steg granskning i editorn, välj Manuell granskning, Automatisk granskning eller Hoppa över granskning. Manuell granskning rekommenderas initialt.",
           "Manuell granskning pausas efter verkställighet för ditt beslut. För automatisk granskning, skriv verifierbara kriterier och välj eventuellt dess motor och modell.",
           "Ange omförsök efter att en automatisk granskning avvisar resultatet. Fel i själva granskningsagenten går över till manuell hantering.",
-          "Ställ in Start automatiskt efter skapandet efter behov och spara sedan. För första övning, inaktivera den så att du kan inspektera en uppgift innan du börjar."
+          "Välj motor, leverantör och modell i den ordningen i steginställningarna. Utan automatisk start klickar du på Starta för steget i uppgiftsdetaljer när beroendena är klara. Uppgiftsstart godkänner bara ingången, inte senare manuella steg. Global utdata delar en fast Global-sökväg. Kontrollera filer och granskningar; använd den inte i returkopplingar."
         ],
         "tips": [
           "Installera och konfigurera SDK-motorer innan du använder dem för antingen exekvering eller granskning."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "Kö betyder vanligtvis att samtidig kapacitet är full. Att vänta på granskning kräver bekräftelse; det betyder inte att appen har fastnat.",
-          "Radering skiljer sig från arkivering. Läs bekräftelsen innan permanent radering."
+          "Radering skiljer sig från arkivering. Läs bekräftelsen innan permanent radering.", "Håll en uppgift intryckt på mobilen för flerval. Kontrollera urval och bekräftelse före arkivering eller radering. Kopiering kräver en enda vald uppgift; begränsningar för pågående uppgifter kvarstår."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Klicka på titeln i arkivlistan för att visa senaste frågan och svaren skrivskyddat. Det återställer inte samtalet och läser inte in fullständiga körningsdetaljer. Återställ uttryckligen för att fortsätta chatta."
         ],
         "tips": [
-          "Arkivering behåller innehållet. Att radera samtal och meddelanden har större konsekvenser; blanda inte ihop «Lös upp grupp» med «Ta även bort samtal»."
+          "Arkivering behåller innehållet. Att radera samtal och meddelanden har större konsekvenser; blanda inte ihop «Lös upp grupp» med «Ta även bort samtal».", "Skapa undergrupper via sidofältets gruppmeny; kontrollera målet före dragning. Klicka på kvoten vid inmatningen för flera motorer. Insamlingsfel behåller äldre värden: kontrollera uppdateringstiden, inte en faktura. Markdown-bildknappen laddar upp och infogar en sökväg; kontrollera förhandsvisningen före sparning."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Samtalsgruppsmeny i sidofältet och skrivskyddad arkivförhandsgranskning",
-          "caption": "Verkligt kinesiskt gränssnitt från den fasta demomiljön. Visar inställningar, ingångar eller tomma listor; ingen modell anropades och inget meddelande skickades under denna fotografering."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Samtalsgruppsmeny i sidofältet och skrivskyddad arkivförhandsgranskning","caption":"Aktuell konfiguration i den fasta demonstrationsmiljön; ingen uppgift, modell eller parkoppling kördes och inga autentiseringsuppgifter publicerades."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Cachade fjärrposter är inte livestatus. Synkronisering kan blockeras medan projektuppgifter eller chattar är aktiva.",
-          "Återanslut först offline eller obehöriga fjärrprojekt. Webbläsaren kopierar inte värdarkiv till din dator. Läsning kräver Git-view-tillstånd; commit, branch, merge och synkroniseringsåtgärder har separata anslag. Kontrollera behörigheter om knappar saknas."
+          "Återanslut först offline eller obehöriga fjärrprojekt. Webbläsaren kopierar inte värdarkiv till din dator. Läsning kräver Git-view-tillstånd; commit, branch, merge och synkroniseringsåtgärder har separata anslag. Kontrollera behörigheter om knappar saknas.", "Välj filer i Git-ändringslistan för att kasta dem tillsammans. Granska skillnader före bekräftelse: innehåll utan commit kan vara omöjligt att återställa. Att kasta är ingen säkerhetskopiering."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "Interaktivt läge är valt och lösenordet är tomt. Ingen delningslänk har skapats."
         }
       },
+      {"title":"WebRTC-anslutning och parkoppling","steps":["Spara signaleringsadressen under Inställningar → Fjärråtkomst → WebRTC. QR-koden visas först efter godkänd signalerings- och UDP-kontroll. Värden måste vara online och vanliga behörigheter gäller. Koden innehåller en hemlighet: publicera den aldrig. Kontrollera nätverket vid fel; godkända kontroller garanterar inte anslutning mellan nätverk."],"screenshot":{"id":"webrtc-pairing","alt":"WebRTC-anslutning och parkoppling","caption":"Aktuell konfiguration i den fasta demonstrationsmiljön; ingen uppgift, modell eller parkoppling kördes och inga autentiseringsuppgifter publicerades."}},
       {
         "title": "Konfigurera värdåtkomst och bjud in enheter",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "Standardintervallet är 5 minuter. Tillåten proaktiv kontakt betyder inte ett meddelande varje omgång; utan väntande händelser kan den avslutas tyst. Modellanrop kan kosta; sammanfattningen är ingen fullständig tankekedja.",
-          "Delegeringstitlar får ha 60 tecken och ersätter inte hela instruktionen. Fortsättningar kan ärva titeln; befintliga chattar döps inte om. Antalet nya minnen öppnar sammanfattningar, högerpilen hela posten. Noll döljs; tyst avslut är inte leveransfel."
+          "Delegeringstitlar får ha 60 tecken och ersätter inte hela instruktionen. Fortsättningar kan ärva titeln; befintliga chattar döps inte om. Antalet nya minnen öppnar sammanfattningar, högerpilen hela posten. Noll döljs; tyst avslut är inte leveransfel.", "Automatiskt proaktivt tänkande stängs av efter tre fel i rad. Läs historiken och åtgärda orsaken innan det aktiveras igen. Tillbaka i den mobila digitala hubben öppnar föregående sida."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Proaktiv reflektionskonfiguration och separat sidvisad körningshistorik",
-          "caption": "Verkligt kinesiskt gränssnitt från den fasta demomiljön. Visar inställningar, ingångar eller tomma listor; ingen modell anropades och inget meddelande skickades under denna fotografering."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Proaktiv reflektionskonfiguration och separat sidvisad körningshistorik","caption":"Aktuell konfiguration i den fasta demonstrationsmiljön; ingen uppgift, modell eller parkoppling kördes och inga autentiseringsuppgifter publicerades."}
       },
       {
         "title": "Koppla kanaler för mottagning och aviseringar",

@@ -6,12 +6,12 @@ Callers run these database operations inside a project database work unit.
 from __future__ import annotations
 
 import json
-import uuid
 from functools import wraps
 from typing import TYPE_CHECKING
 
 import peewee as pw
 
+from services.business_ids import new_id
 from models import (
     ActionProposal,
     CoordinatorSession,
@@ -99,7 +99,7 @@ class ProjectWorkflowService:
         if is_default:
             Workflow.update(is_default=0).where(Workflow.is_default == 1).execute()
         now = utc_now()
-        wf_id = str(uuid.uuid4())[:8]
+        wf_id = new_id(proj.id)
         wf_steps = steps if steps is not None else {"nodes": [], "connections": []}
         next_order = (Workflow.select(pw.fn.MAX(Workflow.sort_order)).scalar() or 0) + 1
         Workflow.create(

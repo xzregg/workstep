@@ -182,6 +182,7 @@ async def test_assets_are_revisioned_and_missing_images_rejected(tmp_path):
     (root / "assets" / "wall.png").write_bytes(data)
     (root / "components.json").write_text(json.dumps({"styles": {"body": {"base": {"backgroundImage": "assets/wall.png"}}}, "mobile": {"layout": {"sidebarSide": "left"}}}))
     checked = await manager.validate(str(root))
+    assert checked["skin"]["resource_paths"] == ["assets/wall.png"]
     assert await manager.asset(checked["skin"]["revision"], "wall.png") == data
     with pytest.raises(ValueError): await manager.asset(checked["skin"]["revision"], "../skin.json")
     (root / "assets" / "wall.png").unlink()

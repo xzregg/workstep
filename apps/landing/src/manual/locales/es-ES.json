@@ -381,11 +381,7 @@
           "Las devoluciones máximas controlan las conexiones de devolución con guiones y son independientes de los reintentos después de una revisión fallida.",
           "Declarar un puerto de salida no crea un archivo. Exija entregables reales en el aviso e inspecciónelos después."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Artefactos de entrada y salidas correspondientes en el editor de nodos",
-          "caption": "La entrada declara los requisitos de la tarea con el plan de ejecución como salida correspondiente. La configuración del recuento de retornos no se muestra."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Artefactos de entrada y salidas correspondientes en el editor de nodos","caption":"Configuración actual del entorno fijo de demostración; no se ejecutaron tareas, modelos ni emparejamientos y no se publicaron credenciales."}
       },
       {
         "title": "Establecer revisión y inicio automático.",
@@ -393,7 +389,7 @@
           "En Revisión de pasos en el editor, elija Revisión manual, Revisión automática u Omitir revisión. Inicialmente se recomienda la revisión manual.",
           "La revisión manual se detiene después de la ejecución para tomar su decisión. Para revisión automática, escriba criterios verificables y opcionalmente elija su motor y modelo.",
           "Establecer reintentos después de que una revisión automática rechace el resultado. Los errores en el propio agente de revisión pasan al manejo manual.",
-          "Configure Iniciar automáticamente después de la creación según sea necesario y luego guarde. Para la práctica inicial, desactívelo para poder inspeccionar una tarea antes de comenzar."
+          "En ajustes del paso elige motor, proveedor y modelo, en ese orden. Sin inicio automático, pulsa Iniciar en el paso dentro de los detalles cuando estén listas las dependencias. Iniciar la tarea solo autoriza la entrada, no pasos manuales posteriores. Una salida global comparte una ruta fija Global. Comprueba archivos y revisiones; no se permite en conexiones de retorno."
         ],
         "tips": [
           "Instale y configure los motores SDK antes de usarlos para ejecución o revisión."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "En cola normalmente significa que la capacidad de concurrencia está llena. La espera de revisión requiere confirmación; no significa que la aplicación esté bloqueada.",
-          "La eliminación difiere del archivado. Lea la confirmación antes de la eliminación permanente."
+          "La eliminación difiere del archivado. Lea la confirmación antes de la eliminación permanente.", "En el móvil, mantén pulsada una tarea para seleccionar varias. Revisa el alcance y la confirmación antes de archivar o borrar. Solo se puede copiar una tarea seleccionada; las restricciones de tareas en ejecución se mantienen."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Abra la lista archivada y pulse un título para desplegar la última pregunta y respuesta en modo lectura. Consultar no restaura la conversación ni carga todos los detalles de ejecución. Restáurela explícitamente para continuar."
         ],
         "tips": [
-          "Archivar conserva el contenido; eliminar conversaciones y mensajes tiene mayor impacto. No confunda disolver un grupo con eliminar también su contenido."
+          "Archivar conserva el contenido; eliminar conversaciones y mensajes tiene mayor impacto. No confunda disolver un grupo con eliminar también su contenido.", "Crea subgrupos desde el menú del grupo lateral; comprueba el destino antes de arrastrar. Pulsa la cuota del área de entrada para consultar varios motores. Si falla la obtención se conservan valores antiguos: revisa su fecha, no son una factura. El botón de imagen Markdown carga e inserta una ruta; revisa la vista previa antes de guardar."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Menú de grupos en la barra lateral y vista de solo lectura de chats archivados",
-          "caption": "Interfaz china real del entorno de demostración fijo. Muestra ajustes, accesos o listas vacías; durante esta captura no se llamó a ningún modelo ni se enviaron mensajes."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Menú de grupos en la barra lateral y vista de solo lectura de chats archivados","caption":"Configuración actual del entorno fijo de demostración; no se ejecutaron tareas, modelos ni emparejamientos y no se publicaron credenciales."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Los registros remotos almacenados en caché no están en estado activo. La sincronización puede bloquearse mientras las tareas del proyecto o los chats están activos.",
-          "Vuelva a conectar primero los proyectos remotos sin conexión o no autorizados. El navegador no copia los repositorios del host a su computadora. La lectura requiere permiso de Git-view; Las acciones de confirmación, bifurcación, fusión y sincronización tienen concesiones separadas. Verifique los permisos si faltan botones."
+          "Vuelva a conectar primero los proyectos remotos sin conexión o no autorizados. El navegador no copia los repositorios del host a su computadora. La lectura requiere permiso de Git-view; Las acciones de confirmación, bifurcación, fusión y sincronización tienen concesiones separadas. Verifique los permisos si faltan botones.", "Selecciona archivos en los cambios de Git para descartarlos juntos. Revisa las diferencias antes de confirmar: el contenido sin commit puede ser irrecuperable. Descartar no crea una copia de seguridad."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "El modo interactivo está seleccionado y la contraseña está vacía. No se ha creado ningún enlace para compartir."
         }
       },
+      {"title":"Conexión y emparejamiento WebRTC","steps":["En Ajustes → Acceso remoto → WebRTC guarda la dirección de señalización. El QR de emparejamiento aparece solo tras superar las pruebas de señalización y UDP. El anfitrión debe seguir conectado y se requieren los permisos habituales. El código contiene un secreto: no lo publiques. Si falla, comprueba la red; superar las pruebas no garantiza conexión entre redes."],"screenshot":{"id":"webrtc-pairing","alt":"Conexión y emparejamiento WebRTC","caption":"Configuración actual del entorno fijo de demostración; no se ejecutaron tareas, modelos ni emparejamientos y no se publicaron credenciales."}},
       {
         "title": "Configurar el acceso del host e invitar a los dispositivos",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "El intervalo predeterminado es 5 minutos. Permitir contacto proactivo no implica un mensaje en cada ronda; sin eventos pendientes puede finalizar en silencio. El modelo puede generar costes y el resumen no es una cadena completa de pensamiento.",
-          "El título delegado admite 60 caracteres y no sustituye la instrucción completa. Una continuación puede heredarlo sin renombrar chats existentes. Pulse el número de recuerdos añadidos para ver resúmenes o la flecha derecha para el registro completo. Cero se oculta; silencio no equivale a fallo de entrega."
+          "El título delegado admite 60 caracteres y no sustituye la instrucción completa. Una continuación puede heredarlo sin renombrar chats existentes. Pulse el número de recuerdos añadidos para ver resúmenes o la flecha derecha para el registro completo. Cero se oculta; silencio no equivale a fallo de entrega.", "El pensamiento proactivo automático se desactiva tras tres fallos consecutivos. Revisa el historial y corrige la causa antes de reactivarlo. Atrás en el centro digital móvil vuelve a la página anterior."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Configuración de reflexión e historial con paginación independiente",
-          "caption": "Interfaz china real del entorno de demostración fijo. Muestra ajustes, accesos o listas vacías; durante esta captura no se llamó a ningún modelo ni se enviaron mensajes."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Configuración de reflexión e historial con paginación independiente","caption":"Configuración actual del entorno fijo de demostración; no se ejecutaron tareas, modelos ni emparejamientos y no se publicaron credenciales."}
       },
       {
         "title": "Vincular atención y notificaciones de canales",

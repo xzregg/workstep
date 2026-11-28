@@ -381,11 +381,7 @@
           "Die maximale Rücklaufzahl steuert gestrichelte Rückverbindungen; Wiederholungen nach abgelehntem Review werden getrennt eingestellt.",
           "Ein deklarierter Ausgabeport erzeugt keine Datei von selbst. Fordern Sie im Prompt tatsächliche Ergebnisse und prüfen Sie diese anschließend."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Eingabeartefakte und zugeordnete Ausgaben im Schritteditor",
-          "caption": "Die Eingabe beschreibt Aufgabenanforderungen, die Ausgabe einen Ausführungsplan. Rücklaufgrenzen sind hier nicht abgebildet."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Eingabeartefakte und zugeordnete Ausgaben im Schritteditor","caption":"Aktuelle Konfiguration der festen Demonstrationsumgebung; keine Aufgabe, kein Modell und keine Kopplung ausgeführt, keine Zugangsdaten veröffentlicht."}
       },
       {
         "title": "Reviews und automatischen Start einstellen",
@@ -393,7 +389,7 @@
           "Wählen Sie im Schritteditor unter Schritt-Review Manuell, Automatisch oder Überspringen. Für den Einstieg empfehlen wir manuell.",
           "Ein manuelles Review hält nach der Ausführung zur Prüfung an. Für automatisches Review geben Sie überprüfbare Kriterien und gegebenenfalls eigene Engine und Modell an.",
           "Legen Sie die Wiederholungszahl nach automatischer Ablehnung fest. Fehler des Review-Agenten wechseln zur manuellen Bearbeitung.",
-          "Aktivieren Sie bei Bedarf Nach Erstellung automatisch starten und speichern Sie. Lassen Sie dies beim ersten Versuch aus, um neue Aufgaben vor dem Start zu prüfen."
+          "Wählen Sie in den Schritteinstellungen zuerst Engine, dann Anbieter und Modell. Ohne automatischen Start klicken Sie nach erfüllten Abhängigkeiten in den Aufgabendetails auf Start. Der Aufgabenstart erlaubt nur den Einstieg, nicht spätere manuelle Schritte. Globale Ausgaben teilen einen festen Global-Pfad. Prüfen Sie Dateien und Freigaben; Rückverbindungen dürfen sie nicht verwenden."
         ],
         "tips": [
           "SDKs für Ausführung und Review müssen jeweils installiert und konfiguriert sein."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "Warteschlange bedeutet meist ausgeschöpfte Parallelität; Review ausstehend verlangt Bestätigung und ist kein Stillstand des Programms.",
-          "Löschen ist nicht Archivieren. Lesen Sie vor endgültigem Löschen den Bestätigungsdialog."
+          "Löschen ist nicht Archivieren. Lesen Sie vor endgültigem Löschen den Bestätigungsdialog.", "Auf Mobilgeräten aktiviert langes Drücken einer Aufgabe die Mehrfachauswahl. Vor Archivierung oder Löschen Auswahl und Bestätigung prüfen. Kopieren ist nur bei einer ausgewählten Aufgabe möglich; laufende Aufgaben behalten ihre Einschränkungen."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Öffnen Sie die Archivliste und klicken auf einen Titel, um den letzten Frage-Antwort-Wechsel schreibgeschützt aufzuklappen. Ansehen stellt die Sitzung nicht wieder her und lädt keine vollständigen Ausführungsdetails. Zum Weiterschreiben ausdrücklich wiederherstellen."
         ],
         "tips": [
-          "Archivieren bewahrt Inhalte; Unterhaltungen und Nachrichten löschen greift weiter. Verwechseln Sie Gruppenauflösung nicht mit gleichzeitigem Löschen der Inhalte."
+          "Archivieren bewahrt Inhalte; Unterhaltungen und Nachrichten löschen greift weiter. Verwechseln Sie Gruppenauflösung nicht mit gleichzeitigem Löschen der Inhalte.", "Über das Seitenleisten-Gruppenmenü erstellen Sie Untergruppen; prüfen Sie vor dem Ziehen das Ziel. Die Kontingentanzeige am Eingabefeld zeigt mehrere Engines. Bei Erfassungsfehlern bleiben alte Werte: Aktualisierungszeit prüfen, nicht als Rechnung verstehen. Die Markdown-Bildschaltfläche lädt hoch und fügt einen Pfad ein; vor dem Speichern die Vorschau prüfen."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Gruppenmenü der Projektseitenleiste und schreibgeschützte Archivvorschau",
-          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Gruppenmenü der Projektseitenleiste und schreibgeschützte Archivvorschau","caption":"Aktuelle Konfiguration der festen Demonstrationsumgebung; keine Aufgabe, kein Modell und keine Kopplung ausgeführt, keine Zugangsdaten veröffentlicht."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Gecachte Ferninformationen sind nicht aktuell garantiert. Aktive Aufgaben oder Chats können Synchronisation verhindern.",
-          "Stellen Sie bei Offline- oder Berechtigungsfehlern zuerst die Hostverbindung wieder her. Der Browser kopiert das Repository nicht auf Ihren Rechner. Lesen benötigt Git-Leserecht; Commit, Branch, Merge und Synchronisation haben eigene Rechte. Prüfen Sie diese bei fehlenden Schaltflächen."
+          "Stellen Sie bei Offline- oder Berechtigungsfehlern zuerst die Hostverbindung wieder her. Der Browser kopiert das Repository nicht auf Ihren Rechner. Lesen benötigt Git-Leserecht; Commit, Branch, Merge und Synchronisation haben eigene Rechte. Prüfen Sie diese bei fehlenden Schaltflächen.", "Wählen Sie Dateien in der Git-Änderungsliste zum gemeinsamen Verwerfen. Vor Bestätigung Unterschiede prüfen: Nicht eingecheckte Inhalte sind möglicherweise nicht wiederherstellbar. Verwerfen ist keine Sicherung."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "Interaktiv ist ausgewählt, Passwort leer und noch kein Link erstellt."
         }
       },
+      {"title":"WebRTC-Verbindung und Kopplung","steps":["Unter Einstellungen → Fernzugriff → WebRTC speichern Sie die Signalisierungsadresse. Der Kopplungs-QR-Code erscheint erst nach erfolgreichen Signalisierungs- und UDP-Prüfungen. Host und Berechtigungen müssen weiterhin verfügbar sein. Der Code enthält ein Geheimnis und darf nicht veröffentlicht werden. Bei Fehlern das Netzwerk prüfen; erfolgreiche Prüfungen garantieren keine Verbindung zwischen Netzwerken."],"screenshot":{"id":"webrtc-pairing","alt":"WebRTC-Verbindung und Kopplung","caption":"Aktuelle Konfiguration der festen Demonstrationsumgebung; keine Aufgabe, kein Modell und keine Kopplung ausgeführt, keine Zugangsdaten veröffentlicht."}},
       {
         "title": "Hostzugriff und Geräteeinladungen konfigurieren",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "Standardintervall: 5 Minuten. Proaktiver Kontakt bedeutet nicht jede Runde eine Nachricht; ohne ausstehende Ereignisse kann sie still enden. Modellaufrufe können kosten; das Protokoll ist keine vollständige Gedankenkette.",
-          "Delegationstitel haben höchstens 60 Zeichen und ersetzen keine vollständige Anweisung. Fortsetzungen können Titel übernehmen; bestehende Chats werden nicht umbenannt. Die Zahl neuer Erinnerungen öffnet Zusammenfassungen, der rechte Pfeil den vollständigen Eintrag. Null wird ausgeblendet; Stille ist kein Zustellfehler."
+          "Delegationstitel haben höchstens 60 Zeichen und ersetzen keine vollständige Anweisung. Fortsetzungen können Titel übernehmen; bestehende Chats werden nicht umbenannt. Die Zahl neuer Erinnerungen öffnet Zusammenfassungen, der rechte Pfeil den vollständigen Eintrag. Null wird ausgeblendet; Stille ist kein Zustellfehler.", "Automatisches proaktives Nachdenken schaltet sich nach drei aufeinanderfolgenden Fehlern ab. Prüfen und beheben Sie die Ursache im Verlauf, bevor Sie es wieder einschalten. Zurück im mobilen digitalen Hub öffnet die vorherige Seite."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Einstellungen des Nachdenkens und getrennt paginierter Verlauf",
-          "caption": "Echte chinesische Oberfläche der festen Demoumgebung. Gezeigt werden Einstellungen, Zugänge oder leere Listen; bei dieser Aufnahme wurde kein Modell aufgerufen und keine Nachricht gesendet."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Einstellungen des Nachdenkens und getrennt paginierter Verlauf","caption":"Aktuelle Konfiguration der festen Demonstrationsumgebung; keine Aufgabe, kein Modell und keine Kopplung ausgeführt, keine Zugangsdaten veröffentlicht."}
       },
       {
         "title": "Kanalbetreuung und Benachrichtigungen verknüpfen",

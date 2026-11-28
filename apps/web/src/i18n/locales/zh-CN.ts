@@ -914,6 +914,11 @@ export const zhCN = {
     partial: '部分指标不可用，汇总数据不完整；当前仍展示可读取的指标。',
   },
   statistics: {
+    identityGateway: '网关账号',
+    identityLocal: '本机用户',
+    identityChannel: '渠道用户',
+    identityBrowser: '浏览器用户',
+    identityRemote: '远程用户',
     activityTitle: '使用活跃情况',
     activityPrevious: '上一年',
     activityNext: '下一年',
@@ -3345,7 +3350,9 @@ export const zhCN = {
     "retry": "重试",
     "reconnect": "重连",
     "disconnect": "断开",
-    "directConnected": "P2P 直连",
+    "timings": "连接耗时",
+    "steps": {"signaling": "连接信令", "exchange": "交换连接信息", "channel": "打洞并建立通道", "authentication": "验证密钥"},
+    "directConnected": "直连",
     "disconnected": "直连已断开",
     "relayRejected": "无法建立 P2P 直连"
   },

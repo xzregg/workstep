@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
+import { rtcBootstrapPlugin } from './scripts/rtcBootstrapPlugin.ts'
 
 export default defineConfig(({ mode }) => ({
   ...(mode === 'gateway-share' ? {
@@ -26,7 +27,7 @@ export default defineConfig(({ mode }) => ({
     ...(mode === 'profile' ? { outDir: '../../tmp/runtime-diagnostics/profile-web' } : {}),
     ...(mode === 'gateway-share' ? { outDir: 'dist-gateway-share', assetsDir: '' } : {}),
   },
-  plugins: [react()],
+  plugins: [react(),rtcBootstrapPlugin()],
   resolve: {
     dedupe: ['react','react-dom','react-router-dom'],
     alias: {

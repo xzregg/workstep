@@ -529,6 +529,19 @@ export function StatisticsUserTable({ rows, locale, currency }: {
 }) {
   const { t } = useI18n()
   if (rows.length === 0) return null
+  const identityLabels: Record<string, string> = {
+    gateway: t('statistics.identityGateway'), local: t('statistics.identityLocal'),
+    channel: t('statistics.identityChannel'), browser: t('statistics.identityBrowser'),
+    remote: t('statistics.identityRemote'),
+  }
+  const accessLabels: Record<string, string> = {
+    local: t('systemStatistics.local'), webrtc_p2p: 'WebRTC', gateway: t('projectAudit.gateway'),
+    gateway_share: t('projectAudit.gatewayShare'), remote_browser: t('projectAudit.remoteBrowser'),
+    remote_project: t('projectAudit.remoteProject'),
+    remote: t('projectAudit.remoteProject'),
+  }
+  const nameCounts = new Map<string, number>()
+  for (const row of rows) nameCounts.set(row.author_name, (nameCounts.get(row.author_name) ?? 0) + 1)
   return (
     <TableShell title={t('statistics.userBreakdown')}>
       <table className="statistics-table"><thead><tr>
@@ -538,7 +551,16 @@ export function StatisticsUserTable({ rows, locale, currency }: {
         <th>{t('statistics.totalCost')}</th>
       </tr></thead><tbody>{rows.map((row) => (
         <tr key={row.author_id || `name:${row.author_name}`}>
-          <td className="statistics-name-cell"><Icon name="user" size={14} />{row.author_name || t('statistics.unknownUser')}</td>
+          <td><div className="statistics-name-cell"><Icon name="user" size={14} />
+            <span className="statistics-user-label">
+              <span>{row.author_name || t('statistics.unknownUser')}</span>
+              <span className="statistics-user-origin">{[
+                ...(row.identity_sources ?? []).map(source => identityLabels[source] || source),
+                ...(row.access_sources ?? []).filter(source => source !== 'channel').map(source => accessLabels[source] || source),
+              ].join(' · ')}</span>
+              {(nameCounts.get(row.author_name) ?? 0) > 1 && row.author_id && <code title={row.author_id}>{row.author_id}</code>}
+            </span>
+          </div></td>
           <td>{formatCompactMetric(row.call_count, locale)}</td>
           <td>{formatCompactMetric(row.input_tokens, locale)}</td>
           <td>{formatCompactMetric(row.output_tokens, locale)}</td>

@@ -768,6 +768,11 @@ export const enUS: Messages = {
     partial: '部分指标不可用，汇总数据不完整；当前仍展示可读取的指标。',
   },
   statistics: {
+    identityGateway: 'Gateway account',
+    identityLocal: 'Local user',
+    identityChannel: 'Channel user',
+    identityBrowser: 'Browser user',
+    identityRemote: 'Remote user',
     activityTitle: '使用活跃情况',
     activityPrevious: '上一年',
     activityNext: '下一年',
@@ -3189,7 +3194,9 @@ export const enUS: Messages = {
     "retry": "Retry",
     "reconnect": "Reconnect",
     "disconnect": "Disconnect",
-    "directConnected": "P2P Direct",
+    "timings": "Connection timings",
+    "steps": {"signaling": "Connect to signaling", "exchange": "Exchange connection details", "channel": "Establish direct channel", "authentication": "Verify pairing key"},
+    "directConnected": "Direct",
     "disconnected": "Direct connection closed",
     "relayRejected": "Direct P2P connection failed (relay disallowed)"
   },

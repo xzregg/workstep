@@ -61,7 +61,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
-	<string>用于你主动开启摄像头时预览画面、拍照或录像，以及发送当前画面和上传附件。</string>
+	<string>用于你主动扫码添加 P2P 设备，或在工作台拍照、录像和上传附件。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于选择你希望上传到 WorkStep 的图片附件。</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>

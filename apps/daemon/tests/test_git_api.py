@@ -1265,7 +1265,7 @@ async def test_review_token_binds_branch_even_when_commit_is_identical(client, l
 
 
 async def test_slow_file_hash_and_git_hook_keep_api_responsive(client, layout, monkeypatch):
-    import time
+    import threading
     import services.git.query as queries
     http, _ = client
     _, repo, _ = layout
@@ -1273,24 +1273,41 @@ async def test_slow_file_hash_and_git_hook_keep_api_responsive(client, layout, m
     url = f'/api/git/worktrees/{id}'
     (repo / 'one.txt').write_text('slow disk\n')
     original = queries.file_digest
+    hashing = threading.Event()
+    release_hash = threading.Event()
     def slow(*args):
-        time.sleep(.12)
+        hashing.set()
+        release_hash.wait(10)
         return original(*args)
     monkeypatch.setattr(queries, 'file_digest', slow)
     pending = asyncio.create_task(http.get(url + '/status'))
-    await asyncio.sleep(.05)
-    started = asyncio.get_running_loop().time()
-    assert (await http.get('/api/git/repositories')).status_code == 200
-    assert asyncio.get_running_loop().time() - started < .05
+    try:
+        assert await asyncio.to_thread(hashing.wait, 5)
+        assert not pending.done(), 'hashing must overlap the health request'
+        # Shared CI runners cannot guarantee 50ms wall-clock responses. The
+        # gate stays closed throughout this request, so blocking still fails.
+        response = await asyncio.wait_for(http.get('/api/git/repositories'), 1)
+        assert response.status_code == 200
+        assert not pending.done()
+    finally:
+        release_hash.set()
     state = (await pending).json()
     hook = repo / '.git/hooks/pre-commit'
-    hook.write_text('#!/bin/sh\nsleep 0.4\nexit 1\n')
+    hook.write_text('#!/bin/sh\ntouch .git/workstep-hook-started\n'
+                    'i=0\nwhile [ ! -f .git/workstep-hook-release ] && [ "$i" -lt 200 ]; do\n'
+                    'i=$((i + 1))\nsleep 0.05\ndone\nexit 1\n')
     hook.chmod(0o755)
     pending = asyncio.create_task(http.post(url + '/commit', json={'paths': ['one.txt'], 'message': 'slow hook', 'snapshot': state['snapshot']}))
-    await asyncio.sleep(.25)
-    started = asyncio.get_running_loop().time()
-    assert (await http.get('/api/git/repositories')).status_code == 200
-    assert asyncio.get_running_loop().time() - started < .05
+    try:
+        async with asyncio.timeout(5):
+            while not await asyncio.to_thread((repo / '.git/workstep-hook-started').exists):
+                await asyncio.sleep(.01)
+        assert not pending.done(), 'the real Git hook must overlap the health request'
+        response = await asyncio.wait_for(http.get('/api/git/repositories'), 1)
+        assert response.status_code == 200
+        assert not pending.done()
+    finally:
+        await asyncio.to_thread((repo / '.git/workstep-hook-release').touch)
     assert (await pending).status_code == 400
 
 

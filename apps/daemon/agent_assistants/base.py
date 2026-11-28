@@ -11,6 +11,7 @@ Adding a new assistant only requires registering an ``AssistantConfig``
 ``assistant_registry``; no new session or turn machinery is needed.
 """
 
+from services.business_ids import new_id
 from services.prompt_sections import prompt_section
 import asyncio
 from copy import deepcopy
@@ -46,6 +47,7 @@ from services.config import (
     resolve_execution_engine,
 )
 from services.remote_project import get_effective_actor
+from services.remote_access import actor_origin_fields
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -431,7 +433,9 @@ class AssistantRuntime:
             extra=extra,
         )
 
-        turn_id, assistant_message_id = reserved_message_ids or (str(uuid.uuid4()), str(uuid.uuid4()))
+        turn_id, assistant_message_id = reserved_message_ids or (
+            new_id(project_id), new_id(project_id),
+        )
         journal_ref: JournalRef | None = None
         if self._config.event_journal is not None:
             try:
@@ -444,15 +448,8 @@ class AssistantRuntime:
             except Exception:
                 logger.exception("Failed to start assistant event journal")
         actor = None if internal_event else get_effective_actor()
-        stored_author_name = (author_name or "").strip() or (
-            actor.user_name if actor is not None else ""
-        )
-        stored_actor = (
-            actor
-            if actor is not None
-            and (not (author_name or "").strip() or stored_author_name == actor.user_name)
-            else None
-        )
+        stored_author_name = actor.user_name if actor is not None else (author_name or "").strip()
+        stored_actor = actor
         session.messages.append(
             {
                 "role": "system" if internal_event else "user",
@@ -470,6 +467,7 @@ class AssistantRuntime:
                         "initiated_by_name": stored_actor.user_name,
                         "author_device_id": stored_actor.device_id,
                         "author_device_name": stored_actor.device_name,
+                        **actor_origin_fields(stored_actor),
                     }
                     if stored_actor is not None
                     else {}
@@ -508,6 +506,7 @@ class AssistantRuntime:
                 **({
                     "author_device_id": stored_actor.device_id,
                     "author_device_name": stored_actor.device_name,
+                    **actor_origin_fields(stored_actor),
                 } if stored_actor is not None else {}),
                 **(
                     {
@@ -833,7 +832,7 @@ class AssistantRuntime:
         if not isinstance(queue, asyncio.Queue):
             raise ValueError("Session message queue unavailable")
 
-        message_id = str(uuid.uuid4())
+        message_id = new_id(session.project_id)
         created_at = utc_now().isoformat()
         actor = get_effective_actor()
         message = {
@@ -852,6 +851,7 @@ class AssistantRuntime:
                     "initiated_by_name": actor.user_name,
                     "author_device_id": actor.device_id,
                     "author_device_name": actor.device_name,
+                    **actor_origin_fields(actor),
                 }
                 if actor is not None
                 else {}
@@ -1754,7 +1754,7 @@ class AssistantRuntime:
                                 )
                                 seq_holder[0] += 1
                                 if delivered:
-                                    next_message_id = str(uuid.uuid4())
+                                    next_message_id = new_id(session.project_id)
                                     next_started_at = utc_now().isoformat()
                                     next_journal_ref = None
                                     if (
@@ -1792,6 +1792,7 @@ class AssistantRuntime:
                                             for key in (
                                                 "author_device_id",
                                                 "author_device_name",
+                                                "identity_source", "access_source",
                                             )
                                             if inserted is not None and inserted.get(key)
                                         },

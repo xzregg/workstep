@@ -90,7 +90,7 @@ async def test_direct_html_and_upload_responses_enforce_sandbox(preview_site):
 
 @pytest.mark.parametrize('extension', ['html', 'htm'])
 async def test_html_preview_accepts_large_documents_up_to_resource_limit(preview_site, extension):
-    from services.html_preview import MAX_RESOURCE_BYTES
+    from services.html_preview import MAX_PREVIEW_BYTES
     client, site = preview_site
     document = site / f'large.{extension}'
     content = '<!doctype html><p>Large diagram</p>'
@@ -109,20 +109,23 @@ async def test_html_preview_accepts_large_documents_up_to_resource_limit(preview
 
     # The preview metadata and actual resource enforce the same upper bound.
     with document.open('r+b') as stream:
-        stream.truncate(MAX_RESOURCE_BYTES)
+        stream.truncate(MAX_PREVIEW_BYTES)
     assert (await client.get('/api/fs/preview', params=params, headers=headers)).status_code == 200
     with document.open('r+b') as stream:
-        stream.truncate(MAX_RESOURCE_BYTES + 1)
+        stream.truncate(MAX_PREVIEW_BYTES + 1)
     assert (await client.get('/api/fs/preview', params=params, headers=headers)).status_code == 413
+    assert (await client.get(f"/api/fs/html-resource/project-1/{grant['token']}/{grant['entry']}")).status_code == 413
 
 
-async def test_non_html_preview_keeps_one_mib_limit(preview_site):
+async def test_text_preview_accepts_files_above_one_mib(preview_site):
     client, site = preview_site
-    (site / 'large.txt').write_bytes(b'x' * (1024 * 1024 + 1))
+    size = 1024 * 1024 + 1
+    (site / 'large.txt').write_bytes(b'x' * size)
     response = await client.get('/api/fs/preview',
         params={'project_id': 'project-1', 'path': 'prototype/large.txt'},
         headers={'x-workstep-desktop-token': 'test-desktop-token'})
-    assert response.status_code == 413
+    assert response.status_code == 200
+    assert len(response.json()['content']) == size
 
 
 async def test_expired_resource_ticket_cannot_read_files(preview_site, monkeypatch):

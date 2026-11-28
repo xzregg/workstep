@@ -125,7 +125,7 @@ test('WebRtcRemoteFrame tolerates brief ICE disconnect and preserves workbench D
   }
 
   class FakePeerConnection {
-    iceGatheringState: RTCIceGatheringState = 'complete'
+    iceGatheringState: RTCIceGatheringState = 'gathering'
     iceConnectionState: RTCIceConnectionState = 'new'
     localDescription: RTCSessionDescription | null = null
     onicecandidate: ((ev: RTCPeerConnectionIceEvent) => unknown) | null = null
@@ -492,7 +492,7 @@ test('WebRtcRemoteFrame shows live millisecond latency matching Gateway and acti
     const sidebarStatus = container.querySelector('.gateway-connection-status')
     assert.ok(sidebarStatus !== null)
     assert.equal(sidebarStatus.classList.contains('gateway-connection-status--online'), true)
-    assert.match(sidebarStatus.querySelector('[role=status]')?.textContent || '', /^(?:P2P 直连|P2P Direct) · \d+ ms$/)
+    assert.match(sidebarStatus.querySelector('[role=status]')?.textContent || '', /^(?:直连|Direct) · \d+ ms$/)
 
     // Threshold styling matches Gateway (499 normal, 500-1000 warning, >1000 slow)
     for (const [ms, warning, slow] of [
@@ -524,9 +524,18 @@ test('WebRtcRemoteFrame shows live millisecond latency matching Gateway and acti
     activePeers[0].channel.dropPings = true
     await act(async () => {
       connTarget.dispatchEvent(new Event('change'))
+      await new Promise((r) => setTimeout(r, 100))
+      activePeers[0].channel.dropPings = false
+      await new Promise((r) => setTimeout(r, 1550))
+    })
+    assert.equal(pairCount, 1, 'one lost probe must not close the working channel')
+
+    activePeers[0].channel.dropPings = true
+    await act(async () => {
+      connTarget.dispatchEvent(new Event('change'))
     })
 
-    for (let i = 0; i < 45 && pairCount < 2; i++) {
+    for (let i = 0; i < 70 && pairCount < 2; i++) {
       await act(async () => {
         await new Promise((r) => setTimeout(r, 60))
       })
@@ -537,8 +546,18 @@ test('WebRtcRemoteFrame shows live millisecond latency matching Gateway and acti
     assert.equal(Boolean(container.querySelector('[data-webrtc-connected="true"]')), true)
     assert.equal(resumeCount >= 1, true)
     const recoveredStatus = container.querySelector('.gateway-connection-status [role=status]')?.textContent || ''
-    assert.match(recoveredStatus, /^(?:P2P 直连|P2P Direct) · \d+ ms$/)
+    assert.match(recoveredStatus, /^(?:直连|Direct) · \d+ ms$/)
     assert.match(container.querySelector('[data-testid="webrtc-latency"]')?.textContent || '', /^· \d+ ms$/)
+
+    const recoveredPeer = activePeers.at(-1)!
+    const recoveredPairCount = pairCount
+    await act(async () => {
+      recoveredPeer.channel.onerror?.(new Event('error') as RTCErrorEvent)
+      await new Promise((r) => setTimeout(r, 1200))
+    })
+    assert.equal(pairCount, recoveredPairCount + 1)
+    assert.equal(container.querySelector('[data-testid="workbench-child"]') === childEl, true)
+    assert.ok(container.querySelector('[data-webrtc-connected="true"]'))
   } finally {
     container.remove()
     window.removeEventListener('workstep:resume', onResumeEvent)

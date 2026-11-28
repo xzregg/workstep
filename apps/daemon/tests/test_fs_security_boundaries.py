@@ -37,6 +37,74 @@ def filesystem_app(tmp_path, monkeypatch, preview_directory):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["image", "file"])
+async def test_upload_retry_keeps_the_original_file(filesystem_app, kind):
+    import base64
+    import uuid
+
+    app, data = filesystem_app
+    content = b"uploaded bytes"
+    body = {
+        "filename": "sample.png", "prefix": "retry",
+        "data_url": "data:image/png;base64," + base64.b64encode(content).decode(),
+        "request_id": str(uuid.uuid4()),
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://local") as client:
+        first = await client.post(f"/api/fs/upload/{kind}?project_id=p1", json=body)
+        assert first.status_code == 200
+        second = await client.post(f"/api/fs/upload/{kind}?project_id=p1", json=body)
+        assert second.json() == first.json()
+        target = data / "uploads" / first.json()["filename"]
+        assert target.read_bytes() == content
+        assert len(list((data / "uploads").glob("retry-*"))) == 1
+        assert not list((data / "uploads").glob(".upload-*"))
+
+
+@pytest.mark.asyncio
+async def test_direct_image_preview_keeps_raw_image_loading(filesystem_app):
+    app, data = filesystem_app
+    image = data / "uploads" / "large.png"
+    image.write_bytes(b"x" * 2_836_659)
+    params = {"path": str(image), "project_id": "p1", "absolute": "true"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://local") as client:
+        preview = await client.get("/api/fs/preview", params={**params, "stream_image": "true"})
+        assert preview.status_code == 200
+        assert preview.json()["type"] == "image"
+        assert preview.json()["content"] == ""
+        assert preview.json()["file_size"] == 2_836_659
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("extension", "kind", "byte"), [
+    ("apk", "binary", b"\x80"),
+    ("txt", "text", b"x"),
+    ("html", "text", b"x"),
+    ("png", "image", b"x"),
+    ("mp4", "video", b"x"),
+    ("mp3", "audio", b"x"),
+])
+async def test_preview_uses_same_file_size_limit_and_preserves_download(filesystem_app, extension, kind, byte):
+    app, data = filesystem_app
+    target = data / "uploads" / f"sample.{extension}"
+    target.write_bytes(byte * 2_560_000)
+    params = {"path": str(target), "project_id": "p1", "absolute": "true"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://local") as client:
+        preview = await client.get("/api/fs/preview", params=params)
+        assert preview.status_code == 200
+        assert preview.json()["type"] == kind
+        assert preview.json()["file_size"] == 2_560_000
+
+        with target.open("r+b") as file:
+            file.truncate(20 * 1024 * 1024 + 1)
+        oversized = await client.get("/api/fs/preview", params=params)
+        assert oversized.status_code == 413
+        assert "limit 20971520" in oversized.text
+        download = await client.get("/api/fs/file", params=params, headers={"Range": "bytes=0-15"})
+        assert download.status_code == 206
+        assert download.content == byte * 16
+
+
+@pytest.mark.asyncio
 async def test_root_upload_requires_desktop_auth_and_retains_original_url(filesystem_app, monkeypatch):
     app, _ = filesystem_app
     monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")

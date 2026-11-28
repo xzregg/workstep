@@ -113,6 +113,8 @@ class ChatRowPersistence(PersistenceAdapter):
                     initiated_by_name=item.initiated_by_name,
                     author_device_id=item.author_device_id,
                     author_device_name=item.author_device_name,
+                    identity_source=item.identity_source,
+                    access_source=item.access_source,
                 )
             if item.author_type=='internal' and item.role=='system':
                 message['internal_event']=item.author_username
@@ -227,6 +229,8 @@ class ChatRowPersistence(PersistenceAdapter):
                 "initiated_by_name": item.get("initiated_by_name"),
                 "author_device_id": item.get("author_device_id"),
                 "author_device_name": item.get("author_device_name"),
+                "identity_source": item.get("identity_source"),
+                "access_source": item.get("access_source"),
                 "status": item.get("status") or (
                     "succeeded" if item.get("role") == "assistant" else None
                 ),

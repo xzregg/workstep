@@ -390,6 +390,8 @@ Git 合并、拉取与推送表单共用 `src/components/git/GitActionPanel.tsx`
 
 调用统计与任务执行报告的发起人名称由 daemon `services/actor_names.py` 统一解析：继续按稳定用户 ID 聚合，优先使用同一 ID 已保存的显示名，缺失时回退登录名或渠道标识；不借用当前宿主身份，不按同名合并账号。`Message` / `ChatMessage.initiated_by_name` 独立保存发起人显示名，`services/messages.py`、助手 `base.py` 和聊天持久化／分叉链路负责传递；旧记录按同一 ID 从用户消息、任务创建者及工作流运行快照解析，无需改写历史用量或重建聚合表。入口为 `/api/statistics/overview` 和任务执行报告；行为测试见 daemon `test_statistics.py`（含慢 SQL 健康检查）、`test_message_attribution.py`、`test_chat_session.py`、`test_task_execution_report.py` 与 `test_migrations.py`。
 
+新记录的宿主归属由 `services/remote_access.py::get_host_actor` 与 `host_attribution_context` 统一解析；`api/desktop_security.py` 仅在本机工作台与已验证 WebRTC 桥中在线程读取宿主身份，不替换 `get_current_actor` 的鉴权主体。连接网关使用同来源已验证的账号 ID，断开后使用稳定本机 ID；网关远程访问者、渠道及局域网访问者保留自己的身份。消息、任务、运行和待插入消息分别保存 `identity_source` 与 `access_source`，恢复和定时执行沿用快照。执行、审核与协调助手上传网关用量时使用对应消息的 `initiated_by_user_id`，不使用任务创建人；任务创建人不随操作改变。统计 API 用户行可返回 `identity_sources`/`access_sources`，Web `StatisticsUserTable` 展示来源并为同名不同 ID 显示标识。旧记录不回填、不建立别名映射。回归：daemon `test_host_attribution.py`、`test_step_execution_message_attribution.py`、`test_coordinator.py`、`test_statistics.py`，Web `statisticsUserTable.test.tsx`。
+
 
 | 通用控件与移动样式 | `src/components/Button.tsx`、`Input.tsx`、`Select.tsx`、`Textarea.tsx`、`src/index.css`、`src/mobile.css` | — | `DESIGN.md`、`tests/mobileButtonSizing.test.mjs` |
 | 定时规则编译、时区校验与下次运行预览 | `src/pages/SchedulePage.tsx` 提供规则编辑入口 | `services/schedule_rules.py` 持有纯规则计算，`services/schedule.py` 保留兼容导入并负责持久化与调度 | `apps/daemon/tests/test_schedule.py` |

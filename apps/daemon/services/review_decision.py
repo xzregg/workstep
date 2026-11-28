@@ -1,10 +1,10 @@
 """Synchronous decision transaction for one workflow review."""
 
 import json
-import uuid
 from pathlib import Path
 from typing import Callable, Mapping
 
+from services.business_ids import new_id
 from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from services.artifact_rounds import ArtifactRound, step_round_dir, update_round_manifest_status
@@ -182,6 +182,10 @@ def persist_review_decision(
     ).where(
         (Message.task == task_id)
         & (Message.channel == "review")
+        & ((Message.author_type == "system") | (
+            Message.author_type.is_null(True) & Message.engine.is_null(True)
+            & Message.usage_json.is_null(True)
+        ))
         & (Message.step_key == step_key)
         & (Message.ended_at.is_null())
     ).execute()
@@ -217,7 +221,7 @@ def persist_review_decision(
             .first()
         )
         StepRun.create(
-            id=str(uuid.uuid4()),
+            id=new_id(project.id),
             run=workflow_run,
             step_key=step_key,
             attempt=(latest_attempt.attempt + 1) if latest_attempt else 1,

@@ -7,6 +7,7 @@ export const WEBRTC_PROXY_CHANNEL_LABEL = 'workstep-proxy-v1'
 const BINARY_MAGIC = 0x57 // 'W'
 const BINARY_VERSION = 1
 const CHUNK_BYTES = 16384
+const HTTP_UPLOAD_BUFFER_BYTES = 128 * 1024
 const DIRECT_CANDIDATE_TYPES = new Set(['host', 'srflx', 'prflx'])
 
 export const WebRtcBinaryKind = {
@@ -126,7 +127,7 @@ export function verifyNonRelayCandidatePair(stats: RTCStatsReport): DirectCandid
 const NON_PROXIED_STATIC_PATHS = new Set(['/favicon.ico', '/favicon.svg', '/manifest.webmanifest'])
 
 export function normalizeDaemonPath(pathname: string): string {
-  const stripped = pathname.replace(/^\/p2p\/[^/]+(?=\/|$)/, '')
+  const stripped = pathname.replace(/^\/p2p\/[^/]+(?=\/|$)/, '').replace(/^\/__host(?=\/|$)/,'')
   return stripped ? (stripped.startsWith('/') ? stripped : `/${stripped}`) : '/'
 }
 
@@ -153,7 +154,10 @@ interface PendingHttpStream {
   resolveResponse?: (response: Response) => void
   rejectResponse?: (err: Error) => void
   controller?: ReadableStreamDefaultController<Uint8Array>
+  detachAbort?: () => void
   closed: boolean
+  uploadCredits?: number
+  responseCredits?: number
 }
 
 export class DataChannelWebSocket extends EventTarget {
@@ -336,6 +340,7 @@ export class WebRtcTransportClient {
     timer: ReturnType<typeof setTimeout>
   }>()
   private _httpStreams = new Map<string, PendingHttpStream>()
+  private _uploadFlowControl = false
   private _wsStreams = new Map<string, DataChannelWebSocket>()
 
   constructor(channel: DataChannelLike) {
@@ -401,6 +406,28 @@ export class WebRtcTransportClient {
     return `s-${this._seq}`
   }
 
+  private _retireHttpStream(streamId: string): boolean {
+    const stream = this._httpStreams.get(streamId)
+    if (!stream) return false
+    stream.closed = true
+    stream.detachAbort?.()
+    return this._httpStreams.delete(streamId)
+  }
+
+  private async _sendHttpBody(streamId: string, bytes: Uint8Array, pending: PendingHttpStream): Promise<void> {
+    for (let offset = 0; offset < bytes.byteLength;) {
+      if (this._httpStreams.get(streamId) !== pending || !this.isOpen) return
+      if (pending.uploadCredits === 0 || (this.channel.bufferedAmount ?? 0) >= HTTP_UPLOAD_BUFFER_BYTES) {
+        await new Promise(resolve => setTimeout(resolve, 10))
+        continue
+      }
+      const end = Math.min(offset + CHUNK_BYTES, bytes.byteLength)
+      if (pending.uploadCredits !== undefined) pending.uploadCredits -= 1
+      this.channel.send(encodeBinaryFrame(WebRtcBinaryKind.httpRequestBody, streamId, bytes.subarray(offset, end), end === bytes.byteLength))
+      offset = end
+    }
+  }
+
   private _onMessage(raw: unknown): void {
     if (typeof raw === 'string') {
       let msg: Record<string, unknown>
@@ -410,6 +437,7 @@ export class WebRtcTransportClient {
         return
       }
       if (msg.type === 'p2p.ready' && this._authPending) {
+        this._uploadFlowControl = msg.upload_flow_control === true
         const pending = this._authPending
         this._authPending = null
         pending.resolve({
@@ -452,14 +480,8 @@ export class WebRtcTransportClient {
         const stream = this._httpStreams.get(decoded.streamId)
         if (!stream || stream.closed) return
         if (decoded.payload.byteLength > 0) {
+          stream.responseCredits = (stream.responseCredits ?? 0) + 1
           stream.controller?.enqueue(new Uint8Array(decoded.payload))
-        }
-        if (this.isOpen) {
-          this.channel.send(JSON.stringify({
-            stream_id: decoded.streamId,
-            type: 'window.update',
-            payload: { credits: 1 },
-          }))
         }
       } else if (
         decoded.kind === WebRtcBinaryKind.websocketDataBytes
@@ -482,6 +504,15 @@ export class WebRtcTransportClient {
   private _handleProxyFrame(frame: ProxyFramePayload): void {
     const streamId = frame.stream_id
     if (!streamId) return
+    if (frame.type === 'window.update') {
+      const stream = this._httpStreams.get(streamId)
+      const credits = frame.payload?.credits
+      if (stream && stream.uploadCredits !== undefined && typeof credits === 'number'
+        && Number.isSafeInteger(credits) && credits > 0) {
+        stream.uploadCredits = Math.min(32, stream.uploadCredits + credits)
+      }
+      return
+    }
     if (frame.type === 'http.response') {
       const stream = this._httpStreams.get(streamId)
       if (!stream) return
@@ -499,10 +530,14 @@ export class WebRtcTransportClient {
           start: (controller) => {
             stream.controller = controller
           },
+          pull: () => {
+            const credits = stream.responseCredits ?? 0
+            if (credits === 0 || stream.closed || !this.isOpen) return
+            stream.responseCredits = 0
+            this.channel.send(JSON.stringify({ stream_id: streamId, type: 'window.update', payload: { credits } }))
+          },
           cancel: () => {
-            stream.closed = true
-            this._httpStreams.delete(streamId)
-            if (this.isOpen) {
+            if (this._retireHttpStream(streamId) && this.isOpen) {
               this.channel.send(JSON.stringify({ stream_id: streamId, type: 'cancel', payload: {} }))
             }
           },
@@ -512,12 +547,10 @@ export class WebRtcTransportClient {
         stream.rejectResponse = undefined
         resolve?.(new Response(status === 204 || status === 304 ? null : bodyStream, { status, headers }))
       } else if (phase === 'end') {
-        stream.closed = true
-        this._httpStreams.delete(streamId)
+        this._retireHttpStream(streamId)
         try { stream.controller?.close() } catch { /* already closed */ }
       } else if (phase === 'error') {
-        stream.closed = true
-        this._httpStreams.delete(streamId)
+        this._retireHttpStream(streamId)
         const err = new Error('WebRTC upstream stream error')
         if (stream.rejectResponse) {
           stream.rejectResponse(err)
@@ -563,14 +596,14 @@ export class WebRtcTransportClient {
         resolveResponse: resolve,
         rejectResponse: reject,
         closed: false,
+        uploadCredits: this._uploadFlowControl && bytes?.byteLength ? 0 : undefined,
       }
       this._httpStreams.set(streamId, pending)
 
       const onAbort = () => {
-        pending.closed = true
-        this._httpStreams.delete(streamId)
+        if (!this._retireHttpStream(streamId)) return
         if (this.isOpen) {
-          this.channel.send(JSON.stringify({ stream_id: streamId, type: 'cancel', payload: {} }))
+          try { this.channel.send(JSON.stringify({ stream_id: streamId, type: 'cancel', payload: {} })) } catch { /* channel unavailable */ }
         }
         const abortErr = new DOMException('The operation was aborted.', 'AbortError')
         if (pending.rejectResponse) {
@@ -587,6 +620,7 @@ export class WebRtcTransportClient {
           return
         }
         signal.addEventListener('abort', onAbort, { once: true })
+        pending.detachAbort = () => signal.removeEventListener('abort', onAbort)
       }
 
       try {
@@ -599,6 +633,7 @@ export class WebRtcTransportClient {
             path: normalizeDaemonPath(parsed.pathname),
             query: parsed.search.startsWith('?') ? parsed.search.slice(1) : '',
             headers,
+            upload_flow_control: pending.uploadCredits !== undefined,
           },
         }))
 
@@ -609,14 +644,17 @@ export class WebRtcTransportClient {
             payload: { phase: 'end' },
           }))
         } else {
-          for (let offset = 0; offset < bytes.byteLength; offset += CHUNK_BYTES) {
-            const chunk = bytes.subarray(offset, offset + CHUNK_BYTES)
-            const final = offset + CHUNK_BYTES >= bytes.byteLength
-            this.channel.send(encodeBinaryFrame(WebRtcBinaryKind.httpRequestBody, streamId, chunk, final))
-          }
+          void this._sendHttpBody(streamId, bytes, pending).catch(error => {
+            if (!this._retireHttpStream(streamId)) return
+            if (pending.rejectResponse) pending.rejectResponse(error)
+            else pending.controller?.error(error)
+            if (this.isOpen) {
+              try { this.channel.send(JSON.stringify({ stream_id: streamId, type: 'cancel', payload: {} })) } catch { /* channel unavailable */ }
+            }
+          })
         }
       } catch (err) {
-        this._httpStreams.delete(streamId)
+        this._retireHttpStream(streamId)
         reject(err instanceof Error ? err : new Error(String(err)))
       }
     })
@@ -704,6 +742,7 @@ export class WebRtcTransportClient {
     this._pingPending.clear()
     for (const stream of this._httpStreams.values()) {
       stream.closed = true
+      stream.detachAbort?.()
       stream.rejectResponse?.(new TypeError('WebRTC DataChannel closed'))
       try { stream.controller?.error(new TypeError('WebRTC DataChannel closed')) } catch { /* ignore */ }
     }

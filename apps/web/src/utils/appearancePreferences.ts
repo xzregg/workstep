@@ -9,6 +9,8 @@ import { committedSkin, currentSkin, initializeSkinPreference, saveSkin, SKIN_LI
 import { appearanceScope, setAppearanceScope } from './appearanceStorage'
 import { APPEARANCE_PREFERENCE_EVENT, initializeFontSizePreference, loadFontSizePreference, saveFontSizePreference, type FontSizePreference } from './fontSizePreference'
 import { initializeFontFamilyPreference, loadFontFamilyPreference, saveFontFamilyPreference, type FontFamilyPreference } from './fontFamilyPreference'
+import { isWebRtcRemoteBrowser } from '../webrtc/webrtcLocation'
+import { useWebRtcConnectionStore } from '../webrtc/webrtcConnectionStore'
 
 interface Selection { skin_id: string; language: string; font_family: FontFamilyPreference; font_size: FontSizePreference }
 interface PersonalAppearance { scope: string | null; preferences: Selection | null }
@@ -88,6 +90,11 @@ export function stopAppearancePreferences() {
 }
 
 export async function initializeAppearancePreferences() {
+  if(isWebRtcRemoteBrowser()&&!useWebRtcConnectionStore.getState().connected){
+    stopAppearancePreferences()
+    status({status:'local',error:''})
+    return
+  }
   stopAppearancePreferences()
   const current = generation
   // Reset before an identity request. An unavailable identity must not inherit

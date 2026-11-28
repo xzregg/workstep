@@ -16,7 +16,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import wraps
 from typing import Any, Callable, Literal
 from urllib.parse import unquote, urlparse, urlunparse
@@ -43,6 +43,7 @@ class ActorSnapshot:
     provider_ids: frozenset[str] | None = None
     provider_grant_expires_at: int | None = None
     access_source: str | None = None
+    identity_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,57 @@ _suppress_default_actor: ContextVar[bool] = ContextVar(
     "workstep_suppress_default_actor", default=False,
 )
 _native_workspace: ContextVar[bool] = ContextVar("workstep_native_workspace", default=False)
+_host_attribution: ContextVar[tuple[ActorSnapshot | None] | None] = ContextVar(
+    "workstep_host_attribution", default=None,
+)
+
+
+@contextmanager
+def host_attribution_context(actor: ActorSnapshot | None):
+    """Use the host's business identity without changing authentication/scope."""
+    token = _host_attribution.set((actor,))
+    try:
+        yield
+    finally:
+        _host_attribution.reset(token)
+
+
+def get_host_actor() -> ActorSnapshot | None:
+    """Read a verified host identity. Call from a worker at async boundaries."""
+    from services.config import config_store
+    get_user_name = getattr(config_store, 'get_user_name', None)
+    get_device_identity = getattr(config_store, 'get_device_identity', None)
+    if get_user_name is None or get_device_identity is None:
+        return None
+    get_config = getattr(config_store, 'get', lambda _key, default=None: default)
+    platform = get_config('gateway_platform', {})
+    platform = platform if isinstance(platform, dict) else {}
+    enabled = platform.get('enabled', platform.get('authorized', False))
+    user_name = get_user_name()
+    username = None
+    actor_id = None
+    if enabled:
+        user = get_config('user', {})
+        saved = user.get('gateway', {}) if isinstance(user, dict) else {}
+        if not isinstance(saved, dict) or saved.get('origin') != platform.get('url'):
+            return None
+        actor_id, user_name, username = saved.get('id'), saved.get('name'), saved.get('username')
+    if not user_name or (enabled and not actor_id):
+        return None
+    device = get_device_identity()
+    return ActorSnapshot(
+        actor_id=actor_id or device['device_id'], user_name=user_name,
+        username=username, device_id=device['device_id'], device_name=device['device_name'],
+        source='local', identity_source='gateway' if enabled else 'local',
+    )
+
+
+def actor_origin_fields(actor: ActorSnapshot) -> dict[str, str]:
+    """Identity kind and transport are separate durable attribution metadata."""
+    return {
+        'identity_source': actor.identity_source or ('gateway' if actor.source == 'managed' else actor.source),
+        'access_source': actor.access_source or ('local' if actor.source in {'local', 'browser', 'managed'} else actor.source),
+    }
 
 
 @contextmanager
@@ -125,28 +177,20 @@ def replayed_actor_context(actor: ActorSnapshot | None):
 def get_effective_actor() -> ActorSnapshot | None:
     """Return the remote caller, or this installation's configured user."""
     actor = get_current_actor()
+    host = _host_attribution.get()
+    if host is not None and not _suppress_default_actor.get():
+        if host[0] is None:
+            return None
+        if actor is None:
+            return host[0]
+        return replace(actor, actor_id=host[0].actor_id, user_name=host[0].user_name,
+                       username=host[0].username, identity_source=host[0].identity_source)
     if actor is not None:
         return actor
     if _suppress_default_actor.get():
         return None
 
-    from services.config import config_store
-
-    get_user_name = getattr(config_store, "get_user_name", None)
-    get_device_identity = getattr(config_store, "get_device_identity", None)
-    if get_user_name is None or get_device_identity is None:
-        return None
-    user_name = get_user_name()
-    if not user_name:
-        return None
-    device = get_device_identity()
-    return ActorSnapshot(
-        actor_id=device["device_id"],
-        user_name=user_name,
-        device_id=device["device_id"],
-        device_name=device["device_name"],
-        source="local",
-    )
+    return get_host_actor()
 
 
 class UserIdentityRequired(ValueError):

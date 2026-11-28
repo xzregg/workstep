@@ -381,11 +381,7 @@
           "Maksimum dönüş, kesikli dönüş bağlantılarını kontrol eder ve başarısız inceleme sonrasındaki yeniden denemelerden ayrıdır.",
           "Çıkış bağlantı noktasını bildirmek bir dosya oluşturmaz. İstemde gerçek teslimatları isteyin ve daha sonra bunları inceleyin."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Düğüm düzenleyicide girdi yapıları ve karşılık gelen çıktılar",
-          "caption": "Giriş, karşılık gelen çıktı olarak yürütme planıyla birlikte görev gereksinimlerini bildirir. Dönüş sayısı ayarları gösterilmez."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Düğüm düzenleyicide girdi yapıları ve karşılık gelen çıktılar","caption":"Sabit gösterim ortamının güncel yapılandırmasıdır; görev, model veya eşleştirme çalıştırılmadı, kimlik bilgileri yayımlanmadı."}
       },
       {
         "title": "İncelemeyi ve otomatik başlatmayı ayarlayın",
@@ -393,7 +389,7 @@
           "Düzenleyicideki Adım incelemesi altında Manuel inceleme, Otomatik inceleme veya İncelemeyi atla'yı seçin. Başlangıçta manuel inceleme önerilir.",
           "Kararınız yürütüldükten sonra manuel inceleme duraklatılır. Otomatik inceleme için doğrulanabilir kriterleri yazın ve isteğe bağlı olarak motorunu ve modelini seçin.",
           "Otomatik inceleme sonucu reddettikten sonra yeniden denemeleri ayarlayın. İnceleme aracısındaki hatalar manuel işlemeye geçer.",
-          "Oluşturma sonrasında otomatik olarak başlat seçeneğini gerektiği gibi ayarlayın ve ardından kaydedin. İlk alıştırmada, görevi devre dışı bırakın, böylece başlamadan önce bir görevi inceleyebilirsiniz."
+          "Adım ayarlarında sırasıyla motoru, sağlayıcıyı ve modeli seçin. Otomatik başlatma kapalıysa bağımlılıklar hazır olduğunda görev ayrıntılarında adımın Başlat düğmesine basın. Görev başlangıcı yalnızca giriş adımını yetkilendirir, sonraki elle başlatılan adımları değil. Genel çıktı sabit Global yolunu paylaşır. Dosya ve incelemeleri kontrol edin; geri bağlantılarda kullanılamaz."
         ],
         "tips": [
           "SDK motorlarını yürütme veya inceleme için kullanmadan önce kurun ve yapılandırın."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "Sıraya alınmış olması genellikle eşzamanlılık kapasitesinin dolu olduğu anlamına gelir. İncelemeyi beklemek onay gerektirir; bu, uygulamanın takılı kaldığı anlamına gelmez.",
-          "Silme işlemi arşivleme işleminden farklıdır. Kalıcı silme işleminden önce onayı okuyun."
+          "Silme işlemi arşivleme işleminden farklıdır. Kalıcı silme işleminden önce onayı okuyun.", "Mobilde çoklu seçim için göreve uzun basın. Arşivlemeden veya silmeden önce kapsamı ve onayı kontrol edin. Kopyalama yalnızca tek görev seçiliyken kullanılabilir; çalışan görevlerin kısıtlamaları korunur."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Arşivde başlığa tıklayıp son soru ve cevapları salt okunur açın. Görüntülemek sohbeti geri getirmez ve tüm yürütme ayrıntılarını yüklemez. Devam etmek için açıkça geri yükleyin."
         ],
         "tips": [
-          "Arşivleme içeriği korur; sohbet ve mesaj silme daha büyük etki yaratır. «Grubu dağıt» ile «Sohbetleri de sil» seçeneklerini karıştırmayın."
+          "Arşivleme içeriği korur; sohbet ve mesaj silme daha büyük etki yaratır. «Grubu dağıt» ile «Sohbetleri de sil» seçeneklerini karıştırmayın.", "Kenar çubuğu grup menüsünden alt grup oluşturun; sürüklemeden önce hedefi kontrol edin. Giriş alanındaki kotaya tıklayarak birden çok motoru görün. Toplama hatasında eski değerler kalır: güncelleme saatine bakın, fatura değildir. Markdown resim düğmesi dosyayı yükleyip yolu ekler; kaydetmeden önce önizlemeyi inceleyin."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Kenar çubuğu grup menüsü ve arşivin salt okunur önizlemesi",
-          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Kenar çubuğu grup menüsü ve arşivin salt okunur önizlemesi","caption":"Sabit gösterim ortamının güncel yapılandırmasıdır; görev, model veya eşleştirme çalıştırılmadı, kimlik bilgileri yayımlanmadı."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Önbelleğe alınmış uzak kayıtlar canlı durum değildir. Proje görevleri veya sohbetler etkinken senkronizasyon engellenebilir.",
-          "Önce çevrimdışı veya yetkisiz uzak projeleri yeniden bağlayın. Tarayıcı, ana bilgisayar depolarını bilgisayarınıza kopyalamaz. Okumak için Git görüntüleme izni gerekir; taahhüt etme, dallandırma, birleştirme ve senkronizasyon eylemlerinin ayrı yetkileri vardır. Düğmeler eksikse izinleri kontrol edin."
+          "Önce çevrimdışı veya yetkisiz uzak projeleri yeniden bağlayın. Tarayıcı, ana bilgisayar depolarını bilgisayarınıza kopyalamaz. Okumak için Git görüntüleme izni gerekir; taahhüt etme, dallandırma, birleştirme ve senkronizasyon eylemlerinin ayrı yetkileri vardır. Düğmeler eksikse izinleri kontrol edin.", "Git değişiklik listesinde dosyaları seçerek birlikte atabilirsiniz. Onaylamadan önce farkları inceleyin: işlenmemiş içerik kurtarılamayabilir. Atmak yedekleme değildir."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "İnteraktif mod seçilmiştir ve şifre boştur. Hiçbir paylaşım bağlantısı oluşturulmadı."
         }
       },
+      {"title":"WebRTC bağlantısı ve eşleştirme","steps":["Ayarlar → Uzaktan erişim → WebRTC altında sinyalleşme adresini kaydedin. Eşleştirme QR kodu yalnızca sinyalleşme ve UDP denetimleri başarılıysa görünür. Ana makine çevrimiçi olmalı ve normal izinler geçerlidir. Kod gizli anahtar içerir: yayımlamayın. Hata durumunda ağı kontrol edin; başarılı denetimler ağlar arası bağlantıyı garanti etmez."],"screenshot":{"id":"webrtc-pairing","alt":"WebRTC bağlantısı ve eşleştirme","caption":"Sabit gösterim ortamının güncel yapılandırmasıdır; görev, model veya eşleştirme çalıştırılmadı, kimlik bilgileri yayımlanmadı."}},
       {
         "title": "Toplantı sahibi erişimini yapılandırma ve cihazları davet etme",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "Varsayılan aralık 5 dakikadır. Proaktif iletişim izni her tur mesaj demek değildir; bekleyen olay yoksa sessiz bitebilir. Model çağrıları ücretli olabilir; özet tam düşünce zinciri değildir.",
-          "Delegasyon başlığı 60 karakter olabilir ve tam talimatın yerine geçmez. Devam işleri başlığı devralabilir; mevcut sohbetler yeniden adlandırılmaz. Eklenen anı sayısı özetleri, sağ ok tam kaydı açar. Sıfır gizlenir; sessizlik teslim hatası değildir."
+          "Delegasyon başlığı 60 karakter olabilir ve tam talimatın yerine geçmez. Devam işleri başlığı devralabilir; mevcut sohbetler yeniden adlandırılmaz. Eklenen anı sayısı özetleri, sağ ok tam kaydı açar. Sıfır gizlenir; sessizlik teslim hatası değildir.", "Otomatik proaktif düşünme art arda üç hatadan sonra kapanır. Yeniden açmadan önce geçmişi inceleyip nedeni giderin. Mobil dijital merkezde Geri düğmesi önceki sayfaya döner."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Proaktif düşünme ayarları ve ayrı sayfalı çalışma kayıtları",
-          "caption": "Sabit demo ortamının gerçek Çince arayüzü. Ayarlar, girişler veya boş listeler gösterilir; bu çekimde model çağrılmadı ve mesaj gönderilmedi."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Proaktif düşünme ayarları ve ayrı sayfalı çalışma kayıtları","caption":"Sabit gösterim ortamının güncel yapılandırmasıdır; görev, model veya eşleştirme çalıştırılmadı, kimlik bilgileri yayımlanmadı."}
       },
       {
         "title": "Karşılama ve bildirim için kanal bağlama",

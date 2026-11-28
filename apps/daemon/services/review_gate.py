@@ -6,7 +6,6 @@ import asyncio
 import json
 import os
 import re
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -15,6 +14,7 @@ from engines.core.registry import create_engine
 from agent_assistants.prompt_input import format_prompt_input
 from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
+from services.business_ids import new_id
 from services.global_artifacts import GLOBAL_DIRECTORY, global_filename, global_output_path, read_global_index
 from services.artifact_rounds import step_round_dir, update_round_manifest_status
 from services.config import config_store
@@ -78,7 +78,10 @@ class ReviewGate:
         set_active_engine: SetActiveEngine | None = None,
         live_message_queue: asyncio.Queue | None = None,
         on_live_message: LiveMessageHandler | None = None,
+        *,
+        project_id: str | None = None,
     ):
+        self._project_id = project_id
         self._publish = publish
         self._run_db = run_db
         self._record_event = record_event
@@ -146,7 +149,7 @@ class ReviewGate:
                 ]
                 attempt = max(existing_attempts, default=0) + 1
                 review_run = ReviewRun.create(
-                    id=str(uuid.uuid4()),
+                    id=new_id(self._project_id),
                     workflow_run=workflow_run,
                     step_run=step_run,
                     task=task,

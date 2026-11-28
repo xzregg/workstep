@@ -633,7 +633,7 @@ async def test_run_task_success(subscriber, tmp_path):
         # Usage (incl. cache hit) must be persisted to message.usage_json
         from models import Message
         msg = Message.select().where(Message.task == task["id"]).order_by(Message.created_at.desc()).get()
-        assert uuid.UUID(msg.id).version == 7
+        assert len(msg.id) == 18 and msg.id.isalnum()
         assert msg.usage_json is not None
         import json as _json
         usage = _json.loads(msg.usage_json)

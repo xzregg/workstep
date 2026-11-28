@@ -381,11 +381,7 @@
           "Il numero massimo di ritorni controlla le connessioni di ritorno tratteggiate ed è separato dai tentativi dopo una revisione non riuscita.",
           "La dichiarazione di una porta di output non crea un file. Richiedi i risultati finali effettivi nel prompt e ispezionali in seguito."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Artefatti di input e output corrispondenti nell'editor del nodo",
-          "caption": "L'input dichiara i requisiti dell'attività con il piano di esecuzione come output corrispondente. Le impostazioni del conteggio dei resi non vengono visualizzate."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Artefatti di input e output corrispondenti nell'editor del nodo","caption":"Configurazione attuale dell’ambiente dimostrativo fisso; nessuna attività, modello o abbinamento eseguito e nessuna credenziale pubblicata."}
       },
       {
         "title": "Imposta la revisione e l'avvio automatico",
@@ -393,7 +389,7 @@
           "In Revisione passaggio nell'editor, scegli Revisione manuale, Revisione automatica o Ignora revisione. Inizialmente si consiglia la revisione manuale.",
           "La revisione manuale viene sospesa dopo l'esecuzione per la tua decisione. Per la revisione automatica, scrivi criteri verificabili e facoltativamente scegli il motore e il modello.",
           "Imposta nuovi tentativi dopo che una revisione automatica ha rifiutato il risultato. Gli errori nell'agente di revisione stesso passano alla gestione manuale.",
-          "Imposta Avvia automaticamente dopo la creazione secondo necessità, quindi salva. Per esercitazione iniziale, disabilitalo in modo da poter controllare un'attività prima di iniziare."
+          "Nelle impostazioni del passo scegli motore, fornitore e modello, in quest’ordine. Senza avvio automatico, premi Avvia nei dettagli quando le dipendenze sono pronte. Avviare l’attività autorizza solo l’ingresso, non i passi manuali successivi. Un output globale condivide un percorso fisso Global. Verifica file e revisioni; non usarlo nei collegamenti di ritorno."
         ],
         "tips": [
           "Installa e configura i motori SDK prima di utilizzarli per l'esecuzione o la revisione."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "In coda in genere significa che la capacità di concorrenza è piena. L'attesa della revisione richiede conferma; ciò non significa che l'app sia bloccata.",
-          "La cancellazione è diversa dall'archiviazione. Leggere la conferma prima della cancellazione permanente."
+          "La cancellazione è diversa dall'archiviazione. Leggere la conferma prima della cancellazione permanente.", "Sul telefono tieni premuta un’attività per selezionare più elementi. Prima di archiviare o eliminare verifica selezione e conferma. La copia richiede una sola attività selezionata; le restrizioni delle attività in esecuzione restano valide."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Nell’elenco archiviato fai clic sul titolo per espandere in sola lettura l’ultima domanda e risposta. La consultazione non ripristina la conversazione né carica tutti i dettagli di esecuzione. Per continuare devi ripristinarla esplicitamente."
         ],
         "tips": [
-          "L’archiviazione conserva i contenuti; eliminare conversazioni e messaggi ha effetti maggiori. Non confondere «Sciogli gruppo» con «Elimina anche le conversazioni»."
+          "L’archiviazione conserva i contenuti; eliminare conversazioni e messaggi ha effetti maggiori. Non confondere «Sciogli gruppo» con «Elimina anche le conversazioni».", "Il menu dei gruppi laterali crea sottogruppi; controlla la destinazione prima di trascinare. Premi la quota vicino all’input per vedere più motori. Gli errori mantengono valori precedenti: controlla l’ora di aggiornamento, non sono una fattura. Il pulsante immagine Markdown carica e inserisce un percorso; verifica l’anteprima prima di salvare."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Menu dei gruppi nella barra laterale e anteprima di sola lettura dell’archivio",
-          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Menu dei gruppi nella barra laterale e anteprima di sola lettura dell’archivio","caption":"Configurazione attuale dell’ambiente dimostrativo fisso; nessuna attività, modello o abbinamento eseguito e nessuna credenziale pubblicata."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "I record remoti memorizzati nella cache non sono in stato attivo. La sincronizzazione potrebbe essere bloccata mentre le attività del progetto o le chat sono attive.",
-          "Riconnettersi prima ai progetti remoti offline o non autorizzati. Il browser non copia i repository host sul tuo computer. La lettura richiede l'autorizzazione Git-view; le azioni di commit, diramazione, unione e sincronizzazione hanno sovvenzioni separate. Controlla le autorizzazioni se mancano i pulsanti."
+          "Riconnettersi prima ai progetti remoti offline o non autorizzati. Il browser non copia i repository host sul tuo computer. La lettura richiede l'autorizzazione Git-view; le azioni di commit, diramazione, unione e sincronizzazione hanno sovvenzioni separate. Controlla le autorizzazioni se mancano i pulsanti.", "Seleziona i file nell’elenco modifiche Git per scartarli insieme. Controlla le differenze prima di confermare: i contenuti non salvati in commit potrebbero essere irrecuperabili. Scartare non crea un backup."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "È selezionata la modalità interattiva e la password è vuota. Non è stato creato alcun collegamento di condivisione."
         }
       },
+      {"title":"Connessione e abbinamento WebRTC","steps":["In Impostazioni → Accesso remoto → WebRTC salva l’indirizzo di segnalazione. Il QR di abbinamento appare solo dopo i controlli di segnalazione e UDP. Servono comunque host online e normali autorizzazioni. Il codice contiene un segreto: non pubblicarlo. In caso di errore controlla la rete; il superamento dei controlli non garantisce connessioni tra reti."],"screenshot":{"id":"webrtc-pairing","alt":"Connessione e abbinamento WebRTC","caption":"Configurazione attuale dell’ambiente dimostrativo fisso; nessuna attività, modello o abbinamento eseguito e nessuna credenziale pubblicata."}},
       {
         "title": "Configura l'accesso dell'host e invita i dispositivi",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "L’intervallo predefinito è 5 minuti. Consentire contatti proattivi non comporta un messaggio a ogni ciclo; senza eventi da trattare il ciclo può terminare in silenzio. Le chiamate possono costare; il riepilogo non è l’intera catena di pensiero.",
-          "Il titolo di delega ammette 60 caratteri e non sostituisce l’istruzione completa. Le continuazioni possono ereditarlo senza rinominare le chat esistenti. Il conteggio dei ricordi aggiunti apre i riepiloghi, la freccia destra il registro completo. Zero è nascosto; il silenzio non è un errore di consegna."
+          "Il titolo di delega ammette 60 caratteri e non sostituisce l’istruzione completa. Le continuazioni possono ereditarlo senza rinominare le chat esistenti. Il conteggio dei ricordi aggiunti apre i riepiloghi, la freccia destra il registro completo. Zero è nascosto; il silenzio non è un errore di consegna.", "La riflessione proattiva automatica si disattiva dopo tre errori consecutivi. Controlla la cronologia e risolvi la causa prima di riattivarla. Sul telefono, Indietro nel centro digitale torna alla pagina precedente."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Impostazioni di riflessione proattiva e registri con paginazione separata",
-          "caption": "Interfaccia cinese reale dell’ambiente dimostrativo fisso. Mostra impostazioni, accessi o elenchi vuoti; durante questa acquisizione non sono stati chiamati modelli né inviati messaggi."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Impostazioni di riflessione proattiva e registri con paginazione separata","caption":"Configurazione attuale dell’ambiente dimostrativo fisso; nessuna attività, modello o abbinamento eseguito e nessuna credenziale pubblicata."}
       },
       {
         "title": "Collegare canali per accoglienza e notifiche",

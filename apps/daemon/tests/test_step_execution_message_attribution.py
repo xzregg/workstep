@@ -91,9 +91,11 @@ async def test_retried_execution_rechecks_scope_and_uses_current_run_actor(tmp_p
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
                 assert (await asyncio.wait_for(client.get("/health"), .1)).status_code == 200
             assert not pending.done()
-            assert (await pending).message_id == message_id
+            started = await pending
+            assert started.message_id == message_id
         elif source == "valid":
-            assert (await start()).message_id == message_id
+            started = await start()
+            assert started.message_id == message_id
         else:
             with pytest.raises(Message.DoesNotExist):
                 await start()
@@ -109,6 +111,12 @@ async def test_retried_execution_rechecks_scope_and_uses_current_run_actor(tmp_p
         if source.startswith("valid"):
             assert values == ("new-engine", "", "new-engine", "new-engine", "assistant",
                               "new-user", "new", "new-device")
+            from services.messages import StepEventProgress
+            completed = await runner._execution_messages.finish(
+                message_id=message_id, journal_ref=started.journal_ref,
+                event_progress=StepEventProgress(), succeeded=True, cancelled=False, ended_at=None,
+            )
+            assert completed.initiated_by_user_id == 'new-user'
         else:
             assert values[0:2] == ("old-engine", "旧正文")
             assert values[5:7] == ("old-user", "old")
@@ -122,6 +130,7 @@ async def test_retried_execution_rechecks_scope_and_uses_current_run_actor(tmp_p
 @pytest.mark.parametrize("host_ids,existing", [(False, None), (True, None), (True, "native-existing")])
 async def test_step_session_id_allocation_uses_capability_not_engine_name(tmp_path, monkeypatch, host_ids, existing):
     from types import SimpleNamespace
+    from uuid import UUID
     import services.step_execution_messages as execution
     db = await asyncio.to_thread(init_db, str(tmp_path / "workstep.db"))
     executor = ProjectDatabaseExecutor(db, "project-test")
@@ -140,7 +149,11 @@ async def test_step_session_id_allocation_uses_capability_not_engine_name(tmp_pa
             state=state, review_feedback="", resolved_model="model",
             engine=SimpleNamespace(supports_resume=True, supports_host_session_ids=host_ids),
         )
-        assert started.engine_session_id == (existing or (started.message_id if host_ids else None))
+        if host_ids and existing is None:
+            assert str(UUID(started.engine_session_id)) == started.engine_session_id
+            assert started.engine_session_id != started.message_id
+        else:
+            assert started.engine_session_id == existing
     finally:
         await runner.close()
         await asyncio.to_thread(executor.close)

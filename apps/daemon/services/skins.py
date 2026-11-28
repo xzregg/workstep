@@ -200,7 +200,8 @@ class SkinManager:
         skin = {"manifest": {"color_scheme": "light", **manifest}, "tokens": tokens,
                 "styles": components.get("styles", {}), "layout": components.get("layout", {}),
                 "desktop": components.get("desktop", {}), "mobile": components.get("mobile", {}),
-                "revision": revision, "asset_base": f"/api/skins/assets/{revision}"}
+                "revision": revision, "asset_base": f"/api/skins/assets/{revision}",
+                "resource_paths": sorted(name for name in files if name.startswith("assets/"))}
         if manifest['schema_version'] == 2:
             try:
                 source = files.get('theme.css', b'').decode('utf-8')

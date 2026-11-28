@@ -381,11 +381,7 @@
           "Maksymalna liczba zwrotów kontroluje przerywane połączenia powrotne i jest oddzielona od ponownych prób po nieudanym sprawdzeniu.",
           "Deklarowanie portu wyjściowego nie powoduje utworzenia pliku. Żądaj rzeczywistych wyników w monicie i sprawdzaj je później."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Artefakty wejściowe i odpowiadające im dane wyjściowe w edytorze węzłów",
-          "caption": "Dane wejściowe deklarują wymagania zadania, a plan wykonania jest odpowiadającym im wyjściem. Ustawienia liczby zwrotów nie są wyświetlane."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Artefakty wejściowe i odpowiadające im dane wyjściowe w edytorze węzłów","caption":"Aktualna konfiguracja stałego środowiska demonstracyjnego; nie uruchomiono zadania, modelu ani parowania i nie ujawniono danych dostępu."}
       },
       {
         "title": "Ustaw przegląd i automatyczne uruchamianie",
@@ -393,7 +389,7 @@
           "W sekcji Przegląd krokowy w edytorze wybierz opcję Przegląd ręczny, Przegląd automatyczny lub Pomiń przegląd. Na początku zaleca się sprawdzenie ręczne.",
           "Ręczne sprawdzanie zostanie wstrzymane po wykonaniu decyzji. Aby dokonać automatycznej oceny, napisz weryfikowalne kryteria i opcjonalnie wybierz jego silnik i model.",
           "Ustaw liczbę ponownych prób po odrzuceniu wyniku przez automatyczny przegląd. Błędy w samym agencie recenzującym przełączają się na obsługę ręczną.",
-          "W razie potrzeby ustaw opcję Uruchom automatycznie po utworzeniu, a następnie zapisz. Na początek wyłącz tę opcję, aby móc sprawdzić zadanie przed jego rozpoczęciem."
+          "W ustawieniach kroku wybierz kolejno silnik, dostawcę i model. Bez automatycznego startu kliknij Start przy kroku w szczegółach zadania, gdy zależności będą gotowe. Start zadania zezwala tylko na krok wejściowy, nie kolejne ręczne kroki. Wynik globalny używa stałej ścieżki Global. Sprawdzaj pliki i przeglądy; nie używaj go w połączeniach zwrotnych."
         ],
         "tips": [
           "Zainstaluj i skonfiguruj silniki SDK przed użyciem ich do wykonania lub przeglądu."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "W kolejce zwykle oznacza, że ​​pojemność współbieżności jest pełna. Oczekiwanie na recenzję wymaga potwierdzenia; nie oznacza to, że aplikacja utknęła.",
-          "Usunięcie różni się od archiwizacji. Przeczytaj potwierdzenie przed trwałym usunięciem."
+          "Usunięcie różni się od archiwizacji. Przeczytaj potwierdzenie przed trwałym usunięciem.", "Na telefonie przytrzymaj zadanie, aby zaznaczać wiele pozycji. Przed archiwizacją lub usunięciem sprawdź zakres i potwierdzenie. Kopiowanie działa tylko dla jednego zadania; ograniczenia uruchomionych zadań pozostają."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "W archiwum kliknij tytuł, aby rozwinąć ostatnią rundę pytań i odpowiedzi tylko do odczytu. Nie przywraca to rozmowy ani nie ładuje pełnych szczegółów wykonania. Aby kontynuować, jawnie przywróć rozmowę."
         ],
         "tips": [
-          "Archiwizacja zachowuje treść; usunięcie rozmów i wiadomości ma większe skutki. Nie myl «Rozwiąż grupę» z «Usuń również rozmowy»."
+          "Archiwizacja zachowuje treść; usunięcie rozmów i wiadomości ma większe skutki. Nie myl «Rozwiąż grupę» z «Usuń również rozmowy».", "Menu grupy na pasku bocznym pozwala tworzyć podgrupy; sprawdź cel przeciągania. Kliknij limit przy polu wpisywania, aby zobaczyć wiele silników. Po błędzie pozostają stare wartości: sprawdź czas aktualizacji, nie jest to rachunek. Przycisk obrazu Markdown przesyła plik i wstawia ścieżkę; sprawdź podgląd przed zapisem."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Menu grup rozmów w pasku projektu i podgląd archiwum tylko do odczytu",
-          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Menu grup rozmów w pasku projektu i podgląd archiwum tylko do odczytu","caption":"Aktualna konfiguracja stałego środowiska demonstracyjnego; nie uruchomiono zadania, modelu ani parowania i nie ujawniono danych dostępu."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Zdalne rekordy w pamięci podręcznej nie mają statusu aktywnego. Synchronizacja może zostać zablokowana, gdy aktywne są zadania projektu lub czaty.",
-          "Najpierw ponownie połącz offline lub nieautoryzowane projekty zdalne. Przeglądarka nie kopiuje repozytoriów hostów na Twój komputer. Czytanie wymaga uprawnień do przeglądania Git; Akcje zatwierdzania, rozgałęziania, scalania i synchronizacji mają osobne uprawnienia. Sprawdź uprawnienia, jeśli brakuje przycisków."
+          "Najpierw ponownie połącz offline lub nieautoryzowane projekty zdalne. Przeglądarka nie kopiuje repozytoriów hostów na Twój komputer. Czytanie wymaga uprawnień do przeglądania Git; Akcje zatwierdzania, rozgałęziania, scalania i synchronizacji mają osobne uprawnienia. Sprawdź uprawnienia, jeśli brakuje przycisków.", "Zaznacz pliki na liście zmian Git, aby wspólnie je odrzucić. Sprawdź różnice przed potwierdzeniem: niezatwierdzona zawartość może być nieodwracalnie utracona. Odrzucanie nie tworzy kopii zapasowej."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "Wybrano tryb interaktywny, a hasło jest puste. Nie utworzono żadnego łącza do udostępniania."
         }
       },
+      {"title":"Połączenie i parowanie WebRTC","steps":["W Ustawienia → Dostęp zdalny → WebRTC zapisz adres sygnalizacji. Kod QR parowania pojawia się dopiero po testach sygnalizacji i UDP. Host nadal musi być online, a zwykłe uprawnienia obowiązują. Kod zawiera sekret: nie publikuj go. Przy błędzie sprawdź sieć; udane testy nie gwarantują połączenia między sieciami."],"screenshot":{"id":"webrtc-pairing","alt":"Połączenie i parowanie WebRTC","caption":"Aktualna konfiguracja stałego środowiska demonstracyjnego; nie uruchomiono zadania, modelu ani parowania i nie ujawniono danych dostępu."}},
       {
         "title": "Skonfiguruj dostęp hosta i zapraszaj urządzenia",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "Domyślny odstęp to 5 minut. Zgoda na aktywny kontakt nie oznacza wiadomości w każdej rundzie; bez oczekujących zdarzeń runda może skończyć się cicho. Wywołania modelu mogą kosztować; podsumowanie nie jest pełnym łańcuchem rozumowania.",
-          "Tytuł delegacji ma do 60 znaków i nie zastępuje pełnej instrukcji. Kontynuacja może go odziedziczyć bez zmiany nazw istniejących czatów. Liczba nowych wspomnień otwiera podsumowania, prawa strzałka pełny zapis. Zero jest ukryte; cisza nie oznacza błędu dostarczenia."
+          "Tytuł delegacji ma do 60 znaków i nie zastępuje pełnej instrukcji. Kontynuacja może go odziedziczyć bez zmiany nazw istniejących czatów. Liczba nowych wspomnień otwiera podsumowania, prawa strzałka pełny zapis. Zero jest ukryte; cisza nie oznacza błędu dostarczenia.", "Automatyczne myślenie proaktywne wyłącza się po trzech kolejnych błędach. Sprawdź historię i usuń przyczynę przed ponownym włączeniem. Przycisk wstecz w mobilnym centrum cyfrowym wraca do poprzedniej strony."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Konfiguracja samodzielnej refleksji i oddzielnie stronicowane rejestry",
-          "caption": "Rzeczywisty chiński interfejs stałego środowiska demonstracyjnego. Pokazuje ustawienia, wejścia lub puste listy; podczas tego zapisu nie wywołano modelu ani nie wysłano wiadomości."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Konfiguracja samodzielnej refleksji i oddzielnie stronicowane rejestry","caption":"Aktualna konfiguracja stałego środowiska demonstracyjnego; nie uruchomiono zadania, modelu ani parowania i nie ujawniono danych dostępu."}
       },
       {
         "title": "Łączenie kanałów obsługi i powiadomień",

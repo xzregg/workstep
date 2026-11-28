@@ -70,6 +70,10 @@
   width: min(420px, calc(100vw - 32px));
 }
 
+.webrtc-pair-card:focus {
+  outline: none;
+}
+
 .webrtc-pair-form {
   display: flex;
   flex-direction: column;
@@ -82,30 +86,31 @@
   margin: 0;
 }
 
-.webrtc-pair-status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-secondary);
-  font-size: var(--text-body);
-}
-
 .webrtc-secret-group {
   display: flex;
-  align-items: center;
-  gap: var(--space-1);
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
 }
 
-.webrtc-secret-group .ws-input {
+.webrtc-secret-group:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.webrtc-pair-card .webrtc-secret-group .ws-input {
   flex: 1;
   min-width: 0;
+  border: 0;
+  box-shadow: none;
 }
 
-.webrtc-secret-toggle {
+.webrtc-secret-group .webrtc-secret-toggle {
   flex: 0 0 auto;
-  height: 32px;
-  min-width: 32px;
+  aspect-ratio: 1;
+  border: 0;
   padding: 0 var(--space-2);
+  justify-content: center;
 }
 
 .webrtc-pair-footer {
@@ -115,19 +120,32 @@
   margin-top: var(--space-2);
 }
 
+.webrtc-pair-footer .btn {
+  white-space: nowrap;
+}
+
 @media (max-width: 1023px) {
   .webrtc-remote-banner {
-    padding: 4px var(--space-3);
-    gap: var(--space-2);
-  }
-  .webrtc-remote-path {
     display: none;
   }
-  .webrtc-remote-device {
-    max-width: 104px;
+  .modal-overlay.webrtc-pair-overlay {
+    align-items: center;
+    bottom: auto;
+    height: var(--app-viewport-height, 100dvh);
   }
-  .webrtc-secret-toggle {
-    height: var(--mobile-control-menu);
+  .webrtc-pair-overlay .modal.webrtc-pair-card {
+    max-width: min(420px, calc(100vw - 24px)) !important;
+    border-radius: var(--radius-xl);
+  }
+  .webrtc-pair-card .modal-body {
+    overscroll-behavior: contain;
+  }
+  .webrtc-pair-card .webrtc-secret-group .ws-input {
+    --mobile-control-regular: var(--mobile-control-menu);
+  }
+  .webrtc-secret-group .webrtc-secret-toggle,
+  .webrtc-pair-footer .btn {
+    min-height: var(--mobile-control-menu);
     min-width: var(--mobile-control-menu);
   }
 }

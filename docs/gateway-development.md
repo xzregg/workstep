@@ -118,6 +118,18 @@ uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 0.0.0.0 -
 
 在仓库根目录执行 `./start-gateway.sh 8700 dev`（后端自动重载），或 `./start-gateway.sh 8700 prod`。脚本构建 `gateway-web` 门户与 `web` 分享查看器，首页提供门户；按 Ctrl+C 停止。也可在 `apps/gateway` 执行 `uv run --no-sync uvicorn main:app --host 0.0.0.0 --port 8700`，已构建的前端目录默认从同仓库查找。生产部署仍需按运维文档设置数据目录、稳定 Gateway ID 和外部地址。
 
+### 远程会话中的本机重启
+
+“启动网关平台”项目快捷按钮调用 `./start-gateway.sh 8700 restart`，由 `scripts/gateway_restart.py` 将工作交给脱离发起会话的本机执行器；提交成功只表示已交接，断线不会取消重启。文件锁覆盖构建、停服、启动和恢复，重复点击会拒绝。
+
+执行器先在独立目录构建门户和分享工作台，保存 Gateway、共享协议和信令源码快照，再验证导入及 SQLite 备份上的迁移。构建或预检失败时保留旧服务及旧静态资源。涉及数据库版本变化或非文件 SQLite 的部署会在停服前拒绝，需要安排维护，避免自动恢复旧代码与新表结构冲突；不修改或恢复用户数据库。
+
+切换时根据端口、进程命令和工作目录识别旧实例，不信任历史 PID 文件，不停止无关端口占用者。新实例不启用自动重载，连续三次本机健康检查通过才记录 `ready`。失败后自动尝试恢复上一份已验证的源码与前端快照，最多三次；首次接管没有历史后端版本，只能用当前源码和原前端产物建立并预检初始恢复快照。快照共用本机已安装的 Python 依赖环境，不能恢复被手动改坏的依赖环境。
+
+默认状态与日志位于 `~/.workstep-gateway/restart/`：`restart-status.json` 的 `ready` 表示新实例可用，`recovered` 表示恢复到备用版本，`failed` 表示需查看 `restart.log` / `server.log`。最近两份成功源码和产物保留在 `releases/`，不包含配置密钥与用户数据库。自动恢复不能覆盖断电、磁盘故障等本机不可执行的情况。
+
+行为验证入口：`scripts/tests/test_gateway_restart.py`（构建/预检失败不停止旧服务、健康确认、失败恢复、重复提交、发起会话进程组被杀后仍恢复服务）；`apps/gateway/tests/test_startup_script.py` 保留普通启动回归。隔离验收使用独立端口及空数据，不重启当前会话依赖的网关。
+
 `src/gateway/api/` 声明 HTTP/WS 路由；`services/` 执行业务工作单元；`models/` 按领域定义 SQLAlchemy 模型；`app.py` 装配生命周期、路由和门户。数据库表与迁移不因目录调整变化。
 
 所有服务接受 `contracts.py` 的普通输入及异步端口，不依赖 Request、Response、HTTPException 或 ASGI 应用。`api/adapters.py` 统一构造输入，并把服务返回的数据、凭据变更、文件与异步流映射为 HTTP 响应；Cookie 与 WebSocket 框架适配仅属于接口层。业务错误使用 `GatewayError(reason, message)`，身份错误 `IdentityError` 为其子类，`api/errors.py` 保持原状态码与公开错误结构。失败审计由 `api/request_audit.py` 提取安全元数据，`services/request_audit.py` 入库；静态分享资源在 `api/share_viewer.py`。数据库继续使用 AsyncSession，密码计算及同步磁盘操作必须在工作线程执行。边界由 `tests/test_layering.py` 守护，输入、错误、Cookie 和异步流兼容由 `test_api_adapters.py`、`test_identity_errors.py` 及真实账号、分享、远程通道 API 测试验证。
@@ -215,3 +227,11 @@ Gateway 的 `ProjectAccessGrant.ui_permissions_json` 保存可空的 `{allow, de
 本地供应商的新增、编辑、删除、导入来源扫描、导入、模型管理及密钥查看统一沿用宿主范围授权，不检查历史 `provider.local` 能力。策略缺失、过期或该能力被禁止不影响已认证宿主的本地配置操作；项目范围身份不能管理宿主供应商，网关分发记录仍只能在网关修改。本地供应商停用后可直接删除，即使仍有引擎、助手或项目引用；启用状态删除仍检查这些引用。行为回归见 daemon `test_gateway_provider_config.py` 和 `test_gateway_settings_permissions.py`。
 
 回归：daemon `test_gateway_settings_permissions.py`（允许、拒绝、项目票据、其他账号、策略过期及非托管模式）、`test_desktop_security.py::test_native_workspace_capabilities_require_verified_fallback`；网关 `test_permissions.py`、`test_project_ui_permissions.py`、`test_remote_provider_scope.py`、`test_data_http.py`。
+
+## WebRTC 直连页面资源
+
+`/p2p/<device_id>/` 只由网关提供独立的连接引导页；完整工作台的入口、样式、模块、字体和图像在本机密钥验证成功后，通过该设备的 DataChannel 获取。网关与独立信令服务共用 `workstep_webrtc_signal.bootstrap.install_bootstrap_routes`，仅暴露 `rtc-bootstrap/index.html`、`bootstrap.js`、`style.css` 和资源 worker，不在直连入口回退到网关工作台构建。普通 Gateway 代理模式仍使用既有 workspace 构建。
+
+Web 的 `build` 和 `build:gateway-share` 自动生成独立的 `rtc-bootstrap/`；独立信令部署只需把该子目录放在配置的 Web 目录下，不需要复制完整工作台。HTTPS（或本机安全地址）与支持 Service Worker 的浏览器是该加载方式的前提。`/p2p/rtc-worker.js` 的作用域限定为 `/p2p/`，资源按当前客户端的设备映射，通过页面拥有的已认证通道读取；工作台接管现有连接，不重新配对。只缓存带内容哈希的静态资源，并按设备隔离；入口每次从设备读取，所以桌面端更新构建后刷新即可读取新版本，无需为工作台样式更新而重启网关。浏览器存储不可用时直接读取设备，通道失败不回退网关资源。
+
+真实回归在 daemon `tests/test_webrtc_browser_e2e.py`：信令和 Gateway 测试目录都只保留引导页，移除完整工作台，验证页面、延迟模块及上传下载仍可用，同时检查单条已建立的连接被接管。路由测试为独立信令 `test_signal_app.py`、Gateway `test_webrtc_gateway_integration.py`，浏览器资源映射为 Web `webrtcBootstrap.test.ts`。

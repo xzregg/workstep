@@ -1,3 +1,4 @@
+import DirectImage from "./DirectImage"
 import { createContext, isValidElement, memo, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type ComponentProps } from 'react'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -172,7 +173,7 @@ function MarkdownContent({
     }
     const resolved = markdownUrlResolver?.(src) ?? resolveMarkdownImageSrc(src, projectId)
     if (!onImageClick) {
-      return <img src={resolved} alt={alt} />
+      return <DirectImage src={resolved} alt={alt} />
     }
     return (
       <button
@@ -183,7 +184,7 @@ function MarkdownContent({
         aria-label={`${t('md.preview')}：${alt || t('md.image')}`}
         onClick={event => onImageClick(event.currentTarget)}
       >
-        <img src={resolved} alt={alt} />
+        <DirectImage src={resolved} alt={alt} />
       </button>
     )
   }, [markdownUrlResolver, onImageClick, projectId, t])

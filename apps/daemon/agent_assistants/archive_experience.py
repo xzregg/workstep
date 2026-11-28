@@ -18,6 +18,7 @@ from agent_assistants.prompt_input import get_prompt_view
 from engines.core.events import InternalEvent, is_commentary
 from models import Task
 from models.fields import utc_now
+from services.business_ids import new_id
 from services.remote_project import current_actor_event_fields
 from services.project_memory import read_memory_bytes, resolve_memory_path
 from services.task_archive import normalize_archive_experience, deduplicate_archive_experience
@@ -149,7 +150,7 @@ class ArchiveExperienceDraftService:
         locale: str = "zh-CN",
     ) -> str:
         """Generate a reviewable task-experience draft without persisting it."""
-        progress_message_id = message_id or str(uuid.uuid4())
+        progress_message_id = message_id or new_id(project_id)
         loaded = await self._run_db(
             project_id,
             lambda: self._load_archive_context_sync(project_id, task_id),

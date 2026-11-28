@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import json
-import uuid
 
+from services.business_ids import new_id
 from models import Schedule, ScheduleRun, Task
 from models.base import db_proxy
 from models.fields import utc_now
@@ -155,6 +155,8 @@ class ScheduleModule:
             "creator_name": str(raw.get("name") or "").strip(),
             "creator_device_id": str(raw.get("device_id") or "").strip(),
             "creator_device_name": str(raw.get("device_name") or "").strip(),
+            "identity_source": raw.get("identity_source"),
+            "access_source": raw.get("access_source"),
         }
 
     @classmethod
@@ -278,6 +280,8 @@ class ScheduleModule:
                 "name": creator["creator_name"],
                 "device_id": creator["creator_device_id"],
                 "device_name": creator["creator_device_name"],
+                "identity_source": creator.get("identity_source"),
+                "access_source": creator.get("access_source"),
                 "source": actor.source if actor is not None else None,
             }
         if execution_mode not in {"workflow", "immediate", "manual"}:
@@ -306,7 +310,7 @@ class ScheduleModule:
             now = utc_now()
             with db_proxy.atomic("IMMEDIATE"):
                 row = Schedule.create(
-                    id=str(uuid.uuid4()),
+                    id=new_id(project_id),
                     name=str(name).strip(),
                     target_type=target_type, target_task_id=target_task_id,
                     target_session_id=target_session_id, idempotency_key=idempotency_key,
@@ -396,6 +400,8 @@ class ScheduleModule:
                         "name": creator["creator_name"],
                         "device_id": creator["creator_device_id"],
                         "device_name": creator["creator_device_name"],
+                        "identity_source": creator.get("identity_source"),
+                        "access_source": creator.get("access_source"),
                         "source": actor.source if actor is not None else None,
                     }
             if row.target_type in {"task", "session"}:
@@ -530,7 +536,7 @@ class ScheduleModule:
                     raise ScheduleValidationError("An execution is already in progress. Please wait for it to complete and then retry.")
                 current = utc_now()
                 run = ScheduleRun.create(
-                    id=str(uuid.uuid4()), schedule=row, scheduled_for=current,
+                    id=new_id(project_id), schedule=row, scheduled_for=current,
                     status="queued", created_at=current,
                 )
                 return self._run_to_dict(run)
@@ -574,7 +580,7 @@ class ScheduleModule:
                         (ScheduleRun.schedule == row)
                         & (ScheduleRun.status.in_(("queued", "running")))
                     ).exists()
-                    run_id = str(uuid.uuid4())
+                    run_id = new_id(project.id)
                     try:
                         run = ScheduleRun.create(
                             id=run_id,

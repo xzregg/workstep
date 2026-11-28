@@ -15,13 +15,14 @@
 | Electron、内置后端打包 | [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md) |
 | 官网、用户操作手册 | [apps/landing/AGENTS.md](apps/landing/AGENTS.md) |
 | 任何应用的界面改动（含原生端、平台后台） | [DESIGN.md](DESIGN.md) 对应章节 |
-| 合并到本地 main、发布、手册同步 | [官网与手册规则](apps/landing/AGENTS.md)、[发布规范](docs/releasing.md) |
+| 合并到本地 main、发超多布、手册同步 | [官网与手册规则](apps/landing/AGENTS.md)、[发布规范](docs/releasing.md) |
 | Docker、复制过滤、安装包或镜像内容 | [发布内容检查](docs/releasing.md#release-payload-hygiene)，涉及应用的规则 |
 | Gateway、共享包、脚本及其他应用 | [开发指南](docs/development.md)、[文档索引](docs/README.md) 对应领域；命令以各应用 README / package.json 为准 |
 
 ## 全局开发与验证
 
-- 本机测试默认最多并发 2 个文件：直接运行 `node --test` 必须显式传 `--test-concurrency=2`，不能假定会继承 `package.json` 的配置；Vitest 使用 `--maxWorkers=2`，pytest 不启用多进程。优先运行受影响用例，各应用及多个聊天的全量测试不得重叠启动，避免挤占桌面 CPU 和内存。命令使用 RTK、Node 使用 24；Node/Yarn 测试使用 `rtk proxy node` / `rtk proxy yarn`，不要使用 `rtk node` / `rtk yarn` 的未知命令回退路径（本机 RTK 0.47.0 收到 SIGTERM 后会残留子进程）。RTK 不提供资源限额。
+- **动代码**：涉及多文件修改、新功能架构设计或复杂重构时，遵循最小改动原则，避免顺手重写或格式化无关代码。
+- 本机测试默认最多并发 2 个文件：直接运行 `node --test` 必须显式传 `--test-concurrency=2`，不能假定会继承 `package.json` 的配置；Vitest 使用 `--maxWorkers=2`，pytest 不启用多进程。优先运行受影响用例，各应用及多个聊天的全量测试不得重叠启动，避免挤占桌面 CPU 和内存。使用 Node 24。
 - 增加功能或移动职责时，同步更新 `docs/code-map/` 下对应领域文件，写明入口、实际职责所有者、相关 API/服务和行为测试入口，不能只写在提交说明中；新增领域时在 `docs/code-map.md` 索引补充链接。
 - 界面开发必须先读 `DESIGN.md`，确定页面模式、组件选型、图标档位及窄屏降级；复用组件默认规格，不另设按钮和图标尺寸。交付前完成受影响界面的实际渲染检查，说明范围和缺口；构建或行为测试通过不等于视觉验收通过。旧静态设计参考不再作为规范来源。
 - **禁止把需求解释写进产品界面或用户数据**：原始需求、讨论过程、设计理由、实现细节及开发验收说明，不得转成页面备注、字段说明、提示文案、弹窗，也不得写入用户的日程备注、正文等数据。界面只保留完成当前操作所必需的简短标签、状态、错误与授权提示；正常读取、保存、删除成功不得仅为解释功能而增加弹窗。详细文案约束见 [DESIGN.md 界面文案](DESIGN.md#92-界面文案)。

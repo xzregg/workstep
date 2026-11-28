@@ -381,11 +381,7 @@
           "O máximo de retornos controla conexões de retorno tracejadas e é separado das novas tentativas após falha na revisão.",
           "Declarar uma porta de saída não cria um arquivo. Exija entregas reais no prompt e inspecione-as depois."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Artefatos de entrada e saídas correspondentes no editor de nós",
-          "caption": "A entrada declara os requisitos da tarefa com o plano de execução como saída correspondente. As configurações de contagem de retorno não são mostradas."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Artefatos de entrada e saídas correspondentes no editor de nós","caption":"Configuração atual do ambiente fixo de demonstração; nenhuma tarefa, modelo ou pareamento foi executado e nenhuma credencial foi publicada."}
       },
       {
         "title": "Definir revisão e inicialização automática",
@@ -393,7 +389,7 @@
           "Em Revisão de etapas no editor, escolha Revisão manual, Revisão automática ou Ignorar revisão. A revisão manual é recomendada inicialmente.",
           "A revisão manual faz uma pausa após a execução para sua decisão. Para revisão automática, escreva critérios verificáveis ​​e, opcionalmente, escolha seu motor e modelo.",
           "Definir novas tentativas após uma revisão automática rejeitar o resultado. Erros no próprio agente de revisão passam para tratamento manual.",
-          "Defina Iniciar automaticamente após a criação conforme necessário e salve. Para prática inicial, desative-o para poder inspecionar uma tarefa antes de começar."
+          "Nas configurações da etapa, escolha mecanismo, provedor e modelo, nessa ordem. Sem início automático, clique em Iniciar na etapa dos detalhes quando as dependências estiverem prontas. Iniciar a tarefa autoriza apenas a entrada, não as etapas manuais seguintes. Uma saída global compartilha um caminho fixo Global. Confira arquivos e revisões; não a use em conexões de retorno."
         ],
         "tips": [
           "Instale e configure mecanismos SDK antes de usá-los para execução ou revisão."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "Na fila geralmente significa que a capacidade de simultaneidade está cheia. Aguardar revisão requer confirmação; isso não significa que o aplicativo esteja travado.",
-          "A exclusão difere do arquivamento. Leia a confirmação antes da exclusão permanente."
+          "A exclusão difere do arquivamento. Leia a confirmação antes da exclusão permanente.", "No celular, mantenha uma tarefa pressionada para selecionar várias. Confira o escopo e a confirmação antes de arquivar ou excluir. A cópia exige uma única tarefa selecionada; as restrições de tarefas em execução permanecem."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "No arquivo, clique no título para expandir somente leitura a última rodada de pergunta e respostas. Isso não restaura a conversa nem carrega todos os detalhes de execução. Para continuar conversando, restaure explicitamente."
         ],
         "tips": [
-          "Arquivar preserva conteúdo; excluir conversas e mensagens tem maior impacto. Não confunda «Dissolver grupo» com «Excluir também conversas»."
+          "Arquivar preserva conteúdo; excluir conversas e mensagens tem maior impacto. Não confunda «Dissolver grupo» com «Excluir também conversas».", "Crie subgrupos pelo menu do grupo na lateral; confira o destino antes de arrastar. Clique na cota junto à entrada para consultar vários mecanismos. Se a coleta falhar, os valores antigos permanecem: confira a atualização, não é uma fatura. O botão de imagem Markdown envia e insere o caminho; confira a prévia antes de salvar."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Menu de grupos na barra lateral e prévia somente leitura de conversas arquivadas",
-          "caption": "Interface chinesa real do ambiente fixo de demonstração. Mostra configurações, acessos ou listas vazias; nesta captura não houve chamada de modelo nem envio de mensagem."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Menu de grupos na barra lateral e prévia somente leitura de conversas arquivadas","caption":"Configuração atual do ambiente fixo de demonstração; nenhuma tarefa, modelo ou pareamento foi executado e nenhuma credencial foi publicada."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Os registros remotos armazenados em cache não têm status ativo. A sincronização pode ser bloqueada enquanto as tarefas do projeto ou os chats estiverem ativos.",
-          "Reconecte primeiro projetos off-line ou remotos não autorizados. O navegador não copia repositórios host para o seu computador. A leitura requer permissão de visualização do Git; As ações de commit, branch, merge e synchronization possuem concessões separadas. Verifique as permissões se os botões estiverem faltando."
+          "Reconecte primeiro projetos off-line ou remotos não autorizados. O navegador não copia repositórios host para o seu computador. A leitura requer permissão de visualização do Git; As ações de commit, branch, merge e synchronization possuem concessões separadas. Verifique as permissões se os botões estiverem faltando.", "Selecione arquivos na lista de alterações Git para descartá-los juntos. Revise as diferenças antes de confirmar: conteúdo sem commit pode ser irrecuperável. Descartar não faz backup."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "O modo interativo está selecionado e a senha está vazia. Nenhum link de compartilhamento foi criado."
         }
       },
+      {"title":"Conexão e pareamento WebRTC","steps":["Em Configurações → Acesso remoto → WebRTC, salve o endereço de sinalização. O QR de pareamento aparece apenas após os testes de sinalização e UDP. O host precisa continuar online e as permissões normais se aplicam. O código contém um segredo: não o publique. Em caso de falha, verifique a rede; passar nos testes não garante conexão entre redes."],"screenshot":{"id":"webrtc-pairing","alt":"Conexão e pareamento WebRTC","caption":"Configuração atual do ambiente fixo de demonstração; nenhuma tarefa, modelo ou pareamento foi executado e nenhuma credencial foi publicada."}},
       {
         "title": "Configurar o acesso ao host e convidar dispositivos",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "O intervalo padrão é 5 minutos. Permitir contato proativo não significa mensagem a cada rodada; sem eventos pendentes, pode terminar em silêncio. Chamadas de modelo podem gerar custos; o resumo não é a cadeia de pensamento completa.",
-          "O título da delegação aceita 60 caracteres e não substitui a instrução completa. Continuações podem herdá-lo sem renomear conversas existentes. Clique na quantidade de memórias adicionadas para resumos ou na seta direita para o registro completo. Zero fica oculto; silêncio não é falha de entrega."
+          "O título da delegação aceita 60 caracteres e não substitui a instrução completa. Continuações podem herdá-lo sem renomear conversas existentes. Clique na quantidade de memórias adicionadas para resumos ou na seta direita para o registro completo. Zero fica oculto; silêncio não é falha de entrega.", "O pensamento proativo automático é desativado após três falhas consecutivas. Confira o histórico e corrija a causa antes de reativar. Voltar no centro digital móvel retorna à página anterior."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Configuração de reflexão proativa e registros com paginação independente",
-          "caption": "Interface chinesa real do ambiente fixo de demonstração. Mostra configurações, acessos ou listas vazias; nesta captura não houve chamada de modelo nem envio de mensagem."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Configuração de reflexão proativa e registros com paginação independente","caption":"Configuração atual do ambiente fixo de demonstração; nenhuma tarefa, modelo ou pareamento foi executado e nenhuma credencial foi publicada."}
       },
       {
         "title": "Vincular canais para atendimento e notificações",

@@ -83,6 +83,8 @@ def default_history_message(item: dict) -> dict:
         "initiated_by_name": item.get("initiated_by_name"),
         "author_device_id": item.get("author_device_id"),
         "author_device_name": item.get("author_device_name"),
+        "identity_source": item.get("identity_source"),
+        "access_source": item.get("access_source"),
         "event_summary": item.get("event_summary") or {},
         "event_detail": item.get("event_detail") or {"available": False},
         "event_log_path": item.get("event_log_path"),

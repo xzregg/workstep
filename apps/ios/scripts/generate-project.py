@@ -61,7 +61,7 @@ app_configs = configurations("app", {
     "PRODUCT_BUNDLE_IDENTIFIER": "com.workstep.ios", "PRODUCT_NAME": "$(TARGET_NAME)",
     "INFOPLIST_FILE": "WorkStep/Info.plist", "GENERATE_INFOPLIST_FILE": "NO", "CODE_SIGN_STYLE": "Automatic",
     "TARGETED_DEVICE_FAMILY": "1,2", "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator", "SUPPORTS_MACCATALYST": "NO",
-    "MARKETING_VERSION": "0.1.0", "CURRENT_PROJECT_VERSION": "1", "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+    "MARKETING_VERSION": "0.1.2", "CURRENT_PROJECT_VERSION": "3", "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
     "LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path/Frameworks"],
 })
 app = add("app-target", isa="PBXNativeTarget", buildConfigurationList=app_configs,

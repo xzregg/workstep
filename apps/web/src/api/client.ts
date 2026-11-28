@@ -1,6 +1,8 @@
 import { gatewayFetch } from '../utils/gatewayWorkspacePath'
 import { workspaceCatalogPath } from './workspaceScope'
 import { browserActorHeaders } from '../utils/browserActor'
+import { isWebRtcRemoteBrowser } from '../webrtc/webrtcLocation'
+import { retryWebRtcTransfer } from '../webrtc/retryTransfer'
 import { BASE, fileDataUrl, request } from './transport'
 import type { Task } from './task'
 import type { AssistantConfigInfo, AssistantSaveResult } from './engine'
@@ -320,34 +322,46 @@ export const fsApi = {
     ),
   uploadImage: async (file: File, projectId: string, prefix?: string) => {
     const dataUrl = await fileDataUrl(file)
-    const res = await gatewayFetch(
-      `${BASE}/fs/upload/image?project_id=${encodeURIComponent(projectId)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...browserActorHeaders() },
-        body: JSON.stringify({ filename: file.name, data_url: dataUrl, prefix }),
-      }
-    )
-    if (!res.ok) throw new Error('Upload failed')
-    const data = await res.json()
-    return data as { url: string; filename: string; size: number }
+    const requestId = crypto.randomUUID()
+    return retryWebRtcTransfer(async () => {
+      const res = await gatewayFetch(
+        `${BASE}/fs/upload/image?project_id=${encodeURIComponent(projectId)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...browserActorHeaders() },
+          body: JSON.stringify({ filename: file.name, data_url: dataUrl, prefix, request_id: requestId }),
+        }
+      )
+      if (!res.ok) throw new Error('Upload failed')
+      const data = await res.json()
+      return data as { url: string; filename: string; size: number }
+    })
   },
   uploadFile: async (file: File, projectId: string, prefix?: string) => {
     const dataUrl = await fileDataUrl(file)
-    const res = await gatewayFetch(
-      `${BASE}/fs/upload/file?project_id=${encodeURIComponent(projectId)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...browserActorHeaders() },
-        body: JSON.stringify({ filename: file.name, data_url: dataUrl, prefix }),
-      }
-    )
-    if (!res.ok) throw new Error('Upload failed')
-    const data = await res.json()
-    return data as { url: string; filename: string; size: number }
+    const requestId = crypto.randomUUID()
+    return retryWebRtcTransfer(async () => {
+      const res = await gatewayFetch(
+        `${BASE}/fs/upload/file?project_id=${encodeURIComponent(projectId)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...browserActorHeaders() },
+          body: JSON.stringify({ filename: file.name, data_url: dataUrl, prefix, request_id: requestId }),
+        }
+      )
+      if (!res.ok) throw new Error('Upload failed')
+      const data = await res.json()
+      return data as { url: string; filename: string; size: number }
+    })
   },
 
-  preview: (path: string, projectId?: string) => request<FilePreview>(`/fs/preview?path=${encodeURIComponent(path)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ''}${path.startsWith('/') ? '&absolute=true' : ''}`),
+  preview: (path: string, projectId?: string) => request<FilePreview>(`/fs/preview?path=${encodeURIComponent(path)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ''}${path.startsWith('/') ? '&absolute=true' : ''}${isWebRtcRemoteBrowser() ? '&stream_image=true' : ''}`),
+  previewFileUrl: (path: string, projectId?: string) => {
+    const params = new URLSearchParams({ path })
+    if (projectId) params.set('project_id', projectId)
+    if (path.startsWith('/')) params.set('absolute', 'true')
+    return `${BASE}/fs/file?${params}`
+  },
   browse: (path?: string, projectId?: string, includeHidden = false) => {
     const params = new URLSearchParams()
     if (path) params.set('path', path)

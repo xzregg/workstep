@@ -729,6 +729,11 @@ export const jaJP: Messages = {
     partial: '部分指标不可用，汇总数据不完整；当前仍展示可读取的指标。',
   },
   statistics: {
+    identityGateway: 'ゲートウェイアカウント',
+    identityLocal: 'ローカルユーザー',
+    identityChannel: 'チャネルユーザー',
+    identityBrowser: 'ブラウザユーザー',
+    identityRemote: 'リモートユーザー',
     activityTitle: '使用活跃情况',
     activityPrevious: '上一年',
     activityNext: '下一年',
@@ -3150,7 +3155,9 @@ export const jaJP: Messages = {
     "retry": "再試行",
     "reconnect": "再接続",
     "disconnect": "切断",
-    "directConnected": "P2P 直接接続",
+    "timings": "接続時間",
+    "steps": {"signaling": "シグナリングに接続", "exchange": "接続情報を交換", "channel": "直接接続チャネルを確立", "authentication": "ペアリングキーを確認"},
+    "directConnected": "直接接続",
     "disconnected": "直接接続が切断されました",
     "relayRejected": "P2P 直接接続に失敗しました"
   },

@@ -1,8 +1,8 @@
 """Hook persistence; every database unit stays inside the project executor."""
 import asyncio
 import secrets
-from uuid import uuid4
 
+from services.business_ids import new_id
 from services.hook_errors import HookError
 
 from models.workflow_hook import WorkflowHook
@@ -75,7 +75,7 @@ class WorkflowHookService:
                     row = existing.get(draft.id) if draft.id else None
                     if draft.id and row is None:
                         raise HookError(422, 'The hook does not belong to the current process')
-                    row = row or WorkflowHook(id=str(uuid4()), token=secrets.token_urlsafe(32))
+                    row = row or WorkflowHook(id=new_id(project_id), token=secrets.token_urlsafe(32))
                     for key in ('name', 'enabled', 'step_key', 'default_title', 'default_creator', 'execution_mode'):
                         setattr(row, key, getattr(draft, key))
                     row.workflow_id = workflow_id

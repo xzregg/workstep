@@ -542,6 +542,8 @@ def test_local_user_identity_is_attached_to_messages_and_live_events(monkeypatch
 
     assert current_actor_message_fields() == {
         "author_id": "device-a",
+        "identity_source": "local",
+        "access_source": "local",
         "author_username": "电脑 A 使用者",
         "author_name": "电脑 A 使用者",
         "author_type": "user",

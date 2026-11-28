@@ -14,9 +14,9 @@ import { useProjectStore } from '../src/stores/projectStore'
 import ResponsiveNavigation from '../src/components/ResponsiveNavigation'
 import type { Project } from '../src/api/project'
 
-test('the compact device header adds a robot button that opens the Digital Hub', async () => {
+for (const gateway of [true, false]) test(`the compact header opens the Digital Hub ${gateway ? 'with' : 'without'} Gateway`, async () => {
   const { window } = installDomEnvironment()
-  window.happyDOM.setURL('http://d-device-1.localhost:8700/')
+  if (gateway) window.happyDOM.setURL('http://d-device-1.localhost:8700/')
   window.innerWidth = 390
   const previousLocale = useLocaleStore.getState().locale
   useLocaleStore.setState({ locale: 'zh-CN' })
@@ -46,9 +46,11 @@ test('the compact device header adds a robot button that opens the Digital Hub',
     await act(async () => root.render(<MemoryRouter initialEntries={['/chat']}><I18nProvider>
       <GatewayRemoteFrame><WorkspaceHeader /></GatewayRemoteFrame>
     </I18nProvider></MemoryRouter>))
-    const trigger = element.querySelector('.gateway-mobile-device-trigger')
-    const hub = trigger?.nextElementSibling as HTMLButtonElement | null
-    assert.equal(hub?.getAttribute('aria-label'), '数字中枢')
+    const controls = [...element.querySelectorAll<HTMLButtonElement>('.mobile-header-left button')]
+    assert.equal(controls.length, gateway ? 3 : 2)
+    assert.equal(controls.some(button => button.matches('.gateway-mobile-device-trigger')), gateway)
+    const hub = controls.at(-1)!
+    assert.equal(hub.getAttribute('aria-label'), '数字中枢')
     assert.ok(Boolean(hub?.querySelector('svg.lucide-bot')))
     await act(async () => hub?.click())
     assert.equal(element.querySelector('output')?.textContent, '/companion')

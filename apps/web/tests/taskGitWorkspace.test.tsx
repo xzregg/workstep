@@ -40,7 +40,7 @@ test('task Git tab opens its directory and shows only attached worktrees', async
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   try {
-    await act(async () => root.render(<I18nProvider><TaskGitWorkspace projectId="p" taskId="t" /></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><TaskGitWorkspace projectId="p" taskId="164938b701k4m8p3q7f6d2r9t8" /></I18nProvider>))
     assert.equal(opened, 1)
     assert.equal(container.querySelector('.task-git-page h1')?.textContent, 'Git Workspace')
     assert.deepEqual([...container.querySelectorAll('.task-git-tree strong')].map(element => element.textContent), ['B'])
@@ -74,8 +74,8 @@ test('task Git tab opens its directory and shows only attached worktrees', async
     assert.deepEqual([...source.options].map(option => option.value), ['main', 'release'])
     assert.deepEqual([...container.querySelectorAll('.task-git-add > label')].map(label => label.className), ['', 'task-git-source-label'])
     assert.deepEqual([...container.querySelectorAll('.task-git-name-fields > label')].map(label => label.className), ['task-git-branch-label', 'task-git-directory-label'])
-    assert.equal(container.querySelector<HTMLInputElement>('.task-git-new-branch')?.value, 'Project-t')
-    assert.equal(container.querySelector<HTMLInputElement>('.task-git-directory')?.value, 'Project-t')
+    assert.equal(container.querySelector<HTMLInputElement>('.task-git-new-branch')?.value, 'Project-f6d2r9t8')
+    assert.equal(container.querySelector<HTMLInputElement>('.task-git-directory')?.value, 'Project-f6d2r9t8')
     await act(async () => { source.value = 'release'; source.dispatchEvent(new window.Event('change', { bubbles: true })) })
     const branch = container.querySelector<HTMLInputElement>('.task-git-new-branch')!
     const directory = container.querySelector<HTMLInputElement>('.task-git-directory')!
@@ -86,7 +86,7 @@ test('task Git tab opens its directory and shows only attached worktrees', async
       })
     }
     await changeInput(branch, 'feature-one')
-    assert.equal(directory.value, 'Project-t')
+    assert.equal(directory.value, 'Project-f6d2r9t8')
     await changeInput(directory, 'custom-directory')
     assert.equal(branch.value, 'feature-one')
     await changeInput(branch, 'feature-one-updated')
@@ -101,7 +101,7 @@ test('task Git tab opens its directory and shows only attached worktrees', async
     assert.equal(directory.value, 'manual-directory')
     const create = [...container.querySelectorAll<HTMLButtonElement>('.task-git-add button')].at(-1)!
     await act(async () => create.click())
-    assert.deepEqual(createdArgs, ['p', 't', 'root', 'manual-directory', 'release', 'feature-four'])
+    assert.deepEqual(createdArgs, ['p', '164938b701k4m8p3q7f6d2r9t8', 'root', 'manual-directory', 'release', 'feature-four'])
     const deleteButton = container.querySelector<HTMLButtonElement>('.task-git-delete-workspace')!
     assert.ok(deleteButton === container.querySelector('.git-page-header > button:last-child'))
     await act(async () => deleteButton.click())
@@ -110,7 +110,7 @@ test('task Git tab opens its directory and shows only attached worktrees', async
     assert.match(document.querySelector('[role="dialog"]')?.textContent || '', /unpushed|未推送/i)
     const confirm = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].at(-1)!
     await act(async () => confirm.click())
-    assert.deepEqual(deletions, [['p', 't', true]])
+    assert.deepEqual(deletions, [['p', '164938b701k4m8p3q7f6d2r9t8', true]])
     assert.match(container.querySelector('.task-git-page')?.textContent || '', /directory not empty/)
   } finally {
     await act(async () => root.unmount())

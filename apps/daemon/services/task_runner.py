@@ -152,6 +152,7 @@ class TaskRunner:
             self._run_db,
             self._publish,
             self._ajournal_snapshot,
+            project_id=getattr(database_executor, "project_id", None),
         )
         self._review_messages = StepReviewMessages(
             self._event_journal, self._run_db, self._publish, self._live,
@@ -817,6 +818,7 @@ class TaskRunner:
             try:
                 reused_round = await self._run_db(lambda: reuse_successful_step(
                     task, step, artifacts_dir, workflow_run,
+                    project_id=getattr(self._database_executor, "project_id", None),
                 ))
             except ValueError as exc:
                 row = await self._run_db(lambda: TaskStep.get(
@@ -888,6 +890,7 @@ class TaskRunner:
         try:
             started_state = await self._run_db(lambda: start_step_state(
                 task=task, step=step, workflow_run=workflow_run,
+                project_id=getattr(self._database_executor, "project_id", None),
                 artifacts_dir=artifacts_dir, effective_provider_id=effective_provider_id,
                 resolved_model=resolved_model, input_rounds=input_rounds,
                 input_snapshot=input_snapshot,
@@ -1029,7 +1032,7 @@ class TaskRunner:
                 model=resolved_model, occurred_at=execution_ended_at or utc_now(),
                 provider=provider_snapshot, provider_id=effective_provider_id or None,
                 usage_json=completion.usage_json,
-                user_id=task.creator_id, session_id=captured_session_id,
+                user_id=completion.initiated_by_user_id, session_id=captured_session_id,
             )
             execution_message_finalized = True
             await self._execution_messages.publish_completion(

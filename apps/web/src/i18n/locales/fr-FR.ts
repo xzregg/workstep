@@ -728,6 +728,11 @@ export const frFR: Messages = {
   },
   statistics: {
     ...zhCN.statistics,
+    identityGateway: 'Compte passerelle',
+    identityLocal: 'Utilisateur local',
+    identityChannel: 'Utilisateur de canal',
+    identityBrowser: 'Utilisateur du navigateur',
+    identityRemote: 'Utilisateur distant',
     title: "Statistiques",
     failed: "Échec",
     workflowCount: "Workflows",
@@ -987,7 +992,9 @@ export const frFR: Messages = {
     "retry": "Réessayer",
     "reconnect": "Reconnecter",
     "disconnect": "Déconnecter",
-    "directConnected": "P2P direct",
+    "timings": "Durées de connexion",
+    "steps": {"signaling": "Connexion à la signalisation", "exchange": "Échange des paramètres", "channel": "Établissement du canal direct", "authentication": "Vérification de la clé"},
+    "directConnected": "direct",
     "disconnected": "Connexion directe fermée",
     "relayRejected": "Échec de connexion P2P directe (relais interdit)"
   },

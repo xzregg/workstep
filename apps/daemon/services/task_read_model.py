@@ -291,6 +291,8 @@ def task_to_dict(task: Task) -> dict:
         "creator_name": task.creator_name,
         "creator_device_id": task.creator_device_id,
         "creator_device_name": task.creator_device_name,
+        "identity_source": task.identity_source,
+        "access_source": task.access_source,
         "scheduled_start_at": task.scheduled_start_at,
         "scheduled_start_state": task.scheduled_start_state,
         "scheduled_start_error": task.scheduled_start_error,

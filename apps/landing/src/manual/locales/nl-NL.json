@@ -381,11 +381,7 @@
           "Maximaal retourneert regelt gestippelde retourverbindingen en staat los van nieuwe pogingen na een mislukte beoordeling.",
           "Als u een uitvoerpoort declareert, wordt er geen bestand gemaakt. Eis daadwerkelijke resultaten in de prompt en inspecteer ze daarna."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Invoerartefacten en bijbehorende uitvoer in de knooppunteditor",
-          "caption": "De invoer declareert taakvereisten met het uitvoeringsplan als de bijbehorende uitvoer. Instellingen voor het aantal retourzendingen worden niet weergegeven."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Invoerartefacten en bijbehorende uitvoer in de knooppunteditor","caption":"Huidige configuratie in de vaste demonstratieomgeving; geen taak, model of koppeling uitgevoerd en geen inloggegevens gepubliceerd."}
       },
       {
         "title": "Stel beoordeling en automatisch opstarten in",
@@ -393,7 +389,7 @@
           "Kies onder Stapsgewijze beoordeling in de editor de optie Handmatige beoordeling, Automatische beoordeling of Beoordeling overslaan. Handmatige beoordeling wordt in eerste instantie aanbevolen.",
           "De handmatige beoordeling van uw beslissing wordt na uitvoering onderbroken. Voor automatische beoordeling schrijft u verifieerbare criteria en kiest u optioneel de motor en het model.",
           "Stel nieuwe pogingen in nadat een automatische beoordeling het resultaat heeft afgewezen. Fouten in de reviewagent zelf schakelen over op handmatige afhandeling.",
-          "Stel Start indien nodig automatisch in na het maken en sla vervolgens op. Schakel het voor de eerste oefening uit, zodat u een taak kunt inspecteren voordat u begint."
+          "Kies bij stapinstellingen eerst engine, dan aanbieder en model. Zonder automatisch starten klikt u na gereedkomen van afhankelijkheden op Start in de taakdetails. De taak starten geeft alleen toestemming voor het begin, niet latere handmatige stappen. Een globale uitvoer deelt een vast Global-pad. Controleer bestanden en beoordelingen; gebruik deze uitvoer niet voor terugverbindingen."
         ],
         "tips": [
           "Installeer en configureer SDK-engines voordat u ze gebruikt voor uitvoering of beoordeling."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "In de wachtrij staat meestal dat de gelijktijdigheidscapaciteit vol is. Wachten op beoordeling vereist bevestiging; het betekent niet dat de app vastloopt.",
-          "Verwijderen verschilt van archiveren. Lees de bevestiging voordat u definitief verwijdert."
+          "Verwijderen verschilt van archiveren. Lees de bevestiging voordat u definitief verwijdert.", "Houd op mobiel een taak ingedrukt voor meervoudige selectie. Controleer selectie en bevestiging vóór archiveren of verwijderen. Kopiëren kan alleen bij één geselecteerde taak; beperkingen voor lopende taken blijven gelden."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Klik in de archieflijst op een titel om de laatste vraag en antwoorden alleen-lezen uit te klappen. Dit herstelt het gesprek niet en laadt geen volledige uitvoeringsdetails. Herstel uitdrukkelijk om verder te chatten."
         ],
         "tips": [
-          "Archiveren bewaart inhoud. Gesprekken en berichten verwijderen heeft grotere gevolgen; verwar «Groep ontbinden» niet met «Ook gesprekken verwijderen»."
+          "Archiveren bewaart inhoud. Gesprekken en berichten verwijderen heeft grotere gevolgen; verwar «Groep ontbinden» niet met «Ook gesprekken verwijderen».", "Maak subgroepen via het zijbalkgroepsmenu; controleer vóór slepen het doel. Klik op het invoerquotum voor meerdere engines. Bij fouten blijven oude waarden staan: controleer de bijwerktijd, niet als factuur behandelen. De Markdown-afbeeldingsknop uploadt en voegt een pad in; bekijk het voorbeeld vóór opslaan."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Groepsmenu in de projectzijbalk en alleen-lezenarchiefvoorbeeld",
-          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Groepsmenu in de projectzijbalk en alleen-lezenarchiefvoorbeeld","caption":"Huidige configuratie in de vaste demonstratieomgeving; geen taak, model of koppeling uitgevoerd en geen inloggegevens gepubliceerd."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "In de cache opgeslagen externe records hebben geen livestatus. Synchronisatie kan worden geblokkeerd terwijl projecttaken of chats actief zijn.",
-          "Maak eerst opnieuw verbinding met offline of ongeautoriseerde externe projecten. De browser kopieert geen hostopslagplaatsen naar uw computer. Voor lezen is toestemming voor Git-view vereist; commit-, branch-, merge- en synchronisatieacties hebben afzonderlijke subsidies. Controleer de rechten als er knoppen ontbreken."
+          "Maak eerst opnieuw verbinding met offline of ongeautoriseerde externe projecten. De browser kopieert geen hostopslagplaatsen naar uw computer. Voor lezen is toestemming voor Git-view vereist; commit-, branch-, merge- en synchronisatieacties hebben afzonderlijke subsidies. Controleer de rechten als er knoppen ontbreken.", "Selecteer bestanden in Git-wijzigingen om ze samen te verwerpen. Controleer verschillen vóór bevestiging: niet-gecommitte inhoud is mogelijk onherstelbaar. Verwerpen is geen back-up."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "De interactieve modus is geselecteerd en het wachtwoord is leeg. Er is geen deellink gemaakt."
         }
       },
+      {"title":"WebRTC-verbinding en koppeling","steps":["Sla in Instellingen → Externe toegang → WebRTC het signaleringsadres op. De koppel-QR verschijnt pas na geslaagde signalerings- en UDP-controles. De host moet online zijn en normale machtigingen blijven nodig. De code bevat een geheim: publiceer hem nooit. Controleer bij fouten het netwerk; geslaagde controles garanderen geen verbinding tussen netwerken."],"screenshot":{"id":"webrtc-pairing","alt":"WebRTC-verbinding en koppeling","caption":"Huidige configuratie in de vaste demonstratieomgeving; geen taak, model of koppeling uitgevoerd en geen inloggegevens gepubliceerd."}},
       {
         "title": "Configureer hosttoegang en nodig apparaten uit",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "Het standaardinterval is 5 minuten. Proactief contact toestaan betekent niet elke ronde een bericht; zonder nieuwe gebeurtenissen kan een ronde stil eindigen. Modeloproepen kunnen geld kosten; het overzicht is geen volledige gedachteketen.",
-          "Een delegatietitel heeft maximaal 60 tekens en vervangt nooit de volledige instructie. Vervolgopdrachten kunnen de titel erven; bestaande chats worden niet hernoemd. Het aantal nieuwe herinneringen opent samenvattingen, de rechterpijl het volledige verslag. Nul blijft verborgen; stilte is geen bezorgfout."
+          "Een delegatietitel heeft maximaal 60 tekens en vervangt nooit de volledige instructie. Vervolgopdrachten kunnen de titel erven; bestaande chats worden niet hernoemd. Het aantal nieuwe herinneringen opent samenvattingen, de rechterpijl het volledige verslag. Nul blijft verborgen; stilte is geen bezorgfout.", "Automatisch proactief denken stopt na drie opeenvolgende fouten. Bekijk de geschiedenis en verhelp de oorzaak vóór opnieuw inschakelen. Terug in de mobiele digitale hub opent de vorige pagina."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Proactieve-reflectieconfiguratie en afzonderlijk gepagineerde uitvoeringsgeschiedenis",
-          "caption": "Echte Chinese interface van de vaste demo-omgeving. Toont instellingen, ingangen of lege lijsten; tijdens deze opname is geen model aangeroepen of bericht verzonden."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Proactieve-reflectieconfiguratie en afzonderlijk gepagineerde uitvoeringsgeschiedenis","caption":"Huidige configuratie in de vaste demonstratieomgeving; geen taak, model of koppeling uitgevoerd en geen inloggegevens gepubliceerd."}
       },
       {
         "title": "Kanalen koppelen voor ontvangst en meldingen",

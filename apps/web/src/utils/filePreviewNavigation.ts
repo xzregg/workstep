@@ -1,8 +1,11 @@
-/** Android already redirects popups into its main WebView. Navigate there directly
- * so preview pages keep the current login without a temporary popup handoff. */
+import { webrtcWorkspacePath } from '../webrtc/webrtcLocation'
+
+/** Keep previews in the current Android WebView or authenticated P2P tab. */
 export function openFilePreviewWindow(url: string) {
   const target = new URL(url, window.location.href)
-  if (window.WorkStepAndroid && target.origin === window.location.origin) {
+  const directWorkspace = webrtcWorkspacePath()
+  if (target.origin === window.location.origin && (window.WorkStepAndroid
+    || (directWorkspace && target.pathname === `${directWorkspace}/file-preview`))) {
     target.searchParams.set('preview_return', '1')
     window.location.assign(target.href)
     return
@@ -11,7 +14,8 @@ export function openFilePreviewWindow(url: string) {
 }
 
 export function closeFilePreviewWindow() {
-  if (window.WorkStepAndroid && new URLSearchParams(window.location.search).get('preview_return') === '1') {
+  if ((window.WorkStepAndroid || webrtcWorkspacePath())
+    && new URLSearchParams(window.location.search).get('preview_return') === '1') {
     window.history.back()
     return
   }

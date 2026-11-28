@@ -4,13 +4,13 @@ import asyncio
 import json
 import logging
 import shutil
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, TypeVar
 
 import peewee as pw
 
+from services.business_ids import new_id
 from models import (
     init_db,
     Task,
@@ -413,7 +413,7 @@ class ProjectManager:
     def _new_project_id(self) -> str:
         existing_ids = {project.id for project in self._projects.values()}
         while True:
-            project_id = uuid.uuid4().hex[:8]
+            project_id = new_id(kind="project")
             if project_id not in existing_ids and not external_directory(project_id).exists():
                 return project_id
 

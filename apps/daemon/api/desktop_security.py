@@ -180,7 +180,10 @@ async def desktop_websocket_allowed(ws: WebSocket) -> bool:
             desktop_runtime_authenticated(ws)
             or await asyncio.to_thread(_remote_access_enabled, ws.app)))
     if webrtc_bridge_authenticated(ws):
-        ws.scope["managed_actor"] = ws.scope["webrtc_remote_actor"]
+        from dataclasses import replace
+        from services.config import config_store
+        name = await asyncio.to_thread(config_store.get_user_name)
+        ws.scope["managed_actor"] = replace(ws.scope["webrtc_remote_actor"], display_name=name, username=name)
         return True
     remote_actor = ws.scope.get("gateway_remote_actor")
     if (remote_actor is not None and gateway_client is not None
@@ -419,6 +422,14 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 ):
             from api.system_settings import _configured_gateway_mode
             pending_identity = managed or await asyncio.to_thread(_configured_gateway_mode)
+        p2p_host_actor = None
+        if not denied and webrtc_bridge:
+            from services.remote_access import get_host_actor
+            p2p_host_actor = await asyncio.to_thread(get_host_actor)
+            if (p2p_host_actor is None and identity_operation
+                    and request.method not in ('GET', 'HEAD', 'OPTIONS')):
+                from api.system_settings import _configured_gateway_mode
+                pending_identity = managed or await asyncio.to_thread(_configured_gateway_mode)
         if denied:
             response = JSONResponse(
                 {"detail": "desktop authentication required"}, status_code=401,
@@ -437,18 +448,30 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 {"detail": "legacy sharing is unavailable in managed mode"}, status_code=403,
             )
         elif webrtc_bridge and webrtc_actor is not None:
+            from services.remote_access import host_attribution_context
+            host_actor = p2p_host_actor
             context = actor_context(ActorSnapshot(
                 actor_id=webrtc_actor.user_id,
-                user_name=webrtc_actor.display_name or webrtc_actor.username,
+                user_name=host_actor.user_name if host_actor else '',
                 device_id=webrtc_actor.device_id,
                 device_name=webrtc_actor.device_id,
                 source="remote",
-                username=webrtc_actor.username,
+                username=host_actor.username if host_actor else None,
                 access_source="webrtc_p2p",
             ))
-            with context, native_workspace_context(True):
+            with context, native_workspace_context(True), host_attribution_context(host_actor):
                 response = await call_next(request)
         else:
+            from services.remote_access import get_host_actor, host_attribution_context, get_current_actor
+            raw_actor = get_current_actor()
+            host_actor = (await asyncio.to_thread(get_host_actor)
+                          if actor is None and not native_dispatch and request.url.path.startswith('/api/')
+                          and request.url.path != '/api/health'
+                          and (raw_actor is None or getattr(raw_actor, 'source', None) in {'local', 'browser'}
+                               and getattr(raw_actor, 'access_source', None) != 'remote_browser')
+                          and (local_workspace or desktop_authenticated or local_gateway_fallback_allowed(request))
+                          else None)
+            host_context = host_attribution_context(host_actor) if host_actor is not None else nullcontext()
             if actor is not None:
                 request.state.managed_actor = actor
             context = actor_context(ActorSnapshot(
@@ -467,7 +490,7 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             # Native browser access has already passed the host/key boundary.
             # Connecting a Gateway must not make that workspace depend on its
             # user policy. Browser identity headers alone never grant this context.
-            with context, native_workspace_context(
+            with context, host_context, native_workspace_context(
                 (local_workspace or (remote_access and browser_origin_allowed(request)))
                 and actor is None and not remote_bridge and not native_dispatch
             ):

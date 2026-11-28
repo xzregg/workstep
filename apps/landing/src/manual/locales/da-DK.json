@@ -381,11 +381,7 @@
           "Maksimalt afkast kontrollerer stiplede returforbindelser og er adskilt fra genforsøg efter mislykket gennemgang.",
           "Erklæring af en outputport opretter ikke en fil. Kræv faktiske leverancer i prompten og inspicér dem bagefter."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Input artefakter og tilsvarende output i node-editoren",
-          "caption": "Inputtet erklærer opgavekrav med udførelsesplan som dets tilsvarende output. Indstillinger for returtæller vises ikke."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Input artefakter og tilsvarende output i node-editoren","caption":"Aktuel opsætning i det faste demonstrationsmiljø; ingen opgave, model eller parring blev kørt, og ingen legitimationsoplysninger blev offentliggjort."}
       },
       {
         "title": "Indstil gennemgang og automatisk opstart",
@@ -393,7 +389,7 @@
           "Under Tringennemgang i editoren skal du vælge Manuel gennemgang, Automatisk gennemgang eller Spring gennemgang over. Manuel gennemgang anbefales i første omgang.",
           "Manuel gennemgang pauser efter udførelse for din beslutning. For automatisk gennemgang skal du skrive verificerbare kriterier og eventuelt vælge dens motor og model.",
           "Sæt genforsøg efter en automatisk gennemgang afviser resultatet. Fejl i selve anmeldelsesagenten skifter til manuel håndtering.",
-          "Indstil Start automatisk efter oprettelse efter behov, og gem derefter. For indledende øvelse skal du deaktivere den, så du kan inspicere en opgave, før du starter."
+          "Vælg motor, udbyder og model i den rækkefølge i trinindstillingerne. Uden automatisk start klikker du på Start ved trinnet i opgavedetaljerne, når afhængighederne er klar. Opgavestart tillader kun indgangen, ikke senere manuelle trin. Globalt output deler en fast Global-sti. Kontrollér filer og godkendelser; brug det ikke i returforbindelser."
         ],
         "tips": [
           "Installer og konfigurer SDK-motorer, før du bruger dem til enten udførelse eller gennemgang."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "I kø betyder normalt samtidighedskapaciteten er fuld. At vente på gennemgang kræver bekræftelse; det betyder ikke, at appen sidder fast.",
-          "Sletning adskiller sig fra arkivering. Læs bekræftelsen før permanent sletning."
+          "Sletning adskiller sig fra arkivering. Læs bekræftelsen før permanent sletning.", "Hold en opgave nede på mobilen for flervalg. Kontrollér udvalg og bekræftelse før arkivering eller sletning. Kopiering kræver én valgt opgave; begrænsninger for kørende opgaver gælder fortsat."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Åbn arkivlisten, og klik titlen for skrivebeskyttet at folde sidste spørgsmål og svar ud. Visning gendanner ikke samtalen og henter ikke fulde udførelsesdetaljer. Gendan udtrykkeligt for at fortsætte."
         ],
         "tips": [
-          "Arkivering bevarer indhold. Sletning af samtaler og beskeder har større konsekvenser; forveksl ikke opløsning af gruppen med samtidig sletning."
+          "Arkivering bevarer indhold. Sletning af samtaler og beskeder har større konsekvenser; forveksl ikke opløsning af gruppen med samtidig sletning.", "Opret undergrupper via sidepanelets gruppemenu; kontrollér målet før træk. Klik på kvoten ved indtastningen for flere motorer. Ved indsamlingsfejl beholdes gamle værdier: kontrollér opdateringstiden, det er ikke en faktura. Markdown-billedknappen uploader og indsætter en sti; kontrollér forhåndsvisningen før lagring."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Gruppemenu i projektets sidebjælke og skrivebeskyttet arkivvisning",
-          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Gruppemenu i projektets sidebjælke og skrivebeskyttet arkivvisning","caption":"Aktuel opsætning i det faste demonstrationsmiljø; ingen opgave, model eller parring blev kørt, og ingen legitimationsoplysninger blev offentliggjort."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Cachelagrede fjernregistreringer er ikke livestatus. Synkronisering kan være blokeret, mens projektopgaver eller chats er aktive.",
-          "Tilslut først offline eller uautoriserede fjernprojekter igen. Browseren kopierer ikke værtslagre til din computer. Læsning kræver Git-view-tilladelse; commit, branch, merge og synkroniseringshandlinger har separate bevillinger. Tjek tilladelser, hvis der mangler knapper."
+          "Tilslut først offline eller uautoriserede fjernprojekter igen. Browseren kopierer ikke værtslagre til din computer. Læsning kræver Git-view-tilladelse; commit, branch, merge og synkroniseringshandlinger har separate bevillinger. Tjek tilladelser, hvis der mangler knapper.", "Vælg filer i Git-ændringslisten for at kassere dem samlet. Se forskellene før bekræftelse: indhold uden commit kan være umuligt at gendanne. Kassering er ikke sikkerhedskopiering."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "Interaktiv tilstand er valgt, og adgangskoden er tom. Der er ikke oprettet noget delingslink."
         }
       },
+      {"title":"WebRTC-forbindelse og parring","steps":["Gem signaleringsadressen under Indstillinger → Fjernadgang → WebRTC. Parrings-QR vises først efter vellykket signalerings- og UDP-kontrol. Værten skal være online, og normale rettigheder gælder stadig. Koden indeholder en hemmelighed: offentliggør den ikke. Kontrollér netværket ved fejl; beståede kontroller garanterer ikke forbindelse mellem netværk."],"screenshot":{"id":"webrtc-pairing","alt":"WebRTC-forbindelse og parring","caption":"Aktuel opsætning i det faste demonstrationsmiljø; ingen opgave, model eller parring blev kørt, og ingen legitimationsoplysninger blev offentliggjort."}},
       {
         "title": "Konfigurer værtsadgang og inviter enheder",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "Standardintervallet er 5 minutter. Tilladelse til proaktiv kontakt giver ikke beskeder hver runde; uden ventende hændelser kan runden ende stille. Modelkald kan koste penge, og resuméet er ikke en fuld tankekæde.",
-          "Delegationstitler må have 60 tegn og erstatter ikke hele instruktionen. Fortsættelser kan arve titlen; eksisterende chats omdøbes ikke. Antallet af nye minder åbner resuméer, højrepilen hele posten. Nul skjules; stilhed er ikke en leveringsfejl."
+          "Delegationstitler må have 60 tegn og erstatter ikke hele instruktionen. Fortsættelser kan arve titlen; eksisterende chats omdøbes ikke. Antallet af nye minder åbner resuméer, højrepilen hele posten. Nul skjules; stilhed er ikke en leveringsfejl.", "Automatisk proaktiv tænkning slås fra efter tre fejl i træk. Se historikken og ret årsagen, før du aktiverer igen. Tilbage i den mobile digitale hub åbner forrige side."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Refleksionsindstillinger og separat sideinddelt kørselshistorik",
-          "caption": "Den faktiske kinesiske grænseflade fra det faste demomiljø. Viser indstillinger, indgange eller tomme lister; ingen model blev kaldt, og ingen besked blev sendt under denne optagelse."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Refleksionsindstillinger og separat sideinddelt kørselshistorik","caption":"Aktuel opsætning i det faste demonstrationsmiljø; ingen opgave, model eller parring blev kørt, og ingen legitimationsoplysninger blev offentliggjort."}
       },
       {
         "title": "Bind kanalbetjening og notifikationer",

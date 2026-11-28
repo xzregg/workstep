@@ -9,6 +9,29 @@ import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { MarkdownAssetUrlProvider } from '../src/contexts/MarkdownAssetUrlContext'
 import { installDomEnvironment } from './helpers/domEnv'
 
+test('direct Android image preview downloads original bytes through the native bridge',async()=>{
+  const {window,document}=installDomEnvironment()
+  window.happyDOM.setURL('https://gateway.test/p2p/device/')
+  useLocaleStore.getState().setLocale('zh-CN')
+  const previous=globalThis.fetch,create=URL.createObjectURL,revoke=URL.revokeObjectURL
+  const messages:{type:string;filename?:string;data?:string}[]=[]
+  globalThis.fetch=async()=>new Response('original image bytes',{headers:{'Content-Type':'image/png'}})
+  URL.createObjectURL=()=> 'blob:https://gateway.test/image';URL.revokeObjectURL=()=>{}
+  window.WorkStepAndroid={postMessage(){}}
+  window.WorkStepP2pDownload={onmessage:null,postMessage(raw){messages.push(JSON.parse(raw));queueMicrotask(()=>window.WorkStepP2pDownload!.onmessage?.({data:'ok'}))}}
+  const root=createRoot(document.body.appendChild(document.createElement('div')))
+  try{
+    await act(async()=>root.render(<I18nProvider><ImagePreview src="/api/fs/file?path=photo.png" onClose={()=>{}}/></I18nProvider>))
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))})
+    const button=[...document.querySelectorAll('button')].find(item=>item.textContent==='下载图片')!
+    await act(async()=>{button.click();await new Promise(resolve=>setTimeout(resolve,20))})
+    assert.equal(messages[0]?.type,'start')
+    assert.equal(messages[0]?.filename,'photo.png')
+    assert.equal(messages.at(-1)?.type,'finish')
+    assert.equal(atob(messages.find(item=>item.type==='chunk')!.data!),'original image bytes')
+  }finally{await act(async()=>root.unmount());globalThis.fetch=previous;URL.createObjectURL=create;URL.revokeObjectURL=revoke;await window.happyDOM.close()}
+})
+
 test('preview copies resolved addresses and image contents and reports failures', async () => {
   const { window, document } = installDomEnvironment()
   useLocaleStore.getState().setLocale('zh-CN')

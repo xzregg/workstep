@@ -69,6 +69,7 @@ import { useTaskReviewActions } from '../hooks/useTaskReviewActions'
 import { useTaskPendingInserts } from '../hooks/useTaskPendingInserts'
 import { CUSTOM } from '../utils/agui'
 import { useI18n, localizeErrorDisplay } from '../i18n'
+import { isWebRtcRemoteBrowser } from '../webrtc/webrtcLocation'
 import type { SharedTaskDetailBinding } from './SharedEditableTaskDetail'
 
 const EMPTY_EVENTS: any[] = []
@@ -173,7 +174,8 @@ export default function TaskDetail({ taskId, onClose, shared, project, focusMess
   const taskGitApi = useMemo(() => detailProject?.type === 'remote' ? createProjectGitApi(projectId) : gitApi, [projectId, detailProject?.type])
   const ownerFilePreview = useMemo(() => shared?.readCapabilities.filePreview || ({
     load: (path: string) => fsApi.preview(path, projectId),
-    rawUrl: (path: string) => fsApi.projectFileUrl(path, projectId),
+    rawUrl: (path: string) => isWebRtcRemoteBrowser()
+      ? fsApi.previewFileUrl(path, projectId) : fsApi.projectFileUrl(path, projectId),
   }), [projectId, shared?.readCapabilities.filePreview])
   const browseGitWorkspace = useCallback(
     (path: string, includeHidden: boolean) => shared ? shared.readCapabilities.browseGitWorkspace(path, includeHidden) : fsApi.browse(path, projectId || undefined, includeHidden),

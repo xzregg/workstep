@@ -167,6 +167,8 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
             "author_device_id",
             "author_device_name",
             "author_source",
+            "identity_source",
+            "access_source",
             "created_at",
             "updated_at",
         }

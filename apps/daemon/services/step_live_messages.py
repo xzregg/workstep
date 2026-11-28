@@ -3,14 +3,14 @@
 import asyncio
 import json
 import logging
-import uuid
 from pathlib import Path
 
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from models import Message, StepRun, StepSupplement, Task
 from models.fields import utc_now
+from services.business_ids import new_id
 from services.intervention import intervention_manager
-from services.messages import StepEventProgress, create_task_message, new_message_id
+from services.messages import StepEventProgress, create_task_message
 from services.pipeline import Step
 from services.prompt_sections import prompt_section
 
@@ -33,7 +33,8 @@ async def _stop_engine_safely(engine: object, run_key: str) -> None:
 class StepLiveMessages:
     """Own active engine and message queue state for one task runner."""
 
-    def __init__(self, journal: TurnEventJournal, run_db, publish, ajournal_snapshot):
+    def __init__(self, journal: TurnEventJournal, run_db, publish, ajournal_snapshot, *, project_id=None):
+        self._project_id = project_id
         self._journal = journal
         self._run_db = run_db
         self._publish = publish
@@ -132,7 +133,7 @@ class StepLiveMessages:
             })
         except Message.DoesNotExist:
             pass
-        next_id = new_message_id()
+        next_id = new_id(self._project_id)
         next_journal = await self._journal.astart(
             artifacts_dir.parent, f"task-{task.id}", next_id, session_id,
         )
@@ -242,7 +243,7 @@ class StepLiveMessages:
                 "engine": engine, "model": model,
                 "type": "message_completed", "data": {"status": "succeeded"},
             })
-            next_id = new_message_id()
+            next_id = new_id(self._project_id)
             next_journal = await self._journal.astart(
                 artifacts_dir.parent, f"task-{task.id}", next_id,
             )
@@ -322,7 +323,7 @@ class StepLiveMessages:
             raise ValueError("Step message queue unavailable")
         channel = self._channels.get(run_key, "execution")
         now = utc_now()
-        message_id = new_message_id()
+        message_id = new_id(self._project_id)
 
         def persist_live_message():
             try:
@@ -344,7 +345,7 @@ class StepLiveMessages:
             )
             if as_guidance:
                 StepSupplement.create(
-                    id=str(uuid.uuid4()), task=task, step_key=step_key,
+                    id=new_id(self._project_id), task=task, step_key=step_key,
                     content=normalized, source_proposal=None,
                     origin="live_guidance",
                     created_sequence=(

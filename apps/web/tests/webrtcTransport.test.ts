@@ -77,6 +77,62 @@ class MockDataChannel implements DataChannelLike {
   }
 }
 
+test('large HTTP uploads wait for the channel buffer and honor cancellation', async () => {
+  const channel = new MockDataChannel()
+  const transport = new WebRtcTransportClient(channel)
+  channel.onSend = (item) => {
+    if (typeof item !== 'string') channel.bufferedAmount += item.byteLength
+  }
+  const controller = new AbortController()
+  const upload = transport.fetch('https://signal.example.com/api/upload', {
+    method: 'POST', body: 'x'.repeat(2 * 1024 * 1024), signal: controller.signal,
+  })
+  const rejected = assert.rejects(upload, { name: 'AbortError' })
+  await new Promise(resolve => setTimeout(resolve, 20))
+  const queued = channel.sentBytes.length
+  assert.ok(queued > 0 && queued < 32)
+  channel.bufferedAmount = 0
+  await new Promise(resolve => setTimeout(resolve, 30))
+  assert.ok(channel.sentBytes.length > queued && channel.sentBytes.length < 64)
+  controller.abort()
+  await rejected
+  const stopped = channel.sentBytes.length
+  channel.bufferedAmount = 0
+  await new Promise(resolve => setTimeout(resolve, 20))
+  assert.equal(channel.sentBytes.length, stopped)
+  transport.close()
+})
+
+test('upload credits bound queued data without delaying heartbeats', async () => {
+  const channel = new MockDataChannel()
+  const transport = new WebRtcTransportClient(channel)
+  channel.onSend = (item) => {
+    if (typeof item !== 'string') return
+    const message = JSON.parse(item)
+    if (message.type === 'p2p.auth') channel.emitMessage(JSON.stringify({ type: 'p2p.ready', upload_flow_control: true }))
+    if (message.type === 'p2p.ping') channel.emitMessage(JSON.stringify({ type: 'p2p.pong', nonce: message.nonce }))
+  }
+  await transport.authenticate('ticket', 'secret')
+  const abort = new AbortController()
+  const upload = transport.fetch('/api/upload', { method: 'POST', body: 'x'.repeat(2 * 1024 * 1024), signal: abort.signal })
+  const rejected = assert.rejects(upload, { name: 'AbortError' })
+  try {
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const start = channel.sentTexts.map(text => JSON.parse(text)).find(message => message.type === 'http.request')
+    assert.equal(start.payload.upload_flow_control, true)
+    assert.equal(channel.sentBytes.length, 0)
+    channel.emitMessage(JSON.stringify({ stream_id: start.stream_id, type: 'window.update', payload: { credits: 2 } }))
+    await new Promise(resolve => setTimeout(resolve, 30))
+    assert.equal(channel.sentBytes.length, 2)
+    assert.ok(await transport.ping() >= 0)
+    assert.equal(channel.sentBytes.length, 2)
+  } finally {
+    abort.abort()
+    await rejected
+    transport.close()
+  }
+})
+
 test('detects /p2p/<device_id> basename and device id', async () => {
   await installWindowLocation('https://signal.example.com/p2p/dev-123/tasks?project=p1', () => {
     assert.equal(webrtcWorkspacePath(), '/p2p/dev-123')
@@ -121,6 +177,7 @@ test('verifyNonRelayCandidatePair rejects relay candidates and accepts host/srfl
 test('WebRtcTransportClient bridges streaming fetch, binary upload, abort, and WebSocket over DataChannel', async () => {
   const channel = new MockDataChannel()
   const transport = new WebRtcTransportClient(channel)
+  let downloadStreamId: string | undefined
 
   channel.onSend = (item) => {
     if (typeof item !== 'string') {
@@ -168,6 +225,7 @@ test('WebRtcTransportClient bridges streaming fetch, binary upload, abort, and W
       return
     }
     if (msg.type === 'http.request' && msg.payload.phase === 'start' && msg.payload.path === '/api/stream') {
+      downloadStreamId = msg.stream_id
       queueMicrotask(() => {
         channel.emitMessage(JSON.stringify({
           stream_id: msg.stream_id,
@@ -178,13 +236,14 @@ test('WebRtcTransportClient bridges streaming fetch, binary upload, abort, and W
         const c2 = new Uint8Array([5, 6, 7, 8])
         channel.emitMessage(encodeBinaryFrame(WebRtcBinaryKind.httpResponseBody, msg.stream_id, c1, false))
         channel.emitMessage(encodeBinaryFrame(WebRtcBinaryKind.httpResponseBody, msg.stream_id, c2, true))
-        channel.emitMessage(JSON.stringify({
-          stream_id: msg.stream_id,
-          type: 'http.response',
-          payload: { phase: 'end' },
-        }))
       })
       return
+    }
+    if (msg.type === 'window.update' && msg.stream_id === downloadStreamId) {
+      assert.equal(msg.payload.credits, 2)
+      channel.emitMessage(JSON.stringify({
+        stream_id: msg.stream_id, type: 'http.response', payload: { phase: 'end' },
+      }))
     }
     if (msg.type === 'websocket.open') {
       queueMicrotask(() => {
@@ -203,6 +262,7 @@ test('WebRtcTransportClient bridges streaming fetch, binary upload, abort, and W
   // 1) Streaming response + window.update credit ack
   const dlRes = await transport.fetch('https://signal.example.com/api/stream')
   assert.equal(dlRes.status, 200)
+  assert.equal(channel.sentTexts.some((t) => JSON.parse(t).type === 'window.update'), false)
   const dlBytes = new Uint8Array(await dlRes.arrayBuffer())
   assert.deepEqual(Array.from(dlBytes), [1, 2, 3, 4, 5, 6, 7, 8])
   assert.ok(channel.sentTexts.some((t) => JSON.parse(t).type === 'window.update'))

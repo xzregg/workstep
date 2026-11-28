@@ -17,6 +17,8 @@ import PrototypeFiles from './PrototypeFiles'
 import {PrototypeFrameRouting, type FrameTarget} from './prototypeFrameRouting'
 import PrototypeHistory from './PrototypeHistory'
 import './PrototypeEditor.css'
+import { HtmlPreviewFrame } from '../HtmlPreviewFrame'
+import { isWebRtcRemoteBrowser } from '../../webrtc/webrtcLocation'
 
 export default function PrototypeEditor({projectId,path:entry,onClose}:{projectId:string;path:string;onClose:()=>void}) {
   const {t}=useI18n()
@@ -59,7 +61,7 @@ export default function PrototypeEditor({projectId,path:entry,onClose}:{projectI
     const state=current.current;if(!state.work||!state.path)return
     const rootPath=state.previewDocument?.html_preview.entry||state.path
     const changes=changedPaths?.length?changedPaths:[state.path]
-    if(routing.current.activeRoute.length&&!changes.includes(rootPath)){
+    if(routing.current.activeRoute.length&&!changes.includes(rootPath)&&!isWebRtcRemoteBrowser()){
       setSelection(null);setHover(null);setCommentTarget(null)
       for(const target of routing.current.targets.values())if(changes.includes(target.path))postFrame({type:'refresh-frame',path:target.path},target.route)
       return
@@ -250,7 +252,7 @@ export default function PrototypeEditor({projectId,path:entry,onClose}:{projectI
             </div>
           </div>
           {tree&&work&&<div className="prototype-files-anchor"><PrototypeFiles work={work} path={path} disabled={Boolean(comment.trim())} onSelect={file=>{if(file===path)return;routing.current.reset();setPath(file);setOutgoing(null)}} onClose={()=>changeLayout('tree',false)}/></div>}
-          <div className="prototype-frame-wrap" style={{'--prototype-preview-scale':previewScale} as CSSProperties}><div className={`prototype-canvas${viewport==='mobile'?' prototype-canvas--mobile':''}`}>{previewDocument&&<iframe ref={frame} title={previewDocument.html_preview.entry} src={fsApi.htmlPreviewUrl(previewDocument.html_preview,projectId)} sandbox={HTML_PREVIEW_SANDBOX} referrerPolicy="no-referrer" onLoad={sendMode}/>}</div>
+          <div className="prototype-frame-wrap" style={{'--prototype-preview-scale':previewScale} as CSSProperties}><div className={`prototype-canvas${viewport==='mobile'?' prototype-canvas--mobile':''}`}>{previewDocument&&<HtmlPreviewFrame ref={frame} title={previewDocument.html_preview.entry} src={fsApi.htmlPreviewUrl(previewDocument.html_preview,projectId)} sandbox={HTML_PREVIEW_SANDBOX} referrerPolicy="no-referrer" onLoad={sendMode}/>}</div>
             {mode&&target&&!layout.movingElement&&<div className="prototype-comment" style={{top:Math.max(8,Math.min(commentTop+8,(wrapBounds?.height||600)-150)),left:Math.max(8,Math.min(commentLeft,(wrapBounds?.width||600)-280))}} onPointerEnter={()=>{if(!commentTarget)setCommentTarget(target)}}>
               <span>{target.tag} {target.text.slice(0,24)}</span><textarea aria-label={t('prototype.comment')} placeholder={t('prototype.comment')} value={comment} onFocus={()=>setCommentTarget(target)} onChange={e=>{setCommentTarget(target);setSelection(target);setComment(e.target.value)}}/>
               <Button disabled={!comment.trim()||locked||Boolean(outgoing)} onClick={()=>{setSelection(target);setOutgoing({text:comment,key:randomUuid(),selection:target});changeLayout('showChat',true)}}>{t('prototype.sendComment')}</Button><Button variant="ghost" onClick={()=>{setComment('');setCommentTarget(null);setHover(null)}}>{t('common.close')}</Button>

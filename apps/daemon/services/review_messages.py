@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import Callable, NamedTuple
 
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
+from services.business_ids import new_id
 from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from services.config import config_store
-from services.messages import create_task_message, extract_usage_json, new_message_id
+from services.messages import create_task_message, extract_usage_json
 from services.pipeline import Step
 from services.review_gate import ReviewGate, ReviewOutcome
 from services.step_live_messages import StepLiveMessages
@@ -79,12 +80,13 @@ class StepReviewMessages:
             return
         from main import gateway_client
 
+        user_id = await self._run_db(lambda: Message.get_by_id(message_id).initiated_by_user_id)
         await gateway_client.record_message_usage(
             project_id=self._project_id, task_id=task.id, message_id=message_id,
             run_id=str(outcome.review_run.step_run_id), model=outcome.review_run.model,
             occurred_at=outcome.review_run.ended_at or utc_now(),
             provider=outcome.provider, provider_id=outcome.provider_id,
-            usage_json=usage_json, user_id=task.creator_id,
+            usage_json=usage_json, user_id=user_id,
         )
 
     async def load_checkpoint(
@@ -188,6 +190,7 @@ class StepReviewMessages:
             set_active_engine=lambda engine: self._live.set_engine(run_key, engine),
             live_message_queue=review_queue,
             on_live_message=live_handler,
+            project_id=self._project_id,
         )
         outcome = await gate.evaluate(
             task=task, step=step, workflow_run=workflow_run,
@@ -242,7 +245,7 @@ class StepReviewMessages:
         review_prompt: str,
     ) -> tuple[str, JournalRef]:
         """Persist and publish the review bubble before the reviewer starts."""
-        message_id = new_message_id()
+        message_id = new_id(self._project_id)
         now = utc_now()
         journal_ref = await self._journal.astart(
             artifacts_dir.parent,
@@ -390,7 +393,7 @@ class StepReviewMessages:
         outcome,
     ) -> None:
         """Create the completed bubble for manual or fallback review."""
-        message_id = new_message_id()
+        message_id = new_id(self._project_id)
         now = utc_now()
         journal_ref = await self._journal.astart(
             artifacts_dir.parent, f"task-{task.id}", message_id,

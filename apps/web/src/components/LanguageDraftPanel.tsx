@@ -1,3 +1,4 @@
+import { downloadWebRtcBlob } from '../webrtc/downloadFile'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { languagesApi } from '../api/languages'
 import { ApiError } from '../api/transport'
@@ -83,8 +84,7 @@ export default function LanguageDraftPanel({workspacePath, running}: {workspaceP
   <input ref={fileInput} type="file" accept=".zip,application/zip" className="skin-settings-file" onChange={event => { const file=event.target.files?.[0]; event.target.value=''; if (file) void run(() => importFile(file)) }} />
   <Button size="sm" disabled={busy || running} onClick={() => fileInput.current?.click()}>{t('languages.import')}</Button>
   {!!installed.length && <details><summary>{t('languages.installed')}</summary>{installed.map(item => <div key={item.manifest.id} className="language-draft-installed"><span>{item.manifest.native_name}</span><Button size="sm" disabled={busy || running} onClick={() => void run(async () => {
-   const blob=await languagesApi.export(item.manifest.id), url=URL.createObjectURL(blob)
-   try { const link=window.document.createElement('a'); link.href=url; link.download=item.manifest.id + '.zip'; link.click() } finally { window.setTimeout(() => URL.revokeObjectURL(url),0) }
+   await downloadWebRtcBlob(await languagesApi.export(item.manifest.id),item.manifest.id+'.zip')
   })}>{t('languages.export')}</Button><Button size="sm" disabled={busy || running} onClick={() => setRemoving(item.manifest.id)}>{t('languages.remove')}</Button></div>)}</details>}
   <ConfirmDialog open={replace || !!importing} title={t('languages.replace')} loading={busy} onCancel={() => { if (!busy) { setReplace(false); setImporting(null) } }} onConfirm={() => void run(() => importing ? importFile(importing,true) : install(true))} />
   <ConfirmDialog open={!!removing} title={t('languages.removeConfirm')} loading={busy} onCancel={() => { if (!busy) setRemoving(null) }} onConfirm={() => void run(async () => { const id=removing!; await languagesApi.remove(id); if (useLocaleStore.getState().language?.manifest.id === id) useLocaleStore.getState().setLocale(useLocaleStore.getState().language!.manifest.fallback_locale); await useLocaleStore.getState().refresh(); if (mounted.current) setRemoving(null) })} />

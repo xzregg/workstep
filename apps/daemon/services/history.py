@@ -246,6 +246,8 @@ def message_author_snapshot(msg: Message) -> dict:
         "initiated_by_name": msg.initiated_by_name,
         "author_device_id": msg.author_device_id,
         "author_device_name": msg.author_device_name,
+        "identity_source": msg.identity_source,
+        "access_source": msg.access_source,
     }
 
 

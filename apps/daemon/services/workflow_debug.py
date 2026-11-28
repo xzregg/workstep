@@ -4,8 +4,8 @@ import json
 import shutil
 from collections import defaultdict
 from pathlib import Path
-from uuid import uuid4
 
+from services.business_ids import new_id
 from models import ReviewRun, Task, Workflow
 from models.fields import utc_now
 from services.artifact_rounds import (
@@ -244,7 +244,7 @@ def create_debug_task(project, source_id, request, task_service, engine, creator
             now = utc_now()
             if debug is None:
                 debug = Workflow.create(
-                    id=uuid4().hex, name=source.name, debug_source_id=source.id,
+                    id=new_id(project.id), name=source.name, debug_source_id=source.id,
                     steps_json=json.dumps(request.workflow, ensure_ascii=False), created_at=now, updated_at=now,
                 )
             else:

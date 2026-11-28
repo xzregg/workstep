@@ -4,6 +4,8 @@ import { useSyncExternalStore } from 'react'
 import { compileSkin, defaultSkin, resolvedSkinLayout, type SkinDocument } from './contract'
 import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 import { appearanceCache, appearanceStorageKey } from '../utils/appearanceStorage'
+import { SkinResources } from './resources'
+import { isWebRtcRemoteBrowser } from '../webrtc/webrtcLocation'
 
 export const SKIN_EVENT = 'workstep:skin-change'
 export const SKIN_LIFECYCLE_EVENT = 'workstep:skin-lifecycle'
@@ -17,6 +19,7 @@ let committed = active
 let previewing = false
 let mediaTarget: Window | null = null
 let detachMedia: (() => void) | null = null
+let resources: SkinResources | null = null
 const listeners = new Set<() => void>()
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } }
 export const useActiveSkin = () => useSyncExternalStore(subscribe, () => active, () => active)
@@ -53,12 +56,24 @@ function wireViewport() {
 export function applySkin(skin: SkinDocument, reason: SkinLifecycle = 'load') {
   let css: string
   try { css = compileSkin(skin) } catch (error) { lifecycle('error', skin?.manifest ? skin : defaultSkin(), String(error)); throw error }
+  resources?.dispose()
+  resources = null
   // Validate before changing a working skin.
   if (skin.manifest.id === 'default') document.getElementById('workstep-skin-style')?.remove()
   else {
     let style = document.getElementById('workstep-skin-style') as HTMLStyleElement | null
     if (!style) { style = document.createElement('style'); style.id = 'workstep-skin-style'; document.head.appendChild(style) }
-    style.textContent = css
+    if (isWebRtcRemoteBrowser()) {
+      const currentResources = new SkinResources()
+      resources = currentResources
+      style.textContent = css.replace(/url\("[^"]*\/api\/skins\/(?:files|assets)\/[^"]+"\)/g, 'url("data:,")')
+      const target = style
+      void currentResources.css(css).then(resolved => {
+        if (resources === currentResources) target.textContent = resolved
+      }).catch(error => {
+        if (resources === currentResources) lifecycle('error', skin, String(error))
+      })
+    } else style.textContent = css
   }
   const root = document.documentElement
   root.dataset.skinId = skin.manifest.id

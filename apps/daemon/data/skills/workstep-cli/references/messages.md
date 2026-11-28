@@ -56,7 +56,7 @@ as a failed request. A timeout can occur after acceptance, so check before retry
 When given a WorkStep session ID and message ID, read that message directly:
 
 ```bash
-uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli message get --session <session_id> --message <message_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli message get --session <session_id> --message <message_id> --project <project_id> --json
 ```
 
 Use the invocation alternatives in [Transport](transport.md). This reads the
@@ -65,16 +65,14 @@ the complete saved `content`, role, status, author, timestamps, and project/sess
 IDs. It does not load other messages, prompts, or process events. A running
 message contains only the content persisted so far.
 
-New session IDs replace the first UUID segment with the complete project ID:
-`<project_id>-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. The project prefix locates its database
-directly; the remaining random segments keep sessions unique. These are WorkStep
-conversation IDs, not engine thread IDs.
-
-Legacy UUID sessions remain readable. Add `--project <project_id>` when known
-to address the database directly; without it, the local host checks registered
-projects for that exact message. Project-scoped remote access to legacy sessions
-requires `--project`; it cannot search other projects. Unknown or mismatched
-session/message IDs return an error, never a different message.
+A new session in a project with an 8-character ID starts with those eight
+characters and ends with an 18-character sortable suffix. Pass the project ID
+explicitly to address its database directly. Older hyphenated session IDs can
+still resolve their project through the existing lookup. For an ID without a
+recognized legacy prefix, an unscoped local request that omits `--project`
+searches registered projects for the exact message. Project-scoped remote access
+stays within the authorized project. A mismatched session or message returns an
+error.
 
 Use `--fields id,content,role` to select top-level fields. Read-only lookup
 requires no mutation confirmation. Missing access, connection errors, and not

@@ -1,3 +1,4 @@
+import { retryWebRtcTransfer } from '../webrtc/retryTransfer'
 import { request, BASE, ApiError } from './transport'
 import { gatewayFetch } from '../utils/gatewayWorkspacePath'
 import { browserActorHeaders } from '../utils/browserActor'
@@ -14,6 +15,6 @@ export const languagesApi = {
  validate: (path: string) => request<{package: LanguageDocument; coverage: NonNullable<LanguageDocument['coverage']>}>('/language-packs/validate', {method:'POST', body:JSON.stringify({path})}),
  register: (path: string, replace = false) => request<LanguageDocument>('/language-packs/register', {method:'POST', body:JSON.stringify({path, replace})}),
  import: async (file: File, replace = false) => (await binary('/language-packs/import?replace=' + replace, {method:'POST', body:file, headers:{'Content-Type':'application/zip'}})).json() as Promise<LanguageDocument>,
- export: async (id: string) => (await binary('/language-packs/' + encodeURIComponent(id) + '/export')).blob(),
+ export: (id: string) => retryWebRtcTransfer(async () => (await binary('/language-packs/' + encodeURIComponent(id) + '/export')).blob()),
  remove: (id: string) => request('/language-packs/' + encodeURIComponent(id), {method:'DELETE'}),
 }

@@ -142,7 +142,7 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
     ),
     WorkstepTool(
         name="workstep_get_message",
-        description="Read one original persisted chat message by WorkStep session_id and message_id, without memory search. Project-addressable session IDs locate the database directly; project_id is optional for legacy IDs.",
+        description="Read one persisted WorkStep chat message by session_id and message_id. Pass project_id for direct lookup. Older prefixed session IDs can also resolve their project.",
         method="GET", path="/api/chat-sessions/{session_id}/messages/{message_id}",
         parameters={key: {"type": "string"} for key in ("session_id", "message_id", "project_id")},
         required=("session_id", "message_id"), path_params=("session_id", "message_id"),

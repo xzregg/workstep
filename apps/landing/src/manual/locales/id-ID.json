@@ -381,11 +381,7 @@
           "Maksimum pengembalian mengendalikan garis balik putus-putus, terpisah dari percobaan ulang setelah tinjauan gagal.",
           "Mendeklarasikan porta keluaran tidak membuat berkas. Minta hasil nyata dalam prompt dan periksa setelahnya."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Hasil masukan dan keluaran terkait dalam editor simpul",
-          "caption": "Masukan menyatakan persyaratan tugas dengan rencana eksekusi sebagai keluaran terkait. Pengaturan jumlah pengembalian tidak ditampilkan."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Hasil masukan dan keluaran terkait dalam editor simpul","caption":"Konfigurasi terkini lingkungan demonstrasi tetap; tidak menjalankan tugas, model atau pemasangan dan tidak memublikasikan kredensial."}
       },
       {
         "title": "Atur tinjauan dan mulai otomatis",
@@ -393,7 +389,7 @@
           "Di Tinjauan langkah pada editor, pilih Tinjauan manual, Tinjauan otomatis, atau Lewati tinjauan. Untuk awal disarankan manual.",
           "Tinjauan manual berhenti setelah eksekusi untuk keputusan Anda. Untuk otomatis, tulis kriteria yang bisa diuji dan pilih mesin serta model bila perlu.",
           "Atur jumlah percobaan ulang setelah tinjauan otomatis menolak hasil. Kesalahan pada agen peninjau sendiri dialihkan ke penanganan manual.",
-          "Atur Mulai otomatis setelah dibuat sesuai kebutuhan lalu simpan. Untuk latihan awal, nonaktifkan agar tugas bisa diperiksa sebelum berjalan."
+          "Di pengaturan langkah, pilih mesin, penyedia lalu model. Jika mulai otomatis mati, tekan Mulai pada langkah di detail tugas setelah dependensi siap. Memulai tugas hanya mengizinkan langkah masuk, bukan langkah manual berikutnya. Keluaran global berbagi jalur tetap Global. Periksa berkas dan tinjauan; jangan gunakan pada koneksi balik."
         ],
         "tips": [
           "Pasang dan atur mesin SDK sebelum dipakai baik untuk eksekusi maupun tinjauan."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "Mengantri biasanya berarti kapasitas konkurensi sudah penuh. Menunggu peninjauan memerlukan konfirmasi; itu tidak berarti aplikasinya macet.",
-          "Penghapusan berbeda dengan pengarsipan. Baca konfirmasi sebelum penghapusan permanen."
+          "Penghapusan berbeda dengan pengarsipan. Baca konfirmasi sebelum penghapusan permanen.", "Di ponsel, tekan lama tugas untuk memilih beberapa item. Periksa cakupan dan konfirmasi sebelum mengarsipkan atau menghapus. Salin hanya tersedia untuk satu tugas terpilih; batasan tugas berjalan tetap berlaku."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Dalam daftar arsip, klik judul untuk membuka tanya-jawab terakhir secara baca-saja. Melihat tidak memulihkan sesi atau memuat seluruh detail eksekusi. Pulihkan secara eksplisit untuk melanjutkan obrolan."
         ],
         "tips": [
-          "Pengarsipan mempertahankan isi. Menghapus percakapan dan pesan berdampak lebih besar; bedakan membubarkan grup dengan menghapus isinya juga."
+          "Pengarsipan mempertahankan isi. Menghapus percakapan dan pesan berdampak lebih besar; bedakan membubarkan grup dengan menghapus isinya juga.", "Buat subgrup melalui menu grup bilah samping; periksa tujuan sebelum menyeret. Klik kuota di area masukan untuk melihat beberapa mesin. Kegagalan pengambilan mempertahankan nilai lama: periksa waktu pembaruan, bukan tagihan. Tombol gambar Markdown mengunggah lalu menyisipkan jalur; periksa pratinjau sebelum menyimpan."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Menu grup percakapan di bilah samping dan pratinjau arsip baca-saja",
-          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Menu grup percakapan di bilah samping dan pratinjau arsip baca-saja","caption":"Konfigurasi terkini lingkungan demonstrasi tetap; tidak menjalankan tugas, model atau pemasangan dan tidak memublikasikan kredensial."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Catatan jarak jauh yang di-cache bukan status aktif. Sinkronisasi mungkin diblokir saat tugas proyek atau percakapan aktif.",
-          "Hubungkan kembali proyek jarak jauh yang offline atau tidak sah terlebih dahulu. Browser tidak menyalin repositori host ke komputer Anda. Membaca memerlukan izin Git-view; tindakan komit, cabang, penggabungan, dan sinkronisasi memiliki izin terpisah. Periksa izin jika tombol tidak ada."
+          "Hubungkan kembali proyek jarak jauh yang offline atau tidak sah terlebih dahulu. Browser tidak menyalin repositori host ke komputer Anda. Membaca memerlukan izin Git-view; tindakan komit, cabang, penggabungan, dan sinkronisasi memiliki izin terpisah. Periksa izin jika tombol tidak ada.", "Pilih berkas di daftar perubahan Git untuk membuangnya bersama. Tinjau perbedaan sebelum mengonfirmasi: isi yang belum di-commit mungkin tidak dapat dipulihkan. Membuang bukan mencadangkan."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "Mode interaktif dipilih dan kata sandi dikosongkan. Tidak ada tautan berbagi yang dibuat."
         }
       },
+      {"title":"Koneksi dan pemasangan WebRTC","steps":["Di Pengaturan → Akses jarak jauh → WebRTC, simpan alamat pensinyalan. QR pemasangan hanya muncul setelah pemeriksaan pensinyalan dan UDP berhasil. Host harus tetap daring dan izin biasa berlaku. Kode memuat rahasia: jangan publikasikan. Periksa jaringan saat gagal; pemeriksaan berhasil tidak menjamin koneksi lintas jaringan."],"screenshot":{"id":"webrtc-pairing","alt":"Koneksi dan pemasangan WebRTC","caption":"Konfigurasi terkini lingkungan demonstrasi tetap; tidak menjalankan tugas, model atau pemasangan dan tidak memublikasikan kredensial."}},
       {
         "title": "Konfigurasikan akses host dan perangkat undangan",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "Interval bawaan 5 menit. Mengizinkan kontak proaktif tidak berarti setiap pemeriksaan mengirim pesan; tanpa peristiwa tertunda, pemeriksaan dapat selesai diam-diam. Panggilan model bisa berbayar; ringkasan aktivitas bukan seluruh rangkaian pemikiran.",
-          "Judul delegasi maksimal 60 karakter dan tidak menggantikan instruksi lengkap. Kelanjutan dapat mewarisinya tanpa mengubah nama percakapan lama. Jumlah memori baru membuka ringkasan, panah kanan membuka catatan lengkap. Nol disembunyikan; akhir senyap bukan kegagalan pengiriman."
+          "Judul delegasi maksimal 60 karakter dan tidak menggantikan instruksi lengkap. Kelanjutan dapat mewarisinya tanpa mengubah nama percakapan lama. Jumlah memori baru membuka ringkasan, panah kanan membuka catatan lengkap. Nol disembunyikan; akhir senyap bukan kegagalan pengiriman.", "Pemikiran proaktif otomatis dimatikan setelah tiga kegagalan berturut-turut. Periksa riwayat dan atasi penyebab sebelum mengaktifkannya lagi. Tombol Kembali di hub digital seluler membuka halaman sebelumnya."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Pengaturan pemikiran proaktif dan catatan aktivitas dengan halaman terpisah",
-          "caption": "Antarmuka Tionghoa nyata dari lingkungan demo tetap. Menampilkan pengaturan, pintu masuk atau daftar kosong; pada sesi pengambilan ini tidak ada pemanggilan model atau pengiriman pesan."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Pengaturan pemikiran proaktif dan catatan aktivitas dengan halaman terpisah","caption":"Konfigurasi terkini lingkungan demonstrasi tetap; tidak menjalankan tugas, model atau pemasangan dan tidak memublikasikan kredensial."}
       },
       {
         "title": "Mengikat penerimaan kanal dan pemberitahuan",

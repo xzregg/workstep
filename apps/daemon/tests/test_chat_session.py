@@ -2970,6 +2970,7 @@ async def test_managed_chat_preserves_account_username_and_display_name(chat_mod
     assert (user_message["author_name"], user_message["author_username"]) == (
         "Alice Display", "alice",
     )
+    assert user_message['identity_source'] == assistant_message['identity_source'] == 'gateway'
     assert (assistant_message["author_type"],
             assistant_message["initiated_by_user_id"],
             assistant_message["initiated_by_username"]) == (

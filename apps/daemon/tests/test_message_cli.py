@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import threading
 
 import httpx
@@ -118,9 +119,13 @@ async def test_message_send_queues_behind_existing_chat_and_preserves_context(ch
         assert replay["status"] == "completed"
         assert replay["assistant_message_id"] == queued["assistant_message_id"]
         detail = await http.get(f"/api/chat-sessions/{sid}", params={"project_id": project.id})
-        assert [message["content"] for message in detail.json()["messages"]] == [
+        messages = detail.json()["messages"]
+        assert [message["content"] for message in messages] == [
             "first turn", "reply from the first turn", "second turn", "follow-up complete",
         ]
+        ids = [message["id"] for message in messages]
+        assert all(re.fullmatch(project.id + "[0-9a-hjkmnp-tv-z]{18}", value) for value in ids)
+        assert ids == sorted(ids)
     assert len(prompts) == 2
     assert "reply from the first turn" in prompts[1]
     assert "second turn" in prompts[1]
@@ -228,17 +233,20 @@ async def test_message_api_exact_lookup_legacy_and_scope(chat_module, monkeypatc
     session = await manager.run_db(project.id, lambda _: module.create_session(project.id))
     other = await manager.run_db(project.id, lambda _: module.create_session(project.id))
     legacy_id = "a16b95dd-0804-4f58-8b3a-d896f7fe2724"
+    prefixed_legacy_id = project.id + "-" + "a" * 32
 
     def seed(_):
-        ChatSession.create(id=legacy_id, project_id=project.id, workflow_id="", engine="claude",
-                           created_at=utc_now(), updated_at=utc_now())
-        for sid, mid in ((session["id"], "m1"), (legacy_id, "old")):
+        for sid in (legacy_id, prefixed_legacy_id):
+            ChatSession.create(id=sid, project_id=project.id, workflow_id="", engine="claude",
+                               created_at=utc_now(), updated_at=utc_now())
+        for sid, mid in ((session["id"], "m1"), (legacy_id, "old"), (prefixed_legacy_id, "old-prefixed")):
             ChatMessage.create(id=mid, session=sid, role="user", content="完整原文" * 2000,
                                created_at=utc_now())
     await manager.run_db(project.id, seed)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
-        for sid, mid in ((session["id"], "m1"), (legacy_id, "old")):
-            response = await client.get(f"/api/chat-sessions/{sid}/messages/{mid}")
+        for sid, mid in ((session["id"], "m1"), (legacy_id, "old"), (prefixed_legacy_id, "old-prefixed")):
+            params = {"project_id": project.id} if sid == session["id"] else {}
+            response = await client.get(f"/api/chat-sessions/{sid}/messages/{mid}", params=params)
             assert response.status_code == 200
             assert response.json()["content"] == "完整原文" * 2000
             assert response.json()["project_id"] == project.id
@@ -250,7 +258,7 @@ async def test_message_api_exact_lookup_legacy_and_scope(chat_module, monkeypatc
         await get_message(session["id"], "m1", project_id=project.id)
     assert denied.value.status_code == 403
     with actor_context(actor), pytest.raises(HTTPException) as denied:
-        await get_message(session["id"], "m1", project_id=None)
+        await get_message(prefixed_legacy_id, "old-prefixed", project_id=None)
     assert denied.value.status_code == 403
     with actor_context(actor), pytest.raises(HTTPException) as missing:
         await get_message(legacy_id, "old", project_id=None)
@@ -258,7 +266,8 @@ async def test_message_api_exact_lookup_legacy_and_scope(chat_module, monkeypatc
 
     # Exercise the complete CLI dispatch -> HTTP -> real project DB path.
     result = await dispatch(
-        build_parser().parse_args(["message", "get", "--session", session["id"], "--message", "m1"]),
+        build_parser().parse_args(["message", "get", "--session", session["id"], "--message", "m1",
+                                   "--project", project.id]),
         WorkstepClient(base_url="http://test", transport=httpx.ASGITransport(app=main.app)),
     )
     assert result["content"] == "完整原文" * 2000
@@ -291,14 +300,9 @@ async def test_message_lookup_slow_sql_keeps_health_responsive(chat_module, monk
 
 
 @pytest.mark.parametrize("project", ["164938b7", "5739c385-0f1b-4292-bd18-5beeb30f71fa"])
-def test_session_id_contains_project_and_preserves_uniqueness(project):
-    from services.chat_identity import new_session_id, session_project_id
-    first, second = new_session_id(project), new_session_id(project)
-    assert first != second
-    prefix, suffix = first.rsplit("-", 1)
-    assert prefix == project
-    assert len(suffix) == 32 and all(char in "0123456789abcdef" for char in suffix)
-    assert session_project_id(first) == project
+def test_legacy_session_id_prefix_parses(project):
+    from services.chat_identity import session_project_id
+    assert session_project_id(project + "-" + "a" * 32) == project
     assert session_project_id(project + "-b447-4076-a9c0-cc3c25510c9c") == (
         project if len(project) == 36 else None
     )
@@ -307,8 +311,7 @@ def test_session_id_contains_project_and_preserves_uniqueness(project):
 
 @pytest.mark.parametrize("project", ["164938b7", "5739c385-0f1b-4292-bd18-5beeb30f71fa"])
 def test_message_cli_derives_project_from_session(capsys, project):
-    from services.chat_identity import new_session_id
-    session = new_session_id(project)
+    session = project + "-" + "a" * 32
 
     async def handler(request):
         assert dict(request.url.params) == {"project_id": project}
@@ -320,13 +323,12 @@ def test_message_cli_derives_project_from_session(capsys, project):
 
 
 @pytest.mark.anyio
-async def test_prefixed_lookup_opens_only_addressed_project(chat_module, tmp_path, monkeypatch):
-    from services.chat_identity import session_project_id
+async def test_explicit_project_lookup_opens_only_addressed_project(chat_module, tmp_path, monkeypatch):
     from services.chat_message_read import read_message
     module, _, manager, project, _ = chat_module
     other = manager.init_project(tmp_path / "other-project")
     session = await manager.run_db(project.id, lambda _: module.create_session(project.id))
-    assert session_project_id(session["id"]) == project.id
+    assert re.fullmatch(project.id + "[0-9a-hjkmnp-tv-z]{18}", session["id"])
     await manager.run_db(project.id, lambda _: ChatMessage.create(
         id="m", session=session["id"], role="user", content="unindexed", created_at=utc_now(),
     ))
@@ -335,9 +337,7 @@ async def test_prefixed_lookup_opens_only_addressed_project(chat_module, tmp_pat
         pytest.fail("Prefixed session must not scan projects")
     monkeypatch.setattr(manager, "list_project_catalog", forbidden)
     monkeypatch.setattr(other.db, "execute_sql", forbidden)
-    assert (await read_message(manager, session["id"], "m"))["content"] == "unindexed"
-    with pytest.raises(ValueError, match="does not match"):
-        await read_message(manager, session["id"], "m", other.id)
+    assert (await read_message(manager, session["id"], "m", project.id))["content"] == "unindexed"
 
 
 def test_message_skill_has_direct_discovery_entry():

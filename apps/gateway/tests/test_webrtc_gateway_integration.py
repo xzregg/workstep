@@ -137,6 +137,11 @@ def test_gateway_webrtc_requires_pair_key_for_every_account_and_preserves_admin_
         '<html><head><script src="/workspace-assets/entry.js"></script></head><body>WorkStep UI</body></html>'
     )
     (workspace / "entry.js").write_text("/* workstep bundle */")
+    bootstrap=workspace/'rtc-bootstrap'
+    bootstrap.mkdir()
+    (bootstrap/'index.html').write_text('<script type="module" src="/p2p-bootstrap/bootstrap.js"></script>')
+    (bootstrap/'bootstrap.js').write_text('/* connection only */')
+    (bootstrap/'worker.js').write_text('/* resource worker */')
 
     settings = GatewaySettings(
         data_dir=tmp_path / "data",
@@ -150,10 +155,13 @@ def test_gateway_webrtc_requires_pair_key_for_every_account_and_preserves_admin_
     with TestClient(app, base_url="https://gateway.test") as client:
         assert client.get("/api/health").json() == {"status": "ok"}
 
-        # /p2p/<device_id>/ serves workspace_web_dist without share-transport tag and coexists with portal.
+        # Direct entry serves only the bootstrap; full UI remains for ordinary gateway mode.
         p2p_page = client.get("/p2p/dev-unbound/chat")
         assert p2p_page.status_code == 200
-        assert "/workspace-assets/entry.js" in p2p_page.text
+        assert '/p2p-bootstrap/bootstrap.js' in p2p_page.text
+        assert '/workspace-assets/entry.js' not in p2p_page.text
+        assert client.get('/p2p-bootstrap/bootstrap.js').text=='/* connection only */'
+        assert client.get('/p2p/dev-unbound/__host/assets/entry.js').status_code==404
         assert "workstep-share-transport" not in p2p_page.text
         assert "no-store" in p2p_page.headers.get("cache-control", "")
         assert client.get("/workspace-assets/entry.js").text == "/* workstep bundle */"

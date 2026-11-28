@@ -1,6 +1,5 @@
 """Task archiving and archive experience API routes."""
 
-import uuid
 
 from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import Field
@@ -8,6 +7,7 @@ from starlette.responses import JSONResponse
 
 from api.task_context import _project, _require_scoped_task, _run_db, _release_task_channel_bindings
 from schemas.base import BaseSchema
+from services.business_ids import new_id
 from services.coordinator_source import COORDINATOR_TURN_HEADER, coordinator_group_recipient
 from services.task_archive import (
     load_archive_experience_draft, normalize_archive_experience,
@@ -130,7 +130,7 @@ async def prepare_archive_experience(
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
     await _require_scoped_task(pid, task_id)
     locale = body.locale if body else "zh-CN"
-    progress_message_id = message_id or str(uuid.uuid4())
+    progress_message_id = message_id or new_id(pid)
     if background:
         if not message_id:
             raise HTTPException(status_code=422, detail="Background preparation requires message_id")

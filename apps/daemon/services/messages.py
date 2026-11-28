@@ -2,13 +2,11 @@
 
 from dataclasses import dataclass
 import json
-import secrets
-import threading
-import time
-import uuid
 
 from models import Message, Task, WorkflowRun
 from models.base import db_proxy
+from services.business_ids import new_id
+from services.remote_access import actor_origin_fields
 
 
 _USAGE_EVENT_TYPES = {"usage", "usage_update"}
@@ -48,6 +46,7 @@ def current_actor_message_fields() -> dict[str, str]:
     if actor is None:
         return {}
     return {
+        **actor_origin_fields(actor),
         "author_id": actor.actor_id,
         "author_username": actor.username or actor.user_name,
         "author_name": actor.user_name,
@@ -68,6 +67,7 @@ def current_actor_task_fields() -> dict[str, str]:
     if actor is None:
         return {}
     return {
+        **actor_origin_fields(actor),
         "creator_id": actor.actor_id,
         "creator_username": actor.username or actor.user_name,
         "creator_name": actor.user_name,
@@ -89,6 +89,8 @@ def _message_author_fields(message: Message | None) -> dict[str, str]:
         "initiated_by_name": message.initiated_by_name if automated else message.author_name,
         "author_device_id": message.author_device_id,
         "author_device_name": message.author_device_name,
+        "identity_source": message.identity_source,
+        "access_source": message.access_source,
     }.items() if value}
 
 
@@ -159,6 +161,8 @@ def attributed_actor_message_fields(
             "initiated_by_name": run.initiated_by_name,
             "author_device_id": run.initiated_by_device_id,
             "author_device_name": run.initiated_by_device_name,
+            "identity_source": run.identity_source,
+            "access_source": run.access_source,
         }.items() if value}
         if run_fields.get("initiated_by_user_id") or run_fields.get("initiated_by_username"):
             return run_fields
@@ -171,6 +175,8 @@ def attributed_actor_message_fields(
         "initiated_by_name": task.creator_name,
         "author_device_id": task.creator_device_id,
         "author_device_name": task.creator_device_name,
+        "identity_source": task.identity_source,
+        "access_source": task.access_source,
     } if task.creator_name else {}
 
 
@@ -198,39 +204,6 @@ def attributed_actor_display_name(task: Task, *, channel: str, step_key: str) ->
     if source is not None:
         return source.author_name or username or ''
     return username or ''
-
-
-_UUID7_RANDOM_BITS = 74
-_UUID7_RANDOM_MASK = (1 << _UUID7_RANDOM_BITS) - 1
-_uuid7_lock = threading.Lock()
-_uuid7_last_timestamp_ms = -1
-_uuid7_last_random = 0
-
-
-def new_message_id() -> str:
-    """Return a monotonic UUID v7 suitable for lexicographic ordering."""
-    global _uuid7_last_timestamp_ms, _uuid7_last_random
-
-    with _uuid7_lock:
-        timestamp_ms = time.time_ns() // 1_000_000
-        if timestamp_ms > _uuid7_last_timestamp_ms:
-            random_bits = secrets.randbits(_UUID7_RANDOM_BITS)
-        else:
-            timestamp_ms = _uuid7_last_timestamp_ms
-            random_bits = _uuid7_last_random + 1
-            if random_bits > _UUID7_RANDOM_MASK:
-                timestamp_ms += 1
-                random_bits = 0
-
-        _uuid7_last_timestamp_ms = timestamp_ms
-        _uuid7_last_random = random_bits
-
-        value = (timestamp_ms & ((1 << 48) - 1)) << 80
-        value |= 0x7 << 76
-        value |= (random_bits >> 62) << 64
-        value |= 0b10 << 62
-        value |= random_bits & ((1 << 62) - 1)
-        return str(uuid.UUID(int=value))
 
 
 def allocate_message_sequences(task_id: str, count: int = 1) -> int:
@@ -272,7 +245,7 @@ def create_task_message(
     sequence = allocate_message_sequences(task.id)
     task.next_message_sequence = sequence + 1
     if "id" not in fields:
-        fields["id"] = new_message_id()
+        fields["id"] = new_id()
     if fields.get("role") == "user":
         actor_fields = current_actor_message_fields() if snapshot_current_actor else {}
         provided_name = str(fields.get("author_name") or "").strip()
@@ -290,7 +263,7 @@ def create_task_message(
             channel=channel,
             step_key=fields.get("step_key"),
         )
-        for key in ("initiated_by_user_id", "initiated_by_username", "initiated_by_name"):
+        for key in ("initiated_by_user_id", "initiated_by_username", "initiated_by_name", "identity_source", "access_source"):
             if actor_fields.get(key):
                 fields.setdefault(key, actor_fields[key])
         fields.update(

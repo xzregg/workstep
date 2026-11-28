@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from websockets.asyncio.client import connect
-from websockets.exceptions import ConnectionClosed
+from websockets.exceptions import ConnectionClosed, InvalidHandshake
 from workstep_gateway_protocol.origin import is_private_gateway_hostname
 from workstep_gateway_protocol.webrtc import valid_pair_key
 
@@ -435,7 +435,7 @@ class WebRtcClientService:
                         await asyncio.gather(heartbeat, return_exceptions=True)
             except asyncio.CancelledError:
                 raise
-            except (ConnectionClosed, OSError, asyncio.TimeoutError, ValueError) as exc:
+            except (ConnectionClosed, InvalidHandshake, OSError, asyncio.TimeoutError, ValueError) as exc:
                 self.online = False
                 self._active_ws = None
                 self.last_error = str(exc) or type(exc).__name__
@@ -524,12 +524,15 @@ class WebRtcClientService:
             )
             self._sessions[session_id] = peer
             try:
-                answer_sdp = await peer.accept_offer(sdp)
+                trickle_answer = msg.get("trickle_answer") is True
+                answer_sdp = await peer.accept_offer(sdp, trickle_answer=True) if trickle_answer else await peer.accept_offer(sdp)
                 await ws.send(json.dumps({
                     "type": "answer",
                     "session_id": session_id,
                     "sdp": answer_sdp,
                 }))
+                if trickle_answer:
+                    peer.start_trickle_answer()
             except Exception as exc:
                 self._sessions.pop(session_id, None)
                 await peer.close()

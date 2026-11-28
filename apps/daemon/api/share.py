@@ -84,7 +84,7 @@ async def create_share(task_id: str, req: CreateShareRequest, pid: str = Query(.
         share = await project_manager.run_db(
             pid,
             lambda _project: share_service.create_share(
-                task_id, req.password, req.title, req.mode, req.expires_at
+                task_id, req.password, req.title, req.mode, req.expires_at, project_id=pid
             ),
         )
     except ValueError as exc:

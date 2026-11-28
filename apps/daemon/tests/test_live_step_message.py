@@ -314,7 +314,9 @@ async def test_runner_sends_compact_prompt_for_resumed_step_followup(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_pydantic_ai_new_session_uses_response_message_id(tmp_path):
+async def test_pydantic_ai_new_session_preserves_host_allocated_engine_uuid(tmp_path):
+    from uuid import UUID
+
     db, task, steps_config, bus, _, original = _make_runner_task(
         tmp_path, ResumablePromptFakeEngine
     )
@@ -340,10 +342,11 @@ async def test_pydantic_ai_new_session_uses_response_message_id(tmp_path):
         step = TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "do")
         )
-        assert PydanticSessionEngine.sessions == [response.id]
-        assert step.session_id == response.id
+        assert PydanticSessionEngine.sessions == [step.session_id]
+        assert str(UUID(step.session_id)) == step.session_id
+        assert step.session_id != response.id
         assert response.event_log_path == (
-            f"event_logs/task-{task.id}/{response.id}/{response.id}.jsonl"
+            f"event_logs/task-{task.id}/{step.session_id}/{response.id}.jsonl"
         )
         assert (tmp_path / response.event_log_path).is_file()
     finally:

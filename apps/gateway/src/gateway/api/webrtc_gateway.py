@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
-import re
-from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import FastAPI, Request
 from workstep_webrtc_signal import SignalingHub, create_webrtc_router
 
 from gateway.config import GatewaySettings
@@ -41,18 +37,6 @@ def stun_urls_for_gateway(request: Request, settings: GatewaySettings, bound_por
     return urls
 
 
-def _resolve_static(root: Path, rel: str) -> Path | None:
-    if not rel or rel.startswith(("/", "\\", "..")):
-        return None
-    base = root.resolve()
-    candidate = (root / rel).resolve()
-    try:
-        candidate.relative_to(base)
-    except ValueError:
-        return None
-    return candidate if candidate.is_file() else None
-
-
 def install_webrtc_gateway(app: FastAPI, settings: GatewaySettings, hub: SignalingHub) -> None:
     """Register WebRTC signaling HTTP/WS endpoints and /p2p/<device_id>/ SPA routes."""
 
@@ -67,33 +51,5 @@ def install_webrtc_gateway(app: FastAPI, settings: GatewaySettings, hub: Signali
         )
     )
 
-    root = settings.workspace_web_dist
-
-    async def _serve_p2p(device_id: str, fullpath: str = ""):
-        if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", device_id):
-            raise HTTPException(status_code=404)
-        if root is None:
-            raise HTTPException(status_code=503, detail="WorkStep WebRTC workspace build is unavailable")
-        if fullpath:
-            candidate = await asyncio.to_thread(_resolve_static, root, fullpath)
-            if candidate is not None:
-                headers = {"Cache-Control": "no-store"} if candidate.suffix == ".html" else None
-                return FileResponse(candidate, headers=headers)
-            if fullpath == "api" or fullpath.startswith(("api/", "assets/", "workspace-assets/")):
-                raise HTTPException(status_code=404)
-        try:
-            html = await asyncio.to_thread((root / "index.html").read_text, encoding="utf-8")
-        except OSError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail="WorkStep WebRTC workspace build is unavailable",
-            ) from exc
-        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
-
-    @app.get("/p2p/{device_id}", include_in_schema=False)
-    async def p2p_root(device_id: str):
-        return await _serve_p2p(device_id)
-
-    @app.get("/p2p/{device_id}/{fullpath:path}", include_in_schema=False)
-    async def p2p_subpath(device_id: str, fullpath: str):
-        return await _serve_p2p(device_id, fullpath)
+    from workstep_webrtc_signal.bootstrap import install_bootstrap_routes
+    install_bootstrap_routes(app, settings.workspace_web_dist)

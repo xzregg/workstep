@@ -1,11 +1,11 @@
 """Synchronous project database work unit for starting one task step."""
 
 import json
-import uuid
 from pathlib import Path
 from typing import NamedTuple
 
 from agent_assistants.session_state import PROVIDER_HANDOFF_REQUIRED
+from services.business_ids import new_id
 from models import Message, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from services.artifact_rounds import next_artifact_round
@@ -30,7 +30,7 @@ class StartedStepState(NamedTuple):
 
 
 def start_step_state(
-    *, task: Task, step: Step, workflow_run: WorkflowRun | None,
+    *, task: Task, step: Step, workflow_run: WorkflowRun | None, project_id: str | None = None,
     artifacts_dir: Path, effective_provider_id: str, resolved_model: str | None,
     input_rounds: dict[str, int], input_snapshot: dict,
 ) -> StartedStepState:
@@ -153,7 +153,7 @@ def start_step_state(
             ),
         )
         step_run = StepRun.create(
-            id=str(uuid.uuid4()),
+            id=new_id(project_id),
             run=workflow_run,
             step_key=step_key,
             attempt=attempt,

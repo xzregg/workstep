@@ -29,6 +29,7 @@ from engines.codex_visualize import (
     convert_visualize_markers,
 )
 from engines.core.registry import COORDINATOR_FALLBACK_ORDER, create_engine
+from services.business_ids import new_id
 from services.prompt_sections import prompt_section
 from models.base import db_proxy
 from models.chat_session import ChatMessage, ChatSession, ProjectSetting
@@ -437,8 +438,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
         model = model or default_model
         fast_model = fast_model or default_fast_model
         vision_model = vision_model or default_vision_model
-        from services.chat_identity import new_session_id
-        session_id = new_session_id(project_id)
+        session_id = new_id(project_id)
         now = utc_now()
         with self._project_ctx(project_id):
             min_order = (
@@ -1653,7 +1653,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             payload = json.dumps(prompt, ensure_ascii=False)
             if row is None:
                 ProjectSetting.create(
-                    id=str(uuid.uuid4()),
+                    id=new_id(project_id),
                     project_id=project_id,
                     key=SYSTEM_PROMPT_KEY,
                     value_json=payload,
@@ -1855,7 +1855,7 @@ class ChatSessionModule(ChatRoleBindings, ChatSessionTransitions, AssistantRunti
             payload = json.dumps(cleaned, ensure_ascii=False)
             if row is None:
                 ProjectSetting.create(
-                    id=str(uuid.uuid4()),
+                    id=new_id(project_id),
                     project_id=project_id,
                     key=QUICK_BUTTONS_KEY,
                     value_json=payload,

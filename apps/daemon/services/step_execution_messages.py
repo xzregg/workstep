@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import uuid
 from pathlib import Path
 from typing import NamedTuple
 
@@ -11,12 +12,13 @@ from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent
 from models import Message, StepRun, Task
 from models.fields import utc_now
+from services.business_ids import new_id
 from services.artifact_rounds import step_round_dir
 from services.intervention import seal_unanswered_interactions
 from services.messages import (
     StepEventProgress,
     attributed_actor_display_name, attributed_actor_message_fields,
-    create_task_message, new_message_id,
+    create_task_message,
 )
 from services.pipeline import Step
 from services.prompt import (
@@ -42,6 +44,7 @@ class CompletedExecution(NamedTuple):
     model: str | None
     status: str
     usage_json: str | None
+    initiated_by_user_id: str | None = None
 
 
 class StepExecutionMessages:
@@ -167,7 +170,7 @@ class StepExecutionMessages:
             else artifacts_dir / (task.workflow_id or "default") / task.id / step_key
         )
         retry_message_id = self._retry_message_ids.pop(step_key, None)
-        msg_id = retry_message_id or new_message_id()
+        msg_id = retry_message_id or new_id(self._project_id)
         message_started_at = utc_now()
         engine_session_id = (
             state.task_step.session_id
@@ -178,7 +181,8 @@ class StepExecutionMessages:
             and engine_session_id is None
             and getattr(engine, "supports_host_session_ids", False)
         ):
-            engine_session_id = new_message_id() if retry_message_id else msg_id
+            # Custom engines may persist this as a UUID. WorkStep messages use compact IDs.
+            engine_session_id = str(uuid.uuid4())
         journal_ref = await self._journal.astart(
             artifacts_dir.parent, f"task-{task.id}", msg_id,
             (state.step_run.id if retry_message_id and state.step_run is not None
@@ -201,7 +205,7 @@ class StepExecutionMessages:
                 message.author_name = step.engine
                 message.author_type = "assistant"
                 for key in ("initiated_by_user_id", "initiated_by_username", "initiated_by_name",
-                            "author_device_id", "author_device_name"):
+                            "author_device_id", "author_device_name", "identity_source", "access_source"):
                     setattr(message, key, actor_fields.get(key))
                 message.engine = step.engine
                 message.model = resolved_model
@@ -276,7 +280,7 @@ class StepExecutionMessages:
             message.save()
             from services.digital_person_memory import capture_task_completion
             capture_task_completion(self._project_id,message)
-            return message.engine, message.model, message.run_status, message.usage_json
+            return message.engine, message.model, message.run_status, message.usage_json, message.initiated_by_user_id
 
         return CompletedExecution(*await self._run_db(finalize_message))
 

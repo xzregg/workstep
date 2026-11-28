@@ -4,15 +4,19 @@ import Button from '../components/Button'
 import Field from '../components/Field'
 import Icon from '../components/Icon'
 import Input from '../components/Input'
-import Spinner from '../components/Spinner'
 import StatusBadge from '../components/StatusBadge'
-import { connectWebRtcDirect, fetchWebRtcDeviceConfig, type WebRtcConnectionHandle } from './peerClient'
+import { useOverlay } from '../hooks/useOverlay'
+import { useVisualViewport } from '../hooks/useVisualViewport'
+import { connectWebRtcDirect, fetchWebRtcDeviceConfig, type WebRtcConnectionHandle, type WebRtcStageTiming } from './peerClient'
+import { WebRtcConnectionTimings } from './WebRtcConnectionTimings'
 import { installGlobalWebRtcTransport, shouldProxyWebRtcHttp } from './transportAdapter'
 import { formatLatencyDisplay, useWebRtcConnectionStore } from './webrtcConnectionStore'
 import { isWebRtcRemoteBrowser, webrtcDeviceIdFromPath } from './webrtcLocation'
 import { consumeWebRtcPairingLink, loadSessionPairKey, saveSessionPairKey, validWebRtcPairKey, PAIR_KEY_MIN_LENGTH, PAIR_KEY_MAX_LENGTH } from './pairingLink'
 import '../components/GatewayConnectionStatus.css'
 import './WebRtcRemoteFrame.css'
+import { initializeAppearancePreferences } from '../utils/appearancePreferences'
+import { takeBootstrapConnection, publishDirectConnection } from './bootstrapConnection'
 
 const AUTO_RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000] as const
 export const WEBRTC_HEARTBEAT_INTERVAL_MS = 10000
@@ -24,6 +28,8 @@ type NetworkConnectionEventTarget = Navigator & {
 
 export default function WebRtcRemoteFrame({ children }: { children: ReactNode }) {
   const { t } = useI18n()
+  const translate = useRef(t)
+  useEffect(()=>{translate.current=t},[t])
   const active = isWebRtcRemoteBrowser()
   const deviceId = active ? webrtcDeviceIdFromPath() : ''
 
@@ -33,10 +39,15 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
   const [showKey, setShowKey] = useState(false)
   const [phase, setPhase] = useState<'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error'>('idle')
   const [errorText, setErrorText] = useState('')
+  const [progress, setProgress] = useState<{ timings: WebRtcStageTiming[]; startedAt: number } | null>(null)
   const [handle, setHandle] = useState<WebRtcConnectionHandle | null>(null)
   const latencyMs = useWebRtcConnectionStore((state) => state.latencyMs)
+  const showWorkspace = handle !== null && (phase === 'connected' || phase === 'reconnecting')
+  const pairing = active && !showWorkspace
+  const pairingDialogRef = useRef<HTMLDivElement>(null)
 
   const handleRef = useRef<WebRtcConnectionHandle | null>(null)
+  const connectAbortRef = useRef<AbortController | null>(null)
   const restoreTransportRef = useRef<(() => void) | null>(null)
   const blobCacheRef = useRef(new Map<string, string>())
   const connectAttemptRef = useRef(0)
@@ -59,8 +70,6 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
   }, [])
 
   const releaseConnection = useCallback(() => {
-    restoreTransportRef.current?.()
-    restoreTransportRef.current = null
     handleRef.current?.close()
     handleRef.current = null
   }, [])
@@ -68,6 +77,8 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
   const teardownTransport = useCallback(() => {
     clearReconnectTimer()
     releaseConnection()
+    restoreTransportRef.current?.()
+    restoreTransportRef.current = null
     missedPingsRef.current = 0
     periodicProbeInFlightRef.current = false
     netProbeInFlightRef.current = false
@@ -79,10 +90,24 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
     useWebRtcConnectionStore.setState({ connected: false, reconnecting: false, latencyMs: null, deviceName: '' })
   }, [clearReconnectTimer, releaseConnection])
 
-  const startConnect = useCallback(async (
+  const cancelPairing = () => {
+    manualDisconnectedRef.current = true
+    connectAttemptRef.current += 1
+    connectAbortRef.current?.abort()
+    isConnectingRef.current = false
+    setShowKey(false)
+    setErrorText('')
+    setPhase('idle')
+    setProgress(null)
+    window.WorkStepP2p?.postMessage('settings')
+  }
+  useOverlay(pairing, cancelPairing, pairingDialogRef, false, true, pairingDialogRef)
+  useVisualViewport(pairing)
+
+  const startConnect = useCallback(async function startConnect(
     secret: string,
     options?: { isAutoReconnect?: boolean },
-  ) => {
+  ) {
     const trimmed = secret.trim()
     const isAutoReconnect = Boolean(options?.isAutoReconnect)
     if (!deviceId || !validWebRtcPairKey(trimmed)) return
@@ -93,6 +118,9 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       autoRetryCountRef.current = 0
     }
     const attempt = ++connectAttemptRef.current
+    connectAbortRef.current?.abort()
+    const connectionAbort = new AbortController()
+    connectAbortRef.current = connectionAbort
     isConnectingRef.current = true
     if (isAutoReconnect || hasConnectedRef.current) {
       releaseConnection()
@@ -107,6 +135,12 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       deviceName: prev.deviceName,
     }))
     setErrorText('')
+    let timings: WebRtcStageTiming[] = []
+    let stageStartedAt = performance.now()
+    const finishStage = (now: number) => {
+      const last = timings.at(-1)
+      if (last) timings = [...timings.slice(0, -1), { ...last, durationMs: now - stageStartedAt }]
+    }
 
     const scheduleReconnect = () => {
       if (!mountedRef.current || manualDisconnectedRef.current || connectAttemptRef.current !== attempt) return
@@ -116,7 +150,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
         hasConnectedRef.current = false
         teardownTransport()
         setPhase('error')
-        setErrorText(t('webrtcP2p.disconnected'))
+        setErrorText(translate.current('webrtcP2p.disconnected'))
         return
       }
       autoRetryCountRef.current = retryIdx + 1
@@ -135,7 +169,22 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
     }
 
     try {
-      const nextHandle = await connectWebRtcDirect({ deviceId, pairKey: trimmed })
+      const nextHandle = takeBootstrapConnection(deviceId) ?? await connectWebRtcDirect({
+        deviceId, pairKey: trimmed, signal: connectionAbort.signal,
+        onDeviceConfig: (config) => {
+          if (!mountedRef.current || attempt !== connectAttemptRef.current) return
+          setDeviceOnline(config.online)
+          if (config.device_name) setDeviceName(config.device_name)
+        },
+        onStage: (stage) => {
+          if (!mountedRef.current || attempt !== connectAttemptRef.current || timings.some(item => item.stage === stage)) return
+          const now = performance.now()
+          finishStage(now)
+          stageStartedAt = now
+          timings = [...timings, { stage, durationMs: 0 }]
+          setProgress({ timings, startedAt: stageStartedAt })
+        },
+      })
       if (!mountedRef.current || attempt !== connectAttemptRef.current) {
         nextHandle.close()
         return
@@ -153,18 +202,22 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       const initialLatency = nextHandle.candidateInfo.rttMs !== null && Number.isFinite(nextHandle.candidateInfo.rttMs)
         ? Math.max(0, Math.round(nextHandle.candidateInfo.rttMs))
         : null
+      restoreTransportRef.current?.()
       restoreTransportRef.current = installGlobalWebRtcTransport(nextHandle.transport)
       handleRef.current = nextHandle
+      publishDirectConnection(nextHandle)
       setDeviceName(nextHandle.deviceName)
       setDeviceOnline(true)
       setHandle(nextHandle)
       setPhase('connected')
+      setProgress(null)
       useWebRtcConnectionStore.setState({
         connected: true,
         reconnecting: false,
         latencyMs: initialLatency,
         deviceName: nextHandle.deviceName,
       })
+      if(!isAutoReconnect)void initializeAppearancePreferences()
       if (isAutoReconnect) {
         window.dispatchEvent(new Event('workstep:resume'))
       }
@@ -176,7 +229,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
           hasConnectedRef.current = false
           teardownTransport()
           setPhase('error')
-          setErrorText(t('webrtcP2p.relayRejected'))
+          setErrorText(translate.current('webrtcP2p.relayRejected'))
           return
         }
         releaseConnection()
@@ -194,10 +247,12 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       }
       hasConnectedRef.current = false
       teardownTransport()
+      finishStage(performance.now())
+      if (timings.length) setProgress({ timings, startedAt: stageStartedAt })
       setPhase('error')
-      setErrorText(/relay/i.test(msg) ? t('webrtcP2p.relayRejected') : msg)
+      setErrorText(/relay/i.test(msg) ? translate.current('webrtcP2p.relayRejected') : msg)
     }
-  }, [clearReconnectTimer, deviceId, releaseConnection, t, teardownTransport])
+  }, [clearReconnectTimer, deviceId, releaseConnection, teardownTransport])
 
   useEffect(() => {
     mountedRef.current = true
@@ -206,44 +261,49 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
     manualDisconnectedRef.current = false
     hasConnectedRef.current = false
     autoRetryCountRef.current = 0
-    const initialAttempt = connectAttemptRef.current
+    const configAbort = new AbortController()
     const savedKey = loadSessionPairKey(deviceId)
-    void fetchWebRtcDeviceConfig(deviceId).then((cfg) => {
+    if (savedKey) {
+      void startConnect(savedKey)
+    } else void fetchWebRtcDeviceConfig(deviceId, configAbort.signal).then((cfg) => {
       if (!mounted) return
       setDeviceOnline(cfg.online)
       if (cfg.device_name) setDeviceName(cfg.device_name)
-      if (savedKey && !manualDisconnectedRef.current && cfg.online
-        && connectAttemptRef.current === initialAttempt && !handleRef.current) {
-        void startConnect(savedKey)
-      }
     }).catch(() => undefined)
 
     return () => {
       mounted = false
+      configAbort.abort()
       mountedRef.current = false
       isConnectingRef.current = false
       connectAttemptRef.current += 1
+      connectAbortRef.current?.abort()
       teardownTransport()
     }
   }, [active, deviceId, startConnect, teardownTransport])
 
-  const runPingProbe = useCallback(async (timeoutMs: number, reconnectOnFirstFailure: boolean) => {
+  const runPingProbe = useCallback(async (timeoutMs: number, networkChange: boolean) => {
     const current = handleRef.current
     if (!current || !current.transport.isOpen || isConnectingRef.current || manualDisconnectedRef.current) {
       return
     }
-    const lockRef = reconnectOnFirstFailure ? netProbeInFlightRef : periodicProbeInFlightRef
+    if (!networkChange && netProbeInFlightRef.current) return
+    const lockRef = networkChange ? netProbeInFlightRef : periodicProbeInFlightRef
     if (lockRef.current) return
     lockRef.current = true
     try {
-      const measuredMs = await current.transport.ping(timeoutMs)
+      const measuredMs = await current.transport.ping(timeoutMs).catch((error: unknown) => {
+        if (!networkChange || handleRef.current !== current || !current.transport.isOpen) throw error
+        return current.transport.ping(timeoutMs)
+      })
       if (!mountedRef.current || handleRef.current !== current) return
       missedPingsRef.current = 0
       useWebRtcConnectionStore.setState((prev) => (prev.connected ? { latencyMs: measuredMs } : prev))
     } catch {
       if (!mountedRef.current || handleRef.current !== current || manualDisconnectedRef.current) return
+      if (!networkChange && netProbeInFlightRef.current) return
       missedPingsRef.current += 1
-      if (reconnectOnFirstFailure || missedPingsRef.current >= 2) {
+      if (networkChange || missedPingsRef.current >= 2) {
         missedPingsRef.current = 0
         const saved = loadSessionPairKey(deviceId)
         if (saved) {
@@ -253,7 +313,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
         }
       }
     } finally {
-      lockRef.current = false
+      if (handleRef.current === current) lockRef.current = false
     }
   }, [deviceId, startConnect])
 
@@ -275,7 +335,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       if (manualDisconnectedRef.current) return
       const saved = loadSessionPairKey(deviceId)
       if (!saved) return
-      if (isConnectingRef.current && reconnectTimerRef.current === null && !isNetworkEvent) return
+      if (isConnectingRef.current && reconnectTimerRef.current === null) return
       const current = handleRef.current
       if (
         !current
@@ -291,20 +351,27 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       if (!isNetworkEvent && Date.now() - connectedAtRef.current < 500) {
         return
       }
-      void runPingProbe(WEBRTC_NET_CHANGE_PROBE_TIMEOUT_MS, true)
+      void runPingProbe(isNetworkEvent ? WEBRTC_NET_CHANGE_PROBE_TIMEOUT_MS : 3000, isNetworkEvent)
     }
     const onNetworkChange = () => triggerRecover(true)
+    const onTransferDisconnect = () => {
+      if (manualDisconnectedRef.current || isConnectingRef.current) return
+      const saved = loadSessionPairKey(deviceId)
+      if (saved) void startConnect(saved, { isAutoReconnect: true })
+    }
     const onResume = () => triggerRecover(false)
     const onVisible = () => {
       if (document.visibilityState === 'visible') onResume()
     }
     const connection = (navigator as NetworkConnectionEventTarget).connection
     window.addEventListener('online', onNetworkChange)
+    window.addEventListener('workstep:webrtc-reconnect', onTransferDisconnect)
     window.addEventListener('workstep:resume', onResume)
     document.addEventListener('visibilitychange', onVisible)
     connection?.addEventListener?.('change', onNetworkChange)
     return () => {
       window.removeEventListener('online', onNetworkChange)
+      window.removeEventListener('workstep:webrtc-reconnect', onTransferDisconnect)
       window.removeEventListener('workstep:resume', onResume)
       document.removeEventListener('visibilitychange', onVisible)
       connection?.removeEventListener?.('change', onNetworkChange)
@@ -313,8 +380,10 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
 
   // Rewrite same-origin media `src` elements inside the connected workspace to Blob URLs fetched over DataChannel.
   useEffect(() => {
-    if (!active || phase !== 'connected' || typeof MutationObserver === 'undefined') return
+    if (!active || phase !== 'connected' || !handle || typeof MutationObserver === 'undefined') return
     const MEDIA_SELECTOR = 'img[src], audio[src], video[src], source[src]'
+    const pending = new Map<string, Promise<string | undefined>>()
+    const abort = new AbortController()
     const rewriteMedia = (el: HTMLElement) => {
       if (!(el instanceof HTMLImageElement || el instanceof HTMLAudioElement || el instanceof HTMLVideoElement || el instanceof HTMLSourceElement)) {
         return
@@ -323,19 +392,29 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       if (!rawSrc || rawSrc.startsWith('blob:') || rawSrc.startsWith('data:') || !shouldProxyWebRtcHttp(rawSrc)) {
         return
       }
-      const cached = blobCacheRef.current.get(rawSrc)
+      const requestUrl = new URL(rawSrc, window.location.href).href
+      const cached = blobCacheRef.current.get(requestUrl)
       if (cached) {
         el.src = cached
         return
       }
-      void globalThis.fetch(rawSrc).then(async (res) => {
-        if (!res.ok) return
-        const url = URL.createObjectURL(await res.blob())
-        blobCacheRef.current.set(rawSrc, url)
-        if ((el.getAttribute('src') || '').trim() === rawSrc) {
+      let load = pending.get(requestUrl)
+      if (!load) {
+        load = handle.transport.fetch(requestUrl, { signal: abort.signal }).then(async (res) => {
+          if (!res.ok) return
+          const blob = await res.blob()
+          if (abort.signal.aborted) return
+          const url = URL.createObjectURL(blob)
+          blobCacheRef.current.set(requestUrl, url)
+          return url
+        }).catch(() => undefined).finally(() => pending.delete(requestUrl))
+        pending.set(requestUrl, load)
+      }
+      void load.then(url => {
+        if (url && !abort.signal.aborted && (el.getAttribute('src') || '').trim() === rawSrc) {
           el.src = url
         }
-      }).catch(() => undefined)
+      })
     }
     document.querySelectorAll(MEDIA_SELECTOR).forEach((node) => rewriteMedia(node as HTMLElement))
     const observer = new MutationObserver((mutations) => {
@@ -352,12 +431,15 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
       }
     })
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] })
-    return () => observer.disconnect()
-  }, [active, phase])
+    return () => {
+      observer.disconnect()
+      abort.abort()
+    }
+  }, [active, handle, phase])
 
   if (!active) return <>{children}</>
 
-  if ((phase === 'connected' && handle) || (phase === 'reconnecting' && hasConnectedRef.current)) {
+  if (showWorkspace) {
     const info = handle?.candidateInfo
     const latencyDisplay = formatLatencyDisplay(latencyMs)
     return (
@@ -386,6 +468,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
           </div>
           <div className="webrtc-remote-actions">
             <Button
+              type="button"
               size="sm"
               variant="ghost"
               onClick={() => void startConnect(loadSessionPairKey(deviceId) || pairKey, {})}
@@ -394,6 +477,7 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
               {t('webrtcP2p.reconnect')}
             </Button>
             <Button
+              type="button"
               size="sm"
               variant="ghost"
               onClick={() => {
@@ -416,8 +500,8 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal webrtc-pair-card" role="dialog" aria-modal="true" aria-label={t('webrtcP2p.connectTitle')}>
+    <div className="modal-overlay webrtc-pair-overlay">
+      <div ref={pairingDialogRef} tabIndex={-1} className="modal webrtc-pair-card" role="dialog" aria-modal="true" aria-label={t('webrtcP2p.connectTitle')}>
         <div className="modal-header">
           <span className="modal-title">{deviceName || t('webrtcP2p.connectTitle')}</span>
           {deviceOnline === false && <StatusBadge status="failed" label={t('webrtcP2p.deviceOffline')} />}
@@ -441,9 +525,11 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
                   value={pairKey}
                   disabled={phase === 'connecting'}
                   autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   minLength={PAIR_KEY_MIN_LENGTH}
                   maxLength={PAIR_KEY_MAX_LENGTH}
-                  pattern="[A-Za-z0-9_-]{24,128}"
+                  pattern="[A-Za-z0-9_\-]{24,128}"
                   placeholder={t('webrtcP2p.pairKeyPlaceholder')}
                   onChange={(event) => {
                     setPairKey(event.target.value)
@@ -461,23 +547,22 @@ export default function WebRtcRemoteFrame({ children }: { children: ReactNode })
                 </Button>
               </div>
             </Field>
-            {phase === 'connecting' && (
-              <div className="webrtc-pair-status" role="status">
-                <Spinner size={14} />
-                <span>{t('webrtcP2p.connecting')}</span>
-              </div>
-            )}
+            {progress && <WebRtcConnectionTimings timings={progress.timings} startedAt={progress.startedAt} failed={phase === 'error'} />}
             {errorText && (
               <p className="webrtc-pair-error" role="alert">{errorText}</p>
             )}
             <div className="webrtc-pair-footer">
+              {(window.WorkStepP2p || phase === 'connecting') && (
+                <Button type="button" variant="ghost" onClick={cancelPairing}>{t('common.cancel')}</Button>
+              )}
               <Button
                 type="submit"
                 variant="primary"
                 loading={phase === 'connecting'}
                 disabled={!validWebRtcPairKey(pairKey.trim()) || phase === 'connecting'}
               >
-                {phase === 'error' ? t('webrtcP2p.retry') : t('webrtcP2p.connect')}
+                {phase === 'connecting' ? <span role="status">{t('webrtcP2p.connecting')}</span>
+                  : phase === 'error' ? t('webrtcP2p.retry') : t('webrtcP2p.connect')}
               </Button>
             </div>
           </form>

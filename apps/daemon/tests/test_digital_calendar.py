@@ -27,12 +27,15 @@ def test_calendar_persists_markdown_idempotency_revisions_delete_and_restore(cal
     c = calendar_store
     body = draft(c)
     first = c.create(body, 'one-request')
+    assert all(len(first[key]) == 18 and first[key].isalnum() for key in ('id', 'revision'))
     assert c.create(body, 'one-request')['id'] == first['id']
     with pytest.raises(ValueError):
         c.create(body.model_copy(update={'content': 'different'}), 'one-request')
     rows = c.list_events(since=body.starts_at-timedelta(days=1), before=body.starts_at+timedelta(days=1))
     assert [row['content'] for row in rows['items']] == [body.content]
     changed = c.update(first['id'], body.model_copy(update={'content': '新内容'}), first['revision'])
+    assert changed['id'] == first['id']
+    assert changed['revision'] > first['revision']
     with pytest.raises(ValueError):
         c.remove(first['id'], first['revision'])
     removed = c.remove(first['id'], changed['revision'])

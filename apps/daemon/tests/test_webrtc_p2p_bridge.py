@@ -19,6 +19,52 @@ from workstep_gateway_protocol.webrtc import (
 )
 
 
+@pytest.mark.asyncio
+async def test_retired_upload_releases_the_shared_receive_loop():
+    from services.webrtc_p2p.bridge import CREDIT_WINDOW, WebRtcDataBridge
+
+    reject_upload = asyncio.Event()
+    sent = []
+
+    async def app(_scope, _receive, send):
+        await reject_upload.wait()
+        await send({"type": "http.response.start", "status": 413, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    async def verify_key(_key):
+        return True
+
+    async def send_text(raw):
+        sent.append(json.loads(raw))
+
+    bridge = WebRtcDataBridge(
+        app=app, device_id="test", expected_ticket="ticket", verify_pair_key=verify_key,
+        candidate_info={}, send_text=send_text, send_bytes=send_text,
+    )
+    await bridge.handle_text(json.dumps({"type": "p2p.auth", "ticket": "ticket", "pair_key": "a" * 32}))
+    await bridge.handle_text(json.dumps({
+        "type": "http.request", "stream_id": "s-1",
+        "payload": {"phase": "start", "method": "POST", "path": "/api/fs/upload/image"},
+    }))
+
+    async def receive_packets():
+        frame = encode_binary_frame(DataChannelBinaryKind.http_request_body, "s-1", b"chunk", final=False)
+        for _ in range(CREDIT_WINDOW + 1):
+            await bridge.handle_bytes(frame)
+        await bridge.handle_text(json.dumps({"type": "p2p.ping", "nonce": "ping"}))
+
+    packets = asyncio.create_task(receive_packets())
+    try:
+        await asyncio.sleep(0)
+        assert not packets.done()
+        reject_upload.set()
+        await asyncio.wait_for(packets, timeout=1)
+        assert any(item.get("payload", {}).get("status") == 413 for item in sent)
+        assert sent[-1] == {"type": "p2p.pong", "nonce": "ping"}
+    finally:
+        await bridge.close()
+
+
 def test_sdp_offer_answer_and_direct_candidate_validation():
     from services.webrtc_p2p.dtls import generate_ephemeral_certificate
     from services.webrtc_p2p.peer import RelayCandidateRejected, verify_direct_candidate_pair
@@ -183,6 +229,9 @@ async def test_webrtc_data_bridge_http_streaming_websocket_and_desktop_security(
 
     monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
     monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "secret-desktop-token")
+    from services.config import config_store
+    from services.remote_access import get_current_actor
+    monkeypatch.setattr(config_store, 'get_user_name', lambda: '本机测试用户')
 
     app = FastAPI()
     app.add_middleware(DesktopSecurityMiddleware)
@@ -190,7 +239,8 @@ async def test_webrtc_data_bridge_http_streaming_websocket_and_desktop_security(
     @app.get("/api/ping")
     async def ping(request: Request):
         actor = request.scope.get("webrtc_remote_actor")
-        return {"ok": True, "actor_id": actor.user_id if actor else None, "q": request.query_params.get("v")}
+        from services.messages import current_actor_message_fields
+        return {"ok": True, "actor_id": actor.user_id if actor else None, "q": request.query_params.get("v"), "user_name": get_current_actor().user_name, "author_name":current_actor_message_fields()['author_name']}
 
     @app.post("/api/upload-echo")
     async def upload_echo(request: Request):
@@ -297,7 +347,7 @@ async def test_webrtc_data_bridge_http_streaming_websocket_and_desktop_security(
         _, sid, _, chunk = decode_binary_frame(outbound_bin.get_nowait())
         if sid == "s-get":
             body_buf.extend(chunk)
-    assert json.loads(body_buf.decode()) == {"ok": True, "actor_id": "webrtc-p2p", "q": "42"}
+    assert json.loads(body_buf.decode()) == {"ok": True, "actor_id": "webrtc-p2p", "q": "42", "user_name": "本机测试用户", "author_name":"本机测试用户"}
 
     # 2) Native desktop-only paths remain blocked for remote peers; project init allowed for device owner
     for path, expected_status in (("/api/fs/open-directory", 403), ("/api/project/init", 200)):
@@ -443,9 +493,6 @@ async def test_select_reachable_stun_server_races_and_skips_unreachable():
         "stun:stun.l.google.com:19302",
     ]) == [("stun.miwifi.com", 3478), ("stun.l.google.com", 19302)]
 
-    # Single entry returns immediately without probing
-    assert await select_reachable_stun_server(["stun:127.0.0.1:49999"]) == ("127.0.0.1", 49999)
-
     dead_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     dead_sock.bind(("127.0.0.1", 0))
     dead_port = dead_sock.getsockname()[1]
@@ -462,7 +509,8 @@ async def test_select_reachable_stun_server_races_and_skips_unreachable():
         assert chosen == ("127.0.0.1", live_port)
         assert elapsed < 0.5
 
-        # All-silent fallback returns first candidate instead of crashing
+        assert await select_reachable_stun_server([f"stun:127.0.0.1:{dead_port}"], timeout=0.05) is None
+        # A second gather should not retry a server when every probe failed.
         dead2 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         dead2.bind(("127.0.0.1", 0))
         try:
@@ -470,9 +518,59 @@ async def test_select_reachable_stun_server_races_and_skips_unreachable():
                 [f"stun:127.0.0.1:{dead_port}", f"stun:127.0.0.1:{dead2.getsockname()[1]}"],
                 timeout=0.08,
             )
-            assert fallback == ("127.0.0.1", dead_port)
+            assert fallback is None
         finally:
             dead2.close()
     finally:
         await live_stun.close()
         dead_sock.close()
+
+
+@pytest.mark.asyncio
+async def test_trickle_answer_sends_host_candidates_before_stun_is_ready(monkeypatch):
+    from services.webrtc_p2p import peer as peer_module
+    from workstep_webrtc_signal.stun import StunServer
+
+    allow_stun = asyncio.Event()
+    outgoing = asyncio.Queue()
+    stun = StunServer(host="127.0.0.1", port=0)
+    port = await stun.start()
+
+    async def select_stun(*_args, **_kwargs):
+        await allow_stun.wait()
+        return "127.0.0.1", port
+
+    async def send_signal(message):
+        await outgoing.put(message)
+
+    async def verify_key(_key):
+        return True
+
+    monkeypatch.setattr(peer_module, "select_reachable_stun_server", select_stun)
+    monkeypatch.setattr("aioice.ice.get_host_addresses", lambda **_kwargs: ["127.0.0.1"])
+    session = peer_module.WebRtcPeerSession(
+        session_id="12345", device_id="device", expected_ticket="ticket", stun_urls=["stun:127.0.0.1"],
+        verify_pair_key=verify_key, asgi_app=None, send_signal=send_signal,
+    )
+    offer = "\r\n".join([
+        "v=0", "o=- 1 1 IN IP4 127.0.0.1", "s=-", "t=0 0",
+        "m=application 9 UDP/DTLS/SCTP webrtc-datachannel", "a=mid:0",
+        "a=ice-ufrag:test", "a=ice-pwd:abcdefghijklmnopqrstuvwx", "a=setup:actpass",
+        f"a=fingerprint:sha-256 {session._cert.fingerprint}", "a=sctp-port:5000", "",
+    ])
+    try:
+        answer = await asyncio.wait_for(session.accept_offer(offer, trickle_answer=True), timeout=1)
+        assert "typ host" in answer
+        assert "a=end-of-candidates" not in answer
+        session.start_trickle_answer()
+        await session.add_remote_candidate(None)
+        assert not session.ice._remote_candidates_end
+        allow_stun.set()
+        candidate = await asyncio.wait_for(outgoing.get(), timeout=2)
+        assert candidate["type"] == "ice_candidate"
+        assert "typ srflx" in candidate["candidate"]
+        end = await asyncio.wait_for(outgoing.get(), timeout=2)
+        assert end["candidate"] is None
+    finally:
+        await session.close()
+        await stun.close()

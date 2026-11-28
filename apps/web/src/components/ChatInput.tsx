@@ -1,3 +1,4 @@
+import DirectImage from "./DirectImage"
 import { PERMISSION_FIELD, PERMISSION_BACK, nativePermissionMenu } from '../utils/enginePermissions'
 import { useChatConnectors } from './connectors/useChatConnectors'
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
@@ -1011,7 +1012,7 @@ function ChatInput({
                         removeImageSegment(segment)
                       }}
                     >
-                      <img
+                      <DirectImage
                         src={markdownUrlResolver?.(segment.url)
                           ?? resolveMarkdownImageSrc(segment.url, imageAttach?.projectId)}
                         alt={segment.alt || imageAlt}

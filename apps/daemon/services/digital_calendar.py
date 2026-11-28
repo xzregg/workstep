@@ -7,6 +7,7 @@ import uuid
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from services.business_ids import new_id
 from services.prompt_sections import prompt_section
 from services import digital_person_memory_index as index
 
@@ -112,9 +113,9 @@ def create(draft, request_id=None):
                     raise ValueError('Calendar request key was already used with different content')
                 return event
         now = datetime.now(timezone.utc).isoformat()
-        event = {**values,'id':str(uuid.uuid4()),'revision':str(uuid.uuid4()),'created_at':now,'updated_at':now,
+        event = {**values,'id':new_id(),'revision':new_id(),'created_at':now,'updated_at':now,
                  'reminder_at':(draft.starts_at-timedelta(minutes=draft.reminder_minutes)).isoformat(),
-                 'notification_key':str(uuid.uuid4()), 'reminder_status':'pending', 'deliveries':[],
+                 'notification_key':new_id(), 'reminder_status':'pending', 'deliveries':[],
                  'early_reminder_status':'pending', 'early_deliveries':[], 'creation':values}
         db.execute('INSERT INTO digital_calendar(id,starts_at,remind_at,deleted,request_id,value_json) VALUES(?,?,?,0,?,?)',(event['id'],draft.starts_at.timestamp(),
                    datetime.fromisoformat(event['reminder_at']).timestamp(),request_id,json.dumps(event,ensure_ascii=False)))
@@ -127,7 +128,7 @@ def _change(event_id, revision, change):
         if event['revision'] != revision:
             raise ValueError('Calendar event changed; refresh before editing')
         change(event)
-        event.update(revision=str(uuid.uuid4()),updated_at=datetime.now(timezone.utc).isoformat())
+        event.update(revision=new_id(),updated_at=datetime.now(timezone.utc).isoformat())
         _save(db,event)
         return event
 
@@ -142,7 +143,7 @@ def update(event_id, draft, revision):
         rescheduled = any(event[key] != values[key] for key in ('starts_at','reminder_minutes'))
         event.update(values, reminder_at=(draft.starts_at-timedelta(minutes=draft.reminder_minutes)).isoformat())
         if rescheduled:
-            event.update(notification_key=str(uuid.uuid4()),reminder_status='pending',deliveries=[],attempts=0,
+            event.update(notification_key=new_id(),reminder_status='pending',deliveries=[],attempts=0,
                          early_reminder_status='pending',early_deliveries=[],early_attempts=0)
             event.pop('next_attempt_at',None)
             event.pop('early_next_attempt_at',None)

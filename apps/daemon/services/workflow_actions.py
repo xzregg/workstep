@@ -6,6 +6,7 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
+from services.business_ids import new_id
 from models import ProjectSetting, Workflow
 from models.fields import utc_now
 from services.quick_buttons import ACTION_ID, normalize_quick_buttons, valid_script_path
@@ -166,7 +167,7 @@ def create_project_action(project, project_id: str, payload: dict) -> dict:
         now = utc_now()
         if row is None:
             ProjectSetting.create(
-                id=str(uuid.uuid4()), project_id=project_id,
+                id=new_id(project_id), project_id=project_id,
                 key="chat_quick_buttons", value_json=json.dumps(cleaned, ensure_ascii=False),
                 updated_at=now,
             )

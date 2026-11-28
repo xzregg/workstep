@@ -21,6 +21,37 @@ from services.project import DEFAULT_STEPS, ProjectManager
 from services.statistics import StatisticsModule, StatisticsQuery
 
 
+def test_new_host_calls_merge_across_transports_but_not_same_name_accounts(statistics_fixture):
+    from services.messages import create_task_message
+    from services.remote_access import ActorSnapshot, actor_context, host_attribution_context, get_host_actor
+    from services.config import config_store
+    manager, project, _, base = statistics_fixture
+    config_store.set('gateway_platform', {'enabled': True, 'url': 'https://gateway.test'})
+    config_store.sync_gateway_user(name='谢钊荣', username='xiezhaorong', gateway_id='host-user', origin='https://gateway.test')
+    with manager.activate_project_by_id(project.id):
+        task = Task.get_by_id('task-success')
+        for index, source in enumerate(['local', 'webrtc_p2p', 'gateway']):
+            raw = ActorSnapshot('transport-user', '残留名字', 'device', '设备', 'remote', access_source=source)
+            with actor_context(raw), host_attribution_context(get_host_actor()):
+                user = create_task_message(task=task, channel='execution', role='user', step_key='requirements',
+                                          content='开始', position=200 + index * 2, created_at=base)
+                reply = create_task_message(task=task, channel='execution', role='assistant', step_key='requirements',
+                                           reply_to_message_id=user.id, position=201 + index * 2,
+                                           created_at=base, usage_json='{"total_tokens":10}', run_status='succeeded')
+            assert (reply.identity_source, reply.access_source) == ('gateway', source)
+        Message.create(id='another-account', task=task, role='assistant', step_key='requirements',
+                       author_type='assistant', initiated_by_user_id='other-user', initiated_by_name='谢钊荣',
+                       identity_source='gateway', access_source='gateway', position=210, created_at=base,
+                       usage_json='{"total_tokens":7}', run_status='succeeded')
+    report = StatisticsModule(manager).overview(StatisticsQuery(project_id=project.id, range_key='all', now=base + timedelta(days=2)))
+    rows = {row['author_id']: row for row in report['users']}
+    assert rows['host-user']['call_count'] == 3
+    assert rows['host-user']['total_tokens'] == 30
+    assert rows['host-user']['identity_sources'] == ['gateway']
+    assert rows['host-user']['access_sources'] == ['gateway', 'local', 'webrtc_p2p']
+    assert rows['other-user']['total_tokens'] == 7
+
+
 @pytest.mark.parametrize('source', ['gateway', 'local', 'channel'])
 def test_statistics_uses_saved_display_name_for_legacy_calls(statistics_fixture, source):
     manager, project, _, base = statistics_fixture

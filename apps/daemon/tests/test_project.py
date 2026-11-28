@@ -87,7 +87,7 @@ def test_new_project_uses_short_id_and_retries_collisions(tmp_path, manager, mon
     values = iter(UUID(value + "-0000-4000-8000-000000000000") for value in (
         "164938b7", "164938b7", "deadbeef", "abcd1234",
     ))
-    monkeypatch.setattr("services.project.uuid.uuid4", lambda: next(values))
+    monkeypatch.setattr("services.business_ids.uuid.uuid4", lambda: next(values))
     external_directory("deadbeef").mkdir(parents=True)
     first = m.init_project(tmp_path / "first")
     (tmp_path / "second").mkdir()

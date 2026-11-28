@@ -28,6 +28,8 @@ class Message(BaseModel):
     initiated_by_name = pw.TextField(null=True)
     author_device_id = pw.TextField(null=True)
     author_device_name = pw.TextField(null=True)
+    identity_source = pw.TextField(null=True)
+    access_source = pw.TextField(null=True)
     engine = pw.TextField(null=True)
     model = pw.TextField(null=True)
     run_id = pw.TextField(null=True)

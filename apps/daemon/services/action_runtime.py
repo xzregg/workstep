@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from services.business_ids import new_id
 from services.project_storage import data_directory
 import asyncio
 import codecs
@@ -9,7 +10,6 @@ import json
 import os
 import signal
 import sys
-import uuid
 from pathlib import Path
 
 import peewee
@@ -310,7 +310,7 @@ class ActionRuntime:
                 raise ActionError(str(exc), 409) from exc
             config = _script_config(Path(project.path), task, button, source)
             config["action_input"] = input_value
-            run_id = str(uuid.uuid4())
+            run_id = new_id(project_id)
             now = utc_now()
             with db_proxy.atomic():
                 try:
@@ -320,7 +320,7 @@ class ActionRuntime:
                         action_id=button["action_id"], button_id=button_id, source=source,
                         title=button["label"], script_path=button["script_path"],
                         cwd=str(config["cwd"]), status="preparing", active_key=active_key,
-                        user_message_id=str(uuid.uuid4()), reply_message_id=str(uuid.uuid4()),
+                        user_message_id=new_id(project_id), reply_message_id=new_id(project_id),
                         started_at=now,
                     )
                 except peewee.IntegrityError:
@@ -379,7 +379,7 @@ class ActionRuntime:
                 raise ActionError(str(exc), 409) from exc
             config = _script_config(Path(project.path), None, button, "project")
             config["action_input"] = input_value
-            run_id = str(uuid.uuid4())
+            run_id = new_id(project_id)
             now = utc_now()
             with db_proxy.atomic():
                 try:
@@ -388,7 +388,7 @@ class ActionRuntime:
                         action_id=button["action_id"], button_id=button_id, source="project",
                         title=button["label"], script_path=button["script_path"],
                         cwd=str(config["cwd"]), status="preparing", active_key=active_key,
-                        user_message_id=str(uuid.uuid4()), reply_message_id=str(uuid.uuid4()),
+                        user_message_id=new_id(project_id), reply_message_id=new_id(project_id),
                         started_at=now,
                     )
                 except peewee.IntegrityError:
@@ -408,6 +408,8 @@ class ActionRuntime:
                     initiated_by_user_id=actor_fields.get("initiated_by_user_id"),
                     initiated_by_username=actor_fields.get("initiated_by_username"),
                     initiated_by_name=actor_fields.get("initiated_by_name"),
+                    identity_source=actor_fields.get("identity_source"),
+                    access_source=actor_fields.get("access_source"),
                     author_device_id=actor_fields.get("author_device_id"),
                     author_device_name=actor_fields.get("author_device_name"),
                 )

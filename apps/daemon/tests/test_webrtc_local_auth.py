@@ -2,10 +2,47 @@
 
 import asyncio
 import json
+import time
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+
+
+@pytest.mark.asyncio
+async def test_direct_message_name_tracks_host_settings_without_blocking_health(monkeypatch):
+    from api.desktop_security import DesktopSecurityMiddleware
+    from services.webrtc_p2p.bridge import WebRtcRemoteActor
+    from services.config import config_store
+    from services.messages import current_actor_message_fields
+    entered=asyncio.Event()
+    loop=asyncio.get_running_loop()
+    current=['本机用户甲']
+    def slow_name():
+        loop.call_soon_threadsafe(entered.set)
+        time.sleep(.1)
+        return current[0]
+    monkeypatch.setattr(config_store,'get_user_name',slow_name)
+    app=FastAPI();app.add_middleware(DesktopSecurityMiddleware)
+    app.state.webrtc_scope_token=object()
+    @app.middleware('http')
+    async def trusted_bridge(request,call_next):
+        if request.url.path!='/api/health':
+            request.scope.update(webrtc_remote_actor=WebRtcRemoteActor('rtc','rtc','device'),webrtc_bridge_token=app.state.webrtc_scope_token,webrtc_device_owner=True)
+        return await call_next(request)
+    @app.get('/api/message-author')
+    async def author():
+        return current_actor_message_fields()
+    @app.get('/api/health')
+    async def health():
+        return {'ok':True}
+    async with AsyncClient(transport=ASGITransport(app=app),base_url='http://localhost') as client:
+        pending=asyncio.create_task(client.get('/api/message-author',headers={'X-WorkStep-Actor-Name':'P2P Remote'}))
+        await asyncio.wait_for(entered.wait(),1)
+        assert (await asyncio.wait_for(client.get('/api/health'),.05)).status_code==200
+        assert (await pending).json()['author_name']=='本机用户甲'
+        current[0]='本机用户乙'
+        assert (await client.get('/api/message-author')).json()['author_name']=='本机用户乙'
 
 
 @pytest.mark.asyncio

@@ -6,12 +6,14 @@ final class WorkStepUITests: XCTestCase {
 
     func testEmptyAddressCannotSubmitAndInvalidAddressStaysEditable() {
         let app = XCUIApplication()
-        app.launchArguments = ["-server", ""]
+        app.launchArguments = ["-server", "", "-p2p_active_url", ""]
         app.launch()
+        app.buttons["网关地址"].tap()
         let address = app.textFields["serverAddress"]
         XCTAssertTrue(address.waitForExistence(timeout: 5))
         let connect = app.buttons["connectServer"]
-        XCTAssertFalse(connect.isEnabled)
+        XCTAssertFalse(app.buttons["addServer"].isEnabled)
+        XCTAssertFalse(connect.exists)
         address.tap(); address.typeText("not-a-url")
         XCTAssertTrue(connect.isEnabled)
         connect.tap()
@@ -27,7 +29,7 @@ final class WorkStepUITests: XCTestCase {
         wait(for: [ready], timeout: 5)
 
         let app = XCUIApplication()
-        app.launchArguments = ["-server", ""]
+        app.launchArguments = ["-server", "", "-p2p_active_url", ""]
         addUIInterruptionMonitor(withDescription: "notification permission") { alert in
             for title in ["Don’t Allow", "Don't Allow", "不允许"] where alert.buttons[title].exists {
                 alert.buttons[title].tap(); return true
@@ -35,6 +37,7 @@ final class WorkStepUITests: XCTestCase {
             return false
         }
         app.launch()
+        app.buttons["网关地址"].tap()
         let address = app.textFields["serverAddress"]
         XCTAssertTrue(address.waitForExistence(timeout: 5))
         address.tap(); address.typeText("http://127.0.0.1:\(fixture.port)")
@@ -65,7 +68,7 @@ final class WorkStepUITests: XCTestCase {
         wait(for: [ready], timeout: 5)
 
         let app = XCUIApplication()
-        app.launchArguments = ["-server", "", "-servers", ""]
+        app.launchArguments = ["-server", "", "-p2p_active_url", ""]
         addUIInterruptionMonitor(withDescription: "notification permission") { alert in
             for title in ["Don’t Allow", "Don't Allow", "不允许"] where alert.buttons[title].exists {
                 alert.buttons[title].tap(); return true
@@ -73,11 +76,14 @@ final class WorkStepUITests: XCTestCase {
             return false
         }
         app.launch()
+        app.buttons["网关地址"].tap()
         let address = app.textFields["serverAddress"]
         XCTAssertTrue(address.waitForExistence(timeout: 5))
         address.tap(); address.typeText("http://127.0.0.1:\(fixture.port)")
         app.buttons["addServer"].tap()
-        XCTAssertTrue(app.buttons["savedServer-0"].waitForExistence(timeout: 3))
+        let origin = "http://127.0.0.1:\(fixture.port)"
+        let saved = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", origin)).firstMatch
+        XCTAssertTrue(saved.waitForExistence(timeout: 3))
         XCTAssertFalse(app.webViews.staticTexts["WorkStep 测试工作台"].exists)
         app.buttons["switchServer"].tap()
         XCTAssertTrue(app.webViews.staticTexts["WorkStep 测试工作台"].waitForExistence(timeout: 15))
@@ -85,9 +91,44 @@ final class WorkStepUITests: XCTestCase {
         app.buttons["navigationFloat"].press(forDuration: 1)
         XCTAssertTrue(app.buttons["修改服务地址"].waitForExistence(timeout: 3))
         app.buttons["修改服务地址"].tap()
-        XCTAssertTrue(app.buttons["savedServer-0"].waitForExistence(timeout: 3))
-        app.buttons["deleteServer"].tap()
-        XCTAssertFalse(app.buttons["savedServer-0"].exists)
+        XCTAssertTrue(app.textFields["p2pLink"].waitForExistence(timeout: 5))
+        app.buttons["网关地址"].tap()
+        XCTAssertTrue(app.textFields["serverAddress"].waitForExistence(timeout: 5))
+        let reopened = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", origin)).firstMatch
+        XCTAssertTrue(reopened.waitForExistence(timeout: 3))
+        app.buttons["delete-\(reopened.identifier)"].tap()
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", origin)).firstMatch.exists)
+    }
+
+    func testP2pLinkSavesAndOpensDevicePage() throws {
+        let fixture = try WebFixture()
+        defer { fixture.stop() }
+        let ready = expectation(description: "fixture listening")
+        fixture.start { ready.fulfill() }
+        wait(for: [ready], timeout: 5)
+
+        let app = XCUIApplication()
+        app.launchArguments = ["-server", "", "-servers", "", "-p2p_active_url", ""]
+        app.launch()
+        let scan = app.buttons["scanP2p"]
+        XCTAssertTrue(scan.waitForExistence(timeout: 5))
+        scan.tap()
+        XCTAssertTrue(app.buttons["取消"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["扫码添加 P2P 设备"].exists)
+        app.buttons["取消"].tap()
+        let field = app.textFields["p2pLink"]
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.tap()
+        let deviceName = "device-\(fixture.port)"
+        field.typeText("http://127.0.0.1:\(fixture.port)/p2p/\(deviceName)/#pair_key=abcdefghijklmnopqrstuvwxyz123456")
+        app.buttons["保存"].tap()
+        app.buttons["切换到所选连接"].tap()
+        XCTAssertTrue(app.webViews.staticTexts["WorkStep 测试工作台"].waitForExistence(timeout: 15))
+        app.buttons["navigationFloat"].press(forDuration: 1)
+        app.buttons["修改服务地址"].tap()
+        let saved = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", deviceName)).firstMatch
+        XCTAssertTrue(saved.waitForExistence(timeout: 3))
+        XCTAssertFalse(saved.label.contains("pair_key"))
     }
 }
 

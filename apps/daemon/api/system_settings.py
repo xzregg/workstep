@@ -121,8 +121,9 @@ async def get_system_settings(request: Request):
     actor = getattr(request.state, 'managed_actor', None)
     gateway = getattr(request.app.state, 'gateway_client', None)
     gateway_mode = bool(gateway and gateway.managed_config)
-    from api.desktop_security import desktop_runtime_authenticated, local_gateway_fallback_allowed
-    host_workspace = desktop_runtime_authenticated(request) or local_gateway_fallback_allowed(request)
+    from api.desktop_security import desktop_runtime_authenticated, local_gateway_fallback_allowed, webrtc_device_owner
+    host_workspace = (desktop_runtime_authenticated(request) or local_gateway_fallback_allowed(request)
+                      or webrtc_device_owner(request))
     def load() -> dict:
         # Gateway configuration belongs to the host. Native LAN visitors
         # still supply their own browser profile unless they actually log in.
@@ -137,7 +138,7 @@ async def get_system_settings(request: Request):
         return {
             "user_name": (actor.display_name or actor.username) if actor else (saved_name if platform_identity else config_store.get_user_name()),
             "identity_source": 'gateway' if actor or platform_identity else 'local',
-            "gateway_username": actor.username if actor else '',
+            "gateway_username": actor.username if actor else (saved_account.get('username', '') if platform_identity else ''),
             "open_mode": config_store.get_open_mode(),
             "message_history_page_size": config_store.get_message_history_page_size(),
             "git_scan_depth": config_store.get_git_scan_depth(),

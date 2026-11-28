@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# ./start-gateway.sh [port=8700] [dev|prod]
+# ./start-gateway.sh [port=8700] [dev|prod|restart]
 set -euo pipefail
 gateway_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 gateway_port="${1:-8700}"
 gateway_mode="${2:-dev}"
 [[ "$gateway_port" =~ ^[0-9]+$ ]] && (( gateway_port > 0 && gateway_port <= 65535 )) || { echo '端口必须为 1–65535' >&2; exit 1; }
-[[ "$gateway_mode" == dev || "$gateway_mode" == prod ]] || { echo '模式必须为 dev 或 prod' >&2; exit 1; }
+[[ "$gateway_mode" == dev || "$gateway_mode" == prod || "$gateway_mode" == restart ]] || { echo '模式必须为 dev、prod 或 restart' >&2; exit 1; }
 command -v uv >/dev/null
 command -v yarn >/dev/null
 if [[ -f "$gateway_root/.env" ]]; then
@@ -14,6 +14,9 @@ if [[ -f "$gateway_root/.env" ]]; then
   set +a
 fi
 source "$gateway_root/scripts/file-limits.sh"
+if [[ "$gateway_mode" == restart ]]; then
+  exec python3 "$gateway_root/scripts/gateway_restart.py" --root "$gateway_root" --port "$gateway_port"
+fi
 export WORKSTEP_GATEWAY_PORT="$gateway_port"
 export WORKSTEP_GATEWAY_PUBLIC_ORIGIN="${WORKSTEP_GATEWAY_PUBLIC_ORIGIN:-http://localhost:$gateway_port}"
 export WORKSTEP_GATEWAY_WEB_DIST="${WORKSTEP_GATEWAY_WEB_DIST:-$gateway_root/apps/gateway-web/dist}"

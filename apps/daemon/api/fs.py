@@ -2,10 +2,13 @@
 
 import asyncio
 import codecs
+import hashlib
 import mimetypes
+import os
 import platform
 import re
 import shutil
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -14,6 +17,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from services.config import CONFIG_DIR
+from services.html_preview import MAX_PREVIEW_BYTES
 from services.project_memory import read_memory_bytes, write_memory_bytes
 from api.fs_browser import router as browser_router
 from api.fs_paths import (
@@ -176,12 +180,35 @@ class UploadImageRequest(BaseModel):
     filename: str = "image.png"
     data_url: str  # data:image/png;base64,...
     prefix: str = ""
+    request_id: uuid.UUID | None = None
 
 
 class UploadFileRequest(BaseModel):
     filename: str = "attachment.bin"
     data_url: str
     prefix: str = ""
+    request_id: uuid.UUID | None = None
+
+
+def _upload_identifier(request_id: uuid.UUID | None, content: bytes) -> str:
+    if request_id is None:
+        return uuid.uuid4().hex
+    digest = hashlib.sha256(request_id.bytes)
+    digest.update(content)
+    return digest.hexdigest()[:32]
+
+
+def _persist_upload_bytes(filepath: Path, content: bytes, *, retryable: bool) -> bool:
+    if retryable and filepath.is_file():
+        return False
+    descriptor, temporary = tempfile.mkstemp(prefix=".upload-", dir=filepath.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(content)
+        os.replace(temporary, filepath)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    return True
 
 
 class MemoryWriteRequest(BaseModel):
@@ -310,7 +337,8 @@ async def upload_image(
     if len(prefix) > 32 or not _re.fullmatch(r"[A-Za-z0-9_-]*", prefix):
         raise HTTPException(status_code=400, detail="Prefix must consist of letters, digits, underscores, and hyphens, and be no longer than 32 characters")
 
-    filename = f"{prefix}-{uuid.uuid4().hex}{ext}" if prefix else f"{uuid.uuid4().hex}{ext}"
+    identifier = await asyncio.to_thread(_upload_identifier, req.request_id, content)
+    filename = f"{prefix}-{identifier}{ext}" if prefix else f"{identifier}{ext}"
     if project is not None:
         upload_dir = Path(project.workstep_dir) / "uploads"
         rel_path = f".workstep/uploads/{filename}"
@@ -318,15 +346,16 @@ async def upload_image(
         upload_dir = CONFIG_DIR / "data" / "uploads"
         rel_path = f"data/uploads/{filename}"
     filepath = upload_dir / filename
-    def persist_upload() -> None:
+    def persist_upload() -> bool:
         _assert_preview_path(filepath)
         if project is not None:
             _project_upload_dir(Path(project.workstep_dir))
         upload_dir.mkdir(parents=True, exist_ok=True)
-        filepath.write_bytes(content)
+        return _persist_upload_bytes(filepath, content, retryable=req.request_id is not None)
 
-    await asyncio.to_thread(persist_upload)
-    await _audit_uploaded_file(project, filename, req.filename, len(content))
+    created = await asyncio.to_thread(persist_upload)
+    if created:
+        await _audit_uploaded_file(project, filename, req.filename, len(content))
 
     # Relative path kept in markdown as-is so it stays meaningful for LLM
     # prompts; the frontend maps it back to /api/fs/serve/... for preview.
@@ -373,22 +402,24 @@ async def upload_file(
     if not _re.fullmatch(r"\.[a-z0-9]{1,10}", ext):
         guessed = mimetypes.guess_extension(content_type) or ".bin"
         ext = guessed if _re.fullmatch(r"\.[a-z0-9]{1,10}", guessed) else ".bin"
-    filename = f"{prefix}-{uuid.uuid4().hex}{ext}" if prefix else f"{uuid.uuid4().hex}{ext}"
+    identifier = await asyncio.to_thread(_upload_identifier, req.request_id, content)
+    filename = f"{prefix}-{identifier}{ext}" if prefix else f"{identifier}{ext}"
     if project is not None:
         upload_dir = Path(project.workstep_dir) / "uploads"
         rel_path = f".workstep/uploads/{filename}"
     else:
         upload_dir = CONFIG_DIR / "data" / "uploads"
         rel_path = f"data/uploads/{filename}"
-    def persist_upload() -> None:
+    def persist_upload() -> bool:
         _assert_preview_path(upload_dir / filename)
         if project is not None:
             _project_upload_dir(Path(project.workstep_dir))
         upload_dir.mkdir(parents=True, exist_ok=True)
-        (upload_dir / filename).write_bytes(content)
+        return _persist_upload_bytes(upload_dir / filename, content, retryable=req.request_id is not None)
 
-    await asyncio.to_thread(persist_upload)
-    await _audit_uploaded_file(project, filename, req.filename, len(content))
+    created = await asyncio.to_thread(persist_upload)
+    if created:
+        await _audit_uploaded_file(project, filename, req.filename, len(content))
     return {"url": rel_path, "filename": filename, "size": len(content)}
 
 
@@ -452,10 +483,10 @@ async def serve_upload_by_project_name(project_name: str, filename: str):
 
 
 @router.get("/file")
-async def serve_file(path: str, project_id: str | None = Query(None)):
+async def serve_file(path: str, project_id: str | None = Query(None), absolute: bool = Query(False)):
     """Serve a raw file over HTTP (used for HTML preview links / downloads)."""
     def response() -> FileResponse:
-        file_path = _resolve_preview_file(path, project_id)
+        file_path = _resolve_preview_file(path, project_id, allow_absolute=absolute)
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=_path_error_detail("File not found", file_path))
         if not file_path.is_file():
@@ -514,10 +545,11 @@ async def preview_file(
     path: str,
     project_id: str | None = Query(None),
     absolute: bool = Query(False),
+    stream_image: bool = Query(False),
 ):
     """Preview a file content for display."""
     def load():
-        preview = _preview_file_sync(path, project_id, absolute)
+        preview = _preview_file_sync(path, project_id, absolute, stream_image=stream_image)
         if preview['content_type'] == 'text/html':
             from services.html_preview import issue_ticket
             preview['html_preview'] = issue_ticket(
@@ -584,7 +616,7 @@ def _preview_content_type(file_path: Path) -> str | None:
     return 'text/plain'
 
 
-def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
+def _preview_file_sync(path: str, project_id: str | None, absolute: bool, *, stream_image: bool = False):
     file_path = _resolve_preview_file(path, project_id, allow_absolute=absolute)
 
     if not file_path.exists():
@@ -593,8 +625,14 @@ def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
     if not file_path.is_file():
         raise HTTPException(status_code=400, detail=_path_error_detail("Not a file", file_path))
 
-    content_type = _preview_content_type(file_path)
     file_size = file_path.stat().st_size
+    if file_size > MAX_PREVIEW_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File is too large to preview ({file_size} bytes; limit {MAX_PREVIEW_BYTES})",
+        )
+
+    content_type = _preview_content_type(file_path)
     relative_path = _project_relative_path(file_path, project_id)
     # Audio/video bytes are streamed by the raw endpoint, never embedded in JSON.
     if content_type and content_type.startswith(('video/', 'audio/')):
@@ -606,25 +644,14 @@ def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
             "extension": file_path.suffix,
             "relative_path": relative_path,
         }
-    max_size = 1024 * 1024
-    if content_type == 'text/html':
-        from services.html_preview import MAX_RESOURCE_BYTES
-        max_size = MAX_RESOURCE_BYTES
-    if file_size > max_size:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File is too large to preview ({file_size} bytes; limit {max_size})",
-        )
-
     if content_type and content_type.startswith('image/'):
         try:
             import base64
-            content = file_path.read_bytes()
-            encoded = base64.b64encode(content).decode('utf-8')
+            content = "" if stream_image else f"data:{content_type};base64,{base64.b64encode(file_path.read_bytes()).decode('utf-8')}"
             return {
                 "type": "image",
                 "content_type": content_type,
-                "content": f"data:{content_type};base64,{encoded}",
+                "content": content,
                 "file_size": file_size,
                 "extension": file_path.suffix,
                 "relative_path": relative_path,

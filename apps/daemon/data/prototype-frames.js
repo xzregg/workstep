@@ -4,8 +4,9 @@
   const frames=()=>Array.from(document.querySelectorAll('iframe'));
   const children=new Map();
   let snapshots=[],modeMessage=null;
-  let base=new URL('.',location.href);
-  for(let index=1;index<config.path.split('/').length;index++)base=new URL('../',base);
+  let base=new URL(window.__workstepPreviewBase||config.resource_base||'.',location.href);
+  if(!config.resource_base)for(let index=1;index<config.path.split('/').length;index++)base=new URL('../',base);
+  const resource=url=>window.__workstepPreviewResources?window.__workstepPreviewResources[url.href]||'about:blank':url.href;
   const local=url=>url.origin===base.origin&&url.pathname.startsWith(base.pathname)&&/\.html?$/i.test(url.pathname);
   const frameInfo=frame=>{
     const parts=[];
@@ -24,7 +25,7 @@
       if(direct&&children.get(frame.contentWindow)?.path!==direct.path){
         const url=new URL(direct.path,base);
         const old=new URL(frame.getAttribute('src')||'',location.href);
-        if(local(url)&&url.href!==old.href){frame.src=url.href;return}
+        if(local(url)&&resource(url)!==old.href){frame.src=resource(url);return}
       }
       frame.contentWindow?.postMessage({source:'workstep-prototype-host',type:'frame-state',snapshots:snapshots.filter(item=>item.route[0]===index&&item.route.length>1).map(item=>({...item,route:item.route.slice(1)}))},'*');
       if(modeMessage)frame.contentWindow?.postMessage(modeMessage,'*');
@@ -51,7 +52,7 @@
         if(!frame||frame.hasAttribute('srcdoc'))return;
         if(data.type==='refresh-frame'&&route.length===1){
           const url=new URL(data.path,base);
-          if(local(url)){children.delete(frame.contentWindow);url.searchParams.set('ws_revision',Date.now());frame.src=url.href}
+          if(local(url)){children.delete(frame.contentWindow);if(!window.__workstepPreviewResources)url.searchParams.set('ws_revision',Date.now());frame.src=resource(url)}
         }else frame.contentWindow?.postMessage({...data,route:route.slice(1)},'*');
         return;
       }

@@ -22,7 +22,8 @@ export default function GatewayConnectionStatus({ onOpenSettings }: { onOpenSett
     const latency = state === 'online' ? formatLatencyDisplay(webrtcConn.latencyMs) : formatLatencyDisplay(null)
     const statusText = state === 'online' ? t('webrtcP2p.directConnected') : t('webrtcP2p.connecting')
     return <button type="button" className={`gateway-connection-status gateway-connection-status--${state}`}
-      onClick={onOpenSettings} title={`${statusText}${latency.suffix} · ${t('gatewayPlatform.openSettings')}`}>
+      onClick={() => window.WorkStepP2p ? window.WorkStepP2p.postMessage('settings') : onOpenSettings()}
+      title={`${statusText}${latency.suffix} · ${t('gatewayPlatform.openSettings')}`}>
       {state === 'connecting' ? <Icon name="loader-circle" size={12} className="gateway-connection-spinner" /> : <span className="gateway-connection-dot" aria-hidden="true" />}
       <span role="status">{statusText}{latency.valid && <span className={`gateway-connection-latency${latency.modifierClass}`}>{latency.suffix}</span>}</span>
     </button>

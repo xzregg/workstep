@@ -4,6 +4,22 @@ Notable user-facing changes are recorded here. WorkStep follows semantic version
 
 ## Unreleased
 
+## 1.0.27
+
+- Add direct WebRTC remote access with connectivity checks, host-key QR pairing, scoped authorization and reconnection status.
+- Add per-step manual-start checkpoints, preserving parallel work, restart recovery and explicit task-level overrides.
+- Add shared global task outputs with stable paths, dedicated browsing and existing routing and review safeguards.
+- Add nested conversation groups and refine mobile digital-hub navigation and task-detail scrolling.
+- Unify multi-engine quota queries and caching, retain the last successful result on transient failures and simplify the composer indicator.
+- Add mobile task multi-selection, bulk actions and copying while preserving existing permissions and confirmation requirements.
+- Add an image picker to Markdown editing and bulk discard for explicitly selected Git changes.
+- Preserve verified Gateway identity across reconnects and keep historical message and task attribution tied to stable actor identities.
+- Normalize application-injected prompt boundaries without changing message roles, JSON payloads or model-output protocols.
+- Refine step engine, provider, model, review and artifact controls, including mobile numeric input and date selection.
+- Add proactive-thinking controls and stop automatic retries after repeated failures without hiding notification delivery errors.
+- Refresh desktop, iOS and Android artwork and notification icons from the website source.
+- Update all 26 manual languages with the new workflow, remote-access and collaboration controls, including sanitized configuration screenshots and explicit acceptance limits.
+
 ## 1.0.26
 
 - Add native calendar access on supported desktop and Android hosts, with explicit permissions and bounded event reads.

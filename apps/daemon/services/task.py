@@ -1,10 +1,10 @@
 """Task service — create, run, and manage task execution."""
 
+from services.business_ids import new_id
 from services.project_storage import data_directory
 import asyncio
 import json
 import logging
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,7 +27,6 @@ from services.messages import (
     create_task_message,
     current_actor_task_fields,
     extract_usage_json,
-    new_message_id,
 )
 from services.history import (
     event_detail,
@@ -111,7 +110,7 @@ class TaskService:
                         execution_keys.add(step["key"])
                         changed = True
         now = utc_now()
-        task_id = task_id or str(uuid.uuid4())
+        task_id = task_id or new_id(project_id)
 
         with Task._meta.database.atomic():
             task = Task.create(
@@ -302,6 +301,8 @@ class TaskService:
                 "initiated_by_user_id": msg.initiated_by_user_id,
                 "initiated_by_username": msg.initiated_by_username,
                 "initiated_by_name": msg.initiated_by_name,
+                "identity_source": msg.identity_source,
+                "access_source": msg.access_source,
                 "author_device_id": msg.author_device_id,
                 "author_device_name": msg.author_device_name,
                 "step_key": msg.step_key,
@@ -507,7 +508,7 @@ class TaskService:
         step.status = "running"
         step.started_at = utc_now()
         step.save()
-        msg_id = new_message_id()
+        msg_id = new_id()
         message_started_at = utc_now()
         journal_ref = self._event_journal.start(
             data_directory(task.cwd),
@@ -674,10 +675,10 @@ class TaskService:
             with Task._meta.database.atomic():
                 original = Task.get_by_id(task_id)
                 now = utc_now()
-                new_id = str(uuid.uuid4())
+                copied_id = new_id(project_id)
                 # Create new task
                 new_task = Task.create(
-                    id=new_id,
+                    id=copied_id,
                     title=new_title,
                     description=original.description,
                     cwd=cwd_override or original.cwd,

@@ -1,7 +1,6 @@
-"""Project-addressable WorkStep chat IDs (independent of engine thread IDs)."""
+"""Read project prefixes from legacy WorkStep chat IDs."""
 
 import re
-import uuid
 
 
 _PROJECT_SESSION = re.compile(
@@ -12,10 +11,6 @@ _LEGACY_PROJECT_SESSION = re.compile(
     r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
     r"-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z"
 )
-
-
-def new_session_id(project_id: str) -> str:
-    return project_id + "-" + uuid.uuid4().hex
 
 
 def session_project_id(session_id: str) -> str | None:

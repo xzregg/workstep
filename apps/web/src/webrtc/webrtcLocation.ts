@@ -1,5 +1,11 @@
 /** Route detection helpers for `/p2p/<device_id>` direct WebRTC workspaces. */
 
+declare global {
+  interface Window {
+    WorkStepP2p?: { postMessage(message: 'settings'): void }
+  }
+}
+
 export function webrtcWorkspacePath(): string {
   if (typeof window === 'undefined') return ''
   return window.location?.pathname?.match(/^\/p2p\/[^/]+(?=\/|$)/)?.[0] ?? ''

@@ -44,6 +44,8 @@ class Task(BaseModel):
     creator_name = pw.TextField(null=True)
     creator_device_id = pw.TextField(null=True)
     creator_device_name = pw.TextField(null=True)
+    identity_source = pw.TextField(null=True)
+    access_source = pw.TextField(null=True)
     scheduled_start_at = UTCDateTimeField(null=True)
     scheduled_start_state = pw.TextField(null=True)  # pending / missed / failed
     scheduled_start_error = pw.TextField(null=True)

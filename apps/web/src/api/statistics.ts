@@ -95,6 +95,8 @@ export interface StatisticsEngineRow {
 export interface StatisticsUserRow {
   author_id: string
   author_name: string
+  identity_sources?: string[]
+  access_sources?: string[]
   call_count: number
   input_tokens: number
   output_tokens: number

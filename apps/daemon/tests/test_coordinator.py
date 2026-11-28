@@ -4,7 +4,7 @@ from tests.prompt_xml import read_context
 import asyncio
 import json
 import threading
-import uuid
+import re
 from contextlib import AsyncExitStack
 from pathlib import Path
 from types import SimpleNamespace
@@ -1219,6 +1219,7 @@ async def test_archive_experience_uses_coordinator_with_task_history(
 
     assert response.status_code == 200
     assert response.json()["experience"] == "- 问题：构建失败\n- 经验：先核对类型错误"
+    assert re.fullmatch(project_id + "[0-9a-hjkmnp-tv-z]{18}", response.json()["message_id"])
     assert len(CoordinatorFakeEngine.calls) == 1
     assert "曾遇到构建失败，需要修正类型错误" not in CoordinatorFakeEngine.calls[0]["prompt"]
     assert task_id in CoordinatorFakeEngine.calls[0]["prompt"]
@@ -1607,7 +1608,7 @@ async def test_archive_experience_reports_progress_before_engine_reply(
 
 
 @pytest.mark.anyio
-async def test_chat_message_ids_are_monotonic_uuid7(api_context, monkeypatch):
+async def test_task_chat_message_ids_are_project_prefixed_and_monotonic(api_context, monkeypatch):
     """新消息 ID 自带时间，并且可直接按字符串还原创建顺序。"""
     from engines.core.registry import ENGINE_REGISTRY
 
@@ -1633,7 +1634,8 @@ async def test_chat_message_ids_are_monotonic_uuid7(api_context, monkeypatch):
             response["assistant_message_id"],
         )
     ]
-    assert all(uuid.UUID(message_id).version == 7 for message_id in message_ids)
+    assert re.fullmatch(project_id + "[0-9a-hjkmnp-tv-z]{18}", task_id)
+    assert all(re.fullmatch(project_id + "[0-9a-hjkmnp-tv-z]{18}", message_id) for message_id in message_ids)
     assert message_ids == sorted(message_ids)
 
 
@@ -2473,11 +2475,13 @@ async def test_chat_calls_selected_engine_without_starting_workflow(
     event_queue = main.coordinator_module._event_bus.subscribe()
 
     try:
-        accepted = await client.post(
-            f"/api/task/{task_id}/chat?project_id={project_id}",
-            headers={"Idempotency-Key": "chat-1"},
-            json={"content": "现在进展如何？"},
-        )
+        from services.remote_access import ActorSnapshot, actor_context
+        with actor_context(ActorSnapshot('actual-chat-initiator', '本次发起人', 'sender-device', '渠道', 'channel')):
+            accepted = await client.post(
+                f"/api/task/{task_id}/chat?project_id={project_id}",
+                headers={"Idempotency-Key": "chat-1"},
+                json={"content": "现在进展如何？"},
+            )
 
         assert accepted.status_code == 200
         await asyncio.wait_for(read_started.wait(), timeout=2)
@@ -2496,6 +2500,7 @@ async def test_chat_calls_selected_engine_without_starting_workflow(
         assert len(recorded_usage) == 1
         assert recorded_usage[0]["message_id"] == accepted.json()["assistant_message_id"]
         assert recorded_usage[0]["task_id"] == task_id
+        assert recorded_usage[0]["user_id"] == 'actual-chat-initiator'
         assert json.loads(recorded_usage[0]["usage_json"])["input_tokens"] == 120
         assert recorded_usage[0]["provider_id"] == "managed-coordinator"
         assert recorded_usage[0]["provider"] == {

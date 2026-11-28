@@ -62,6 +62,7 @@ def test_scheduled_workflow_input_has_scheduler_author_and_creator_initiator(tmp
             id="scheduled-input", title="定时任务", cwd=str(tmp_path),
             creator_id="creator-1", creator_username="alice",
             creator_name="Alice", creator_device_id="device-1",
+            identity_source="gateway", access_source="webrtc_p2p",
             creator_device_name="Laptop", created_at=now, updated_at=now,
         )
         project = SimpleNamespace(
@@ -87,6 +88,8 @@ def test_scheduled_workflow_input_has_scheduler_author_and_creator_initiator(tmp
         )
         assert prepared.workflow_run.initiated_by_username == "alice"
         assert prepared.workflow_run.initiated_by_name == "Alice"
+        assert prepared.workflow_run.identity_source == message.identity_source == 'gateway'
+        assert prepared.workflow_run.access_source == message.access_source == 'webrtc_p2p'
     finally:
         db.close()
 

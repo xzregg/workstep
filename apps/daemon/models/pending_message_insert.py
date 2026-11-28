@@ -20,6 +20,8 @@ class PendingMessageInsert(BaseModel):
     author_device_id = pw.TextField(null=True)
     author_device_name = pw.TextField(null=True)
     author_source = pw.TextField(null=True)
+    identity_source = pw.TextField(null=True)
+    access_source = pw.TextField(null=True)
     created_at = UTCDateTimeField()
     updated_at = UTCDateTimeField()
 

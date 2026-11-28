@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from typing import Literal
 from pydantic import BaseModel,ConfigDict,Field
 from services import digital_calendar as calendar
+from services.business_ids import new_id
 
 
 class BatchSchedule(BaseModel):
@@ -46,7 +47,6 @@ class OperationDraft(BaseModel):
     origin_session_id:str|None=Field(default=None,max_length=100)
 
 
-def uid():return str(uuid.uuid4())
 def stamp():return datetime.now(timezone.utc).isoformat()
 def digest(value):return hashlib.sha256(value.encode()).hexdigest()
 
@@ -213,13 +213,13 @@ class CalendarApplication:
                 op=self._operation(db,json.loads(old[0])['id'])
                 if op['payload_hash']!=payload_hash:raise ValueError('Calendar request_id already used with another payload')
                 return self.public(op)
-            op={'id':uid(),'plan_id':body.get('plan_id') or uid(),'target_id':target_id,'device_id':target['device_id'],
+            op={'id':new_id(),'plan_id':body.get('plan_id') or new_id(),'target_id':target_id,'device_id':target['device_id'],
                 'calendar_id':target.get('calendar_id',''),'action':action,'request_id':key,'payload_hash':payload_hash,
                 'status':'queued','created_at':stamp(),'updated_at':stamp(),'cancel_requested':False,'items':[]}
             op.update(origin_project_id=body.get('origin_project_id'),origin_session_id=body.get('origin_session_id'))
             if action=='create':
                 for draft in self._drafts(body):
-                    op['items'].append({'id':uid(),'event_id':uid(),'status':'queued','draft':draft.model_dump(mode='json'),'duration_minutes':duration})
+                    op['items'].append({'id':new_id(),'event_id':new_id(),'status':'queued','draft':draft.model_dump(mode='json'),'duration_minutes':duration})
             else:
                 event_ids=body.get('event_ids',[])
                 if body.get('event_id'):event_ids=[body['event_id']]
@@ -242,7 +242,7 @@ class CalendarApplication:
                     if target_id!='internal' and link is None:raise KeyError('Linked calendar event not found')
                     if body.get('revision') and body['revision']!=event['revision']:raise ValueError('Calendar event changed; refresh first')
                     draft=calendar.CalendarDraft.model_validate(body['draft']).model_dump(mode='json') if action=='update' else {k:event[k] for k in ('content','starts_at','timezone_name','reminder_minutes')}
-                    op['items'].append({'id':uid(),'event_id':event_id,'revision':event['revision'],'system_id':link['system_id'] if link else event_id,
+                    op['items'].append({'id':new_id(),'event_id':event_id,'revision':event['revision'],'system_id':link['system_id'] if link else event_id,
                                         'status':'queued','draft':draft,'duration_minutes':int(body.get('duration_minutes',event.get('duration_minutes',30))),**({'system_revision':event['system_revision']} if event.get('system_revision') else {})})
             if not op['items']:op['status']='succeeded'
             if len(json.dumps(op,ensure_ascii=False).encode())>1048576:raise ValueError('Calendar batch exceeds 1 MiB; reduce its content or item count')
@@ -303,9 +303,9 @@ class CalendarApplication:
                 if action!='create' and receipt['system_id']!=item['system_id']:raise ValueError('System calendar identity mismatch')
                 if action=='create':
                     draft=item['draft'];now=stamp()
-                    event={**draft,'id':item['event_id'],'revision':uid(),'created_at':now,'updated_at':now,
+                    event={**draft,'id':item['event_id'],'revision':new_id(),'created_at':now,'updated_at':now,
                            'reminder_at':(datetime.fromisoformat(draft['starts_at'])-timedelta(minutes=draft['reminder_minutes'])).isoformat(),
-                           'notification_key':uid(),'reminder_status':'system' if device_id else 'pending','reminder_owner':'system' if device_id else 'internal','deliveries':[],
+                           'notification_key':new_id(),'reminder_status':'system' if device_id else 'pending','reminder_owner':'system' if device_id else 'internal','deliveries':[],
                            'early_reminder_status':'pending','early_deliveries':[],'target_id':op['target_id'],'plan_id':op['plan_id'],
                            'system_revision':receipt.get('system_revision',''),'verified_at':stamp(),'duration_minutes':item['duration_minutes']}
                     db.execute('INSERT INTO digital_calendar(id,starts_at,remind_at,pending,value_json) VALUES(?,?,?,?,?)',(event['id'],datetime.fromisoformat(event['starts_at']).timestamp(),datetime.fromisoformat(event['reminder_at']).timestamp(),not bool(device_id),json.dumps(event,ensure_ascii=False)))
@@ -321,7 +321,7 @@ class CalendarApplication:
                         rescheduled=any(event[key]!=item['draft'][key] for key in ('starts_at','reminder_minutes'))
                         event.update(item['draft'])
                         if rescheduled:
-                            event.update(early_reminder_status='pending',early_deliveries=[],notification_key=uid())
+                            event.update(early_reminder_status='pending',early_deliveries=[],notification_key=new_id())
                             if not device_id:event.update(reminder_status='pending',deliveries=[])
                         event['reminder_at']=(datetime.fromisoformat(event['starts_at'])-timedelta(minutes=event['reminder_minutes'])).isoformat()
                         db.execute('UPDATE calendar_links SET local_date=? WHERE event_id=?',(datetime.fromisoformat(event['starts_at']).astimezone(ZoneInfo(event['timezone_name'])).date().isoformat(),event['id']))
@@ -329,11 +329,11 @@ class CalendarApplication:
                         actual=calendar.CalendarDraft.model_validate(receipt['event']).model_dump(mode='json')
                         event.update(actual)
                         if any(event.get(key)!=before[key] for key in ('starts_at','reminder_minutes')):
-                            event.update(early_reminder_status='pending',early_deliveries=[],notification_key=uid())
+                            event.update(early_reminder_status='pending',early_deliveries=[],notification_key=new_id())
                         item['draft']=actual
                         event['reminder_at']=(datetime.fromisoformat(event['starts_at'])-timedelta(minutes=event['reminder_minutes'])).isoformat()
                     if action!='query' or any(event.get(key)!=before[key] for key in before):
-                        event.update(revision=uid(),updated_at=stamp())
+                        event.update(revision=new_id(),updated_at=stamp())
                     event['verified_at']=stamp()
                     if receipt.get('system_revision'):event['system_revision']=str(receipt['system_revision'])[:200]
                     db.execute('UPDATE calendar_links SET local_date=? WHERE event_id=?',(datetime.fromisoformat(event['starts_at']).astimezone(ZoneInfo(event['timezone_name'])).date().isoformat(),event['id']))

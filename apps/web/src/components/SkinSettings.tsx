@@ -1,3 +1,4 @@
+import { downloadWebRtcBlob } from '../webrtc/downloadFile'
 import ChatMessageBubble from './ChatMessageBubble'
 import { ApiError } from '../api/transport'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -66,9 +67,7 @@ export default function SkinSettings({ preferences, onRefresh }: { preferences?:
     if (mounted.current) setWorkspace(base ? { ...result, package_path: `${result.workspace_path}/${base.manifest.id}-custom`, base } : result)
   })
   const exportSkin = (id: string) => run(async () => {
-    const blob = await skinsApi.export(id), url = URL.createObjectURL(blob)
-    try { const link = document.createElement('a'); link.href = url; link.download = id + '.zip'; link.click() }
-    finally { window.setTimeout(() => URL.revokeObjectURL(url), 0) }
+    await downloadWebRtcBlob(await skinsApi.export(id),id+'.zip')
   })
   return <div className="skin-settings">
     <header className="skin-settings-page-head"><div><div className="settings-heading-row"><h2>{t('skins.centerTitle')}</h2><Button variant="icon" onClick={() => void run(async () => { await Promise.all([refresh(), onRefresh?.()]) })} disabled={busy} aria-label={t('languages.refresh')} title={t('languages.refresh')}><Icon name="refresh" size={16} /></Button></div><p>{t('skins.centerIntro')}</p></div><div className="skin-settings-actions">

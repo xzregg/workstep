@@ -1,3 +1,7 @@
+import { useDirectResource } from "../webrtc/useDirectResource"
+import { downloadWebRtcFile, downloadWebRtcBlob } from '../webrtc/downloadFile'
+import { isWebRtcRemoteBrowser } from '../webrtc/webrtcLocation'
+import { shouldProxyWebRtcHttp } from '../webrtc/transportAdapter'
 import Icon from './Icon'
 import Button from './Button'
 import { copyMermaidPng } from '../utils/mermaidPng'
@@ -71,7 +75,8 @@ export default function ImagePreview({ src: initialSrc, alt: initialAlt, gallery
   const [index, setIndex] = useState(gallery?.initialIndex ?? 0)
   const total = gallery?.images.length ?? 1
   const { src, alt } = gallery?.images[index] ?? { src: initialSrc ?? '', alt: initialAlt }
-  const resolved = diagramSvg ? src : markdownUrlResolver?.(src) ?? resolveMarkdownImageSrc(src, projectId)
+  const imageSource = diagramSvg ? src : markdownUrlResolver?.(src) ?? resolveMarkdownImageSrc(src, projectId)
+  const resolved = useDirectResource(imageSource) || ""
   const [zoom, setZoom] = useState(1)
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null)
   useEffect(() => {
@@ -131,10 +136,14 @@ export default function ImagePreview({ src: initialSrc, alt: initialAlt, gallery
     setDownloading(true)
     setResult(null)
     try {
-      const source = new URL(resolved, document.baseURI)
+      const source = new URL(imageSource, document.baseURI)
       const path = source.searchParams.get('path') ?? decodeURIComponent(source.pathname)
       const filename = source.protocol === 'data:' || source.protocol === 'blob:'
         ? '' : path.split(/[\\/]/).pop() ?? ''
+      if(isWebRtcRemoteBrowser()&&shouldProxyWebRtcHttp(imageSource)){
+        await downloadWebRtcFile(imageSource,filename||'image')
+        return
+      }
       // Native WebViews own the save picker. Keep the real URL (and its auth
       // parameters) and initiate the download synchronously with the user click.
       if ((window.WorkStepAndroid || window.WorkStepIOS) &&
@@ -152,6 +161,10 @@ export default function ImagePreview({ src: initialSrc, alt: initialAlt, gallery
       const blob = await response.blob()
       const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp',
         'image/gif': 'gif', 'image/svg+xml': 'svg', 'image/avif': 'avif' }[blob.type.split(';')[0]]
+      if(isWebRtcRemoteBrowser()){
+        await downloadWebRtcBlob(blob,filename.includes('.')?filename:`image${extension?'.'+extension:''}`)
+        return
+      }
       const url = URL.createObjectURL(blob)
       try {
         const link = document.createElement('a')

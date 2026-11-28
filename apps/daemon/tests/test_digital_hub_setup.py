@@ -180,7 +180,8 @@ async def test_main_conversation_injects_live_setup_and_isolates_ordinary_chat(r
     sid = (await current.main_session())['id']
     calls, _ = install_engine(current.chats,monkeypatch)
     assert await send(current.chats,project,sid,'你好') == 'completed'
-    assert '## Identity setup' in calls[-1] and '"step": "name"' in calls[-1]
+    assert '<identity_setup>\n' in calls[-1] and '\n</identity_setup>\n' in calls[-1]
+    assert '"step": "name"' in calls[-1]
     state = service.identity_setup_status()
     await asyncio.to_thread(service.update_identity_setup,service.IdentitySetupCommand(action='answer',field='name',value='星河',revision=state['revision']))
     assert await send(current.chats,project,sid,'继续') == 'completed'
@@ -194,6 +195,7 @@ async def test_main_conversation_injects_live_setup_and_isolates_ordinary_chat(r
     assert 'Name: 星河' in calls[-1] and 'Already initialized; do not start setup automatically.' in calls[-1]
     other = await current.projects.run_db(project.id,lambda _:current.chats.create_session(project.id))
     assert await send(current.chats,project,other['id'],'普通对话') == 'completed'
+    assert '<identity_setup>' not in calls[-1]
     assert '## Identity setup' not in calls[-1]
 
 

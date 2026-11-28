@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 
+from services.business_ids import new_id
 from models.chat_session import ProjectSetting
 from models.fields import utc_now
 
@@ -80,7 +80,7 @@ def set_concurrency_sync(
         # ProjectSetting has a non-autoincrement text PK: ``save()`` would
         # issue an UPDATE and silently match zero rows, so insert explicitly.
         row = ProjectSetting.create(
-            id=str(uuid.uuid4()),
+            id=new_id(project_id),
             project_id=project_id,
             key=CONCURRENCY_KEY,
             value_json=json.dumps(values, ensure_ascii=False),

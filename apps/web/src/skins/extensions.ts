@@ -8,6 +8,8 @@ import { request } from '../api/transport'
 import { executeSkinAction, skinActionEnabled, skinContext, subscribeSkinActions } from './actions'
 import type { SkinDocument } from './contract'
 import { createFeatureStorage, type FeatureStorage } from './featureStorage'
+import { isWebRtcRemoteBrowser } from '../webrtc/webrtcLocation'
+import { SkinResources } from './resources'
 
 export type ExtensionSlotName = 'workspace-top' | 'workspace-bottom' | 'workspace-left' | 'workspace-right' | 'chat-header' | 'composer-before' | 'composer-after'
 export const extensionSlots: ExtensionSlotName[] = ['workspace-top', 'workspace-bottom', 'workspace-left', 'workspace-right', 'chat-header', 'composer-before', 'composer-after']
@@ -47,6 +49,7 @@ export class ExtensionSession {
   private controller = new AbortController()
   private cleanup?: () => void
   private disposers = new Set<() => void>()
+  private resources = new SkinResources()
   readonly skin: SkinDocument
   readonly scope: string
   constructor(skin: SkinDocument, scope: string) { this.skin = skin; this.scope = scope }
@@ -74,9 +77,20 @@ export class ExtensionSession {
     this.update({...this.value,avatar})
     return()=>{if(this.value.avatar!==avatar)return;const value={...this.value};delete value.avatar;this.update(value)}
   }
-  async activate(loader: (url: string) => Promise<ExtensionModule> = url => import(/* @vite-ignore */ url)) {
+  async activate(loader?: (url: string) => Promise<ExtensionModule>) {
     try {
-      const module = await loader(skinFileUrl(this.skin, this.skin.script || 'theme.js'))
+      const sourceUrl = skinFileUrl(this.skin, this.skin.script || 'theme.js')
+      let module: ExtensionModule
+      if (!loader && isWebRtcRemoteBrowser()) {
+        const moduleUrl = await this.resources.load(sourceUrl)
+        for (const path of this.skin.resource_paths ?? []) {
+          await this.resources.load(skinFileUrl(this.skin, path))
+        }
+        if (this.controller.signal.aborted) return
+        module = await import(/* @vite-ignore */ moduleUrl) as ExtensionModule
+      } else {
+        module = await (loader ?? (url => import(/* @vite-ignore */ url)))(sourceUrl)
+      }
       if (this.controller.signal.aborted) return
       // An empty theme.js is a valid placeholder for skins without custom behavior.
       if (Object.keys(module).length === 0) return
@@ -104,7 +118,7 @@ export class ExtensionSession {
           register: avatar=>this.registerAvatar(avatar),motion:avatarMotion,
         },
         client: { request: (path, options) => { this.check(); return request(path, { ...options, signal: options?.signal ?? this.controller.signal }) } },
-        storage: this.storage, asset: path => skinFileUrl(this.skin, path),
+        storage: this.storage, asset: path => this.resources.get(skinFileUrl(this.skin, path)),
       })
       if (typeof cleanup === 'function') {
         if (this.controller.signal.aborted) cleanup()
@@ -115,6 +129,7 @@ export class ExtensionSession {
   dispose() {
     if (this.controller.signal.aborted) return
     this.controller.abort()
+    this.resources.dispose()
     try { this.cleanup?.() } finally {
       this.disposers.forEach(dispose => dispose()); this.disposers.clear()
       this.commands.clear(); this.update({ features: [], slots: [] })

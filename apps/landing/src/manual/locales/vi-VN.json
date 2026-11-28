@@ -381,11 +381,7 @@
           "Lợi nhuận tối đa kiểm soát các kết nối trả về đứt quãng và tách biệt với các lần thử lại sau khi xem xét không thành công.",
           "Khai báo một cổng đầu ra không tạo ra một tập tin. Yêu cầu bàn giao thực tế ngay lập tức và kiểm tra chúng sau đó."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Các tạo phẩm đầu vào và đầu ra tương ứng trong trình chỉnh sửa nút",
-          "caption": "Đầu vào khai báo các yêu cầu nhiệm vụ với kế hoạch thực hiện là đầu ra tương ứng. Cài đặt đếm trả lại không được hiển thị."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Các tạo phẩm đầu vào và đầu ra tương ứng trong trình chỉnh sửa nút","caption":"Cấu hình hiện tại của môi trường minh họa cố định; không chạy tác vụ, mô hình hay ghép nối và không công khai thông tin xác thực."}
       },
       {
         "title": "Đặt xem lại và khởi động tự động",
@@ -393,7 +389,7 @@
           "Trong phần Xem lại bước trong trình chỉnh sửa, hãy chọn Xem lại thủ công, Xem lại tự động hoặc Bỏ qua xem xét. Nên xem xét thủ công ban đầu.",
           "Quá trình xem xét thủ công sẽ tạm dừng sau khi thực hiện quyết định của bạn. Để xem xét tự động, hãy viết các tiêu chí có thể kiểm chứng và tùy ý chọn động cơ và kiểu máy của nó.",
           "Đặt số lần thử lại sau khi đánh giá tự động từ chối kết quả. Các lỗi trong bản thân tác nhân đánh giá sẽ chuyển sang xử lý thủ công.",
-          "Đặt Bắt đầu tự động sau khi tạo nếu cần, sau đó lưu. Đối với lần thực hành đầu tiên, hãy tắt nó để bạn có thể kiểm tra nhiệm vụ trước khi bắt đầu."
+          "Trong cài đặt bước, chọn lần lượt máy thực thi, nhà cung cấp và mô hình. Khi tắt tự khởi động, nhấn Bắt đầu tại bước trong chi tiết tác vụ sau khi phụ thuộc sẵn sàng. Khởi động tác vụ chỉ cho phép bước đầu, không phải các bước thủ công sau. Đầu ra toàn cục dùng đường dẫn Global cố định. Kiểm tra tệp và duyệt; không dùng cho liên kết quay lại."
         ],
         "tips": [
           "Cài đặt và định cấu hình công cụ SDK trước khi sử dụng chúng để thực thi hoặc đánh giá."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "Xếp hàng thường có nghĩa là dung lượng đồng thời đã đầy. Đang chờ xem xét yêu cầu xác nhận; điều đó không có nghĩa là ứng dụng bị kẹt.",
-          "Xóa khác với lưu trữ. Đọc xác nhận trước khi xóa vĩnh viễn."
+          "Xóa khác với lưu trữ. Đọc xác nhận trước khi xóa vĩnh viễn.", "Trên điện thoại, nhấn giữ tác vụ để chọn nhiều mục. Kiểm tra phạm vi và xác nhận trước khi lưu trữ hoặc xóa. Chỉ sao chép được khi chọn một tác vụ; giới hạn với tác vụ đang chạy vẫn giữ nguyên."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Trong danh sách lưu trữ, nhấn tiêu đề để mở chỉ đọc lượt hỏi đáp cuối. Xem không khôi phục phiên và không tải toàn bộ chi tiết thực thi. Muốn tiếp tục trò chuyện phải chủ động khôi phục."
         ],
         "tips": [
-          "Lưu trữ giữ nội dung. Xóa hội thoại và tin nhắn có ảnh hưởng lớn hơn; cần phân biệt giải tán nhóm với xóa cả nội dung."
+          "Lưu trữ giữ nội dung. Xóa hội thoại và tin nhắn có ảnh hưởng lớn hơn; cần phân biệt giải tán nhóm với xóa cả nội dung.", "Tạo nhóm con từ menu nhóm ở thanh bên; kiểm tra đích trước khi kéo. Nhấn hạn mức ở vùng nhập để xem nhiều máy thực thi. Khi lấy dữ liệu lỗi, giá trị cũ được giữ lại: kiểm tra thời gian cập nhật, không coi là hóa đơn. Nút ảnh Markdown tải lên rồi chèn đường dẫn; xem trước khi lưu."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Trình đơn nhóm hội thoại ở thanh bên và bản xem lưu trữ chỉ đọc",
-          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Trình đơn nhóm hội thoại ở thanh bên và bản xem lưu trữ chỉ đọc","caption":"Cấu hình hiện tại của môi trường minh họa cố định; không chạy tác vụ, mô hình hay ghép nối và không công khai thông tin xác thực."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Các bản ghi từ xa được lưu trong bộ nhớ đệm không phải là trạng thái trực tiếp. Đồng bộ hóa có thể bị chặn trong khi các nhiệm vụ dự án hoặc cuộc trò chuyện đang hoạt động.",
-          "Trước tiên hãy kết nối lại các dự án ngoại tuyến hoặc từ xa trái phép. Trình duyệt không sao chép kho lưu trữ máy chủ vào máy tính của bạn. Việc đọc cần có quyền xem Git; các hành động cam kết, phân nhánh, hợp nhất và đồng bộ hóa có các khoản cấp riêng. Kiểm tra quyền nếu thiếu nút."
+          "Trước tiên hãy kết nối lại các dự án ngoại tuyến hoặc từ xa trái phép. Trình duyệt không sao chép kho lưu trữ máy chủ vào máy tính của bạn. Việc đọc cần có quyền xem Git; các hành động cam kết, phân nhánh, hợp nhất và đồng bộ hóa có các khoản cấp riêng. Kiểm tra quyền nếu thiếu nút.", "Chọn tệp trong danh sách thay đổi Git để loại bỏ cùng lúc. Xem khác biệt trước khi xác nhận: nội dung chưa commit có thể không khôi phục được. Loại bỏ không phải sao lưu."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "Chế độ tương tác được chọn và mật khẩu trống. Không có liên kết chia sẻ nào được tạo."
         }
       },
+      {"title":"Kết nối và ghép nối WebRTC","steps":["Trong Cài đặt → Truy cập từ xa → WebRTC, lưu địa chỉ báo hiệu. Mã QR ghép nối chỉ xuất hiện khi kiểm tra báo hiệu và UDP thành công. Máy chủ vẫn phải trực tuyến và có quyền hợp lệ. Mã chứa khóa bí mật: không công khai. Khi lỗi, kiểm tra mạng; kiểm tra thành công không bảo đảm kết nối giữa các mạng."],"screenshot":{"id":"webrtc-pairing","alt":"Kết nối và ghép nối WebRTC","caption":"Cấu hình hiện tại của môi trường minh họa cố định; không chạy tác vụ, mô hình hay ghép nối và không công khai thông tin xác thực."}},
       {
         "title": "Định cấu hình quyền truy cập của máy chủ và mời thiết bị",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "Khoảng mặc định là 5 phút. Cho phép liên hệ chủ động không có nghĩa mỗi lần đều gửi tin; nếu không có sự kiện cần xử lý có thể kết thúc im lặng. Gọi mô hình có thể tính phí; tóm tắt hoạt động không phải toàn bộ chuỗi suy nghĩ.",
-          "Tiêu đề ủy nhiệm tối đa 60 ký tự, không thay hướng dẫn đầy đủ. Lần tiếp tục có thể kế thừa tiêu đề nhưng không đổi tên hội thoại cũ. Số ký ức mới mở tóm tắt, mũi tên phải mở toàn bộ bản ghi. Không có bổ sung thì ẩn số; kết thúc im lặng không phải lỗi gửi."
+          "Tiêu đề ủy nhiệm tối đa 60 ký tự, không thay hướng dẫn đầy đủ. Lần tiếp tục có thể kế thừa tiêu đề nhưng không đổi tên hội thoại cũ. Số ký ức mới mở tóm tắt, mũi tên phải mở toàn bộ bản ghi. Không có bổ sung thì ẩn số; kết thúc im lặng không phải lỗi gửi.", "Suy nghĩ chủ động tự động tắt sau ba lỗi liên tiếp. Kiểm tra lịch sử và sửa nguyên nhân trước khi bật lại. Nút Quay lại trong trung tâm số trên điện thoại mở trang trước."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Cài đặt suy nghĩ chủ động và nhật ký phân trang riêng",
-          "caption": "Giao diện tiếng Trung thật từ môi trường minh họa cố định. Chỉ hiển thị cài đặt, lối vào hoặc danh sách trống; lần chụp này không gọi mô hình hay gửi tin nhắn."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Cài đặt suy nghĩ chủ động và nhật ký phân trang riêng","caption":"Cấu hình hiện tại của môi trường minh họa cố định; không chạy tác vụ, mô hình hay ghép nối và không công khai thông tin xác thực."}
       },
       {
         "title": "Liên kết tiếp nhận qua kênh và thông báo",

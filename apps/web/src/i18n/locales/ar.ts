@@ -728,6 +728,11 @@ export const ar: Messages = {
   },
   statistics: {
     ...zhCN.statistics,
+    identityGateway: 'حساب البوابة',
+    identityLocal: 'مستخدم محلي',
+    identityChannel: 'مستخدم قناة',
+    identityBrowser: 'مستخدم المتصفح',
+    identityRemote: 'مستخدم بعيد',
     title: "الإحصاءات",
     failed: "فشل",
     workflowCount: "سير العمل",
@@ -987,7 +992,9 @@ export const ar: Messages = {
     "retry": "إعادة المحاولة",
     "reconnect": "إعادة الاتصال",
     "disconnect": "قطع الاتصال",
-    "directConnected": "P2P مباشر",
+    "timings": "مدة الاتصال",
+    "steps": {"signaling": "الاتصال بخادم الإشارات", "exchange": "تبادل تفاصيل الاتصال", "channel": "إنشاء القناة المباشرة", "authentication": "التحقق من مفتاح الاقتران"},
+    "directConnected": "مباشر",
     "disconnected": "تم قطع الاتصال المباشر",
     "relayRejected": "تعذّر الاتصال المباشر P2P (الترحيل غير مسموح)"
   },

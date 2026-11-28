@@ -17,10 +17,15 @@ import MarkdownMessage from './MarkdownMessage'
 import CodeFilePreview from './CodeFilePreview'
 import { copyText } from '../utils/clipboard'
 import { openFilePreviewWindow } from '../utils/filePreviewNavigation'
-import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
+import { gatewayFetch, gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 import ProjectDirectoryBrowser from './ProjectDirectoryBrowser'
 import { HTML_PREVIEW_SANDBOX, isolatedHtmlDocument, prepareFrame } from '../utils/htmlPreviewCompat'
+import { webrtcWorkspacePath } from '../webrtc/webrtcLocation'
+import { downloadWebRtcFile } from '../webrtc/downloadFile'
 import { useTaskFilePreview } from '../contexts/MarkdownAssetUrlContext'
+import { HtmlPreviewFrame } from './HtmlPreviewFrame'
+import { useDirectResource } from '../webrtc/useDirectResource'
+import { retryWebRtcTransfer } from '../webrtc/retryTransfer'
 
 interface ArtifactPreviewProps {
   path: string
@@ -71,8 +76,31 @@ function CopyTextButton({ content }: { content: string }) {
   )
 }
 
-function DownloadFileButton({ href, filename }: { href: string; filename: string }) {
+function DownloadFileButton({ href, filename, direct = false, prominent = false, onError }: {
+  href: string
+  filename: string
+  direct?: boolean
+  prominent?: boolean
+  onError?: (message: string) => void
+}) {
   const { t } = useI18n()
+  const [downloading, setDownloading] = useState(false)
+  if (direct) return (
+    <Button variant={prominent ? 'primary' : 'ghost'} size="sm" type="button" loading={downloading}
+      className={prominent ? 'artifact-download-action' : 'artifact-download-button artifact-toolbar-icon-button'}
+      aria-label={t('artifact.downloadFile')} title={t('artifact.downloadFile')}
+      onClick={() => {
+        if (downloading) return
+        setDownloading(true)
+        onError?.('')
+        void downloadWebRtcFile(href, filename).catch((error: unknown) => {
+          onError?.(t('artifact.loadFailed', { error: error instanceof Error ? error.message : String(error) }))
+        }).finally(() => setDownloading(false))
+      }}>
+      <Icon name="download" size={16} strokeWidth={2} />
+      {prominent && t('artifact.downloadFile')}
+    </Button>
+  )
 
   return (
     <ButtonLink variant="ghost" size="sm"
@@ -94,7 +122,7 @@ function filenameFromPath(path: string) {
 function previewWindowUrl(path: string, name: string, projectId: string, line?: number) {
   const params = new URLSearchParams({ path, name, project_id: projectId })
   if (line !== undefined) params.set('line', String(line))
-  return `${gatewayWorkspacePath()}/file-preview?${params.toString()}`
+  return `${gatewayWorkspacePath() || webrtcWorkspacePath()}/file-preview?${params.toString()}`
 }
 
 export default function ArtifactPreview({
@@ -124,10 +152,15 @@ export default function ArtifactPreview({
   const [showMarkdownSource, setShowMarkdownSource] = useState(false)
   const { can: canPrototype } = useGatewayProjectPermissions(projectId)
   const [prototypeOpen, setPrototypeOpen] = useState(false)
+  const directWorkspace = webrtcWorkspacePath()
+  const [downloadError, setDownloadError] = useState('')
 
   const [preview, setPreview] = useState<FilePreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const mediaPath = preview?.content_type === 'application/pdf' || preview?.type === 'audio' || preview?.type === 'video'
+    ? (taskFilePreview ? taskFilePreview.rawUrl(view.path) : fsApi.previewFileUrl(view.path, projectId)) : ''
+  const directMedia = useDirectResource(mediaPath)
 
   // Reset the view when the artifact changes.
   useEffect(() => {
@@ -136,19 +169,38 @@ export default function ArtifactPreview({
 
   useEffect(() => {
     setShowMarkdownSource(false)
+    setDownloadError('')
   }, [path])
 
   // Load the file preview.
   useEffect(() => {
     if (view.kind !== 'file') return
     let active = true
+    let imageUrl: string | undefined
+    const controller = new AbortController()
     setPreviewLoading(true)
     setPreviewError(null)
     const loadPreview = taskFilePreview
       ? taskFilePreview.load(view.path)
       : fsApi.preview(view.path, projectId)
     loadPreview
-      .then((data) => {
+      .then(async (data) => {
+        if (active && directWorkspace && data.type === 'image' && !data.content) {
+          const url = taskFilePreview ? taskFilePreview.rawUrl(view.path) : fsApi.previewFileUrl(view.path, projectId)
+          const blob = await retryWebRtcTransfer(async()=>{
+            const response = await gatewayFetch(url, { signal: controller.signal })
+            if (!response.ok) throw new Error(`HTTP ${response.status}`)
+            if (Number(response.headers.get('content-length')) > 20 * 1024 * 1024) {
+              await response.body?.cancel()
+              throw new Error('HTTP 413')
+            }
+            return response.blob()
+          },controller.signal)
+          if (!active) return
+          imageUrl = URL.createObjectURL(blob)
+          setPreview({ ...data, content: imageUrl })
+          return
+        }
         if (active) setPreview(data)
       })
       .catch((e) => {
@@ -161,8 +213,10 @@ export default function ArtifactPreview({
       })
     return () => {
       active = false
+      controller.abort()
+      if (imageUrl) URL.revokeObjectURL(imageUrl)
     }
-  }, [view.kind, view.path, projectId, taskFilePreview, t])
+  }, [view.kind, view.path, projectId, taskFilePreview, t, directWorkspace])
 
   const normalizedPath = view.path.replace(/\\/g, '/')
   const absolutePath = /^(?:[a-z]:\/|\/)/i.test(normalizedPath)
@@ -171,6 +225,7 @@ export default function ArtifactPreview({
     .replace(/([^:])\/$/, '$1') || '/'
 
   const fileHeader = (label: string, extra?: ReactNode) => (
+    <>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
         <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -189,6 +244,8 @@ export default function ArtifactPreview({
         )}
       </div>
     </div>
+    {downloadError && <p className="artifact-error" role="alert">{downloadError}</p>}
+    </>
   )
 
   const fileFooter = (contentType: string, fileSize: number) => (
@@ -217,20 +274,22 @@ export default function ArtifactPreview({
   }
 
   if (previewError) {
-    const fallbackUrl = taskFilePreview ? taskFilePreview.rawUrl(view.path) : projectId
+    const fallbackUrl = taskFilePreview ? taskFilePreview.rawUrl(view.path) : directWorkspace
+      ? fsApi.previewFileUrl(view.path, projectId) : projectId
       ? fsApi.projectFileUrl(view.path, projectId)
       : fsApi.fileUrl(view.path)
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        {fileHeader(t('artifact.file'), (
+        {fileHeader(t('artifact.file'), !directWorkspace && (
           <DownloadFileButton href={fallbackUrl} filename={filenameFromPath(view.path)} />
         ))}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)', gap: 12 }}>
           {t('artifact.loadFailed', { error: previewError })}
-          <ButtonLink variant="primary" size="sm" className="artifact-open-link" href={fallbackUrl} target="_blank" rel="noopener noreferrer">
+          {directWorkspace && <DownloadFileButton href={fallbackUrl} filename={filenameFromPath(view.path)} direct prominent onError={setDownloadError} />}
+          {!directWorkspace && <ButtonLink variant="primary" size="sm" className="artifact-open-link" href={fallbackUrl} target="_blank" rel="noopener noreferrer">
             <Icon name="external-link" size={13} />
             {t('artifact.openFile')}
-          </ButtonLink>
+          </ButtonLink>}
           {onClose && (
             <Button variant="ghost" onClick={onClose}>
               {t('common.close')}
@@ -255,11 +314,12 @@ export default function ArtifactPreview({
     'bash', 'c', 'cc', 'cpp', 'css', 'go', 'h', 'hpp', 'java', 'js', 'jsx', 'json',
     'mjs', 'py', 'rb', 'rs', 'sh', 'sql', 'toml', 'ts', 'tsx', 'xml', 'yaml', 'yml', 'zsh',
   ].includes(ext)
-  const rawUrl = taskFilePreview ? taskFilePreview.rawUrl(preview.relative_path || view.path) : projectId
+  const rawUrl = taskFilePreview ? taskFilePreview.rawUrl(preview.relative_path || view.path) : directWorkspace
+    ? fsApi.previewFileUrl(view.path, projectId) : projectId
     ? fsApi.projectFileUrl(preview.relative_path || view.path, projectId)
     : fsApi.fileUrl(view.path)
   const downloadButton = (
-    <DownloadFileButton href={rawUrl} filename={filenameFromPath(preview.relative_path || view.path)} />
+    <DownloadFileButton href={rawUrl} filename={filenameFromPath(preview.relative_path || view.path)} direct={!!directWorkspace} onError={setDownloadError} />
   )
   const editButton = isText && onEdit ? (
     <Button
@@ -272,7 +332,7 @@ export default function ArtifactPreview({
       <Icon name="pencil" size={16} strokeWidth={2} />
     </Button>
   ) : null
-  const openWindowButton = projectId || taskFilePreview ? (
+  const openWindowButton = (projectId || taskFilePreview) && !(directWorkspace && standalone) ? (
     <Button
       variant="primary"
       className="artifact-open-window-button"
@@ -296,10 +356,10 @@ export default function ArtifactPreview({
       <div className={`artifact-media-preview artifact-${type}-preview`}>
         {fileHeader(name || filenameFromPath(view.path), <>{downloadButton}{openWindowButton}</>)}
         {type === 'video' ? (
-          <video className="artifact-video-player" src={rawUrl} controls playsInline preload="metadata" />
+          <video className="artifact-video-player" src={directWorkspace ? directMedia : rawUrl} controls playsInline preload="metadata" />
         ) : (
           <div className="artifact-audio-content">
-            <audio className="artifact-audio-player" src={rawUrl} controls preload="metadata" />
+            <audio className="artifact-audio-player" src={directWorkspace ? directMedia : rawUrl} controls preload="metadata" />
           </div>
         )}
         {fileFooter(content_type, file_size)}
@@ -309,7 +369,7 @@ export default function ArtifactPreview({
 
   if (isImage) {
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
+      <div className="artifact-image-preview" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         {fileHeader(t('artifact.imageAlt'), <>{downloadButton}{openWindowButton}</>)}
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)', borderRadius: 8 }}>
           <img
@@ -326,6 +386,8 @@ export default function ArtifactPreview({
   if (isHtml && prototypeOpen && projectId) return <PrototypeEditor projectId={projectId} path={view.path} onClose={() => setPrototypeOpen(false)} />
 
   if (isHtml) {
+    const resourceUrl = preview.html_preview
+      ? fsApi.htmlPreviewUrl(preview.html_preview, projectId) : undefined
     return (
       <div className="artifact-html-preview">
         {fileHeader(t('artifact.htmlFile'), (
@@ -338,9 +400,9 @@ export default function ArtifactPreview({
           </>
         ))}
         <div className="artifact-html-frame-container">
-          <iframe
-            src={preview.html_preview ? fsApi.htmlPreviewUrl(preview.html_preview, projectId) : undefined}
-            srcDoc={preview.html_preview ? undefined : isolatedHtmlDocument(content || '')}
+          <HtmlPreviewFrame
+            src={resourceUrl}
+            srcDoc={resourceUrl ? undefined : isolatedHtmlDocument(content || '')}
             title={t('artifact.htmlFile')}
             sandbox={HTML_PREVIEW_SANDBOX}
             referrerPolicy="no-referrer"
@@ -363,7 +425,7 @@ export default function ArtifactPreview({
         ))}
         <iframe
           className="artifact-pdf-frame"
-          src={rawUrl}
+          src={directWorkspace ? directMedia : rawUrl}
           title={t('artifact.pdfFile')}
         />
         {fileFooter(content_type, file_size)}
@@ -425,19 +487,22 @@ export default function ArtifactPreview({
   }
 
   if (type === 'binary') {
+    const filename = filenameFromPath(preview.relative_path || view.path)
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        {fileHeader(t('artifact.file'), <>{downloadButton}{openWindowButton}</>)}
+        {fileHeader(t('artifact.file'), <>{!directWorkspace && downloadButton}{openWindowButton}</>)}
         <div className="artifact-binary-state">
           <span className="artifact-binary-icon" aria-hidden="true">
             <Icon name="file" size={24} strokeWidth={1.6} />
           </span>
           <strong>{t('artifact.cannotPreview')}</strong>
           <span>{content_type} · {(file_size / 1024).toFixed(2)} KB</span>
-          <ButtonLink variant="primary" size="sm" className="artifact-open-link" href={rawUrl} target="_blank" rel="noopener noreferrer">
-            <Icon name="external-link" size={13} />
-            {t('artifact.openFile')}
-          </ButtonLink>
+          {directWorkspace
+            ? <DownloadFileButton href={rawUrl} filename={filename} direct prominent onError={setDownloadError} />
+            : <ButtonLink variant="primary" size="sm" className="artifact-open-link" href={rawUrl} target="_blank" rel="noopener noreferrer">
+                <Icon name="external-link" size={13} />
+                {t('artifact.openFile')}
+              </ButtonLink>}
         </div>
       </div>
     )

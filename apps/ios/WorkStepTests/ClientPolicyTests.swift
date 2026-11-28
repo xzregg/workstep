@@ -28,6 +28,22 @@ final class ClientPolicyTests {
                        ["https://one.example.com", "https://three.example.com"])
     }
 
+    func testP2pPairingLinkDoesNotExposeKeyInSavedAddress() throws {
+        let key = "abcdefghijklmnopqrstuvwxyz123456"
+        let item = try P2pConnection("https://Signal.Example/p2p/device-1/#pair_key=\(key)")
+        XCTAssertEqual(item.entryURL.absoluteString, "https://signal.example/p2p/device-1/")
+        XCTAssertEqual(item.name, "device-1")
+        XCTAssertEqual(item.server.origin, "https://signal.example")
+        XCTAssertEqual(item.pairingURL.absoluteString, "https://signal.example/p2p/device-1/#pair_key=\(key)")
+        XCTAssertFalse(item.entryURL.absoluteString.contains(key))
+        for link in ["https://host/p2p/device/", "https://host/p2p/device/#pair_key=short",
+                     "https://user@host/p2p/device/#pair_key=\(key)",
+                     "https://host/p2p/device/?token=one#pair_key=\(key)",
+                     "https://host/other/device/#pair_key=\(key)"] {
+            XCTAssertThrowsError(try P2pConnection(link), link)
+        }
+    }
+
     func testRememberOnlyUsefulDetailsAndNotificationScope() throws {
         let server = try ServerAddress("https://host")
         let page = URL(string: "https://host/workspace/device/chat?project=p&session=s")!

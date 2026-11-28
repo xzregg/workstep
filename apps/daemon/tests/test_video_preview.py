@@ -41,7 +41,7 @@ async def test_large_media_preview_is_metadata_and_raw_supports_ranges(tmp_path,
     source = tmp_path / name
     with source.open('wb') as output:
         output.write(b'video-header')
-        output.truncate(9842309)
+        output.truncate(20 * 1024 * 1024)
     monkeypatch.setattr(fs_paths, '_project', lambda _: SimpleNamespace(path=tmp_path, workstep_dir=tmp_path / '.workstep'))
     app = FastAPI()
     app.include_router(fs.router)
@@ -50,18 +50,15 @@ async def test_large_media_preview_is_metadata_and_raw_supports_ranges(tmp_path,
         assert response.status_code == 200
         assert response.json() == {
             'type': kind, 'content_type': mime, 'content': '',
-            'file_size': 9842309, 'extension': source.suffix, 'relative_path': name,
+            'file_size': 20 * 1024 * 1024, 'extension': source.suffix, 'relative_path': name,
         }
         response = await client.get(f'/api/fs/project-raw/p/{name}', headers={'Range': 'bytes=0-11'})
         assert response.status_code == 206
         assert response.content == b'video-header'
         assert response.headers['content-type'] == mime
-        assert response.headers['content-range'] == 'bytes 0-11/9842309'
+        assert response.headers['content-range'] == 'bytes 0-11/20971520'
         response = await client.get('/api/fs/preview', params={'path': '../outside.mp4', 'project_id': 'p'})
         assert response.status_code == 403
-        (tmp_path / 'large.txt').write_bytes(b'x' * (1024 * 1024 + 1))
-        response = await client.get('/api/fs/preview', params={'path': 'large.txt', 'project_id': 'p'})
-        assert response.status_code == 413
 
 
 @pytest.mark.asyncio

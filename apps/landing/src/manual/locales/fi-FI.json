@@ -381,11 +381,7 @@
           "Maksimipalautus ohjaa katkoviivaisia ​​palautusyhteyksiä ja on erillään epäonnistuneen tarkistuksen jälkeisistä uudelleenyrityksistä.",
           "Lähtöportin ilmoittaminen ei luo tiedostoa. Vaadi todelliset toimitukset kehotteessa ja tarkista ne jälkikäteen."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Syötä artefaktit ja vastaavat lähdöt solmueditoriin",
-          "caption": "Syöte ilmoittaa tehtävän vaatimukset ja suoritussuunnitelman vastaava tulos. Palautuslaskuriasetuksia ei näytetä."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Syötä artefaktit ja vastaavat lähdöt solmueditoriin","caption":"Kiinteän esittely-ympäristön nykyasetukset; tehtävää, mallia tai paritusta ei suoritettu eikä tunnistetietoja julkaistu."}
       },
       {
         "title": "Aseta tarkistus ja automaattinen käynnistys",
@@ -393,7 +389,7 @@
           "Valitse editorin Vaihetarkistus-kohdasta Manuaalinen tarkistus, Automaattinen tarkistus tai Ohita tarkistus. Aluksi suositellaan manuaalista tarkistusta.",
           "Manuaalinen tarkistus pysähtyy päätöksen suorittamisen jälkeen. Kirjoita automaattista tarkistusta varten todennettavat kriteerit ja valitse vaihtoehtoisesti sen moottori ja malli.",
           "Aseta uudelleenyritykset sen jälkeen, kun automaattinen tarkistus hylkää tuloksen. Itse tarkistusagentin virheet siirtyvät manuaaliseen käsittelyyn.",
-          "Aseta Käynnistä automaattisesti luomisen jälkeen tarpeen mukaan ja tallenna sitten. Alkuharjoittelua varten poista se käytöstä, jotta voit tarkistaa tehtävän ennen aloittamista."
+          "Valitse vaiheasetuksissa ensin moottori, sitten tarjoaja ja malli. Kun automaattinen käynnistys on pois, paina vaiheen Käynnistä-painiketta tehtävän tiedoissa riippuvuuksien valmistuttua. Tehtävän käynnistys sallii vain aloitusvaiheen, ei myöhempiä käsivaiheita. Yleinen tuotos jakaa kiinteän Global-polun. Tarkista tiedostot ja arvioinnit; sitä ei voi käyttää paluuyhteyksissä."
         ],
         "tips": [
           "Asenna ja määritä SDK-moottorit ennen kuin käytät niitä joko suoritukseen tai tarkasteluun."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "Jono tarkoittaa yleensä sitä, että samanaikaisuuskapasiteetti on täynnä. Tarkistuksen odottaminen vaatii vahvistuksen; se ei tarkoita, että sovellus olisi jumissa.",
-          "Poistaminen on eri asia kuin arkistointi. Lue vahvistus ennen pysyvää poistamista."
+          "Poistaminen on eri asia kuin arkistointi. Lue vahvistus ennen pysyvää poistamista.", "Paina tehtävää pitkään mobiilissa monivalintaa varten. Tarkista valinta ja vahvistus ennen arkistointia tai poistoa. Kopiointi edellyttää yhtä valittua tehtävää; käynnissä olevien tehtävien rajoitukset säilyvät."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Avaa arkistolista ja valitse otsikko nähdäksesi viimeisen kysymys-vastausparin lukutilassa. Katselu ei palauta istuntoa eikä lataa kaikkia suoritustietoja. Palauta erikseen jatkaaksesi keskustelua."
         ],
         "tips": [
-          "Arkistointi säilyttää sisällön. Keskustelujen ja viestien poistolla on suurempi vaikutus; ryhmän purkaminen ja sisällön poisto ovat eri asioita."
+          "Arkistointi säilyttää sisällön. Keskustelujen ja viestien poistolla on suurempi vaikutus; ryhmän purkaminen ja sisällön poisto ovat eri asioita.", "Luo aliryhmiä sivupalkin ryhmävalikosta; tarkista kohde ennen vetämistä. Syöttöalueen kiintiö näyttää useita moottoreita. Keruuvirhe säilyttää vanhat arvot: tarkista päivitysaika, tämä ei ole lasku. Markdown-kuvapainike lataa kuvan ja lisää polun; tarkista esikatselu ennen tallennusta."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Projektisivupalkin ryhmävalikko ja arkistojen lukuesikatselu",
-          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Projektisivupalkin ryhmävalikko ja arkistojen lukuesikatselu","caption":"Kiinteän esittely-ympäristön nykyasetukset; tehtävää, mallia tai paritusta ei suoritettu eikä tunnistetietoja julkaistu."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Välimuistissa olevat etätietueet eivät ole live-tilassa. Synkronointi voidaan estää, kun projektitehtävät tai keskustelut ovat aktiivisia.",
-          "Yhdistä ensin offline- tai luvattomat etäprojektit uudelleen. Selain ei kopioi isäntätietovarastoja tietokoneellesi. Lukeminen vaatii Git-näkymän luvan; commit-, haara-, yhdistämis- ja synkronointitoiminnoilla on erilliset avustukset. Tarkista käyttöoikeudet, jos painikkeita puuttuu."
+          "Yhdistä ensin offline- tai luvattomat etäprojektit uudelleen. Selain ei kopioi isäntätietovarastoja tietokoneellesi. Lukeminen vaatii Git-näkymän luvan; commit-, haara-, yhdistämis- ja synkronointitoiminnoilla on erilliset avustukset. Tarkista käyttöoikeudet, jos painikkeita puuttuu.", "Valitse Git-muutosluettelon tiedostot hylätäksesi ne yhdessä. Tarkista erot ennen vahvistusta: tallentamatonta commit-sisältöä ei ehkä voi palauttaa. Hylkääminen ei ole varmuuskopiointi."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "Interaktiivinen tila on valittuna ja salasana tyhjä. Jakolinkkiä ei ole luotu."
         }
       },
+      {"title":"WebRTC-yhteys ja paritus","steps":["Tallenna signalointiosoite kohdassa Asetukset → Etäkäyttö → WebRTC. Parituksen QR näkyy vasta signalointi- ja UDP-tarkistusten onnistuttua. Isännän on oltava verkossa ja tavalliset oikeudet vaaditaan. Koodi sisältää salaisuuden: älä julkaise sitä. Tarkista verkko virheen sattuessa; hyväksytyt tarkistukset eivät takaa eri verkkojen välistä yhteyttä."],"screenshot":{"id":"webrtc-pairing","alt":"WebRTC-yhteys ja paritus","caption":"Kiinteän esittely-ympäristön nykyasetukset; tehtävää, mallia tai paritusta ei suoritettu eikä tunnistetietoja julkaistu."}},
       {
         "title": "Määritä isäntäkäyttö ja kutsu laitteet",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "Oletusväli on 5 minuuttia. Oma-aloitteisen yhteydenoton salliminen ei tarkoita viestiä joka kierroksella; ilman odottavia tapahtumia kierros voi päättyä hiljaa. Mallikutsuista voi tulla maksu, eikä tiivistelmä ole koko ajatusketju.",
-          "Delegoinnin otsikko saa olla 60 merkkiä eikä korvaa koko ohjetta. Jatko voi periä otsikon, mutta nykyisiä keskusteluja ei nimetä uudelleen. Uusien muistojen määrä avaa yhteenvedot, oikea nuoli koko merkinnän. Nolla piilotetaan; hiljaisuus ei ole toimitusvirhe."
+          "Delegoinnin otsikko saa olla 60 merkkiä eikä korvaa koko ohjetta. Jatko voi periä otsikon, mutta nykyisiä keskusteluja ei nimetä uudelleen. Uusien muistojen määrä avaa yhteenvedot, oikea nuoli koko merkinnän. Nolla piilotetaan; hiljaisuus ei ole toimitusvirhe.", "Automaattinen ennakoiva ajattelu sammuu kolmen peräkkäisen virheen jälkeen. Tarkista historia ja korjaa syy ennen uudelleenkytkentää. Mobiilin digitaalikeskuksen Takaisin avaa edellisen sivun."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Pohdinta-asetukset ja erikseen sivutettu suoritushistoria",
-          "caption": "Kiinteän demoympäristön todellinen kiinankielinen käyttöliittymä. Kuvassa asetuksia, avauskohtia tai tyhjiä luetteloita; tämän kuvauksen aikana ei kutsuttu mallia eikä lähetetty viestejä."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Pohdinta-asetukset ja erikseen sivutettu suoritushistoria","caption":"Kiinteän esittely-ympäristön nykyasetukset; tehtävää, mallia tai paritusta ei suoritettu eikä tunnistetietoja julkaistu."}
       },
       {
         "title": "Kanavapalvelun ja ilmoitusten liittäminen",

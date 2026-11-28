@@ -66,6 +66,8 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private static final String SERVER_KEY = "server_origin";
     private static final String SERVER_LIST_KEY = "server_origins";
+    private static final String P2P_ACTIVE_KEY = "p2p_active_url";
+    private static final String P2P_PAGE_PREFIX = "p2p_last_page:";
     private static final String PAGE_KEY = "last_page_url";
     private static final String MENU_X_KEY = "connection_menu_x";
     private static final String MENU_Y_KEY = "connection_menu_y";
@@ -88,10 +90,13 @@ public final class MainActivity extends Activity {
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ForegroundRefresh foregroundRefresh = new ForegroundRefresh();
+    private P2pDownload p2pDownload;
     private final GatewayLoginNavigation gatewayLoginNavigation = new GatewayLoginNavigation();
     private FrameLayout root;
     private WebView webView;
     private ServerAddress server;
+    private P2pStore p2pStore;
+    private P2pConnection activeP2p;
     private ImageCapture imageCapture;
     private ValueCallback<Uri[]> fileCallback;
     private PendingDownload pendingDownload;
@@ -170,9 +175,20 @@ public final class MainActivity extends Activity {
         CrashReports.log(this, "网页主进程", "应用启动；" + CrashReports.version(this), null);
         root = new FrameLayout(this);
         apkInstaller = new ApkInstaller(this, executor, foregroundRefresh::externalPickerStarted);
+        p2pDownload = new P2pDownload(this, foregroundRefresh::externalPickerStarted, apkInstaller);
         microphonePermissions = new MicrophonePermissions(this, () -> webView, () -> server);
         CompletionNotifications.createChannels(this);
         setContentView(root);
+        p2pStore = new P2pStore(this);
+        String savedP2p = getPreferences(MODE_PRIVATE).getString(P2P_ACTIVE_KEY, "");
+        for (P2pConnection item : p2pStore.load()) {
+            if (item.entryUrl().equals(savedP2p)) { activeP2p = item; break; }
+        }
+        if (activeP2p != null) {
+            server = activeP2p.server();
+            showWebView();
+            return;
+        }
         String saved = getPreferences(MODE_PRIVATE).getString(SERVER_KEY, "");
         if (saved.isEmpty()) {
             showAddressScreen("");
@@ -190,6 +206,13 @@ public final class MainActivity extends Activity {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
+    private void stylePrimary(Button button) {
+        button.setAllCaps(false);
+        button.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF0B68D0));
+        button.setTextColor(0xFFFFFFFF);
+        button.setMinHeight(dp(48));
+    }
+
     private void updateKeepScreenOn() {
         if (activityVisible && getPreferences(MODE_PRIVATE).getBoolean(KEEP_SCREEN_ON_KEY, true))
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -197,6 +220,7 @@ public final class MainActivity extends Activity {
     }
 
     private void clearPage() {
+        p2pDownload.cancel();
         runtimeDiagnostics.navigation();
         if (systemSpeech != null) { systemSpeech.close(); systemSpeech = null; }
         if (imageCapture != null) imageCapture.clear();
@@ -214,146 +238,387 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private boolean setupP2pTab = true;
+
+    private android.graphics.drawable.GradientDrawable rounded(int color, int stroke, int radius) {
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setColor(color);
+        shape.setCornerRadius(dp(radius));
+        if (stroke != 0) shape.setStroke(dp(1), stroke);
+        return shape;
+    }
+
+    private TextView label(String value, int size, int color, boolean bold) {
+        TextView text = new TextView(this);
+        text.setText(value);
+        text.setTextSize(size);
+        text.setTextColor(color);
+        if (bold) text.setTypeface(null, android.graphics.Typeface.BOLD);
+        return text;
+    }
+
+    private LinearLayout vertical() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        return layout;
+    }
+
+    private void addGap(LinearLayout parent, int height) {
+        parent.addView(new View(this), new LinearLayout.LayoutParams(1, dp(height)));
+    }
+
+    private Button setupButton(String title, boolean primary) {
+        Button button = new Button(this);
+        button.setText(title);
+        button.setAllCaps(false);
+        button.setTextSize(13);
+        button.setTypeface(null, android.graphics.Typeface.BOLD);
+        button.setTextColor(primary ? 0xFFFFFFFF : 0xFF1265C4);
+        button.setBackground(rounded(primary ? 0xFF0B68D0 : 0xFFFFFFFF,
+                primary ? 0 : 0xFFCAD5E1, 9));
+        button.setMinHeight(dp(48));
+        button.setMinimumHeight(dp(48));
+        return button;
+    }
+
+    private EditText setupInput(String hint) {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setTextSize(12);
+        input.setTextColor(0xFF20242B);
+        input.setHintTextColor(0xFF8794A4);
+        input.setHint(hint);
+        input.setPadding(dp(11), 0, dp(11), 0);
+        input.setBackground(rounded(0xFFFFFFFF, 0xFFD4DCE7, 9));
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        return input;
+    }
+
+    private void sectionTitle(LinearLayout panel, String title, String count) {
+        LinearLayout line = new LinearLayout(this);
+        line.setGravity(Gravity.CENTER_VERTICAL);
+        line.addView(label(title, 14, 0xFF20242B, true), new LinearLayout.LayoutParams(0, -2, 1));
+        if (count != null) line.addView(label(count, 11, 0xFF8290A0, false));
+        panel.addView(line);
+        addGap(panel, 9);
+    }
+
+    private LinearLayout card(LinearLayout parent, int padding) {
+        LinearLayout card = vertical();
+        card.setPadding(dp(padding), dp(padding), dp(padding), dp(padding));
+        card.setBackground(rounded(0xFFFFFFFF, 0xFFE2E8F0, 14));
+        parent.addView(card, new LinearLayout.LayoutParams(-1, -2));
+        return card;
+    }
+
     private void showAddressScreen(String current) {
         clearPage();
+        LinearLayout screen = vertical();
+        screen.setBackgroundColor(0xFFF8FAFC);
+        root.addView(screen, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout bar = new LinearLayout(this);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(8), 0, dp(8), 0);
+        bar.setBackgroundColor(0xFFFFFFFF);
+        Button back = new Button(this);
+        back.setText("‹");
+        back.setTextSize(30);
+        back.setTextColor(0xFF1671D6);
+        back.setBackgroundColor(0xFFFFFFFF);
+        back.setOnClickListener(v -> { if (server != null) showWebView(); else finish(); });
+        bar.addView(back, new LinearLayout.LayoutParams(dp(48), dp(56)));
+        TextView title = label("连接 WorkStep", 17, 0xFF20242B, true);
+        title.setGravity(Gravity.CENTER);
+        bar.addView(title, new LinearLayout.LayoutParams(0, dp(56), 1));
+        bar.addView(new View(this), new LinearLayout.LayoutParams(dp(48), dp(56)));
+        screen.addView(bar);
+        View divider = new View(this); divider.setBackgroundColor(0xFFE9EDF2);
+        screen.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(24), dp(40), dp(24), dp(24));
+        screen.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout page = vertical();
+        page.setPadding(dp(18), dp(20), dp(18), dp(40));
         scroll.addView(page);
 
-        TextView title = new TextView(this);
-        title.setText(R.string.connect_title);
-        title.setTextSize(23);
-        page.addView(title);
+        LinearLayout activeCard = vertical();
+        activeCard.setPadding(dp(16), dp(15), dp(16), dp(16));
+        activeCard.setBackground(rounded(0xFF0D61BB, 0, 15));
+        String activeType = activeP2p != null ? "P2P 设备" : "网关地址";
+        String activeName = activeP2p != null ? activeP2p.name()
+                : server == null ? "尚未连接" : server.origin();
+        String activeUrl = activeP2p != null ? activeP2p.entryUrl()
+                : server == null ? "请选择一个连接" : server.origin();
+        activeCard.addView(label("当前连接 · " + activeType, 11, 0xFFD3E7FF, false));
+        addGap(activeCard, 6);
+        TextView name = label(activeName, 16, 0xFFFFFFFF, true);
+        name.setSingleLine(true); name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        activeCard.addView(name);
+        addGap(activeCard, 5);
+        TextView url = label(activeUrl, 11, 0xFFD3E7FF, false);
+        url.setSingleLine(true); url.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        activeCard.addView(url);
+        page.addView(activeCard);
+        addGap(page, 18);
 
-        TextView help = new TextView(this);
-        help.setText(R.string.connect_help);
-        help.setTextSize(14);
-        LinearLayout.LayoutParams helpParams = new LinearLayout.LayoutParams(-1, -2);
-        helpParams.topMargin = dp(14);
-        page.addView(help, helpParams);
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setPadding(dp(4), dp(4), dp(4), dp(4));
+        tabs.setBackground(rounded(0xFFE7EDF5, 0, 12));
+        Button gatewayTab = setupButton("网关地址", false);
+        Button p2pTab = setupButton("P2P 设备", false);
+        tabs.addView(gatewayTab, new LinearLayout.LayoutParams(0, dp(40), 1));
+        LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(0, dp(40), 1);
+        tabParams.leftMargin = dp(4);
+        tabs.addView(p2pTab, tabParams);
+        page.addView(tabs);
+        addGap(page, 18);
+        LinearLayout gatewayPanel = vertical();
+        LinearLayout p2pPanel = vertical();
+        page.addView(gatewayPanel);
+        page.addView(p2pPanel);
+        Runnable updateTabs = () -> {
+            gatewayPanel.setVisibility(setupP2pTab ? View.GONE : View.VISIBLE);
+            p2pPanel.setVisibility(setupP2pTab ? View.VISIBLE : View.GONE);
+            gatewayTab.setBackground(rounded(setupP2pTab ? 0xFFE7EDF5 : 0xFFFFFFFF, 0, 9));
+            p2pTab.setBackground(rounded(setupP2pTab ? 0xFFFFFFFF : 0xFFE7EDF5, 0, 9));
+            gatewayTab.setTextColor(setupP2pTab ? 0xFF506279 : 0xFF0759B9);
+            p2pTab.setTextColor(setupP2pTab ? 0xFF0759B9 : 0xFF506279);
+        };
+        gatewayTab.setOnClickListener(v -> { setupP2pTab = false; updateTabs.run(); });
+        p2pTab.setOnClickListener(v -> { setupP2pTab = true; updateTabs.run(); });
+        updateTabs.run();
+        buildP2pPanel(p2pPanel);
+        buildGatewayPanel(gatewayPanel, current, screen);
+        addGap(page, 8);
+        Button diagnostics = setupButton(getString(R.string.runtime_diagnostics), false);
+        diagnostics.setOnClickListener(v -> runtimeDiagnostics.open());
+        page.addView(diagnostics, new LinearLayout.LayoutParams(-1, dp(48)));
+    }
 
-        EditText address = new EditText(this);
-        address.setSingleLine(true);
-        address.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        address.setHint("http://192.168.1.10:8765 或 https://workstep.example.com");
-        address.setText(current);
+    private void buildP2pPanel(LinearLayout panel) {
+        sectionTitle(panel, "添加 P2P 设备", null);
+        LinearLayout inputCard = card(panel, 13);
+        LinearLayout scan = new LinearLayout(this);
+        scan.setGravity(Gravity.CENTER_VERTICAL);
+        scan.setPadding(dp(12), dp(8), dp(12), dp(8));
+        scan.setBackground(rounded(0xFFEEF6FF, 0xFFC9DEF8, 12));
+        TextView icon = label("⌗", 19, 0xFF0858AD, true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(rounded(0xFFEEF6FF, 0xFF0858AD, 8));
+        scan.addView(icon, new LinearLayout.LayoutParams(dp(32), dp(32)));
+        LinearLayout scanText = vertical(); scanText.setPadding(dp(10), 0, 0, 0);
+        scanText.addView(label("扫码添加设备", 13, 0xFF0858AD, true));
+        scanText.addView(label("扫描电脑上的 WorkStep 配对码", 11, 0xFF527BA5, false));
+        scan.addView(scanText);
+        scan.setOnClickListener(v -> startActivityForResult(new Intent(this, P2pScanActivity.class), P2pScanActivity.REQUEST));
+        inputCard.addView(scan, new LinearLayout.LayoutParams(-1, dp(56)));
+        addGap(inputCard, 10);
+        LinearLayout field = new LinearLayout(this);
+        EditText link = setupInput("或粘贴 P2P 配对链接");
+        field.addView(link, new LinearLayout.LayoutParams(0, dp(48), 1));
+        Button save = setupButton("保存", false);
+        LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(dp(64), dp(48));
+        saveParams.leftMargin = dp(8);
+        field.addView(save, saveParams);
+        inputCard.addView(field);
+        save.setOnClickListener(v -> saveP2p(link.getText().toString(), false));
+        addGap(panel, 17);
+        java.util.List<P2pConnection> saved = p2pStore.load();
+        sectionTitle(panel, "已保存的设备", saved.size() + " 条");
+        LinearLayout list = card(panel, 0);
+        final P2pConnection[] selected = {null};
+        for (P2pConnection item : saved) {
+            LinearLayout row = connectionRow(item.name(), item.entryUrl(),
+                    activeP2p != null && activeP2p.entryUrl().equals(item.entryUrl()),
+                    selected[0] == null, list);
+            if (selected[0] == null) selected[0] = item;
+            TextView dot = (TextView) row.getChildAt(0);
+            row.setOnClickListener(v -> {
+                selected[0] = item;
+                selectRows(list, row);
+            });
+            dot.setOnClickListener(v -> { selected[0] = item; selectRows(list, row); });
+            TextView remove = label("×", 18, 0xFF8D98A7, false);
+            remove.setGravity(Gravity.CENTER);
+            remove.setContentDescription("删除 " + item.name());
+            row.addView(remove, new LinearLayout.LayoutParams(dp(44), dp(48)));
+            remove.setOnClickListener(v -> {
+                java.util.List<P2pConnection> remaining = p2pStore.load();
+                remaining.removeIf(entry -> entry.entryUrl().equals(item.entryUrl()));
+                try { p2pStore.save(remaining); }
+                catch (IllegalStateException error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); return; }
+                getPreferences(MODE_PRIVATE).edit().remove(P2P_PAGE_PREFIX + item.entryUrl()).apply();
+                if (activeP2p != null && activeP2p.entryUrl().equals(item.entryUrl())) {
+                    activeP2p = null; server = null;
+                    getPreferences(MODE_PRIVATE).edit().remove(P2P_ACTIVE_KEY).remove(SERVER_KEY).apply();
+                }
+                showAddressScreen("");
+            });
+        }
+        if (saved.isEmpty()) {
+            TextView empty = label("还没有保存的设备", 12, 0xFF8794A4, false);
+            empty.setGravity(Gravity.CENTER);
+            list.addView(empty, new LinearLayout.LayoutParams(-1, dp(58)));
+        }
+        Button switchP2p = setupButton("切换到所选连接", true);
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(-1, dp(48));
+        actionParams.setMargins(dp(12), dp(8), dp(12), dp(12));
+        list.addView(switchP2p, actionParams);
+        switchP2p.setEnabled(!saved.isEmpty());
+        switchP2p.setOnClickListener(v -> { if (selected[0] != null) connectP2p(selected[0]); });
+    }
+
+    private LinearLayout connectionRow(String name, String url, boolean active,
+                                       boolean selected, LinearLayout list) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(6), dp(6), dp(6));
+        row.setBackgroundColor(selected ? 0xFFF4F9FF : 0xFFFFFFFF);
+        TextView dot = label(selected ? "◉" : "○", 20,
+                selected ? 0xFF0B6BD2 : 0xFF98A5B4, false);
+        dot.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(dot, new LinearLayout.LayoutParams(dp(27), dp(48)));
+        LinearLayout copy = vertical();
+        TextView line1 = label(name, 12, 0xFF20242B, true);
+        line1.setSingleLine(true); line1.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        TextView line2 = label(url, 10, 0xFF7C8998, false);
+        line2.setSingleLine(true); line2.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        copy.addView(line1); copy.addView(line2);
+        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        if (active) {
+            TextView status = label("使用中", 10, 0xFF1469C7, true);
+            status.setSingleLine(true);
+            status.setPadding(dp(6), 0, 0, 0);
+            row.addView(status);
+        }
+        list.addView(row, new LinearLayout.LayoutParams(-1, dp(60)));
+        View divider = new View(this); divider.setBackgroundColor(0xFFEEF1F5);
+        list.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+        return row;
+    }
+
+    private void selectRows(LinearLayout list, LinearLayout selected) {
+        for (int i = 0; i < list.getChildCount(); i++) {
+            View child = list.getChildAt(i);
+            if (!(child instanceof LinearLayout row) || row.getChildCount() == 0
+                    || !(row.getChildAt(0) instanceof TextView dot)) continue;
+            boolean on = row == selected;
+            row.setBackgroundColor(on ? 0xFFF4F9FF : 0xFFFFFFFF);
+            dot.setText(on ? "◉" : "○");
+            dot.setTextColor(on ? 0xFF0B6BD2 : 0xFF98A5B4);
+        }
+    }
+
+    private void buildGatewayPanel(LinearLayout panel, String current, View screen) {
+        sectionTitle(panel, "添加网关地址", null);
+        LinearLayout inputCard = card(panel, 13);
+        LinearLayout field = new LinearLayout(this);
+        EditText address = setupInput("https://gateway.example.com");
+        address.setText(activeP2p == null ? current : "");
         address.setContentDescription(getString(R.string.server_url));
-        LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(-1, -2);
-        addressParams.topMargin = dp(20);
-        page.addView(address, addressParams);
-
-        Button connect = new Button(this);
-        connect.setText(R.string.connect);
-        page.addView(connect);
-        Button addAddress = new Button(this);
-        addAddress.setText(R.string.add_address);
-        page.addView(addAddress);
-
-        String active = server == null ? "" : server.origin();
+        field.addView(address, new LinearLayout.LayoutParams(0, dp(48), 1));
+        Button add = setupButton("新增", false);
+        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(dp(64), dp(48));
+        addParams.leftMargin = dp(8); field.addView(add, addParams);
+        inputCard.addView(field);
+        Button connect = setupButton("连接", true);
+        inputCard.addView(connect, new LinearLayout.LayoutParams(-1, dp(48)));
+        connect.setVisibility(address.length() == 0 ? View.GONE : View.VISIBLE);
+        address.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                connect.setVisibility(s.length() == 0 ? View.GONE : View.VISIBLE);
+            }
+            public void afterTextChanged(android.text.Editable s) { }
+        });
+        addGap(panel, 17);
+        String active = activeP2p != null || server == null ? "" : server.origin();
         java.util.List<String> saved = SavedServerAddresses.load(
                 getPreferences(MODE_PRIVATE).getString(SERVER_LIST_KEY, ""), active);
-        RadioGroup choices = new RadioGroup(this);
-        choices.setOrientation(RadioGroup.VERTICAL);
-        if (!saved.isEmpty()) {
-            TextView savedTitle = new TextView(this);
-            savedTitle.setText(R.string.saved_addresses);
-            LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-1, -2);
-            titleParams.topMargin = dp(24);
-            page.addView(savedTitle, titleParams);
-            page.addView(choices);
-        }
+        sectionTitle(panel, "已保存的地址", saved.size() + " 条");
+        LinearLayout list = card(panel, 0);
+        final String[] selected = {saved.isEmpty() ? null : saved.get(0)};
         for (String origin : saved) {
-            RadioButton option = new RadioButton(this);
-            option.setId(View.generateViewId());
-            option.setText(origin);
-            option.setTag(origin);
-            option.setMinHeight(dp(48));
-            choices.addView(option);
-            if (origin.equals(current)) option.setChecked(true);
+            Uri uri = Uri.parse(origin);
+            LinearLayout row = connectionRow(uri.getHost() == null ? origin : uri.getHost(),
+                    origin, origin.equals(active), origin.equals(selected[0]), list);
+            row.setOnClickListener(v -> { selected[0] = origin; selectRows(list, row); });
+            row.getChildAt(0).setOnClickListener(v -> { selected[0] = origin; selectRows(list, row); });
+            TextView remove = label("×", 18, 0xFF8D98A7, false);
+            remove.setGravity(Gravity.CENTER);
+            remove.setContentDescription("删除 " + origin);
+            row.addView(remove, new LinearLayout.LayoutParams(dp(44), dp(48)));
+            remove.setOnClickListener(v -> {
+                if (checking) return;
+                boolean deletingActive = origin.equals(active);
+                if (deletingActive) { completionWatches.clear(); stopCompletionWatchService(); server = null; }
+                getPreferences(MODE_PRIVATE).edit()
+                        .putString(SERVER_LIST_KEY, SavedServerAddresses.store(SavedServerAddresses.remove(saved, origin)))
+                        .putString(SERVER_KEY, deletingActive ? "" : active).apply();
+                showAddressScreen(deletingActive ? "" : active);
+            });
         }
-        Button switchAddress = new Button(this);
-        switchAddress.setText(R.string.switch_address);
+        if (saved.isEmpty()) {
+            TextView empty = label("还没有保存的地址", 12, 0xFF8794A4, false);
+            empty.setGravity(Gravity.CENTER);
+            list.addView(empty, new LinearLayout.LayoutParams(-1, dp(58)));
+        }
+        Button switchAddress = setupButton("切换到所选连接", true);
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(-1, dp(48));
+        actionParams.setMargins(dp(12), dp(8), dp(12), dp(12));
+        list.addView(switchAddress, actionParams);
         switchAddress.setEnabled(!saved.isEmpty());
-        if (!saved.isEmpty()) page.addView(switchAddress);
-        Button deleteAddress = new Button(this);
-        deleteAddress.setText(R.string.delete_address);
-        if (!saved.isEmpty()) page.addView(deleteAddress);
-
         ProgressBar progress = new ProgressBar(this);
         progress.setVisibility(View.GONE);
         LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(dp(36), dp(36));
         progressParams.gravity = Gravity.CENTER_HORIZONTAL;
-        page.addView(progress, progressParams);
-
-        TextView error = new TextView(this);
-        error.setTextColor(0xFFB3261E);
-        page.addView(error);
-        Button diagnosticsButton = new Button(this);
-        diagnosticsButton.setText(R.string.runtime_diagnostics);
-        diagnosticsButton.setOnClickListener(view -> runtimeDiagnostics.open());
-        page.addView(diagnosticsButton);
-
-        connect.setOnClickListener(view -> {
-            ServerAddress candidate;
-            try {
-                candidate = ServerAddress.parse(address.getText().toString());
-            } catch (IllegalArgumentException reason) {
-                error.setText(R.string.invalid_server_address);
-                return;
-            }
-            connectToServer(candidate, scroll, connect, switchAddress, progress, error);
-        });
-        addAddress.setOnClickListener(view -> {
+        panel.addView(progress, progressParams);
+        TextView error = label("", 12, 0xFFB3261E, false);
+        panel.addView(error);
+        add.setOnClickListener(v -> {
             if (checking) return;
-            ServerAddress candidate;
             try {
-                candidate = ServerAddress.parse(address.getText().toString());
-            } catch (IllegalArgumentException reason) {
-                error.setText(R.string.invalid_server_address);
-                return;
-            }
-            if (saved.contains(candidate.origin())) {
-                error.setText(R.string.address_already_saved);
-                return;
-            }
-            getPreferences(MODE_PRIVATE).edit().putString(SERVER_LIST_KEY,
-                    SavedServerAddresses.store(SavedServerAddresses.add(saved, candidate.origin()))).apply();
-            showAddressScreen(candidate.origin());
+                ServerAddress candidate = ServerAddress.parse(address.getText().toString());
+                if (saved.contains(candidate.origin())) { error.setText(R.string.address_already_saved); return; }
+                getPreferences(MODE_PRIVATE).edit().putString(SERVER_LIST_KEY,
+                        SavedServerAddresses.store(SavedServerAddresses.add(saved, candidate.origin()))).apply();
+                showAddressScreen(candidate.origin());
+            } catch (IllegalArgumentException reason) { error.setText(R.string.invalid_server_address); }
         });
-        switchAddress.setOnClickListener(view -> {
-            View selected = choices.findViewById(choices.getCheckedRadioButtonId());
-            if (selected == null) {
-                error.setText(R.string.select_address);
-                return;
-            }
-            connectToServer(ServerAddress.parse((String) selected.getTag()),
-                    scroll, connect, switchAddress, progress, error);
+        connect.setOnClickListener(v -> {
+            try { connectToServer(ServerAddress.parse(address.getText().toString()),
+                    screen, connect, switchAddress, progress, error); }
+            catch (IllegalArgumentException reason) { error.setText(R.string.invalid_server_address); }
         });
-        deleteAddress.setOnClickListener(view -> {
-            if (checking) return;
-            View selected = choices.findViewById(choices.getCheckedRadioButtonId());
-            if (selected == null) {
-                error.setText(R.string.select_address);
-                return;
-            }
-            String selectedOrigin = (String) selected.getTag();
-            java.util.List<String> remaining = SavedServerAddresses.remove(saved, selectedOrigin);
-            boolean deletingActive = selectedOrigin.equals(active);
-            if (deletingActive) {
-                completionWatches.clear();
-                stopCompletionWatchService();
-                server = null;
-            }
-            getPreferences(MODE_PRIVATE).edit()
-                    .putString(SERVER_LIST_KEY, SavedServerAddresses.store(remaining))
-                    .putString(SERVER_KEY, deletingActive ? "" : active).apply();
-            showAddressScreen(deletingActive ? "" : active);
+        switchAddress.setOnClickListener(v -> {
+            if (selected[0] == null) { error.setText(R.string.select_address); return; }
+            connectToServer(ServerAddress.parse(selected[0]), screen, connect, switchAddress, progress, error);
         });
+    }
+
+    private void saveP2p(String input, boolean connect) {
+        try {
+            P2pConnection item = P2pConnection.parse(input);
+            java.util.List<P2pConnection> saved = p2pStore.load();
+            saved.removeIf(entry -> entry.entryUrl().equals(item.entryUrl()));
+            saved.add(item);
+            p2pStore.save(saved);
+            if (connect) connectP2p(item);
+            else showAddressScreen("");
+        } catch (IllegalArgumentException | IllegalStateException error) {
+            Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void connectP2p(P2pConnection item) {
+        completionWatches.clear();
+        stopCompletionWatchService();
+        activeP2p = item;
+        server = item.server();
+        getPreferences(MODE_PRIVATE).edit().putString(P2P_ACTIVE_KEY, item.entryUrl())
+                .remove(SERVER_KEY).apply();
+        showWebView();
     }
 
     private void connectToServer(ServerAddress candidate, View screen, Button connect,
@@ -376,15 +641,17 @@ public final class MainActivity extends Activity {
                     error.setText(failure);
                     return;
                 }
-                if (server == null || !server.origin().equals(candidate.origin())) {
+                if (activeP2p != null || server == null || !server.origin().equals(candidate.origin())) {
                     completionWatches.clear();
                     stopCompletionWatchService();
                 }
                 server = candidate;
+                activeP2p = null;
                 java.util.List<String> saved = SavedServerAddresses.load(
                         getPreferences(MODE_PRIVATE).getString(SERVER_LIST_KEY, ""),
                         getPreferences(MODE_PRIVATE).getString(SERVER_KEY, ""));
                 getPreferences(MODE_PRIVATE).edit()
+                        .remove(P2P_ACTIVE_KEY)
                         .putString(SERVER_KEY, candidate.origin())
                         .putString(SERVER_LIST_KEY, SavedServerAddresses.store(
                                 SavedServerAddresses.add(saved, candidate.origin()))).apply();
@@ -467,6 +734,23 @@ public final class MainActivity extends Activity {
                         if (source != webView || !isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
                         handleNotificationMessage(message.getData());
                     });
+            if (activeP2p != null) {
+                WebViewCompat.addWebMessageListener(view, "WorkStepP2pDownload",
+                        Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
+                            if (source != webView || !isMainFrame || activeP2p == null || server == null
+                                    || !server.contains(sourceOrigin.toString()) || source.getUrl() == null
+                                    || !source.getUrl().startsWith(activeP2p.entryUrl())) return;
+                            p2pDownload.handle(message.getData(), reply);
+                        });
+                WebViewCompat.addWebMessageListener(view, "WorkStepP2p",
+                        Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
+                            if (source != webView || !isMainFrame || activeP2p == null
+                                    || !server.contains(sourceOrigin.toString()) || !"settings".equals(message.getData())) return;
+                            source.post(() -> {
+                                if (source == webView) showAddressScreen(server.origin());
+                            });
+                        });
+            }
         }
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, false);
@@ -474,7 +758,8 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView source, String url, android.graphics.Bitmap icon) {
                 if (source != webView) return;
-                setThoughtHistoryOpen(false);
+                p2pDownload.cancel();
+                showConnectionMenuOnTop();
                 // The configured WorkStep page can start its capture graph on standby.
                 source.getSettings().setMediaPlaybackRequiresUserGesture(server == null || !server.contains(url));
                 runtimeDiagnostics.navigation();
@@ -685,7 +970,9 @@ public final class MainActivity extends Activity {
         String requestedPage = notificationPage(getIntent());
         if (requestedPage != null) clearNotificationPage(getIntent());
         pageLoading = true;
-        view.loadUrl(server.pageOrRoot(requestedPage != null ? requestedPage
+        view.loadUrl(activeP2p != null ? LastPageUrl.p2pLaunchUrl(activeP2p,
+                getPreferences(MODE_PRIVATE).getString(P2P_PAGE_PREFIX + activeP2p.entryUrl(), null))
+                : server.pageOrRoot(requestedPage != null ? requestedPage
                 : getPreferences(MODE_PRIVATE).getString(PAGE_KEY, "")));
         addConnectionMenu();
         view.post(this::requestNotificationPermissionIfNeeded);
@@ -719,8 +1006,13 @@ public final class MainActivity extends Activity {
     }
 
     private void rememberPage(String url) {
-        if (LastPageUrl.shouldRemember(server, url))
+        if (activeP2p != null) {
+            String detail = LastPageUrl.p2pDetail(activeP2p, url);
+            if (detail != null)
+                getPreferences(MODE_PRIVATE).edit().putString(P2P_PAGE_PREFIX + activeP2p.entryUrl(), detail).apply();
+        } else if (LastPageUrl.shouldRemember(server, url)) {
             getPreferences(MODE_PRIVATE).edit().putString(PAGE_KEY, url).apply();
+        }
     }
 
     private void handleNotificationMessage(String raw) {
@@ -732,7 +1024,7 @@ public final class MainActivity extends Activity {
                 message.put("url", workspaceUrl);
             String type = message.optString("type");
             if ("thought-history".equals(type)) {
-                setThoughtHistoryOpen(message.optBoolean("open", false));
+                showConnectionMenuOnTop();
                 return;
             }
             if ("project".equals(type)) {
@@ -977,10 +1269,12 @@ public final class MainActivity extends Activity {
         return Math.max(0, Math.min(coordinate, Math.max(0, maximum)));
     }
 
-    private void setThoughtHistoryOpen(boolean open) {
+    private void showConnectionMenuOnTop() {
         View menu = root.findViewWithTag("connection_menu");
-        // Keep the user's saved coordinates and all gesture handlers intact.
-        if (menu != null) menu.setVisibility(open ? View.INVISIBLE : View.VISIBLE);
+        if (menu != null) {
+            menu.setVisibility(View.VISIBLE);
+            menu.bringToFront();
+        }
     }
 
     private void openNewWindowUrl(String url) {
@@ -1080,10 +1374,12 @@ public final class MainActivity extends Activity {
     }
 
     private void showWebError(String message) {
-        setThoughtHistoryOpen(false);
         pageLoading = false;
         pageHadError = true;
-        if (root.findViewWithTag("connection_error") != null) return;
+        if (root.findViewWithTag("connection_error") != null) {
+            showConnectionMenuOnTop();
+            return;
+        }
         LinearLayout panel = new LinearLayout(this);
         panel.setTag("connection_error");
         panel.setOrientation(LinearLayout.VERTICAL);
@@ -1120,6 +1416,7 @@ public final class MainActivity extends Activity {
         change.setOnClickListener(view -> showAddressScreen(server.origin()));
         panel.addView(change);
         root.addView(panel, new FrameLayout.LayoutParams(-1, -1));
+        showConnectionMenuOnTop();
     }
 
     private void reloadWithoutCache() {
@@ -1153,8 +1450,17 @@ public final class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == P2pScanActivity.REQUEST) {
+            if (resultCode == RESULT_OK && data != null)
+                saveP2p(data.getStringExtra(P2pScanActivity.RESULT_LINK), true);
+            return;
+        }
         if (runtimeDiagnostics.activityResult(requestCode, resultCode, data)) return;
         if (apkInstaller.onActivityResult(requestCode)) return;
+        if (requestCode == P2pDownload.REQUEST_CODE) {
+            p2pDownload.onResult(resultCode, data);
+            return;
+        }
         if (requestCode == SAVE_REQUEST) {
             PendingDownload download = pendingDownload;
             pendingDownload = null;
@@ -1275,6 +1581,7 @@ public final class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (webView != null && webView.canGoBack()) webView.goBack();
+        else if (webView != null && activeP2p != null) showAddressScreen(server.origin());
         else super.onBackPressed();
     }
 
@@ -1285,6 +1592,7 @@ public final class MainActivity extends Activity {
         clearPage();
         apkInstaller.dispose();
         runtimeDiagnostics.destroy();
+        p2pDownload.dispose();
         executor.shutdownNow();
         super.onDestroy();
     }

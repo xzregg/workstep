@@ -395,3 +395,56 @@ async def test_webrtc_client_reconnects_on_dead_signaling_and_uses_live_offer_st
             await task
         except asyncio.CancelledError:
             pass
+
+
+@pytest.mark.asyncio
+async def test_webrtc_client_registers_again_after_gateway_restart(tmp_path, monkeypatch):
+    import json
+    from http import HTTPStatus
+
+    from websockets.asyncio.server import serve
+
+    from services.webrtc_p2p.client import WebRtcClientService
+
+    attempts = 0
+    registrations = []
+    recovered = asyncio.Event()
+
+    async def reject_while_restarting(ws, request):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 2:
+            return ws.respond(HTTPStatus.SERVICE_UNAVAILABLE, "Gateway restarting")
+        return None
+
+    async def handle_device(ws):
+        await ws.send(json.dumps({"type": "challenge", "nonce": str(attempts)}))
+        registrations.append(json.loads(await ws.recv()))
+        await ws.send(json.dumps({"type": "registered"}))
+        if attempts == 1:
+            await ws.close(code=1012, reason="service restart")
+        else:
+            await ws.wait_closed()
+
+    async def fetch_stun_urls(*_args):
+        if len(registrations) == 2:
+            recovered.set()
+        return ["stun:127.0.0.1:3478"]
+
+    async with serve(handle_device, "127.0.0.1", 0, process_request=reject_while_restarting) as server:
+        origin = f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+        store = _InMemoryConfigStore()
+        store.set("webrtc_p2p", {"enabled": True, "signal_url": origin})
+        service = WebRtcClientService(config_store=store, config_dir_provider=lambda: tmp_path)
+        monkeypatch.setattr(service, "_fetch_stun_urls", fetch_stun_urls)
+        await service.start()
+        try:
+            await asyncio.wait_for(recovered.wait(), timeout=8)
+            assert attempts == 3
+            assert service.online
+            assert service.last_error == ""
+            assert [item["device_id"] for item in registrations] == ["dev-host-001"] * 2
+            assert registrations[0]["public_key_pem"] == registrations[1]["public_key_pem"]
+            assert registrations[0]["pair_key_verifier"] == registrations[1]["pair_key_verifier"]
+        finally:
+            await service.close()

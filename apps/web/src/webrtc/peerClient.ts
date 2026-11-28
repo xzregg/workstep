@@ -13,6 +13,9 @@ import {
 } from './transportAdapter'
 
 export const ICE_DISCONNECT_GRACE_MS = 4000
+export const WEBRTC_CONNECTION_STAGES = ['signaling', 'exchange', 'channel', 'authentication'] as const
+export type WebRtcConnectionStage = typeof WEBRTC_CONNECTION_STAGES[number]
+export type WebRtcStageTiming = { stage: WebRtcConnectionStage; durationMs: number }
 
 export interface WebRtcConfigSummary {
   online: boolean
@@ -34,9 +37,10 @@ export interface WebRtcConnectionHandle {
   waitClosed: Promise<string>
 }
 
-export async function fetchWebRtcDeviceConfig(deviceId: string): Promise<WebRtcConfigSummary> {
+export async function fetchWebRtcDeviceConfig(deviceId: string, signal?: AbortSignal): Promise<WebRtcConfigSummary> {
   const response = await fetch(`/api/webrtc/config?device_id=${encodeURIComponent(deviceId)}`, {
     credentials: 'same-origin',
+    signal,
   })
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`)
@@ -48,10 +52,14 @@ export async function connectWebRtcDirect(options: {
   deviceId: string
   pairKey: string
   signal?: AbortSignal
+  onStage?: (stage: WebRtcConnectionStage) => void
+  onDeviceConfig?: (config: WebRtcConfigSummary) => void
 }): Promise<WebRtcConnectionHandle> {
-  const { deviceId, pairKey, signal } = options
+  const { deviceId, pairKey, signal, onStage, onDeviceConfig } = options
   if (!validWebRtcPairKey(pairKey)) throw new Error('Invalid device pairing key length or format')
-  const config = await fetchWebRtcDeviceConfig(deviceId)
+  onStage?.('signaling')
+  const config = await fetchWebRtcDeviceConfig(deviceId, signal)
+  onDeviceConfig?.(config)
   if (!config.pair_key_salt) throw new Error('Device pairing configuration unavailable')
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${config.pair_key_salt}:${pairKey}`))
   const proof = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
@@ -138,7 +146,9 @@ export async function connectWebRtcDirect(options: {
       }
     })
 
+    onStage?.('exchange')
     const signalFailurePromise = new Promise<never>((_resolve, reject) => {
+      let remoteDescriptionReady = Promise.resolve()
       sigWs.onmessage = (event) => {
         let msg: Record<string, unknown>
         try {
@@ -147,18 +157,19 @@ export async function connectWebRtcDirect(options: {
           return
         }
         if (msg.type === 'answer' && typeof msg.sdp === 'string') {
-          void pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp }).catch(reject)
+          remoteDescriptionReady = pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp })
+            .then(() => { if (!closed) onStage?.('channel') }, reject)
         } else if (msg.type === 'ice_candidate') {
           const cand = typeof msg.candidate === 'string' ? msg.candidate : ''
           if (/\btyp\s+relay\b/i.test(cand)) {
             reject(new Error('Relay candidate rejected in direct-only mode'))
             return
           }
-          void pc.addIceCandidate(cand ? {
+          remoteDescriptionReady = remoteDescriptionReady.then(() => pc.addIceCandidate(cand ? {
             candidate: cand,
-            sdpMid: typeof msg.sdpMid === 'string' ? msg.sdpMid : '0',
+            sdpMid: typeof msg.sdpMid === 'string' ? msg.sdpMid : undefined,
             sdpMLineIndex: typeof msg.sdpMLineIndex === 'number' ? msg.sdpMLineIndex : 0,
-          } : null).catch(() => undefined)
+          } : undefined)).catch(() => undefined)
         } else if (msg.type === 'error') {
           reject(new Error(String(msg.message || msg.code || 'WebRTC signaling rejected')))
         }
@@ -166,7 +177,7 @@ export async function connectWebRtcDirect(options: {
     })
 
     const channelOpenPromise = new Promise<void>((resolve, reject) => {
-      const timeout = window.setTimeout(() => reject(new Error('WebRTC direct connection timed out (NAT/firewall blocked direct UDP)')), 20000)
+      const timeout = window.setTimeout(() => reject(new Error('WebRTC direct connection timed out')), 20000)
       channel.onopen = () => {
         window.clearTimeout(timeout)
         resolve()
@@ -184,62 +195,38 @@ export async function connectWebRtcDirect(options: {
     })
 
     let sentOffer = false
-    const pendingCandidates: RTCIceCandidate[] = []
+    const pendingCandidates: (RTCIceCandidate | null)[] = []
+    const sendCandidate = (candidate: RTCIceCandidate | null) => {
+      if (sigWs.readyState !== WebSocket.OPEN) return
+      sigWs.send(JSON.stringify({
+        type: 'ice_candidate',
+        candidate: candidate?.candidate || null,
+        sdpMid: candidate?.sdpMid ?? '0',
+        sdpMLineIndex: candidate?.sdpMLineIndex ?? 0,
+      }))
+    }
     pc.onicecandidate = (event) => {
       if (event.candidate?.candidate && /\btyp\s+relay\b/i.test(event.candidate.candidate)) {
         cleanup('relay_not_allowed')
         return
       }
       if (!sentOffer) {
-        if (event.candidate) pendingCandidates.push(event.candidate)
+        pendingCandidates.push(event.candidate)
         return
       }
-      if (sigWs.readyState === WebSocket.OPEN) {
-        sigWs.send(JSON.stringify({
-          type: 'ice_candidate',
-          candidate: event.candidate ? event.candidate.candidate : '',
-          sdpMid: event.candidate?.sdpMid ?? '0',
-          sdpMLineIndex: event.candidate?.sdpMLineIndex ?? 0,
-        }))
-      }
+      sendCandidate(event.candidate)
     }
 
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-
-    // Briefly allow local host + STUN srflx candidates to populate the initial offer SDP.
-    await new Promise<void>((resolve) => {
-      if (pc.iceGatheringState === 'complete') {
-        resolve()
-        return
-      }
-      const timer = window.setTimeout(resolve, 1200)
-      const onGather = () => {
-        if (pc.iceGatheringState === 'complete') {
-          window.clearTimeout(timer)
-          pc.removeEventListener('icegatheringstatechange', onGather)
-          resolve()
-        }
-      }
-      pc.addEventListener('icegatheringstatechange', onGather)
-    })
 
     const localSdp = pc.localDescription?.sdp || offer.sdp || ''
     if (/\btyp\s+relay\b/i.test(localSdp)) {
       throw new Error('Relay candidate detected in local SDP')
     }
     sentOffer = true
-    sigWs.send(JSON.stringify({ type: 'offer', sdp: localSdp }))
-    for (const cand of pendingCandidates) {
-      if (sigWs.readyState === WebSocket.OPEN) {
-        sigWs.send(JSON.stringify({
-          type: 'ice_candidate',
-          candidate: cand.candidate,
-          sdpMid: cand.sdpMid ?? '0',
-          sdpMLineIndex: cand.sdpMLineIndex ?? 0,
-        }))
-      }
-    }
+    sigWs.send(JSON.stringify({ type: 'offer', sdp: localSdp, trickle_answer: true }))
+    for (const candidate of pendingCandidates) sendCandidate(candidate)
 
     await Promise.race([channelOpenPromise, signalFailurePromise])
 
@@ -261,6 +248,7 @@ export async function connectWebRtcDirect(options: {
       throw new Error('Unable to verify direct non-relay ICE candidate pair')
     }
 
+    onStage?.('authentication')
     const transport = new WebRtcTransportClient(channel)
     await transport.authenticate(pairData.p2p_ticket, pairKey)
 
@@ -291,8 +279,12 @@ export async function connectWebRtcDirect(options: {
       }
     }
     channel.onclose = () => {
-      transport.close()
       cleanup('channel_closed')
+      transport.close()
+    }
+    channel.onerror = () => {
+      cleanup('channel_error')
+      transport.close()
     }
 
     return {

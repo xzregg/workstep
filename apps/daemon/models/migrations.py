@@ -59,6 +59,8 @@ _ADDITIVE_COLUMNS = {
         "upload_error": "TEXT",
     },
     "pending_message_inserts": {
+        "identity_source": "TEXT",
+        "access_source": "TEXT",
         "author_id": "TEXT",
         "author_username": "TEXT",
         "author_name": "TEXT",
@@ -67,6 +69,8 @@ _ADDITIVE_COLUMNS = {
         "author_source": "TEXT",
     },
     "message": {
+        "identity_source": "TEXT",
+        "access_source": "TEXT",
         "initiated_by_name": "TEXT",
         "schedule_run_id": "TEXT",
         "author_id": "TEXT",
@@ -85,6 +89,8 @@ _ADDITIVE_COLUMNS = {
         "artifact_round": "INTEGER",
     },
     "chat_messages": {
+        "identity_source": "TEXT",
+        "access_source": "TEXT",
         "initiated_by_name": "TEXT",
         "context_json": "TEXT",
         "restart_pending": "INTEGER NOT NULL DEFAULT 0",
@@ -149,6 +155,8 @@ _ADDITIVE_COLUMNS = {
         "project_memory_digest": "TEXT",
     },
     "tasks": {
+        "identity_source": "TEXT",
+        "access_source": "TEXT",
         "status": "TEXT NOT NULL DEFAULT 'ready'",
         "status_reason": "TEXT",
         "active_workflow_run_id": "TEXT",
@@ -176,6 +184,8 @@ _ADDITIVE_COLUMNS = {
         "session_provider": "TEXT",
     },
     "workflow_runs": {
+        "identity_source": "TEXT",
+        "access_source": "TEXT",
         "task_id": "TEXT",
         "workflow_snapshot_json": "TEXT NOT NULL DEFAULT '{}'",
         "owner_id": "TEXT",

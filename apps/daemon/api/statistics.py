@@ -18,17 +18,20 @@ router = APIRouter(prefix="/api/statistics")
 async def system_report(request: Request):
     """Host metrics for local and authorized owner workspaces, read from cache."""
     from api.desktop_security import (
-        desktop_runtime_authenticated, gateway_device_owner,
+        desktop_runtime_authenticated, gateway_device_owner, webrtc_device_owner,
     )
     from services.remote_access import _client_host, _is_loopback, authenticated_remote_dispatch
     actor = get_current_actor()
     # Container port forwarding replaces Electron's loopback peer with a bridge
     # address. Its per-launch desktop credential still identifies local access.
+    direct_owner = webrtc_device_owner(request)
     if (authenticated_remote_dispatch() is not None
             or request.scope.get('gateway_share_scope') is not None
-            or (actor is not None and (actor.project_id is not None or actor.source == 'remote'))):
+            or (actor is not None and (actor.project_id is not None or (actor.source == 'remote' and not direct_owner)))):
         raise HTTPException(status_code=403, detail="System statistics require host workspace access")
-    if request.scope.get('gateway_remote_actor') is not None:
+    if direct_owner:
+        allowed = True
+    elif request.scope.get('gateway_remote_actor') is not None:
         allowed = gateway_device_owner(request)
     else:
         loopback = _is_loopback(_client_host(request.headers, request.client))

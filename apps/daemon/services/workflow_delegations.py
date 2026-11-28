@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 from models import CoordinatorTurn, Message, Task
 from models.chat_session import ChatSession
 from models.fields import utc_now
+from services.business_ids import new_id
 from services.digital_person_tasks import all_executions, resolve_task
 from services.memory_secrets import redact
 from services.task_state import current_task_steps, summarize_task_state
@@ -123,7 +124,7 @@ class WorkflowDelegations:
             item = previous_request or {
                 'id': previous['id'] if previous else execution_id, 'execution_id': execution_id,
                 'kind': 'workflow_task', 'project_id': project_id,
-                'task_id': target_task_id or (previous['task_id'] if previous else execution_id),
+                'task_id': target_task_id or (previous['task_id'] if previous else new_id(project_id)),
                 'workflow_id': workflow_id or (previous['workflow_id'] if previous else ''),
                 'origin_session_id': previous['origin_session_id'] if previous else origin_session_id,
                 'session_id': '', 'message_id': execution_id, 'turn_id': '',

@@ -728,6 +728,11 @@ export const deDE: Messages = {
   },
   statistics: {
     ...zhCN.statistics,
+    identityGateway: 'Gateway-Konto',
+    identityLocal: 'Lokaler Benutzer',
+    identityChannel: 'Kanalbenutzer',
+    identityBrowser: 'Browserbenutzer',
+    identityRemote: 'Remote-Benutzer',
     title: "Statistik",
     failed: "Fehlgeschlagen",
     workflowCount: "Workflows",
@@ -987,7 +992,9 @@ export const deDE: Messages = {
     "retry": "Erneut versuchen",
     "reconnect": "Neu verbinden",
     "disconnect": "Trennen",
-    "directConnected": "P2P Direkt",
+    "timings": "Verbindungsdauer",
+    "steps": {"signaling": "Signalisierung verbinden", "exchange": "Verbindungsdaten austauschen", "channel": "Direkten Kanal aufbauen", "authentication": "Kopplungsschlüssel prüfen"},
+    "directConnected": "Direkt",
     "disconnected": "Direktverbindung getrennt",
     "relayRejected": "P2P-Direktverbindung fehlgeschlagen (Relay unzulässig)"
   },

@@ -25,16 +25,17 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.concurrent.ExecutorService;
 
-/** Handles only same-origin WorkStep APK updates selected in the WebView. */
+/** Verifies WorkStep APK downloads and opens the Android installer after confirmation. */
 final class ApkInstaller {
     static final int INSTALL_PERMISSION_REQUEST = 1004;
-    private static final long MAX_APK_BYTES = 512L * 1024 * 1024;
+    static final long MAX_APK_BYTES = 512L * 1024 * 1024;
     private final Activity activity;
     private final ExecutorService executor;
     private final Runnable externalActivityStarted;
     private boolean downloading;
     private AlertDialog progress;
     private File pendingInstall;
+    private File lastDirectApk;
 
     ApkInstaller(Activity activity, ExecutorService executor, Runnable externalActivityStarted) {
         this.activity = activity;
@@ -65,12 +66,7 @@ final class ApkInstaller {
             String saveWarning = null;
             try {
                 apk = downloadAndVerify(server, url, userAgent, cookie);
-                try {
-                    saveToDownloads(apk, filename);
-                } catch (Exception error) {
-                    saveWarning = activity.getString(R.string.apk_save_warning);
-                    CrashReports.log(activity, "网页主进程", "APK 保存到下载目录失败", error);
-                }
+                saveWarning = saveDownloadedApk(apk, filename);
             } catch (Exception error) {
                 failure = error.getLocalizedMessage();
                 CrashReports.log(activity, "网页主进程", "APK 下载或校验失败", error);
@@ -87,16 +83,20 @@ final class ApkInstaller {
                     new AlertDialog.Builder(activity).setTitle(activity.getString(R.string.apk_download_failed))
                             .setMessage(message).setPositiveButton("确定", null).show();
                 } else if (ready != null) {
-                    new AlertDialog.Builder(activity)
-                            .setTitle("安装 WorkStep")
-                            .setMessage((warning == null ? "APK 已保存到下载目录。" : warning)
-                                    + "是否打开系统安装界面？")
-                            .setNegativeButton("取消", null)
-                            .setPositiveButton("安装", (dialog, which) -> install(ready))
-                            .show();
+                    showInstallPrompt(ready, warning, false);
                 }
             });
         });
+    }
+
+    String saveDownloadedApk(File apk, String filename) {
+        try {
+            saveToDownloads(apk, filename);
+            return null;
+        } catch (Exception error) {
+            CrashReports.log(activity, "网页主进程", "APK 保存到下载目录失败", error);
+            return activity.getString(R.string.apk_save_warning);
+        }
     }
 
     private void saveToDownloads(File apk, String filename) throws Exception {
@@ -162,10 +162,7 @@ final class ApkInstaller {
                     if (bytes == 0) throw new IllegalStateException("The APK is empty");
                     if (apk.exists() && !apk.delete()) throw new IllegalStateException("Could not replace the previous download");
                     if (!partial.renameTo(apk)) throw new IllegalStateException("Could not save the APK");
-                    PackageInfo archive = activity.getPackageManager().getPackageArchiveInfo(apk.getAbsolutePath(), 0);
-                    if (archive == null || !activity.getPackageName().equals(archive.packageName)) {
-                        throw new IllegalStateException("The downloaded file is not a WorkStep APK");
-                    }
+                    verifyWorkStepApk(apk);
                     CrashReports.log(activity, "网页主进程", "WorkStep APK 下载完成；字节=" + bytes, null);
                     return apk;
                 } finally {
@@ -178,6 +175,45 @@ final class ApkInstaller {
             if (apk.exists()) apk.delete();
             throw error;
         }
+    }
+
+    File createDirectDownload() throws Exception {
+        File directory = new File(activity.getCacheDir(), "install");
+        if (!directory.isDirectory() && !directory.mkdirs()) throw new IllegalStateException("Could not create the download cache");
+        return File.createTempFile("workstep-direct-", ".apk", directory);
+    }
+
+    void verifyWorkStepApk(File apk) {
+        PackageInfo archive = activity.getPackageManager().getPackageArchiveInfo(apk.getAbsolutePath(), 0);
+        if (archive == null || !activity.getPackageName().equals(archive.packageName)) {
+            throw new IllegalStateException("The downloaded file is not a WorkStep APK");
+        }
+    }
+
+    void showInstallPrompt(File apk, String warning, boolean direct) {
+        if (activity.isFinishing() || activity.isDestroyed()) {
+            if (direct) executor.execute(apk::delete);
+            return;
+        }
+        AlertDialog prompt = new AlertDialog.Builder(activity)
+                .setTitle("安装 WorkStep")
+                .setMessage((warning == null ? "APK 已保存到下载目录。" : warning)
+                        + "是否打开系统安装界面？")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("安装", (dialog, which) -> {
+                    if (direct) {
+                        ((AlertDialog) dialog).setOnDismissListener(null);
+                        File previous = lastDirectApk;
+                        lastDirectApk = apk;
+                        if (previous != null) executor.execute(previous::delete);
+                    }
+                    install(apk);
+                })
+                .create();
+        if (direct) prompt.setOnDismissListener(dialog -> {
+            if (!executor.isShutdown()) executor.execute(apk::delete);
+        });
+        prompt.show();
     }
 
     private void install(File apk) {

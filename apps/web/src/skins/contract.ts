@@ -28,6 +28,7 @@ export interface SkinDocument {
   revision: string; asset_base: string;
   coverage?: { overridden: string[]; inherited: string[] };
   css?: string; script?: string; file_base?: string; menus?: SkinMenu[]; effects?: SkinEffects;
+  resource_paths?: string[];
 }
 
 export function defaultSkin(): SkinDocument {

@@ -36,6 +36,8 @@ class WorkflowRun(BaseModel):
     initiated_by_name = pw.TextField(null=True)
     initiated_by_device_id = pw.TextField(null=True)
     initiated_by_device_name = pw.TextField(null=True)
+    identity_source = pw.TextField(null=True)
+    access_source = pw.TextField(null=True)
     started_at = UTCDateTimeField(null=True)
     ended_at = UTCDateTimeField(null=True)
 

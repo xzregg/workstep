@@ -33,6 +33,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".P2pScanActivity" android:exported="false"
+            android:screenOrientation="portrait" android:theme="@style/P2pScanTheme" />
         <service
             android:name=".CompletionWatchService"
             android:exported="false"

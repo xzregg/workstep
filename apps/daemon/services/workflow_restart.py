@@ -1,9 +1,9 @@
 """Persist a child workflow run when execution restarts from one step."""
 
 import json
-import uuid
 from pathlib import Path
 
+from services.business_ids import new_id
 from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.base import db_proxy
 from models.fields import utc_now
@@ -130,6 +130,7 @@ def create_restart_run(
     execution_keys: set[str],
     *,
     instance_id: str,
+    project_id: str | None = None,
     reset_session_step_key: str | None = None,
     feedback_inputs: dict[str, dict] | None = None,
     valid_step_keys: set[str] | None = None,
@@ -189,7 +190,7 @@ def create_restart_run(
             routing_state["feedback_inputs"][step_key] = feedback_inputs
             routing_state["active_edges"] = sorted(feedback_inputs)
         child = WorkflowRun.create(
-            id=str(uuid.uuid4()),
+            id=new_id(project_id),
             task=task,
             status="running",
             workflow_schema_version=schema_version,
@@ -217,6 +218,8 @@ def create_restart_run(
             initiated_by_device_name=(
                 actor_fields.get("author_device_name") or parent.initiated_by_device_name
             ),
+            identity_source=actor_fields.get("identity_source") if actor_fields else parent.identity_source,
+            access_source=actor_fields.get("access_source") if actor_fields else parent.access_source,
             started_at=now,
         )
         reusable = {
@@ -243,7 +246,7 @@ def create_restart_run(
             if source is None:
                 continue
             StepRun.create(
-                id=str(uuid.uuid4()),
+                id=new_id(project_id),
                 run=child,
                 step_key=reusable_key,
                 attempt=1,

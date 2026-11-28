@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-import uuid
 from typing import Any
 
 from agent_assistants.base import validate_provider_override
@@ -11,6 +10,7 @@ from agent_assistants.chat_row_persistence import ChatRowPersistence, _from_iso,
 from agent_assistants.context_handoff import append_handoff_log, compile_handoff
 from agent_assistants.session_state import provider_context_changed
 from engines.core.registry import create_engine
+from services.business_ids import new_id
 from models.chat_session import ChatMessage, ChatSession
 from models.fields import utc_now
 from services.chat_permissions import is_valid_permission_mode, validate_permission_selection
@@ -451,7 +451,7 @@ class ChatSessionTransitions:
                     if effective_context_mode != "none":
                         for item in messages:
                             ChatMessage.create(
-                                id=str(uuid.uuid4()),
+                                id=new_id(project_id),
                                 session=target,
                                 role=item["role"],
                                 content=item.get("content", ""),
@@ -462,6 +462,8 @@ class ChatSessionTransitions:
                                 initiated_by_user_id=item.get("initiated_by_user_id"),
                                 initiated_by_username=item.get("initiated_by_username"),
                                 initiated_by_name=item.get("initiated_by_name"),
+                                identity_source=item.get("identity_source"),
+                                access_source=item.get("access_source"),
                                 author_device_id=item.get("author_device_id"),
                                 author_device_name=item.get("author_device_name"),
                                 status=item.get("status"),

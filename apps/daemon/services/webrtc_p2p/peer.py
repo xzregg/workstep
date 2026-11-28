@@ -7,10 +7,12 @@ import logging
 import os
 import struct
 from collections.abc import Awaitable, Callable
+from ipaddress import ip_address
 from typing import Any
 from urllib.parse import urlsplit
 
 import aioice
+from aioice.ice import server_reflexive_candidate
 
 from workstep_gateway_protocol.webrtc import is_direct_candidate_type, is_relay_candidate_line
 
@@ -69,11 +71,8 @@ async def select_reachable_stun_server(
     servers = parse_stun_servers(stun_urls)
     if not servers:
         return None
-    if len(servers) == 1:
-        return servers[0]
-
     loop = asyncio.get_running_loop()
-    winner: asyncio.Future[tuple[str, int]] = loop.create_future()
+    winner: asyncio.Future[tuple[str, int] | None] = loop.create_future()
     transports: list[asyncio.DatagramTransport] = []
     remaining = len(servers)
 
@@ -100,17 +99,19 @@ async def select_reachable_stun_server(
                 remote_addr=target,
             )
             transports.append(transport)
-            transport.sendto(packet)
+            while not winner.done():
+                transport.sendto(packet)
+                await asyncio.sleep(0.25)
         except OSError:
             remaining -= 1
             if remaining == 0 and not winner.done():
-                winner.set_result(servers[0])
+                winner.set_result(None)
 
     tasks = [asyncio.create_task(_probe_one(server)) for server in servers]
     try:
         return await asyncio.wait_for(asyncio.shield(winner), timeout=timeout)
-    except (asyncio.TimeoutError, Exception):
-        return servers[0]
+    except asyncio.TimeoutError:
+        return None
     finally:
         for task in tasks:
             task.cancel()
@@ -182,12 +183,18 @@ class WebRtcPeerSession:
         self._primary_stream_id: int = 0
         self._runner_task: asyncio.Task | None = None
         self._recv_task: asyncio.Task | None = None
+        self._local_trickle_task: asyncio.Task | None = None
+        self._local_trickle_done = True
+        self._remote_end_received = False
         self._closed = False
 
-    async def accept_offer(self, offer_sdp: str) -> str:
+    async def accept_offer(self, offer_sdp: str, *, trickle_answer: bool = False) -> str:
         """Parse remote offer, gather non-relay ICE candidates, and return SDP answer."""
         offer = parse_datachannel_offer_sdp(offer_sdp)
-        stun_server = await select_reachable_stun_server(self.stun_urls)
+        if any(is_relay_candidate_line(candidate) for candidate in offer.candidates):
+            raise RelayCandidateRejected("Relay candidate rejected in direct-only mode")
+        self._local_trickle_done = not trickle_answer
+        stun_server = None if trickle_answer else await select_reachable_stun_server(self.stun_urls)
         self.ice = aioice.Connection(
             ice_controlling=False,
             components=1,
@@ -206,10 +213,6 @@ class WebRtcPeerSession:
                 continue
             local_candidates.append(f"candidate:{candidate.to_sdp()}")
 
-        for cand_str in offer.candidates:
-            if is_relay_candidate_line(cand_str):
-                raise RelayCandidateRejected("Relay candidate rejected in direct-only mode")
-
         _, dtls_role = choose_dtls_answer_setup(offer.setup)
         answer_sdp = build_datachannel_answer_sdp(
             offer=offer,
@@ -220,9 +223,53 @@ class WebRtcPeerSession:
             sctp_port=offer.sctp_port,
             max_message_size=min(offer.max_message_size, 262144),
             session_id=self.session_id[:12] or "1",
+            end_of_candidates=not trickle_answer,
         )
         self._runner_task = asyncio.create_task(self._run_transport(offer, dtls_role))
         return answer_sdp
+
+    def start_trickle_answer(self) -> None:
+        self._local_trickle_task = asyncio.create_task(self._trickle_local_candidates())
+
+    async def _trickle_local_candidates(self) -> None:
+        ice = self.ice
+        assert ice is not None
+        tasks: list[asyncio.Task] = []
+        try:
+            server = await select_reachable_stun_server(self.stun_urls, timeout=3.0)
+            if server is not None:
+                # Query STUN on the same sockets that are already handling ICE checks.
+                tasks = [
+                    asyncio.create_task(server_reflexive_candidate(protocol, server))
+                    for protocol in ice._protocols
+                    if ip_address(protocol.local_candidate.host).version == 4
+                ]
+                try:
+                    async with asyncio.timeout(5.0):
+                        for result in asyncio.as_completed(tasks):
+                            try:
+                                candidate, _ = await result
+                            except (OSError, ValueError, KeyError, aioice.stun.TransactionError):
+                                continue
+                            await self._send_local_candidate(f"candidate:{candidate.to_sdp()}")
+                except asyncio.TimeoutError:
+                    pass
+            await self._send_local_candidate(None)
+        except Exception as exc:
+            logger.debug("Could not complete WebRTC candidate signaling: %s", type(exc).__name__)
+        finally:
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            self._local_trickle_done = True
+            if not self._closed and self._remote_end_received:
+                await self.add_remote_candidate(None)
+
+    async def _send_local_candidate(self, candidate: str | None) -> None:
+        await self._send_signal({
+            "type": "ice_candidate", "session_id": self.session_id, "candidate": candidate,
+        })
 
     async def add_remote_candidate(self, candidate: str | None) -> None:
         if self.ice is None or self._closed:
@@ -230,7 +277,9 @@ class WebRtcPeerSession:
         if getattr(self.ice, "_remote_candidates_end", False):
             return
         if candidate is None or not candidate.strip():
-            await self.ice.add_remote_candidate(None)
+            self._remote_end_received = True
+            if self._local_trickle_done:
+                await self.ice.add_remote_candidate(None)
             return
         if is_relay_candidate_line(candidate):
             raise RelayCandidateRejected("Relay candidate rejected in direct-only mode")
@@ -292,6 +341,8 @@ class WebRtcPeerSession:
                 await asyncio.wait_for(self.sctp.accept(), timeout=15.0)
             logger.debug("WebRTC session=%s SCTP established", self.session_id)
             await asyncio.wait_for(self.bridge.authenticated.wait(), timeout=10.0)
+            if self._local_trickle_task is not None:
+                self._local_trickle_task.cancel()
             await self._recv_task
         except RelayCandidateRejected as exc:
             logger.warning("WebRTC direct-only check rejected session=%s: %s", self.session_id, exc)
@@ -352,6 +403,8 @@ class WebRtcPeerSession:
         if self._closed:
             return
         self._closed = True
+        if self._local_trickle_task is not None:
+            self._local_trickle_task.cancel()
         if self._recv_task is not None and self._recv_task is not asyncio.current_task():
             self._recv_task.cancel()
         if self._runner_task is not None and self._runner_task is not asyncio.current_task():

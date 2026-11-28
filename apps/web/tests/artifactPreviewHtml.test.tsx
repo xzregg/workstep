@@ -76,3 +76,28 @@ test('older backends without preview tickets fail closed to inline isolated HTML
     await window.happyDOM.close()
   }
 })
+
+test('P2P previews render HTML obtained over the authenticated channel in an opaque frame', async () => {
+  const { window } = installDomEnvironment()
+  window.history.replaceState(null, '', '/p2p/device/chat')
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  const original = fsApi.preview
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response('<button>Direct preview</button>', {headers:{'Content-Type':'text/html'}})
+  fsApi.preview = async () => ({ type: 'text', content: '<button>Direct preview</button>', content_type: 'text/html', extension: '.html', file_size: 31,
+    html_preview: { token: 'resource-ticket', entry: 'preview.html' } })
+  try {
+    await act(async () => root.render(<I18nProvider><ArtifactPreview path="preview.html" projectId="project" /></I18nProvider>))
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))})
+    const frame = document.querySelector('iframe')!
+    assert.equal(frame.getAttribute('src'), null)
+    assert.ok(frame.getAttribute('srcdoc')?.includes('<button>Direct preview</button>'),frame.getAttribute('srcdoc')||'')
+    assert.ok(frame.getAttribute('srcdoc')?.includes("connect-src 'none'"))
+    assert.equal(frame.getAttribute('sandbox'), HTML_PREVIEW_SANDBOX)
+  } finally {
+    fsApi.preview = original
+    globalThis.fetch = originalFetch
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

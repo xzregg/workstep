@@ -282,6 +282,8 @@ def prepare_project_recovery(
                 review_message.initiated_by_user_id = workflow_run.initiated_by_user_id
                 review_message.initiated_by_username = workflow_run.initiated_by_username
                 review_message.initiated_by_name = workflow_run.initiated_by_name
+                review_message.identity_source = workflow_run.identity_source
+                review_message.access_source = workflow_run.access_source
                 review_message.author_device_id = None
                 review_message.author_device_name = None
                 review_message.ended_at = now

@@ -228,7 +228,10 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
           <Select value={repositoryId} onChange={event => {
             const id = event.target.value
             const repo = repositories.find(item => item.id === id)
-            const suffix = (taskId.replace(/[^A-Za-z0-9]/g, '') || 'task').slice(0, 8)
+            const projectScopedId = /^(?:[0-9a-f]{8}|[A-Za-z0-9_-]{1,80}-)[0-7][0-9a-hjkmnp-tv-z]{17}$/
+            const suffix = projectScopedId.test(taskId)
+              ? taskId.slice(-8)
+              : (taskId.replace(/[^A-Za-z0-9]/g, '') || 'task').slice(0, 8)
             const stem = repo?.name.replace(/[^A-Za-z0-9._-]/g, '-').replace(/^[._-]+|[._-]+$/g, '')
               || `repo-${repo?.id.slice(0, 6) || 'git'}`
             const baseAlias = repo ? `${stem.slice(0, 63 - suffix.length)}-${suffix}` : ''

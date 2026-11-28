@@ -37,6 +37,7 @@
     <string name="finish_current_save">Finish choosing where to save the current file first.</string>
     <string name="save_picker_failed">Could not open the save location picker.</string>
     <string name="file_save_failed">Could not save the file: %1$s</string>
+    <string name="p2p_download_failed">Could not save the file</string>
     <string name="camera_permission_denied">Camera permission was denied. Try again or select an existing photo.</string>
     <string name="camera_open_failed">Could not open the camera. Select an existing photo.</string>
     <string name="apk_download_failed">Could not download the APK.</string>

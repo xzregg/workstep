@@ -146,7 +146,7 @@ def build_parser() -> argparse.ArgumentParser:
     message_get = message_sub.add_parser('get', help='read one persisted message without memory search')
     message_get.add_argument('--session', dest='session_id', required=True)
     message_get.add_argument('--message', dest='message_id', required=True)
-    message_get.add_argument('--project', dest='project_id', help='explicit project ID, useful for legacy sessions')
+    message_get.add_argument('--project', dest='project_id', help='explicit project ID for direct lookup')
     add_json(message_get)
     message_send = message_sub.add_parser('send', help='queue a turn in an existing project conversation')
     message_send.add_argument('--project', dest='project_id', required=True)

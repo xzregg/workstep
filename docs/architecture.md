@@ -341,7 +341,9 @@ WebSocket `/ws` 支持按连接订阅过滤（`{"type":"subscribe","task_ids":[.
 
 完整表集合以 `apps/daemon/models/__init__.py::ALL_MODELS` 为准。产物不是 `artifacts` 数据表，而是项目 `.workstep/artifacts/` 下的文件与 manifest。
 
-新项目 ID 为 8 位小写十六进制字符串，已有项目 ID 不迁移。新建聊天会话的 ID 格式为 `<项目ID>-<32位小写十六进制随机串>`，由 `services/chat_identity.py` 统一生成与解析，同时支持 8 位项目 ID 和已有完整 UUID 项目 ID。既有 `<完整UUID项目ID>-xxxx-xxxx-xxxx-xxxxxxxxxxxx` 会话继续解析，普通 UUID 历史会话不解释为项目定位前缀；已有会话和引擎原生会话 ID 不变。会话列表仍按手动顺序和更新时间排序，不依赖 ID 的字典序。`message get --session <会话ID> --message <消息ID>` 通过聊天 API 直接读取 `chat_messages` 原文，不访问记忆索引；带项目前缀的 ID 直接定位项目数据库，旧 UUID ID 可显式加 `--project`，本机未指定时按注册项目逐库精确查找。读取始终验证项目、会话与消息归属，项目身份不得跨项目查询。
+新项目 ID 为 8 位小写十六进制字符串，已有项目身份原样保留。Daemon 的 `services/business_ids.py::new_id` 为新会话、任务、消息、工作流和定时运行记录生成业务 ID。8 位项目的 ID 直接拼接 18 位小写 Crockford Base32 后缀，总长 26 位。后缀由 10 位毫秒时间和 8 位随机起点／同毫秒计数构成，在同一 Daemon 进程内单调递增。长 ID 项目使用完整项目 ID、横杠和相同后缀。宿主日历的事件 ID 与 revision 直接使用后缀。列表继续沿用业务排序，已持久化的 ID、已有引擎会话及外部标识按原值使用。
+
+`message get --session <会话ID> --message <消息ID> --project <项目ID>` 直接查目标项目数据库。旧带横杠的定位格式仍由 `services/chat_identity.py` 识别。无可解析前缀且未指定项目时，沿用身份范围或本机登记项目查找。读取始终验证项目、会话与消息归属。
 
 任务步骤执行的完整过程事件以项目 `.workstep/event_logs/task-<task_id>/<session_id>/<message_id>.jsonl`
 为权威日志；`messages` 表只保留可见 `content`、必要的摘要事件、`event_summary_json`、

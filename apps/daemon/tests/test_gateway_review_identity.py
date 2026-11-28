@@ -46,6 +46,10 @@ async def test_review_uses_authenticated_gateway_identity(scenario, monkeypatch,
         headers["X-WorkStep-Desktop-Token"] = "desktop-secret"
     elif identity in {"local", "lan"}:
         expected_id, expected_name = "local-browser", "本地姓名"
+        if identity == "local":
+            from services.remote_access import get_host_actor
+            host = get_host_actor()
+            expected_id, expected_name = host.actor_id, host.user_name
     elif identity == "local-config":
         from services.config import config_store
         gateway.managed_config = None

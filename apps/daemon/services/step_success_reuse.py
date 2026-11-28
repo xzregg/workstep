@@ -4,9 +4,9 @@ All functions in this module run inside the project database executor.
 """
 
 import json
-import uuid
 from pathlib import Path
 
+from services.business_ids import new_id
 from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.base import db_proxy
 from models.fields import utc_now
@@ -27,6 +27,7 @@ def preserved_success_keys(task: Task, steps: list[Step], targets: set[str]) -> 
 
 def reuse_successful_step(
     task: Task, step: Step, artifacts_dir: Path, workflow_run: WorkflowRun | None,
+    *, project_id: str | None = None,
 ) -> int | None:
     if not step.reuse_success:
         return None
@@ -98,7 +99,7 @@ def reuse_successful_step(
             ).order_by(StepRun.attempt.desc()).first()
             if latest is None or latest.status != "reused" or latest.artifact_round != selected.round:
                 StepRun.create(
-                    id=str(uuid.uuid4()), run=workflow_run, step_key=step.key,
+                    id=new_id(project_id), run=workflow_run, step_key=step.key,
                     attempt=latest.attempt + 1 if latest else 1, status="reused",
                     artifact_round=selected.round, source_step_run_id=source.id if source else None,
                     engine=source.engine if source else row.engine,

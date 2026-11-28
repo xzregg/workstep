@@ -24,6 +24,24 @@ def sample():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('verified,project_id,expected', [(True,None,200),(False,None,403),(True,'project',403)])
+async def test_direct_statistics_require_verified_host_bridge(verified,project_id,expected):
+    from api.statistics import router
+    from services.webrtc_p2p.bridge import WebRtcRemoteActor
+    app=FastAPI();app.include_router(router)
+    app.state.webrtc_scope_token=object()
+    @app.middleware('http')
+    async def direct(request,call_next):
+        request.scope.update(webrtc_remote_actor=WebRtcRemoteActor('user','user','device'),
+                             webrtc_device_owner=True,
+                             webrtc_bridge_token=app.state.webrtc_scope_token if verified else object())
+        with actor_context(ActorSnapshot(actor_id='user',user_name='Owner',device_id='device',device_name='Device',source='remote',project_id=project_id,access_source='webrtc_p2p')):
+            return await call_next(request)
+    async with AsyncClient(transport=ASGITransport(app=app,client=('192.0.2.1',123)),base_url='http://localhost') as client:
+        assert (await client.get('/api/statistics/system')).status_code==expected
+
+
+@pytest.mark.asyncio
 async def test_sampler_bounds_history_preserves_last_success_and_resets():
     fail = False
     def collect():

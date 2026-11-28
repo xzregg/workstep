@@ -704,7 +704,7 @@ class WorkflowRuntime:
 
             return persist_step_followup(
                 task_id, step_key, normalized, author_name, pending_insert_ids,
-                allow_pending=allow_pending,
+                allow_pending=allow_pending, project_id=project_id,
                 coordinator_turn_id=coordinator_turn_id,
                 request_message_id=request_message_id, request_data=request_data,
                 before_persist=None if reset_session else preflight,
@@ -1558,6 +1558,7 @@ class WorkflowRuntime:
                         step_key,
                         execution_keys,
                         instance_id=self._leases.instance_id,
+                        project_id=project.id,
                         reset_session_step_key=(step_key if reset_session else None),
                         feedback_inputs=inspected["feedback_inputs"],
                         valid_step_keys={item["key"] for item in steps_config["steps"]},

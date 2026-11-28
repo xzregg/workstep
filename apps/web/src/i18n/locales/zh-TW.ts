@@ -736,6 +736,11 @@ export const zhTW: Messages = {
     partial: '部分指标不可用，汇总数据不完整；当前仍展示可读取的指标。',
   },
   statistics: {
+    identityGateway: '閘道帳號',
+    identityLocal: '本機使用者',
+    identityChannel: '渠道使用者',
+    identityBrowser: '瀏覽器使用者',
+    identityRemote: '遠端使用者',
     activityTitle: '使用活跃情况',
     activityPrevious: '上一年',
     activityNext: '下一年',
@@ -3157,7 +3162,9 @@ export const zhTW: Messages = {
     "retry": "重試",
     "reconnect": "重新連線",
     "disconnect": "斷開",
-    "directConnected": "P2P 直連",
+    "timings": "連線耗時",
+    "steps": {"signaling": "連線至信令伺服器", "exchange": "交換連線資訊", "channel": "建立直連通道", "authentication": "驗證金鑰"},
+    "directConnected": "直連",
     "disconnected": "直連已斷開",
     "relayRejected": "無法建立 P2P 直連"
   },

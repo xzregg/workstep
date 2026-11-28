@@ -381,11 +381,7 @@
           "Maksimal avkastning kontrollerer stiplede returforbindelser og er atskilt fra gjenforsøk etter mislykket gjennomgang.",
           "Å erklære en utgangsport oppretter ikke en fil. Krev faktiske leveranser i ledeteksten og inspiser dem etterpå."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Inndataartefakter og tilsvarende utganger i noderedigereren",
-          "caption": "Inndataene erklærer oppgavekrav med utførelsesplan som tilsvarende utgang. Innstillinger for returteller vises ikke."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Inndataartefakter og tilsvarende utganger i noderedigereren","caption":"Gjeldende oppsett i det faste demonstrasjonsmiljøet; ingen oppgave, modell eller paring ble kjørt, og ingen legitimasjon ble publisert."}
       },
       {
         "title": "Sett gjennomgang og automatisk oppstart",
@@ -393,7 +389,7 @@
           "Under Trinn gjennomgang i editoren velger du Manuell gjennomgang, Automatisk gjennomgang eller Hopp over gjennomgang. Manuell gjennomgang anbefales først.",
           "Manuell gjennomgang pauser etter utførelse for avgjørelsen din. For automatisk gjennomgang, skriv verifiserbare kriterier og velg eventuelt motor og modell.",
           "Sett på nytt etter at en automatisk gjennomgang avviser resultatet. Feil i selve vurderingsagenten går over til manuell håndtering.",
-          "Still inn Start automatisk etter oppretting etter behov, og lagre deretter. For innledende praksis, deaktiver den slik at du kan inspisere en oppgave før du starter."
+          "Velg motor, leverandør og modell i den rekkefølgen i trinninnstillingene. Uten automatisk start klikker du Start på trinnet i oppgavedetaljene når avhengighetene er klare. Oppgavestart godkjenner bare inngangen, ikke senere manuelle trinn. Global utdata deler en fast Global-sti. Kontroller filer og vurderinger; ikke bruk den i returforbindelser."
         ],
         "tips": [
           "Installer og konfigurer SDK-motorer før du bruker dem for enten utførelse eller gjennomgang."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "Kø betyr vanligvis at samtidig kapasitet er full. Å vente på vurdering krever bekreftelse; det betyr ikke at appen sitter fast.",
-          "Sletting er forskjellig fra arkivering. Les bekreftelsen før permanent sletting."
+          "Sletting er forskjellig fra arkivering. Les bekreftelsen før permanent sletting.", "Hold en oppgave inne på mobilen for flervalg. Sjekk utvalg og bekreftelse før arkivering eller sletting. Kopiering krever én valgt oppgave; begrensninger for oppgaver som kjører gjelder fortsatt."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "I arkivlisten klikker du tittelen for skrivebeskyttet visning av siste spørsmål og svar. Visningen gjenoppretter ikke samtalen og laster ikke fullstendige kjøredetaljer. Gjenopprett uttrykkelig hvis du vil fortsette å chatte."
         ],
         "tips": [
-          "Arkivering beholder innhold. Sletting av samtaler og meldinger har større konsekvenser; ikke bland «Løs opp gruppe» og «Slett også samtaler»."
+          "Arkivering beholder innhold. Sletting av samtaler og meldinger har større konsekvenser; ikke bland «Løs opp gruppe» og «Slett også samtaler».", "Opprett undergrupper fra sidestolpens gruppemeny; sjekk målet før du drar. Klikk kvoten ved inndata for å vise flere motorer. Innsamlingsfeil beholder eldre verdier: sjekk oppdateringstid, dette er ikke en faktura. Markdown-bildeknappen laster opp og setter inn en sti; sjekk forhåndsvisningen før lagring."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Samtalegruppemeny i sidefeltet og skrivebeskyttet arkivforhåndsvisning",
-          "caption": "Det faktiske kinesiske grensesnittet fra det faste demomiljøet. Viser innstillinger, innganger eller tomme lister; ingen modell ble kalt og ingen melding sendt under dette opptaket."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Samtalegruppemeny i sidefeltet og skrivebeskyttet arkivforhåndsvisning","caption":"Gjeldende oppsett i det faste demonstrasjonsmiljøet; ingen oppgave, modell eller paring ble kjørt, og ingen legitimasjon ble publisert."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Bufrede eksterne poster er ikke live-status. Synkronisering kan bli blokkert mens prosjektoppgaver eller chatter er aktive.",
-          "Koble til offline eller uautoriserte eksterne prosjekter først. Nettleseren kopierer ikke vertslagre til datamaskinen din. Lesing krever Git-view-tillatelse; commit, branch, merge og synkroniseringshandlinger har separate bevilgninger. Sjekk tillatelser hvis knapper mangler."
+          "Koble til offline eller uautoriserte eksterne prosjekter først. Nettleseren kopierer ikke vertslagre til datamaskinen din. Lesing krever Git-view-tillatelse; commit, branch, merge og synkroniseringshandlinger har separate bevilgninger. Sjekk tillatelser hvis knapper mangler.", "Velg filer i Git-endringslisten for å forkaste dem samlet. Les forskjellene før bekreftelse: innhold uten commit kan være umulig å gjenopprette. Forkasting er ikke sikkerhetskopiering."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "Interaktiv modus er valgt og passordet er tomt. Ingen delingslenke er opprettet."
         }
       },
+      {"title":"WebRTC-forbindelse og paring","steps":["Lagre signaleringsadressen under Innstillinger → Fjerntilgang → WebRTC. QR for paring vises først etter vellykket signalerings- og UDP-kontroll. Verten må være på nett, og vanlige tillatelser gjelder. Koden inneholder en hemmelighet: ikke publiser den. Sjekk nettverket ved feil; godkjente kontroller garanterer ikke forbindelse mellom nettverk."],"screenshot":{"id":"webrtc-pairing","alt":"WebRTC-forbindelse og paring","caption":"Gjeldende oppsett i det faste demonstrasjonsmiljøet; ingen oppgave, modell eller paring ble kjørt, og ingen legitimasjon ble publisert."}},
       {
         "title": "Konfigurer vertstilgang og inviter enheter",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "Standardintervallet er 5 minutter. Tillatelse til aktiv kontakt betyr ikke melding hver runde; uten ventende hendelser kan runden ende stille. Modellkall kan koste penger, og sammendraget er ikke en full tankerekke.",
-          "Delegeringstitler kan ha 60 tegn og erstatter ikke hele instruksjonen. Fortsettelser kan arve tittelen; eksisterende samtaler omdøpes ikke. Antall nye minner åpner sammendrag, høyrepilen hele oppføringen. Null skjules; stillhet er ikke leveringsfeil."
+          "Delegeringstitler kan ha 60 tegn og erstatter ikke hele instruksjonen. Fortsettelser kan arve tittelen; eksisterende samtaler omdøpes ikke. Antall nye minner åpner sammendrag, høyrepilen hele oppføringen. Null skjules; stillhet er ikke leveringsfeil.", "Automatisk proaktiv tenkning slås av etter tre feil på rad. Se historikken og rett årsaken før du aktiverer igjen. Tilbake i det mobile digitale navet åpner forrige side."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Innstillinger for aktiv refleksjon og separat sideviste kjørelogger",
-          "caption": "Det faktiske kinesiske grensesnittet fra det faste demomiljøet. Viser innstillinger, innganger eller tomme lister; ingen modell ble kalt og ingen melding sendt under dette opptaket."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Innstillinger for aktiv refleksjon og separat sideviste kjørelogger","caption":"Gjeldende oppsett i det faste demonstrasjonsmiljøet; ingen oppgave, modell eller paring ble kjørt, og ingen legitimasjon ble publisert."}
       },
       {
         "title": "Koble kanaler for mottak og varsling",

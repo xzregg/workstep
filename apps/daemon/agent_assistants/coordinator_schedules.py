@@ -31,7 +31,8 @@ async def submit_scheduled(module, project_id, run_id):
             actor = ActorSnapshot(
                 actor_id=creator.get("id", ""), username=creator.get("username"),
                 user_name=creator.get("name", ""), device_id=creator.get("device_id", ""),
-                device_name=creator.get("device_name", ""), source="local", project_id=project_id,
+                device_name=creator.get("device_name", ""), source=creator.get('source') or "local", project_id=project_id,
+                identity_source=creator.get('identity_source'), access_source=creator.get('access_source'),
             )
             with replayed_actor_context(actor):
                 accepted, message, created = module._persist_submission(
@@ -65,9 +66,12 @@ def execution_identity(turn_id):
     schedule = Schedule.get_or_none(Schedule.id == run.schedule_id) if run else None
     creator = json.loads(schedule.task_template_json).get("_creator", {}) if schedule else {}
     return turn.execution_scope, ActorSnapshot(
-        actor_id=message.author_id or "", username=message.author_username,
-        user_name=creator.get("name") or message.author_name or "", device_id=message.author_device_id or "",
-        device_name=message.author_device_name or "", source="local",
+        actor_id=message.initiated_by_user_id or message.author_id or "",
+        username=message.initiated_by_username or message.author_username,
+        user_name=message.initiated_by_name or creator.get("name") or message.author_name or "",
+        device_id=message.author_device_id or "",
+        device_name=message.author_device_name or "", source=creator.get('source') or "local",
+        identity_source=message.identity_source, access_source=message.access_source,
     )
 
 

@@ -381,11 +381,7 @@
           "Le nombre maximal de retours concerne les pointillés, indépendamment des tentatives après rejet en revue.",
           "Déclarer une sortie ne crée pas de fichier. Exigez un livrable réel dans les consignes et contrôlez-le ensuite."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Livrables d’entrée et sorties correspondantes dans l’éditeur",
-          "caption": "L’entrée déclare les besoins et sa sortie est un plan d’exécution. Le nombre de retours n’est pas montré."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Livrables d’entrée et sorties correspondantes dans l’éditeur","caption":"Configuration actuelle de l’environnement de démonstration fixe ; aucune tâche, aucun modèle ni jumelage exécuté, aucun identifiant publié."}
       },
       {
         "title": "Définir revue et démarrage automatique",
@@ -393,7 +389,7 @@
           "Dans Revue de l’étape, choisissez Manuelle, Automatique ou Ignorer la revue. Commencez de préférence en mode manuel.",
           "La revue manuelle interrompt le flux après exécution pour votre décision. En automatique, renseignez des critères vérifiables et éventuellement un moteur et modèle de revue.",
           "Réglez le nombre de tentatives après rejet automatique. Une erreur de l’agent de revue bascule vers le traitement manuel.",
-          "Réglez Démarrer automatiquement après création puis enregistrez. Pour débuter, désactivez-le afin de contrôler la tâche avant lancement."
+          "Dans les réglages d’étape, choisissez moteur, fournisseur puis modèle. Sans démarrage automatique, cliquez sur Démarrer dans le détail de la tâche une fois les dépendances prêtes ; démarrer la tâche n’autorise que son entrée, pas les étapes manuelles suivantes. Une sortie globale partage un chemin fixe Global. Vérifiez fichiers et validations ; elle ne peut pas servir aux connexions de retour."
         ],
         "tips": [
           "Installez et configurez les SDK avant de les utiliser pour l’exécution comme pour la revue."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "En file signifie souvent une limite de concurrence atteinte. En attente de revue requiert une confirmation et n’indique pas un blocage.",
-          "Suppression et archivage diffèrent. Lisez la confirmation avant suppression définitive."
+          "Suppression et archivage diffèrent. Lisez la confirmation avant suppression définitive.", "Sur mobile, maintenez une tâche pour activer la sélection multiple. Vérifiez la sélection et la confirmation avant archivage ou suppression. La copie exige une seule tâche sélectionnée ; les restrictions des tâches en cours restent applicables."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "Ouvrez les archives et cliquez sur un titre pour déplier en lecture seule le dernier échange. Consulter ne restaure pas la session et ne charge pas tous les détails d’exécution. Restaurez explicitement pour reprendre le chat."
         ],
         "tips": [
-          "Archiver conserve le contenu ; supprimer conversations et messages a un effet plus important. Ne confondez pas dissolution du groupe et suppression de son contenu."
+          "Archiver conserve le contenu ; supprimer conversations et messages a un effet plus important. Ne confondez pas dissolution du groupe et suppression de son contenu.", "Le menu d’un groupe latéral crée un sous-groupe ; vérifiez la destination avant de déplacer. Cliquez sur le quota de saisie pour consulter plusieurs moteurs. Un échec conserve les anciennes valeurs : vérifiez leur date, ce n’est pas une facture. Le bouton image Markdown téléverse puis insère un chemin ; contrôlez l’aperçu avant d’enregistrer."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Menu des groupes dans la barre latérale et aperçu en lecture seule des archives",
-          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Menu des groupes dans la barre latérale et aperçu en lecture seule des archives","caption":"Configuration actuelle de l’environnement de démonstration fixe ; aucune tâche, aucun modèle ni jumelage exécuté, aucun identifiant publié."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Un état distant en cache n’est pas instantané. Des tâches ou conversations actives peuvent bloquer la synchronisation.",
-          "Reconnectez le projet hors ligne ou sans autorisation. Le navigateur ne copie pas le dépôt hôte. La lecture et les opérations commit, branche, fusion et synchronisation ont des droits distincts ; vérifiez-les si un bouton manque."
+          "Reconnectez le projet hors ligne ou sans autorisation. Le navigateur ne copie pas le dépôt hôte. La lecture et les opérations commit, branche, fusion et synchronisation ont des droits distincts ; vérifiez-les si un bouton manque.", "Sélectionnez des fichiers dans les modifications Git pour les abandonner ensemble. Vérifiez les différences avant confirmation : les contenus non validés peuvent être irrécupérables. Abandonner ne sauvegarde rien."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "Mode interactif choisi, mot de passe vide et aucun lien créé."
         }
       },
+      {"title":"Connexion et jumelage WebRTC","steps":["Dans Paramètres → Accès distant → WebRTC, saisissez et enregistrez l’adresse de signalisation. Le QR de jumelage apparaît après réussite des contrôles de signalisation et UDP. L’hôte doit rester en ligne et les autorisations habituelles s’appliquent. Le code contient un secret : ne le publiez pas. Vérifiez le réseau en cas d’échec ; ces contrôles ne garantissent pas une connexion entre réseaux."],"screenshot":{"id":"webrtc-pairing","alt":"Connexion et jumelage WebRTC","caption":"Configuration actuelle de l’environnement de démonstration fixe ; aucune tâche, aucun modèle ni jumelage exécuté, aucun identifiant publié."}},
       {
         "title": "Configurer l’hôte et inviter un appareil",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "L’intervalle par défaut est 5 minutes. Autoriser le contact proactif ne signifie pas un message à chaque tour ; sans événement en attente, le tour peut finir silencieusement. Les appels peuvent être facturés ; le résumé n’est pas la chaîne complète de pensée.",
-          "Le titre de délégation accepte 60 caractères sans remplacer l’instruction complète. Une continuation peut le reprendre, sans renommer une conversation existante. Le nombre de souvenirs ajoutés ouvre les résumés ; la flèche droite ouvre le dossier complet. Zéro est masqué ; le silence ne signifie pas un échec d’envoi."
+          "Le titre de délégation accepte 60 caractères sans remplacer l’instruction complète. Une continuation peut le reprendre, sans renommer une conversation existante. Le nombre de souvenirs ajoutés ouvre les résumés ; la flèche droite ouvre le dossier complet. Zéro est masqué ; le silence ne signifie pas un échec d’envoi.", "La réflexion proactive automatique se désactive après trois échecs consécutifs. Consultez l’historique et corrigez la cause avant de la réactiver. Sur mobile, Retour dans le centre numérique revient à la page précédente."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Configuration de réflexion et historique à pagination indépendante",
-          "caption": "Interface chinoise réelle de l’environnement de démonstration fixe. Réglages, accès ou listes vides uniquement ; aucun appel de modèle ni envoi de message pendant cette capture."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Configuration de réflexion et historique à pagination indépendante","caption":"Configuration actuelle de l’environnement de démonstration fixe ; aucune tâche, aucun modèle ni jumelage exécuté, aucun identifiant publié."}
       },
       {
         "title": "Lier l’accueil des canaux et les notifications",

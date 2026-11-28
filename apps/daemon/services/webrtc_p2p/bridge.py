@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 STREAM_CHUNK_BYTES = 16384
 CREDIT_WINDOW = 32
+UPLOAD_WINDOW = 8
 MAX_STREAMS = 128
 
 
@@ -42,7 +43,7 @@ class WebRtcRemoteActor:
     project_id: str | None = None
     project_access_level: str | None = None
     remote_task_create: bool = False
-    display_name: str = "P2P Remote"
+    display_name: str = ""
     provider_ids: frozenset[str] | None = None
     provider_grant_expires_at: int | None = None
 
@@ -63,6 +64,9 @@ class _BaseDataStream:
     async def _run_wrapper(self) -> None:
         try:
             await self._run()
+        except ConnectionError:
+            # The peer may close while ASGI is still sending a final response.
+            logger.debug('WebRTC stream ended with its transport')
         finally:
             self.bridge._retire_stream(self.stream_id, self)
 
@@ -74,7 +78,16 @@ class _BaseDataStream:
                 break
 
     async def feed(self, item: Any) -> None:
-        await self._inbound.put(item)
+        try:
+            self._inbound.put_nowait(item)
+        except asyncio.QueueFull:
+            assert self._task is not None
+            put = asyncio.create_task(self._inbound.put(item))
+            try:
+                await asyncio.wait((put, self._task), return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                put.cancel()
+                await asyncio.gather(put, return_exceptions=True)
 
     def cancel(self) -> None:
         if self._task is not None and not self._task.done():
@@ -111,6 +124,13 @@ def _sanitize_headers(raw_headers: Any, *, websocket: bool = False) -> list[tupl
 
 
 class _WebRtcHttpStream(_BaseDataStream):
+    async def grant_upload_credit(self, credits: int) -> None:
+        await self.bridge.send_frame(ProxyFrame(
+            stream_id=self.stream_id,
+            type=FrameType.window_update,
+            payload={"credits": credits},
+        ))
+
     async def _run(self) -> None:
         started = False
         try:
@@ -155,6 +175,8 @@ class _WebRtcHttpStream(_BaseDataStream):
                     _, body, final = item
                     if final:
                         await self._inbound.put(("end",))
+                    elif self.start.get("upload_flow_control") is True:
+                        await self.grant_upload_credit(1)
                     return {"type": "http.request", "body": body, "more_body": not final}
                 if isinstance(item, tuple) and item[0] == "end":
                     return {"type": "http.request", "body": b"", "more_body": False}
@@ -454,6 +476,7 @@ class WebRtcDataBridge:
                 json.dumps({
                     "type": "p2p.ready",
                     "version": 1,
+                    "upload_flow_control": True,
                     "device_id": self.device_id,
                     "candidate_info": self.candidate_info,
                 })
@@ -472,7 +495,6 @@ class WebRtcDataBridge:
             return
         if frame.type == FrameType.cancel:
             if stream is not None:
-                await stream.feed(frame)
                 stream.cancel()
             return
         if frame.type == FrameType.http_request and frame.payload.get("phase") == "start":
@@ -491,6 +513,8 @@ class WebRtcDataBridge:
             http_stream = _WebRtcHttpStream(self.app, frame.stream_id, frame.payload, self)
             self._streams[frame.stream_id] = http_stream
             http_stream.start_task()
+            if frame.payload.get("upload_flow_control") is True:
+                await http_stream.grant_upload_credit(UPLOAD_WINDOW)
             return
         if frame.type == FrameType.websocket_open:
             if len(self._streams) >= MAX_STREAMS:

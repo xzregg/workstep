@@ -107,6 +107,7 @@ def build_datachannel_answer_sdp(
     sctp_port: int = 5000,
     max_message_size: int = 262144,
     session_id: str = "1",
+    end_of_candidates: bool = True,
 ) -> str:
     """Build an SDP answer for a pure DataChannel session without TURN."""
     answer_setup, _ = choose_dtls_answer_setup(offer.setup)
@@ -133,6 +134,7 @@ def build_datachannel_answer_sdp(
             raise RelayCandidateInSdpError("Refusing to emit relay candidate in direct-only mode")
         prefix = "" if candidate.startswith("a=") else "a="
         lines.append(f"{prefix}{candidate}")
-    lines.append("a=end-of-candidates")
+    if end_of_candidates:
+        lines.append("a=end-of-candidates")
     lines.append("")
     return "\r\n".join(lines)

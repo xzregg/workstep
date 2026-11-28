@@ -381,11 +381,7 @@
           "Maximum returns controls dashed return connections and is separate from retries after failed review.",
           "Declaring an output port does not create a file. Require actual deliverables in the prompt and inspect them afterward."
         ],
-        "screenshot": {
-          "id": "workflow-io",
-          "alt": "Input artifacts and corresponding outputs in the node editor",
-          "caption": "The input declares task requirements with execution plan as its corresponding output. Return-count settings are not shown."
-        }
+        "screenshot": {"id":"workflow-io","alt":"Input artifacts and corresponding outputs in the node editor","caption":"Current configuration in the fixed demonstration environment; no task, model or pairing was run and no credentials were published."}
       },
       {
         "title": "Set review and automatic startup",
@@ -393,7 +389,7 @@
           "Under Step review in the editor, choose Manual review, Automatic review or Skip review. Manual review is recommended initially.",
           "Manual review pauses after execution for your decision. For automatic review, write verifiable criteria and optionally choose its engine and model.",
           "Set retries after an automatic review rejects the result. Errors in the review agent itself switch to manual handling.",
-          "Set Start automatically after creation as needed, then save. For initial practice, disable it so you can inspect a task before starting."
+          "In step settings, select the engine, provider and model in that order. With Auto start off, click the step's Start button in task details once dependencies are ready; starting a task authorizes only its entry, not later manual steps. Mark an output Global to share its fixed Global path. Check actual files and reviews; global outputs cannot be used on return connections."
         ],
         "tips": [
           "Install and configure SDK engines before using them for either execution or review."
@@ -589,7 +585,7 @@
         ],
         "tips": [
           "Queued usually means concurrency capacity is full. Waiting for review requires confirmation; it does not mean the app is stuck.",
-          "Deletion differs from archiving. Read the confirmation before permanent deletion."
+          "Deletion differs from archiving. Read the confirmation before permanent deletion.", "On mobile, long-press a task to select multiple items. Check the selected scope and confirmation before archiving or deleting. Copy is available only for one selected task; running tasks retain their existing restrictions."
         ],
         "screenshot": {
           "id": "task-board",
@@ -1023,13 +1019,9 @@
           "In the archive list, click a title to expand the last question and answer in read-only mode. Viewing does not restore the session or load full execution details. Restore explicitly when you want to continue chatting."
         ],
         "tips": [
-          "Archiving preserves content. Deleting conversations and messages has a greater impact; distinguish dissolving a group from deleting its contents."
+          "Archiving preserves content. Deleting conversations and messages has a greater impact; distinguish dissolving a group from deleting its contents.", "Use a sidebar group's menu to create a subgroup; check the destination before dragging. Click the composer quota to inspect multiple engines. Failed collection retains older values: check their update time, not a billing total. The Markdown editor's image button uploads and inserts a path; inspect the preview before saving."
         ],
-        "screenshot": {
-          "id": "conversation-groups",
-          "alt": "Sidebar conversation group menu and read-only archive preview",
-          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
-        }
+        "screenshot": {"id":"conversation-groups","alt":"Sidebar conversation group menu and read-only archive preview","caption":"Current configuration in the fixed demonstration environment; no task, model or pairing was run and no credentials were published."}
       }
     ]
   },
@@ -1219,7 +1211,7 @@
         ],
         "tips": [
           "Cached remote records are not live status. Synchronization may be blocked while project tasks or chats are active.",
-          "Reconnect offline or unauthorized remote projects first. The browser does not copy host repositories to your computer. Reading requires Git-view permission; commit, branch, merge and synchronization actions have separate grants. Check permissions if buttons are missing."
+          "Reconnect offline or unauthorized remote projects first. The browser does not copy host repositories to your computer. Reading requires Git-view permission; commit, branch, merge and synchronization actions have separate grants. Check permissions if buttons are missing.", "Select files in the Git changes list to discard them together. Inspect diffs before confirming: uncommitted content may be unrecoverable. Discard is not a backup."
         ],
         "screenshot": {
           "id": "git-changes",
@@ -1270,6 +1262,7 @@
           "caption": "Interactive mode is selected and the password empty. No share link has been created."
         }
       },
+      {"title":"Connect and pair with WebRTC","steps":["In Settings → Remote access → WebRTC, enter and save the signaling address. The pairing QR code appears only after signaling and UDP checks pass. Scanning still requires an online host and normal authorization. The code contains a secret: never publish it. Check the network on failure; passing checks does not guarantee connectivity across networks."],"screenshot":{"id":"webrtc-pairing","alt":"Connect and pair with WebRTC","caption":"Current configuration in the fixed demonstration environment; no task, model or pairing was run and no credentials were published."}},
       {
         "title": "Configure host access and invite devices",
         "steps": [
@@ -1700,13 +1693,9 @@
         ],
         "tips": [
           "The default interval is 5 minutes. Allowing proactive contact does not mean every check sends a message; a check with no pending event may finish silently. Model calls may cost money; activity summaries are not full chains of thought.",
-          "Delegation titles allow 60 characters and never replace the full instruction. Continuations may inherit a title; existing chats are not renamed. Click the added-memory count for inline summaries, or the right arrow for the full record. Zero additions are omitted; silence is not delivery failure."
+          "Delegation titles allow 60 characters and never replace the full instruction. Continuations may inherit a title; existing chats are not renamed. Click the added-memory count for inline summaries, or the right arrow for the full record. Zero additions are omitted; silence is not delivery failure.", "Automatic proactive thinking turns off after three consecutive failures. Inspect run history and fix the cause before enabling it again. On mobile, the digital-hub Back button returns to the previous page."
         ],
-        "screenshot": {
-          "id": "digital-person-activity",
-          "alt": "Proactive thinking settings and separately paginated activity records",
-          "caption": "Real Chinese interface from the fixed demo environment. Shows settings, entry points or empty lists; no model was called or message sent in this capture session."
-        }
+        "screenshot": {"id":"digital-person-activity","alt":"Proactive thinking settings and separately paginated activity records","caption":"Current configuration in the fixed demonstration environment; no task, model or pairing was run and no credentials were published."}
       },
       {
         "title": "Bind channel reception and notifications",

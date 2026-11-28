@@ -11,6 +11,7 @@
     <string name="finish_current_save">请先完成当前文件的保存选择</string>
     <string name="save_picker_failed">无法打开保存位置选择器</string>
     <string name="file_save_failed">保存失败：%1$s</string>
+    <string name="p2p_download_failed">保存文件失败</string>
     <string name="camera_permission_denied">未获得摄像头权限，可重试或选择本地图片</string>
     <string name="camera_open_failed">无法打开相机，请选择本地图片</string>
     <string name="apk_download_failed">APK 下载失败</string>

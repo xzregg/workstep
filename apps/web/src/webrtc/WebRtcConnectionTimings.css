@@ -1,0 +1,24 @@
+.webrtc-stage-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+}
+
+.webrtc-stage-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.webrtc-stage-list li > :last-child {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.webrtc-stage-list [aria-current] { color: var(--text-primary); font-weight: 600; }
+.webrtc-stage-list [data-pending] { color: var(--text-muted); }
+.webrtc-stage-list [data-failed] { color: var(--danger); }

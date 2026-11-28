@@ -1,17 +1,17 @@
 """Prepare persistent workflow runs inside the owning project's DB thread."""
 
 import json
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from services.business_ids import new_id
 from models import Message, StepRun, Task, TaskStep, WorkflowRun
 from models.base import db_proxy
 from models.fields import utc_now
 from services.artifact_routing import empty_routing_state, normalize_routing_state
 from services.messages import (
-    create_task_message, current_actor_message_fields, new_message_id,
+    create_task_message, current_actor_message_fields,
 )
 from services.pipeline import DAGScheduler, Step
 from services.workflow_definition import WorkflowDefinition
@@ -156,12 +156,13 @@ def prepare_start_in_project(
                 "author_id", "author_username", "author_name", "author_type",
                 "initiated_by_user_id", "initiated_by_username", "initiated_by_name",
                 "author_device_id", "author_device_name",
+                "identity_source", "access_source",
             } and isinstance(value, str) and value
         } if isinstance(saved_actor, dict) else {}
     else:
         actor_fields = current_actor_message_fields()
     workflow_run = WorkflowRun.create(
-        id=str(uuid.uuid4()),
+        id=new_id(project.id),
         task=task,
         status="running",
         workflow_schema_version=compiled.schema_version,
@@ -179,6 +180,8 @@ def prepare_start_in_project(
             or task.creator_username or task.creator_name
         ),
         initiated_by_name=actor_fields.get("author_name") or task.creator_name,
+        identity_source=actor_fields.get("identity_source") if actor_fields else task.identity_source,
+        access_source=actor_fields.get("access_source") if actor_fields else task.access_source,
         initiated_by_device_id=(
             actor_fields.get("author_device_id") or task.creator_device_id
         ),
@@ -214,6 +217,8 @@ def prepare_start_in_project(
                 "initiated_by_user_id": task.creator_id,
                 "initiated_by_username": task.creator_username or task.creator_name,
                 "initiated_by_name": task.creator_name,
+                "identity_source": task.identity_source,
+                "access_source": task.access_source,
                 "author_device_id": task.creator_device_id,
                 "author_device_name": task.creator_device_name,
             }
@@ -226,7 +231,7 @@ def prepare_start_in_project(
             step_statuses,
         )
         user_message = create_task_message(
-            id=new_message_id(),
+            id=new_id(project.id),
             task=task,
             channel="execution",
             step_key=message_step_key,
@@ -388,7 +393,7 @@ def prepare_start_from_step_without_parent(
     for reusable_key in reusable_keys:
         step = scheduler.steps[reusable_key]
         StepRun.create(
-            id=str(uuid.uuid4()),
+            id=new_id(project.id),
             run=workflow_run,
             step_key=reusable_key,
             attempt=1,

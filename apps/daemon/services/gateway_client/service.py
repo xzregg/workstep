@@ -205,11 +205,11 @@ class GatewayClientService:
                                     usage: dict | None) -> None:
         if self.managed_config is None:
             return
-        from services.remote_access import get_current_actor
+        from services.remote_access import get_current_actor, get_effective_actor
 
         # A configured local name is not a Gateway account. Background calls
         # without an explicit caller belong to the authenticated connection.
-        actor = get_current_actor()
+        actor = get_effective_actor() if get_current_actor() is not None else None
         request_id = uuid4().hex
         await self.record_message_usage(
             project_id=project_id, task_id=None, message_id=request_id,

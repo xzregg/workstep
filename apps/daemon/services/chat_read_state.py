@@ -1,7 +1,7 @@
 """Displayed terminal-message receipts. Call only inside the project DB executor."""
 import json
-import uuid
 from datetime import datetime
+from services.business_ids import new_id
 from models.chat_session import ChatMessage, ChatSession, ProjectSetting
 from models.fields import utc_now
 
@@ -32,7 +32,7 @@ def mark_read(project_id, session_id, message_id):
     if not is_read(project_id,message):
         now=utc_now()
         value=json.dumps({'message_id':message.id,'message_created_at':message.created_at.isoformat(),'read_at':now.isoformat()})
-        ProjectSetting.insert(id=str(uuid.uuid4()),project_id=project_id,key='chat_read:'+session_id,
+        ProjectSetting.insert(id=new_id(project_id),project_id=project_id,key='chat_read:'+session_id,
                               value_json=value,updated_at=now).on_conflict(
             conflict_target=[ProjectSetting.project_id,ProjectSetting.key],
             update={ProjectSetting.value_json:value,ProjectSetting.updated_at:now}).execute()

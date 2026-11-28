@@ -56,6 +56,8 @@ def coordinator_message_fields(task, turn_id: str) -> dict:
         "initiated_by_name": user.initiated_by_name or user.author_name,
         "author_device_id": user.author_device_id,
         "author_device_name": user.author_device_name,
+        "identity_source": user.identity_source,
+        "access_source": user.access_source,
     }
 
 

@@ -331,7 +331,8 @@ async def test_due_manual_schedule_creates_a_task_and_execution_log(tmp_path):
     runs = module.list_runs(project.id, created["id"])
     assert len(runs) == 1
     assert runs[0]["status"] == "created"
-    assert runs[0]["task_id"]
+    for identifier in (workflow_id, created["id"], runs[0]["id"], runs[0]["task_id"]):
+        assert identifier.startswith(project.id) and len(identifier) == 26
     with manager.activate_project_by_id(project.id):
         from models import Task
         task = Task.get_by_id(runs[0]["task_id"])

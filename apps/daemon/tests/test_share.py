@@ -73,6 +73,7 @@ async def test_managed_local_share_creation_requires_live_share_permission(manag
             created = await client.post(url, json={})
             assert created.status_code == 200, created.text
             assert created.json()["token"]
+            assert created.json()["id"].startswith(project.id) and len(created.json()["id"]) == 26
             token, pem, pin = _signed_policy(policy_revision=3, task_share=True,
                                             task_share_denied_project_ids=[project.id])
             cache.apply(verify_policy_snapshot(token, pem, pin, "gateway-test", "device-1", "user-1"))

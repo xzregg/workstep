@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request
 
 from workstep_webrtc_signal import SignalingHub, StunServer, create_webrtc_router
 
@@ -26,18 +24,6 @@ class SignalSettings:
         if os.environ.get("WORKSTEP_SIGNAL_WEB_DIST")
         else None
     )
-
-
-def _resolve_static(root: Path, rel: str) -> Path | None:
-    if not rel or rel.startswith(("/", "\\", "..")):
-        return None
-    base = root.resolve()
-    candidate = (root / rel).resolve()
-    try:
-        candidate.relative_to(base)
-    except ValueError:
-        return None
-    return candidate if candidate.is_file() else None
 
 
 def _stun_urls_for_request(request: Request, settings: SignalSettings, bound_port: int) -> list[str]:
@@ -94,35 +80,8 @@ def create_app(settings: SignalSettings | None = None) -> FastAPI:
             "direct_only": True,
         }
 
-    web_dist = settings.web_dist
-    if web_dist is not None and web_dist.is_dir():
-        index_file = web_dist / "index.html"
-
-        async def _serve_file_or_index(rel: str) -> FileResponse:
-            if rel:
-                candidate = await asyncio.to_thread(_resolve_static, web_dist, rel)
-                if candidate is not None:
-                    headers = {"Cache-Control": "no-store"} if candidate.suffix == ".html" else None
-                    return FileResponse(candidate, headers=headers)
-                if rel == "assets" or rel.startswith("assets/"):
-                    raise HTTPException(status_code=404)
-            if not index_file.is_file():
-                raise HTTPException(status_code=404)
-            return FileResponse(index_file, headers={"Cache-Control": "no-store"})
-
-        @app.get("/p2p/{device_id}", include_in_schema=False)
-        async def p2p_root(device_id: str) -> FileResponse:
-            return await _serve_file_or_index("")
-
-        @app.get("/p2p/{device_id}/{fullpath:path}", include_in_schema=False)
-        async def p2p_subpath(device_id: str, fullpath: str) -> FileResponse:
-            return await _serve_file_or_index(fullpath)
-
-        @app.get("/{fullpath:path}", include_in_schema=False)
-        async def spa_fallback(fullpath: str) -> FileResponse:
-            if fullpath == "api" or fullpath.startswith("api/"):
-                raise HTTPException(status_code=404)
-            return await _serve_file_or_index(fullpath)
+    from workstep_webrtc_signal.bootstrap import install_bootstrap_routes
+    install_bootstrap_routes(app, settings.web_dist)
 
     return app
 

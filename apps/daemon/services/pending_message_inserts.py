@@ -61,6 +61,8 @@ def create_pending_insert(
             "author_device_id": actor.device_id,
             "author_device_name": actor.device_name,
             "author_source": actor.source,
+            "identity_source": actor.identity_source,
+            "access_source": actor.access_source,
         }
         if actor is not None and actor.user_name == display_name else {}
     )
@@ -158,6 +160,8 @@ def pending_insert_actor(target_message_id: str) -> ActorSnapshot | None:
             device_id=row.author_device_id or "",
             device_name=row.author_device_name or "",
             source=row.author_source or "pending_insert",
+            identity_source=row.identity_source,
+            access_source=row.access_source,
         )
     return None
 

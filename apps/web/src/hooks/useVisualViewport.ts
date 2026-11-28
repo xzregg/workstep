@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
 
 /** Browser chrome and the on-screen keyboard may shrink the visual viewport. */
-export function useVisualViewport() {
+export function useVisualViewport(enabled = true) {
   useEffect(() => {
+    if (!enabled) return
     const viewport = window.visualViewport
     const update = () => {
       // Pinch zoom should not resize the application beneath the user's fingers.
@@ -17,5 +18,5 @@ export function useVisualViewport() {
       window.removeEventListener('resize', update)
       document.documentElement.style.removeProperty('--app-viewport-height')
     }
-  }, [])
+  }, [enabled])
 }

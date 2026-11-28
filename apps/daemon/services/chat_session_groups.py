@@ -1,8 +1,8 @@
 """Project-local conversation groups. All callers run in the project DB executor."""
 import json
 import logging
-from uuid import uuid4
 
+from services.business_ids import new_id
 from models.base import db_proxy
 from models.chat_session import ChatMessage, ChatSession, ProjectSetting
 from models.fields import utc_now
@@ -28,7 +28,7 @@ def _save(project_id, groups):
         row.updated_at = utc_now()
         row.save()
     else:
-        ProjectSetting.create(id=str(uuid4()), project_id=project_id, key=KEY,
+        ProjectSetting.create(id=new_id(project_id), project_id=project_id, key=KEY,
                               value_json=payload, updated_at=utc_now())
 
 
@@ -64,7 +64,7 @@ def mutate_group(project_id, req, module):
         if not name or len(name) > 80:
             raise ValueError("Group name must contain 1–80 characters")
         _validate_group_parent(by_id, req.parent_id, req.source)
-        groups.append({"id": str(uuid4()), "name": name, "source": req.source,
+        groups.append({"id": new_id(project_id), "name": name, "source": req.source,
                        "session_ids": [], "parent_id": req.parent_id})
     elif req.action in {"reorder", "move_group"}:
         target = by_id.get(req.target_group_id) if req.action == "reorder" else None

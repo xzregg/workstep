@@ -3482,6 +3482,11 @@ details[open] > summary > .process-trace-chevron {
   color: var(--ai-assistant);
 }
 
+.artifact-error {
+  margin: 0 0 var(--space-2);
+  color: var(--danger);
+}
+
 .artifact-toolbar-icon-button {
   width: 32px;
   height: 32px;
@@ -5868,6 +5873,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .statistics-name-cell > svg:last-child { margin-left: auto; color: var(--meta); }
 .statistics-name-cell small { padding: 1px 5px; border-radius: 4px; color: var(--danger); background: color-mix(in oklab, var(--danger), transparent 90%); }
 .statistics-name-cell code { color: var(--meta); font-size: calc(10px * var(--font-scale)); }
+.statistics-user-label { display: flex; flex-direction: column; min-width: 0; }
+.statistics-user-label > span,
+.statistics-user-label > code { overflow: hidden; text-overflow: ellipsis; }
+.statistics-user-origin { color: var(--meta); font-size: var(--text-caption); }
+.statistics-user-origin:empty { display: none; }
 .statistics-step-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--accent); }
 
 .statistics-coverage {

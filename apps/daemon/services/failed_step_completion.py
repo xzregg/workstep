@@ -1,11 +1,11 @@
 """Accept a failed step's existing artifact round in one DB work unit."""
 
 import json
-import uuid
 from pathlib import Path
 
 from models import Message, StepRun, Task, TaskStep, WorkflowRun
 from models.base import db_proxy
+from services.business_ids import new_id
 from models.fields import utc_now
 from services.artifact_rounds import (
     ArtifactRound,
@@ -95,7 +95,7 @@ def _persist_failed_step_completion_transaction(
         .first()
     )
     StepRun.create(
-        id=str(uuid.uuid4()), run=workflow_run, step_key=message.step_key,
+        id=new_id(project.id), run=workflow_run, step_key=message.step_key,
         attempt=latest_attempt.attempt + 1 if latest_attempt else 1,
         artifact_round=artifact_round, status="reused",
         engine=source.engine, model=source.model,

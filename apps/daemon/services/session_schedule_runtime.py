@@ -106,6 +106,7 @@ async def execute_session_schedule(module, project_id, run_id):
                     actor_id=creator.get('id', ''), username=creator.get('username'),
                     user_name=creator.get('name', ''), device_id=creator.get('device_id', ''),
                     device_name=creator.get('device_name', ''), source=creator.get('source') or 'local',
+                    identity_source=creator.get('identity_source'), access_source=creator.get('access_source'),
                     project_id=project_id,
                 )
                 with replayed_actor_context(actor):

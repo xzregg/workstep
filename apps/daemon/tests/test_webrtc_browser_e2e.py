@@ -9,6 +9,7 @@ import json
 import os
 import re
 import socket
+import shutil
 import sys
 from contextlib import suppress
 from pathlib import Path
@@ -129,8 +130,8 @@ const VIEWPORTS = [
 
 async function captureAcrossViewports(page, prefix) {
   const checks = [];
-  if (!screenshotDir) return checks;
-  fs.mkdirSync(screenshotDir, { recursive: true });
+  if (!screenshotDir && !['p2p-workbench', 'p2p-pair', 'p2p-pair-connecting'].includes(prefix)) return checks;
+  if (screenshotDir) fs.mkdirSync(screenshotDir, { recursive: true });
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.waitForTimeout(120);
@@ -138,6 +139,23 @@ async function captureAcrossViewports(page, prefix) {
       scrollWidth: document.documentElement.scrollWidth,
       innerWidth: window.innerWidth,
     }));
+    if (prefix === 'p2p-pair' || prefix === 'p2p-pair-connecting') {
+      const geometry = await page.evaluate(() => {
+        const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+        const panel = rect('.webrtc-pair-card');
+        const secret = rect('#webrtc-remote-pair-key');
+        const toggle = rect('.webrtc-secret-toggle');
+        const submit = rect('.webrtc-pair-footer button[type="submit"]');
+        const cancel = rect('.webrtc-pair-footer button[type="button"]');
+        const mobile = innerWidth <= 1023;
+        const aligned = Math.abs(secret.height - toggle.height) < 2
+          && Math.abs(submit.top - cancel.top) < 1 && Math.abs(submit.height - cancel.height) < 1
+          && Math.abs(innerHeight / 2 - (panel.top + panel.height / 2)) < 2
+          && (!mobile || submit.height >= 44);
+        return { aligned, viewportHeight: innerHeight, panel: panel.toJSON(), secret: secret.toJSON(), toggle: toggle.toJSON(), submit: submit.toJSON(), cancel: cancel.toJSON() };
+      });
+      if (!geometry.aligned) throw new Error(`P2P pairing controls are not aligned at ${vp.name}: ${JSON.stringify(geometry)}`);
+    }
     if (prefix === 'local-settings-webrtc') {
       const aligned = await page.evaluate(() => {
         const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
@@ -152,7 +170,31 @@ async function captureAcrossViewports(page, prefix) {
       await page.locator('[data-testid="webrtc-pair-qr"]').scrollIntoViewIfNeeded();
     }
     checks.push({ name: `${prefix}-${vp.name}`, ...metrics });
-    await page.screenshot({ path: path.join(screenshotDir, `${prefix}-${vp.name}.png`), fullPage: false });
+    if (screenshotDir) {
+      await page.screenshot({ path: path.join(screenshotDir, `${prefix}-${vp.name}.png`), fullPage: false, animations: 'disabled' });
+    }
+    if (prefix === 'p2p-workbench' && vp.width <= 1023) {
+      if (await page.locator('.webrtc-remote-banner').isVisible()) {
+        throw new Error('P2P banner occupies the mobile header at ' + vp.name);
+      }
+      await page.locator('.mobile-header [aria-controls="workstep-navigation"]').click();
+      const menu = page.locator('#workstep-navigation.is-open');
+      await menu.locator('.gateway-connection-status .gateway-connection-latency').waitFor();
+      if (vp.width === 390) {
+        await page.evaluate(() => { window.connectionAction = undefined; });
+        await menu.locator('button.gateway-connection-status').click();
+        if (await page.evaluate(() => window.connectionAction) !== 'settings') throw new Error('Mobile navigation cannot open connection settings');
+      }
+      if (await menu.locator('.webrtc-remote-actions button').count() !== 0) {
+        throw new Error('P2P actions should be absent from mobile navigation at ' + vp.name);
+      }
+      if (screenshotDir) {
+        await page.screenshot({ path: path.join(screenshotDir, `p2p-menu-${vp.name}.png`), fullPage: false, animations: 'disabled' });
+      }
+      await menu.locator('.navigation-close').click();
+    } else if (prefix === 'p2p-workbench' && !(await page.locator('.webrtc-remote-banner').isVisible())) {
+      throw new Error('P2P banner missing at desktop width ' + vp.name);
+    }
   }
   return checks;
 }
@@ -174,9 +216,37 @@ function waitForGoLine() {
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });
   const consoleErrors = [];
+  const skinResourceErrors = [];
   const layoutChecks = [];
+  const directResources = [];
   try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await context.addInitScript(() => {
+      window.WorkStepAndroid = { postMessage() {} };
+      window.WorkStepP2p = { postMessage(value) { window.connectionAction = value; } };
+      window.savedDownload = null;
+      window.WorkStepP2pDownload = {
+        onmessage: null,
+        async postMessage(raw) {
+          const message = JSON.parse(raw);
+          if (message.type === 'start') {
+            this.parts = [];
+            this.filename = message.filename;
+          }
+          if (message.type === 'chunk') this.parts.push(Uint8Array.from(atob(message.data), value => value.charCodeAt(0)));
+          if (message.type === 'finish') {
+            const blob = new Blob(this.parts);
+            const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+            window.savedDownload = {
+              filename: this.filename,
+              size: blob.size,
+              hash: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join(''),
+            };
+          }
+          this.onmessage?.({ data: 'ok' });
+        },
+      };
+    });
     const page = await context.newPage();
     page.on('pageerror', (err) => {
       consoleErrors.push(`pageerror: ${err.message}`);
@@ -188,7 +258,9 @@ function waitForGoLine() {
       }
     });
     page.on('response', (res) => {
+      if (new URL(res.url()).pathname.includes('/__host/')) directResources.push({url:res.url(),status:res.status(),worker:res.fromServiceWorker()});
       if (res.status() >= 400) {
+        if (res.url().includes('/api/skins/files/') || res.url().includes('/api/skins/assets/')) skinResourceErrors.push(res.url());
         console.error(`BROWSER HTTP ${res.status()}: ${res.url()}`);
       }
     });
@@ -198,27 +270,54 @@ function waitForGoLine() {
     layoutChecks.push(...(await captureAcrossViewports(page, 'p2p-pair')));
 
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.click('.webrtc-pair-footer button[type="button"]');
+    if (await page.evaluate(() => window.connectionAction) !== 'settings') throw new Error('Android connection settings action missing');
     await page.fill('#webrtc-remote-pair-key', cfg.pairKey);
+    await page.route('**/api/webrtc/pair', route => route.fulfill({
+      status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Signaling unavailable' }),
+    }), { times: 1 });
+    await page.click('.webrtc-pair-form button[type="submit"]');
+    await page.locator('.webrtc-stage-list li[data-failed="true"]').waitFor();
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'p2p-pair-error-390.png') });
+    await page.route('**/api/webrtc/pair', async (route) => {
+      const action = page.locator('.webrtc-pair-footer button[type="submit"][aria-busy="true"]');
+      await action.waitFor();
+      if (await page.locator('.webrtc-pair-card .spinner').count() !== 1) throw new Error('Duplicate pairing progress indicators');
+      await page.locator('.webrtc-stage-list [aria-current="step"]').waitFor();
+      if (await page.locator('.webrtc-stage-list li:visible').count() !== 5) throw new Error('Connection steps missing while pairing');
+      layoutChecks.push(...(await captureAcrossViewports(page, 'p2p-pair-connecting')));
+      await route.continue();
+    }, { times: 1 });
     await page.click('.webrtc-pair-form button[type="submit"]');
 
     try {
       await page.waitForSelector('[data-webrtc-connected="true"]', { timeout: 25000 });
     } catch (err) {
-      const uiErr = await page.locator('.webrtc-pair-error').textContent().catch(() => '');
-      const statusTxt = await page.locator('.webrtc-pair-status').textContent().catch(() => '');
+      const uiErr = await page.locator('.webrtc-pair-error').textContent({ timeout: 500 }).catch(() => '');
+      const statusTxt = await page.locator('.webrtc-pair-card [role="status"]').first().textContent({ timeout: 500 }).catch(() => '');
       console.error('UI ERROR TEXT:', JSON.stringify(uiErr), 'STATUS:', JSON.stringify(statusTxt));
       throw err;
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForFunction(() => {
+      const buttons = [...document.querySelectorAll('.layout-sidebar-actions button')].filter(button => button.offsetHeight);
+      return buttons.length > 0 && buttons.every(button => button.offsetHeight <= 44);
+    });
+    if (await page.locator('.webrtc-stage-list, .webrtc-stage-details').count() !== 0) {
+      throw new Error('Connection timings are still displayed in the connected workspace');
     }
     const candidatePath = (await page.textContent('[data-testid="webrtc-candidate-path"]')) || '';
     await page.waitForSelector('[data-testid="webrtc-latency"]', { timeout: 10000 });
     const latencyText = ((await page.textContent('[data-testid="webrtc-latency"]')) || '').trim();
-    await page.setViewportSize({ width: 1440, height: 900 });
     await page.waitForFunction(
       (name) => document.body && document.body.innerText.includes(name),
       cfg.projectName,
       { timeout: 15000 }
     );
     const sidebarStatus = ((await page.textContent('.gateway-connection-status [role="status"]')) || '').trim();
+    if(directResources.length<2||directResources.some(item=>!item.worker||item.status!==200))throw new Error('Workbench assets did not load through the direct resource worker');
+    const lazyExports=await page.evaluate(async({prefix,asset})=>Object.keys(await import(prefix+'/__host/'+asset)).length,{prefix:new URL(cfg.p2pUrl).pathname.replace(/\/$/,''),asset:cfg.lazyAsset});
+    if(!lazyExports)throw new Error('Direct lazy module did not load');
 
     process.stdout.write(JSON.stringify({ phase: 'connected', candidatePath, latencyText, sidebarStatus }) + '\n');
     await waitForGoLine();
@@ -227,6 +326,33 @@ function waitForGoLine() {
       const projRes = await fetch('/api/project/list');
       if (!projRes.ok) throw new Error('project list status ' + projRes.status);
       const projJson = await projRes.json();
+
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 900;
+      const context = canvas.getContext('2d');
+      const pixels = context.createImageData(canvas.width, canvas.height);
+      for (let offset = 0; offset < pixels.data.length; offset += 60000) {
+        crypto.getRandomValues(pixels.data.subarray(offset, offset + 60000));
+      }
+      context.putImageData(pixels, 0, 0);
+      const dataUrl = canvas.toDataURL('image/png');
+      const uploadRequest = fetch(`/api/fs/upload/image?project_id=${encodeURIComponent(projectId)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: 'p2p-test.png', data_url: dataUrl }),
+      });
+      const [upload, duringUpload] = await Promise.all([uploadRequest, fetch('/api/project/list')]);
+      if (!duringUpload.ok) throw new Error('Other direct requests stopped during image upload');
+      if (!upload.ok) throw new Error('image upload status ' + upload.status);
+      const uploaded = await upload.json();
+      const image = document.createElement('img');
+      const loaded = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('direct image preview did not load')), 20000);
+        image.onload = () => { clearTimeout(timer); resolve(image.naturalWidth); };
+      });
+      image.src = `/api/fs/serve/${encodeURIComponent(uploaded.filename)}?project_id=${encodeURIComponent(projectId)}`;
+      document.body.append(image);
+      const uploadedImageWidth = await loaded;
+      image.remove();
 
       const wsPong = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('ws ping timeout')), 10000);
@@ -274,10 +400,128 @@ function waitForGoLine() {
         wsPong,
         downloadBytes: total,
         downloadSha256: hex,
+        uploadedImageWidth,
+        uploadedFilename: uploaded.filename,
       };
     }, { projectId: cfg.projectId, wsUrl: cfg.wsUrl });
 
     layoutChecks.push(...(await captureAcrossViewports(page, 'p2p-workbench')));
+    const close = waitForGoLine();
+    process.stdout.write(JSON.stringify({ phase: 'transferred' }) + '\n');
+    await close;
+
+    const previewUrl = new URL('file-preview', cfg.p2pUrl);
+    previewUrl.search = new URLSearchParams({ path: 'p2p-preview.html', project_id: cfg.projectId, preview_return: '1' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.route('**/api/webrtc/config?device_id=*', async (route) => {
+      const elapsed = page.locator('.webrtc-stage-list [aria-current="step"] > :last-child');
+      await elapsed.waitFor({ timeout: 5000 });
+      const initial = await elapsed.textContent();
+      await page.waitForFunction((before) =>
+        document.querySelector('.webrtc-stage-list [aria-current="step"] > :last-child')?.textContent !== before,
+        initial, { timeout: 5000 });
+      if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'p2p-auto-connecting-390.png') });
+      await route.continue();
+    }, { times: 1 });
+    await page.goto(previewUrl.href);
+    const html = page.frameLocator('iframe.artifact-html-frame');
+    await html.getByRole('button', { name: 'P2P HTML preview' }).click({ timeout: 10000 });
+    await html.getByRole('button', { name: 'Preview script ran' }).waitFor();
+    await html.locator('body[data-external="loaded"]').waitFor();
+    if(await html.getByRole('button').evaluate(el=>getComputedStyle(el).color)!=='rgb(1, 2, 3)')throw new Error('Direct HTML stylesheet missing');
+    await page.setViewportSize({width:1440,height:900});
+    await page.locator('.artifact-html-preview button').filter({hasText:/原型|Prototype/}).first().click();
+    const prototype=page.frameLocator('.prototype-canvas iframe');
+    await prototype.getByRole('button',{name:'P2P HTML preview'}).click();
+    const textField=page.locator('.prototype-properties textarea');
+    await textField.waitFor({timeout:10000});
+    await textField.fill('Direct edit saved');
+    await textField.blur();
+    await page.waitForFunction(()=>!document.querySelector('.prototype-status--busy'));
+    const saved=await page.evaluate(async projectId=>{
+      const response=await fetch('/api/fs/file?'+new URLSearchParams({project_id:projectId,path:'p2p-preview.html'}));
+      return response.text();
+    },cfg.projectId);
+    if(!saved.includes('Direct edit saved'))throw new Error('Prototype edit was not saved to the project');
+    await prototype.getByRole('button',{name:'Direct edit saved'}).waitFor({timeout:10000});
+    if(screenshotDir)await page.screenshot({path:path.join(screenshotDir,'p2p-prototype-edit.png')});
+    await page.locator('.prototype-close').click();
+    await page.setViewportSize({width:390,height:844});
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'p2p-html-preview-390.png') });
+    await page.locator('.artifact-html-preview').getByRole('button', { name: /^(关闭|Close)$/ }).click();
+    await page.waitForSelector('[data-webrtc-connected="true"]', { timeout: 15000 });
+
+    previewUrl.search = new URLSearchParams({
+      path: '.workstep/uploads/' + transferResult.uploadedFilename, project_id: cfg.projectId, preview_return: '1',
+    });
+    await page.goto(previewUrl.href);
+    await page.waitForFunction(() => document.querySelector('.artifact-image-preview img')?.naturalWidth === 900, null, { timeout: 15000 });
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'p2p-large-image-390.png') });
+
+    previewUrl.search = new URLSearchParams({ path: 'sample.apk', project_id: cfg.projectId, preview_return: '1' });
+    await page.goto(previewUrl.href);
+    const download = page.locator('.artifact-binary-state .artifact-download-action');
+    await download.waitFor();
+    if (await page.locator('.artifact-binary-state a.artifact-open-link').count()) throw new Error('APK opening bypasses the direct channel');
+    layoutChecks.push(...(await captureAcrossViewports(page, 'p2p-apk')));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => {
+      const directFetch = window.fetch.bind(window);
+      window.downloadAttempts = 0;
+      window.transferRecoveries = 0;
+      window.addEventListener('workstep:webrtc-reconnect', () => window.transferRecoveries++);
+      window.fetch = async (input, init) => {
+        const url = String(input);
+        if (!url.includes('/api/fs/file?') || !url.includes('sample.apk')) return directFetch(input, init);
+        window.downloadAttempts++;
+        const response = await directFetch(input, init);
+        if (window.downloadAttempts !== 1) return response;
+        const reader = response.body.getReader();
+        return new Response(new ReadableStream({
+          async pull(controller) {
+            await reader.read();
+            await reader.cancel();
+            controller.error(new TypeError('WebRTC DataChannel closed'));
+          },
+        }), { headers: response.headers, status: response.status });
+      };
+    });
+    await download.click();
+    await page.waitForFunction(() => window.savedDownload !== null, null, { timeout: 30000 });
+    const nativeSaved = await page.evaluate(() => window.savedDownload);
+    if (await page.evaluate(() => window.transferRecoveries) !== 1) throw new Error('Download was not retried after channel recovery');
+    if (nativeSaved.filename !== 'sample.apk' || nativeSaved.size !== transferResult.downloadBytes || nativeSaved.hash !== transferResult.downloadSha256) {
+      throw new Error('Android save bridge did not receive the original file bytes');
+    }
+    await page.goto(cfg.p2pUrl);
+    await page.waitForSelector('[data-webrtc-connected="true"]', { timeout: 15000 });
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.evaluate((url) => {
+      history.pushState(null, '', url);
+      dispatchEvent(new PopStateEvent('popstate'));
+    }, new URL('appearance', cfg.p2pUrl).href);
+    await page.locator('.skin-settings-card', { hasText: 'RTC resource test' }).click();
+    await page.locator('.skin-settings-detail-action-bar button.btn-primary').click();
+    await page.locator('.skin-script-settings [role="switch"]').click();
+    await page.getByText('RTC extension active', { exact: true }).waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => {
+      const probe = document.querySelector('.rtc-resource-probe');
+      const image = probe?.querySelector('img');
+      return image?.naturalWidth === 1 && image.src.startsWith('blob:')
+        && getComputedStyle(probe).backgroundImage.includes('blob:')
+        && document.fonts.check('16px RtcResourceFont');
+    }, null, { timeout: 10000 });
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'p2p-custom-skin-1440.png') });
+    await page.locator('.skin-settings-card', { hasText: /默认皮肤|Default skin/ }).first().click();
+    await page.locator('.skin-settings-detail-action-bar button.btn-primary').click();
+    if (await page.locator('.rtc-resource-probe').count()) throw new Error('Skin extension was not disposed after switching');
+    if (skinResourceErrors.length) throw new Error('Skin resources bypassed the direct connection: ' + skinResourceErrors.join(', '));
+    await page.evaluate((url) => {
+      history.pushState(null, '', url);
+      dispatchEvent(new PopStateEvent('popstate'));
+    }, cfg.p2pUrl);
+    await page.waitForSelector('[data-webrtc-connected="true"]', { timeout: 15000 });
 
     if (screenshotDir) {
       // Also capture remote read-only WebRTC settings view over /p2p/<device_id>/
@@ -365,7 +609,7 @@ function waitForGoLine() {
 
 @pytest.mark.timeout(120)
 @pytest.mark.asyncio
-async def test_chromium_direct_webrtc_p2p_e2e(tmp_path, monkeypatch, caplog):
+async def test_chromium_direct_webrtc_p2p_e2e(tmp_path, monkeypatch, caplog, done_timeout=60):
     import logging
     caplog.set_level(logging.DEBUG, logger="services.webrtc_p2p")
     caplog.set_level(logging.DEBUG, logger="aioice")
@@ -408,6 +652,8 @@ async def test_chromium_direct_webrtc_p2p_e2e(tmp_path, monkeypatch, caplog):
     signal_port = _reserve_tcp_port()
     daemon_port = _reserve_tcp_port()
 
+    signal_web_dist=tmp_path/'signal-bootstrap'
+    shutil.copytree(WEB_DIST_DIR/'rtc-bootstrap',signal_web_dist/'rtc-bootstrap')
     signal_app = signal_main.create_app(
         signal_main.SignalSettings(
             host="127.0.0.1",
@@ -415,7 +661,7 @@ async def test_chromium_direct_webrtc_p2p_e2e(tmp_path, monkeypatch, caplog):
             stun_host="127.0.0.1",
             stun_port=0,
             public_host="127.0.0.1",
-            web_dist=WEB_DIST_DIR,
+            web_dist=signal_web_dist,
         )
     )
 
@@ -439,6 +685,39 @@ async def test_chromium_direct_webrtc_p2p_e2e(tmp_path, monkeypatch, caplog):
         payload_bytes = bytes(range(256)) * ((2500 * 1024) // 256)
         expected_sha256 = hashlib.sha256(payload_bytes).hexdigest()
         (proj_dir / "payload.bin").write_bytes(payload_bytes)
+        (proj_dir / "sample.apk").write_bytes(payload_bytes)
+        from api import skins as skins_api
+        from services.skins import SkinManager
+        import base64
+        skin_root = tmp_path / "skin-package"
+        (skin_root / "assets").mkdir(parents=True)
+        (skin_root / "skin.json").write_text(json.dumps({
+            "id": "rtc-resource-test", "name": "RTC resource test", "version": "1",
+            "schema_version": 2, "color_scheme": "light",
+        }))
+        (skin_root / "assets" / "pixel.png").write_bytes(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7S0AAAAASUVORK5CYII="
+        ))
+        font = REPO_ROOT / "apps/web/node_modules/katex/dist/fonts/KaTeX_Main-Regular.woff2"
+        (skin_root / "assets" / "body.woff2").write_bytes(font.read_bytes())
+        (skin_root / "theme.css").write_text(
+            '@font-face{font-family:RtcResourceFont;src:url("assets/body.woff2")}'
+            '.rtc-resource-probe{background-image:url("assets/pixel.png");font-family:RtcResourceFont;}'
+        )
+        (skin_root / "theme.js").write_text(
+            'export function activate(api){return api.slots.register({id:"probe",title:"Probe",slot:"workspace-top",'
+            'render:()=>api.React.createElement("div",{className:"rtc-resource-probe"},'
+            '"RTC extension active",api.React.createElement("img",{src:api.asset("assets/pixel.png")}))})}'
+        )
+        skin_manager = SkinManager(tmp_path / "skin-runtime")
+        monkeypatch.setattr(skins_api, "manager", skin_manager)
+        await skin_manager.register(str(skin_root))
+        (proj_dir / "p2p-preview.html").write_text(
+            '<!doctype html><link rel="stylesheet" href="p2p-preview.css"><button onclick="this.textContent=\'Preview script ran\'">P2P HTML preview</button><script src="p2p-preview.js"></script>',
+            encoding="utf-8",
+        )
+        (proj_dir / "p2p-preview.css").write_text('button{color:rgb(1,2,3)}')
+        (proj_dir / "p2p-preview.js").write_text('document.body.dataset.external="loaded"')
 
         async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
             sys_resp = await client.put(
@@ -486,6 +765,7 @@ async def test_chromium_direct_webrtc_p2p_e2e(tmp_path, monkeypatch, caplog):
             "pairKey": pair_key,
             "projectId": project_id,
             "projectName": "e2e-project",
+            "lazyAsset": next(WEB_DIST_DIR.glob('assets/architecture-*.js')).relative_to(WEB_DIST_DIR).as_posix(),
         })
 
         proc = await asyncio.create_subprocess_exec(
@@ -530,9 +810,18 @@ async def test_chromium_direct_webrtc_p2p_e2e(tmp_path, monkeypatch, caplog):
 
         proc.stdin.write(b"GO\n")
         await proc.stdin.drain()
+        transferred_line = await asyncio.wait_for(proc.stdout.readline(), timeout=60.0)
+        if not transferred_line:
+            stderr_out = (await proc.stderr.read()).decode("utf-8", errors="replace")
+            pytest.fail(f"Playwright runner did not complete direct transfers:\n{stderr_out}")
+        assert json.loads(transferred_line)["phase"] == "transferred"
+        # The preview-page navigation below opens a new connection using the saved key.
+        assert signal_app.state.hub.relayed_messages == relayed_before
+        proc.stdin.write(b"GO\n")
+        await proc.stdin.drain()
         proc.stdin.close()
 
-        done_line = await asyncio.wait_for(proc.stdout.readline(), timeout=60.0)
+        done_line = await asyncio.wait_for(proc.stdout.readline(), timeout=done_timeout)
         rc = await asyncio.wait_for(proc.wait(), timeout=10.0)
         stderr_out = (await proc.stderr.read()).decode("utf-8", errors="replace")
         assert rc == 0, f"Playwright exited with {rc}:\n{stderr_out}"
@@ -544,9 +833,7 @@ async def test_chromium_direct_webrtc_p2p_e2e(tmp_path, monkeypatch, caplog):
         assert done_msg["wsPong"] == {"type": "pong", "nonce": "e2e-ws-ping"}
         assert done_msg["downloadBytes"] == len(payload_bytes)
         assert done_msg["downloadSha256"] == expected_sha256
-
-        # Prove business traffic (/api/*, /ws, 2.5MB download) did NOT pass through signaling server
-        assert signal_app.state.hub.relayed_messages == relayed_before
+        assert done_msg["uploadedImageWidth"] == 900
 
         for item in done_msg.get("layoutChecks", []):
             assert item["scrollWidth"] <= item["innerWidth"] + 1, f"Horizontal overflow on {item}"
@@ -622,10 +909,10 @@ const VIEWPORTS = [
     if (!pairRequests.length || pairRequests.some((body) => body.includes(cfg.pairKey) || JSON.parse(body).pair_key)) {
       throw new Error('Device secret was exposed to signaling');
     }
+    await page.setViewportSize({ width: 1440, height: 900 });
     const candidatePath = (await page.textContent('[data-testid="webrtc-candidate-path"]')) || '';
     await page.waitForSelector('[data-testid="webrtc-latency"]', { timeout: 10000 });
     const latencyText = ((await page.textContent('[data-testid="webrtc-latency"]')) || '').trim();
-    await page.setViewportSize({ width: 1440, height: 900 });
     await page.waitForFunction(
       (name) => document.body && document.body.innerText.includes(name),
       cfg.projectName,
@@ -785,6 +1072,8 @@ async def test_gateway_chromium_direct_webrtc_key_required_and_admin_e2e(tmp_pat
     daemon_port = _reserve_tcp_port()
     gw_url = f"http://127.0.0.1:{gw_port}"
 
+    gateway_bootstrap=tmp_path/'gateway-bootstrap'
+    shutil.copytree(WEB_SHARE_DIST_DIR/'rtc-bootstrap',gateway_bootstrap/'rtc-bootstrap')
     gw_env = {
         **_no_proxy_env(),
         "WORKSTEP_GATEWAY_DATA_DIR": str(tmp_path / "gw-data"),
@@ -793,7 +1082,7 @@ async def test_gateway_chromium_direct_webrtc_key_required_and_admin_e2e(tmp_pat
         "WORKSTEP_GATEWAY_STUN_HOST": "127.0.0.1",
         "WORKSTEP_GATEWAY_STUN_PORT": "0",
         "WORKSTEP_GATEWAY_WEB_DIST": str(GATEWAY_WEB_DIST_DIR),
-        "WORKSTEP_GATEWAY_WORKSPACE_WEB_DIST": str(WEB_SHARE_DIST_DIR),
+        "WORKSTEP_GATEWAY_WORKSPACE_WEB_DIST": str(gateway_bootstrap),
     }
     gw_proc = await asyncio.create_subprocess_exec(
         str(GATEWAY_PYTHON),
