@@ -56,6 +56,7 @@ jobs:
         run: |
           python scripts/check_repository_health.py
           node --test scripts/tests/extract-release-notes.test.cjs
+          node --test --test-concurrency=2 apps/desktop/tests/icon-resources.test.cjs
           python -m unittest discover -s scripts/tests -p test_check_secrets.py
           python -m unittest scripts.tests.test_android_release scripts.tests.test_shared_image
           python scripts/check_secrets.py

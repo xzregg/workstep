@@ -2,15 +2,34 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
+const { execFileSync } = require('node:child_process')
 const { validateIcons, iconFiles } = require('../scripts/check-icons.cjs')
 const desktop = path.resolve(__dirname, '..')
+
+test('SVG icon sources are checked out with canonical LF even on Windows', () => {
+  const attributes = execFileSync('git', ['check-attr', 'eol', '--',
+    'apps/web/public/favicon.svg', 'apps/desktop/build/app-icon.svg'], {
+    cwd: path.resolve(desktop, '../..'), encoding: 'utf8',
+  })
+  assert.deepEqual(attributes.trim().split(/\r?\n/), [
+    'apps/web/public/favicon.svg: eol: lf',
+    'apps/desktop/build/app-icon.svg: eol: lf',
+  ])
+})
+
+test('Windows release preserves tag source bytes before checkout', () => {
+  const workflow = fs.readFileSync(path.resolve(desktop, '../../.github/workflows/desktop-release.yml'), 'utf8')
+  const job = workflow.split('\n  windows:\n')[1].split('\n  linux:\n')[0]
+  const preserve = job.indexOf('git config --global core.autocrlf false')
+  assert.ok(preserve >= 0 && preserve < job.indexOf('uses: actions/checkout@'))
+})
 
 test('committed desktop icons match the website source and generated manifest', () => {
   validateIcons()
 })
 
 test('packaging rejects stale source, changed binaries and missing icon variants', () => {
-  const temp = path.resolve(desktop, '../../..', 'tmp/native-icons-tests')
+  const temp = path.resolve(desktop, '../..', 'tmp/native-icons-tests')
   fs.mkdirSync(temp, { recursive: true })
   const root = fs.mkdtempSync(path.join(temp, 'icons-'))
   const copy = path.join(root, 'desktop')

@@ -116,6 +116,14 @@ Release tag identifies the source snapshot, not the APK's versionName.
 APK compilation and JVM tests do not replace real-device installation, WebView,
 camera, microphone, notifications or P2P connectivity acceptance.
 
+### Windows checkout bytes
+
+SVG source and generated SVG icons use LF in Git attributes. Windows release jobs
+also disable automatic CRLF conversion before checking out existing tags, which
+may predate those attributes. Icon manifest hashes continue to validate the exact
+canonical source and every generated variant; do not regenerate icons or skip the
+guard just to accept checkout-induced byte changes.
+
 Never copy the repository root into an installer or image. Keep only application
 runtime files, compiled frontend assets, required packaged data, licenses and SBOM.
 Repository `plans/`, test fixtures, temporary files, caches, logs, source maps,

@@ -191,6 +191,8 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 30
     steps:
+      - name: Preserve canonical source bytes on Windows
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ inputs.tag || github.ref }}" }
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -199,6 +201,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24.18.0"
+      - name: Verify canonical icon bytes before building Windows
+        run: node apps/desktop/scripts/check-icons.cjs
       - name: Pin sandbox image to this desktop release
         working-directory: apps/desktop
         env:
